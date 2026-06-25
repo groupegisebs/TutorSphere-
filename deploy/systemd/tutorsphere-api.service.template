@@ -1,0 +1,18 @@
+[Unit]
+Description=TutorSphere API
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=@DEPLOY_PATH@/api
+ExecStart=/usr/bin/dotnet @DEPLOY_PATH@/api/@DLL_NAME@
+Restart=always
+RestartSec=10
+User=@SERVICE_USER@
+Group=@SERVICE_USER@
+EnvironmentFile=@DEPLOY_PATH@/env
+Environment=ASPNETCORE_URLS=http://127.0.0.1:@PORT@
+Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
+
+[Install]
+WantedBy=multi-user.target

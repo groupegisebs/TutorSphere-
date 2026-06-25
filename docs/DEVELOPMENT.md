@@ -106,7 +106,9 @@ cp src/TutorSphere.Api/appsettings.Development.local.json.example src/TutorSpher
 
 ## Secrets GitHub Actions
 
-Dans **Settings → Secrets and variables → Actions** du dépôt, créez les secrets suivants (noms exacts) :
+Dans **Settings → Secrets and variables → Actions** du dépôt, créez les secrets suivants (noms exacts).
+
+### Application (runtime)
 
 | Secret GitHub | Description |
 |---------------|-------------|
@@ -119,9 +121,92 @@ Dans **Settings → Secrets and variables → Actions** du dépôt, créez les s
 | `STRIPE__WEBHOOKSECRET` | Secret du endpoint webhook Stripe |
 | `APIBASEURL` | URL publique de l'API (ex. `https://api.tutorsphere.com`) |
 
+### Déploiement SSH (serveur Linux)
+
+| Secret GitHub | Obligatoire | Description |
+|---------------|-------------|-------------|
+| `SSH_HOST` | Oui | Adresse IP ou nom d'hôte du serveur |
+| `SSH_USER` | Oui | Utilisateur SSH (ex. `deploy`) |
+| `SSH_PRIVATE_KEY` | Oui | Clé privée SSH (contenu complet, format PEM) |
+| `DEPLOY_PATH` | Oui | Répertoire de déploiement (ex. `/var/www/tutorsphere`) |
+| `API_PORT` | Non | Port local de l'API (défaut : `55099`) |
+| `WEB_PORT` | Non | Port local du Web (défaut : `55010`) |
+| `SERVICE_USER` | Non | Utilisateur systemd (défaut : `tutorsphere`) |
+
 Le workflow `.github/workflows/ci.yml` :
 
-- **build-and-test** : compile et exécute les tests (aucun secret requis)
-- **publish** (branche `main`) : publie les artefacts et expose les secrets en variables d'environnement pour les étapes de déploiement
+- **build-and-test** : compile et exécute les tests sur chaque push/PR vers `main` (aucun secret requis)
+- **publish** (push `main`) : publie les artefacts API et Web
+- **deploy** (push `main`) : synchronise les fichiers via SSH/rsync, écrit le fichier d'environnement et redémarre les services systemd
 
-> **Important** : configurez les mêmes variables d'environnement sur votre plateforme d'hébergement (Azure App Service, conteneur Docker, etc.) pour que l'application les lise au **runtime**.
+> **Important** : les secrets d'application sont injectés dans `DEPLOY_PATH/env` sur le serveur à chaque déploiement. L'application les lit au **runtime** via `EnvironmentFile` systemd.
+
+## Déploiement sur serveur Linux
+
+Prérequis sur le serveur :
+
+- .NET 10 runtime (`dotnet-runtime-10.0`)
+- PostgreSQL accessible (base `TutorSphere` créée, utilisateur dédié recommandé)
+- nginx (reverse proxy) — voir `deploy/nginx/tutorsphere.conf.example`
+- L'utilisateur `SSH_USER` doit pouvoir écrire dans `DEPLOY_PATH` et exécuter `sudo` sans mot de passe pour `deploy/deploy.sh` (installation systemd)
+
+### Première configuration manuelle (une fois)
+
+```bash
+# Sur le serveur, en tant que root ou avec sudo
+sudo mkdir -p /var/www/tutorsphere
+sudo chown deploy:deploy /var/www/tutorsphere   # remplacer deploy par SSH_USER
+
+# Autoriser le déploiement sans mot de passe (exemple pour l'utilisateur deploy)
+echo 'deploy ALL=(ALL) NOPASSWD: /var/www/tutorsphere/deploy/deploy.sh' | sudo tee /etc/sudoers.d/tutorsphere-deploy
+
+# nginx
+sudo cp /var/www/tutorsphere/deploy/nginx/tutorsphere.conf.example /etc/nginx/sites-available/tutorsphere
+# Éditer les domaines et ports, puis :
+sudo ln -s /etc/nginx/sites-available/tutorsphere /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+
+# TLS (optionnel mais recommandé)
+sudo certbot --nginx -d api.tutorsphere.example.com -d app.tutorsphere.example.com
+```
+
+### Déploiement automatique
+
+Chaque push sur `main` déclenche le pipeline CI/CD :
+
+1. Build et tests
+2. Publication `dotnet publish` (API + Web)
+3. Rsync vers `DEPLOY_PATH/api`, `DEPLOY_PATH/web`, `DEPLOY_PATH/deploy`
+4. Upload de `env` depuis les secrets GitHub
+5. Exécution de `deploy/deploy.sh` (systemd : `tutorsphere-api`, `tutorsphere-web`)
+
+Les migrations EF Core s'exécutent au démarrage de l'API (`Database.MigrateAsync`).
+
+### Déploiement manuel
+
+```bash
+# Depuis une machine avec accès SSH
+export DEPLOY_PATH=/var/www/tutorsphere
+rsync -avz publish/api/ user@server:${DEPLOY_PATH}/api/
+rsync -avz publish/web/ user@server:${DEPLOY_PATH}/web/
+rsync -avz deploy/ user@server:${DEPLOY_PATH}/deploy/
+scp deploy/env.example user@server:${DEPLOY_PATH}/env   # éditer les valeurs avant
+ssh user@server "sudo DEPLOY_PATH=${DEPLOY_PATH} bash ${DEPLOY_PATH}/deploy/deploy.sh"
+```
+
+### Vérification
+
+```bash
+sudo systemctl status tutorsphere-api tutorsphere-web
+curl -s http://127.0.0.1:55099/openapi/v1.json | head   # si OpenAPI activé en prod
+curl -I http://127.0.0.1:55010
+```
+
+Fichiers utiles :
+
+| Fichier | Rôle |
+|---------|------|
+| `deploy/deploy.sh` | Script serveur (permissions, systemd, redémarrage) |
+| `deploy/systemd/*.service.template` | Modèles unités systemd |
+| `deploy/nginx/tutorsphere.conf.example` | Exemple reverse proxy nginx |
+| `deploy/env.example` | Modèle variables d'environnement |

@@ -67,6 +67,16 @@ dotnet run --project src/TutorSphere.Web
 
 Les secrets (base de données, JWT, Stripe) ne sont pas dans le dépôt. Voir [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) pour la configuration locale et les [secrets GitHub Actions](docs/DEVELOPMENT.md#secrets-github-actions).
 
+### Déploiement (production)
+
+Le déploiement automatique vers un serveur Linux se fait via GitHub Actions à chaque push sur `main` :
+
+1. Build, tests et publication des artefacts
+2. Déploiement SSH/rsync vers le serveur
+3. Redémarrage des services systemd (`tutorsphere-api`, `tutorsphere-web`)
+
+Configurer les secrets GitHub (SSH + application) et préparer le serveur une première fois — voir [Déploiement sur serveur Linux](docs/DEVELOPMENT.md#déploiement-sur-serveur-linux).
+
 ### Endpoints principaux
 
 | Méthode | Route | Description |
