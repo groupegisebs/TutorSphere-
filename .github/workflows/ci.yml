@@ -15,10 +15,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "10.0.x"
 
@@ -37,10 +37,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "10.0.x"
 
@@ -51,7 +51,7 @@ jobs:
         run: dotnet publish src/TutorSphere.Web/TutorSphere.Web.csproj -c Release -o ./publish/web
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: tutorsphere-publish
           path: publish/
@@ -63,24 +63,41 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
+      - name: Check deployment secrets
+        id: deploy-ready
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          if [ -z "$SSH_PRIVATE_KEY" ]; then
+            echo "::notice title=Deploy skipped::SSH_PRIVATE_KEY is not configured. Add deployment secrets in Settings → Secrets and variables → Actions (see docs/DEVELOPMENT.md) to enable deploy."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout
-        uses: actions/checkout@v4
+        if: steps.deploy-ready.outputs.ready == 'true'
+        uses: actions/checkout@v5
 
       - name: Download publish artifact
-        uses: actions/download-artifact@v4
+        if: steps.deploy-ready.outputs.ready == 'true'
+        uses: actions/download-artifact@v5
         with:
           name: tutorsphere-publish
           path: publish
 
       - name: Setup SSH
-        uses: webfactory/ssh-agent@v0.9.0
+        if: steps.deploy-ready.outputs.ready == 'true'
+        uses: webfactory/ssh-agent@v0.10.0
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
       - name: Add server to known_hosts
+        if: steps.deploy-ready.outputs.ready == 'true'
         run: ssh-keyscan -H "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
 
       - name: Sync application and deploy scripts
+        if: steps.deploy-ready.outputs.ready == 'true'
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
@@ -92,6 +109,7 @@ jobs:
           rsync -avz deploy/ "${SSH_USER}@${SSH_HOST}:${DEPLOY_PATH}/deploy/"
 
       - name: Create environment file
+        if: steps.deploy-ready.outputs.ready == 'true'
         env:
           CONNECTIONSTRINGS__DEFAULTCONNECTION: ${{ secrets.CONNECTIONSTRINGS__DEFAULTCONNECTION }}
           JWT__KEY: ${{ secrets.JWT__KEY }}
@@ -116,6 +134,7 @@ jobs:
           } > tutorsphere.env
 
       - name: Upload environment file
+        if: steps.deploy-ready.outputs.ready == 'true'
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
@@ -124,6 +143,7 @@ jobs:
           scp tutorsphere.env "${SSH_USER}@${SSH_HOST}:${DEPLOY_PATH}/env"
 
       - name: Run remote deployment
+        if: steps.deploy-ready.outputs.ready == 'true'
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}

@@ -137,7 +137,7 @@ Le workflow `.github/workflows/ci.yml` :
 
 - **build-and-test** : compile et exécute les tests sur chaque push/PR vers `main` (aucun secret requis)
 - **publish** (push `main`) : publie les artefacts API et Web
-- **deploy** (push `main`) : synchronise les fichiers via SSH/rsync, écrit le fichier d'environnement et redémarre les services systemd
+- **deploy** (push `main`) : synchronise les fichiers via SSH/rsync, écrit le fichier d'environnement et redémarre les services systemd. Si `SSH_PRIVATE_KEY` n'est pas encore configuré, le déploiement est ignoré (le job réussit avec un message explicite dans les logs) — configurez les secrets SSH ci-dessus pour activer le déploiement automatique.
 
 > **Important** : les secrets d'application sont injectés dans `DEPLOY_PATH/env` sur le serveur à chaque déploiement. L'application les lit au **runtime** via `EnvironmentFile` systemd.
 
