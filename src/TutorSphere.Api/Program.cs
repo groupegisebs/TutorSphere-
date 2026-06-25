@@ -47,6 +47,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 
 builder.Services.AddAuthorization();
+builder.Services.AddHealthChecks();
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
@@ -65,6 +66,7 @@ app.UseMiddleware<TenantResolutionMiddleware>();
 app.UseAuthorization();
 app.MapControllers();
 app.MapHub<MessagesHub>("/hubs/messages");
+app.MapHealthChecks("/health");
 
 await DependencyInjection.SeedAsync(app.Services);
 

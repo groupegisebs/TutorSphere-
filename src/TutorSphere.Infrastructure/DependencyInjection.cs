@@ -10,7 +10,7 @@ using TutorSphere.Infrastructure.Identity;
 using TutorSphere.Infrastructure.MultiTenancy;
 using TutorSphere.Infrastructure.Persistence;
 using TutorSphere.Infrastructure.Services;
-using TutorSphere.Infrastructure.Stripe;
+using TutorSphere.Infrastructure.PayGateway;
 
 namespace TutorSphere.Infrastructure;
 
@@ -37,8 +37,9 @@ public static class DependencyInjection
 
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IMessageService, MessageService>();
-        services.Configure<StripeSettings>(configuration.GetSection(StripeSettings.SectionName));
-        services.AddScoped<IStripeService, StripeService>();
+        services.Configure<PayGatewaySettings>(configuration.GetSection(PayGatewaySettings.SectionName));
+        services.AddHttpClient<PayGatewayClient>();
+        services.AddScoped<IPaymentGatewayService, PayGatewayService>();
         services.AddApplication();
 
         return services;

@@ -12,6 +12,7 @@ builder.Services.AddHttpClient("TutorSphereApi", client =>
 });
 builder.Services.AddScoped(sp =>
     sp.GetRequiredService<IHttpClientFactory>().CreateClient("TutorSphereApi"));
+builder.Services.AddHealthChecks();
 
 var app = builder.Build();
 
@@ -28,5 +29,6 @@ app.UseAntiforgery();
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
+app.MapHealthChecks("/health");
 
 app.Run();

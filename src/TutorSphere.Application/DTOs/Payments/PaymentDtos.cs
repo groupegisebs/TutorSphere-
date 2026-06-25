@@ -1,24 +1,39 @@
 namespace TutorSphere.Application.DTOs.Payments;
 
-public record StripeConfigDto(string PublishableKey);
+public record PaymentGatewayConfigDto(string? PublishableKey);
 
-public record ConnectOnboardingRequest(string ReturnUrl, string RefreshUrl);
+public record CreateSubscriptionCheckoutRequest(string SuccessUrl, string CancelUrl);
 
-public record ConnectOnboardingResponse(string AccountId, string OnboardingUrl);
+public record ParentCustomerResponse(Guid ParentProfileId, string CustomerCode);
 
-public record ConnectAccountStatusResponse(
-    string AccountId,
-    bool ChargesEnabled,
-    bool DetailsSubmitted,
-    bool PayoutsEnabled);
-
-public record ParentCustomerResponse(Guid ParentProfileId, string StripeCustomerId);
-
-public record SubscriptionPaymentIntentResponse(
+public record SubscriptionCheckoutResponse(
     Guid PaymentId,
-    string ClientSecret,
-    string PaymentIntentId,
+    string PaymentCode,
+    string CheckoutUrl,
+    string SessionId,
+    string? ClientSecret,
     decimal Amount,
     decimal PlatformFee,
     decimal TutorAmount,
     string Currency);
+
+public record PaymentStatusResponse(
+    Guid PaymentId,
+    string PaymentCode,
+    string GatewayStatus,
+    string LocalStatus,
+    DateTime? PaidAt);
+
+public record GatewaySubscriptionResponse(
+    string SubscriptionCode,
+    string Status,
+    string ProductCode,
+    string PlanCode,
+    DateTime? CurrentPeriodStart,
+    DateTime? CurrentPeriodEnd,
+    bool CancelAtPeriodEnd);
+
+public record CancelSubscriptionResponse(
+    string SubscriptionCode,
+    string Status,
+    DateTime? CancelledAt);

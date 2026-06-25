@@ -63,19 +63,37 @@ L'API démarre sur `https://localhost:7xxx` avec OpenAPI en développement.
 dotnet run --project src/TutorSphere.Web
 ```
 
+### Docker (développement local)
+
+Prérequis : Docker Desktop ou Docker Engine + Compose.
+
+```bash
+cp deploy/env.example .env
+# Éditer .env — PostgreSQL externe (local ou serveur partagé)
+docker compose up --build
+```
+
+| Service | URL |
+|---------|-----|
+| API | http://localhost:5099 |
+| Web | http://localhost:5010 |
+
+Voir [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md#docker) pour la production et le déploiement CI.
+
 ### Configuration
 
-Les secrets (base de données, JWT, Stripe) ne sont pas dans le dépôt. Voir [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) pour la configuration locale et les [secrets GitHub Actions](docs/DEVELOPMENT.md#secrets-github-actions).
+Les secrets (base de données, JWT, passerelle de paiement) ne sont pas dans le dépôt. Voir [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) pour la configuration locale et les [secrets GitHub Actions](docs/DEVELOPMENT.md#secrets-github-actions).
 
 ### Déploiement (production)
 
-Le déploiement automatique vers un serveur Linux se fait via GitHub Actions à chaque push sur `main` :
+Le déploiement automatique vers le serveur Linux GISEBS (`51.79.53.197`) se fait via **GitHub Actions** à chaque push sur `main` :
 
-1. Build, tests et publication des artefacts
-2. Déploiement SSH/rsync vers le serveur
-3. Redémarrage des services systemd (`tutorsphere-api`, `tutorsphere-web`)
+1. Workflow **Deploy Production** : build Release, génération `.env`, déploiement SSH
+2. Rsync du contexte de build + `docker-compose` sur `/opt/apps/tutorsphere/app`
+3. `docker compose up -d --build` (réseau host, ports 55099/55010)
+4. Healthcheck `/health` sur l'API et le Web
 
-Configurer les secrets GitHub (SSH + application) et préparer le serveur une première fois — voir [Déploiement sur serveur Linux](docs/DEVELOPMENT.md#déploiement-sur-serveur-linux).
+Configurer les secrets et variables GitHub — voir [deploy/GITHUB-SECRETS.md](deploy/GITHUB-SECRETS.md) et [Déploiement Docker](docs/DEVELOPMENT.md#déploiement-docker-production).
 
 ### Endpoints principaux
 
@@ -92,7 +110,7 @@ Configurer les secrets GitHub (SSH + application) et préparer le serveur une pr
 - [x] Fondation multi-tenant et authentification JWT
 - [x] Modèle de domaine (élèves, abonnements, cours, paiements)
 - [x] Interface Blazor (accueil, dashboards)
-- [ ] Intégration Stripe Connect
+- [x] Intégration paiements via GiseBs Pay Gateway
 - [ ] Calendrier et gestion des cours
 - [ ] Devoirs et rapports pédagogiques
 - [ ] Messagerie et notifications temps réel

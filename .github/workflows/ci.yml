@@ -1,4 +1,4 @@
-name: CI/CD
+name: CI
 
 on:
   push:
@@ -6,21 +6,25 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
   DOTNET_NOLOGO: true
+  DOTNET_VERSION: "10.0.x"
 
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: Restore
         run: dotnet restore TutorSphere.slnx
@@ -31,130 +35,15 @@ jobs:
       - name: Test
         run: dotnet test TutorSphere.slnx --no-build --configuration Release --verbosity normal
 
-  publish:
+  docker-build:
     needs: build-and-test
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v4
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: "10.0.x"
+      - name: Build API image
+        run: docker build -f src/TutorSphere.Api/Dockerfile -t tutorsphere-api:ci .
 
-      - name: Publish API
-        run: dotnet publish src/TutorSphere.Api/TutorSphere.Api.csproj -c Release -o ./publish/api
-
-      - name: Publish Web
-        run: dotnet publish src/TutorSphere.Web/TutorSphere.Web.csproj -c Release -o ./publish/web
-
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v5
-        with:
-          name: tutorsphere-publish
-          path: publish/
-          retention-days: 7
-
-  deploy:
-    needs: publish
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    environment: production
-    steps:
-      - name: Check deployment secrets
-        id: deploy-ready
-        env:
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-        run: |
-          if [ -z "$SSH_PRIVATE_KEY" ]; then
-            echo "::notice title=Deploy skipped::SSH_PRIVATE_KEY is not configured. Add deployment secrets in Settings → Secrets and variables → Actions (see docs/DEVELOPMENT.md) to enable deploy."
-            echo "ready=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "ready=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Checkout
-        if: steps.deploy-ready.outputs.ready == 'true'
-        uses: actions/checkout@v5
-
-      - name: Download publish artifact
-        if: steps.deploy-ready.outputs.ready == 'true'
-        uses: actions/download-artifact@v5
-        with:
-          name: tutorsphere-publish
-          path: publish
-
-      - name: Setup SSH
-        if: steps.deploy-ready.outputs.ready == 'true'
-        uses: webfactory/ssh-agent@v0.10.0
-        with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-
-      - name: Add server to known_hosts
-        if: steps.deploy-ready.outputs.ready == 'true'
-        run: ssh-keyscan -H "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts
-
-      - name: Sync application and deploy scripts
-        if: steps.deploy-ready.outputs.ready == 'true'
-        env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-        run: |
-          ssh "${SSH_USER}@${SSH_HOST}" "mkdir -p '${DEPLOY_PATH}/api' '${DEPLOY_PATH}/web' '${DEPLOY_PATH}/deploy'"
-          rsync -avz --delete publish/api/ "${SSH_USER}@${SSH_HOST}:${DEPLOY_PATH}/api/"
-          rsync -avz --delete publish/web/ "${SSH_USER}@${SSH_HOST}:${DEPLOY_PATH}/web/"
-          rsync -avz deploy/ "${SSH_USER}@${SSH_HOST}:${DEPLOY_PATH}/deploy/"
-
-      - name: Create environment file
-        if: steps.deploy-ready.outputs.ready == 'true'
-        env:
-          CONNECTIONSTRINGS__DEFAULTCONNECTION: ${{ secrets.CONNECTIONSTRINGS__DEFAULTCONNECTION }}
-          JWT__KEY: ${{ secrets.JWT__KEY }}
-          JWT__ISSUER: ${{ secrets.JWT__ISSUER }}
-          JWT__AUDIENCE: ${{ secrets.JWT__AUDIENCE }}
-          STRIPE__SECRETKEY: ${{ secrets.STRIPE__SECRETKEY }}
-          STRIPE__PUBLISHABLEKEY: ${{ secrets.STRIPE__PUBLISHABLEKEY }}
-          STRIPE__WEBHOOKSECRET: ${{ secrets.STRIPE__WEBHOOKSECRET }}
-          APIBASEURL: ${{ secrets.APIBASEURL }}
-        run: |
-          umask 077
-          {
-            echo "ASPNETCORE_ENVIRONMENT=Production"
-            echo "CONNECTIONSTRINGS__DEFAULTCONNECTION=${CONNECTIONSTRINGS__DEFAULTCONNECTION}"
-            echo "JWT__KEY=${JWT__KEY}"
-            echo "JWT__ISSUER=${JWT__ISSUER}"
-            echo "JWT__AUDIENCE=${JWT__AUDIENCE}"
-            echo "STRIPE__SECRETKEY=${STRIPE__SECRETKEY}"
-            echo "STRIPE__PUBLISHABLEKEY=${STRIPE__PUBLISHABLEKEY}"
-            echo "STRIPE__WEBHOOKSECRET=${STRIPE__WEBHOOKSECRET}"
-            echo "APIBASEURL=${APIBASEURL}"
-          } > tutorsphere.env
-
-      - name: Upload environment file
-        if: steps.deploy-ready.outputs.ready == 'true'
-        env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-        run: |
-          scp tutorsphere.env "${SSH_USER}@${SSH_HOST}:${DEPLOY_PATH}/env"
-
-      - name: Run remote deployment
-        if: steps.deploy-ready.outputs.ready == 'true'
-        env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
-          API_PORT: ${{ secrets.API_PORT }}
-          WEB_PORT: ${{ secrets.WEB_PORT }}
-          SERVICE_USER: ${{ secrets.SERVICE_USER }}
-        run: |
-          ssh "${SSH_USER}@${SSH_HOST}" \
-            "sudo DEPLOY_PATH='${DEPLOY_PATH}' \
-             API_PORT='${API_PORT:-55099}' \
-             WEB_PORT='${WEB_PORT:-55010}' \
-             SERVICE_USER='${SERVICE_USER:-tutorsphere}' \
-             bash '${DEPLOY_PATH}/deploy/deploy.sh'"
+      - name: Build Web image
+        run: docker build -f src/TutorSphere.Web/Dockerfile -t tutorsphere-web:ci .

@@ -47,9 +47,9 @@ Les fichiers `appsettings.json` versionnés ne contiennent **aucun secret**. Les
 | `JWT__KEY` | Clé de signature JWT (min. 32 caractères) |
 | `JWT__ISSUER` | Émetteur JWT |
 | `JWT__AUDIENCE` | Audience JWT |
-| `STRIPE__SECRETKEY` | Clé secrète Stripe |
-| `STRIPE__PUBLISHABLEKEY` | Clé publique Stripe |
-| `STRIPE__WEBHOOKSECRET` | Secret de webhook Stripe |
+| `PAYGATEWAY__BASEURL` | URL de base de la passerelle GiseBs Pay Gateway |
+| `PAYGATEWAY__APPCODE` | Code application enregistré dans la passerelle |
+| `PAYGATEWAY__APIKEY` | Clé API (`gbsk_...`) de la passerelle |
 | `APIBASEURL` | URL de base de l'API (projet Web) |
 
 ### Chaîne de connexion PostgreSQL
@@ -79,15 +79,28 @@ dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Host=db.example.c
 
 **GitHub Actions / production** — secret `CONNECTIONSTRINGS__DEFAULTCONNECTION` avec le même format Npgsql.
 
-### User Secrets (développement local)
+### Passerelle de paiement (GiseBs Pay Gateway)
 
-**API** — clés Stripe et autres overrides :
+TutorSphere ne communique plus directement avec Stripe. Les paiements passent par [GiseBs Pay Gateway](https://gisebsapipaygateway.gisebs.com) via l'API HTTP authentifiée (`X-App-Code`, `X-Api-Key`).
+
+**Flux :**
+
+1. `POST /api/payments/subscriptions/{id}/checkout` — crée un paiement local et une session Checkout Stripe via la passerelle
+2. Redirection du parent vers `checkoutUrl` retourné
+3. `GET /api/payments/{paymentId}/status` — synchronise l'état local en interrogeant `GET /api/payments/{paymentCode}` sur la passerelle
+
+Les webhooks Stripe sont reçus par la passerelle (`POST /api/webhooks/stripe`), pas par TutorSphere. Après le paiement, le client (ou le front) doit appeler l'endpoint de synchronisation.
+
+**Enregistrement dans la passerelle :** créer une application `TUTORSPHERE` dans l'admin de la passerelle et récupérer la clé `gbsk_...`.
+
+
+**API** — passerelle de paiement et autres overrides :
 
 ```bash
 cd src/TutorSphere.Api
-dotnet user-secrets set "Stripe:SecretKey" "sk_test_..."
-dotnet user-secrets set "Stripe:PublishableKey" "pk_test_..."
-dotnet user-secrets set "Stripe:WebhookSecret" "whsec_..."
+dotnet user-secrets set "PayGateway:BaseUrl" "https://gisebsapipaygateway.gisebs.com"
+dotnet user-secrets set "PayGateway:AppCode" "TUTORSPHERE"
+dotnet user-secrets set "PayGateway:ApiKey" "gbsk_..."
 ```
 
 **Web** — URL de l'API si différente du défaut :
@@ -104,109 +117,123 @@ cp src/TutorSphere.Api/appsettings.Development.local.json.example src/TutorSpher
 # Éditer le fichier avec vos valeurs — il est ignoré par Git
 ```
 
-## Secrets GitHub Actions
+## Docker
 
-Dans **Settings → Secrets and variables → Actions** du dépôt, créez les secrets suivants (noms exacts).
+### Développement local
 
-### Application (runtime)
+```bash
+cp deploy/env.example .env
+# Éditer CONNECTIONSTRINGS__DEFAULTCONNECTION, JWT__KEY, PayGateway, etc.
+docker compose up --build
+```
 
-| Secret GitHub | Description |
-|---------------|-------------|
-| `CONNECTIONSTRINGS__DEFAULTCONNECTION` | Chaîne de connexion PostgreSQL de production (Npgsql) |
-| `JWT__KEY` | Clé JWT de production (min. 32 caractères) |
-| `JWT__ISSUER` | Émetteur JWT (ex. `TutorSphere`) |
-| `JWT__AUDIENCE` | Audience JWT (ex. `TutorSphere`) |
-| `STRIPE__SECRETKEY` | Clé secrète Stripe live ou test |
-| `STRIPE__PUBLISHABLEKEY` | Clé publique Stripe |
-| `STRIPE__WEBHOOKSECRET` | Secret du endpoint webhook Stripe |
-| `APIBASEURL` | URL publique de l'API (ex. `https://api.tutorsphere.com`) |
+PostgreSQL n'est **pas** conteneurisé — pointez `CONNECTIONSTRINGS__DEFAULTCONNECTION` vers votre instance locale ou le serveur partagé.
 
-### Déploiement SSH (serveur Linux)
+Fichiers :
 
-| Secret GitHub | Obligatoire | Description |
-|---------------|-------------|-------------|
-| `SSH_HOST` | Oui | Adresse IP ou nom d'hôte du serveur |
-| `SSH_USER` | Oui | Utilisateur SSH (ex. `deploy`) |
-| `SSH_PRIVATE_KEY` | Oui | Clé privée SSH (contenu complet, format PEM) |
-| `DEPLOY_PATH` | Oui | Répertoire de déploiement (ex. `/var/www/tutorsphere`) |
-| `API_PORT` | Non | Port local de l'API (défaut : `55099`) |
-| `WEB_PORT` | Non | Port local du Web (défaut : `55010`) |
-| `SERVICE_USER` | Non | Utilisateur systemd (défaut : `tutorsphere`) |
+| Fichier | Rôle |
+|---------|------|
+| `docker-compose.yml` | Dev local (ports 5099 / 5010) |
+| `docker-compose.prod.yml` | Surcharge production (réseau host, ports 55099 / 55010) |
+| `src/TutorSphere.Api/Dockerfile` | Image API |
+| `src/TutorSphere.Web/Dockerfile` | Image Blazor Web |
+| `.dockerignore` | Contexte de build |
 
-Le workflow `.github/workflows/ci.yml` :
+### Déploiement Docker (production)
 
-- **build-and-test** : compile et exécute les tests sur chaque push/PR vers `main` (aucun secret requis)
-- **publish** (push `main`) : publie les artefacts API et Web
-- **deploy** (push `main`) : synchronise les fichiers via SSH/rsync, écrit le fichier d'environnement et redémarre les services systemd. Si `SSH_PRIVATE_KEY` n'est pas encore configuré, le déploiement est ignoré (le job réussit avec un message explicite dans les logs) — configurez les secrets SSH ci-dessus pour activer le déploiement automatique.
+Le workflow **Deploy Production** (`.github/workflows/deploy-production.yml`) :
 
-> **Important** : les secrets d'application sont injectés dans `DEPLOY_PATH/env` sur le serveur à chaque déploiement. L'application les lit au **runtime** via `EnvironmentFile` systemd.
+1. Build Release .NET
+2. Génère `/tmp/tutorsphere.app.env` via `deploy/build-app-env.sh`
+3. Exécute `deploy/deploy-gha.sh` : rsync sources + compose, build et `up -d` sur le serveur
 
-## Déploiement sur serveur Linux
+Le workflow **CI** (`.github/workflows/ci.yml`) valide build, tests et images Docker sur chaque push/PR.
+
+Structure serveur : `/opt/apps/tutorsphere/app/` — voir [deploy/README.md](../deploy/README.md) et [deploy/GITHUB-SECRETS.md](../deploy/GITHUB-SECRETS.md).
+
+## Secrets et variables GitHub Actions
+
+Même modèle que **Boutique GISEBS** — détail complet dans [deploy/GITHUB-SECRETS.md](../deploy/GITHUB-SECRETS.md).
+
+### Secrets obligatoires (dépôt)
+
+| Secret | Description |
+|--------|-------------|
+| `TUTORSPHERE_CONNECTION_STRING` | PostgreSQL (`Database=TutorSphere`) |
+| `TUTORSPHERE_JWT_KEY` | Clé JWT (min. 32 caractères) |
+| `TUTORSPHERE_PAYGATEWAY_BASE_URL` | ex. `https://gisebsapipaygateway.gisebs.com` |
+| `TUTORSPHERE_PAYGATEWAY_API_KEY` | Clé `gbsk_...` app TUTORSPHERE |
+
+### Secret SSH (un seul suffit)
+
+| Secret | Source |
+|--------|--------|
+| `SSH_PRIVATE_KEY_UBUNTU1` | Organisation GISEBS |
+| `TUTORSPHERE_SSH_PRIVATE_KEY` | Secret propre au dépôt |
+
+### Variables optionnelles (org ou dépôt)
+
+| Variable | Défaut |
+|----------|--------|
+| `SSH_HOST_UBUNTU1` | `51.79.53.197` |
+| `SSH_USER_UBUNTU1` | `ubuntu` |
+| `SSH_PORT_UBUNTU1` | `22` |
+| `TUTORSPHERE_APP_ROOT` | `/opt/apps/tutorsphere` |
+| `TUTORSPHERE_API_PORT` | `55099` |
+| `TUTORSPHERE_WEB_PORT` | `55010` |
+
+> **Important** : les secrets d'application sont injectés dans `/opt/apps/tutorsphere/app/.env` sur le serveur à chaque déploiement.
+
+## Déploiement sur serveur Linux (Docker)
 
 Prérequis sur le serveur :
 
-- .NET 10 runtime (`dotnet-runtime-10.0`)
-- PostgreSQL accessible (base `TutorSphere` créée, utilisateur dédié recommandé)
-- nginx (reverse proxy) — voir `deploy/nginx/tutorsphere.conf.example`
-- L'utilisateur `SSH_USER` doit pouvoir écrire dans `DEPLOY_PATH` et exécuter `sudo` sans mot de passe pour `deploy/deploy.sh` (installation systemd)
+- **Docker Engine** + plugin **Compose** (`docker compose version`)
+- PostgreSQL accessible (base `TutorSphere` sur `51.79.53.197:5432`)
+- Utilisateur SSH membre du groupe `docker`
+- nginx ou Nginx Proxy Manager — voir `deploy/nginx/tutorsphere.conf.example`
 
 ### Première configuration manuelle (une fois)
 
 ```bash
-# Sur le serveur, en tant que root ou avec sudo
-sudo mkdir -p /var/www/tutorsphere
-sudo chown deploy:deploy /var/www/tutorsphere   # remplacer deploy par SSH_USER
-
-# Autoriser le déploiement sans mot de passe (exemple pour l'utilisateur deploy)
-echo 'deploy ALL=(ALL) NOPASSWD: /var/www/tutorsphere/deploy/deploy.sh' | sudo tee /etc/sudoers.d/tutorsphere-deploy
-
-# nginx
-sudo cp /var/www/tutorsphere/deploy/nginx/tutorsphere.conf.example /etc/nginx/sites-available/tutorsphere
-# Éditer les domaines et ports, puis :
-sudo ln -s /etc/nginx/sites-available/tutorsphere /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
-
-# TLS (optionnel mais recommandé)
-sudo certbot --nginx -d api.tutorsphere.example.com -d app.tutorsphere.example.com
+sudo mkdir -p /opt/apps/tutorsphere/app
+sudo chown -R ubuntu:ubuntu /opt/apps/tutorsphere
+sudo cp deploy/env.example /opt/apps/tutorsphere/app/.env
+# Éditer .env avec les secrets de production
+chmod 600 /opt/apps/tutorsphere/app/.env
 ```
 
 ### Déploiement automatique
 
-Chaque push sur `main` déclenche le pipeline CI/CD :
+Chaque push sur `main` déclenche le workflow **Deploy Production** (`.github/workflows/deploy-production.yml`).
 
-1. Build et tests
-2. Publication `dotnet publish` (API + Web)
-3. Rsync vers `DEPLOY_PATH/api`, `DEPLOY_PATH/web`, `DEPLOY_PATH/deploy`
-4. Upload de `env` depuis les secrets GitHub
-5. Exécution de `deploy/deploy.sh` (systemd : `tutorsphere-api`, `tutorsphere-web`)
+Le workflow **CI** (`.github/workflows/ci.yml`) exécute build, tests et validation Docker sur chaque push/PR.
 
 Les migrations EF Core s'exécutent au démarrage de l'API (`Database.MigrateAsync`).
 
 ### Déploiement manuel
 
 ```bash
-# Depuis une machine avec accès SSH
-export DEPLOY_PATH=/var/www/tutorsphere
-rsync -avz publish/api/ user@server:${DEPLOY_PATH}/api/
-rsync -avz publish/web/ user@server:${DEPLOY_PATH}/web/
-rsync -avz deploy/ user@server:${DEPLOY_PATH}/deploy/
-scp deploy/env.example user@server:${DEPLOY_PATH}/env   # éditer les valeurs avant
-ssh user@server "sudo DEPLOY_PATH=${DEPLOY_PATH} bash ${DEPLOY_PATH}/deploy/deploy.sh"
+git pull
+./deploy/deploy.sh
 ```
 
 ### Vérification
 
 ```bash
-sudo systemctl status tutorsphere-api tutorsphere-web
-curl -s http://127.0.0.1:55099/openapi/v1.json | head   # si OpenAPI activé en prod
-curl -I http://127.0.0.1:55010
+cd /opt/apps/tutorsphere/app
+docker compose -f docker-compose.yml -f docker-compose.prod.yml ps
+curl -s http://127.0.0.1:55099/health
+curl -s http://127.0.0.1:55010/health
 ```
 
 Fichiers utiles :
 
 | Fichier | Rôle |
 |---------|------|
-| `deploy/deploy.sh` | Script serveur (permissions, systemd, redémarrage) |
-| `deploy/systemd/*.service.template` | Modèles unités systemd |
+| `deploy/deploy-gha.sh` | Script CI (rsync + docker compose) |
+| `deploy/deploy.sh` | Script serveur manuel |
+| `deploy/build-app-env.sh` | Génération `.env` depuis secrets CI |
 | `deploy/nginx/tutorsphere.conf.example` | Exemple reverse proxy nginx |
 | `deploy/env.example` | Modèle variables d'environnement |
+| `deploy/GITHUB-SECRETS.md` | Liste des secrets GitHub |

@@ -1,128 +1,87 @@
 #!/usr/bin/env bash
-# Server-side deployment script for TutorSphere (API + Blazor Web).
-# Invoked by GitHub Actions after rsync, or manually on the Linux host.
+# Déploiement manuel TutorSphere sur le serveur Linux (Docker Compose).
+#
+# Modes :
+#   1) Sur le serveur après git pull (depuis la racine du dépôt) :
+#        ./deploy/deploy.sh
+#
+#   2) Avec un répertoire .env déjà présent sous APP_ROOT/app/.env
+#
+# Variables d'environnement (surchargent les défauts) :
+#   APP_ROOT, API_PORT, WEB_PORT, COMPOSE_PROJECT_NAME, SKIP_BUILD
+
 set -euo pipefail
 
-DEPLOY_PATH="${DEPLOY_PATH:-/var/www/tutorsphere}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+APP_ROOT="${APP_ROOT:-/opt/apps/tutorsphere}"
+APP_DIR="${APP_ROOT}/app"
 API_PORT="${API_PORT:-55099}"
 WEB_PORT="${WEB_PORT:-55010}"
-SERVICE_USER="${SERVICE_USER:-tutorsphere}"
-SYSTEMD_DIR="/etc/systemd/system"
+COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-tutorsphere}"
+SKIP_BUILD="${SKIP_BUILD:-0}"
 
-log() { echo "[deploy] $*"; }
+log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
+die() { log "ERREUR: $*" >&2; exit 1; }
 
-require_root() {
-  if [[ "${EUID}" -ne 0 ]]; then
-    log "This script must run as root (sudo) to install systemd units."
-    exit 1
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 || die "Commande introuvable : $1"
+}
+
+compose() {
+  if docker compose version >/dev/null 2>&1; then
+    docker compose -f "${APP_DIR}/docker-compose.yml" -f "${APP_DIR}/docker-compose.prod.yml" "$@"
+  elif command -v docker-compose >/dev/null 2>&1; then
+    docker-compose -f "${APP_DIR}/docker-compose.yml" -f "${APP_DIR}/docker-compose.prod.yml" "$@"
+  else
+    die "Docker Compose introuvable (docker compose ou docker-compose)"
   fi
 }
 
-ensure_user() {
-  if ! id "${SERVICE_USER}" &>/dev/null; then
-    log "Creating system user ${SERVICE_USER}"
-    useradd --system --home "${DEPLOY_PATH}" --shell /usr/sbin/nologin "${SERVICE_USER}"
+require_cmd docker
+require_cmd rsync
+
+log "TutorSphere — déploiement Docker vers ${APP_DIR}"
+
+mkdir -p "${APP_DIR}"
+
+if [[ ! -f "${APP_DIR}/.env" ]]; then
+  if [[ -f "${REPO_ROOT}/deploy/env.example" ]]; then
+    die "Créez ${APP_DIR}/.env à partir de deploy/env.example (secrets non versionnés)."
   fi
-}
+  die "Fichier ${APP_DIR}/.env manquant."
+fi
 
-write_env_file() {
-  local env_file="${DEPLOY_PATH}/env"
+log "Synchronisation des fichiers de build..."
+rsync -a --delete \
+  --exclude '.env' \
+  --exclude '**/bin' \
+  --exclude '**/obj' \
+  "${REPO_ROOT}/src" \
+  "${REPO_ROOT}/docker-compose.yml" \
+  "${REPO_ROOT}/docker-compose.prod.yml" \
+  "${REPO_ROOT}/.dockerignore" \
+  "${REPO_ROOT}/TutorSphere.slnx" \
+  "${APP_DIR}/"
 
-  if [[ -f "${env_file}" && -z "${CONNECTIONSTRINGS__DEFAULTCONNECTION:-}" ]]; then
-    log "Using existing environment file ${env_file}"
-    chown root:"${SERVICE_USER}" "${env_file}"
-    chmod 640 "${env_file}"
-    return
-  fi
+cd "${APP_DIR}"
+export COMPOSE_PROJECT_NAME
 
-  if [[ -z "${CONNECTIONSTRINGS__DEFAULTCONNECTION:-}" ]]; then
-    log "Missing ${env_file} and CONNECTIONSTRINGS__DEFAULTCONNECTION is not set."
-    exit 1
-  fi
+if [[ "${SKIP_BUILD}" != "1" ]]; then
+  log "Build images..."
+  compose build --pull
+else
+  log "SKIP_BUILD=1 — images non reconstruites."
+fi
 
-  log "Writing environment file ${env_file}"
+log "Démarrage conteneurs..."
+compose up -d --remove-orphans
+compose ps
 
-  umask 077
-  cat > "${env_file}" <<EOF
-ASPNETCORE_ENVIRONMENT=Production
-CONNECTIONSTRINGS__DEFAULTCONNECTION=${CONNECTIONSTRINGS__DEFAULTCONNECTION}
-JWT__KEY=${JWT__KEY:-}
-JWT__ISSUER=${JWT__ISSUER:-TutorSphere}
-JWT__AUDIENCE=${JWT__AUDIENCE:-TutorSphere}
-STRIPE__SECRETKEY=${STRIPE__SECRETKEY:-}
-STRIPE__PUBLISHABLEKEY=${STRIPE__PUBLISHABLEKEY:-}
-STRIPE__WEBHOOKSECRET=${STRIPE__WEBHOOKSECRET:-}
-APIBASEURL=${APIBASEURL:-}
-EOF
+log "Healthcheck..."
+sleep 3
+curl -fsS "http://127.0.0.1:${API_PORT}/health" >/dev/null || die "API /health échoué"
+curl -fsS "http://127.0.0.1:${WEB_PORT}/health" >/dev/null || die "Web /health échoué"
 
-  chown root:"${SERVICE_USER}" "${env_file}"
-  chmod 640 "${env_file}"
-}
-
-install_systemd_unit() {
-  local template="$1"
-  local unit_name="$2"
-  local port="$3"
-  local dll_name="$4"
-
-  sed \
-    -e "s|@DEPLOY_PATH@|${DEPLOY_PATH}|g" \
-    -e "s|@SERVICE_USER@|${SERVICE_USER}|g" \
-    -e "s|@PORT@|${port}|g" \
-    -e "s|@DLL_NAME@|${dll_name}|g" \
-    "${template}" > "${SYSTEMD_DIR}/${unit_name}"
-
-  log "Installed ${SYSTEMD_DIR}/${unit_name}"
-}
-
-set_permissions() {
-  chown -R "${SERVICE_USER}:${SERVICE_USER}" "${DEPLOY_PATH}/api" "${DEPLOY_PATH}/web"
-  chmod +x "${DEPLOY_PATH}/api/TutorSphere.Api" 2>/dev/null || true
-  chmod +x "${DEPLOY_PATH}/web/TutorSphere.Web" 2>/dev/null || true
-}
-
-restart_services() {
-  systemctl daemon-reload
-  systemctl enable tutorsphere-api.service tutorsphere-web.service
-  systemctl restart tutorsphere-api.service
-  systemctl restart tutorsphere-web.service
-  log "Services restarted"
-  systemctl --no-pager --full status tutorsphere-api.service tutorsphere-web.service || true
-}
-
-main() {
-  require_root
-  ensure_user
-
-  mkdir -p "${DEPLOY_PATH}/api" "${DEPLOY_PATH}/web" "${DEPLOY_PATH}/deploy"
-
-  if [[ ! -f "${DEPLOY_PATH}/api/TutorSphere.Api.dll" ]]; then
-    log "Missing ${DEPLOY_PATH}/api/TutorSphere.Api.dll — run rsync from CI first."
-    exit 1
-  fi
-
-  if [[ ! -f "${DEPLOY_PATH}/web/TutorSphere.Web.dll" ]]; then
-    log "Missing ${DEPLOY_PATH}/web/TutorSphere.Web.dll — run rsync from CI first."
-    exit 1
-  fi
-
-  write_env_file
-  set_permissions
-
-  install_systemd_unit \
-    "${DEPLOY_PATH}/deploy/systemd/tutorsphere-api.service.template" \
-    "tutorsphere-api.service" \
-    "${API_PORT}" \
-    "TutorSphere.Api.dll"
-
-  install_systemd_unit \
-    "${DEPLOY_PATH}/deploy/systemd/tutorsphere-web.service.template" \
-    "tutorsphere-web.service" \
-    "${WEB_PORT}" \
-    "TutorSphere.Web.dll"
-
-  restart_services
-  log "Deployment complete."
-}
-
-main "$@"
+log "Déploiement terminé avec succès."

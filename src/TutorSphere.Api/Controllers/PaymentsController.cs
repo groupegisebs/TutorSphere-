@@ -10,44 +10,13 @@ namespace TutorSphere.Api.Controllers;
 [Route("api/[controller]")]
 public class PaymentsController : ControllerBase
 {
-    private readonly IStripeService _stripeService;
+    private readonly IPaymentGatewayService _paymentGateway;
 
-    public PaymentsController(IStripeService stripeService) => _stripeService = stripeService;
+    public PaymentsController(IPaymentGatewayService paymentGateway) => _paymentGateway = paymentGateway;
 
     [HttpGet("config")]
     [AllowAnonymous]
-    public ActionResult<StripeConfigDto> GetConfig() => Ok(_stripeService.GetConfig());
-
-    [HttpPost("connect/{tenantId:guid}/onboard")]
-    [Authorize(Roles = $"{UserRoles.Tutor},{UserRoles.SuperAdmin}")]
-    public async Task<ActionResult<ConnectOnboardingResponse>> ConnectOnboard(
-        Guid tenantId,
-        [FromBody] ConnectOnboardingRequest request,
-        CancellationToken ct)
-    {
-        try
-        {
-            return Ok(await _stripeService.CreateConnectOnboardingAsync(tenantId, request, ct));
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
-    }
-
-    [HttpGet("connect/{tenantId:guid}/status")]
-    [Authorize(Roles = $"{UserRoles.Tutor},{UserRoles.TeachingAssistant},{UserRoles.SuperAdmin}")]
-    public async Task<ActionResult<ConnectAccountStatusResponse>> ConnectStatus(Guid tenantId, CancellationToken ct)
-    {
-        try
-        {
-            return Ok(await _stripeService.GetConnectAccountStatusAsync(tenantId, ct));
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
-    }
+    public ActionResult<PaymentGatewayConfigDto> GetConfig() => Ok(_paymentGateway.GetConfig());
 
     [HttpPost("customers/parents/{parentProfileId:guid}")]
     [Authorize(Roles = $"{UserRoles.Tutor},{UserRoles.Parent},{UserRoles.SuperAdmin}")]
@@ -57,7 +26,24 @@ public class PaymentsController : ControllerBase
     {
         try
         {
-            return Ok(await _stripeService.CreateOrGetParentCustomerAsync(parentProfileId, ct));
+            return Ok(await _paymentGateway.CreateOrGetParentCustomerAsync(parentProfileId, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("subscriptions/{subscriptionId:guid}/checkout")]
+    [Authorize(Roles = $"{UserRoles.Parent},{UserRoles.Tutor},{UserRoles.SuperAdmin}")]
+    public async Task<ActionResult<SubscriptionCheckoutResponse>> CreateSubscriptionCheckout(
+        Guid subscriptionId,
+        [FromBody] CreateSubscriptionCheckoutRequest request,
+        CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _paymentGateway.CreateSubscriptionCheckoutAsync(subscriptionId, request, ct));
         }
         catch (InvalidOperationException ex)
         {
@@ -67,13 +53,53 @@ public class PaymentsController : ControllerBase
 
     [HttpPost("subscriptions/{subscriptionId:guid}/payment-intent")]
     [Authorize(Roles = $"{UserRoles.Parent},{UserRoles.Tutor},{UserRoles.SuperAdmin}")]
-    public async Task<ActionResult<SubscriptionPaymentIntentResponse>> CreateSubscriptionPaymentIntent(
+    [Obsolete("Utiliser POST /api/payments/subscriptions/{id}/checkout")]
+    public Task<ActionResult<SubscriptionCheckoutResponse>> CreateSubscriptionPaymentIntent(
         Guid subscriptionId,
+        [FromBody] CreateSubscriptionCheckoutRequest request,
+        CancellationToken ct) =>
+        CreateSubscriptionCheckout(subscriptionId, request, ct);
+
+    [HttpGet("{paymentId:guid}/status")]
+    [Authorize(Roles = $"{UserRoles.Parent},{UserRoles.Tutor},{UserRoles.SuperAdmin}")]
+    public async Task<ActionResult<PaymentStatusResponse>> SyncPaymentStatus(Guid paymentId, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _paymentGateway.SyncPaymentStatusAsync(paymentId, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpGet("customers/parents/{parentProfileId:guid}/subscriptions")]
+    [Authorize(Roles = $"{UserRoles.Parent},{UserRoles.Tutor},{UserRoles.SuperAdmin}")]
+    public async Task<ActionResult<IReadOnlyList<GatewaySubscriptionResponse>>> GetParentSubscriptions(
+        Guid parentProfileId,
         CancellationToken ct)
     {
         try
         {
-            return Ok(await _stripeService.CreateSubscriptionPaymentIntentAsync(subscriptionId, ct));
+            return Ok(await _paymentGateway.GetParentSubscriptionsAsync(parentProfileId, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("subscriptions/{subscriptionId:guid}/cancel")]
+    [Authorize(Roles = $"{UserRoles.Parent},{UserRoles.Tutor},{UserRoles.SuperAdmin}")]
+    public async Task<ActionResult<CancelSubscriptionResponse>> CancelSubscription(
+        Guid subscriptionId,
+        [FromQuery] bool cancelImmediately = false,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            return Ok(await _paymentGateway.CancelSubscriptionAsync(subscriptionId, cancelImmediately, ct));
         }
         catch (InvalidOperationException ex)
         {

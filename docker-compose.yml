@@ -1,0 +1,50 @@
+# TutorSphere — Docker Compose (développement local)
+#
+# PostgreSQL externe (serveur partagé ou localhost) — pas de conteneur DB ici.
+# Copiez deploy/env.example vers .env et adaptez les valeurs.
+#
+# Usage :
+#   cp deploy/env.example .env
+#   docker compose up --build
+#
+# API  → http://localhost:5099
+# Web  → http://localhost:5010
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: src/TutorSphere.Api/Dockerfile
+    container_name: tutorsphere-api
+    restart: unless-stopped
+    ports:
+      - "5099:8080"
+    env_file:
+      - .env
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 90s
+
+  web:
+    build:
+      context: .
+      dockerfile: src/TutorSphere.Web/Dockerfile
+    container_name: tutorsphere-web
+    restart: unless-stopped
+    ports:
+      - "5010:8080"
+    env_file:
+      - .env
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      APIBASEURL: http://localhost:5099
+    depends_on:
+      api:
+        condition: service_healthy

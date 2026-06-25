@@ -1,0 +1,226 @@
+name: Deploy Production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-ubuntu1
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_VERSION: "10.0.x"
+  DEFAULT_SSH_HOST: "51.79.53.197"
+  DEFAULT_SSH_USER: "ubuntu"
+  DEFAULT_SSH_PORT: "22"
+  DEFAULT_APP_ROOT: "/opt/apps/tutorsphere"
+  DEFAULT_API_PORT: "55099"
+  DEFAULT_WEB_PORT: "55010"
+  DEFAULT_APP_NAME: "TutorSphere"
+  DEFAULT_PAYGATEWAY_APP_CODE: "TUTORSPHERE"
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore
+        run: dotnet restore TutorSphere.slnx
+
+      - name: Build Release
+        run: dotnet build TutorSphere.slnx -c Release --no-restore
+
+      - name: Prepare deploy scripts
+        run: chmod +x deploy/deploy-gha.sh deploy/gha-env.sh deploy/database.defaults.sh deploy/build-app-env.sh
+
+      - name: Diagnose secrets (noms acceptés)
+        run: |
+          echo "Dépôt : ${{ github.repository }}"
+          echo ""
+          echo "Secrets SSH (un seul suffit) :"
+          echo "  SSH_PRIVATE_KEY_UBUNTU1         → ${{ secrets.SSH_PRIVATE_KEY_UBUNTU1 != '' && 'OK' || 'manquant' }}"
+          echo "  TUTORSPHERE_SSH_PRIVATE_KEY     → ${{ secrets.TUTORSPHERE_SSH_PRIVATE_KEY != '' && 'OK' || 'manquant' }}"
+          echo ""
+          echo "Connection string (un seul suffit) :"
+          echo "  TUTORSPHERE_CONNECTION_STRING   → ${{ secrets.TUTORSPHERE_CONNECTION_STRING != '' && 'OK' || 'manquant' }}"
+          echo ""
+          echo "JWT (obligatoire) :"
+          echo "  TUTORSPHERE_JWT_KEY             → ${{ secrets.TUTORSPHERE_JWT_KEY != '' && 'OK' || 'manquant' }}"
+          echo ""
+          echo "PayGateway (obligatoires pour les paiements) :"
+          echo "  TUTORSPHERE_PAYGATEWAY_BASE_URL → ${{ secrets.TUTORSPHERE_PAYGATEWAY_BASE_URL != '' && 'OK' || 'manquant' }}"
+          echo "  TUTORSPHERE_PAYGATEWAY_API_KEY  → ${{ secrets.TUTORSPHERE_PAYGATEWAY_API_KEY != '' && 'OK' || 'manquant' }}"
+          echo ""
+          echo "Guide : https://github.com/${{ github.repository }}/blob/main/deploy/GITHUB-SECRETS.md"
+
+      - name: Load configuration
+        env:
+          KEY_UBUNTU1: ${{ secrets.SSH_PRIVATE_KEY_UBUNTU1 }}
+          KEY_TUTOR: ${{ secrets.TUTORSPHERE_SSH_PRIVATE_KEY }}
+          HOST_VAR: ${{ vars.SSH_HOST_UBUNTU1 }}
+          HOST_SECRET: ${{ secrets.SSH_HOST_UBUNTU1 }}
+          USER_VAR: ${{ vars.SSH_USER_UBUNTU1 }}
+          USER_SECRET: ${{ secrets.SSH_USER_UBUNTU1 }}
+          PORT_VAR: ${{ vars.SSH_PORT_UBUNTU1 }}
+          PORT_SECRET: ${{ secrets.SSH_PORT_UBUNTU1 }}
+          CONN_TUTOR: ${{ secrets.TUTORSPHERE_CONNECTION_STRING }}
+          APP_ROOT_VAR: ${{ vars.TUTORSPHERE_APP_ROOT }}
+          APP_ROOT_SECRET: ${{ secrets.TUTORSPHERE_APP_ROOT }}
+          API_PORT_VAR: ${{ vars.TUTORSPHERE_API_PORT }}
+          API_PORT_SECRET: ${{ secrets.TUTORSPHERE_API_PORT }}
+          WEB_PORT_VAR: ${{ vars.TUTORSPHERE_WEB_PORT }}
+          WEB_PORT_SECRET: ${{ secrets.TUTORSPHERE_WEB_PORT }}
+          JWT_KEY: ${{ secrets.TUTORSPHERE_JWT_KEY }}
+          PG_BASE_URL: ${{ secrets.TUTORSPHERE_PAYGATEWAY_BASE_URL }}
+          PG_API_KEY: ${{ secrets.TUTORSPHERE_PAYGATEWAY_API_KEY }}
+          PG_APP_CODE_VAR: ${{ vars.TUTORSPHERE_PAYGATEWAY_APP_CODE }}
+          PG_APP_CODE_SECRET: ${{ secrets.TUTORSPHERE_PAYGATEWAY_APP_CODE }}
+          API_BASE_URL_VAR: ${{ vars.TUTORSPHERE_API_BASE_URL }}
+          API_BASE_URL_SECRET: ${{ secrets.TUTORSPHERE_API_BASE_URL }}
+        run: |
+          source deploy/gha-env.sh
+          source deploy/database.defaults.sh
+
+          pick_first() {
+            for v in "$@"; do
+              if [ -n "$v" ]; then
+                printf '%s' "$v"
+                return 0
+              fi
+            done
+            return 1
+          }
+
+          SSH_PRIVATE_KEY=$(pick_first "$KEY_TUTOR" "$KEY_UBUNTU1") || true
+          SSH_HOST_RAW=$(pick_first "$HOST_VAR" "$HOST_SECRET" "$DEFAULT_SSH_HOST") || true
+          SSH_USER_RAW=$(pick_first "$USER_VAR" "$USER_SECRET" "$DEFAULT_SSH_USER") || true
+          SSH_PORT_RAW=$(pick_first "$PORT_VAR" "$PORT_SECRET" "$DEFAULT_SSH_PORT") || true
+          CONNECTION_STRING_RAW=$(pick_first "$CONN_TUTOR") || true
+          APP_ROOT_RAW=$(pick_first "$APP_ROOT_VAR" "$APP_ROOT_SECRET" "$DEFAULT_APP_ROOT") || true
+          API_PORT_RAW=$(pick_first "$API_PORT_VAR" "$API_PORT_SECRET" "$DEFAULT_API_PORT") || true
+          WEB_PORT_RAW=$(pick_first "$WEB_PORT_VAR" "$WEB_PORT_SECRET" "$DEFAULT_WEB_PORT") || true
+          JWT_KEY_RAW=$(pick_first "$JWT_KEY") || true
+          PAYGATEWAY_BASE_URL_RAW=$(pick_first "$PG_BASE_URL") || true
+          PAYGATEWAY_API_KEY_RAW=$(pick_first "$PG_API_KEY") || true
+          PAYGATEWAY_APP_CODE_RAW=$(pick_first "$PG_APP_CODE_VAR" "$PG_APP_CODE_SECRET" "$DEFAULT_PAYGATEWAY_APP_CODE") || true
+          API_BASE_URL_RAW=$(pick_first "$API_BASE_URL_VAR" "$API_BASE_URL_SECRET") || true
+
+          missing=0
+          if [ -z "$SSH_PRIVATE_KEY" ]; then
+            echo "::error::Clé SSH manquante."
+            echo "→ SSH_PRIVATE_KEY_UBUNTU1 (org) ou TUTORSPHERE_SSH_PRIVATE_KEY"
+            missing=1
+          fi
+          if [ -z "$CONNECTION_STRING_RAW" ]; then
+            echo "::error::Connection string PostgreSQL manquante."
+            echo "→ TUTORSPHERE_CONNECTION_STRING (Database=TutorSphere)"
+            missing=1
+          fi
+          if [ -z "$JWT_KEY_RAW" ]; then
+            echo "::error::Clé JWT manquante."
+            echo "→ TUTORSPHERE_JWT_KEY (min. 32 caractères)"
+            missing=1
+          fi
+          if [ -z "$PAYGATEWAY_BASE_URL_RAW" ]; then
+            echo "::error::PayGateway BaseUrl manquante."
+            echo "→ TUTORSPHERE_PAYGATEWAY_BASE_URL (ex. https://gisebsapipaygateway.gisebs.com)"
+            missing=1
+          fi
+          if [ -z "$PAYGATEWAY_API_KEY_RAW" ]; then
+            echo "::error::PayGateway API Key manquante."
+            echo "→ TUTORSPHERE_PAYGATEWAY_API_KEY (clé gbsk_… de l'app TUTORSPHERE dans PayGateway)"
+            missing=1
+          fi
+          [ "$missing" -eq 0 ] || exit 1
+
+          PG_URL_CHECK=$(printf '%s' "$PAYGATEWAY_BASE_URL_RAW" | tr '[:upper:]' '[:lower:]')
+          if printf '%s' "$PG_URL_CHECK" | grep -qE 'giseboutique|agentiamarket'; then
+            echo "::error::TUTORSPHERE_PAYGATEWAY_BASE_URL pointe vers la boutique, pas vers PayGateway."
+            echo "→ Corrigez le secret : https://gisebsapipaygateway.gisebs.com"
+            exit 1
+          fi
+
+          if printf '%s' "$CONNECTION_STRING_RAW" | grep -qi 'giseRoleBaseTemplaASPDotNet'; then
+            echo "::warning::Secret TUTORSPHERE_CONNECTION_STRING utilise encore l'ancienne base partagée — remplacement par ${TUTORSPHERE_POSTGRES_DATABASE}"
+          fi
+          CONNECTION_STRING_RAW=$(normalize_tutorsphere_connection_string "$CONNECTION_STRING_RAW")
+
+          SSH_HOST=$(gha_sanitize_host "$SSH_HOST_RAW")
+          SSH_USER=$(gha_sanitize "$SSH_USER_RAW")
+          SSH_PORT=$(gha_sanitize "$SSH_PORT_RAW")
+          APP_ROOT=$(gha_sanitize "$APP_ROOT_RAW")
+          API_PORT=$(gha_sanitize "$API_PORT_RAW")
+          WEB_PORT=$(gha_sanitize "$WEB_PORT_RAW")
+
+          gha_write_env SSH_PRIVATE_KEY "$SSH_PRIVATE_KEY"
+          gha_write_env SSH_HOST "$SSH_HOST"
+          gha_write_env SSH_USER "$SSH_USER"
+          gha_write_env SSH_PORT "$SSH_PORT"
+          gha_write_env APP_ROOT "$APP_ROOT"
+          gha_write_env APP_NAME "$DEFAULT_APP_NAME"
+          gha_write_env API_PORT "$API_PORT"
+          gha_write_env WEB_PORT "$WEB_PORT"
+          gha_write_env CONNECTION_STRING "$(gha_sanitize "$CONNECTION_STRING_RAW")"
+          gha_write_env JWT_KEY "$(gha_sanitize "$JWT_KEY_RAW")"
+          gha_write_env PAYGATEWAY_BASE_URL "$(gha_sanitize "$PAYGATEWAY_BASE_URL_RAW")"
+          gha_write_env PAYGATEWAY_API_KEY "$(gha_sanitize "$PAYGATEWAY_API_KEY_RAW")"
+          gha_write_env PAYGATEWAY_APP_CODE "$(gha_sanitize "$PAYGATEWAY_APP_CODE_RAW")"
+          if [ -n "$API_BASE_URL_RAW" ]; then
+            gha_write_env API_BASE_URL "$(gha_sanitize "$API_BASE_URL_RAW")"
+          else
+            gha_write_env API_BASE_URL "http://127.0.0.1:${API_PORT}"
+          fi
+          echo "OK → ${SSH_USER}@${SSH_HOST}:${SSH_PORT} app=${APP_ROOT} api=${API_PORT} web=${WEB_PORT}"
+
+      - name: Build production .env from secrets
+        env:
+          CONNECTION_STRING: ${{ env.CONNECTION_STRING }}
+          JWT_KEY: ${{ env.JWT_KEY }}
+          PAYGATEWAY_BASE_URL: ${{ env.PAYGATEWAY_BASE_URL }}
+          PAYGATEWAY_API_KEY: ${{ env.PAYGATEWAY_API_KEY }}
+          PAYGATEWAY_APP_CODE: ${{ env.PAYGATEWAY_APP_CODE }}
+          API_BASE_URL: ${{ env.API_BASE_URL }}
+          API_PORT: ${{ env.API_PORT }}
+          WEB_PORT: ${{ env.WEB_PORT }}
+        run: |
+          bash deploy/build-app-env.sh /tmp/tutorsphere.app.env
+          echo "APP_ENV_FILE=/tmp/tutorsphere.app.env" >> "$GITHUB_ENV"
+
+      - name: Setup SSH key
+        id: ssh
+        run: |
+          mkdir -p "$HOME/.ssh" && chmod 700 "$HOME/.ssh"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$HOME/.ssh/deploy_key"
+          chmod 600 "$HOME/.ssh/deploy_key"
+          ssh-keygen -y -f "$HOME/.ssh/deploy_key" > /dev/null 2>&1 || {
+            echo "::error::Clé SSH invalide — vérifiez le format multiligne (BEGIN/END OPENSSH PRIVATE KEY)"
+            exit 1
+          }
+          echo "SSH_KEY_PATH=$HOME/.ssh/deploy_key" >> "$GITHUB_ENV"
+
+      - name: Add server to known_hosts
+        run: ssh-keyscan -p "$SSH_PORT" -H "$SSH_HOST" >> "$HOME/.ssh/known_hosts"
+
+      - name: Deploy
+        env:
+          SSH_KEY_PATH: ${{ env.SSH_KEY_PATH }}
+          APP_ENV_FILE: ${{ env.APP_ENV_FILE }}
+        run: bash deploy/deploy-gha.sh
+
+      - name: Container status
+        if: always() && steps.ssh.outcome == 'success'
+        run: |
+          ssh -i "$SSH_KEY_PATH" -p "$SSH_PORT" -o BatchMode=yes "${SSH_USER}@${SSH_HOST}" \
+            "cd '${APP_ROOT}/app' && docker compose -f docker-compose.yml -f docker-compose.prod.yml ps || true"
