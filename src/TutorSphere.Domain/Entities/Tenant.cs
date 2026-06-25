@@ -26,4 +26,7 @@ public class Tenant : BaseEntity
     public ICollection<SubscriptionOffering> Offerings { get; set; } = [];
     public ICollection<Student> Students { get; set; } = [];
     public ICollection<Lesson> Lessons { get; set; } = [];
+    public ICollection<Unavailability> Unavailabilities { get; set; } = [];
+    public ICollection<Holiday> Holidays { get; set; } = [];
+    public ICollection<Vacation> Vacations { get; set; } = [];
 }

@@ -21,6 +21,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     public DbSet<SubscriptionOffering> SubscriptionOfferingsSet => Set<SubscriptionOffering>();
     public DbSet<StudentSubscription> StudentSubscriptionsSet => Set<StudentSubscription>();
     public DbSet<Lesson> LessonsSet => Set<Lesson>();
+    public DbSet<Unavailability> UnavailabilitiesSet => Set<Unavailability>();
+    public DbSet<Holiday> HolidaysSet => Set<Holiday>();
+    public DbSet<Vacation> VacationsSet => Set<Vacation>();
     public DbSet<LessonReport> LessonReportsSet => Set<LessonReport>();
     public DbSet<Homework> HomeworksSet => Set<Homework>();
     public DbSet<Invoice> InvoicesSet => Set<Invoice>();
@@ -37,6 +40,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     IQueryable<SubscriptionOffering> IApplicationDbContext.SubscriptionOfferings => SubscriptionOfferingsSet;
     IQueryable<StudentSubscription> IApplicationDbContext.StudentSubscriptions => StudentSubscriptionsSet;
     IQueryable<Lesson> IApplicationDbContext.Lessons => LessonsSet;
+    IQueryable<Unavailability> IApplicationDbContext.Unavailabilities => UnavailabilitiesSet;
+    IQueryable<Holiday> IApplicationDbContext.Holidays => HolidaysSet;
+    IQueryable<Vacation> IApplicationDbContext.Vacations => VacationsSet;
     IQueryable<LessonReport> IApplicationDbContext.LessonReports => LessonReportsSet;
     IQueryable<Homework> IApplicationDbContext.Homeworks => HomeworksSet;
     IQueryable<Invoice> IApplicationDbContext.Invoices => InvoicesSet;
@@ -45,7 +51,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     IQueryable<Message> IApplicationDbContext.Messages => MessagesSet;
 
     public new void Add<T>(T entity) where T : class => Set<T>().Add(entity);
-    public void Remove<T>(T entity) where T : class => Set<T>().Remove(entity);
+    public new void Remove<T>(T entity) where T : class => Set<T>().Remove(entity);
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -81,6 +87,10 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
         {
             e.Property(h => h.Grade).HasPrecision(5, 2);
         });
+
+        builder.Entity<Unavailability>(e => e.HasIndex(u => u.TenantId));
+        builder.Entity<Holiday>(e => e.HasIndex(h => h.TenantId));
+        builder.Entity<Vacation>(e => e.HasIndex(v => v.TenantId));
 
         builder.Entity<ParentProfile>(e =>
         {

@@ -11,6 +11,9 @@ public interface IApplicationDbContext
     IQueryable<SubscriptionOffering> SubscriptionOfferings { get; }
     IQueryable<StudentSubscription> StudentSubscriptions { get; }
     IQueryable<Lesson> Lessons { get; }
+    IQueryable<Unavailability> Unavailabilities { get; }
+    IQueryable<Holiday> Holidays { get; }
+    IQueryable<Vacation> Vacations { get; }
     IQueryable<LessonReport> LessonReports { get; }
     IQueryable<Homework> Homeworks { get; }
     IQueryable<Invoice> Invoices { get; }

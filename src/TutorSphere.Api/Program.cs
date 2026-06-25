@@ -1,5 +1,6 @@
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.IdentityModel.Tokens;
 using TutorSphere.Api.Hubs;
 using TutorSphere.Api.Services;
@@ -11,7 +12,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
-builder.Services.AddSignalR();
+builder.Services.AddSignalR(options => options.AddFilter<TenantHubFilter>());
 builder.Services.AddSingleton<IUserIdProvider, NameIdentifierUserIdProvider>();
 builder.Services.AddScoped<IRealTimeMessaging, SignalRMessageNotifier>();
 builder.Services.AddInfrastructure(builder.Configuration);
@@ -63,7 +64,7 @@ app.UseAuthentication();
 app.UseMiddleware<TenantResolutionMiddleware>();
 app.UseAuthorization();
 app.MapControllers();
-app.MapHub<MessagesHub>("/hubs/messages").AddHubFilter<TenantHubFilter>();
+app.MapHub<MessagesHub>("/hubs/messages");
 
 await DependencyInjection.SeedAsync(app.Services);
 

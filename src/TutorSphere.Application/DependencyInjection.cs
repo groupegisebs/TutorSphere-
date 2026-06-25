@@ -13,6 +13,8 @@ public static class DependencyInjection
         services.AddScoped<ISearchService, SearchService>();
         services.AddScoped<IHomeworkService, HomeworkService>();
         services.AddScoped<ILessonReportService, LessonReportService>();
+        services.AddScoped<ILessonService, LessonService>();
+        services.AddScoped<ICalendarService, CalendarService>();
         return services;
     }
 }

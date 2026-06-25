@@ -207,13 +207,13 @@ public class StripeService : IStripeService
 
         switch (stripeEvent.Type)
         {
-            case Events.PaymentIntentSucceeded:
+            case "payment_intent.succeeded":
                 await HandlePaymentIntentSucceededAsync(stripeEvent, ct);
                 break;
-            case Events.PaymentIntentPaymentFailed:
+            case "payment_intent.payment_failed":
                 await HandlePaymentIntentFailedAsync(stripeEvent, ct);
                 break;
-            case Events.AccountUpdated:
+            case "account.updated":
                 await HandleAccountUpdatedAsync(stripeEvent, ct);
                 break;
             default:

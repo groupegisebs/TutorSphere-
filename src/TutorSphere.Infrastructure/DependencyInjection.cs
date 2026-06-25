@@ -4,14 +4,13 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using TutorSphere.Application;
 using TutorSphere.Application.Common.Interfaces;
+using TutorSphere.Domain.Entities;
 using TutorSphere.Domain.Enums;
-using TutorSphere.Application.Common.Interfaces;
-using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Infrastructure.Identity;
 using TutorSphere.Infrastructure.MultiTenancy;
 using TutorSphere.Infrastructure.Persistence;
-using TutorSphere.Infrastructure.Stripe;
 using TutorSphere.Infrastructure.Services;
+using TutorSphere.Infrastructure.Stripe;
 
 namespace TutorSphere.Infrastructure;
 
@@ -38,6 +37,8 @@ public static class DependencyInjection
 
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IMessageService, MessageService>();
+        services.Configure<StripeSettings>(configuration.GetSection(StripeSettings.SectionName));
+        services.AddScoped<IStripeService, StripeService>();
         services.AddApplication();
 
         return services;
@@ -178,4 +179,5 @@ public static class DependencyInjection
 
         db.TenantsSet.AddRange(tutors);
         await db.SaveChangesAsync();
+    }
 }

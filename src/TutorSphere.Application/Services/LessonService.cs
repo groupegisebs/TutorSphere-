@@ -1,4 +1,5 @@
 using TutorSphere.Application.Common.Interfaces;
+using TutorSphere.Application.DTOs.Calendar;
 using TutorSphere.Application.DTOs.Lessons;
 using TutorSphere.Domain.Entities;
 
@@ -62,13 +63,14 @@ public class LessonService : ILessonService
         var lessons = _db.Lessons
             .Where(l => l.StartTime < end && l.EndTime > start)
             .OrderBy(l => l.StartTime)
-            .Select(l => MapToDto(l))
+            .ToList()
+            .Select(MapToDto)
             .ToList();
 
         return Task.FromResult<IReadOnlyList<LessonDto>>(lessons);
     }
 
-    public Task<IReadOnlyList<LessonDto>> GetByViewAsync(DTOs.Calendar.CalendarView view, DateTime date, CancellationToken ct = default)
+    public Task<IReadOnlyList<LessonDto>> GetByViewAsync(CalendarView view, DateTime date, CancellationToken ct = default)
     {
         var (start, end) = CalendarRangeHelper.GetViewRange(view, date);
         return GetByDateRangeAsync(start, end, ct);
@@ -129,7 +131,6 @@ public class LessonService : ILessonService
     private static LessonDto MapToDto(Lesson lesson) => new(
         lesson.Id,
         lesson.Title,
-        lesson
         lesson.Description,
         lesson.Subject,
         lesson.StartTime,

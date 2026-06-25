@@ -1,4 +1,8 @@
 @page "/tutor/register"
+@rendermode InteractiveServer
+@using TutorSphere.Application.DTOs.Tenants
+@inject HttpClient Http
+@inject NavigationManager Navigation
 
 <PageTitle>Créer mon école — TutorSphere</PageTitle>
 
@@ -6,6 +10,15 @@
 <p class="text-muted">Configurez votre espace professionnel en quelques étapes.</p>
 
 <div class="register-form mt-4">
+    @if (!string.IsNullOrEmpty(ErrorMessage))
+    {
+        <div class="alert alert-danger" role="alert">@ErrorMessage</div>
+    }
+    @if (!string.IsNullOrEmpty(SuccessMessage))
+    {
+        <div class="alert alert-success" role="alert">@SuccessMessage</div>
+    }
+
     <div class="mb-3">
         <label class="form-label">Nom de l'école</label>
         <input class="form-control" @bind="SchoolName" placeholder="Ex. : Cours Jean Dupont" />
@@ -35,8 +48,9 @@
         <label class="form-label">Mot de passe</label>
         <input type="password" class="form-control" @bind="Password" />
     </div>
-    <button class="btn btn-primary" disabled>Créer mon école (API requise)</button>
-    <p class="form-hint mt-2">Utilisez l'API <code>POST /api/tenants</code> pour l'inscription complète.</p>
+    <button class="btn btn-primary" @onclick="CreateSchoolAsync" disabled="@IsSubmitting">
+        @(IsSubmitting ? "Création en cours…" : "Créer mon école")
+    </button>
 </div>
 
 @code {
@@ -46,4 +60,81 @@
     private string LastName { get; set; } = "";
     private string Email { get; set; } = "";
     private string Password { get; set; } = "";
+    private string? ErrorMessage { get; set; }
+    private string? SuccessMessage { get; set; }
+    private bool IsSubmitting { get; set; }
+
+    private async Task CreateSchoolAsync()
+    {
+        ErrorMessage = null;
+        SuccessMessage = null;
+
+        if (string.IsNullOrWhiteSpace(SchoolName) || string.IsNullOrWhiteSpace(Slug)
+            || string.IsNullOrWhiteSpace(FirstName) || string.IsNullOrWhiteSpace(LastName)
+            || string.IsNullOrWhiteSpace(Email) || string.IsNullOrWhiteSpace(Password))
+        {
+            ErrorMessage = "Veuillez remplir tous les champs.";
+            return;
+        }
+
+        IsSubmitting = true;
+        try
+        {
+            var request = new CreateTenantRequest(
+                SchoolName,
+                Slug,
+                Email,
+                Password,
+                FirstName,
+                LastName,
+                null,
+                "CA");
+
+            var response = await Http.PostAsJsonAsync("api/tenants", request);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var tenant = await response.Content.ReadFromJsonAsync<TenantDto>();
+                if (tenant is not null)
+                {
+                    Navigation.NavigateTo($"/school/{tenant.Slug}");
+                    return;
+                }
+
+                SuccessMessage = "École créée avec succès.";
+            }
+            else
+            {
+                var body = await response.Content.ReadAsStringAsync();
+                ErrorMessage = TryParseError(body) ?? "Impossible de créer l'école.";
+            }
+        }
+        catch (Exception)
+        {
+            ErrorMessage = "Erreur de connexion à l'API. Vérifiez que le serveur API est démarré.";
+        }
+        finally
+        {
+            IsSubmitting = false;
+        }
+    }
+
+    private static string? TryParseError(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body))
+            return null;
+
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("error", out var error))
+                return error.GetString();
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return body;
+        }
+
+        return body;
+    }
 }
