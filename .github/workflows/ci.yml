@@ -1,0 +1,70 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  DOTNET_NOLOGO: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore
+        run: dotnet restore TutorSphere.slnx
+
+      - name: Build
+        run: dotnet build TutorSphere.slnx --no-restore --configuration Release
+
+      - name: Test
+        run: dotnet test TutorSphere.slnx --no-build --configuration Release --verbosity normal
+
+  publish:
+    needs: build-and-test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      CONNECTIONSTRINGS__DEFAULTCONNECTION: ${{ secrets.CONNECTIONSTRINGS__DEFAULTCONNECTION }}
+      JWT__KEY: ${{ secrets.JWT__KEY }}
+      JWT__ISSUER: ${{ secrets.JWT__ISSUER }}
+      JWT__AUDIENCE: ${{ secrets.JWT__AUDIENCE }}
+      STRIPE__SECRETKEY: ${{ secrets.STRIPE__SECRETKEY }}
+      STRIPE__PUBLISHABLEKEY: ${{ secrets.STRIPE__PUBLISHABLEKEY }}
+      STRIPE__WEBHOOKSECRET: ${{ secrets.STRIPE__WEBHOOKSECRET }}
+      APIBASEURL: ${{ secrets.APIBASEURL }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Publish API
+        run: dotnet publish src/TutorSphere.Api/TutorSphere.Api.csproj -c Release -o ./publish/api
+
+      - name: Publish Web
+        run: dotnet publish src/TutorSphere.Web/TutorSphere.Web.csproj -c Release -o ./publish/web
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tutorsphere-publish
+          path: publish/
+          retention-days: 7
+
+      # Configure the same environment variables on your hosting platform
+      # (Azure App Service, Docker, etc.) so the app reads secrets at runtime.

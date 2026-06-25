@@ -63,6 +63,10 @@ L'API démarre sur `https://localhost:7xxx` avec OpenAPI en développement.
 dotnet run --project src/TutorSphere.Web
 ```
 
+### Configuration
+
+Les secrets (base de données, JWT, Stripe) ne sont pas dans le dépôt. Voir [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) pour la configuration locale et les [secrets GitHub Actions](docs/DEVELOPMENT.md#secrets-github-actions).
+
 ### Endpoints principaux
 
 | Méthode | Route | Description |
