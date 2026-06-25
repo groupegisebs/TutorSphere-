@@ -2,8 +2,15 @@ using TutorSphere.Web.Components;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
 builder.Services.AddRazorComponents();
+
+var apiBaseUrl = builder.Configuration["ApiBaseUrl"] ?? "https://localhost:7250";
+builder.Services.AddHttpClient("TutorSphereApi", client =>
+{
+    client.BaseAddress = new Uri(apiBaseUrl.TrimEnd('/') + "/");
+});
+builder.Services.AddScoped(sp =>
+    sp.GetRequiredService<IHttpClientFactory>().CreateClient("TutorSphereApi"));
 
 var app = builder.Build();
 

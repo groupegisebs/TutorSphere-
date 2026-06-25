@@ -1,0 +1,148 @@
+@page "/school/{Slug}"
+@layout SchoolLayout
+@using TutorSphere.Application.DTOs.Branding
+@inject HttpClient Http
+
+<PageTitle>@(Site?.Name ?? "École") — TutorSphere</PageTitle>
+
+@if (Loading)
+{
+    <div class="school-loading">
+        <p>Chargement…</p>
+    </div>
+}
+else if (NotFound || Site is null)
+{
+    <div class="school-not-found">
+        <h1>École introuvable</h1>
+        <p class="text-muted">Aucune école ne correspond à « @Slug ».</p>
+        <a class="btn btn-primary" href="/">Retour à l'accueil</a>
+    </div>
+}
+else
+{
+    <div class="school-site"
+         style="--ts-primary: @Site.Branding.PrimaryColor; --ts-primary-dark: @Site.Branding.SecondaryColor;">
+        @if (!string.IsNullOrEmpty(Site.Branding.BannerUrl))
+        {
+            <div class="school-banner">
+                <img src="@Site.Branding.BannerUrl" alt="Bannière @Site.Name" />
+            </div>
+        }
+        else
+        {
+            <div class="school-banner school-banner-default">
+                <div class="school-banner-overlay">
+                    @if (!string.IsNullOrEmpty(Site.Branding.LogoUrl))
+                    {
+                        <img class="school-logo" src="@Site.Branding.LogoUrl" alt="Logo @Site.Name" />
+                    }
+                    <h1>@Site.Name</h1>
+                    @if (!string.IsNullOrEmpty(Site.City))
+                    {
+                        <p class="school-location">@Site.City@(Site.Country is not null ? $", {Site.Country}" : "")</p>
+                    }
+                </div>
+            </div>
+        }
+
+        <div class="school-content container py-5">
+            @if (!string.IsNullOrEmpty(Site.Branding.BannerUrl))
+            {
+                <header class="school-header mb-4">
+                    @if (!string.IsNullOrEmpty(Site.Branding.LogoUrl))
+                    {
+                        <img class="school-logo-inline" src="@Site.Branding.LogoUrl" alt="Logo @Site.Name" />
+                    }
+                    <div>
+                        <h1>@Site.Name</h1>
+                        @if (!string.IsNullOrEmpty(Site.City))
+                        {
+                            <p class="school-location">@Site.City@(Site.Country is not null ? $", {Site.Country}" : "")</p>
+                        }
+                    </div>
+                </header>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(Site.Branding.Presentation))
+            {
+                <section class="school-presentation mb-5">
+                    <h2>Présentation</h2>
+                    <div class="presentation-body">@Site.Branding.Presentation</div>
+                </section>
+            }
+            else if (!string.IsNullOrWhiteSpace(Site.Description))
+            {
+                <section class="school-presentation mb-5">
+                    <h2>À propos</h2>
+                    <div class="presentation-body">@Site.Description</div>
+                </section>
+            }
+
+            <section class="school-offerings">
+                <h2>Nos offres</h2>
+                @if (Site.Offerings.Count == 0)
+                {
+                    <p class="text-muted">Aucune offre disponible pour le moment.</p>
+                }
+                else
+                {
+                    <div class="row g-4">
+                        @foreach (var offering in Site.Offerings)
+                        {
+                            <div class="col-md-6 col-lg-4">
+                                <div class="offering-card">
+                                    @if (!string.IsNullOrEmpty(offering.Subject))
+                                    {
+                                        <span class="offering-subject">@offering.Subject</span>
+                                    }
+                                    <h3>@offering.Title</h3>
+                                    @if (!string.IsNullOrEmpty(offering.Description))
+                                    {
+                                        <p class="offering-description">@offering.Description</p>
+                                    }
+                                    <p class="offering-price">@offering.Price.ToString("N2") @offering.Currency</p>
+                                    <ul class="offering-meta">
+                                        <li>@offering.SessionCount séance(s)</li>
+                                        <li>@offering.DurationDays jour(s)</li>
+                                        @if (!string.IsNullOrEmpty(offering.Frequency))
+                                        {
+                                            <li>@offering.Frequency</li>
+                                        }
+                                        <li>@offering.Mode</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </section>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public string Slug { get; set; } = "";
+
+    private PublicTenantSiteDto? Site { get; set; }
+    private bool Loading { get; set; } = true;
+    private bool NotFound { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            Site = await Http.GetFromJsonAsync<PublicTenantSiteDto>($"api/branding/{Slug}");
+            NotFound = Site is null;
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            NotFound = true;
+        }
+        finally
+        {
+            Loading = false;
+        }
+    }
+}

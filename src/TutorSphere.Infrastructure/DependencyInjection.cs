@@ -6,9 +6,11 @@ using TutorSphere.Application;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Domain.Enums;
 using TutorSphere.Application.Common.Interfaces;
+using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Infrastructure.Identity;
 using TutorSphere.Infrastructure.MultiTenancy;
 using TutorSphere.Infrastructure.Persistence;
+using TutorSphere.Infrastructure.Stripe;
 using TutorSphere.Infrastructure.Services;
 
 namespace TutorSphere.Infrastructure;
@@ -69,5 +71,111 @@ public static class DependencyInjection
             await userManager.CreateAsync(admin, "Admin123!");
             await userManager.AddToRoleAsync(admin, UserRoles.SuperAdmin);
         }
+
+        await SeedPublicTutorsAsync(db);
     }
+
+    private static async Task SeedPublicTutorsAsync(ApplicationDbContext db)
+    {
+        if (db.TenantsSet.Any(t => t.Slug == "marie-maths"))
+            return;
+
+        var tutors = new[]
+        {
+            new Tenant
+            {
+                Name = "Cours Marie Tremblay",
+                Slug = "marie-maths",
+                Subdomain = "marie-maths",
+                Description = "Spécialiste en mathématiques pour le secondaire et le cégep.",
+                City = "Montréal",
+                Country = "CA",
+                Language = "fr",
+                Status = TenantStatus.Active,
+                IsPublicProfile = true,
+                Branding = new TenantBranding(),
+                Offerings =
+                [
+                    new SubscriptionOffering
+                    {
+                        Title = "Forfait mathématiques",
+                        Subject = "Mathématiques",
+                        Price = 45m,
+                        DurationDays = 30,
+                        SessionCount = 4,
+                        Mode = LessonMode.Online,
+                        Conditions = "Secondaire 4-5",
+                        IsActive = true
+                    },
+                    new SubscriptionOffering
+                    {
+                        Title = "Préparation examens",
+                        Subject = "Mathématiques",
+                        Price = 55m,
+                        DurationDays = 30,
+                        SessionCount = 4,
+                        Mode = LessonMode.Hybrid,
+                        Conditions = "Cégep",
+                        IsActive = true
+                    }
+                ]
+            },
+            new Tenant
+            {
+                Name = "English with Sarah",
+                Slug = "sarah-english",
+                Subdomain = "sarah-english",
+                Description = "Experienced ESL and high school English tutor.",
+                City = "Québec",
+                Country = "CA",
+                Language = "en",
+                Status = TenantStatus.Active,
+                IsPublicProfile = true,
+                Branding = new TenantBranding(),
+                Offerings =
+                [
+                    new SubscriptionOffering
+                    {
+                        Title = "English conversation",
+                        Subject = "English",
+                        Price = 40m,
+                        DurationDays = 30,
+                        SessionCount = 4,
+                        Mode = LessonMode.Online,
+                        Conditions = "Secondary 3-5",
+                        IsActive = true
+                    }
+                ]
+            },
+            new Tenant
+            {
+                Name = "Physique Pro",
+                Slug = "physique-pro",
+                Subdomain = "physique-pro",
+                Description = "Cours de physique pour secondaire et cégep à Laval.",
+                City = "Laval",
+                Country = "CA",
+                Language = "fr",
+                Status = TenantStatus.Active,
+                IsPublicProfile = true,
+                Branding = new TenantBranding(),
+                Offerings =
+                [
+                    new SubscriptionOffering
+                    {
+                        Title = "Physique en personne",
+                        Subject = "Physique",
+                        Price = 50m,
+                        DurationDays = 30,
+                        SessionCount = 4,
+                        Mode = LessonMode.InPerson,
+                        Conditions = "Secondaire 5",
+                        IsActive = true
+                    }
+                ]
+            }
+        };
+
+        db.TenantsSet.AddRange(tutors);
+        await db.SaveChangesAsync();
 }

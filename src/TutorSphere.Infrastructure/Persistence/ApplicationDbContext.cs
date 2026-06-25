@@ -31,6 +31,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     public DbSet<LessonAttendance> LessonAttendancesSet => Set<LessonAttendance>();
 
     IQueryable<Tenant> IApplicationDbContext.Tenants => TenantsSet;
+    IQueryable<TenantBranding> IApplicationDbContext.TenantBrandings => TenantBrandingsSet;
     IQueryable<Student> IApplicationDbContext.Students => StudentsSet;
     IQueryable<ParentProfile> IApplicationDbContext.ParentProfiles => ParentProfilesSet;
     IQueryable<SubscriptionOffering> IApplicationDbContext.SubscriptionOfferings => SubscriptionOfferingsSet;

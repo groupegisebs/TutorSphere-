@@ -1,0 +1,217 @@
+@page "/search"
+@inject HttpClient Http
+
+<PageTitle>Rechercher un répétiteur — TutorSphere</PageTitle>
+
+<div class="search-page container py-4">
+    <h1>Trouver un répétiteur</h1>
+    <p class="text-muted">Parcourez les écoles actives avec profil public sur TutorSphere.</p>
+
+    <div class="search-layout mt-4">
+        <aside class="search-filters">
+            <h2 class="h5">Filtres</h2>
+            <div class="mb-3">
+                <label class="form-label">Matière</label>
+                <input class="form-control" @bind="Filters.Subject" placeholder="Ex. : Mathématiques" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Ville</label>
+                <input class="form-control" @bind="Filters.City" placeholder="Ex. : Montréal" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Langue</label>
+                <select class="form-select" @bind="Filters.Language">
+                    <option value="">Toutes</option>
+                    <option value="fr">Français</option>
+                    <option value="en">Anglais</option>
+                    <option value="es">Espagnol</option>
+                </select>
+            </div>
+            <div class="row g-2 mb-3">
+                <div class="col-6">
+                    <label class="form-label">Prix min ($)</label>
+                    <input type="number" class="form-control" @bind="Filters.MinPrice" min="0" step="1" />
+                </div>
+                <div class="col-6">
+                    <label class="form-label">Prix max ($)</label>
+                    <input type="number" class="form-control" @bind="Filters.MaxPrice" min="0" step="1" />
+                </div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Niveau scolaire</label>
+                <input class="form-control" @bind="Filters.Level" placeholder="Ex. : Secondaire 4" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Mode</label>
+                <select class="form-select" @bind="SelectedMode">
+                    <option value="">Tous</option>
+                    <option value="0">En personne</option>
+                    <option value="1">En ligne</option>
+                    <option value="2">Hybride</option>
+                </select>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Note minimale</label>
+                <input type="number" class="form-control" @bind="Filters.MinRating" min="0" max="5" step="0.5" disabled />
+                <small class="form-hint">Évaluations — bientôt disponible</small>
+            </div>
+            <button class="btn btn-primary w-100" @onclick="SearchAsync" disabled="@IsLoading">
+                @(IsLoading ? "Recherche…" : "Rechercher")
+            </button>
+        </aside>
+
+        <section class="search-results">
+            @if (!string.IsNullOrEmpty(ErrorMessage))
+            {
+                <div class="alert alert-danger">@ErrorMessage</div>
+            }
+            else if (IsLoading)
+            {
+                <p class="text-muted">Chargement des résultats…</p>
+            }
+            else if (Results.Count == 0)
+            {
+                <div class="empty-state">
+                    <h2 class="h5">Aucun répétiteur trouvé</h2>
+                    <p class="text-muted">Essayez d'élargir vos critères de recherche.</p>
+                </div>
+            }
+            else
+            {
+                <p class="results-count">@Results.Count répétiteur@(Results.Count > 1 ? "s" : "") trouvé@(Results.Count > 1 ? "s" : "")</p>
+                <div class="results-grid">
+                    @foreach (var tutor in Results)
+                    {
+                        <article class="tutor-card">
+                            <div class="tutor-card-header">
+                                <h3>@tutor.Name</h3>
+                                @if (!string.IsNullOrWhiteSpace(tutor.City))
+                                {
+                                    <span class="tutor-location">@tutor.City@(string.IsNullOrWhiteSpace(tutor.Country) ? "" : $", {tutor.Country}")</span>
+                                }
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(tutor.Description))
+                            {
+                                <p class="tutor-description">@tutor.Description</p>
+                            }
+                            <div class="tutor-meta">
+                                @if (tutor.Subjects.Count > 0)
+                                {
+                                    <div class="tutor-tags">
+                                        @foreach (var subject in tutor.Subjects)
+                                        {
+                                            <span class="badge bg-light text-dark">@subject</span>
+                                        }
+                                    </div>
+                                }
+                                @if (tutor.Modes.Count > 0)
+                                {
+                                    <p class="tutor-modes">
+                                        <strong>Modes :</strong> @string.Join(", ", tutor.Modes)
+                                    </p>
+                                }
+                                @if (tutor.MinPrice.HasValue)
+                                {
+                                    <p class="tutor-price">
+                                        <strong>Tarif :</strong>
+                                        @if (tutor.MaxPrice.HasValue && tutor.MaxPrice != tutor.MinPrice)
+                                        {
+                                            <span>@tutor.MinPrice.Value.ToString("0.##") $ – @tutor.MaxPrice.Value.ToString("0.##") $ @tutor.Currency</span>
+                                        }
+                                        else
+                                        {
+                                            <span>@tutor.MinPrice.Value.ToString("0.##") $ @tutor.Currency</span>
+                                        }
+                                    </p>
+                                }
+                                <p class="tutor-language"><strong>Langue :</strong> @FormatLanguage(tutor.Language)</p>
+                            </div>
+                            <a class="btn btn-outline-primary btn-sm" href="/tutor/@tutor.Slug">Voir le profil</a>
+                        </article>
+                    }
+                </div>
+            }
+        </section>
+    </div>
+</div>
+
+@code {
+    private SearchFiltersModel Filters { get; set; } = new();
+    private string SelectedMode { get; set; } = "";
+    private List<TutorSearchResultDto> Results { get; set; } = [];
+    private bool IsLoading { get; set; }
+    private string? ErrorMessage { get; set; }
+    private bool HasSearched { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await SearchAsync();
+    }
+
+    private async Task SearchAsync()
+    {
+        IsLoading = true;
+        ErrorMessage = null;
+        HasSearched = true;
+
+        try
+        {
+            var query = BuildQueryString();
+            var response = await Http.GetFromJsonAsync<List<TutorSearchResultDto>>($"api/search/tutors{query}");
+            Results = response ?? [];
+        }
+        catch (Exception)
+        {
+            ErrorMessage = "Impossible de charger les résultats. Vérifiez que l'API TutorSphere est démarrée.";
+            Results = [];
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private string BuildQueryString()
+    {
+        var parts = new List<string>();
+
+        AddQuery(parts, "subject", Filters.Subject);
+        AddQuery(parts, "city", Filters.City);
+        AddQuery(parts, "language", Filters.Language);
+        AddQuery(parts, "level", Filters.Level);
+
+        if (Filters.MinPrice.HasValue)
+            parts.Add($"minPrice={Filters.MinPrice.Value}");
+        if (Filters.MaxPrice.HasValue)
+            parts.Add($"maxPrice={Filters.MaxPrice.Value}");
+        if (!string.IsNullOrWhiteSpace(SelectedMode))
+            parts.Add($"mode={SelectedMode}");
+
+        return parts.Count == 0 ? "" : "?" + string.Join("&", parts);
+    }
+
+    private static void AddQuery(List<string> parts, string key, string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+            parts.Add($"{key}={Uri.EscapeDataString(value.Trim())}");
+    }
+
+    private static string FormatLanguage(string language) => language.ToLowerInvariant() switch
+    {
+        "fr" => "Français",
+        "en" => "Anglais",
+        "es" => "Espagnol",
+        _ => language
+    };
+
+    private sealed class SearchFiltersModel
+    {
+        public string Subject { get; set; } = "";
+        public string City { get; set; } = "";
+        public string Language { get; set; } = "";
+        public decimal? MinPrice { get; set; }
+        public decimal? MaxPrice { get; set; }
+        public string Level { get; set; } = "";
+        public decimal? MinRating { get; set; }
+    }
+}

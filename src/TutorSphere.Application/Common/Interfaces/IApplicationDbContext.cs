@@ -5,6 +5,7 @@ namespace TutorSphere.Application.Common.Interfaces;
 public interface IApplicationDbContext
 {
     IQueryable<Tenant> Tenants { get; }
+    IQueryable<TenantBranding> TenantBrandings { get; }
     IQueryable<Student> Students { get; }
     IQueryable<ParentProfile> ParentProfiles { get; }
     IQueryable<SubscriptionOffering> SubscriptionOfferings { get; }
