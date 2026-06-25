@@ -1,5 +1,16 @@
-﻿<!DOCTYPE html>
-<html lang="en">
+﻿@using System.Globalization
+@using Microsoft.AspNetCore.Localization
+@using TutorSphere.Application.Common
+@inject IHttpContextAccessor HttpContextAccessor
+@{
+    var culture = HttpContextAccessor.HttpContext?.Features.Get<IRequestCultureFeature>()?.RequestCulture.UICulture
+        ?? CultureInfo.GetCultureInfo(SupportedLanguageCodes.Default);
+    var lang = culture.Name;
+    var dir = culture.TextInfo.IsRightToLeft ? "rtl" : "ltr";
+}
+
+<!DOCTYPE html>
+<html lang="@lang" dir="@dir">
 
 <head>
     <meta charset="utf-8" />
@@ -8,6 +19,10 @@
     <ResourcePreloader />
     <link rel="stylesheet" href="@Assets["lib/bootstrap/dist/css/bootstrap.min.css"]" />
     <link rel="stylesheet" href="@Assets["app.css"]" />
+    @if (dir == "rtl")
+    {
+        <link rel="stylesheet" href="@Assets["css/rtl.css"]" />
+    }
     <link rel="stylesheet" href="@Assets["TutorSphere.Web.styles.css"]" />
     <ImportMap />
     <link rel="icon" type="image/png" href="favicon.png" />
@@ -17,6 +32,7 @@
 <body>
     <Routes />
     <script src="@Assets["_framework/blazor.web.js"]"></script>
+    <script src="js/culture.js"></script>
 </body>
 
 </html>

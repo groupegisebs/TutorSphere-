@@ -1,5 +1,8 @@
+using System.Globalization;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Localization;
+using TutorSphere.Application.Common;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.IdentityModel.Tokens;
 using TutorSphere.Api.Hubs;
@@ -9,6 +12,16 @@ using TutorSphere.Infrastructure;
 using TutorSphere.Infrastructure.MultiTenancy;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddLocalization();
+builder.Services.Configure<RequestLocalizationOptions>(options =>
+{
+    var cultures = SupportedLanguageCodes.Cultures;
+    options.DefaultRequestCulture = new RequestCulture(SupportedLanguageCodes.Default);
+    options.SupportedCultures = cultures;
+    options.SupportedUICultures = cultures;
+    options.ApplyCurrentCultureToResponseHeaders = true;
+});
 
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
@@ -60,6 +73,7 @@ if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 
 app.UseHttpsRedirection();
+app.UseRequestLocalization();
 app.UseCors();
 app.UseAuthentication();
 app.UseMiddleware<TenantResolutionMiddleware>();

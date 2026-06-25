@@ -3,11 +3,12 @@
 @using TutorSphere.Application.DTOs.Tenants
 @inject HttpClient Http
 @inject NavigationManager Navigation
+@inject IStringLocalizer<SharedResources> L
 
-<PageTitle>Créer mon école — TutorSphere</PageTitle>
+<PageTitle>@L["PageTitle_TutorRegister"]</PageTitle>
 
-<h1>Créer votre école numérique</h1>
-<p class="text-muted">Configurez votre espace professionnel en quelques étapes.</p>
+<h1>@L["TutorRegister_Title"]</h1>
+<p class="text-muted">@L["TutorRegister_Subtitle"]</p>
 
 <div class="register-form mt-4">
     @if (!string.IsNullOrEmpty(ErrorMessage))
@@ -20,11 +21,11 @@
     }
 
     <div class="mb-3">
-        <label class="form-label">Nom de l'école</label>
-        <input class="form-control" @bind="SchoolName" placeholder="Ex. : Cours Jean Dupont" />
+        <label class="form-label">@L["Label_SchoolName"]</label>
+        <input class="form-control" @bind="SchoolName" placeholder="@L["Placeholder_SchoolName"]" />
     </div>
     <div class="mb-3">
-        <label class="form-label">Sous-domaine</label>
+        <label class="form-label">@L["Label_Subdomain"]</label>
         <div class="input-group">
             <input class="form-control" @bind="Slug" placeholder="jean" />
             <span class="input-group-text">.tutorsphere.com</span>
@@ -32,24 +33,24 @@
     </div>
     <div class="row">
         <div class="col-md-6 mb-3">
-            <label class="form-label">Prénom</label>
+            <label class="form-label">@L["Label_FirstName"]</label>
             <input class="form-control" @bind="FirstName" />
         </div>
         <div class="col-md-6 mb-3">
-            <label class="form-label">Nom</label>
+            <label class="form-label">@L["Label_LastName"]</label>
             <input class="form-control" @bind="LastName" />
         </div>
     </div>
     <div class="mb-3">
-        <label class="form-label">Courriel</label>
+        <label class="form-label">@L["Label_Email"]</label>
         <input type="email" class="form-control" @bind="Email" />
     </div>
     <div class="mb-3">
-        <label class="form-label">Mot de passe</label>
+        <label class="form-label">@L["Label_Password"]</label>
         <input type="password" class="form-control" @bind="Password" />
     </div>
     <button class="btn btn-primary" @onclick="CreateSchoolAsync" disabled="@IsSubmitting">
-        @(IsSubmitting ? "Création en cours…" : "Créer mon école")
+        @(IsSubmitting ? L["Button_Creating"] : L["Button_CreateSchool"])
     </button>
 </div>
 
@@ -73,7 +74,7 @@
             || string.IsNullOrWhiteSpace(FirstName) || string.IsNullOrWhiteSpace(LastName)
             || string.IsNullOrWhiteSpace(Email) || string.IsNullOrWhiteSpace(Password))
         {
-            ErrorMessage = "Veuillez remplir tous les champs.";
+            ErrorMessage = L["Error_FillAllFields"];
             return;
         }
 
@@ -101,17 +102,17 @@
                     return;
                 }
 
-                SuccessMessage = "École créée avec succès.";
+                SuccessMessage = L["Success_SchoolCreated"];
             }
             else
             {
                 var body = await response.Content.ReadAsStringAsync();
-                ErrorMessage = TryParseError(body) ?? "Impossible de créer l'école.";
+                ErrorMessage = TryParseError(body) ?? L["Error_CreateSchool"];
             }
         }
         catch (Exception)
         {
-            ErrorMessage = "Erreur de connexion à l'API. Vérifiez que le serveur API est démarré.";
+            ErrorMessage = L["Error_ApiConnection"];
         }
         finally
         {
