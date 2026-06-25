@@ -5,8 +5,6 @@ namespace TutorSphere.Web.Services;
 
 public static class LocalizationSetup
 {
-    public const string ResourcesPath = "Resources";
-
     public static RequestLocalizationOptions CreateRequestLocalizationOptions()
     {
         var cultures = Application.Common.SupportedLanguageCodes.Cultures;

@@ -6,7 +6,9 @@ using TutorSphere.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddLocalization(options => options.ResourcesPath = LocalizationSetup.ResourcesPath);
+// Resources live at Resources/SharedResources.resx → manifest name TutorSphere.Web.Resources.SharedResources.
+// Do not set ResourcesPath here: it would make IStringLocalizer look under Resources/Resources/SharedResources.
+builder.Services.AddLocalization();
 builder.Services.Configure<RequestLocalizationOptions>(options =>
 {
     var localization = LocalizationSetup.CreateRequestLocalizationOptions();

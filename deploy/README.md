@@ -91,7 +91,34 @@ docker compose version
 
 L'utilisateur `ubuntu` doit pouvoir exécuter `docker` (groupe `docker`).
 
-Reverse proxy (Nginx Proxy Manager ou nginx) : `http://127.0.0.1:55099` (API) et `http://127.0.0.1:55010` (Web) — voir `deploy/nginx/tutorsphere.conf.example`.
+Reverse proxy (Nginx Proxy Manager ou nginx) — voir section ci-dessous et `deploy/nginx/NPM.md`.
+
+---
+
+## Configuration Nginx Proxy Manager
+
+TutorSphere production écoute sur l’hôte (`network_mode: host`), **pas** sur les ports dev `5010` / `5099`.
+
+| Domaine | Forward Host | Forward Port | Notes |
+|---------|--------------|--------------|-------|
+| `tutorsphere.gisebs.com` | `172.17.0.1` | **55010** | Web Blazor — Websockets ✓ |
+| `api.tutorsphere.gisebs.com` | `172.17.0.1` | **55099** | API REST + SignalR — Websockets ✓ |
+
+`172.17.0.1` est la passerelle Docker vers l’hôte (même modèle que giseboutique `:5001`, comptadoc `:5050`). Alternative : `127.0.0.1` si NPM n’est pas conteneurisé.
+
+**Secret GitHub** (optionnel, défaut déjà correct) :
+
+```
+TUTORSPHERE_API_BASE_URL=https://api.tutorsphere.gisebs.com
+```
+
+Guide pas à pas : [`deploy/nginx/NPM.md`](nginx/NPM.md). Exemple nginx natif : [`deploy/nginx/tutorsphere.conf.example`](nginx/tutorsphere.conf.example).
+
+### Dépannage 502
+
+1. Vérifier que NPM n’utilise **pas** `:5010` (port dev).
+2. Sur le serveur : `curl http://127.0.0.1:55010/health` et `:55099/health` → HTTP 200.
+3. Si les healthchecks échouent : relancer **Deploy Production** (GitHub Actions).
 
 ---
 
@@ -113,7 +140,8 @@ Les migrations EF s'exécutent au démarrage de l'API (`Database.MigrateAsync`).
 | `database.defaults.sh` | Constantes PostgreSQL |
 | `GITHUB-SECRETS.md` | Secrets GitHub |
 | `env.example` | Modèle `.env` (sans secrets) |
-| `nginx/tutorsphere.conf.example` | Exemple reverse proxy |
+| `nginx/NPM.md` | Configuration Nginx Proxy Manager (GISEBS) |
+| `nginx/tutorsphere.conf.example` | Exemple reverse proxy nginx natif |
 
 ---
 

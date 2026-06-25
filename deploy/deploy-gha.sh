@@ -44,7 +44,7 @@ PAYGATEWAY_APP_CODE=$(sanitize "${PAYGATEWAY_APP_CODE:-TUTORSPHERE}")
 JWT_KEY=$(sanitize "${JWT_KEY}")
 JWT__ISSUER=$(sanitize "${JWT__ISSUER:-TutorSphere}")
 JWT__AUDIENCE=$(sanitize "${JWT__AUDIENCE:-TutorSphere}")
-API_BASE_URL=$(sanitize "${API_BASE_URL:-http://127.0.0.1:${API_PORT}}")
+API_BASE_URL=$(sanitize "${API_BASE_URL:-https://api.tutorsphere.gisebs.com}")
 
 PG_URL_LOWER=$(printf '%s' "${PAYGATEWAY_BASE_URL}" | tr '[:upper:]' '[:lower:]')
 if [[ "${PG_URL_LOWER}" == *giseboutique* ]] || [[ "${PG_URL_LOWER}" == *agentiamarket* ]]; then

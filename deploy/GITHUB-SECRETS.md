@@ -49,7 +49,7 @@ sudo -u postgres psql -d TutorSphere -c 'GRANT ALL ON SCHEMA public TO gisedocus
 | Port API (`TUTORSPHERE_API_PORT`) | `55099` |
 | Port Web (`TUTORSPHERE_WEB_PORT`) | `55010` |
 | `TUTORSPHERE_PAYGATEWAY_APP_CODE` | `TUTORSPHERE` |
-| `TUTORSPHERE_API_BASE_URL` | `http://127.0.0.1:55099` (URL publique API pour Blazor) |
+| `TUTORSPHERE_API_BASE_URL` | `https://api.tutorsphere.gisebs.com` (URL publique API pour le navigateur Blazor) |
 
 Host/User/Port SSH : secret org, variable org, ou défaut workflow (`51.79.53.197` / `ubuntu` / `22`).
 
@@ -82,7 +82,24 @@ docker compose version
 
 Le workflow écrit `/opt/apps/tutorsphere/app/.env` (chmod 600) avec la connection string, JWT et PayGateway — **rien de sensible dans le dépôt**.
 
-Reverse proxy (nginx / Nginx Proxy Manager) : `http://127.0.0.1:55099` (API) et `http://127.0.0.1:55010` (Web) — voir `deploy/nginx/tutorsphere.conf.example`.
+---
+
+## Nginx Proxy Manager (production GISEBS)
+
+Sur le serveur partagé `51.79.53.197`, NPM route le trafic HTTPS vers les ports **production** Docker (réseau host) :
+
+| Domaine NPM | Forward | Port |
+|-------------|---------|------|
+| `tutorsphere.gisebs.com` | `172.17.0.1` | **55010** (Web) |
+| `api.tutorsphere.gisebs.com` | `172.17.0.1` | **55099** (API) |
+
+Activer **Websockets Support** sur les deux hosts (Blazor `/_blazor`, SignalR `/hubs/`).
+
+> **502 Bad Gateway** si NPM pointe vers `:5010` — c’est le port **dev local**, pas la production.
+
+Guide détaillé : [`deploy/nginx/NPM.md`](nginx/NPM.md).
+
+Reverse proxy nginx natif (alternative) : `deploy/nginx/tutorsphere.conf.example`.
 
 ---
 
@@ -132,3 +149,6 @@ Réponse attendue sur `/api/auth/token` : **200** (token) ou **401** (mauvaise c
 - [ ] Base PostgreSQL `TutorSphere` créée
 - [ ] Docker installé, utilisateur `ubuntu` dans le groupe `docker`
 - [ ] Re-run du workflow Deploy Production
+- [ ] NPM : `tutorsphere.gisebs.com` → `172.17.0.1:55010` (Websockets ✓)
+- [ ] NPM : `api.tutorsphere.gisebs.com` → `172.17.0.1:55099` (Websockets ✓)
+- [ ] DNS A records vers `51.79.53.197`

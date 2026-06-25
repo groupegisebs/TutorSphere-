@@ -1,8 +1,10 @@
 # Example nginx reverse proxy for TutorSphere (Docker Compose, host network).
 # Containers listen on 127.0.0.1:55099 (API) and 127.0.0.1:55010 (Web).
-# Replace example.com with your domains and adjust ports if needed.
+# Production GISEBS domains — adjust if your DNS differs.
 #
-# Install:
+# Prefer Nginx Proxy Manager on shared GISEBS servers — see deploy/nginx/NPM.md
+#
+# Install (native nginx on host):
 #   sudo cp deploy/nginx/tutorsphere.conf.example /etc/nginx/sites-available/tutorsphere
 #   sudo ln -s /etc/nginx/sites-available/tutorsphere /etc/nginx/sites-enabled/
 #   sudo nginx -t && sudo systemctl reload nginx
@@ -19,10 +21,10 @@ upstream tutorsphere_web {
     keepalive 32;
 }
 
-# API — e.g. https://api.tutorsphere.example.com
+# API — https://api.tutorsphere.gisebs.com
 server {
     listen 80;
-    server_name api.tutorsphere.example.com;
+    server_name api.tutorsphere.gisebs.com;
 
     location / {
         proxy_pass         http://tutorsphere_api;
@@ -47,10 +49,10 @@ server {
     }
 }
 
-# Blazor Web — e.g. https://app.tutorsphere.example.com
+# Blazor Web — https://tutorsphere.gisebs.com
 server {
     listen 80;
-    server_name app.tutorsphere.example.com tutorsphere.example.com;
+    server_name tutorsphere.gisebs.com;
 
     location / {
         proxy_pass         http://tutorsphere_web;

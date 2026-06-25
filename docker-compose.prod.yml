@@ -1,7 +1,8 @@
 # TutorSphere — surcharge production (serveur Linux, réseau host)
 #
 # PostgreSQL : service systemd existant sur localhost:5432 (serveur partagé).
-# Reverse proxy : nginx / Nginx Proxy Manager → 127.0.0.1:55099 (API) et :55010 (Web)
+# Reverse proxy : Nginx Proxy Manager → http://172.17.0.1:55099 (API) et :55010 (Web)
+# (172.17.0.1 = passerelle Docker ; équivalent 127.0.0.1 depuis l'hôte avec network_mode: host)
 #
 # Usage sur le serveur :
 #   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
@@ -15,6 +16,10 @@ services:
       ASPNETCORE_URLS: http://127.0.0.1:${API_PORT:-55099}
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:${API_PORT:-55099}/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 90s
 
   web:
     network_mode: host
@@ -22,8 +27,13 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://127.0.0.1:${WEB_PORT:-55010}
+      APIBASEURL: ${APIBASEURL:-https://api.tutorsphere.gisebs.com}
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:${WEB_PORT:-55010}/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 90s
     depends_on:
       api:
         condition: service_healthy

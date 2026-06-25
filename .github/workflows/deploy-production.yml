@@ -20,6 +20,7 @@ env:
   DEFAULT_APP_ROOT: "/opt/apps/tutorsphere"
   DEFAULT_API_PORT: "55099"
   DEFAULT_WEB_PORT: "55010"
+  DEFAULT_API_BASE_URL: "https://api.tutorsphere.gisebs.com"
   DEFAULT_APP_NAME: "TutorSphere"
   DEFAULT_PAYGATEWAY_APP_CODE: "TUTORSPHERE"
 
@@ -180,7 +181,7 @@ jobs:
           if [ -n "$API_BASE_URL_RAW" ]; then
             gha_write_env API_BASE_URL "$(gha_sanitize "$API_BASE_URL_RAW")"
           else
-            gha_write_env API_BASE_URL "http://127.0.0.1:${API_PORT}"
+            gha_write_env API_BASE_URL "${DEFAULT_API_BASE_URL}"
           fi
           echo "OK → ${SSH_USER}@${SSH_HOST}:${SSH_PORT} app=${APP_ROOT} api=${API_PORT} web=${WEB_PORT}"
 
