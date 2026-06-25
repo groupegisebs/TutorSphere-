@@ -1,62 +1,67 @@
 @page "/search"
 @inject HttpClient Http
+@inject IStringLocalizer<SharedResources> L
 
-<PageTitle>Rechercher un répétiteur — TutorSphere</PageTitle>
+<PageTitle>@L["PageTitle_Search"]</PageTitle>
 
 <div class="search-page container py-4">
-    <h1>Trouver un répétiteur</h1>
-    <p class="text-muted">Parcourez les écoles actives avec profil public sur TutorSphere.</p>
+    <h1>@L["Search_Title"]</h1>
+    <p class="text-muted">@L["Search_Subtitle"]</p>
 
     <div class="search-layout mt-4">
         <aside class="search-filters">
-            <h2 class="h5">Filtres</h2>
+            <h2 class="h5">@L["Search_Filters"]</h2>
             <div class="mb-3">
-                <label class="form-label">Matière</label>
-                <input class="form-control" @bind="Filters.Subject" placeholder="Ex. : Mathématiques" />
+                <label class="form-label">@L["Label_Subject"]</label>
+                <input class="form-control" @bind="Filters.Subject" placeholder="@L["Placeholder_Subject"]" />
             </div>
             <div class="mb-3">
-                <label class="form-label">Ville</label>
-                <input class="form-control" @bind="Filters.City" placeholder="Ex. : Montréal" />
+                <label class="form-label">@L["Label_City"]</label>
+                <input class="form-control" @bind="Filters.City" placeholder="@L["Placeholder_City"]" />
             </div>
             <div class="mb-3">
-                <label class="form-label">Langue</label>
+                <label class="form-label">@L["Label_Language"]</label>
                 <select class="form-select" @bind="Filters.Language">
-                    <option value="">Toutes</option>
-                    <option value="fr">Français</option>
-                    <option value="en">Anglais</option>
-                    <option value="es">Espagnol</option>
+                    <option value="">@L["Filter_All"]</option>
+                    <option value="@SupportedLanguageCodes.French">@L["Lang_French"]</option>
+                    <option value="@SupportedLanguageCodes.English">@L["Lang_English"]</option>
+                    <option value="@SupportedLanguageCodes.Spanish">@L["Lang_Spanish"]</option>
+                    <option value="@SupportedLanguageCodes.German">@L["Lang_German"]</option>
+                    <option value="@SupportedLanguageCodes.Portuguese">@L["Lang_Portuguese"]</option>
+                    <option value="@SupportedLanguageCodes.MandarinChinese">@L["Lang_Mandarin"]</option>
+                    <option value="@SupportedLanguageCodes.Arabic">@L["Lang_Arabic"]</option>
                 </select>
             </div>
             <div class="row g-2 mb-3">
                 <div class="col-6">
-                    <label class="form-label">Prix min ($)</label>
+                    <label class="form-label">@L["Label_MinPrice"]</label>
                     <input type="number" class="form-control" @bind="Filters.MinPrice" min="0" step="1" />
                 </div>
                 <div class="col-6">
-                    <label class="form-label">Prix max ($)</label>
+                    <label class="form-label">@L["Label_MaxPrice"]</label>
                     <input type="number" class="form-control" @bind="Filters.MaxPrice" min="0" step="1" />
                 </div>
             </div>
             <div class="mb-3">
-                <label class="form-label">Niveau scolaire</label>
-                <input class="form-control" @bind="Filters.Level" placeholder="Ex. : Secondaire 4" />
+                <label class="form-label">@L["Label_Level"]</label>
+                <input class="form-control" @bind="Filters.Level" placeholder="@L["Placeholder_Level"]" />
             </div>
             <div class="mb-3">
-                <label class="form-label">Mode</label>
+                <label class="form-label">@L["Label_Mode"]</label>
                 <select class="form-select" @bind="SelectedMode">
-                    <option value="">Tous</option>
-                    <option value="0">En personne</option>
-                    <option value="1">En ligne</option>
-                    <option value="2">Hybride</option>
+                    <option value="">@L["Filter_All"]</option>
+                    <option value="0">@L["Filter_Mode_InPerson"]</option>
+                    <option value="1">@L["Filter_Mode_Online"]</option>
+                    <option value="2">@L["Filter_Mode_Hybrid"]</option>
                 </select>
             </div>
             <div class="mb-3">
-                <label class="form-label">Note minimale</label>
+                <label class="form-label">@L["Label_MinRating"]</label>
                 <input type="number" class="form-control" @bind="Filters.MinRating" min="0" max="5" step="0.5" disabled />
-                <small class="form-hint">Évaluations — bientôt disponible</small>
+                <small class="form-hint">@L["Hint_RatingsComingSoon"]</small>
             </div>
             <button class="btn btn-primary w-100" @onclick="SearchAsync" disabled="@IsLoading">
-                @(IsLoading ? "Recherche…" : "Rechercher")
+                @(IsLoading ? L["Button_Searching"] : L["Button_Search"])
             </button>
         </aside>
 
@@ -67,18 +72,18 @@
             }
             else if (IsLoading)
             {
-                <p class="text-muted">Chargement des résultats…</p>
+                <p class="text-muted">@L["Search_Loading"]</p>
             }
             else if (Results.Count == 0)
             {
                 <div class="empty-state">
-                    <h2 class="h5">Aucun répétiteur trouvé</h2>
-                    <p class="text-muted">Essayez d'élargir vos critères de recherche.</p>
+                    <h2 class="h5">@L["Search_NoResults_Title"]</h2>
+                    <p class="text-muted">@L["Search_NoResults_Description"]</p>
                 </div>
             }
             else
             {
-                <p class="results-count">@Results.Count répétiteur@(Results.Count > 1 ? "s" : "") trouvé@(Results.Count > 1 ? "s" : "")</p>
+                <p class="results-count">@L["Search_ResultsCount", Results.Count]</p>
                 <div class="results-grid">
                     @foreach (var tutor in Results)
                     {
@@ -107,13 +112,13 @@
                                 @if (tutor.Modes.Count > 0)
                                 {
                                     <p class="tutor-modes">
-                                        <strong>Modes :</strong> @string.Join(", ", tutor.Modes)
+                                        <strong>@L["Search_Modes"]</strong> @string.Join(", ", tutor.Modes)
                                     </p>
                                 }
                                 @if (tutor.MinPrice.HasValue)
                                 {
                                     <p class="tutor-price">
-                                        <strong>Tarif :</strong>
+                                        <strong>@L["Search_Price"]</strong>
                                         @if (tutor.MaxPrice.HasValue && tutor.MaxPrice != tutor.MinPrice)
                                         {
                                             <span>@tutor.MinPrice.Value.ToString("0.##") $ – @tutor.MaxPrice.Value.ToString("0.##") $ @tutor.Currency</span>
@@ -124,9 +129,9 @@
                                         }
                                     </p>
                                 }
-                                <p class="tutor-language"><strong>Langue :</strong> @FormatLanguage(tutor.Language)</p>
+                                <p class="tutor-language"><strong>@L["Search_Language"]</strong> @FormatLanguage(tutor.Language)</p>
                             </div>
-                            <a class="btn btn-outline-primary btn-sm" href="/tutor/@tutor.Slug">Voir le profil</a>
+                            <a class="btn btn-outline-primary btn-sm" href="/tutor/@tutor.Slug">@L["Button_ViewProfile"]</a>
                         </article>
                     }
                 </div>
@@ -160,7 +165,7 @@
         }
         catch (Exception)
         {
-            ErrorMessage = "Impossible de charger les résultats. Vérifiez que l'API TutorSphere est démarrée.";
+            ErrorMessage = L["Search_Error_Load"];
             Results = [];
         }
         finally
@@ -194,11 +199,15 @@
             parts.Add($"{key}={Uri.EscapeDataString(value.Trim())}");
     }
 
-    private static string FormatLanguage(string language) => language.ToLowerInvariant() switch
+    private string FormatLanguage(string language) => language.ToLowerInvariant() switch
     {
-        "fr" => "Français",
-        "en" => "Anglais",
-        "es" => "Espagnol",
+        SupportedLanguageCodes.French => L["Lang_French"],
+        SupportedLanguageCodes.English => L["Lang_English"],
+        SupportedLanguageCodes.Spanish => L["Lang_Spanish"],
+        SupportedLanguageCodes.German => L["Lang_German"],
+        SupportedLanguageCodes.Portuguese => L["Lang_Portuguese"],
+        "zh-hans" => L["Lang_Mandarin"],
+        SupportedLanguageCodes.Arabic => L["Lang_Arabic"],
         _ => language
     };
 

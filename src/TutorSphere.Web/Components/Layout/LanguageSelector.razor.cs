@@ -17,15 +17,15 @@ public partial class LanguageSelector : ComponentBase
 
     private string CurrentCulture { get; set; } = SupportedLanguageCodes.Default;
 
-    private static readonly IReadOnlyList<(string Code, string Label, string Flag)> Languages =
+    protected internal static readonly LanguageOption[] Languages =
     [
-        (SupportedLanguageCodes.French, "Français", "🇫🇷"),
-        (SupportedLanguageCodes.English, "English", "🇬🇧"),
-        (SupportedLanguageCodes.Spanish, "Español", "🇪🇸"),
-        (SupportedLanguageCodes.German, "Deutsch", "🇩🇪"),
-        (SupportedLanguageCodes.Portuguese, "Português", "🇵🇹"),
-        (SupportedLanguageCodes.MandarinChinese, "中文", "🇨🇳"),
-        (SupportedLanguageCodes.Arabic, "العربية", "🇸🇦")
+        new(SupportedLanguageCodes.French, "Français", "🇫🇷"),
+        new(SupportedLanguageCodes.English, "English", "🇬🇧"),
+        new(SupportedLanguageCodes.Spanish, "Español", "🇪🇸"),
+        new(SupportedLanguageCodes.German, "Deutsch", "🇩🇪"),
+        new(SupportedLanguageCodes.Portuguese, "Português", "🇵🇹"),
+        new(SupportedLanguageCodes.MandarinChinese, "中文", "🇨🇳"),
+        new(SupportedLanguageCodes.Arabic, "العربية", "🇸🇦")
     ];
 
     protected override void OnInitialized()
@@ -43,4 +43,6 @@ public partial class LanguageSelector : ComponentBase
 
         await Js.InvokeVoidAsync("tutorSphereCulture.setCulture", culture);
     }
+
+    protected internal sealed record LanguageOption(string Code, string Label, string Flag);
 }

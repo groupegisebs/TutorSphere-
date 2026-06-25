@@ -237,3 +237,41 @@ Fichiers utiles :
 | `deploy/nginx/tutorsphere.conf.example` | Exemple reverse proxy nginx |
 | `deploy/env.example` | Modèle variables d'environnement |
 | `deploy/GITHUB-SECRETS.md` | Liste des secrets GitHub |
+
+## Internationalisation (i18n)
+
+TutorSphere prend en charge **7 langues** pour l'interface Web (Blazor) :
+
+| Code | Langue | Remarques |
+|------|--------|-----------|
+| `fr` | Français | **Langue par défaut** |
+| `en` | Anglais | |
+| `es` | Espagnol | |
+| `de` | Allemand | |
+| `pt` | Portugais | |
+| `zh-Hans` | Chinois mandarin (simplifié) | |
+| `ar` | Arabe | Interface RTL (`dir="rtl"`) |
+
+### Web (Blazor)
+
+- Fichiers de ressources : `src/TutorSphere.Web/Resources/SharedResources.resx` (+ variantes culturelles `SharedResources.{culture}.resx`)
+- Classe marqueur : `TutorSphere.Web.Resources.SharedResources`
+- Injection dans les composants : `@inject IStringLocalizer<SharedResources> L` puis `@L["CleDeRessource"]`
+- Sélecteur de langue : composant `LanguageSelector` dans `MainLayout` (cookie `.AspNetCore.Culture`, persistance 1 an)
+- Configuration : `Program.cs` (`AddLocalization`, `UseRequestLocalization`, cultures via `SupportedLanguageCodes`)
+- RTL : `wwwroot/css/rtl.css` chargé automatiquement pour la culture `ar`
+
+### API
+
+- `RequestLocalization` activé dans `TutorSphere.Api/Program.cs` (fondation pour messages API localisés futurs)
+- Codes partagés : `TutorSphere.Application/Common/SupportedLanguageCodes.cs`
+- Champ `Tenant.Language` et `ApplicationUser.PreferredLanguage` : utiliser les codes du tableau ci-dessus
+
+### Ajouter ou modifier une traduction
+
+1. Ajouter la clé dans `SharedResources.resx` (valeur française par défaut)
+2. Traduire la même clé dans chaque fichier `SharedResources.{culture}.resx`
+3. Utiliser `@L["MaCle"]` ou `L["MaCle", arg0]` dans le composant Razor
+4. Rebuild : `dotnet build src/TutorSphere.Web`
+
+Pour une nouvelle langue : ajouter le code dans `SupportedLanguageCodes.All`, créer `SharedResources.{code}.resx`, et l'entrée dans `LanguageSelector.razor.cs`.

@@ -41,6 +41,6 @@ public static class SupportedLanguageCodes
             _ => code!.Length == 2 ? code.ToLowerInvariant() : code
         } : Default;
 
-    public static IReadOnlyList<CultureInfo> Cultures =>
+    public static IList<CultureInfo> Cultures =>
         All.Select(c => CultureInfo.GetCultureInfo(c)).ToList();
 }

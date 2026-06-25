@@ -13,6 +13,10 @@ public class Tenant : BaseEntity
     public string? Country { get; set; }
     public string TimeZone { get; set; } = "America/Montreal";
     public string Currency { get; set; } = "CAD";
+
+    /// <summary>
+    /// Primary language for this tenant. Supported codes: fr, en, es, de, pt, zh-Hans, ar.
+    /// </summary>
     public string Language { get; set; } = "fr";
     public TenantPlan Plan { get; set; } = TenantPlan.Starter;
     public TenantStatus Status { get; set; } = TenantStatus.PendingValidation;
