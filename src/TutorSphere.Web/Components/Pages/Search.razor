@@ -4,13 +4,15 @@
 
 <PageTitle>@L["PageTitle_Search"]</PageTitle>
 
-<div class="search-page container py-4">
-    <h1>@L["Search_Title"]</h1>
-    <p class="text-muted">@L["Search_Subtitle"]</p>
+<div class="search-page">
+    <div class="search-page-header page-header">
+        <h1>@L["Search_Title"]</h1>
+        <p class="page-subtitle">@L["Search_Subtitle"]</p>
+    </div>
 
-    <div class="search-layout mt-4">
+    <div class="search-layout">
         <aside class="search-filters">
-            <h2 class="h5">@L["Search_Filters"]</h2>
+            <h2><i class="bi bi-sliders"></i> @L["Search_Filters"]</h2>
             <div class="mb-3">
                 <label class="form-label">@L["Label_Subject"]</label>
                 <input class="form-control" @bind="Filters.Subject" placeholder="@L["Placeholder_Subject"]" />
@@ -61,6 +63,10 @@
                 <small class="form-hint">@L["Hint_RatingsComingSoon"]</small>
             </div>
             <button class="btn btn-primary w-100" @onclick="SearchAsync" disabled="@IsLoading">
+                @if (IsLoading)
+                {
+                    <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                }
                 @(IsLoading ? L["Button_Searching"] : L["Button_Search"])
             </button>
         </aside>
@@ -68,17 +74,23 @@
         <section class="search-results">
             @if (!string.IsNullOrEmpty(ErrorMessage))
             {
-                <div class="alert alert-danger">@ErrorMessage</div>
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-circle me-2"></i>@ErrorMessage
+                </div>
             }
             else if (IsLoading)
             {
-                <p class="text-muted">@L["Search_Loading"]</p>
+                <div class="loading-state">
+                    <div class="loading-spinner"></div>
+                    <span>@L["Search_Loading"]</span>
+                </div>
             }
             else if (Results.Count == 0)
             {
                 <div class="empty-state">
+                    <div class="empty-state-icon"><i class="bi bi-search"></i></div>
                     <h2 class="h5">@L["Search_NoResults_Title"]</h2>
-                    <p class="text-muted">@L["Search_NoResults_Description"]</p>
+                    <p class="text-muted mb-0">@L["Search_NoResults_Description"]</p>
                 </div>
             }
             else
@@ -88,12 +100,18 @@
                     @foreach (var tutor in Results)
                     {
                         <article class="tutor-card">
-                            <div class="tutor-card-header">
-                                <h3>@tutor.Name</h3>
-                                @if (!string.IsNullOrWhiteSpace(tutor.City))
-                                {
-                                    <span class="tutor-location">@tutor.City@(string.IsNullOrWhiteSpace(tutor.Country) ? "" : $", {tutor.Country}")</span>
-                                }
+                            <div class="tutor-card-top">
+                                <div class="tutor-avatar" aria-hidden="true">@GetInitials(tutor.Name)</div>
+                                <div class="tutor-card-header">
+                                    <h3>@tutor.Name</h3>
+                                    @if (!string.IsNullOrWhiteSpace(tutor.City))
+                                    {
+                                        <span class="tutor-location">
+                                            <i class="bi bi-geo-alt"></i>
+                                            @tutor.City@(string.IsNullOrWhiteSpace(tutor.Country) ? "" : $", {tutor.Country}")
+                                        </span>
+                                    }
+                                </div>
                             </div>
                             @if (!string.IsNullOrWhiteSpace(tutor.Description))
                             {
@@ -131,7 +149,11 @@
                                 }
                                 <p class="tutor-language"><strong>@L["Search_Language"]</strong> @FormatLanguage(tutor.Language)</p>
                             </div>
-                            <a class="btn btn-outline-primary btn-sm" href="/tutor/@tutor.Slug">@L["Button_ViewProfile"]</a>
+                            <div class="tutor-card-footer">
+                                <a class="btn btn-outline-primary btn-sm" href="/tutor/@tutor.Slug">
+                                    <i class="bi bi-arrow-right me-1"></i>@L["Button_ViewProfile"]
+                                </a>
+                            </div>
                         </article>
                     }
                 </div>
@@ -197,6 +219,17 @@
     {
         if (!string.IsNullOrWhiteSpace(value))
             parts.Add($"{key}={Uri.EscapeDataString(value.Trim())}");
+    }
+
+    private static string GetInitials(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+            return "?";
+
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2
+            ? $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant()
+            : parts[0][0].ToString().ToUpperInvariant();
     }
 
     private string FormatLanguage(string language) => language.ToLowerInvariant() switch
