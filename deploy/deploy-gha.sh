@@ -147,8 +147,15 @@ for i in \$(seq 1 45); do
   API_CODE=\$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:\${API_PORT}/health" 2>/dev/null || echo "000")
   WEB_CODE=\$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:\${WEB_PORT}/health" 2>/dev/null || echo "000")
   if [ "\${API_CODE}" = "200" ] && [ "\${WEB_CODE}" = "200" ]; then
-    echo "Healthcheck API/Web OK (HTTP 200) après \${i} tentative(s)"
-    exit 0
+    # NPM (conteneur Docker) joint l'hôte via 172.17.0.1 — pas via loopback seul
+    NPM_API=\$(curl -s -o /dev/null -w '%{http_code}' "http://172.17.0.1:\${API_PORT}/health" 2>/dev/null || echo "000")
+    NPM_WEB=\$(curl -s -o /dev/null -w '%{http_code}' "http://172.17.0.1:\${WEB_PORT}/health" 2>/dev/null || echo "000")
+    if [ "\${NPM_API}" = "200" ] && [ "\${NPM_WEB}" = "200" ]; then
+      echo "Healthcheck API/Web OK (127.0.0.1 + 172.17.0.1) après \${i} tentative(s)"
+      exit 0
+    fi
+    echo "127.0.0.1 OK mais 172.17.0.1 échoue (API \${NPM_API}, Web \${NPM_WEB}) — NPM renverra 502"
+    exit 1
   fi
   if [ "\${i}" -ge 3 ]; then
     echo "Tentative \${i} — API HTTP \${API_CODE}, Web HTTP \${WEB_CODE}"
