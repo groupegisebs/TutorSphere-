@@ -35,7 +35,7 @@ dotnet test TutorSphere.slnx
 
 Les fichiers `appsettings.json` versionnés ne contiennent **aucun secret**. Les valeurs sensibles sont fournies par :
 
-1. **Développement local** — `appsettings.Development.json` (JWT et LocalDB uniquement) + optionnellement :
+1. **Développement local** — `appsettings.Development.json` (JWT et PostgreSQL local par défaut) + optionnellement :
    - `appsettings.Development.local.json` (copier depuis `appsettings.Development.local.json.example`, fichier ignoré par Git)
    - [User Secrets](https://learn.microsoft.com/aspnet/core/security/app-secrets) pour l'API et le Web
 
@@ -43,7 +43,7 @@ Les fichiers `appsettings.json` versionnés ne contiennent **aucun secret**. Les
 
 | Variable d'environnement | Configuration |
 |--------------------------|---------------|
-| `CONNECTIONSTRINGS__DEFAULTCONNECTION` | Chaîne de connexion SQL Server |
+| `CONNECTIONSTRINGS__DEFAULTCONNECTION` | Chaîne de connexion PostgreSQL (Npgsql) |
 | `JWT__KEY` | Clé de signature JWT (min. 32 caractères) |
 | `JWT__ISSUER` | Émetteur JWT |
 | `JWT__AUDIENCE` | Audience JWT |
@@ -51,6 +51,33 @@ Les fichiers `appsettings.json` versionnés ne contiennent **aucun secret**. Les
 | `STRIPE__PUBLISHABLEKEY` | Clé publique Stripe |
 | `STRIPE__WEBHOOKSECRET` | Secret de webhook Stripe |
 | `APIBASEURL` | URL de base de l'API (projet Web) |
+
+### Chaîne de connexion PostgreSQL
+
+Format Npgsql (même serveur que les autres applications) :
+
+```
+Host=<hostname>;Port=5432;Database=TutorSphere;Username=<user>;Password=<password>
+```
+
+**Développement local** — valeur par défaut dans `appsettings.Development.json` :
+
+```
+Host=localhost;Port=5432;Database=TutorSphere;Username=postgres;Password=postgres
+```
+
+Pour un serveur partagé ou des identifiants différents, définissez la variable d'environnement ou un secret local :
+
+```bash
+# PowerShell
+$env:CONNECTIONSTRINGS__DEFAULTCONNECTION = "Host=db.example.com;Port=5432;Database=TutorSphere;Username=tutorsphere;Password=***"
+
+# User Secrets (API)
+cd src/TutorSphere.Api
+dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Host=db.example.com;Port=5432;Database=TutorSphere;Username=tutorsphere;Password=***"
+```
+
+**GitHub Actions / production** — secret `CONNECTIONSTRINGS__DEFAULTCONNECTION` avec le même format Npgsql.
 
 ### User Secrets (développement local)
 
@@ -83,7 +110,7 @@ Dans **Settings → Secrets and variables → Actions** du dépôt, créez les s
 
 | Secret GitHub | Description |
 |---------------|-------------|
-| `CONNECTIONSTRINGS__DEFAULTCONNECTION` | Chaîne de connexion SQL Server de production |
+| `CONNECTIONSTRINGS__DEFAULTCONNECTION` | Chaîne de connexion PostgreSQL de production (Npgsql) |
 | `JWT__KEY` | Clé JWT de production (min. 32 caractères) |
 | `JWT__ISSUER` | Émetteur JWT (ex. `TutorSphere`) |
 | `JWT__AUDIENCE` | Audience JWT (ex. `TutorSphere`) |

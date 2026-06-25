@@ -45,7 +45,7 @@ Chaque répétiteur dispose de son propre espace isolé (`TenantId`). La résolu
 ### Prérequis
 
 - .NET 10 SDK
-- SQL Server LocalDB (inclus avec Visual Studio) ou SQL Server
+- PostgreSQL 14+ (local ou serveur partagé avec les autres applications)
 
 ### Lancer l'API
 
