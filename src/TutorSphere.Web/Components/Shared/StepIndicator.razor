@@ -1,10 +1,11 @@
-<div class="step-indicator">
+<div class="step-indicator @(HasSubtitles ? "step-indicator--with-subtitles" : "")">
     @for (var i = 0; i < Steps.Count; i++)
     {
         var step = Steps[i];
         var stepNumber = i + 1;
         var isActive = stepNumber == CurrentStep;
         var isCompleted = stepNumber < CurrentStep;
+        var subtitle = (Subtitles != null && i < Subtitles.Count) ? Subtitles[i] : null;
 
         <div class="step-indicator-item @(isActive ? "active" : "") @(isCompleted ? "completed" : "")">
             <span class="step-indicator-number">
@@ -17,7 +18,13 @@
                     @stepNumber
                 }
             </span>
-            <span class="step-indicator-label">@step</span>
+            <div class="step-indicator-text">
+                <span class="step-indicator-label">@step</span>
+                @if (!string.IsNullOrEmpty(subtitle))
+                {
+                    <span class="step-indicator-subtitle">@subtitle</span>
+                }
+            </div>
         </div>
 
         @if (i < Steps.Count - 1)
@@ -29,5 +36,8 @@
 
 @code {
     [Parameter, EditorRequired] public IReadOnlyList<string> Steps { get; set; } = [];
+    [Parameter] public IReadOnlyList<string>? Subtitles { get; set; }
     [Parameter] public int CurrentStep { get; set; } = 1;
+
+    private bool HasSubtitles => Subtitles is { Count: > 0 };
 }

@@ -1,145 +1,349 @@
 @page "/tutor/offers/create"
 @layout TutorLayout
+@rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
+@inject NavigationManager Navigation
 
 <PageTitle>@L["PageTitle_CreateOffer"]</PageTitle>
 
-<nav aria-label="breadcrumb" class="breadcrumb-nav">
-    <ol class="breadcrumb">
-        <li class="breadcrumb-item"><a href="tutor/dashboard">@L["Nav_Dashboard"]</a></li>
-        <li class="breadcrumb-item"><a href="tutor/offers">@L["Nav_Offers"]</a></li>
-        <li class="breadcrumb-item active">@L["CreateOffer_Title"]</li>
-    </ol>
-</nav>
+<div class="create-offer-header">
+    <button type="button" class="btn-back" @onclick='() => Navigation.NavigateTo("tutor/offers")' aria-label="@L["Button_Back"]">
+        <i class="bi bi-arrow-left" aria-hidden="true"></i>
+    </button>
+    <div>
+        <h1 class="create-offer-title">@L["CreateOffer_Title"]</h1>
+        <p class="create-offer-subtitle">@L["CreateOffer_Subtitle"]</p>
+    </div>
+</div>
 
-<PageHeader Title="@L["CreateOffer_Title"]" Subtitle="@L["CreateOffer_Subtitle"]" />
+<StepIndicator Steps="@Steps" Subtitles="@StepSubtitles" CurrentStep="@CurrentStep" />
 
-<StepIndicator Steps="@Steps" CurrentStep="@CurrentStep" />
-
-<div class="row g-4">
+<div class="row g-4 create-offer-body">
     <div class="col-lg-8">
-        <div class="section-card">
-            @if (CurrentStep == 1)
-            {
-                <div class="mb-3">
-                    <label class="form-label">@L["CreateOffer_TitleLabel"]</label>
-                    <input class="form-control" @bind="OfferTitle" placeholder="@L["CreateOffer_TitlePlaceholder"]" />
-                </div>
-                <div class="row g-3 mb-3">
+
+        @if (CurrentStep == 1)
+        {
+            <div class="section-card mb-4">
+                <h2 class="form-section-title">@L["CreateOffer_SectionBasicInfo"]</h2>
+
+                <div class="row g-4">
+                    <!-- Left column -->
                     <div class="col-md-6">
-                        <label class="form-label">@L["Label_Subject"]</label>
-                        <select class="form-select" @bind="Subject">
-                            <option>@L["Subject_Math"]</option>
-                            <option>@L["Subject_Physics"]</option>
-                            <option>@L["Subject_Chemistry"]</option>
-                        </select>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">@L["Label_Level"]</label>
-                        <select class="form-select" @bind="Level">
-                            <option>@L["Level_Secondary"]</option>
-                            <option>@L["Level_College"]</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">@L["Label_Description"]</label>
-                    <textarea class="form-control" rows="4" @bind="Description"></textarea>
-                </div>
-                <fieldset class="mb-0">
-                    <legend class="form-label">@L["CreateOffer_Benefits"]</legend>
-                    @foreach (var benefit in Benefits)
-                    {
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" checked id="@benefit" />
-                            <label class="form-check-label" for="@benefit">@benefit</label>
+                        <div class="mb-3">
+                            <label class="form-label">@L["CreateOffer_TitleLabel"] <span class="text-danger">*</span></label>
+                            <input class="form-control" @bind="OfferTitle" @bind:event="oninput"
+                                   placeholder="@L["CreateOffer_TitlePlaceholder"]" />
                         </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">@L["Label_Subject"] <span class="text-danger">*</span></label>
+                            <select class="form-select" @bind="Subject">
+                                <option>@L["Subject_Math"]</option>
+                                <option>@L["Subject_Physics"]</option>
+                                <option>@L["Subject_Chemistry"]</option>
+                                <option>@L["Subject_French"]</option>
+                                <option>@L["Subject_History"]</option>
+                                <option>@L["Subject_English"]</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">@L["Label_Level"] <span class="text-danger">*</span></label>
+                            <select class="form-select" @bind="Level">
+                                <option>@L["Level_Elementary"]</option>
+                                <option>@L["Level_Secondary"]</option>
+                                <option>@L["Level_College"]</option>
+                                <option>@L["Level_University"]</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-0">
+                            <label class="form-label">@L["Label_Description"] <span class="text-danger">*</span></label>
+                            <div class="richtext-toolbar">
+                                <button type="button" class="richtext-btn" title="Gras"><i class="bi bi-type-bold"></i></button>
+                                <button type="button" class="richtext-btn" title="Italique"><i class="bi bi-type-italic"></i></button>
+                                <button type="button" class="richtext-btn" title="Liste"><i class="bi bi-list-ul"></i></button>
+                                <button type="button" class="richtext-btn" title="Liste numérotée"><i class="bi bi-list-ol"></i></button>
+                                <button type="button" class="richtext-btn" title="Lien"><i class="bi bi-link-45deg"></i></button>
+                            </div>
+                            <textarea class="form-control richtext-area" rows="5"
+                                      @bind="Description" @bind:event="oninput"
+                                      placeholder="@L["CreateOffer_DescriptionPlaceholder"]"
+                                      maxlength="500"></textarea>
+                            <div class="richtext-counter">@Description.Length / 500</div>
+                        </div>
+                    </div>
+
+                    <!-- Right column -->
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">@L["CreateOffer_TeachingMode"]</label>
+                            <div class="teaching-mode-group">
+                                @foreach (var mode in TeachingModes)
+                                {
+                                    <button type="button"
+                                            class="teaching-mode-card @(SelectedMode == mode.Key ? "selected" : "")"
+                                            @onclick="() => SelectedMode = mode.Key">
+                                        <i class="bi @mode.Icon teaching-mode-icon" aria-hidden="true"></i>
+                                        <span class="teaching-mode-label">@mode.Label</span>
+                                        <span class="teaching-mode-desc">@mode.Description</span>
+                                    </button>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">@L["CreateOffer_Language"]</label>
+                            <select class="form-select" @bind="Language">
+                                <option>@L["Lang_French"]</option>
+                                <option>@L["Lang_English"]</option>
+                                <option>@L["Lang_Spanish"]</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-0">
+                            <label class="form-label">@L["CreateOffer_SpecificLevels"] <span class="badge badge-optional ms-1">@L["Label_Optional"]</span></label>
+                            <select class="form-select" multiple size="4">
+                                <option>@L["SpecificLevel_Primary3"]</option>
+                                <option>@L["SpecificLevel_Primary4"]</option>
+                                <option>@L["SpecificLevel_Secondary1"]</option>
+                                <option>@L["SpecificLevel_Secondary2"]</option>
+                                <option>@L["SpecificLevel_Secondary3"]</option>
+                                <option>@L["SpecificLevel_Secondary4"]</option>
+                                <option>@L["SpecificLevel_Secondary5"]</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section-card">
+                <h2 class="form-section-title">@L["CreateOffer_Benefits"]</h2>
+                <div class="benefit-chips">
+                    @foreach (var benefit in AllBenefits)
+                    {
+                        var isSelected = SelectedBenefits.Contains(benefit);
+                        <button type="button"
+                                class="benefit-chip @(isSelected ? "selected" : "")"
+                                @onclick="() => ToggleBenefit(benefit)">
+                            <i class="bi @(isSelected ? "bi-check-circle-fill" : "bi-circle") benefit-chip-icon" aria-hidden="true"></i>
+                            @benefit
+                        </button>
                     }
-                </fieldset>
-            }
-            else if (CurrentStep == 2)
-            {
-                <div class="row g-3">
+                    <button type="button" class="benefit-chip benefit-chip--add">
+                        <i class="bi bi-plus benefit-chip-icon" aria-hidden="true"></i>
+                        @L["CreateOffer_AddBenefit"]
+                    </button>
+                </div>
+            </div>
+        }
+
+        else if (CurrentStep == 2)
+        {
+            <div class="section-card">
+                <h2 class="form-section-title">@L["CreateOffer_SectionPricing"]</h2>
+                <div class="row g-4">
                     <div class="col-md-6">
                         <label class="form-label">@L["CreateOffer_Price"]</label>
-                        <input type="number" class="form-control" value="45" />
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input type="number" class="form-control" @bind="Price" min="0" />
+                        </div>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">@L["CreateOffer_Sessions"]</label>
-                        <input type="number" class="form-control" value="8" />
+                        <input type="number" class="form-control" @bind="Sessions" min="1" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">@L["CreateOffer_SessionDuration"]</label>
+                        <select class="form-select" @bind="SessionDuration">
+                            <option value="30">30 min</option>
+                            <option value="45">45 min</option>
+                            <option value="60" selected>60 min</option>
+                            <option value="90">90 min</option>
+                            <option value="120">120 min</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">@L["CreateOffer_BillingCycle"]</label>
+                        <select class="form-select">
+                            <option>@L["Billing_Monthly"]</option>
+                            <option>@L["Billing_PerSession"]</option>
+                        </select>
                     </div>
                 </div>
-            }
-            else if (CurrentStep == 3)
-            {
-                <div class="form-check mb-2">
-                    <input class="form-check-input" type="checkbox" checked id="opt1" />
-                    <label class="form-check-label" for="opt1">@L["CreateOffer_OptionOnline"]</label>
-                </div>
-                <div class="form-check mb-2">
-                    <input class="form-check-input" type="checkbox" id="opt2" />
-                    <label class="form-check-label" for="opt2">@L["CreateOffer_OptionMaterials"]</label>
-                </div>
-            }
-            else
-            {
-                <p class="text-muted mb-0">@L["CreateOffer_PreviewNote"]</p>
-            }
-
-            <div class="form-actions mt-4">
-                @if (CurrentStep > 1)
-                {
-                    <button type="button" class="btn btn-outline-secondary" @onclick="PreviousStep">@L["Button_Previous"]</button>
-                }
-                @if (CurrentStep < 4)
-                {
-                    <button type="button" class="btn btn-primary" @onclick="NextStep">@L["Button_Next"]</button>
-                }
-                else
-                {
-                    <button type="button" class="btn btn-primary">@L["Button_PublishOffer"]</button>
-                }
             </div>
-        </div>
+        }
+
+        else if (CurrentStep == 3)
+        {
+            <div class="section-card">
+                <h2 class="form-section-title">@L["CreateOffer_SectionOptions"]</h2>
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" checked id="opt-trial" />
+                    <label class="form-check-label" for="opt-trial">@L["CreateOffer_OptionTrial"]</label>
+                </div>
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="opt-materials" />
+                    <label class="form-check-label" for="opt-materials">@L["CreateOffer_OptionMaterials"]</label>
+                </div>
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="opt-report" />
+                    <label class="form-check-label" for="opt-report">@L["CreateOffer_OptionReport"]</label>
+                </div>
+            </div>
+        }
+
+        else
+        {
+            <div class="section-card">
+                <h2 class="form-section-title">@L["CreateOffer_SectionPreview"]</h2>
+                <p class="text-muted">@L["CreateOffer_PreviewNote"]</p>
+                <button class="btn btn-primary mt-3" type="button">
+                    @L["Button_PublishOffer"] <i class="bi bi-send ms-2" aria-hidden="true"></i>
+                </button>
+            </div>
+        }
     </div>
+
+    <!-- Live preview -->
     <div class="col-lg-4">
-        <div class="preview-card sticky-top" style="top: calc(var(--ts-topbar-height) + 1rem);">
-            <h3>@L["CreateOffer_Preview"]</h3>
-            <div class="preview-card-body">
-                <span class="offering-subject">@Subject</span>
-                <h4>@(string.IsNullOrWhiteSpace(OfferTitle) ? L["CreateOffer_TitlePlaceholder"].Value : OfferTitle)</h4>
-                <p class="preview-description">@(string.IsNullOrWhiteSpace(Description) ? L["CreateOffer_PreviewEmpty"].Value : Description)</p>
-                <p class="offering-price">45,00 $ / @L["CreateOffer_Session"]</p>
-                <ul class="offering-meta">
-                    <li>@Level</li>
-                    <li>8 @L["CreateOffer_SessionsLabel"]</li>
+        <div class="offer-preview sticky-top" style="top: calc(var(--ts-topbar-height, 56px) + 1rem);">
+            <h3 class="offer-preview-header-title">@L["CreateOffer_Preview"]</h3>
+
+            <div class="offer-preview-hero">
+                <div class="offer-preview-hero-icon">
+                    <i class="bi bi-mortarboard-fill" aria-hidden="true"></i>
+                </div>
+                <div class="offer-preview-hero-content">
+                    <span class="offer-preview-hero-title">
+                        @(string.IsNullOrWhiteSpace(OfferTitle) ? L["CreateOffer_TitlePlaceholder"].Value : OfferTitle)
+                    </span>
+                    <span class="offer-preview-mode-badge">@ModeLabel</span>
+                </div>
+            </div>
+
+            <div class="offer-preview-body">
+                <p class="offer-preview-price">@Price $ <span class="offer-preview-price-unit">/ @L["CreateOffer_PerMonth"]</span></p>
+                <p class="offer-preview-detail">@Sessions @L["CreateOffer_SessionsLabel"] • @SessionDuration min @L["CreateOffer_PerSession"]</p>
+
+                <ul class="offer-preview-meta">
+                    <li><i class="bi bi-book" aria-hidden="true"></i> @Subject</li>
+                    <li><i class="bi bi-bar-chart-steps" aria-hidden="true"></i> @Level</li>
+                    <li><i class="bi @TeachingModes.FirstOrDefault(m => m.Key == SelectedMode)?.Icon" aria-hidden="true"></i> @ModeLabel</li>
+                    <li><i class="bi bi-translate" aria-hidden="true"></i> @Language</li>
                 </ul>
+
+                @if (SelectedBenefits.Count > 0)
+                {
+                    <div class="offer-preview-benefits-title">@L["CreateOffer_Benefits"]</div>
+                    <ul class="offer-preview-benefits">
+                        @foreach (var b in SelectedBenefits.Take(3))
+                        {
+                            <li><i class="bi bi-check-circle-fill" aria-hidden="true"></i> @b</li>
+                        }
+                    </ul>
+                }
+
+                <button class="btn btn-primary w-100 mt-3" type="button" @onclick="NextStep" disabled="@(CurrentStep >= 4)">
+                    @L["Button_Next"] <i class="bi bi-arrow-right ms-2" aria-hidden="true"></i>
+                </button>
             </div>
         </div>
     </div>
 </div>
 
+<!-- Sticky bottom bar -->
+<div class="create-offer-footer">
+    <button type="button" class="btn btn-ghost" @onclick='() => Navigation.NavigateTo("tutor/offers")'>
+        @L["Button_Cancel"]
+    </button>
+    <div class="create-offer-footer-actions">
+        <button type="button" class="btn btn-outline-secondary">
+            @L["Button_SaveDraft"]
+        </button>
+        @if (CurrentStep > 1)
+        {
+            <button type="button" class="btn btn-outline-primary" @onclick="PreviousStep">
+                <i class="bi bi-arrow-left me-1" aria-hidden="true"></i> @L["Button_Previous"]
+            </button>
+        }
+        @if (CurrentStep < 4)
+        {
+            <button type="button" class="btn btn-primary" @onclick="NextStep">
+                @L["Button_Next"] <i class="bi bi-arrow-right ms-2" aria-hidden="true"></i>
+            </button>
+        }
+        else
+        {
+            <button type="button" class="btn btn-primary">
+                @L["Button_PublishOffer"] <i class="bi bi-send ms-2" aria-hidden="true"></i>
+            </button>
+        }
+    </div>
+</div>
+
 @code {
+    private record TeachingMode(string Key, string Label, string Description, string Icon);
+
     private int CurrentStep { get; set; } = 1;
     private string OfferTitle { get; set; } = "";
     private string Subject { get; set; } = "Mathématiques";
     private string Level { get; set; } = "Secondaire";
     private string Description { get; set; } = "";
+    private string SelectedMode { get; set; } = "online";
+    private string Language { get; set; } = "Français";
+    private decimal Price { get; set; } = 120;
+    private int Sessions { get; set; } = 4;
+    private int SessionDuration { get; set; } = 60;
 
-    private IReadOnlyList<string> Steps =>
-    [
+    private readonly HashSet<string> SelectedBenefits = [];
+
+    private IReadOnlyList<string> Steps => [
         L["CreateOffer_Step_Info"].Value,
         L["CreateOffer_Step_Pricing"].Value,
         L["CreateOffer_Step_Options"].Value,
         L["CreateOffer_Step_Preview"].Value
     ];
 
-    private IReadOnlyList<string> Benefits =>
-    [
+    private IReadOnlyList<string> StepSubtitles => [
+        L["CreateOffer_Step_Info_Sub"].Value,
+        L["CreateOffer_Step_Pricing_Sub"].Value,
+        L["CreateOffer_Step_Options_Sub"].Value,
+        L["CreateOffer_Step_Preview_Sub"].Value
+    ];
+
+    private IReadOnlyList<TeachingMode> TeachingModes => [
+        new("online", L["CreateOffer_Mode_Online"].Value, L["CreateOffer_Mode_Online_Desc"].Value, "bi-display"),
+        new("inperson", L["CreateOffer_Mode_InPerson"].Value, L["CreateOffer_Mode_InPerson_Desc"].Value, "bi-building"),
+        new("hybrid", L["CreateOffer_Mode_Hybrid"].Value, L["CreateOffer_Mode_Hybrid_Desc"].Value, "bi-grid-3x3"),
+    ];
+
+    private IReadOnlyList<string> AllBenefits => [
         L["CreateOffer_Benefit1"].Value,
         L["CreateOffer_Benefit2"].Value,
         L["CreateOffer_Benefit3"].Value,
+        L["CreateOffer_Benefit4"].Value,
+        L["CreateOffer_Benefit5"].Value,
+        L["CreateOffer_Benefit6"].Value,
     ];
+
+    private string ModeLabel => TeachingModes.FirstOrDefault(m => m.Key == SelectedMode)?.Label ?? SelectedMode;
+
+    protected override void OnInitialized()
+    {
+        SelectedBenefits.Add(L["CreateOffer_Benefit1"].Value);
+        SelectedBenefits.Add(L["CreateOffer_Benefit2"].Value);
+        SelectedBenefits.Add(L["CreateOffer_Benefit3"].Value);
+        SelectedBenefits.Add(L["CreateOffer_Benefit4"].Value);
+        SelectedBenefits.Add(L["CreateOffer_Benefit5"].Value);
+    }
+
+    private void ToggleBenefit(string benefit)
+    {
+        if (!SelectedBenefits.Remove(benefit))
+            SelectedBenefits.Add(benefit);
+    }
 
     private void NextStep() { if (CurrentStep < 4) CurrentStep++; }
     private void PreviousStep() { if (CurrentStep > 1) CurrentStep--; }
