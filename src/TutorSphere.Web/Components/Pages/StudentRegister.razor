@@ -1,0 +1,264 @@
+@page "/register/eleve"
+@layout LoginLayout
+@rendermode InteractiveServer
+@using TutorSphere.Application.DTOs.Auth
+@using Microsoft.Extensions.Localization
+@inject HttpClient Http
+@inject NavigationManager Navigation
+@inject IStringLocalizer<SharedResources> L
+
+<PageTitle>@L["StudentRegister_Title"] — TutorSphere</PageTitle>
+
+<div class="register-v2 login-theme-eleve">
+    <div class="register-v2-top">
+        <div class="register-v2-icon" style="background:#fef3c7;color:#d97706;"><i class="bi bi-backpack-fill"></i></div>
+        <h1 class="register-v2-title">@L["StudentRegister_Title"]</h1>
+        <p class="register-v2-subtitle">@L["StudentRegister_Subtitle"]</p>
+    </div>
+
+    @if (_confirmed)
+    {
+        <div class="register-v2-card register-v2-card--confirm">
+            <div class="register-confirm-icon"><i class="bi bi-envelope-check-fill"></i></div>
+            <h2>@L["Register_Confirm_Title"]</h2>
+            <p>@string.Format(L["Register_Confirm_Message"], _email)</p>
+            <p class="register-confirm-hint">@L["Register_Confirm_Hint"]</p>
+            <a href="/login/eleve" class="btn btn-primary px-5" style="background:#d97706;border-color:#d97706;">@L["Nav_Login"]</a>
+        </div>
+    }
+    else
+    {
+        <div class="register-v2-card">
+            <div class="register-v2-benefits">
+                <svg class="register-v2-illustration" viewBox="0 0 240 180" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <rect width="240" height="180" fill="#fffbeb" rx="12"/>
+                    <!-- Desk -->
+                    <rect x="40" y="120" width="160" height="10" rx="3" fill="#d97706"/>
+                    <rect x="50" y="130" width="8" height="30" rx="2" fill="#b45309"/>
+                    <rect x="182" y="130" width="8" height="30" rx="2" fill="#b45309"/>
+                    <!-- Books stack -->
+                    <rect x="150" y="95" width="40" height="8" rx="2" fill="#f59e0b"/>
+                    <rect x="155" y="87" width="35" height="8" rx="2" fill="#fbbf24"/>
+                    <rect x="152" y="79" width="38" height="8" rx="2" fill="#fcd34d"/>
+                    <!-- Student -->
+                    <circle cx="95" cy="65" r="16" fill="#d97706"/>
+                    <rect x="80" y="81" width="30" height="35" rx="5" fill="#f59e0b"/>
+                    <!-- Open book -->
+                    <rect x="65" y="105" width="60" height="15" rx="2" fill="#fde68a"/>
+                    <line x1="95" y1="105" x2="95" y2="120" stroke="#d97706" stroke-width="1.5"/>
+                    <!-- Star -->
+                    <circle cx="190" cy="30" r="12" fill="#fde68a" opacity="0.9"/>
+                    <!-- Ground -->
+                    <rect x="0" y="155" width="240" height="25" fill="#fef3c7" rx="0"/>
+                </svg>
+                <h2>@L["Register_Student_Benefits_Title"]</h2>
+                <p>@L["Register_Student_Benefits_Subtitle"]</p>
+                <ul class="register-benefit-list">
+                    <li>
+                        <span class="register-benefit-icon" style="background:#fef3c7;color:#d97706;">
+                            <i class="bi bi-book" aria-hidden="true"></i>
+                        </span>
+                        <div>
+                            <strong>@L["Register_Student_Benefit1_Title"]</strong>
+                            <span>@L["Register_Student_Benefit1_Desc"]</span>
+                        </div>
+                    </li>
+                    <li>
+                        <span class="register-benefit-icon" style="background:#fef3c7;color:#d97706;">
+                            <i class="bi bi-clipboard-check" aria-hidden="true"></i>
+                        </span>
+                        <div>
+                            <strong>@L["Register_Student_Benefit2_Title"]</strong>
+                            <span>@L["Register_Student_Benefit2_Desc"]</span>
+                        </div>
+                    </li>
+                    <li>
+                        <span class="register-benefit-icon" style="background:#fef3c7;color:#d97706;">
+                            <i class="bi bi-camera-video" aria-hidden="true"></i>
+                        </span>
+                        <div>
+                            <strong>@L["Register_Student_Benefit3_Title"]</strong>
+                            <span>@L["Register_Student_Benefit3_Desc"]</span>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+
+            <div class="register-v2-form">
+                <a href="/login/eleve" class="login-back-link mb-4 d-inline-block">← @L["Login_Back"]</a>
+
+                @if (!string.IsNullOrEmpty(_error))
+                {
+                    <div class="alert alert-danger mb-4" role="alert">
+                        <i class="bi bi-exclamation-circle me-2"></i>@_error
+                    </div>
+                }
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">@L["Label_FirstName"] <span class="text-danger">*</span></label>
+                        <div class="form-field-icon">
+                            <i class="bi bi-person field-icon"></i>
+                            <input class="form-control" @bind="_firstName" placeholder="@L["Label_FirstName"]" />
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">@L["Label_LastName"] <span class="text-danger">*</span></label>
+                        <div class="form-field-icon">
+                            <i class="bi bi-person field-icon"></i>
+                            <input class="form-control" @bind="_lastName" placeholder="@L["Label_LastName"]" />
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">@L["Label_DateOfBirth"] <span class="text-danger">*</span></label>
+                    <div class="form-field-icon">
+                        <i class="bi bi-calendar3 field-icon"></i>
+                        <input type="date" class="form-control" @bind="_dob"
+                               max="@DateTime.Today.ToString("yyyy-MM-dd")"
+                               min="@DateTime.Today.AddYears(-25).ToString("yyyy-MM-dd")" />
+                    </div>
+                    @if (_dob.HasValue)
+                    {
+                        var age = (int)((DateTime.Today - _dob.Value).TotalDays / 365.25);
+                        if (age >= 14)
+                        {
+                            <small class="text-info"><i class="bi bi-info-circle me-1"></i>@L["Register_Student_Autonomous"]</small>
+                        }
+                    }
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">@L["Label_Email"] <span class="text-danger">*</span></label>
+                    <div class="form-field-icon">
+                        <i class="bi bi-envelope field-icon"></i>
+                        <input type="email" class="form-control" @bind="_email" placeholder="exemple@courriel.com" />
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">@L["Label_CreatePassword"] <span class="text-danger">*</span></label>
+                    <div class="form-field-icon">
+                        <i class="bi bi-lock field-icon"></i>
+                        <input type="@(_showPwd ? "text" : "password")" class="form-control" style="padding-right:2.5rem;"
+                               @bind="_password" @bind:event="oninput" />
+                        <button type="button" class="password-toggle" @onclick="() => _showPwd = !_showPwd">
+                            <i class="bi @(_showPwd ? "bi-eye-slash" : "bi-eye")"></i>
+                        </button>
+                    </div>
+                    @if (!string.IsNullOrEmpty(_password))
+                    {
+                        <div class="password-strength">
+                            <div class="password-strength-label">
+                                @L["Password_Strength"]: <strong class="@PwdClass">@PwdLabel</strong>
+                            </div>
+                            <div class="password-strength-bars">
+                                @for (var i = 0; i < 4; i++)
+                                {
+                                    <div class="password-strength-bar @(i < PwdBars ? $"filled {PwdClass}" : "")"></div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label">@L["Label_ConfirmPassword"] <span class="text-danger">*</span></label>
+                    <div class="form-field-icon">
+                        <i class="bi bi-lock-fill field-icon"></i>
+                        <input type="@(_showConfirm ? "text" : "password")" class="form-control @(PwdMismatch ? "is-invalid" : "")"
+                               style="padding-right:2.5rem;"
+                               @bind="_confirm" @bind:event="oninput" placeholder="@L["Placeholder_ConfirmPassword"]" />
+                        <button type="button" class="password-toggle" @onclick="() => _showConfirm = !_showConfirm">
+                            <i class="bi @(_showConfirm ? "bi-eye-slash" : "bi-eye")"></i>
+                        </button>
+                    </div>
+                    @if (PwdMismatch)
+                    {
+                        <small class="text-danger">@L["Error_PasswordMismatch"]</small>
+                    }
+                </div>
+
+                <button class="btn w-100 py-2" style="background:#d97706;color:white;border:none;"
+                        @onclick="RegisterAsync" disabled="@_submitting">
+                    @if (_submitting)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2"></span>
+                        <span>@L["Button_Loading"]</span>
+                    }
+                    else
+                    {
+                        <span>@L["Button_CreateAccount"]</span>
+                        <i class="bi bi-arrow-right ms-2"></i>
+                    }
+                </button>
+
+                <div class="register-security-note"><i class="bi bi-shield-lock"></i> @L["Register_SecurityNote"]</div>
+
+                <p class="text-center mt-3 mb-0" style="font-size:.875rem;color:var(--ts-muted);">
+                    @L["Register_AlreadyHaveAccount"] <a href="/login/eleve" style="color:#d97706;">@L["Nav_Login"]</a>
+                </p>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private string _firstName = "", _lastName = "", _email = "", _password = "", _confirm = "";
+    private DateTime? _dob;
+    private string? _error;
+    private bool _submitting, _showPwd, _showConfirm, _confirmed;
+
+    private bool PwdMismatch => !string.IsNullOrEmpty(_confirm) && _password != _confirm;
+    private bool HasLen => _password.Length >= 8;
+    private bool HasNum => _password.Any(char.IsDigit);
+    private bool HasSpc => _password.Any(c => !char.IsLetterOrDigit(c));
+    private int PwdBars => (HasLen ? 1 : 0) + (HasNum ? 1 : 0) + (HasSpc ? 1 : 0) + (_password.Length >= 12 ? 1 : 0);
+    private string PwdClass => PwdBars <= 1 ? "weak" : PwdBars <= 2 ? "medium" : "";
+    private string PwdLabel => PwdBars switch { <= 1 => L["Password_Weak"], 2 => L["Password_Medium"], 3 => L["Password_Good"], _ => L["Password_Strong"] };
+
+    private async Task RegisterAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_firstName) || string.IsNullOrWhiteSpace(_lastName)
+            || string.IsNullOrWhiteSpace(_email) || string.IsNullOrWhiteSpace(_password)
+            || string.IsNullOrWhiteSpace(_confirm))
+        {
+            _error = L["Error_FillAllFields"]; return;
+        }
+        if (!_dob.HasValue) { _error = L["Error_FillDateOfBirth"]; return; }
+        if (_password != _confirm) { _error = L["Error_PasswordMismatch"]; return; }
+        if (!HasLen || !HasNum || !HasSpc) { _error = L["Error_PasswordWeak"]; return; }
+
+        _submitting = true;
+        try
+        {
+            var req = new RegisterRequest(_email.Trim(), _password, _firstName.Trim(), _lastName.Trim(), "Student");
+            var resp = await Http.PostAsJsonAsync("api/auth/register", req);
+            if (resp.IsSuccessStatusCode)
+            {
+                _confirmed = true;
+            }
+            else
+            {
+                var body = await resp.Content.ReadAsStringAsync();
+                _error = TryParseError(body) ?? L["Error_CreateAccount"].ToString();
+            }
+        }
+        catch { _error = L["Error_ApiConnection"]; }
+        finally { _submitting = false; }
+    }
+
+    private static string? TryParseError(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return null;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("error", out var e)) return e.GetString();
+        }
+        catch { }
+        return body;
+    }
+}
