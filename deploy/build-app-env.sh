@@ -22,6 +22,7 @@ umask 077
   printf 'PAYGATEWAY__APPCODE=%s\n' "${PAYGATEWAY_APP_CODE:-TUTORSPHERE}"
   printf 'PAYGATEWAY__APIKEY=%s\n' "${PAYGATEWAY_API_KEY}"
   printf 'APIBASEURL=%s\n' "${API_BASE_URL:-https://api.tutorsphere.gisebs.com}"
+  printf 'INTERNALAPIBASEURL=http://127.0.0.1:%s\n' "${API_PORT:-55099}"
   printf 'API_PORT=%s\n' "${API_PORT:-55099}"
   printf 'WEB_PORT=%s\n' "${WEB_PORT:-55010}"
 } >> "$OUT"

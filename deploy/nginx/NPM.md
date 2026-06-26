@@ -15,10 +15,12 @@ NPM tourne dans un conteneur Docker. Depuis NPM, l’hôte est joignable via **`
 
 ## 1. DNS (chez le registrar / Cloudflare)
 
-| Enregistrement | Type | Valeur |
-|----------------|------|--------|
-| `tutorsphere.gisebs.com` | A | `51.79.53.197` |
-| `api.tutorsphere.gisebs.com` | A | `51.79.53.197` |
+| Enregistrement | Type | Valeur | Statut |
+|----------------|------|--------|--------|
+| `tutorsphere.gisebs.com` | A | `51.79.53.197` | requis (Web) |
+| `api.tutorsphere.gisebs.com` | A | `51.79.53.197` | **requis (API)** — sans cet enregistrement, `https://api.tutorsphere.gisebs.com` ne résout pas |
+
+> Blazor Server appelle l’API via `INTERNALAPIBASEURL=http://127.0.0.1:55099` sur le serveur. Le sous-domaine `api.*` reste nécessaire pour les appels **navigateur** directs (SignalR client futur, outils, intégrations).
 
 ---
 

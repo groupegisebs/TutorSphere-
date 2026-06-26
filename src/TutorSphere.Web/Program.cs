@@ -23,7 +23,18 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 
-var apiBaseUrl = builder.Configuration["ApiBaseUrl"] ?? "http://localhost:5099";
+// Blazor Server HttpClient runs on the web host, not in the browser. Prefer InternalApiBaseUrl
+// (loopback, e.g. http://127.0.0.1:55099) in production; ApiBaseUrl stays the public HTTPS URL
+// for future browser-facing use once api.tutorsphere.gisebs.com is in NPM/DNS.
+static string? NonEmptyConfig(IConfiguration configuration, string key)
+{
+    var value = configuration[key];
+    return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+}
+
+var apiBaseUrl = NonEmptyConfig(builder.Configuration, "InternalApiBaseUrl")
+    ?? NonEmptyConfig(builder.Configuration, "ApiBaseUrl")
+    ?? "http://localhost:5099";
 builder.Services.AddHttpClient("TutorSphereApi", client =>
 {
     client.BaseAddress = new Uri(apiBaseUrl.TrimEnd('/') + "/");
