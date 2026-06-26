@@ -1,4 +1,6 @@
 @inject IStringLocalizer<SharedResources> L
+@inject NavigationManager Navigation
+@inject AuthService AuthSvc
 
 <div class="top-row px-4">
     <div class="top-row-actions ms-auto">
@@ -9,9 +11,65 @@
             <i class="bi bi-bell" aria-hidden="true"></i>
             <span class="topbar-notification-badge">3</span>
         </button>
-        <button type="button" class="topbar-user-btn ms-2" aria-label="@L["Nav_UserMenu"]">
-            <span class="topbar-user-avatar">JS</span>
-            <i class="bi bi-chevron-down ms-1" aria-hidden="true"></i>
-        </button>
+        <div class="topbar-user-menu-wrapper ms-2">
+            <button type="button" class="topbar-user-btn" aria-label="@L["Nav_UserMenu"]"
+                    @onclick="ToggleUserMenu" @onclick:stopPropagation="true">
+                <span class="topbar-user-avatar">@_initials</span>
+                <i class="bi bi-chevron-down ms-1" aria-hidden="true"></i>
+            </button>
+            @if (_showUserMenu)
+            {
+                <div class="topbar-dropdown-menu" @onclick:stopPropagation="true">
+                    <div class="topbar-dropdown-header">
+                        <span class="topbar-dropdown-name">@_displayName</span>
+                        <span class="topbar-dropdown-email">@AuthSvc.UserEmail</span>
+                    </div>
+                    <div class="topbar-dropdown-divider"></div>
+                    <a class="topbar-dropdown-item" href="tutor/profile">
+                        <i class="bi bi-person me-2" aria-hidden="true"></i>@L["Nav_Profile"]
+                    </a>
+                    <a class="topbar-dropdown-item" href="tutor/settings">
+                        <i class="bi bi-sliders me-2" aria-hidden="true"></i>@L["Nav_Settings"]
+                    </a>
+                    <div class="topbar-dropdown-divider"></div>
+                    <button type="button" class="topbar-dropdown-item topbar-dropdown-item--danger"
+                            @onclick="LogoutAsync">
+                        <i class="bi bi-box-arrow-left me-2" aria-hidden="true"></i>@L["Nav_Logout"]
+                    </button>
+                </div>
+            }
+        </div>
     </div>
 </div>
+
+@if (_showUserMenu)
+{
+    <div class="topbar-backdrop" @onclick="CloseUserMenu"></div>
+}
+
+@code {
+    private bool _showUserMenu;
+
+    private string _displayName => AuthSvc.UserName ?? AuthSvc.UserEmail ?? "User";
+    private string _initials => GetInitials(_displayName);
+
+    private void ToggleUserMenu() => _showUserMenu = !_showUserMenu;
+    private void CloseUserMenu() => _showUserMenu = false;
+
+    private Task LogoutAsync()
+    {
+        _showUserMenu = false;
+        AuthSvc.Logout();
+        Navigation.NavigateTo("/login", forceLoad: true);
+        return Task.CompletedTask;
+    }
+
+    private static string GetInitials(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "?";
+        var parts = name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2
+            ? $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant()
+            : name[..Math.Min(2, name.Length)].ToUpperInvariant();
+    }
+}

@@ -158,7 +158,19 @@
                     <i class="bi bi-cloud-arrow-up doc-upload-icon"></i>
                     <p>Glissez vos fichiers ici</p>
                     <small class="text-muted">PDF, Word, Excel, PowerPoint, Images — max 50 Mo</small>
-                    <button class="btn btn-outline-primary btn-sm mt-2">Parcourir</button>
+                    <label class="btn btn-outline-primary btn-sm mt-2" style="cursor:pointer;margin:0">
+                        Parcourir
+                        <InputFile OnChange="HandleUploadFileSelection" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png" style="display:none" />
+                    </label>
+                    @if (_pendingUploadFiles.Count > 0)
+                    {
+                        <div class="mt-2 text-start w-100">
+                            @foreach (var name in _pendingUploadFiles)
+                            {
+                                <div class="small text-muted"><i class="bi bi-file-earmark me-1"></i>@name</div>
+                            }
+                        </div>
+                    }
                 </div>
                 <div class="row g-3 mt-3">
                     <div class="col-12">
@@ -201,6 +213,14 @@
     private DocFile? _selected;
     private string _uploadFolder = "Mathématiques";
     private readonly HashSet<string> _shareWith = [];
+    private readonly List<string> _pendingUploadFiles = [];
+
+    private void HandleUploadFileSelection(InputFileChangeEventArgs e)
+    {
+        _pendingUploadFiles.Clear();
+        foreach (var file in e.GetMultipleFiles(20))
+            _pendingUploadFiles.Add(file.Name);
+    }
 
     private IEnumerable<DocFile> FilteredFiles => _files
         .Where(f => _selectedFolder == null || f.Folder == _selectedFolder.Name)
@@ -226,11 +246,27 @@
 
     private void SimulateUpload()
     {
-        _files.Insert(0, new DocFile { Name = "Nouveau fichier.pdf", Type = "pdf", Size = "1.2 Mo",
-            Folder = _uploadFolder, Modified = DateTime.Today.ToString("dd/MM/yyyy"),
-            SharedWith = [.. _shareWith] });
+        var names = _pendingUploadFiles.Count > 0
+            ? _pendingUploadFiles.ToList()
+            : ["Nouveau fichier.pdf"];
+
+        foreach (var name in names)
+        {
+            var ext = System.IO.Path.GetExtension(name).TrimStart('.').ToLower();
+            _files.Insert(0, new DocFile
+            {
+                Name = name,
+                Type = string.IsNullOrEmpty(ext) ? "pdf" : ext,
+                Size = "—",
+                Folder = _uploadFolder,
+                Modified = DateTime.Today.ToString("dd/MM/yyyy"),
+                SharedWith = [.. _shareWith]
+            });
+        }
+
         _showUpload = false;
         _shareWith.Clear();
+        _pendingUploadFiles.Clear();
     }
 
     private class DocFolder { public string Name { get; set; } = ""; public int FileCount { get; set; } public bool IsOpen { get; set; } }

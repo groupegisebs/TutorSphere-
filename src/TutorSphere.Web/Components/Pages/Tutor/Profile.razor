@@ -39,10 +39,13 @@
 {
     <div class="profile-card-layout">
         <div class="profile-avatar-card">
-            <div class="profile-avatar-large" style="background:var(--ts-gradient-primary)">JS</div>
-            <button class="btn btn-outline-secondary btn-sm w-100 mt-2">
+            <div class="profile-avatar-large" style="@(_photoDataUrl != null ? $"background:url({_photoDataUrl}) center/cover no-repeat;font-size:0" : "background:var(--ts-gradient-primary)")">
+                @if (_photoDataUrl == null) { <text>@(_p.FirstName.Length > 0 ? _p.FirstName[0].ToString() : "")@(_p.LastName.Length > 0 ? _p.LastName[0].ToString() : "")</text> }
+            </div>
+            <label class="btn btn-outline-secondary btn-sm w-100 mt-2" style="cursor:pointer;margin:0">
                 <i class="bi bi-camera me-1"></i>Changer la photo
-            </button>
+                <InputFile OnChange="HandlePhotoChange" accept="image/*" style="display:none" />
+            </label>
             <div class="profile-status mt-3">
                 <label class="form-label">Statut</label>
                 <select class="form-select form-select-sm" @bind="_p.Status">
@@ -168,6 +171,22 @@ else if (_tab == "Disponibilités")
     private readonly string[] _tabs = ["Présentation","Diplômes & Certifications","Matières","Disponibilités"];
     private string _tab = "Présentation";
     private bool _saving, _saved;
+    private string? _photoDataUrl;
+
+    private async Task HandlePhotoChange(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file != null)
+            _photoDataUrl = await ConvertToDataUrl(file);
+    }
+
+    private static async Task<string> ConvertToDataUrl(IBrowserFile file)
+    {
+        using var stream = file.OpenReadStream(maxAllowedSize: 5_000_000);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        return $"data:{file.ContentType};base64,{Convert.ToBase64String(ms.ToArray())}";
+    }
 
     private static readonly string[] _allSubjects = ["Mathématiques","Physique","Chimie","Biologie","Français","Anglais","Espagnol","Histoire-Géo","Philosophie","Économie","Informatique","Comptabilité"];
     private static readonly string[] _days = ["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"];
