@@ -1,0 +1,72 @@
+@page "/tutor/reports/create"
+@layout TutorLayout
+@inject IStringLocalizer<SharedResources> L
+
+<PageTitle>@L["PageTitle_SessionReport"]</PageTitle>
+
+<div class="report-header">
+    <PageHeader Title="@L["SessionReport_Title"]" Subtitle="@L["SessionReport_ForStudent", "Emma Johnson"]" />
+    <div class="report-meta">
+        <span><i class="bi bi-calendar3"></i> @DateTime.Today.ToString("d MMMM yyyy")</span>
+        <span><i class="bi bi-clock"></i> 1h 30min</span>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-7">
+        <div class="section-card mb-4">
+            <h2>@L["SessionReport_Summary"]</h2>
+            <textarea class="form-control" rows="5" placeholder="@L["SessionReport_SummaryPlaceholder"]"></textarea>
+        </div>
+        <div class="section-card mb-4">
+            <h2>@L["SessionReport_Topics"]</h2>
+            <ul class="topic-list">
+                <li>@L["SessionReport_Topic1"]</li>
+                <li>@L["SessionReport_Topic2"]</li>
+                <li>@L["SessionReport_Topic3"]</li>
+            </ul>
+        </div>
+        <div class="section-card">
+            <h2>@L["SessionReport_Rating"]</h2>
+            <div class="star-rating" role="group" aria-label="@L["SessionReport_Rating"]">
+                @for (var i = 1; i <= 5; i++)
+                {
+                    var star = i;
+                    <button type="button" class="star-rating-star @(star <= Rating ? "active" : "")" @onclick="() => Rating = star">
+                        <i class="bi bi-star-fill"></i>
+                    </button>
+                }
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-5">
+        <div class="section-card mb-4">
+            <h2>@L["SessionReport_Homework"]</h2>
+            <p>@L["SessionReport_HomeworkText"]</p>
+        </div>
+        <div class="feedback-box feedback-box--success mb-4">
+            <h3><i class="bi bi-check-circle"></i> @L["SessionReport_Strengths"]</h3>
+            <ul>
+                <li>@L["SessionReport_Strength1"]</li>
+                <li>@L["SessionReport_Strength2"]</li>
+            </ul>
+        </div>
+        <div class="feedback-box feedback-box--warning">
+            <h3><i class="bi bi-arrow-up-circle"></i> @L["SessionReport_Improvements"]</h3>
+            <ul>
+                <li>@L["SessionReport_Improve1"]</li>
+                <li>@L["SessionReport_Improve2"]</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<div class="report-actions mt-4">
+    <button type="button" class="btn btn-primary btn-lg">
+        <i class="bi bi-send me-2"></i>@L["SessionReport_SaveSend"]
+    </button>
+</div>
+
+@code {
+    private int Rating { get; set; } = 4;
+}

@@ -1,38 +1,111 @@
 @page "/tutor/dashboard"
+@layout TutorLayout
 @inject IStringLocalizer<SharedResources> L
 
 <PageTitle>@L["PageTitle_TutorDashboard"]</PageTitle>
 
-<PageHeader Title="@L["TutorDashboard_Title"]" Subtitle="@L["TutorDashboard_Subtitle"]" />
+<div class="dashboard-header">
+    <div>
+        <h1 class="dashboard-greeting">@L["TutorDashboard_Welcome", "John"]</h1>
+        <p class="dashboard-date">@L["TutorDashboard_DateLabel"] — @DateTime.Now.ToString("dddd d MMMM yyyy")</p>
+    </div>
+    <div class="dashboard-header-actions">
+        <input type="date" class="form-control form-control-sm dashboard-date-picker" value="@DateTime.Now.ToString("yyyy-MM-dd")" />
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-sm-6 col-xl-3">
+        <StatCard Label="@L["Stat_MonthlyRevenue"]" Value="2 450 $" Icon="bi-currency-dollar" Variant="revenue" Change="@L["Stat_Change_Positive", "+12%"]" />
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <StatCard Label="@L["Stat_ActiveSubscriptions"]" Value="28" Icon="bi-credit-card" Variant="subscriptions" Change="@L["Stat_Change_Positive", "+4"]" />
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <StatCard Label="@L["Stat_UpcomingLessons"]" Value="6" Icon="bi-calendar-check" Variant="lessons" Change="@L["Stat_Today"]" ChangeVariant="neutral" />
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <StatCard Label="@L["Stat_ActiveStudents"]" Value="32" Icon="bi-people" Variant="students" Change="@L["Stat_Change_Positive", "+3"]" />
+    </div>
+</div>
+
+<div class="row g-4 mb-4">
+    <div class="col-lg-7">
+        <div class="section-card h-100">
+            <div class="section-card-header">
+                <h2>@L["TutorDashboard_RevenueChart"]</h2>
+                <select class="form-select form-select-sm w-auto">
+                    <option>@L["Filter_Last6Months"]</option>
+                </select>
+            </div>
+            <div class="chart-placeholder chart-placeholder--line" aria-hidden="true">
+                <svg viewBox="0 0 400 120" preserveAspectRatio="none">
+                    <polyline points="0,90 50,70 100,75 150,45 200,55 250,30 300,40 350,15 400,25" fill="none" stroke="currentColor" stroke-width="2.5" />
+                    <polyline points="0,90 50,70 100,75 150,45 200,55 250,30 300,40 350,15 400,25 400,120 0,120" fill="currentColor" opacity="0.08" stroke="none" />
+                </svg>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-5">
+        <div class="section-card h-100">
+            <div class="section-card-header">
+                <h2>@L["Stat_UpcomingLessons"]</h2>
+                <a href="tutor/calendar" class="btn btn-sm btn-link">@L["Button_ViewAll"]</a>
+            </div>
+            <ul class="lesson-list">
+                @foreach (var lesson in UpcomingLessons)
+                {
+                    <li class="lesson-list-item">
+                        <div class="lesson-avatar">@lesson.Initials</div>
+                        <div class="lesson-info">
+                            <strong>@lesson.Student</strong>
+                            <span>@lesson.Subject</span>
+                        </div>
+                        <span class="lesson-time">@lesson.Time</span>
+                    </li>
+                }
+            </ul>
+        </div>
+    </div>
+</div>
 
 <div class="row g-3">
-    <div class="col-sm-6 col-xl-4">
-        <StatCard Label="@L["Stat_MonthlyRevenue"]" Value="0,00 $" Icon="bi-currency-dollar" Variant="revenue" />
+    <div class="col-md-4">
+        <div class="mini-stat-card">
+            <i class="bi bi-hourglass-split mini-stat-icon mini-stat-icon--warning"></i>
+            <div>
+                <span class="mini-stat-label">@L["TutorDashboard_PendingPayments"]</span>
+                <span class="mini-stat-value">320 $</span>
+            </div>
+        </div>
     </div>
-    <div class="col-sm-6 col-xl-4">
-        <StatCard Label="@L["Stat_ActiveSubscriptions"]" Value="0" Icon="bi-credit-card" Variant="subscriptions" />
+    <div class="col-md-4">
+        <div class="mini-stat-card">
+            <i class="bi bi-chat-dots mini-stat-icon mini-stat-icon--info"></i>
+            <div>
+                <span class="mini-stat-label">@L["TutorDashboard_UnreadMessages"]</span>
+                <span class="mini-stat-value">5</span>
+            </div>
+        </div>
     </div>
-    <div class="col-sm-6 col-xl-4">
-        <StatCard Label="@L["Stat_UpcomingLessons"]" Value="0" Icon="bi-calendar-check" Variant="lessons" />
-    </div>
-    <div class="col-sm-6 col-xl-4">
-        <StatCard Label="@L["Stat_ActiveStudents"]" Value="0" Icon="bi-people" Variant="students" />
-    </div>
-    <div class="col-sm-6 col-xl-4">
-        <StatCard Label="@L["Stat_PendingPayments"]" Value="0" Icon="bi-hourglass-split" Variant="payments" />
-    </div>
-    <div class="col-sm-6 col-xl-4">
-        <StatCard Label="@L["Stat_Notifications"]" Value="0" Icon="bi-bell" Variant="notifications" />
+    <div class="col-md-4">
+        <div class="mini-stat-card">
+            <i class="bi bi-star-fill mini-stat-icon mini-stat-icon--success"></i>
+            <div>
+                <span class="mini-stat-label">@L["TutorDashboard_RecentReviews"]</span>
+                <span class="mini-stat-value">4,9 / 5</span>
+            </div>
+        </div>
     </div>
 </div>
 
-<div class="section-card mt-4">
-    <h2><i class="bi bi-grid me-2"></i>@L["Modules_Title"]</h2>
-    <div class="module-grid">
-        <div class="module-item"><i class="bi bi-person-lines-fill"></i><span>@L["Module_StudentsParents"]</span></div>
-        <div class="module-item"><i class="bi bi-arrow-repeat"></i><span>@L["Module_Subscriptions"]</span></div>
-        <div class="module-item"><i class="bi bi-calendar3"></i><span>@L["Module_Calendar"]</span></div>
-        <div class="module-item"><i class="bi bi-journal-text"></i><span>@L["Module_Homework"]</span></div>
-        <div class="module-item"><i class="bi bi-graph-up-arrow"></i><span>@L["Module_Revenue"]</span></div>
-    </div>
-</div>
+@code {
+    private record LessonItem(string Student, string Subject, string Time, string Initials);
+
+    private readonly List<LessonItem> UpcomingLessons =
+    [
+        new("Emma Johnson", "Mathématiques", "10:00", "EJ"),
+        new("Liam Anderson", "Physique", "14:00", "LA"),
+        new("Sophie Martin", "Chimie", "16:30", "SM"),
+    ];
+}

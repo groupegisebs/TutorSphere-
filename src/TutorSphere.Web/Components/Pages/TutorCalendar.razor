@@ -1,0 +1,92 @@
+@page "/tutor/calendar"
+@layout TutorLayout
+@inject IStringLocalizer<SharedResources> L
+
+<PageTitle>@L["PageTitle_Calendar"]</PageTitle>
+
+<div class="calendar-header">
+    <PageHeader Title="@L["Nav_Calendar"]" />
+    <div class="calendar-controls">
+        <div class="btn-group calendar-view-toggle" role="group">
+            <button type="button" class="btn btn-sm @(ViewMode == "day" ? "btn-primary" : "btn-outline-secondary")" @onclick='() => ViewMode = "day"'>@L["Calendar_Day"]</button>
+            <button type="button" class="btn btn-sm @(ViewMode == "week" ? "btn-primary" : "btn-outline-secondary")" @onclick='() => ViewMode = "week"'>@L["Calendar_Week"]</button>
+            <button type="button" class="btn btn-sm @(ViewMode == "month" ? "btn-primary" : "btn-outline-secondary")" @onclick='() => ViewMode = "month"'>@L["Calendar_Month"]</button>
+        </div>
+        <div class="calendar-nav">
+            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="PreviousWeek"><i class="bi bi-chevron-left"></i></button>
+            <span class="calendar-range">@WeekStart.ToString("d MMM") — @WeekStart.AddDays(6).ToString("d MMM yyyy")</span>
+            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="NextWeek"><i class="bi bi-chevron-right"></i></button>
+        </div>
+    </div>
+</div>
+
+<div class="calendar-week-grid">
+    <div class="calendar-grid-header">
+        <div class="calendar-time-gutter"></div>
+        @for (var d = 0; d < 7; d++)
+        {
+            var date = WeekStart.AddDays(d);
+            <div class="calendar-day-header @(date.Date == DateTime.Today ? "today" : "")">
+                <span class="calendar-day-name">@date.ToString("ddd")</span>
+                <span class="calendar-day-num">@date.Day</span>
+            </div>
+        }
+    </div>
+    <div class="calendar-grid-body">
+        @foreach (var hour in Hours)
+        {
+            <div class="calendar-row">
+                <div class="calendar-time-label">@hour:00</div>
+                @for (var d = 0; d < 7; d++)
+                {
+                    var date = WeekStart.AddDays(d);
+                    var events = GetEvents(date, hour);
+                    <div class="calendar-cell">
+                        @foreach (var evt in events)
+                        {
+                            <div class="calendar-event calendar-event--@evt.Color" style="height: @(evt.Duration * 48)px">
+                                <strong>@evt.Title</strong>
+                                <span>@evt.Student</span>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+<button type="button" class="calendar-fab btn btn-primary" aria-label="@L["Calendar_AddSession"]">
+    <i class="bi bi-plus-lg"></i>
+</button>
+
+@code {
+    private string ViewMode { get; set; } = "week";
+    private DateTime WeekStart { get; set; }
+
+    private static readonly int[] Hours = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
+
+    private record CalendarEvent(string Title, string Student, string Color, int Duration);
+
+    private readonly List<(DateTime Date, int Hour, CalendarEvent Event)> _events =
+    [
+        (DateTime.Today, 10, new("Math", "Emma J.", "purple", 2)),
+        (DateTime.Today.AddDays(1), 14, new("Physique", "Liam A.", "blue", 1)),
+        (DateTime.Today.AddDays(2), 9, new("Chimie", "Sophie M.", "amber", 2)),
+        (DateTime.Today.AddDays(3), 16, new("Math", "Emma J.", "purple", 1)),
+    ];
+
+    protected override void OnInitialized()
+    {
+        var today = DateTime.Today;
+        WeekStart = today.AddDays(-(int)today.DayOfWeek + (int)DayOfWeek.Monday);
+        if (today.DayOfWeek == DayOfWeek.Sunday)
+            WeekStart = WeekStart.AddDays(-7);
+    }
+
+    private IEnumerable<CalendarEvent> GetEvents(DateTime date, int hour) =>
+        _events.Where(e => e.Date.Date == date.Date && e.Hour == hour).Select(e => e.Event);
+
+    private void PreviousWeek() => WeekStart = WeekStart.AddDays(-7);
+    private void NextWeek() => WeekStart = WeekStart.AddDays(7);
+}

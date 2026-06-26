@@ -1,0 +1,102 @@
+@page "/student/dashboard"
+@layout StudentLayout
+@inject IStringLocalizer<SharedResources> L
+
+<PageTitle>@L["PageTitle_StudentDashboard"]</PageTitle>
+
+<div class="dashboard-header">
+    <h1 class="dashboard-greeting">@L["StudentDashboard_Welcome", "Emma"]</h1>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="section-card dashboard-action-card h-100">
+            <div class="dashboard-action-icon dashboard-action-icon--primary">
+                <i class="bi bi-camera-video"></i>
+            </div>
+            <h2>@L["Student_NextClass"]</h2>
+            <p class="dashboard-action-highlight">@L["Student_NextClassTime"]</p>
+            <p class="text-muted">@L["Subject_Math"] — John Smith</p>
+            <button type="button" class="btn btn-primary w-100">@L["Student_JoinClass"]</button>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="section-card dashboard-action-card h-100">
+            <div class="dashboard-action-icon dashboard-action-icon--warning">
+                <i class="bi bi-journal-text"></i>
+            </div>
+            <h2>@L["Student_HomeworkDue"]</h2>
+            <p class="dashboard-action-highlight">@L["Student_HomeworkCount", 2]</p>
+            <a href="student/homework" class="btn btn-outline-primary w-100">@L["Student_ViewHomework"]</a>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="section-card dashboard-action-card h-100">
+            <div class="dashboard-action-icon dashboard-action-icon--success">
+                <i class="bi bi-file-earmark-bar-graph"></i>
+            </div>
+            <h2>@L["Student_LastReport"]</h2>
+            <p class="dashboard-action-highlight">@L["Student_LastReportGrade"]</p>
+            <a href="student/reports" class="btn btn-outline-primary w-100">@L["Button_ViewReport"]</a>
+        </div>
+    </div>
+</div>
+
+<div class="row g-4">
+    <div class="col-lg-7">
+        <div class="section-card">
+            <div class="section-card-header">
+                <h2>@L["Student_WeeklyClasses"]</h2>
+            </div>
+            <ul class="lesson-list">
+                @foreach (var lesson in WeeklyClasses)
+                {
+                    <li class="lesson-list-item">
+                        <div class="lesson-info">
+                            <strong>@lesson.Subject</strong>
+                            <span>@lesson.Date</span>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-primary">@L["Student_JoinClass"]</button>
+                    </li>
+                }
+            </ul>
+        </div>
+    </div>
+    <div class="col-lg-5">
+        <div class="section-card">
+            <div class="section-card-header">
+                <h2>@L["Student_RecentDocuments"]</h2>
+            </div>
+            <ul class="document-list">
+                @foreach (var doc in Documents)
+                {
+                    <li class="document-list-item">
+                        <i class="bi bi-file-earmark-pdf document-icon"></i>
+                        <span>@doc</span>
+                        <button type="button" class="btn btn-sm btn-link" aria-label="@L["Button_Download"]">
+                            <i class="bi bi-download"></i>
+                        </button>
+                    </li>
+                }
+            </ul>
+        </div>
+    </div>
+</div>
+
+@code {
+    private record WeeklyClass(string Subject, string Date);
+
+    private readonly List<WeeklyClass> WeeklyClasses =
+    [
+        new("Mathématiques", "Lun. 10:00"),
+        new("Physique", "Mer. 14:00"),
+        new("Chimie", "Ven. 16:30"),
+    ];
+
+    private readonly List<string> Documents =
+    [
+        "Exercices_Algebre.pdf",
+        "Resume_Chapitre5.pdf",
+        "Devoir_Physique.pdf",
+    ];
+}

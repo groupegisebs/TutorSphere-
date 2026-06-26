@@ -1,0 +1,119 @@
+@page "/tutor/{Slug}/public"
+@layout PublicLayout
+@inject IStringLocalizer<SharedResources> L
+
+<PageTitle>@L["PageTitle_PublicProfile", DisplayName]</PageTitle>
+
+<div class="public-profile">
+    <div class="public-profile-banner">
+        <div class="public-profile-banner-overlay"></div>
+    </div>
+
+    <div class="container public-profile-content">
+        <div class="public-profile-header">
+            <div class="public-profile-avatar">JS</div>
+            <div class="public-profile-info">
+                <h1>@DisplayName</h1>
+                <p class="public-profile-title">@L["PublicProfile_Title", L["Subject_Math"].Value]</p>
+                <p class="public-profile-location"><i class="bi bi-geo-alt"></i> Montréal, QC</p>
+            </div>
+            <div class="public-profile-actions">
+                <button type="button" class="btn btn-outline-primary">@L["PublicProfile_Contact"]</button>
+                <button type="button" class="btn btn-primary">@L["PublicProfile_Subscribe"]</button>
+            </div>
+        </div>
+
+        <div class="public-profile-stats">
+            <div class="profile-stat"><strong>4,9/5</strong><span>@L["PublicProfile_Rating"]</span></div>
+            <div class="profile-stat"><strong>120+</strong><span>@L["PublicProfile_Students"]</span></div>
+            <div class="profile-stat"><strong>8 @L["PublicProfile_Years"]</strong><span>@L["PublicProfile_Experience"]</span></div>
+            <div class="profile-stat"><strong>98%</strong><span>@L["PublicProfile_SuccessRate"]</span></div>
+        </div>
+
+        <ul class="nav nav-tabs public-profile-tabs">
+            @foreach (var tab in _tabs)
+            {
+                <li class="nav-item">
+                    <button type="button" class="nav-link @(ActiveTab == tab ? "active" : "")" @onclick="() => ActiveTab = tab">@tab</button>
+                </li>
+            }
+        </ul>
+
+        <div class="public-profile-tab-content">
+            @if (ActiveTab == _tabs[0])
+            {
+                <section class="section-card">
+                    <h2>@L["PublicProfile_AboutMe"]</h2>
+                    <p>@L["PublicProfile_AboutText"]</p>
+                </section>
+                <section class="section-card mt-4">
+                    <h2>@L["PublicProfile_SubjectsTaught"]</h2>
+                    <div class="tutor-tags">
+                        @foreach (var subject in _subjects)
+                        {
+                            <span class="badge">@subject</span>
+                        }
+                    </div>
+                </section>
+            }
+            else if (ActiveTab == _tabs[2])
+            {
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="offering-card">
+                            <span class="offering-subject">@L["Subject_Math"]</span>
+                            <h3>@L["CreateOffer_TitlePlaceholder"]</h3>
+                            <p class="offering-price">45,00 $</p>
+                        </div>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <EmptyState Icon="bi-inbox" Title="@L["PublicProfile_ComingSoon"]" Description="@L["PublicProfile_ComingSoonDesc"]" />
+            }
+        </div>
+
+        <div class="public-profile-badges">
+            @foreach (var badge in _badges)
+            {
+                <div class="profile-badge">
+                    <i class="bi @badge.Icon"></i>
+                    <span>@badge.Label</span>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Slug { get; set; } = "";
+
+    private string ActiveTab { get; set; } = "";
+    private List<string> _tabs = [];
+    private readonly List<string> _subjects = ["Mathématiques", "Algèbre", "Calcul"];
+    private List<(string Icon, string Label)> _badges = [];
+
+    private string DisplayName => string.IsNullOrEmpty(Slug) || Slug.Equals("demo", StringComparison.OrdinalIgnoreCase)
+        ? "John Smith"
+        : Slug.Replace("-", " ");
+
+    protected override void OnInitialized()
+    {
+        _tabs =
+        [
+            L["PublicProfile_Tab_About"].Value,
+            L["PublicProfile_Tab_Subjects"].Value,
+            L["PublicProfile_Tab_Offers"].Value,
+            L["PublicProfile_Tab_Reviews"].Value,
+        ];
+        ActiveTab = _tabs[0];
+        _badges =
+        [
+            ("bi-mortarboard", L["PublicProfile_Badge_Diploma"].Value),
+            ("bi-briefcase", L["PublicProfile_Badge_Experience"].Value),
+            ("bi-lightbulb", L["PublicProfile_Badge_Methods"].Value),
+            ("bi-trophy", L["PublicProfile_Badge_Results"].Value),
+        ];
+    }
+}

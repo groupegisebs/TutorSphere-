@@ -1,46 +1,103 @@
-@page "/parent"
 @page "/parent/dashboard"
+@page "/parent"
+@layout ParentLayout
 @inject IStringLocalizer<SharedResources> L
 
 <PageTitle>@L["PageTitle_ParentDashboard"]</PageTitle>
 
-<PageHeader Title="@L["Parent_Title"]" Subtitle="@L["Parent_Subtitle"]" />
+<div class="dashboard-header">
+    <h1 class="dashboard-greeting">@L["ParentDashboard_Welcome", "Sarah"]</h1>
+</div>
 
-<div class="row g-3 mb-4">
-    <div class="col-sm-6 col-xl-3">
-        <StatCard Label="@L["Nav_MyChildren"]" Value="0" Icon="bi-people-fill" Variant="students" />
+<section class="section-card mb-4">
+    <h2>@L["Parent_MyChildren_Title"]</h2>
+    <div class="children-list">
+        @foreach (var child in Children)
+        {
+            <div class="child-card @(child.Active ? "active" : "")">
+                <div class="child-avatar">@child.Initials</div>
+                <span>@child.Name</span>
+            </div>
+        }
     </div>
-    <div class="col-sm-6 col-xl-3">
-        <StatCard Label="@L["Nav_MySubscriptions"]" Value="0" Icon="bi-arrow-repeat" Variant="subscriptions" />
+</section>
+
+<div class="row g-4 mb-4">
+    <div class="col-lg-7">
+        <div class="section-card h-100">
+            <div class="section-card-header">
+                <h2>@L["Stat_UpcomingLessons"]</h2>
+            </div>
+            <ul class="lesson-list">
+                @foreach (var lesson in UpcomingLessons)
+                {
+                    <li class="lesson-list-item">
+                        <div class="lesson-avatar">@lesson.Initials</div>
+                        <div class="lesson-info">
+                            <strong>@lesson.Child</strong>
+                            <span>@lesson.Subject — @lesson.Tutor</span>
+                        </div>
+                        <span class="lesson-time">@lesson.Time</span>
+                    </li>
+                }
+            </ul>
+        </div>
     </div>
-    <div class="col-sm-6 col-xl-3">
-        <StatCard Label="@L["Stat_UpcomingLessons"]" Value="0" Icon="bi-calendar-event" Variant="lessons" />
-    </div>
-    <div class="col-sm-6 col-xl-3">
-        <StatCard Label="@L["Stat_PendingPayments"]" Value="0" Icon="bi-wallet2" Variant="payments" />
+    <div class="col-lg-5">
+        <div class="section-card subscription-card h-100">
+            <h2>@L["Parent_ActiveSubscription"]</h2>
+            <p class="subscription-plan">@L["Parent_SubscriptionPlan"]</p>
+            <p class="subscription-detail">@L["Parent_SubscriptionDetail", "John Smith", "45 $"]</p>
+            <button type="button" class="btn btn-outline-primary">@L["Parent_ManageSubscription"]</button>
+        </div>
     </div>
 </div>
 
-<div class="row g-4">
+<div class="row g-3">
     <div class="col-md-4">
-        <div class="feature-card">
-            <div class="feature-icon feature-icon--indigo"><i class="bi bi-people-fill"></i></div>
-            <h4>@L["Parent_MyChildren_Title"]</h4>
-            <p>@L["Parent_MyChildren_Description"]</p>
+        <div class="section-card">
+            <h2>@L["Parent_LastReport"]</h2>
+            <div class="report-summary">
+                <div class="star-rating star-rating--readonly">
+                    @for (var i = 0; i < 5; i++)
+                    {
+                        <i class="bi bi-star-fill active"></i>
+                    }
+                </div>
+                <p>@L["Parent_LastReportText"]</p>
+                <a href="parent/reports" class="btn btn-sm btn-link">@L["Button_ViewReport"]</a>
+            </div>
         </div>
     </div>
     <div class="col-md-4">
-        <div class="feature-card">
-            <div class="feature-icon feature-icon--cyan"><i class="bi bi-credit-card-2-front"></i></div>
-            <h4>@L["Parent_Subscriptions_Title"]</h4>
-            <p>@L["Parent_Subscriptions_Description"]</p>
+        <div class="section-card">
+            <h2>@L["Parent_RecentPayment"]</h2>
+            <p class="payment-amount">180,00 $</p>
+            <p class="text-muted small">@DateTime.Today.AddDays(-5).ToString("d MMMM yyyy")</p>
         </div>
     </div>
     <div class="col-md-4">
-        <div class="feature-card">
-            <div class="feature-icon feature-icon--amber"><i class="bi bi-file-earmark-bar-graph"></i></div>
-            <h4>@L["Parent_Reports_Title"]</h4>
-            <p>@L["Parent_Reports_Description"]</p>
+        <div class="section-card">
+            <h2>@L["Nav_Messages"]</h2>
+            <p>@L["Parent_UnreadMessages", 2]</p>
+            <a href="parent/messages" class="btn btn-sm btn-link">@L["Button_ViewAll"]</a>
         </div>
     </div>
 </div>
+
+@code {
+    private record ChildItem(string Name, string Initials, bool Active);
+    private record ParentLesson(string Child, string Subject, string Tutor, string Time, string Initials);
+
+    private readonly List<ChildItem> Children =
+    [
+        new("Emma Johnson", "EJ", true),
+        new("Liam Anderson", "LA", false),
+    ];
+
+    private readonly List<ParentLesson> UpcomingLessons =
+    [
+        new("Emma Johnson", "Mathématiques", "John Smith", "Aujourd'hui 10:00", "EJ"),
+        new("Liam Anderson", "Français", "Marie Dubois", "Demain 15:00", "LA"),
+    ];
+}
