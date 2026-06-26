@@ -1,0 +1,71 @@
+@inject IStringLocalizer<SharedResources> L
+
+<section class="lp-benefits lp-reveal" id="benefits">
+    <div class="lp-container lp-benefits-inner">
+        <div class="lp-benefits-copy">
+            <h2>@L["Benefits_Title"]</h2>
+            <p>@L["Benefits_Lead"]</p>
+            <a href="#features" class="lp-benefits-link">
+                @L["Benefits_Link"] <i class="bi bi-arrow-right" aria-hidden="true"></i>
+            </a>
+        </div>
+
+        <div class="lp-benefits-cards-wrap">
+            <div class="lp-benefits-cards" id="benefitsCarousel">
+                @foreach (var card in _cards)
+                {
+                    <article class="lp-benefit-card">
+                        <div class="lp-benefit-card-image">
+                            <img src="@card.Image" alt="" loading="lazy" />
+                        </div>
+                        <h3>@L[card.TitleKey]</h3>
+                    </article>
+                }
+            </div>
+            <div class="lp-benefits-nav" aria-label="Navigation des avantages">
+                <button type="button" class="lp-benefits-nav-btn" @onclick="ScrollPrev" aria-label="Précédent">
+                    <i class="bi bi-chevron-left" aria-hidden="true"></i>
+                </button>
+                <button type="button" class="lp-benefits-nav-btn" @onclick="ScrollNext" aria-label="Suivant">
+                    <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                </button>
+            </div>
+        </div>
+
+        <aside class="lp-benefits-security">
+            <div class="lp-benefits-security-icon" aria-hidden="true">
+                <i class="bi bi-shield-fill-check"></i>
+            </div>
+            <h3>@L["Benefits_Security_Title"]</h3>
+            <p>@L["Benefits_Security_Desc"]</p>
+        </aside>
+    </div>
+</section>
+
+<section class="lp-resources-anchor" id="resources" aria-hidden="true"></section>
+<section class="lp-about-anchor" id="about" aria-hidden="true"></section>
+
+@code {
+    private readonly record struct BenefitCard(string TitleKey, string Image);
+
+    private readonly BenefitCard[] _cards =
+    [
+        new("Benefits_Card_Interactive", "images/landing/benefit-interactive-learning.png"),
+        new("Benefits_Card_Teachers", "images/landing/benefit-qualified-teachers.png"),
+        new("Benefits_Card_Accessible", "images/landing/benefit-accessible-everywhere.png"),
+    ];
+
+    private async Task ScrollPrev() => await ScrollCarousel(-1);
+    private async Task ScrollNext() => await ScrollCarousel(1);
+
+    private async Task ScrollCarousel(int direction)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("landingScrollCarousel", "benefitsCarousel", direction);
+        }
+        catch { /* prerender */ }
+    }
+
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+}

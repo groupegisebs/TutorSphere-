@@ -5,6 +5,9 @@
         @foreach (var stat in _stats)
         {
             <div class="lp-stats-item">
+                <span class="lp-stats-icon @stat.IconClass" aria-hidden="true">
+                    <i class="bi @stat.Icon"></i>
+                </span>
                 <span class="lp-stats-value">@L[stat.ValueKey]</span>
                 <span class="lp-stats-label">@L[stat.LabelKey]</span>
             </div>
@@ -13,13 +16,13 @@
 </section>
 
 @code {
-    private readonly record struct StatItem(string ValueKey, string LabelKey);
+    private readonly record struct StatItem(string ValueKey, string LabelKey, string Icon, string IconClass);
 
     private readonly StatItem[] _stats =
     [
-        new("Stats_ActiveStudents_Value", "Stats_ActiveStudents"),
-        new("Stats_OnlineCourses_Value", "Stats_OnlineCourses"),
-        new("Stats_Satisfaction_Value", "Stats_Satisfaction"),
-        new("Stats_Rating_Value", "Stat_Rating"),
+        new("Stats_ActiveStudents_Value", "Stats_ActiveStudents", "bi-people-fill", "lp-stats-icon--violet"),
+        new("Stats_OnlineCourses_Value", "Stats_OnlineCourses", "bi-journal-richtext", "lp-stats-icon--blue"),
+        new("Stats_Satisfaction_Value", "Stats_Satisfaction", "bi-emoji-smile-fill", "lp-stats-icon--green"),
+        new("Stats_Rating_Value", "Stat_Rating", "bi-star-fill", "lp-stats-icon--amber"),
     ];
 }

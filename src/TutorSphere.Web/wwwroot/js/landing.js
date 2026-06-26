@@ -42,6 +42,15 @@
         });
     }
 
+    window.landingScrollCarousel = function (elementId, direction) {
+        const el = document.getElementById(elementId);
+        if (!el) return;
+        const card = el.querySelector('.lp-benefit-card');
+        const gap = 16;
+        const amount = card ? card.offsetWidth + gap : 320;
+        el.scrollBy({ left: direction * amount, behavior: 'smooth' });
+    };
+
     // Safe to call multiple times — Blazor may render .lp-reveal nodes after DOMContentLoaded.
     window.landingInit = function () {
         document.documentElement.style.scrollBehavior = 'smooth';

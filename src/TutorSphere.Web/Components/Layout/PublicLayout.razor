@@ -1,5 +1,6 @@
 @inherits LayoutComponentBase
 @inject IStringLocalizer<SharedResources> L
+@inject NavigationManager Nav
 
 <div class="public-layout">
     <header class="public-nav">
@@ -10,10 +11,16 @@
             </a>
 
             <nav class="public-nav-links" aria-label="Navigation principale">
-                <a href="/" class="public-nav-link">@L["Nav_Home"]</a>
-                <a href="#features" class="public-nav-link">@L["Nav_Features"]</a>
-                <a href="#platform" class="public-nav-link">@L["Nav_ForWho"]</a>
-                <a href="#resources" class="public-nav-link">@L["Nav_Resources"]</a>
+                <a href="/" class="public-nav-link @(_isHome ? "public-nav-link--active" : "")">@L["Nav_Home"]</a>
+                <a href="#features" class="public-nav-link">
+                    @L["Nav_Features"] <i class="bi bi-chevron-down public-nav-chevron" aria-hidden="true"></i>
+                </a>
+                <a href="#benefits" class="public-nav-link">
+                    @L["Nav_ForWho"] <i class="bi bi-chevron-down public-nav-chevron" aria-hidden="true"></i>
+                </a>
+                <a href="#resources" class="public-nav-link">
+                    @L["Nav_Resources"] <i class="bi bi-chevron-down public-nav-chevron" aria-hidden="true"></i>
+                </a>
                 <a href="#about" class="public-nav-link">@L["Nav_About"]</a>
             </nav>
 
@@ -29,3 +36,13 @@
         @Body
     </main>
 </div>
+
+@code {
+    private bool _isHome;
+
+    protected override void OnInitialized()
+    {
+        var path = Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0];
+        _isHome = string.IsNullOrEmpty(path);
+    }
+}
