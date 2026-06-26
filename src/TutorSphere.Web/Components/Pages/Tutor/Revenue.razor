@@ -2,6 +2,8 @@
 @layout TutorLayout
 @rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
+@inject ApiClient Api
+@inject AuthService AuthSvc
 
 <PageTitle>Revenus – TutorSphere</PageTitle>
 
@@ -27,28 +29,33 @@
 <div class="row g-3 mb-4">
     <div class="col-6 col-lg-3">
         <div class="ts-kpi-card ts-kpi-card--success">
-            <span class="ts-kpi-val">2 450 $</span>
+            @if (_statsLoading)
+            {
+                <span class="ts-kpi-val"><span class="spinner-border spinner-border-sm"></span></span>
+            }
+            else
+            {
+                <span class="ts-kpi-val">@_monthlyRevenue.ToString("N0") $</span>
+            }
             <span class="ts-kpi-label">Encaissé @PeriodLabel</span>
-            <span class="ts-kpi-trend text-success"><i class="bi bi-arrow-up-short"></i>+12%</span>
         </div>
     </div>
     <div class="col-6 col-lg-3">
         <div class="ts-kpi-card">
-            <span class="ts-kpi-val">29 400 $</span>
-            <span class="ts-kpi-label">Revenus annuels</span>
-            <span class="ts-kpi-trend text-success"><i class="bi bi-arrow-up-short"></i>+23%</span>
+            <span class="ts-kpi-val">@_activeSubscriptions</span>
+            <span class="ts-kpi-label">Abonnements actifs</span>
         </div>
     </div>
     <div class="col-6 col-lg-3">
         <div class="ts-kpi-card ts-kpi-card--warning">
-            <span class="ts-kpi-val">260 $</span>
-            <span class="ts-kpi-label">En attente</span>
+            <span class="ts-kpi-val">@_pendingPayments</span>
+            <span class="ts-kpi-label">Paiements en attente</span>
         </div>
     </div>
     <div class="col-6 col-lg-3">
         <div class="ts-kpi-card">
-            <span class="ts-kpi-val">204 $</span>
-            <span class="ts-kpi-label">Revenu / élève moyen</span>
+            <span class="ts-kpi-val">@_activeStudents</span>
+            <span class="ts-kpi-label">Élèves actifs</span>
         </div>
     </div>
 </div>
@@ -159,6 +166,35 @@
 @code {
     private string _period = "month";
     private string PeriodLabel => _period switch { "week"=>"cette semaine","month"=>"ce mois","quarter"=>"ce trimestre","year"=>"cette année",_=>"" };
+
+    private bool _statsLoading = true;
+    private decimal _monthlyRevenue = 2450m;
+    private int _activeStudents;
+    private int _activeSubscriptions;
+    private int _upcomingLessons;
+    private int _pendingPayments;
+
+    private record DashboardDto(
+        decimal MonthlyRevenue, int ActiveStudents,
+        int ActiveSubscriptions, int UpcomingLessons, int PendingPayments);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var tenantId = AuthSvc.TenantId;
+        if (tenantId is not null)
+        {
+            var stats = await Api.GetAsync<DashboardDto>($"api/tenants/{tenantId}/dashboard");
+            if (stats is not null)
+            {
+                _monthlyRevenue      = stats.MonthlyRevenue;
+                _activeStudents      = stats.ActiveStudents;
+                _activeSubscriptions = stats.ActiveSubscriptions;
+                _upcomingLessons     = stats.UpcomingLessons;
+                _pendingPayments     = stats.PendingPayments;
+            }
+        }
+        _statsLoading = false;
+    }
 
     private static readonly (double X, double Y)[] _chartPoints =
         [(40,120),(100,95),(160,78),(220,85),(280,60),(340,45),(400,52),(460,30),(520,38)];
