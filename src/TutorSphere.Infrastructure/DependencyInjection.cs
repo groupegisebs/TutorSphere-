@@ -95,6 +95,8 @@ public static class DependencyInjection
         }
 
         await SeedPublicTutorsAsync(db);
+        await SeedDemoAccountsAsync(db, userManager);
+        await EnsureExistingParentProfilesAsync(db, userManager);
     }
 
     private static async Task SeedPublicTutorsAsync(ApplicationDbContext db)
@@ -200,5 +202,154 @@ public static class DependencyInjection
 
         db.TenantsSet.AddRange(tutors);
         await db.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Comptes démo pour tester les portails parent / élève / tuteur.
+    /// Mot de passe commun : Demo123456!
+    /// </summary>
+    private static async Task SeedDemoAccountsAsync(ApplicationDbContext db, UserManager<ApplicationUser> userManager)
+    {
+        const string demoPassword = "Demo123456!";
+        const string parentEmail = "sarah.anderson@demo.tutorsphere.com";
+        const string tutorEmail = "marie.tremblay@demo.tutorsphere.com";
+        const string emmaEmail = "emma.johnson@demo.tutorsphere.com";
+        const string lucasEmail = "lucas.anderson@demo.tutorsphere.com";
+
+        if (await userManager.FindByEmailAsync(parentEmail) is not null)
+            return;
+
+        var tenant = db.TenantsSet.FirstOrDefault(t => t.Slug == "marie-maths")
+            ?? db.TenantsSet.FirstOrDefault();
+        if (tenant is null)
+            return;
+
+        // ── Tuteur ──
+        var tutorUser = new ApplicationUser
+        {
+            UserName = tutorEmail,
+            Email = tutorEmail,
+            FirstName = "Marie",
+            LastName = "Tremblay",
+            EmailConfirmed = true,
+            TenantId = tenant.Id
+        };
+        if ((await userManager.CreateAsync(tutorUser, demoPassword)).Succeeded)
+            await userManager.AddToRoleAsync(tutorUser, UserRoles.Tutor);
+
+        // ── Parent Sarah Anderson ──
+        var parentUser = new ApplicationUser
+        {
+            UserName = parentEmail,
+            Email = parentEmail,
+            FirstName = "Sarah",
+            LastName = "Anderson",
+            EmailConfirmed = true,
+            TenantId = tenant.Id
+        };
+        if (!(await userManager.CreateAsync(parentUser, demoPassword)).Succeeded)
+            return;
+
+        await userManager.AddToRoleAsync(parentUser, UserRoles.Parent);
+
+        var parentProfile = new ParentProfile
+        {
+            TenantId = tenant.Id,
+            UserId = parentUser.Id,
+            FirstName = "Sarah",
+            LastName = "Anderson",
+            Email = parentEmail,
+            Phone = "+1 514-555-0100",
+            City = "Montréal"
+        };
+        db.ParentProfilesSet.Add(parentProfile);
+        await db.SaveChangesAsync();
+
+        // ── Élèves Emma (13 ans) et Lucas (15 ans, autonome) ──
+        var emmaUser = new ApplicationUser
+        {
+            UserName = emmaEmail,
+            Email = emmaEmail,
+            FirstName = "Emma",
+            LastName = "Johnson",
+            EmailConfirmed = true,
+            TenantId = tenant.Id
+        };
+        if ((await userManager.CreateAsync(emmaUser, demoPassword)).Succeeded)
+            await userManager.AddToRoleAsync(emmaUser, UserRoles.Student);
+
+        var lucasUser = new ApplicationUser
+        {
+            UserName = lucasEmail,
+            Email = lucasEmail,
+            FirstName = "Lucas",
+            LastName = "Anderson",
+            EmailConfirmed = true,
+            TenantId = tenant.Id
+        };
+        if ((await userManager.CreateAsync(lucasUser, demoPassword)).Succeeded)
+            await userManager.AddToRoleAsync(lucasUser, UserRoles.Student);
+
+        db.StudentsSet.AddRange(
+            new Student
+            {
+                TenantId = tenant.Id,
+                ParentProfileId = parentProfile.Id,
+                UserId = emmaUser.Id,
+                FirstName = "Emma",
+                LastName = "Johnson",
+                Email = emmaEmail,
+                DateOfBirth = new DateTime(2012, 3, 12, 0, 0, 0, DateTimeKind.Utc),
+                SchoolLevel = "Secondaire 2",
+                SchoolName = "Collège Jean-de-Brébeuf",
+                Subjects = "Mathématiques,Français,Sciences",
+                IsActive = true
+            },
+            new Student
+            {
+                TenantId = tenant.Id,
+                ParentProfileId = parentProfile.Id,
+                UserId = lucasUser.Id,
+                FirstName = "Lucas",
+                LastName = "Anderson",
+                Email = lucasEmail,
+                DateOfBirth = new DateTime(2010, 8, 5, 0, 0, 0, DateTimeKind.Utc),
+                SchoolLevel = "Secondaire 4",
+                SchoolName = "Collège Jean-de-Brébeuf",
+                Subjects = "Physique,Chimie,Anglais",
+                IsActive = true
+            });
+
+        await db.SaveChangesAsync();
+    }
+
+    /// <summary>Rattache un profil parent aux comptes Parent déjà inscrits sans profil.</summary>
+    private static async Task EnsureExistingParentProfilesAsync(ApplicationDbContext db, UserManager<ApplicationUser> userManager)
+    {
+        var tenant = db.TenantsSet.FirstOrDefault(t => t.Slug == "marie-maths")
+            ?? db.TenantsSet.FirstOrDefault();
+        if (tenant is null)
+            return;
+
+        var parentUsers = await userManager.GetUsersInRoleAsync(UserRoles.Parent);
+        var added = false;
+        foreach (var user in parentUsers)
+        {
+            if (db.ParentProfilesSet.Any(p => p.UserId == user.Id))
+                continue;
+
+            db.ParentProfilesSet.Add(new ParentProfile
+            {
+                TenantId = tenant.Id,
+                UserId = user.Id,
+                FirstName = user.FirstName,
+                LastName = user.LastName,
+                Email = user.Email ?? user.UserName ?? string.Empty
+            });
+            added = true;
+        }
+
+        if (added)
+            await db.SaveChangesAsync();
     }
 }

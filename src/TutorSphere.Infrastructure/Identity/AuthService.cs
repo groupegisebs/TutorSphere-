@@ -58,6 +58,9 @@ public class AuthService : IAuthService
 
         await _userManager.AddToRoleAsync(user, role);
 
+        if (role == UserRoles.Parent)
+            await EnsureParentProfileAsync(user, ct);
+
         await _email.SendWelcomeAsync(user.Email!, user.FirstName, ct);
 
         var confirmToken = await _userManager.GenerateEmailConfirmationTokenAsync(user);
@@ -196,4 +199,24 @@ public class AuthService : IAuthService
     private static string NormalizeRole(string role) =>
         UserRoles.All.FirstOrDefault(r => r.Equals(role, StringComparison.OrdinalIgnoreCase))
         ?? UserRoles.Parent;
+
+    private async Task EnsureParentProfileAsync(ApplicationUser user, CancellationToken ct)
+    {
+        if (_db.ParentProfiles.Any(p => p.UserId == user.Id))
+            return;
+
+        var tenantId = user.TenantId ?? _db.Tenants.Select(t => t.Id).FirstOrDefault();
+        if (tenantId == Guid.Empty)
+            return;
+
+        _db.Add(new ParentProfile
+        {
+            TenantId = tenantId,
+            UserId = user.Id,
+            FirstName = user.FirstName,
+            LastName = user.LastName,
+            Email = user.Email ?? user.UserName ?? string.Empty
+        });
+        await _db.SaveChangesAsync(ct);
+    }
 }

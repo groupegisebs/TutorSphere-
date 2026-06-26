@@ -9,6 +9,7 @@ public interface IStudentService
 {
     Task<IReadOnlyList<StudentDto>> GetAllAsync(CancellationToken ct = default);
     Task<StudentDto?> GetByIdAsync(Guid id, CancellationToken ct = default);
+    Task<StudentDto?> GetByUserIdAsync(string userId, CancellationToken ct = default);
     Task<StudentDto> CreateAsync(CreateStudentRequest request, CancellationToken ct = default);
     Task<StudentDto> UpdateAsync(Guid id, UpdateStudentRequest request, CancellationToken ct = default);
     Task DeleteAsync(Guid id, CancellationToken ct = default);
@@ -39,6 +40,12 @@ public class StudentService : IStudentService
     public Task<StudentDto?> GetByIdAsync(Guid id, CancellationToken ct = default)
     {
         var student = _db.Students.FirstOrDefault(s => s.Id == id);
+        return Task.FromResult(student is null ? null : MapToDto(student));
+    }
+
+    public Task<StudentDto?> GetByUserIdAsync(string userId, CancellationToken ct = default)
+    {
+        var student = _db.Students.FirstOrDefault(s => s.UserId == userId);
         return Task.FromResult(student is null ? null : MapToDto(student));
     }
 
@@ -120,7 +127,10 @@ public class StudentService : IStudentService
         s.IsMinor,
         s.IsAutonomous,
         s.ParentProfileId,
-        null);
+        null,
+        s.SchoolLevel,
+        s.SchoolName,
+        ParseSubjects(s.Subjects));
 
     private static LessonDto MapLessonToDto(Lesson l) => new(
         l.Id,
@@ -135,4 +145,9 @@ public class StudentService : IStudentService
         l.SessionNotes,
         l.CreatedAt,
         l.UpdatedAt);
+
+    private static IReadOnlyList<string> ParseSubjects(string? subjects) =>
+        string.IsNullOrWhiteSpace(subjects)
+            ? []
+            : subjects.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 }

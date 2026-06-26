@@ -5,13 +5,7 @@
 
 <div class="top-row px-4 @(_showUserMenu ? "top-row--menu-open" : null)">
     <div class="top-row-actions ms-auto">
-        @if (_showSchoolLink)
-        {
-            <a href="tutor/school" class="topbar-school-link">
-                @L["Topbar_ViewMySchool"] <i class="bi bi-box-arrow-up-right ms-1" aria-hidden="true"></i>
-            </a>
-        }
-        <button type="button" class="topbar-notification ms-3" aria-label="@L["Nav_Notifications"]">
+        <button type="button" class="topbar-notification" aria-label="@L["Nav_Notifications"]">
             <i class="bi bi-bell" aria-hidden="true"></i>
             <span class="topbar-notification-badge">3</span>
         </button>
@@ -29,10 +23,10 @@
                         <span class="topbar-dropdown-email">@AuthSvc.UserEmail</span>
                     </div>
                     <div class="topbar-dropdown-divider"></div>
-                    <a class="topbar-dropdown-item" href="tutor/profile">
+                    <a class="topbar-dropdown-item" href="parent/profile" @onclick="CloseUserMenu">
                         <i class="bi bi-person me-2" aria-hidden="true"></i>@L["Nav_MyProfile"]
                     </a>
-                    <a class="topbar-dropdown-item" href="tutor/settings">
+                    <a class="topbar-dropdown-item" href="parent/settings" @onclick="CloseUserMenu">
                         <i class="bi bi-sliders me-2" aria-hidden="true"></i>@L["Nav_Settings"]
                     </a>
                     <div class="topbar-dropdown-divider"></div>
@@ -54,21 +48,8 @@
 @code {
     private bool _showUserMenu;
 
-    private string _displayName => AuthSvc.UserName ?? AuthSvc.UserEmail ?? "User";
+    private string _displayName => AuthSvc.UserName ?? AuthSvc.UserEmail ?? "Parent";
     private string _initials => GetInitials(_displayName);
-    private bool _showSchoolLink => AuthSvc.PrimaryRole is "Tutor" or "TeachingAssistant";
-    private string _profileHref => AuthSvc.PrimaryRole switch
-    {
-        "Parent" => "parent/profile",
-        "Student" => "student/settings",
-        _ => "tutor/profile"
-    };
-    private string _settingsHref => AuthSvc.PrimaryRole switch
-    {
-        "Parent" => "parent/settings",
-        "Student" => "student/settings",
-        _ => "tutor/settings"
-    };
 
     private void ToggleUserMenu() => _showUserMenu = !_showUserMenu;
     private void CloseUserMenu() => _showUserMenu = false;

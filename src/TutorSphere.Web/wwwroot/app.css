@@ -1896,6 +1896,11 @@ a:hover, .btn-link:hover {
     z-index: 10;
 }
 
+/* Elevate top bar above the full-screen backdrop when user menu is open */
+.top-row.top-row--menu-open {
+    z-index: 1060;
+}
+
 .top-row-actions {
     display: flex;
     align-items: center;
@@ -1984,6 +1989,16 @@ a:hover, .btn-link:hover {
 
 .sidebar-navy .navbar-toggler:not(:checked) ~ .nav-scrollable--navy { display: none; }
 .sidebar-navy .navbar-toggler:checked ~ .nav-scrollable--navy { display: flex; }
+
+/* Dashboard layouts: sidebar always expanded, no hamburger toggle */
+.dashboard-page .sidebar-navy .nav-scrollable--navy {
+    display: flex;
+    flex-direction: column;
+}
+
+.dashboard-page .sidebar-navy .navbar-toggler {
+    display: none;
+}
 
 .sidebar-navy { position: relative; }
 
@@ -2074,8 +2089,11 @@ a:hover, .btn-link:hover {
 }
 
 @media (max-width: 640.98px) {
-    .dashboard-page .nav-scrollable--navy { display: none; }
-    .dashboard-page .navbar-toggler:checked ~ .nav-scrollable--navy { display: flex; }
+    .dashboard-page .sidebar-navy .nav-scrollable--navy {
+        display: flex;
+        height: auto;
+        max-height: calc(100vh - 68px);
+    }
     .top-row {
         padding: 0 1rem;
     }

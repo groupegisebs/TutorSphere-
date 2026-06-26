@@ -10,7 +10,10 @@ public record StudentDto(
     bool IsMinor,
     bool IsAutonomous,
     Guid ParentProfileId,
-    string? ParentName);
+    string? ParentName,
+    string? SchoolLevel,
+    string? SchoolName,
+    IReadOnlyList<string> Subjects);
 
 public record CreateStudentRequest(
     string FirstName,

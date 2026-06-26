@@ -19,3 +19,12 @@ public record UpdateParentRequest(
     string LastName,
     string Email,
     string? Phone);
+
+public record ParentAddChildRequest(
+    string FirstName,
+    string LastName,
+    DateTime? DateOfBirth,
+    string? Email,
+    string? SchoolLevel,
+    string? SchoolName,
+    string? Subjects);

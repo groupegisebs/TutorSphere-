@@ -1,174 +1,335 @@
-@page "/parent/children"
-@layout ParentLayout
-@rendermode InteractiveServer
-@inject IStringLocalizer<SharedResources> L
-@inject ApiClient Api
-
-<PageTitle>Mes Enfants – TutorSphere</PageTitle>
-
-<div class="ts-page-header">
-    <div>
-        <h1><i class="bi bi-people-fill me-2"></i>Mes Enfants</h1>
-        <p class="ts-page-subtitle">Suivez la progression de vos enfants</p>
-    </div>
-</div>
-
-@if (_loading)
-{
-    <div class="d-flex align-items-center justify-content-center py-5">
-        <span class="spinner-border text-primary me-3" role="status"></span>
-        <span class="text-muted">Chargement…</span>
-    </div>
-}
-else
-{
-    @if (_children.All(c => c.IsAutonomous))
-    {
-        <div class="autonomous-notice mb-3">
-            <i class="bi bi-info-circle-fill"></i>
-            <span>Tous vos enfants ont atteint l'autonomie (14 ans et plus). Vous pouvez toujours consulter leur planning et les informations générales.</span>
-        </div>
-    }
-
-    <div class="children-grid">
-        @foreach (var child in _children)
-        {
-            <div class="child-card @(_active?.Id == child.Id ? "active" : "")" @onclick="() => _active = child">
-                <div class="child-card-header">
-                    <div class="ts-avatar ts-avatar-lg" style="background:@child.Color">@child.Initials</div>
-                    <div>
-                        <h3>
-                            @child.Name
-                            @if (child.Age.HasValue)
-                            {
-                                <span class="text-muted ms-2" style="font-size:0.85rem;font-weight:400">(@child.Age ans)</span>
-                            }
-                        </h3>
-                        <span class="text-muted">@(child.Level ?? "—") · @(child.School ?? "—")</span>
-                    </div>
-                    <span class="ts-badge @(child.IsActive ? "ts-badge-success" : "ts-badge-muted") ms-auto">
-                        @(child.IsActive ? "Actif" : "Inactif")
-                    </span>
-                </div>
-                @if (child.IsAutonomous)
-                {
-                    <div class="autonomous-notice">
-                        <i class="bi bi-info-circle-fill"></i>
-                        <span>Votre enfant a @child.Age ans ou plus. Conformément à notre politique de confidentialité, certaines informations (rapports détaillés, messages, devoirs) ne sont pas accessibles aux parents pour les élèves autonomes.</span>
-                    </div>
-                }
-                <div class="child-subjects">
-                    @foreach (var s in child.Subjects)
-                    {
-                        <span class="ts-badge ts-badge-neutral">@s</span>
-                    }
-                </div>
-            </div>
-        }
-        @if (_children.Count == 0)
-        {
-            <div class="text-center py-5 text-muted col-span-full">
-                <i class="bi bi-people fs-1 d-block mb-3 opacity-50"></i>
-                <p>Aucun enfant trouvé.</p>
-            </div>
-        }
-    </div>
-
-    @if (_active != null)
-    {
-        <div class="section-card mt-4">
-            <div class="section-card-header">
-                <h2>
-                    Détail — @_active.Name
-                    @if (_active.Age.HasValue)
-                    {
-                        <span class="text-muted ms-2" style="font-size:0.9rem;font-weight:400">(@_active.Age ans)</span>
-                    }
-                </h2>
-            </div>
-            @if (_active.IsAutonomous)
-            {
-                <div style="padding:1rem 1.5rem 0">
-                    <div class="autonomous-notice">
-                        <i class="bi bi-info-circle-fill"></i>
-                        <span>Votre enfant a @_active.Age ans ou plus. Conformément à notre politique de confidentialité, certaines informations (rapports détaillés, messages, devoirs) ne sont pas accessibles aux parents pour les élèves autonomes.</span>
-                    </div>
-                </div>
-            }
-            <div style="padding:1.5rem">
-                <div class="ts-form-grid">
-                    <div class="ts-form-row"><label>Nom</label><span>@_active.Name</span></div>
-                    <div class="ts-form-row"><label>Âge</label><span>@(_active.Age.HasValue ? $"{_active.Age} ans" : "—")</span></div>
-                    <div class="ts-form-row"><label>Niveau</label><span>@(_active.Level ?? "—")</span></div>
-                    <div class="ts-form-row"><label>École</label><span>@(_active.School ?? "—")</span></div>
-                    <div class="ts-form-row"><label>Matières</label><span>@(string.Join(", ", _active.Subjects))</span></div>
-                </div>
-            </div>
-        </div>
-    }
-}
-
-@code {
-    private bool _loading = true;
-    private ChildVM? _active;
-    private List<ChildVM> _children = [];
-
-    private static readonly string[] Colors = ["#7c3aed", "#0ea5e9", "#10b981", "#ec4899", "#f59e0b"];
-
-    protected override async Task OnInitializedAsync()
-    {
-        try
-        {
-            var students = await Api.GetAsync<List<StudentDto>>("api/students") ?? [];
-            _children = students.Select((s, i) =>
-            {
-                var name = $"{s.FirstName} {s.LastName}".Trim();
-                var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                var initials = parts.Length >= 2
-                    ? $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant()
-                    : name.Length > 0 ? name[..1].ToUpperInvariant() : "?";
-
-                int? age = s.DateOfBirth.HasValue
-                    ? (int)((DateTime.Today - s.DateOfBirth.Value).TotalDays / 365.25)
-                    : null;
-
-                return new ChildVM
-                {
-                    Id       = s.Id,
-                    Name     = name,
-                    Initials = initials,
-                    Color    = Colors[i % Colors.Length],
-                    IsActive = true,
-                    Level    = s.Level,
-                    School   = s.School,
-                    Subjects = s.Subjects ?? [],
-                    DateOfBirth = s.DateOfBirth
-                };
-            }).ToList();
-        }
-        catch { }
-        finally { _loading = false; }
-    }
-
-    private class ChildVM
-    {
-        public Guid    Id          { get; set; }
-        public string  Name        { get; set; } = "";
-        public string  Initials    { get; set; } = "";
-        public string  Color       { get; set; } = "#7c3aed";
-        public bool    IsActive    { get; set; }
-        public string? Level       { get; set; }
-        public string? School      { get; set; }
-        public List<string> Subjects { get; set; } = [];
-        public DateTime? DateOfBirth { get; set; }
-        public int? Age => DateOfBirth.HasValue
-            ? (int)((DateTime.Today - DateOfBirth.Value).TotalDays / 365.25)
-            : null;
-        public bool IsAutonomous => Age.HasValue && Age >= 14;
-    }
-
-    private record StudentDto(
-        Guid Id, string FirstName, string LastName,
-        DateTime? DateOfBirth, string? Level, string? School,
-        List<string>? Subjects);
-}
+@page "/parent/children"
+@layout ParentLayout
+@rendermode InteractiveServer
+@inject IStringLocalizer<SharedResources> L
+@inject ApiClient Api
+
+<PageTitle>Mes Enfants – TutorSphere</PageTitle>
+
+<div class="ts-page-header">
+    <div>
+        <h1><i class="bi bi-people-fill me-2"></i>Mes Enfants</h1>
+        <p class="ts-page-subtitle">Suivez la progression de vos enfants</p>
+    </div>
+    <button type="button" class="btn btn-primary" @onclick="OpenAddModal">
+        <i class="bi bi-plus-lg me-1"></i>Ajouter un enfant
+    </button>
+</div>
+
+@if (_loading)
+{
+    <div class="d-flex align-items-center justify-content-center py-5">
+        <span class="spinner-border text-primary me-3" role="status"></span>
+        <span class="text-muted">Chargement…</span>
+    </div>
+}
+else
+{
+    @if (_children.Count > 0 && _children.All(c => c.IsAutonomous))
+    {
+        <div class="autonomous-notice mb-3">
+            <i class="bi bi-info-circle-fill"></i>
+            <span>Tous vos enfants ont atteint l'autonomie (14 ans et plus). Vous pouvez toujours consulter leur planning et les informations générales.</span>
+        </div>
+    }
+
+    <div class="children-grid">
+        @foreach (var child in _children)
+        {
+            <div class="child-card @(_active?.Id == child.Id ? "active" : "")" @onclick="() => _active = child">
+                <div class="child-card-header">
+                    <div class="ts-avatar ts-avatar-lg" style="background:@child.Color">@child.Initials</div>
+                    <div>
+                        <h3>
+                            @child.Name
+                            @if (child.Age.HasValue)
+                            {
+                                <span class="text-muted ms-2" style="font-size:0.85rem;font-weight:400">(@child.Age ans)</span>
+                            }
+                        </h3>
+                        <span class="text-muted">@(child.Level ?? "—") · @(child.School ?? "—")</span>
+                    </div>
+                    <span class="ts-badge @(child.IsActive ? "ts-badge-success" : "ts-badge-muted") ms-auto">
+                        @(child.IsActive ? "Actif" : "Inactif")
+                    </span>
+                </div>
+                @if (child.IsAutonomous)
+                {
+                    <div class="autonomous-notice">
+                        <i class="bi bi-info-circle-fill"></i>
+                        <span>Votre enfant a @child.Age ans ou plus. Conformément à notre politique de confidentialité, certaines informations (rapports détaillés, messages, devoirs) ne sont pas accessibles aux parents pour les élèves autonomes.</span>
+                    </div>
+                }
+                <div class="child-subjects">
+                    @foreach (var s in child.Subjects)
+                    {
+                        <span class="ts-badge ts-badge-neutral">@s</span>
+                    }
+                </div>
+            </div>
+        }
+        @if (_children.Count == 0)
+        {
+            <div class="text-center py-5 text-muted col-span-full">
+                <i class="bi bi-people fs-1 d-block mb-3 opacity-50"></i>
+                <p class="mb-3">Aucun enfant enregistré.</p>
+                <button type="button" class="btn btn-outline-primary" @onclick="OpenAddModal">
+                    <i class="bi bi-plus-lg me-1"></i>Ajouter votre premier enfant
+                </button>
+            </div>
+        }
+    </div>
+
+    @if (_active != null)
+    {
+        <div class="section-card mt-4">
+            <div class="section-card-header">
+                <h2>
+                    Détail — @_active.Name
+                    @if (_active.Age.HasValue)
+                    {
+                        <span class="text-muted ms-2" style="font-size:0.9rem;font-weight:400">(@_active.Age ans)</span>
+                    }
+                </h2>
+            </div>
+            @if (_active.IsAutonomous)
+            {
+                <div style="padding:1rem 1.5rem 0">
+                    <div class="autonomous-notice">
+                        <i class="bi bi-info-circle-fill"></i>
+                        <span>Votre enfant a @_active.Age ans ou plus. Conformément à notre politique de confidentialité, certaines informations (rapports détaillés, messages, devoirs) ne sont pas accessibles aux parents pour les élèves autonomes.</span>
+                    </div>
+                </div>
+            }
+            <div style="padding:1.5rem">
+                <div class="ts-form-grid">
+                    <div class="ts-form-row"><label>Prénom</label><span>@_active.FirstName</span></div>
+                    <div class="ts-form-row"><label>Nom</label><span>@_active.LastName</span></div>
+                    <div class="ts-form-row"><label>Âge</label><span>@(_active.Age.HasValue ? $"{_active.Age} ans" : "—")</span></div>
+                    <div class="ts-form-row"><label>Niveau</label><span>@(_active.Level ?? "—")</span></div>
+                    <div class="ts-form-row"><label>École</label><span>@(_active.School ?? "—")</span></div>
+                    <div class="ts-form-row"><label>Matières</label><span>@(string.Join(", ", _active.Subjects))</span></div>
+                    @if (!string.IsNullOrWhiteSpace(_active.Email))
+                    {
+                        <div class="ts-form-row"><label>Courriel</label><span>@_active.Email</span></div>
+                    }
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@if (_showAddModal)
+{
+    <div class="ts-modal-backdrop" @onclick="CloseAddModal">
+        <div class="ts-modal ts-modal-lg" @onclick:stopPropagation="true">
+            <div class="ts-modal-header">
+                <h2><i class="bi bi-person-plus me-2"></i>Ajouter un enfant</h2>
+                <button type="button" class="ts-modal-close" @onclick="CloseAddModal"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <div class="ts-modal-body">
+                @if (!string.IsNullOrEmpty(_formError))
+                {
+                    <div class="alert alert-danger mb-3" role="alert">@_formError</div>
+                }
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Prénom *</label>
+                        <input class="form-control" @bind="_form.FirstName" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Nom *</label>
+                        <input class="form-control" @bind="_form.LastName" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Date de naissance *</label>
+                        <input type="date" class="form-control" @bind="_form.DateOfBirth" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Courriel (optionnel)</label>
+                        <input type="email" class="form-control" @bind="_form.Email" placeholder="enfant@exemple.com" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Niveau scolaire</label>
+                        <input class="form-control" @bind="_form.SchoolLevel" placeholder="Ex. Secondaire 3" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">École</label>
+                        <input class="form-control" @bind="_form.SchoolName" placeholder="Nom de l'établissement" />
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Matières suivies</label>
+                        <input class="form-control" @bind="_form.Subjects" placeholder="Mathématiques, Français, Sciences (séparées par des virgules)" />
+                    </div>
+                </div>
+                @if (_form.Age.HasValue && _form.Age >= 14)
+                {
+                    <div class="autonomous-notice mt-3">
+                        <i class="bi bi-info-circle-fill"></i>
+                        <span>Cet enfant a @_form.Age ans ou plus — il sera considéré comme autonome et certaines informations ne seront plus visibles dans votre espace parent.</span>
+                    </div>
+                }
+            </div>
+            <div class="ts-modal-footer">
+                <button type="button" class="btn btn-outline-secondary" @onclick="CloseAddModal">Annuler</button>
+                <button type="button" class="btn btn-primary" disabled="@_saving" @onclick="SaveChildAsync">
+                    @if (_saving)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2"></span>
+                    }
+                    Enregistrer
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _loading = true;
+    private bool _showAddModal;
+    private bool _saving;
+    private string? _formError;
+    private ChildVM? _active;
+    private List<ChildVM> _children = [];
+    private ChildForm _form = new();
+
+    private static readonly string[] Colors = ["#7c3aed", "#0ea5e9", "#10b981", "#ec4899", "#f59e0b"];
+
+    protected override async Task OnInitializedAsync() => await LoadChildrenAsync();
+
+    private async Task LoadChildrenAsync()
+    {
+        _loading = true;
+        try
+        {
+            var students = await Api.GetAsync<List<StudentDto>>("api/parent/children") ?? [];
+            _children = students.Select(MapToChild).ToList();
+            _active = _children.FirstOrDefault();
+        }
+        catch { }
+        finally { _loading = false; }
+    }
+
+    private void OpenAddModal()
+    {
+        _form = new ChildForm();
+        _formError = null;
+        _showAddModal = true;
+    }
+
+    private void CloseAddModal()
+    {
+        _showAddModal = false;
+        _formError = null;
+    }
+
+    private async Task SaveChildAsync()
+    {
+        _formError = null;
+
+        if (string.IsNullOrWhiteSpace(_form.FirstName) || string.IsNullOrWhiteSpace(_form.LastName))
+        {
+            _formError = "Le prénom et le nom sont obligatoires.";
+            return;
+        }
+
+        if (_form.DateOfBirth is null)
+        {
+            _formError = "La date de naissance est obligatoire.";
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var payload = new
+            {
+                firstName = _form.FirstName.Trim(),
+                lastName = _form.LastName.Trim(),
+                dateOfBirth = _form.DateOfBirth,
+                email = string.IsNullOrWhiteSpace(_form.Email) ? null : _form.Email.Trim(),
+                schoolLevel = string.IsNullOrWhiteSpace(_form.SchoolLevel) ? null : _form.SchoolLevel.Trim(),
+                schoolName = string.IsNullOrWhiteSpace(_form.SchoolName) ? null : _form.SchoolName.Trim(),
+                subjects = string.IsNullOrWhiteSpace(_form.Subjects) ? null : _form.Subjects.Trim()
+            };
+
+            var created = await Api.PostAsync<StudentDto>("api/parent/children", payload);
+            if (created is null)
+            {
+                _formError = "Impossible d'ajouter l'enfant. Vérifiez les informations saisies.";
+                return;
+            }
+
+            var child = MapToChild(created, _children.Count);
+            _children.Add(child);
+            _active = child;
+            CloseAddModal();
+        }
+        finally { _saving = false; }
+    }
+
+    private ChildVM MapToChild(StudentDto s, int index = 0)
+    {
+        var name = $"{s.FirstName} {s.LastName}".Trim();
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var initials = parts.Length >= 2
+            ? $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant()
+            : name.Length > 0 ? name[..1].ToUpperInvariant() : "?";
+
+        return new ChildVM
+        {
+            Id = s.Id,
+            FirstName = s.FirstName,
+            LastName = s.LastName,
+            Name = name,
+            Initials = initials,
+            Color = Colors[index % Colors.Length],
+            IsActive = true,
+            Level = s.SchoolLevel,
+            School = s.SchoolName,
+            Subjects = s.Subjects?.ToList() ?? [],
+            DateOfBirth = s.DateOfBirth,
+            Email = s.Email
+        };
+    }
+
+    private class ChildForm
+    {
+        public string FirstName { get; set; } = "";
+        public string LastName { get; set; } = "";
+        public string? Email { get; set; }
+        public DateTime? DateOfBirth { get; set; }
+        public string? SchoolLevel { get; set; }
+        public string? SchoolName { get; set; }
+        public string? Subjects { get; set; }
+        public int? Age => DateOfBirth.HasValue
+            ? (int)((DateTime.Today - DateOfBirth.Value).TotalDays / 365.25)
+            : null;
+    }
+
+    private class ChildVM
+    {
+        public Guid Id { get; set; }
+        public string FirstName { get; set; } = "";
+        public string LastName { get; set; } = "";
+        public string Name { get; set; } = "";
+        public string Initials { get; set; } = "";
+        public string Color { get; set; } = "#7c3aed";
+        public bool IsActive { get; set; }
+        public string? Level { get; set; }
+        public string? School { get; set; }
+        public string? Email { get; set; }
+        public List<string> Subjects { get; set; } = [];
+        public DateTime? DateOfBirth { get; set; }
+        public int? Age => DateOfBirth.HasValue
+            ? (int)((DateTime.Today - DateOfBirth.Value).TotalDays / 365.25)
+            : null;
+        public bool IsAutonomous => Age.HasValue && Age >= 14;
+    }
+
+    private record StudentDto(
+        Guid Id, string FirstName, string LastName, string? Email,
+        DateTime? DateOfBirth, string? SchoolLevel, string? SchoolName,
+        IReadOnlyList<string>? Subjects);
+}
+

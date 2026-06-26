@@ -1,0 +1,81 @@
+@page "/parent/profile"
+@layout ParentLayout
+@rendermode InteractiveServer
+@inject IStringLocalizer<SharedResources> L
+@inject ApiClient Api
+@inject AuthService Auth
+
+<PageTitle>@L["PageTitle_TutorProfile"]</PageTitle>
+
+<div class="ts-page-header">
+    <div>
+        <h1><i class="bi bi-person me-2"></i>@L["Nav_MyProfile"]</h1>
+        <p class="ts-page-subtitle">Informations de votre compte parent</p>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="text-center py-5">
+        <div class="spinner-border text-primary" role="status"></div>
+    </div>
+}
+else if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-warning">
+        <i class="bi bi-exclamation-triangle me-2"></i>@_error
+    </div>
+}
+else
+{
+    <div class="card ts-card">
+        <div class="card-body">
+            <dl class="row mb-0">
+                <dt class="col-sm-3">Nom</dt>
+                <dd class="col-sm-9">@(_profile is null ? (Auth.UserName ?? "—") : $"{_profile.FirstName} {_profile.LastName}")</dd>
+
+                <dt class="col-sm-3">Courriel</dt>
+                <dd class="col-sm-9">@(_profile?.Email ?? Auth.UserEmail ?? "—")</dd>
+
+                @if (_profile is not null)
+                {
+                    <dt class="col-sm-3">Téléphone</dt>
+                    <dd class="col-sm-9">@(_profile.Phone ?? "—")</dd>
+
+                    <dt class="col-sm-3">Enfants</dt>
+                    <dd class="col-sm-9">@_profile.ChildrenCount</dd>
+                }
+            </dl>
+        </div>
+    </div>
+}
+
+@code {
+    private ParentProfileDto? _profile;
+    private bool _loading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _profile = await Api.GetAsync<ParentProfileDto>("api/parent/me");
+        }
+        catch
+        {
+            _error = "Impossible de charger votre profil.";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private sealed record ParentProfileDto(
+        Guid Id,
+        string FirstName,
+        string LastName,
+        string Email,
+        string? Phone,
+        int ChildrenCount);
+}

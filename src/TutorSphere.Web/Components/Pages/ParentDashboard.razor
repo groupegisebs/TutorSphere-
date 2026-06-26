@@ -4,6 +4,7 @@
 @rendermode InteractiveServer
 @using TutorSphere.Application.DTOs.Lessons
 @inject IStringLocalizer<SharedResources> L
+@inject AuthService AuthSvc
 @inject ApiClient Api
 @inject LessonService LessonSvc
 
@@ -126,7 +127,11 @@
     {
         try
         {
-            var students = await Api.GetAsync<List<StudentDto>>("api/students") ?? [];
+            var me = await Api.GetAsync<ParentMeDto>("api/parent/me");
+            if (me is not null)
+                _parentName = $"{me.FirstName} {me.LastName}".Trim();
+
+            var students = await Api.GetAsync<List<StudentDto>>("api/parent/children") ?? [];
             _children = students.Select(s =>
             {
                 var name = $"{s.FirstName} {s.LastName}".Trim();
@@ -165,4 +170,5 @@
     private record ChildSummary(string Name, string Initials);
     private record LessonSummary(Guid Id, string Title, string? Subject, DateTime StartTime, string Mode, string Initials);
     private record StudentDto(Guid Id, string FirstName, string LastName, DateTime? DateOfBirth);
+    private record ParentMeDto(string FirstName, string LastName, string Email);
 }
