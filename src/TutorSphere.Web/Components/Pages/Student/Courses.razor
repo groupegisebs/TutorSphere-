@@ -1,7 +1,9 @@
 @page "/student/courses"
 @layout StudentLayout
 @rendermode InteractiveServer
+@using TutorSphere.Application.DTOs.Lessons
 @inject IStringLocalizer<SharedResources> L
+@inject LessonService LessonSvc
 
 <PageTitle>Mes Cours – TutorSphere</PageTitle>
 
@@ -18,56 +20,78 @@
         <input class="form-control" placeholder="Chercher…" @bind="_search" @bind:event="oninput" />
     </div>
     <select class="form-select w-auto" @bind="_filter">
-        <option value="">Tous</option><option>À venir</option><option>Terminé</option><option>Annulé</option>
+        <option value="">Tous</option>
+        <option>À venir</option>
+        <option>Terminé</option>
     </select>
 </div>
 
-<div class="ts-table-card">
-    <table class="table ts-table">
-        <thead><tr><th>Date</th><th>Matière</th><th>Répétiteur</th><th>Durée</th><th>Mode</th><th>Statut</th><th></th></tr></thead>
-        <tbody>
-            @foreach (var c in FilteredCourses)
-            {
-                <tr>
-                    <td><strong>@c.Date.ToString("dd/MM/yyyy")</strong><br/><small class="text-muted">@c.Date.ToString("HH:mm")</small></td>
-                    <td>@c.Subject</td>
-                    <td>@c.Tutor</td>
-                    <td>@c.Duration h</td>
-                    <td><span class="ts-badge ts-badge-neutral">@c.Mode</span></td>
-                    <td>
-                        <span class="ts-badge @(c.Status=="Terminé"?"ts-badge-success":c.Status=="À venir"?"ts-badge-primary":"ts-badge-muted")">
-                            @c.Status
-                        </span>
-                    </td>
-                    <td>
-                        @if (c.Status == "À venir" && c.Mode == "En ligne")
-                        {
-                            <button class="btn btn-sm btn-primary">Rejoindre</button>
-                        }
-                        else if (c.Status == "Terminé")
-                        {
-                            <button class="ts-icon-btn" title="Voir rapport"><i class="bi bi-file-earmark-text"></i></button>
-                        }
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table>
-</div>
+@if (_loading)
+{
+    <div class="d-flex align-items-center justify-content-center py-5">
+        <span class="spinner-border text-primary me-3" role="status"></span>
+        <span class="text-muted">Chargement des cours…</span>
+    </div>
+}
+else
+{
+    <div class="ts-table-card">
+        <table class="table ts-table">
+            <thead><tr><th>Date</th><th>Titre</th><th>Matière</th><th>Durée</th><th>Mode</th><th>Statut</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var c in FilteredCourses)
+                {
+                    var status = LessonService.DeriveStatus(c.StartTime, c.EndTime);
+                    var badge  = status switch { "Terminé" => "ts-badge-success", "Planifié" => "ts-badge-primary", _ => "ts-badge-warning" };
+                    <tr>
+                        <td>
+                            <strong>@c.StartTime.ToLocalTime().ToString("dd/MM/yyyy")</strong><br />
+                            <small class="text-muted">@c.StartTime.ToLocalTime().ToString("HH:mm")</small>
+                        </td>
+                        <td>@c.Title</td>
+                        <td>@(c.Subject ?? "—")</td>
+                        <td>@((c.EndTime - c.StartTime).TotalHours.ToString("N1")) h</td>
+                        <td><span class="ts-badge ts-badge-neutral">@LessonService.ModeToDisplay(c.Mode)</span></td>
+                        <td><span class="ts-badge @badge">@status</span></td>
+                        <td>
+                            @if (status == "Planifié" && c.Mode == "Online" && !string.IsNullOrEmpty(c.MeetingUrl))
+                            {
+                                <a class="btn btn-sm btn-primary" href="@c.MeetingUrl" target="_blank">Rejoindre</a>
+                            }
+                        </td>
+                    </tr>
+                }
+                @if (!FilteredCourses.Any())
+                {
+                    <tr><td colspan="7" class="text-center text-muted py-4">Aucun cours trouvé.</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
 
 @code {
     private string _search = "", _filter = "";
-    private IEnumerable<CourseVM> FilteredCourses => _courses
-        .Where(c => string.IsNullOrEmpty(_search) || c.Subject.Contains(_search, StringComparison.OrdinalIgnoreCase) || c.Tutor.Contains(_search, StringComparison.OrdinalIgnoreCase))
-        .Where(c => string.IsNullOrEmpty(_filter) || c.Status == _filter)
-        .OrderByDescending(c => c.Date);
-    private record CourseVM(DateTime Date, string Subject, string Tutor, double Duration, string Mode, string Status);
-    private static readonly List<CourseVM> _courses =
-    [
-        new(DateTime.Today.AddHours(10), "Mathématiques", "John Smith", 1, "En ligne", "À venir"),
-        new(DateTime.Today.AddDays(2).AddHours(14), "Physique", "John Smith", 1.5, "Présentiel", "À venir"),
-        new(DateTime.Today.AddDays(-1).AddHours(16), "Mathématiques", "John Smith", 1, "En ligne", "Terminé"),
-        new(DateTime.Today.AddDays(-3).AddHours(10), "Mathématiques", "John Smith", 1, "En ligne", "Terminé"),
-        new(DateTime.Today.AddDays(-7).AddHours(14), "Physique", "John Smith", 1, "En ligne", "Annulé"),
-    ];
+    private bool _loading = true;
+    private List<TutorSphere.Application.DTOs.Lessons.LessonDto> _courses = [];
+
+    private IEnumerable<TutorSphere.Application.DTOs.Lessons.LessonDto> FilteredCourses => _courses
+        .Where(c => string.IsNullOrEmpty(_search) ||
+            c.Title.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+            (c.Subject ?? "").Contains(_search, StringComparison.OrdinalIgnoreCase))
+        .Where(c =>
+        {
+            if (string.IsNullOrEmpty(_filter)) return true;
+            var status = LessonService.DeriveStatus(c.StartTime, c.EndTime);
+            return _filter == "À venir" ? status == "Planifié" : status == "Terminé";
+        })
+        .OrderByDescending(c => c.StartTime);
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { _courses = await LessonSvc.GetLessonsAsync(); }
+        catch { }
+        finally { _loading = false; }
+    }
+
 }

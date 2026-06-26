@@ -2,6 +2,7 @@
 @layout StudentLayout
 @rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
+@inject ApiClient Api
 
 <PageTitle>Mes Rapports – TutorSphere</PageTitle>
 
@@ -12,42 +13,59 @@
     </div>
 </div>
 
-<div class="ts-table-card">
-    <table class="table ts-table">
-        <thead><tr><th>Date</th><th>Matière</th><th>Répétiteur</th><th>Actions</th></tr></thead>
-        <tbody>
-            @foreach (var r in _reports)
-            {
-                <tr>
-                    <td>@r.Date</td>
-                    <td>@r.Subject</td>
-                    <td>@r.Tutor</td>
-                    <td>
-                        <button class="ts-icon-btn" title="Voir" @onclick="() => _sel = r"><i class="bi bi-eye"></i></button>
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table>
-</div>
+@if (_loading)
+{
+    <div class="d-flex align-items-center justify-content-center py-5">
+        <span class="spinner-border text-primary me-3" role="status"></span>
+        <span class="text-muted">Chargement des rapports…</span>
+    </div>
+}
+else
+{
+    <div class="ts-table-card">
+        <table class="table ts-table">
+            <thead><tr><th>Date</th><th>Travail effectué</th><th>Points forts</th><th>Devoir</th><th>Actions</th></tr></thead>
+            <tbody>
+                @foreach (var r in _reports)
+                {
+                    <tr>
+                        <td>@r.CreatedAt.ToString("dd/MM/yyyy")</td>
+                        <td>@(r.TopicsStudied ?? "—")</td>
+                        <td>@(r.Strengths ?? "—")</td>
+                        <td>@(r.HomeworkAssigned ?? "—")</td>
+                        <td>
+                            <button class="ts-icon-btn" title="Voir" @onclick="() => _sel = r">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                        </td>
+                    </tr>
+                }
+                @if (_reports.Count == 0)
+                {
+                    <tr><td colspan="5" class="text-center text-muted py-4">Aucun rapport disponible.</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
 
 @if (_sel != null)
 {
     <div class="ts-modal-backdrop" @onclick="() => _sel = null">
         <div class="ts-modal ts-modal-lg" @onclick:stopPropagation="true">
             <div class="ts-modal-header">
-                <h2>Rapport – @_sel.Date</h2>
+                <h2>Rapport – @_sel.CreatedAt.ToString("dd/MM/yyyy")</h2>
                 <button class="ts-modal-close" @onclick="() => _sel = null"><i class="bi bi-x-lg"></i></button>
             </div>
             <div class="ts-modal-body">
                 <div class="ts-form-grid">
-                    <div class="ts-form-row"><label>Matière</label><span>@_sel.Subject</span></div>
-                    <div class="ts-form-row"><label>Répétiteur</label><span>@_sel.Tutor</span></div>
-                    <div class="ts-form-row"><label>Travail effectué</label><span>@_sel.WorkDone</span></div>
-                    <div class="ts-form-row"><label>Points forts</label><span>@_sel.Strengths</span></div>
-                    <div class="ts-form-row"><label>À améliorer</label><span>@_sel.Improvements</span></div>
-                    <div class="ts-form-row"><label>Recommandations</label><span>@_sel.Recommendations</span></div>
-                    <div class="ts-form-row"><label>Devoir</label><span>@_sel.Homework</span></div>
+                    <div class="ts-form-row"><label>Date</label><span>@_sel.CreatedAt.ToString("dd/MM/yyyy HH:mm")</span></div>
+                    <div class="ts-form-row"><label>Travail effectué</label><span>@(_sel.TopicsStudied ?? "—")</span></div>
+                    <div class="ts-form-row"><label>Participation</label><span>@(_sel.Participation ?? "—")</span></div>
+                    <div class="ts-form-row"><label>Points forts</label><span>@(_sel.Strengths ?? "—")</span></div>
+                    <div class="ts-form-row"><label>À améliorer</label><span>@(_sel.Weaknesses ?? "—")</span></div>
+                    <div class="ts-form-row"><label>Recommandations</label><span>@(_sel.Observations ?? "—")</span></div>
+                    <div class="ts-form-row"><label>Devoir</label><span>@(_sel.HomeworkAssigned ?? "—")</span></div>
                 </div>
             </div>
         </div>
@@ -55,12 +73,31 @@
 }
 
 @code {
-    private ReportVM? _sel;
-    private class ReportVM { public string Date{get;set;}=""; public string Subject{get;set;}=""; public string Tutor{get;set;}=""; public string WorkDone{get;set;}=""; public string Strengths{get;set;}=""; public string Improvements{get;set;}=""; public string Recommendations{get;set;}=""; public string Homework{get;set;}=""; }
-    private static readonly List<ReportVM> _reports =
-    [
-        new(){ Date="24/06/2026", Subject="Mathématiques", Tutor="John Smith", WorkDone="Suites arithmétiques.", Strengths="Logique solide.", Improvements="Vitesse.", Recommendations="Pratiquer davantage.", Homework="Exercices 5–10" },
-        new(){ Date="17/06/2026", Subject="Mathématiques", Tutor="John Smith", WorkDone="Fonctions dérivées.", Strengths="Méthode rigoureuse.", Improvements="Exercices variés.", Recommendations="Refaire le TD.", Homework="TD dérivées" },
-        new(){ Date="10/06/2026", Subject="Physique", Tutor="John Smith", WorkDone="Optique géométrique.", Strengths="Bonne compréhension.", Improvements="Lentilles.", Recommendations="Revoir lentilles.", Homework="Schémas optiques" },
-    ];
+    private bool _loading = true;
+    private LessonReportDto? _sel;
+    private List<LessonReportDto> _reports = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var profile = await Api.GetAsync<StudentProfileDto>("api/students/me");
+            if (profile != null)
+            {
+                var result = await Api.GetAsync<List<LessonReportDto>>(
+                    $"api/lessonreports/student/{profile.Id}") ?? [];
+                _reports = [.. result.OrderByDescending(r => r.CreatedAt)];
+            }
+        }
+        catch { }
+        finally { _loading = false; }
+    }
+
+    private record LessonReportDto(
+        Guid Id, Guid TenantId, Guid LessonId, Guid StudentId,
+        string? TopicsStudied, string? Participation, string? Strengths,
+        string? Weaknesses, string? HomeworkAssigned, string? Observations,
+        bool SentToParent, DateTime? SentAt, DateTime CreatedAt, DateTime? UpdatedAt);
+
+    private record StudentProfileDto(Guid Id, string? FirstName, string? LastName);
 }

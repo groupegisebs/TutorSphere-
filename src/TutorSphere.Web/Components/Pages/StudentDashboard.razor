@@ -1,28 +1,32 @@
 @page "/student/dashboard"
 @layout StudentLayout
+@rendermode InteractiveServer
+@using TutorSphere.Application.DTOs.Lessons
 @inject IStringLocalizer<SharedResources> L
+@inject LessonService LessonSvc
+@inject ApiClient Api
 
 <PageTitle>@L["PageTitle_StudentDashboard"]</PageTitle>
 
 <div class="dashboard-header">
     <div>
-        <h1 class="dashboard-greeting">@L["StudentDashboard_Welcome", "Emma"]</h1>
+        <h1 class="dashboard-greeting">@L["StudentDashboard_Welcome", _studentName]</h1>
         <p class="dashboard-date">@DateTime.Now.ToString("dddd d MMMM yyyy")</p>
     </div>
 </div>
 
 <div class="row g-3 mb-4">
     <div class="col-sm-6 col-xl-3">
-        <StatCard Label="@L["StudentDashboard_CoursesThisWeek"]" Value="4" Icon="bi-book" Variant="lessons" Change="@L["Stat_Today"]" ChangeVariant="neutral" />
+        <StatCard Label="@L["StudentDashboard_CoursesThisWeek"]" Value="@_weekLessons.ToString()" Icon="bi-book" Variant="lessons" Change="@L["Stat_Today"]" ChangeVariant="neutral" />
     </div>
     <div class="col-sm-6 col-xl-3">
-        <StatCard Label="@L["StudentDashboard_HomeworkDue"]" Value="2" Icon="bi-pencil-square" Variant="payments" Change="@L["StudentDashboard_DueToday"]" ChangeVariant="negative" />
+        <StatCard Label="@L["StudentDashboard_HomeworkDue"]" Value="@_pendingHomework.ToString()" Icon="bi-pencil-square" Variant="payments" Change="@L["StudentDashboard_DueToday"]" ChangeVariant="negative" />
     </div>
     <div class="col-sm-6 col-xl-3">
-        <StatCard Label="@L["StudentDashboard_AverageGrade"]" Value="86%" Icon="bi-graph-up" Variant="revenue" Change="@L["Stat_Change_Positive", "+4%"]" />
+        <StatCard Label="@L["StudentDashboard_AverageGrade"]" Value="—" Icon="bi-graph-up" Variant="revenue" Change="" ChangeVariant="neutral" />
     </div>
     <div class="col-sm-6 col-xl-3">
-        <StatCard Label="@L["StudentDashboard_UnreadMessages"]" Value="3" Icon="bi-chat-dots" Variant="notifications" Change="@L["StudentDashboard_New"]" ChangeVariant="neutral" />
+        <StatCard Label="@L["StudentDashboard_UnreadMessages"]" Value="—" Icon="bi-chat-dots" Variant="notifications" Change="" ChangeVariant="neutral" />
     </div>
 </div>
 
@@ -33,19 +37,35 @@
                 <h2>@L["StudentDashboard_UpcomingCourses"]</h2>
                 <a href="student/courses" class="btn btn-sm btn-link">@L["Button_ViewAll"]</a>
             </div>
-            <ul class="lesson-list">
-                @foreach (var lesson in UpcomingCourses)
-                {
-                    <li class="lesson-list-item">
-                        <div class="lesson-avatar" style="background: @lesson.Color">@lesson.Icon</div>
-                        <div class="lesson-info">
-                            <strong>@lesson.Subject</strong>
-                            <span>@lesson.Tutor</span>
-                        </div>
-                        <span class="lesson-time">@lesson.Time</span>
-                    </li>
-                }
-            </ul>
+            @if (_lessonsLoading)
+            {
+                <div class="d-flex align-items-center gap-2 p-3">
+                    <span class="spinner-border spinner-border-sm text-primary"></span>
+                    <span class="text-muted small">Chargement…</span>
+                </div>
+            }
+            else if (_upcomingLessons.Count == 0)
+            {
+                <p class="text-muted small p-3">Aucune séance à venir.</p>
+            }
+            else
+            {
+                <ul class="lesson-list">
+                    @foreach (var lesson in _upcomingLessons)
+                    {
+                        <li class="lesson-list-item">
+                            <div class="lesson-avatar" style="background: var(--ts-gradient-primary)">
+                                @(lesson.Subject?.Length > 0 ? lesson.Subject[0].ToString().ToUpperInvariant() : "?")
+                            </div>
+                            <div class="lesson-info">
+                                <strong>@lesson.Title</strong>
+                                <span>@lesson.StartTime.ToLocalTime().ToString("ddd dd/MM HH:mm")</span>
+                            </div>
+                            <span class="lesson-time">@LessonService.ModeToDisplay(lesson.Mode)</span>
+                        </li>
+                    }
+                </ul>
+            }
         </div>
     </div>
     <div class="col-lg-5">
@@ -53,16 +73,29 @@
             <div class="section-card-header">
                 <h2>@L["StudentDashboard_RecentReports"]</h2>
             </div>
-            @foreach (var report in RecentReports)
+            @if (_reportsLoading)
             {
-                <div class="lesson-list-item mb-2">
-                    <div class="lesson-avatar">📋</div>
-                    <div class="lesson-info">
-                        <strong>@report.Subject</strong>
-                        <span>@report.Date</span>
-                    </div>
-                    <span class="stat-change stat-change--positive">@report.Grade</span>
+                <div class="d-flex align-items-center gap-2 p-3">
+                    <span class="spinner-border spinner-border-sm text-primary"></span>
+                    <span class="text-muted small">Chargement…</span>
                 </div>
+            }
+            else if (_recentReports.Count == 0)
+            {
+                <p class="text-muted small p-3">Aucun rapport disponible.</p>
+            }
+            else
+            {
+                @foreach (var report in _recentReports)
+                {
+                    <div class="lesson-list-item mb-2">
+                        <div class="lesson-avatar">📋</div>
+                        <div class="lesson-info">
+                            <strong>@(report.TopicsStudied ?? "Séance")</strong>
+                            <span>@report.CreatedAt.ToString("dd MMMM yyyy")</span>
+                        </div>
+                    </div>
+                }
             }
         </div>
     </div>
@@ -74,7 +107,7 @@
             <i class="bi bi-journal-text mini-stat-icon mini-stat-icon--warning"></i>
             <div>
                 <span class="mini-stat-label">@L["StudentDashboard_PendingHomework"]</span>
-                <span class="mini-stat-value">2</span>
+                <span class="mini-stat-value">@_pendingHomework</span>
             </div>
         </div>
     </div>
@@ -83,7 +116,7 @@
             <i class="bi bi-folder2-open mini-stat-icon mini-stat-icon--info"></i>
             <div>
                 <span class="mini-stat-label">@L["StudentDashboard_Documents"]</span>
-                <span class="mini-stat-value">8</span>
+                <span class="mini-stat-value">@_documentCount</span>
             </div>
         </div>
     </div>
@@ -92,27 +125,94 @@
             <i class="bi bi-star-fill mini-stat-icon mini-stat-icon--success"></i>
             <div>
                 <span class="mini-stat-label">@L["StudentDashboard_LastGrade"]</span>
-                <span class="mini-stat-value">92%</span>
+                <span class="mini-stat-value">@(_lastGrade.HasValue ? $"{_lastGrade:N0}%" : "—")</span>
             </div>
         </div>
     </div>
 </div>
 
 @code {
-    private record CourseItem(string Subject, string Tutor, string Time, string Icon, string Color);
-    private record ReportItem(string Subject, string Date, string Grade);
+    private string _studentName   = "Élève";
+    private bool   _lessonsLoading  = true;
+    private bool   _reportsLoading  = true;
+    private int    _weekLessons     = 0;
+    private int    _pendingHomework = 0;
+    private int    _documentCount   = 0;
+    private decimal? _lastGrade;
+    private List<LessonDto>            _upcomingLessons = [];
+    private List<LessonReportApiDto>   _recentReports   = [];
 
-    private readonly List<CourseItem> UpcomingCourses =
-    [
-        new("Mathématiques", "M. Dupont", "Lun 10:00", "M", "var(--ts-gradient-primary)"),
-        new("Physique", "Mme Martin", "Mar 14:00", "P", "linear-gradient(135deg,#14b8a6,#2563eb)"),
-        new("Chimie", "M. Bernard", "Jeu 09:00", "C", "linear-gradient(135deg,#f59e0b,#ef4444)"),
-    ];
+    protected override async Task OnInitializedAsync()
+    {
+        var t1 = LoadLessonsAsync();
+        var t2 = LoadProfileAsync();
+        await Task.WhenAll(t1, t2);
+    }
 
-    private readonly List<ReportItem> RecentReports =
-    [
-        new("Mathématiques", "12 juin 2026", "88%"),
-        new("Physique", "8 juin 2026", "92%"),
-        new("Chimie", "5 juin 2026", "79%"),
-    ];
+    private async Task LoadLessonsAsync()
+    {
+        try
+        {
+            var lessons = await LessonSvc.GetLessonsAsync();
+            var now     = DateTime.UtcNow;
+            _upcomingLessons = lessons
+                .Where(l => l.StartTime >= now)
+                .OrderBy(l => l.StartTime)
+                .Take(5)
+                .ToList();
+
+            var weekEnd = now.AddDays(7);
+            _weekLessons = lessons.Count(l => l.StartTime >= now && l.StartTime < weekEnd);
+        }
+        catch { }
+        finally { _lessonsLoading = false; }
+    }
+
+    private async Task LoadProfileAsync()
+    {
+        try
+        {
+            var profile = await Api.GetAsync<StudentProfileDto>("api/students/me");
+            if (profile != null)
+            {
+                _studentName = profile.FirstName ?? "Élève";
+
+                var reports = await Api.GetAsync<List<LessonReportApiDto>>(
+                    $"api/lessonreports/student/{profile.Id}") ?? [];
+                _recentReports = [.. reports.OrderByDescending(r => r.CreatedAt).Take(3)];
+                _reportsLoading = false;
+
+                var homework = await Api.GetAsync<List<HomeworkDto>>(
+                    $"api/homework/student/{profile.Id}") ?? [];
+                _pendingHomework = homework.Count(h => h.SubmittedAt == null && !h.IsGraded);
+                _lastGrade = homework
+                    .Where(h => h.Grade.HasValue)
+                    .OrderByDescending(h => h.CreatedAt)
+                    .Select(h => h.Grade)
+                    .FirstOrDefault();
+
+                var docs = await Api.GetAsync<List<DocumentDto>>(
+                    $"api/documents?studentId={profile.Id}") ?? [];
+                _documentCount = docs.Count;
+                return;
+            }
+        }
+        catch { }
+        _reportsLoading = false;
+    }
+
+    private record LessonReportApiDto(
+        Guid Id, Guid TenantId, Guid LessonId, Guid StudentId,
+        string? TopicsStudied, string? Participation, string? Strengths,
+        string? Weaknesses, string? HomeworkAssigned, string? Observations,
+        bool SentToParent, DateTime? SentAt, DateTime CreatedAt, DateTime? UpdatedAt);
+
+    private record HomeworkDto(
+        Guid Id, Guid TenantId, Guid StudentId, Guid? LessonId,
+        string Title, string? Description, DateTime? DueDate,
+        DateTime? SubmittedAt, string? SubmissionNotes, decimal? Grade,
+        string? Feedback, bool IsGraded, DateTime CreatedAt, DateTime? UpdatedAt);
+
+    private record DocumentDto(Guid Id, string Name, string? Url, long? Size, DateTime CreatedAt);
+    private record StudentProfileDto(Guid Id, string? FirstName, string? LastName);
 }

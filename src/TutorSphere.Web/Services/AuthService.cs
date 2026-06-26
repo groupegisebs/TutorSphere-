@@ -155,14 +155,17 @@ public sealed class CustomAuthenticationStateProvider : AuthenticationStateProvi
         string json;
         try { json = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(payload.Replace('-', '+').Replace('_', '/'))); }
         catch { yield break; }
+        List<(string, string)> pairs = [];
         try
         {
             using var doc = JsonDocument.Parse(json);
             foreach (var prop in doc.RootElement.EnumerateObject())
                 if (prop.Value.ValueKind == JsonValueKind.String)
-                    yield return (prop.Name, prop.Value.GetString()!);
+                    pairs.Add((prop.Name, prop.Value.GetString()!));
         }
         catch { }
+        foreach (var pair in pairs)
+            yield return pair;
     }
 
     internal void MarkLoggedOut()

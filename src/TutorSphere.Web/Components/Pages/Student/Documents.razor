@@ -2,6 +2,7 @@
 @layout StudentLayout
 @rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
+@inject ApiClient Api
 
 <PageTitle>Mes Documents – TutorSphere</PageTitle>
 
@@ -19,42 +20,122 @@
     </div>
     <select class="form-select w-auto" @bind="_subject">
         <option value="">Toutes matières</option>
-        <option>Mathématiques</option><option>Physique</option>
+        @foreach (var s in _subjects)
+        {
+            <option>@s</option>
+        }
     </select>
 </div>
 
-<div class="docs-grid">
-    @foreach (var f in FilteredDocs)
-    {
-        <div class="doc-card">
-            <div class="doc-card-icon" style="color:@FileColor(f.Type)">
-                <i class="bi @FileIcon(f.Type)"></i>
+@if (_loading)
+{
+    <div class="d-flex align-items-center justify-content-center py-5">
+        <span class="spinner-border text-primary me-3" role="status"></span>
+        <span class="text-muted">Chargement des documents…</span>
+    </div>
+}
+else
+{
+    <div class="docs-grid">
+        @foreach (var f in FilteredDocs)
+        {
+            <div class="doc-card">
+                <div class="doc-card-icon" style="color:@FileColor(f.Extension)">
+                    <i class="bi @FileIcon(f.Extension)"></i>
+                </div>
+                <div class="doc-card-name">@f.Name</div>
+                <div class="doc-card-meta">@f.SizeLabel · @(f.Subject ?? "—")</div>
+                <div class="doc-card-meta text-muted small">@f.UploadedAt.ToString("dd/MM/yyyy")</div>
+                <div class="doc-card-actions">
+                    @if (!string.IsNullOrEmpty(f.Url))
+                    {
+                        <a class="ts-icon-btn" href="@f.Url" target="_blank" title="Télécharger">
+                            <i class="bi bi-download"></i>
+                        </a>
+                    }
+                    else
+                    {
+                        <button class="ts-icon-btn" title="Télécharger" disabled>
+                            <i class="bi bi-download"></i>
+                        </button>
+                    }
+                </div>
             </div>
-            <div class="doc-card-name">@f.Name</div>
-            <div class="doc-card-meta">@f.Size · @f.Subject</div>
-            <div class="doc-card-actions">
-                <button class="ts-icon-btn" title="Télécharger"><i class="bi bi-download"></i></button>
+        }
+        @if (!FilteredDocs.Any())
+        {
+            <div class="text-center py-5 text-muted" style="grid-column:1/-1">
+                <i class="bi bi-folder2-open fs-1 d-block mb-3 opacity-50"></i>
+                <p>Aucun document disponible.</p>
             </div>
-        </div>
-    }
-</div>
+        }
+    </div>
+}
 
 @code {
     private string _search = "", _subject = "";
+    private bool _loading = true;
+    private List<DocVM> _docs = [];
+    private List<string> _subjects = [];
+
     private IEnumerable<DocVM> FilteredDocs => _docs
-        .Where(d => string.IsNullOrEmpty(_search) || d.Name.Contains(_search, StringComparison.OrdinalIgnoreCase))
+        .Where(d => string.IsNullOrEmpty(_search) ||
+            d.Name.Contains(_search, StringComparison.OrdinalIgnoreCase))
         .Where(d => string.IsNullOrEmpty(_subject) || d.Subject == _subject);
 
-    private static string FileIcon(string e) => e switch {"pdf"=>"bi-file-earmark-pdf","docx"=>"bi-file-earmark-word","pptx"=>"bi-file-earmark-slides","xlsx"=>"bi-file-earmark-excel",_=>"bi-file-earmark"};
-    private static string FileColor(string e) => e switch {"pdf"=>"#ef4444","docx"=>"#0ea5e9","pptx"=>"#f59e0b","xlsx"=>"#10b981",_=>"#7c3aed"};
+    private static string FileIcon(string ext) => ext switch
+    {
+        "pdf"  => "bi-file-earmark-pdf",
+        "docx" => "bi-file-earmark-word",
+        "pptx" => "bi-file-earmark-slides",
+        "xlsx" => "bi-file-earmark-excel",
+        _      => "bi-file-earmark"
+    };
 
-    private record DocVM(string Name, string Type, string Size, string Subject, string Date);
-    private static readonly List<DocVM> _docs =
-    [
-        new("Exercices suites numériques.pdf","pdf","340 Ko","Mathématiques","24/06/2026"),
-        new("TD Fonctions dérivées.docx","docx","156 Ko","Mathématiques","22/06/2026"),
-        new("Formulaire bac maths.pdf","pdf","520 Ko","Mathématiques","18/06/2026"),
-        new("Présentation Optique.pptx","pptx","2.1 Mo","Physique","20/06/2026"),
-        new("TD Électricité.xlsx","xlsx","88 Ko","Physique","17/06/2026"),
-    ];
+    private static string FileColor(string ext) => ext switch
+    {
+        "pdf"  => "#ef4444",
+        "docx" => "#0ea5e9",
+        "pptx" => "#f59e0b",
+        "xlsx" => "#10b981",
+        _      => "#7c3aed"
+    };
+
+    private static string FormatSize(long? bytes)
+    {
+        if (!bytes.HasValue || bytes == 0) return "—";
+        if (bytes < 1024)       return $"{bytes} o";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:N0} Ko";
+        return $"{bytes / (1024.0 * 1024):N1} Mo";
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var profile = await Api.GetAsync<StudentProfileDto>("api/students/me");
+            if (profile != null)
+            {
+                var result = await Api.GetAsync<List<DocumentDto>>(
+                    $"api/documents?studentId={profile.Id}") ?? [];
+
+                _docs = result.Select(d =>
+                {
+                    var ext = d.Name.Contains('.') ? d.Name.Split('.').Last().ToLower() : "";
+                    return new DocVM(d.Name, ext, FormatSize(d.Size), d.Subject, d.Url, d.CreatedAt);
+                }).ToList();
+
+                _subjects = [.. _docs.Where(d => !string.IsNullOrEmpty(d.Subject))
+                                    .Select(d => d.Subject!)
+                                    .Distinct()
+                                    .OrderBy(s => s)];
+            }
+        }
+        catch { }
+        finally { _loading = false; }
+    }
+
+    private record DocVM(string Name, string Extension, string SizeLabel, string? Subject, string? Url, DateTime UploadedAt);
+    private record DocumentDto(Guid Id, string Name, string? Url, long? Size, string? Subject, DateTime CreatedAt);
+    private record StudentProfileDto(Guid Id, string? FirstName, string? LastName);
 }
