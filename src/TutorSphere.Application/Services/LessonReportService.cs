@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.LessonReports;
 using TutorSphere.Domain.Entities;
@@ -8,11 +9,19 @@ public class LessonReportService : ILessonReportService
 {
     private readonly IApplicationDbContext _db;
     private readonly ITenantContext _tenantContext;
+    private readonly IEmailService _email;
+    private readonly ILogger<LessonReportService> _logger;
 
-    public LessonReportService(IApplicationDbContext db, ITenantContext tenantContext)
+    public LessonReportService(
+        IApplicationDbContext db,
+        ITenantContext tenantContext,
+        IEmailService email,
+        ILogger<LessonReportService> logger)
     {
         _db = db;
         _tenantContext = tenantContext;
+        _email = email;
+        _logger = logger;
     }
 
     public async Task<LessonReportDto> CreateAsync(CreateLessonReportRequest request, CancellationToken ct = default)
@@ -106,7 +115,37 @@ public class LessonReportService : ILessonReportService
         report.UpdatedAt = DateTime.UtcNow;
 
         await _db.SaveChangesAsync(ct);
+
+        await SendReportEmailToParentAsync(report, ct);
+
         return MapToDto(report);
+    }
+
+    private async Task SendReportEmailToParentAsync(LessonReport report, CancellationToken ct)
+    {
+        var student = _db.Students.FirstOrDefault(s => s.Id == report.StudentId);
+        if (student is null)
+        {
+            _logger.LogWarning("Rapport {Id} : élève introuvable pour l'envoi de l'e-mail.", report.Id);
+            return;
+        }
+
+        var parent = _db.ParentProfiles.FirstOrDefault(p => p.Id == student.ParentProfileId);
+        if (parent is null || string.IsNullOrWhiteSpace(parent.Email))
+        {
+            _logger.LogWarning("Rapport {Id} : parent sans e-mail, envoi ignoré.", report.Id);
+            return;
+        }
+
+        var tenant = _db.Tenants.FirstOrDefault(t => t.Id == report.TenantId);
+        var tutorName = tenant?.Name ?? "Votre tuteur";
+
+        await _email.SendLessonReportToParentAsync(
+            parentEmail: parent.Email,
+            parentFirstName: parent.FirstName,
+            studentName: $"{student.FirstName} {student.LastName}",
+            tutorName: tutorName,
+            ct: ct);
     }
 
     private LessonReport GetReportOrThrow(Guid id)

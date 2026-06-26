@@ -94,6 +94,8 @@ jobs:
           PG_API_KEY: ${{ secrets.TUTORSPHERE_PAYGATEWAY_API_KEY }}
           PG_APP_CODE_VAR: ${{ vars.TUTORSPHERE_PAYGATEWAY_APP_CODE }}
           PG_APP_CODE_SECRET: ${{ secrets.TUTORSPHERE_PAYGATEWAY_APP_CODE }}
+          EMAIL_API_KEY: ${{ secrets.TUTORSPHERE_EMAIL_API_KEY }}
+          EMAIL_CLIENT_CODE_VAR: ${{ vars.TUTORSPHERE_EMAIL_CLIENT_CODE }}
           API_BASE_URL_VAR: ${{ vars.TUTORSPHERE_API_BASE_URL }}
           API_BASE_URL_SECRET: ${{ secrets.TUTORSPHERE_API_BASE_URL }}
         run: |
@@ -122,6 +124,8 @@ jobs:
           PAYGATEWAY_BASE_URL_RAW=$(pick_first "$PG_BASE_URL") || true
           PAYGATEWAY_API_KEY_RAW=$(pick_first "$PG_API_KEY") || true
           PAYGATEWAY_APP_CODE_RAW=$(pick_first "$PG_APP_CODE_VAR" "$PG_APP_CODE_SECRET" "$DEFAULT_PAYGATEWAY_APP_CODE") || true
+          EMAIL_API_KEY_RAW=$(pick_first "$EMAIL_API_KEY") || true
+          EMAIL_CLIENT_CODE_RAW=$(pick_first "$EMAIL_CLIENT_CODE_VAR" "TUTORSPHERE") || true
           API_BASE_URL_RAW=$(pick_first "$API_BASE_URL_VAR" "$API_BASE_URL_SECRET") || true
 
           missing=0
@@ -184,6 +188,8 @@ jobs:
           gha_write_env PAYGATEWAY_BASE_URL "$(gha_sanitize "$PAYGATEWAY_BASE_URL_RAW")"
           gha_write_env PAYGATEWAY_API_KEY "$(gha_sanitize "$PAYGATEWAY_API_KEY_RAW")"
           gha_write_env PAYGATEWAY_APP_CODE "$(gha_sanitize "$PAYGATEWAY_APP_CODE_RAW")"
+          [ -n "$EMAIL_API_KEY_RAW" ] && gha_write_env EMAIL_API_KEY "$(gha_sanitize "$EMAIL_API_KEY_RAW")" || true
+          gha_write_env EMAIL_CLIENT_CODE "$(gha_sanitize "$EMAIL_CLIENT_CODE_RAW")"
           if [ -n "$API_BASE_URL_RAW" ]; then
             gha_write_env API_BASE_URL "$(gha_sanitize "$API_BASE_URL_RAW")"
           else
@@ -218,6 +224,8 @@ jobs:
           PAYGATEWAY_BASE_URL: ${{ env.PAYGATEWAY_BASE_URL }}
           PAYGATEWAY_API_KEY: ${{ env.PAYGATEWAY_API_KEY }}
           PAYGATEWAY_APP_CODE: ${{ env.PAYGATEWAY_APP_CODE }}
+          EMAIL_API_KEY: ${{ env.EMAIL_API_KEY }}
+          EMAIL_CLIENT_CODE: ${{ env.EMAIL_CLIENT_CODE }}
           API_BASE_URL: ${{ env.API_BASE_URL }}
           API_PORT: ${{ env.API_PORT }}
           WEB_PORT: ${{ env.WEB_PORT }}

@@ -4,6 +4,7 @@ using System.Text;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
+using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.Auth;
 using TutorSphere.Domain.Enums;
 using TutorSphere.Infrastructure.Identity;
@@ -20,11 +21,16 @@ public class AuthService : IAuthService
 {
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly IConfiguration _configuration;
+    private readonly IEmailService _email;
 
-    public AuthService(UserManager<ApplicationUser> userManager, IConfiguration configuration)
+    public AuthService(
+        UserManager<ApplicationUser> userManager,
+        IConfiguration configuration,
+        IEmailService email)
     {
         _userManager = userManager;
         _configuration = configuration;
+        _email = email;
     }
 
     public async Task<AuthResponse> RegisterAsync(RegisterRequest request, CancellationToken ct = default)
@@ -43,6 +49,9 @@ public class AuthService : IAuthService
             throw new InvalidOperationException(string.Join("; ", result.Errors.Select(e => e.Description)));
 
         await _userManager.AddToRoleAsync(user, role);
+
+        await _email.SendWelcomeAsync(user.Email!, user.FirstName, ct);
+
         return await BuildAuthResponse(user, role);
     }
 

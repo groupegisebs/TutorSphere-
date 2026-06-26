@@ -2,6 +2,7 @@ using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.Tenants;
 using TutorSphere.Domain.Entities;
 using TutorSphere.Domain.Enums;
+using Microsoft.Extensions.Logging;
 
 namespace TutorSphere.Application.Services;
 
@@ -15,8 +16,18 @@ public interface ITenantService
 public class TenantService : ITenantService
 {
     private readonly IApplicationDbContext _db;
+    private readonly IEmailService _email;
+    private readonly ILogger<TenantService> _logger;
 
-    public TenantService(IApplicationDbContext db) => _db = db;
+    public TenantService(
+        IApplicationDbContext db,
+        IEmailService email,
+        ILogger<TenantService> logger)
+    {
+        _db = db;
+        _email = email;
+        _logger = logger;
+    }
 
     public async Task<TenantDto> CreateTenantAsync(CreateTenantRequest request, CancellationToken ct = default)
     {
@@ -38,6 +49,15 @@ public class TenantService : ITenantService
 
         _db.Add(tenant);
         await _db.SaveChangesAsync(ct);
+
+        if (!string.IsNullOrWhiteSpace(request.OwnerEmail))
+        {
+            await _email.SendSchoolCreatedAsync(
+                ownerEmail: request.OwnerEmail,
+                ownerFirstName: request.OwnerFirstName,
+                schoolName: tenant.Name,
+                ct: ct);
+        }
 
         return MapToDto(tenant);
     }

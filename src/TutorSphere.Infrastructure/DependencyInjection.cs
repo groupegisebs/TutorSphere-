@@ -6,6 +6,7 @@ using TutorSphere.Application;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Domain.Entities;
 using TutorSphere.Domain.Enums;
+using TutorSphere.Infrastructure.Email;
 using TutorSphere.Infrastructure.Identity;
 using TutorSphere.Infrastructure.MultiTenancy;
 using TutorSphere.Infrastructure.Persistence;
@@ -40,6 +41,9 @@ public static class DependencyInjection
         services.Configure<PayGatewaySettings>(configuration.GetSection(PayGatewaySettings.SectionName));
         services.AddHttpClient<PayGatewayClient>();
         services.AddScoped<IPaymentGatewayService, PayGatewayService>();
+        services.Configure<MailGatewaySettings>(configuration.GetSection(MailGatewaySettings.SectionName));
+        services.AddHttpClient<MailGatewayClient>();
+        services.AddScoped<IEmailService, EmailService>();
         services.AddApplication();
 
         return services;
