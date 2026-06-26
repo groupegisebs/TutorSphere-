@@ -1,0 +1,40 @@
+@inject IStringLocalizer<SharedResources> L
+
+<section class="lp-testimonials lp-reveal" id="testimonials">
+    <div class="lp-container">
+        <div class="lp-section-header">
+            <span class="lp-section-label">@L["Testimonials_Label"]</span>
+            <h2>@L["Testimonials_Title"]</h2>
+        </div>
+
+        <div class="lp-testimonial-grid">
+            @foreach (var t in _items)
+            {
+                <article class="lp-testimonial-card">
+                    <div class="lp-testimonial-stars" aria-label="5 étoiles">
+                        @for (var i = 0; i < 5; i++) { <i class="bi bi-star-fill"></i> }
+                    </div>
+                    <blockquote>@L[t.QuoteKey]</blockquote>
+                    <div class="lp-testimonial-author">
+                        <span class="lp-avatar @t.AvatarClass">@t.Initials</span>
+                        <div>
+                            <strong>@L[t.NameKey]</strong>
+                            <span>@L[t.RoleKey]</span>
+                        </div>
+                    </div>
+                </article>
+            }
+        </div>
+    </div>
+</section>
+
+@code {
+    private readonly record struct Testimonial(string QuoteKey, string NameKey, string RoleKey, string Initials, string AvatarClass);
+
+    private readonly Testimonial[] _items =
+    [
+        new("Testimonial_Tutor_Quote", "Testimonial_Tutor_Name", "Testimonial_Tutor_Role", "MD", "av-violet"),
+        new("Testimonial_Parent_Quote", "Testimonial_Parent_Name", "Testimonial_Parent_Role", "SL", "av-teal"),
+        new("Testimonial_Student_Quote", "Testimonial_Student_Name", "Testimonial_Student_Role", "AT", "av-amber"),
+    ];
+}

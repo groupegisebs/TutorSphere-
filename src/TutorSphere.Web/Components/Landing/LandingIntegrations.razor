@@ -1,0 +1,40 @@
+@inject IStringLocalizer<SharedResources> L
+
+<section class="lp-integrations lp-reveal" id="integrations">
+    <div class="lp-container">
+        <div class="lp-section-header">
+            <span class="lp-section-label">@L["Integrations_Label"]</span>
+            <h2>@L["Integrations_Title"]</h2>
+            <p>@L["Integrations_Subtitle"]</p>
+        </div>
+
+        <div class="lp-logo-grid">
+            @foreach (var logo in _logos)
+            {
+                <div class="lp-logo-item">
+                    @if (!string.IsNullOrEmpty(logo.Icon))
+                    {
+                        <i class="bi @logo.Icon"></i>
+                    }
+                    <span>@logo.Name</span>
+                </div>
+            }
+        </div>
+    </div>
+</section>
+
+@code {
+    private readonly record struct LogoItem(string Name, string Icon);
+
+    private readonly LogoItem[] _logos =
+    [
+        new("Stripe", "bi-credit-card-2-front"),
+        new("Google", "bi-google"),
+        new("Zoom", "bi-camera-video"),
+        new("Microsoft", "bi-microsoft"),
+        new("Apple", "bi-apple"),
+        new("Google Calendar", "bi-calendar-event"),
+        new("Outlook", "bi-envelope"),
+        new("Office", "bi-file-earmark-text"),
+    ];
+}

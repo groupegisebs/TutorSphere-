@@ -1,0 +1,46 @@
+@inject IStringLocalizer<SharedResources> L
+
+<section class="lp-faq lp-reveal" id="faq">
+    <div class="lp-container lp-faq-inner">
+        <div class="lp-section-header">
+            <span class="lp-section-label">@L["Faq_Label"]</span>
+            <h2>@L["Faq_Title"]</h2>
+        </div>
+
+        <div class="lp-faq-list">
+            @foreach (var item in _items)
+            {
+                var open = _openId == item.Id;
+                <div class="lp-faq-item @(open ? "open" : "")">
+                    <button type="button" class="lp-faq-question" @onclick="() => Toggle(item.Id)" aria-expanded="@open">
+                        @L[item.QuestionKey]
+                        <i class="bi @(open ? "bi-chevron-up" : "bi-chevron-down")"></i>
+                    </button>
+                    @if (open)
+                    {
+                        <div class="lp-faq-answer">
+                            <p>@L[item.AnswerKey]</p>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+</section>
+
+@code {
+    private string? _openId = "q1";
+
+    private readonly record struct FaqItem(string Id, string QuestionKey, string AnswerKey);
+
+    private readonly FaqItem[] _items =
+    [
+        new("q1", "Faq_Q1", "Faq_A1"),
+        new("q2", "Faq_Q2", "Faq_A2"),
+        new("q3", "Faq_Q3", "Faq_A3"),
+        new("q4", "Faq_Q4", "Faq_A4"),
+        new("q5", "Faq_Q5", "Faq_A5"),
+    ];
+
+    private void Toggle(string id) => _openId = _openId == id ? null : id;
+}

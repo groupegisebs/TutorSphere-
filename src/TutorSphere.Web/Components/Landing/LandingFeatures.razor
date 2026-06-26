@@ -1,0 +1,44 @@
+@inject IStringLocalizer<SharedResources> L
+
+<section class="lp-features-premium lp-reveal" id="features">
+    <div class="lp-container">
+        <div class="lp-section-header">
+            <span class="lp-section-label">@L["Features_Label"]</span>
+            <h2>@L["Features_Title"]</h2>
+            <p>@L["Features_Subtitle"]</p>
+        </div>
+
+        <div class="lp-premium-grid">
+            @foreach (var f in _features)
+            {
+                <article class="lp-premium-card">
+                    <div class="lp-premium-card-top">
+                        <div class="lp-premium-icon @f.IconClass">
+                            <i class="bi @f.Icon"></i>
+                        </div>
+                        <div class="lp-premium-preview lp-premium-preview--@f.Preview">
+                            <div class="lp-mini-ui"></div>
+                        </div>
+                    </div>
+                    <h3>@L[f.TitleKey]</h3>
+                    <p>@L[f.DescKey]</p>
+                    <a href="#showcase" class="lp-premium-link">@L["Feature_Discover"] <i class="bi bi-arrow-right"></i></a>
+                </article>
+            }
+        </div>
+    </div>
+</section>
+
+@code {
+    private readonly record struct FeatureItem(string TitleKey, string DescKey, string Icon, string IconClass, string Preview);
+
+    private readonly FeatureItem[] _features =
+    [
+        new("Feature_Students_Manage", "Feature_Students_Manage_Desc", "bi-people-fill", "icon-violet", "students"),
+        new("Feature_Schedule", "Feature_Schedule_Desc", "bi-calendar3", "icon-teal", "calendar"),
+        new("Feature_Offers", "Feature_Offers_Desc", "bi-file-earmark-text", "icon-amber", "subscriptions"),
+        new("Feature_Revenue", "Feature_Revenue_Desc", "bi-graph-up-arrow", "icon-blue", "payments"),
+        new("Feature_Messaging", "Feature_Messaging_Desc", "bi-chat-square-text-fill", "icon-rose", "crm"),
+        new("Landing_Feature_Classroom", "Landing_Feature_Classroom_Desc", "bi-camera-video-fill", "icon-violet", "classroom"),
+    ];
+}

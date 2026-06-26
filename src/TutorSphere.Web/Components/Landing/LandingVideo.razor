@@ -1,0 +1,42 @@
+@inject IStringLocalizer<SharedResources> L
+
+<section class="lp-video lp-reveal" id="video">
+    <div class="lp-container">
+        <div class="lp-section-header">
+            <span class="lp-section-label">@L["Video_Label"]</span>
+            <h2>@L["Video_Title"]</h2>
+            <p>@L["Video_Subtitle"]</p>
+        </div>
+
+        <button type="button" class="lp-video-placeholder" @onclick="OpenModal" aria-label="@L["Video_Play"]">
+            <div class="lp-video-thumb">
+                <LandingDashboardMockup Variant="dashboard" CssClass="lp-mockup--video-bg" L="L" AriaLabel="" />
+                <div class="lp-video-overlay">
+                    <span class="lp-play-btn"><i class="bi bi-play-fill"></i></span>
+                </div>
+            </div>
+        </button>
+    </div>
+
+    @if (_showModal)
+    {
+        <div class="lp-video-modal" @onclick="CloseModal">
+            <div class="lp-video-modal-content" @onclick:stopPropagation="true">
+                <button type="button" class="lp-video-modal-close" @onclick="CloseModal" aria-label="Fermer">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+                <div class="lp-video-modal-body">
+                    <i class="bi bi-camera-video display-4 text-primary mb-3"></i>
+                    <p>@L["Video_Placeholder"]</p>
+                </div>
+            </div>
+        </div>
+    }
+</section>
+
+@code {
+    private bool _showModal;
+
+    private void OpenModal() => _showModal = true;
+    private void CloseModal() => _showModal = false;
+}

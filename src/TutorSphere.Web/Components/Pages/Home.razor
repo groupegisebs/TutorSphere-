@@ -1,221 +1,42 @@
 ﻿@page "/"
 @layout PublicLayout
+@rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
+@implements IAsyncDisposable
+@inject IJSRuntime JS
 
 <PageTitle>@L["PageTitle_Home"]</PageTitle>
 
-<!-- ══ HERO ══════════════════════════════════════════════════════════ -->
-<section class="lp-hero">
-    <div class="lp-hero-inner">
+<HeadContent>
+    <link rel="stylesheet" href="css/landing.css" />
+</HeadContent>
 
-        <!-- Left content -->
-        <div class="lp-hero-left">
-            <div class="lp-hero-badge">
-                <i class="bi bi-star-fill" aria-hidden="true"></i>
-                @L["Hero_Badge"]
-            </div>
+<LandingHero />
+<LandingWhy />
+<LandingFeatures />
+<LandingSteps />
+<LandingShowcase />
+<LandingHighlights />
+<LandingTestimonials />
+<LandingIntegrations />
+<LandingVideo />
+<LandingPricing />
+<LandingFaq />
+<LandingFinalCta />
 
-            <h1 class="lp-hero-headline">
-                @L["Hero_Headline_Line1"]<br/>
-                @L["Hero_Headline_Line2"]<br/>
-                <span class="lp-hero-highlight">@L["Hero_Headline_Line3"]</span>
-            </h1>
+@code {
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try { await JS.InvokeVoidAsync("landingInit"); }
+            catch { /* prerender */ }
+        }
+    }
 
-            <p class="lp-hero-lead">@L["Hero_Lead"]</p>
-
-            <div class="lp-hero-actions">
-                <a href="/tutor/register" class="btn btn-primary btn-lg lp-btn-cta">
-                    <i class="bi bi-plus-circle me-2" aria-hidden="true"></i>@L["Hero_CreateSchool"]
-                </a>
-                <a href="#features" class="btn btn-outline-secondary btn-lg lp-btn-demo">
-                    <i class="bi bi-play-circle me-2" aria-hidden="true"></i>@L["Hero_DiscoverPlatform"]
-                </a>
-            </div>
-
-            <div class="lp-hero-stats">
-                <div class="lp-stat">
-                    <span class="lp-stat-value">500+</span>
-                    <span class="lp-stat-label">@L["Stat_Tutors"]</span>
-                </div>
-                <div class="lp-stat-divider"></div>
-                <div class="lp-stat">
-                    <span class="lp-stat-value">10K+</span>
-                    <span class="lp-stat-label">@L["Stat_Students"]</span>
-                </div>
-                <div class="lp-stat-divider"></div>
-                <div class="lp-stat">
-                    <span class="lp-stat-value">98%</span>
-                    <span class="lp-stat-label">@L["Stat_Parents"]</span>
-                </div>
-                <div class="lp-stat-divider"></div>
-                <div class="lp-stat">
-                    <span class="lp-stat-value">4,9/5</span>
-                    <span class="lp-stat-label">@L["Stat_Rating"]</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- Right: floating dashboard widgets -->
-        <div class="lp-hero-right" aria-hidden="true">
-            <div class="lp-hero-glow"></div>
-
-            <!-- Revenue card (top left) -->
-            <div class="lp-widget lp-widget--tl">
-                <p class="lp-widget-label">@L["Stat_MonthlyRevenue"]</p>
-                <p class="lp-widget-value">2 450 $</p>
-                <div class="lp-widget-chart">
-                    <svg viewBox="0 0 120 40" preserveAspectRatio="none">
-                        <defs>
-                            <linearGradient id="wFill" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stop-color="#5831E0" stop-opacity="0.2"/>
-                                <stop offset="100%" stop-color="#5831E0" stop-opacity="0"/>
-                            </linearGradient>
-                        </defs>
-                        <path d="M0,32 C15,28 25,20 35,22 C45,24 55,12 70,10 C85,8 95,16 120,8 L120,40 L0,40 Z" fill="url(#wFill)"/>
-                        <path d="M0,32 C15,28 25,20 35,22 C45,24 55,12 70,10 C85,8 95,16 120,8" fill="none" stroke="#5831E0" stroke-width="2"/>
-                    </svg>
-                </div>
-                <span class="lp-widget-change positive"><i class="bi bi-arrow-up-short"></i> 12% @L["Stat_vs_last_month"]</span>
-            </div>
-
-            <!-- Upcoming lessons (center) -->
-            <div class="lp-widget lp-widget--center">
-                <p class="lp-widget-label">@L["Stat_UpcomingLessons"]</p>
-                <ul class="lp-widget-lessons">
-                    <li>
-                        <span class="lp-lesson-time">10:00</span>
-                        <span class="lp-lesson-avatar" style="background:#5831E0">EJ</span>
-                        <div>
-                            <strong>Emma Johnson</strong>
-                            <span>Mathématiques</span>
-                        </div>
-                    </li>
-                    <li>
-                        <span class="lp-lesson-time">14:00</span>
-                        <span class="lp-lesson-avatar" style="background:#10b981">LB</span>
-                        <div>
-                            <strong>Liam Brown</strong>
-                            <span>Physique</span>
-                        </div>
-                    </li>
-                    <li>
-                        <span class="lp-lesson-time">16:00</span>
-                        <span class="lp-lesson-avatar" style="background:#f59e0b">SD</span>
-                        <div>
-                            <strong>Sophia Davis</strong>
-                            <span>Chimie</span>
-                        </div>
-                    </li>
-                </ul>
-                <a class="lp-widget-link">@L["Button_ViewAll"]</a>
-            </div>
-
-            <!-- Active students (top right) -->
-            <div class="lp-widget lp-widget--tr">
-                <p class="lp-widget-label">@L["Stat_ActiveStudents"]</p>
-                <p class="lp-widget-value">32</p>
-                <span class="lp-widget-change positive"><i class="bi bi-arrow-up-short"></i> +3 @L["Stat_this_month"]</span>
-            </div>
-
-            <!-- Reviews (middle right) -->
-            <div class="lp-widget lp-widget--mr">
-                <p class="lp-widget-label">@L["TutorDashboard_RecentReviews"]</p>
-                <p class="lp-widget-value lp-widget-value--sm">4,9<span>/5</span></p>
-                <div class="lp-widget-stars">
-                    @for (var i = 0; i < 5; i++) { <i class="bi bi-star-fill"></i> }
-                </div>
-                <p class="lp-widget-sub">@L["TutorDashboard_BasedOnReviews", 28]</p>
-            </div>
-
-            <!-- Subscriptions (bottom right) -->
-            <div class="lp-widget lp-widget--br">
-                <p class="lp-widget-label">@L["Stat_ActiveSubscriptions"]</p>
-                <p class="lp-widget-value">28</p>
-                <div class="lp-widget-bar">
-                    <div class="lp-widget-bar-fill" style="width:70%"></div>
-                </div>
-                <span class="lp-widget-change positive"><i class="bi bi-arrow-up-short"></i> +4 @L["Stat_this_month"]</span>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- ══ FEATURES ══════════════════════════════════════════════════════ -->
-<section class="lp-features" id="features">
-    <div class="lp-features-inner">
-        <div class="lp-section-header">
-            <h2>@L["Features_Title"]</h2>
-            <p>@L["Features_Subtitle"]</p>
-        </div>
-        <div class="lp-feature-grid">
-            <div class="lp-feature-card">
-                <div class="lp-feature-icon lp-feature-icon--violet">
-                    <i class="bi bi-people-fill" aria-hidden="true"></i>
-                </div>
-                <h3>@L["Feature_Students_Manage"]</h3>
-                <p>@L["Feature_Students_Manage_Desc"]</p>
-                <a href="#" class="lp-feature-link">@L["Feature_LearnMore"] →</a>
-            </div>
-            <div class="lp-feature-card">
-                <div class="lp-feature-icon lp-feature-icon--teal">
-                    <i class="bi bi-calendar3" aria-hidden="true"></i>
-                </div>
-                <h3>@L["Feature_Schedule"]</h3>
-                <p>@L["Feature_Schedule_Desc"]</p>
-                <a href="#" class="lp-feature-link lp-feature-link--teal">@L["Feature_LearnMore"] →</a>
-            </div>
-            <div class="lp-feature-card">
-                <div class="lp-feature-icon lp-feature-icon--amber">
-                    <i class="bi bi-file-earmark-text" aria-hidden="true"></i>
-                </div>
-                <h3>@L["Feature_Offers"]</h3>
-                <p>@L["Feature_Offers_Desc"]</p>
-                <a href="#" class="lp-feature-link lp-feature-link--amber">@L["Feature_LearnMore"] →</a>
-            </div>
-            <div class="lp-feature-card">
-                <div class="lp-feature-icon lp-feature-icon--blue">
-                    <i class="bi bi-graph-up-arrow" aria-hidden="true"></i>
-                </div>
-                <h3>@L["Feature_Revenue"]</h3>
-                <p>@L["Feature_Revenue_Desc"]</p>
-                <a href="#" class="lp-feature-link lp-feature-link--blue">@L["Feature_LearnMore"] →</a>
-            </div>
-            <div class="lp-feature-card">
-                <div class="lp-feature-icon lp-feature-icon--rose">
-                    <i class="bi bi-chat-square-text-fill" aria-hidden="true"></i>
-                </div>
-                <h3>@L["Feature_Messaging"]</h3>
-                <p>@L["Feature_Messaging_Desc"]</p>
-                <a href="#" class="lp-feature-link lp-feature-link--rose">@L["Feature_LearnMore"] →</a>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- ══ PRICING ═══════════════════════════════════════════════════════ -->
-<section class="lp-pricing" id="pricing">
-    <div class="lp-features-inner">
-        <div class="lp-section-header">
-            <h2>@L["Plans_Title"]</h2>
-            <p>@L["Plans_Subtitle"]</p>
-        </div>
-        <div class="lp-pricing-grid">
-            <div class="lp-plan-card">
-                <h4>@L["Plan_Starter"]</h4>
-                <p class="lp-plan-price">14,99 $<span>/mois</span></p>
-                <a href="/tutor/register" class="btn btn-outline-primary w-100 mt-3">@L["Hero_CreateSchool"]</a>
-            </div>
-            <div class="lp-plan-card lp-plan-card--featured">
-                <span class="lp-plan-badge">@L["Plan_Popular"]</span>
-                <h4>@L["Plan_Professional"]</h4>
-                <p class="lp-plan-price">29,99 $<span>/mois</span></p>
-                <a href="/tutor/register" class="btn btn-primary w-100 mt-3">@L["Hero_CreateSchool"]</a>
-            </div>
-            <div class="lp-plan-card">
-                <h4>@L["Plan_Business"]</h4>
-                <p class="lp-plan-price">59,99 $<span>/mois</span></p>
-                <a href="/tutor/register" class="btn btn-outline-primary w-100 mt-3">@L["Hero_CreateSchool"]</a>
-            </div>
-        </div>
-    </div>
-</section>
+    public async ValueTask DisposeAsync()
+    {
+        try { await JS.InvokeVoidAsync("eval", "window.__landingInitialized = false"); }
+        catch { /* ignore */ }
+    }
+}

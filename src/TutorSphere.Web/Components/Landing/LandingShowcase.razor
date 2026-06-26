@@ -1,0 +1,57 @@
+@inject IStringLocalizer<SharedResources> L
+
+<section class="lp-showcase lp-reveal" id="showcase">
+    <div class="lp-container">
+        <div class="lp-section-header">
+            <span class="lp-section-label">@L["Showcase_Label"]</span>
+            <h2>@L["Showcase_Title"]</h2>
+            <p>@L["Showcase_Subtitle"]</p>
+        </div>
+
+        <div class="lp-showcase-tabs" role="tablist">
+            @foreach (var tab in _tabs)
+            {
+                <button type="button"
+                        class="lp-showcase-tab @(tab.Id == _active ? "active" : "")"
+                        role="tab"
+                        aria-selected="@(tab.Id == _active)"
+                        @onclick="() => SelectTab(tab.Id)">
+                    <i class="bi @tab.Icon"></i>
+                    @L[tab.LabelKey]
+                </button>
+            }
+        </div>
+
+        <div class="lp-showcase-panel" role="tabpanel">
+            <div class="lp-showcase-mockup-wrap">
+                <LandingDashboardMockup Variant="@_active" CssClass="lp-mockup--showcase" L="L" AriaLabel="@L[_tabs.First(t => t.Id == _active).LabelKey]" />
+            </div>
+            <div class="lp-showcase-copy">
+                <h3>@L[_tabs.First(t => t.Id == _active).TitleKey]</h3>
+                <p>@L[_tabs.First(t => t.Id == _active).DescKey]</p>
+                <a href="/tutor/register" class="btn btn-primary">@L["Hero_CreateSchool"]</a>
+            </div>
+        </div>
+    </div>
+</section>
+
+@code {
+    private string _active = "dashboard";
+
+    private readonly record struct ShowcaseTab(string Id, string Icon, string LabelKey, string TitleKey, string DescKey);
+
+    private readonly ShowcaseTab[] _tabs =
+    [
+        new("dashboard", "bi-speedometer2", "Showcase_Dashboard", "Showcase_Dashboard_Title", "Showcase_Dashboard_Desc"),
+        new("calendar", "bi-calendar3", "Showcase_Calendar", "Showcase_Calendar_Title", "Showcase_Calendar_Desc"),
+        new("classroom", "bi-camera-video", "Showcase_Classroom", "Showcase_Classroom_Title", "Showcase_Classroom_Desc"),
+        new("payments", "bi-credit-card", "Showcase_Payments", "Showcase_Payments_Title", "Showcase_Payments_Desc"),
+        new("reports", "bi-graph-up", "Showcase_Reports", "Showcase_Reports_Title", "Showcase_Reports_Desc"),
+        new("students", "bi-people", "Showcase_Students", "Showcase_Students_Title", "Showcase_Students_Desc"),
+        new("crm", "bi-kanban", "Showcase_Crm", "Showcase_Crm_Title", "Showcase_Crm_Desc"),
+        new("invoices", "bi-receipt", "Showcase_Invoices", "Showcase_Invoices_Title", "Showcase_Invoices_Desc"),
+        new("subscriptions", "bi-arrow-repeat", "Showcase_Subscriptions", "Showcase_Subscriptions_Title", "Showcase_Subscriptions_Desc"),
+    ];
+
+    private void SelectTab(string id) => _active = id;
+}

@@ -1,0 +1,164 @@
+@inject IStringLocalizer<SharedResources> L
+
+<section class="lp-pricing-table lp-reveal" id="pricing">
+    <div class="lp-container">
+        <div class="lp-section-header">
+            <span class="lp-section-label">@L["Plans_Label"]</span>
+            <h2>@L["Plans_Title"]</h2>
+            <p>@L["Plans_Subtitle"]</p>
+        </div>
+
+        <div class="lp-pricing-compare-wrap">
+            <table class="lp-pricing-compare">
+                <thead>
+                    <tr>
+                        <th class="lp-pricing-feature-col">@L["Pricing_Features"]</th>
+                        @foreach (var plan in _plans)
+                        {
+                            <th class="@(plan.Featured ? "featured" : "")">
+                                @if (plan.Featured)
+                                {
+                                    <span class="lp-plan-badge">@L["Plan_Popular"]</span>
+                                }
+                                <span class="plan-name">@L[plan.NameKey]</span>
+                                <span class="plan-price">
+                                    @if (plan.ContactUs)
+                                    {
+                                        @L["Plan_ContactUs"]
+                                    }
+                                    else
+                                    {
+                                        @($"{plan.Price} $")
+                                        <small>/@L["Plan_PerMonth"]</small>
+                                    }
+                                </span>
+                                <a href="@(plan.ContactUs ? "#" : "/tutor/register")" class="btn @(plan.Featured ? "btn-primary" : "btn-outline-primary") btn-sm w-100 mt-2">
+                                    @(plan.ContactUs ? L["Plan_ContactSales"] : L["Hero_CreateSchool"])
+                                </a>
+                            </th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in _rows)
+                    {
+                        <tr>
+                            <td>@L[row.LabelKey]</td>
+                            @foreach (var plan in _plans)
+                            {
+                                <td class="@(plan.Featured ? "featured" : "")">
+                                    @RenderCell(plan.Id, row.Id)
+                                </td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+
+@code {
+    private readonly record struct Plan(string Id, string NameKey, string Price, bool Featured, bool ContactUs);
+    private readonly record struct Row(string Id, string LabelKey);
+
+    private readonly Plan[] _plans =
+    [
+        new("starter", "Plan_Starter", "14,99", false, false),
+        new("pro", "Plan_Professional", "29,99", true, false),
+        new("business", "Plan_Business", "59,99", false, false),
+        new("enterprise", "Plan_Enterprise", "", false, true),
+    ];
+
+    private readonly Row[] _rows =
+    [
+        new("students", "Pricing_Students"),
+        new("storage", "Pricing_Storage"),
+        new("domain", "Pricing_Domain"),
+        new("teachers", "Pricing_Teachers"),
+        new("reports", "Pricing_Reports"),
+        new("video", "Pricing_Video"),
+        new("support", "Pricing_Support"),
+        new("stats", "Pricing_Stats"),
+        new("crm", "Pricing_Crm"),
+        new("billing", "Pricing_Billing"),
+    ];
+
+    private RenderFragment RenderCell(string planId, string rowId) => builder =>
+    {
+        var (check, text) = GetValue(planId, rowId);
+        if (check == true)
+        {
+            builder.OpenElement(0, "i");
+            builder.AddAttribute(1, "class", "bi bi-check-circle-fill text-success");
+            builder.CloseElement();
+        }
+        else if (check == false)
+        {
+            builder.OpenElement(0, "i");
+            builder.AddAttribute(1, "class", "bi bi-dash text-muted");
+            builder.CloseElement();
+        }
+        else
+        {
+            builder.OpenElement(0, "span");
+            builder.AddContent(1, text);
+            builder.CloseElement();
+        }
+    };
+
+    private static (bool? check, string text) GetValue(string plan, string row) => (plan, row) switch
+    {
+        ("starter", "students") => (null, "10"),
+        ("pro", "students") => (null, "50"),
+        ("business", "students") => (null, "200"),
+        ("enterprise", "students") => (null, "∞"),
+
+        ("starter", "storage") => (null, "5 Go"),
+        ("pro", "storage") => (null, "25 Go"),
+        ("business", "storage") => (null, "100 Go"),
+        ("enterprise", "storage") => (null, "∞"),
+
+        ("starter", "domain") => (false, ""),
+        ("pro", "domain") => (true, ""),
+        ("business", "domain") => (true, ""),
+        ("enterprise", "domain") => (true, ""),
+
+        ("starter", "teachers") => (null, "1"),
+        ("pro", "teachers") => (null, "3"),
+        ("business", "teachers") => (null, "10"),
+        ("enterprise", "teachers") => (null, "∞"),
+
+        ("starter", "reports") => (null, "Basique"),
+        ("pro", "reports") => (null, "Complet"),
+        ("business", "reports") => (null, "Complet"),
+        ("enterprise", "reports") => (null, "Complet"),
+
+        ("starter", "video") => (null, "5 h/mois"),
+        ("pro", "video") => (null, "Illimité"),
+        ("business", "video") => (null, "Illimité"),
+        ("enterprise", "video") => (null, "Illimité"),
+
+        ("starter", "support") => (null, "Courriel"),
+        ("pro", "support") => (null, "Prioritaire"),
+        ("business", "support") => (null, "Prioritaire"),
+        ("enterprise", "support") => (null, "Dédié"),
+
+        ("starter", "stats") => (null, "Basique"),
+        ("pro", "stats") => (null, "Avancé"),
+        ("business", "stats") => (null, "Avancé"),
+        ("enterprise", "stats") => (null, "Avancé"),
+
+        ("starter", "crm") => (false, ""),
+        ("pro", "crm") => (true, ""),
+        ("business", "crm") => (true, ""),
+        ("enterprise", "crm") => (true, ""),
+
+        ("starter", "billing") => (null, "Basique"),
+        ("pro", "billing") => (null, "Complet"),
+        ("business", "billing") => (null, "Complet"),
+        ("enterprise", "billing") => (null, "Complet"),
+
+        _ => (false, "")
+    };
+}

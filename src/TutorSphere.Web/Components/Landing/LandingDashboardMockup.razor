@@ -1,0 +1,159 @@
+@* CSS-only dashboard mockup for hero & showcase *@
+<div class="lp-mockup @CssClass" role="img" aria-label="@AriaLabel">
+    <div class="lp-mockup-chrome">
+        <span class="lp-mockup-dot lp-mockup-dot--r"></span>
+        <span class="lp-mockup-dot lp-mockup-dot--y"></span>
+        <span class="lp-mockup-dot lp-mockup-dot--g"></span>
+    </div>
+    <div class="lp-mockup-body">
+        <aside class="lp-mockup-sidebar">
+            @if (Variant != "mobile")
+            {
+                <div class="lp-mockup-logo"></div>
+                @foreach (var item in SidebarItems)
+                {
+                    <div class="lp-mockup-nav @(item.Active ? "active" : "")">
+                        <span class="lp-mockup-nav-icon"><i class="bi @item.Icon"></i></span>
+                        <span class="lp-mockup-nav-label">@item.Label</span>
+                    </div>
+                }
+            }
+        </aside>
+        <main class="lp-mockup-main">
+            @if (Variant == "dashboard")
+            {
+                <div class="lp-mockup-topbar">
+                    <span class="lp-mockup-title">@L["TutorDashboard_Title"]</span>
+                </div>
+                <div class="lp-mockup-stats">
+                    <div class="lp-mockup-stat"><span class="lbl">@L["Stat_MonthlyRevenue"]</span><span class="val">2 450 $</span></div>
+                    <div class="lp-mockup-stat"><span class="lbl">@L["Stat_ActiveStudents"]</span><span class="val">32</span></div>
+                    <div class="lp-mockup-stat"><span class="lbl">@L["Stat_UpcomingLessons"]</span><span class="val">6</span></div>
+                </div>
+                <div class="lp-mockup-chart">
+                    <svg viewBox="0 0 200 60" preserveAspectRatio="none">
+                        <defs>
+                            <linearGradient id="mockFill" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stop-color="#5831E0" stop-opacity="0.25"/>
+                                <stop offset="100%" stop-color="#5831E0" stop-opacity="0"/>
+                            </linearGradient>
+                        </defs>
+                        <path d="M0,45 C20,40 35,30 55,32 C75,34 90,18 110,15 C130,12 150,25 170,20 C185,17 195,22 200,18 L200,60 L0,60 Z" fill="url(#mockFill)"/>
+                        <path d="M0,45 C20,40 35,30 55,32 C75,34 90,18 110,15 C130,12 150,25 170,20 C185,17 195,22 200,18" fill="none" stroke="#5831E0" stroke-width="2"/>
+                    </svg>
+                </div>
+                <div class="lp-mockup-lessons">
+                    <div class="lp-mockup-lesson"><span class="t">10:00</span><span class="av">EJ</span><span class="n">Emma — Maths</span></div>
+                    <div class="lp-mockup-lesson"><span class="t">14:00</span><span class="av av--g">LB</span><span class="n">Liam — Physique</span></div>
+                </div>
+            }
+            else if (Variant == "calendar")
+            {
+                <div class="lp-mockup-topbar"><span class="lp-mockup-title">Calendrier</span></div>
+                <div class="lp-mockup-cal-grid">
+                    @for (var d = 1; d <= 28; d++)
+                    {
+                        var cls = d is 5 or 12 or 19 ? " has-event" : "";
+                        <span class="lp-mockup-cal-day@cls">@d</span>
+                    }
+                </div>
+            }
+            else if (Variant == "classroom")
+            {
+                <div class="lp-mockup-vc">
+                    <div class="lp-mockup-vc-main"><i class="bi bi-camera-video"></i></div>
+                    <div class="lp-mockup-vc-thumbs">
+                        <span></span><span></span><span></span>
+                    </div>
+                    <div class="lp-mockup-vc-bar">
+                        <i class="bi bi-mic-fill"></i><i class="bi bi-camera-video-fill"></i><i class="bi bi-chat-dots"></i>
+                    </div>
+                </div>
+            }
+            else if (Variant == "payments")
+            {
+                <div class="lp-mockup-topbar"><span class="lp-mockup-title">Paiements</span></div>
+                <div class="lp-mockup-pay-rows">
+                    <div class="lp-mockup-pay-row"><span>Abonnement Emma</span><span class="ok">245 $</span></div>
+                    <div class="lp-mockup-pay-row"><span>Cours Liam</span><span class="ok">85 $</span></div>
+                    <div class="lp-mockup-pay-row"><span>En attente</span><span class="pending">320 $</span></div>
+                </div>
+            }
+            else if (Variant == "reports")
+            {
+                <div class="lp-mockup-topbar"><span class="lp-mockup-title">Rapports</span></div>
+                <div class="lp-mockup-report-bars">
+                    <div class="lp-mockup-bar-row"><span>Maths</span><div class="bar"><div style="width:85%"></div></div></div>
+                    <div class="lp-mockup-bar-row"><span>Physique</span><div class="bar"><div style="width:72%"></div></div></div>
+                    <div class="lp-mockup-bar-row"><span>Chimie</span><div class="bar"><div style="width:90%"></div></div></div>
+                </div>
+            }
+            else if (Variant == "students")
+            {
+                <div class="lp-mockup-topbar"><span class="lp-mockup-title">Élèves</span></div>
+                <div class="lp-mockup-student-list">
+                    <div class="lp-mockup-student"><span class="av">EJ</span><span>Emma Johnson</span><span class="badge">Actif</span></div>
+                    <div class="lp-mockup-student"><span class="av av--g">LB</span><span>Liam Brown</span><span class="badge">Actif</span></div>
+                    <div class="lp-mockup-student"><span class="av av--a">SD</span><span>Sophia Davis</span><span class="badge">Actif</span></div>
+                </div>
+            }
+            else if (Variant == "crm")
+            {
+                <div class="lp-mockup-topbar"><span class="lp-mockup-title">CRM</span></div>
+                <div class="lp-mockup-crm-pipeline">
+                    <div class="col"><span class="lbl">Prospects</span><span class="num">12</span></div>
+                    <div class="col"><span class="lbl">Essai</span><span class="num">5</span></div>
+                    <div class="col"><span class="lbl">Clients</span><span class="num">32</span></div>
+                </div>
+            }
+            else if (Variant == "invoices")
+            {
+                <div class="lp-mockup-topbar"><span class="lp-mockup-title">Factures</span></div>
+                <div class="lp-mockup-invoice-list">
+                    <div class="lp-mockup-invoice"><span>#INV-1042</span><span class="paid">Payée</span></div>
+                    <div class="lp-mockup-invoice"><span>#INV-1043</span><span class="pending">En attente</span></div>
+                </div>
+            }
+            else if (Variant == "subscriptions")
+            {
+                <div class="lp-mockup-topbar"><span class="lp-mockup-title">Abonnements</span></div>
+                <div class="lp-mockup-sub-cards">
+                    <div class="lp-mockup-sub"><span>Forfait mensuel</span><span>28 actifs</span></div>
+                    <div class="lp-mockup-sub"><span>Forfait trimestriel</span><span>8 actifs</span></div>
+                </div>
+            }
+            else if (Variant == "mobile")
+            {
+                <div class="lp-mockup-mobile-stats">
+                    <div><span class="val">6</span><span class="lbl">Cours</span></div>
+                    <div><span class="val">3</span><span class="lbl">Devoirs</span></div>
+                </div>
+                <div class="lp-mockup-mobile-list">
+                    <div class="item"><i class="bi bi-calendar3"></i> Maths — 10h00</div>
+                    <div class="item"><i class="bi bi-pencil"></i> Devoir chimie</div>
+                </div>
+            }
+        </main>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Variant { get; set; } = "dashboard";
+    [Parameter] public string CssClass { get; set; } = "";
+    [Parameter] public string AriaLabel { get; set; } = "Aperçu TutorSphere";
+    [Parameter] public IStringLocalizer<SharedResources> L { get; set; } = default!;
+
+    private IEnumerable<(string Icon, string Label, bool Active)> SidebarItems => Variant switch
+    {
+        "calendar" => [("bi-calendar3", "Calendrier", true), ("bi-house", "Accueil", false), ("bi-people", "Élèves", false)],
+        "classroom" => [("bi-camera-video", "Salle virtuelle", true), ("bi-calendar3", "Calendrier", false)],
+        "payments" => [("bi-credit-card", "Paiements", true), ("bi-receipt", "Factures", false)],
+        "reports" => [("bi-graph-up", "Rapports", true), ("bi-people", "Élèves", false)],
+        "students" => [("bi-people", "Élèves", true), ("bi-chat", "Messages", false)],
+        "crm" => [("bi-kanban", "CRM", true), ("bi-people", "Contacts", false)],
+        "invoices" => [("bi-receipt", "Factures", true), ("bi-credit-card", "Paiements", false)],
+        "subscriptions" => [("bi-arrow-repeat", "Abonnements", true), ("bi-tag", "Offres", false)],
+        "mobile" => [],
+        _ => [("bi-house", "Tableau de bord", true), ("bi-people", "Élèves", false), ("bi-calendar3", "Calendrier", false), ("bi-credit-card", "Paiements", false), ("bi-graph-up", "Rapports", false)]
+    };
+}
