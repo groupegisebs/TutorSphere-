@@ -19,6 +19,15 @@ public class Student : BaseEntity, ITenantEntity
     public string? Goals { get; set; }
     public string? Notes { get; set; }
     public bool IsActive { get; set; } = true;
+    public DateTime? DateOfBirth { get; set; }
+
+    // Computed — not stored in the database
+    public int? Age => DateOfBirth.HasValue
+        ? (int)((DateTime.Today - DateOfBirth.Value).TotalDays / 365.25)
+        : null;
+
+    public bool IsMinor => Age.HasValue && Age < 14;
+    public bool IsAutonomous => Age.HasValue && Age >= 14;
 
     public Tenant Tenant { get; set; } = null!;
     public ParentProfile Parent { get; set; } = null!;

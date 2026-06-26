@@ -12,6 +12,14 @@
     </div>
 </div>
 
+@if (_children.All(c => c.IsAutonomous))
+{
+    <div class="autonomous-notice mb-3">
+        <i class="bi bi-info-circle-fill"></i>
+        <span>Tous vos enfants ont atteint l'autonomie (14 ans et plus). Vous pouvez toujours consulter leur planning et les informations générales.</span>
+    </div>
+}
+
 <div class="children-grid">
     @foreach (var child in _children)
     {
@@ -19,18 +27,34 @@
             <div class="child-card-header">
                 <div class="ts-avatar ts-avatar-lg" style="background:@child.Color">@child.Initials</div>
                 <div>
-                    <h3>@child.Name</h3>
+                    <h3>
+                        @child.Name
+                        @if (child.Age.HasValue)
+                        {
+                            <span class="text-muted ms-2" style="font-size:0.85rem;font-weight:400">(@child.Age ans)</span>
+                        }
+                    </h3>
                     <span class="text-muted">@child.Level · @child.School</span>
                 </div>
                 <span class="ts-badge @(child.IsActive ? "ts-badge-success" : "ts-badge-muted") ms-auto">
                     @(child.IsActive ? "Actif" : "Inactif")
                 </span>
             </div>
+            @if (child.IsAutonomous)
+            {
+                <div class="autonomous-notice">
+                    <i class="bi bi-info-circle-fill"></i>
+                    <span>Votre enfant a @child.Age ans ou plus. Conformément à notre politique de confidentialité, certaines informations (rapports détaillés, messages, devoirs) ne sont pas accessibles aux parents pour les élèves autonomes.</span>
+                </div>
+            }
             <div class="child-stats-row">
                 <div class="child-stat"><span>@child.SessionsThisMonth</span><small>Cours ce mois</small></div>
                 <div class="child-stat"><span>@child.AttendanceRate%</span><small>Présence</small></div>
-                <div class="child-stat"><span>@child.ReportsCount</span><small>Rapports</small></div>
-                <div class="child-stat"><span>@child.HomeworkDone/@child.HomeworkTotal</span><small>Devoirs</small></div>
+                @if (!child.IsAutonomous)
+                {
+                    <div class="child-stat"><span>@child.ReportsCount</span><small>Rapports</small></div>
+                    <div class="child-stat"><span>@child.HomeworkDone/@child.HomeworkTotal</span><small>Devoirs</small></div>
+                }
             </div>
             <div class="child-subjects">
                 @foreach (var s in child.Subjects)
@@ -50,13 +74,31 @@
 {
     <div class="section-card mt-4">
         <div class="section-card-header">
-            <h2>Détail — @_active.Name</h2>
+            <h2>
+                Détail — @_active.Name
+                @if (_active.Age.HasValue)
+                {
+                    <span class="text-muted ms-2" style="font-size:0.9rem;font-weight:400">(@_active.Age ans)</span>
+                }
+            </h2>
         </div>
+        @if (_active.IsAutonomous)
+        {
+            <div style="padding:1rem 1.5rem 0">
+                <div class="autonomous-notice">
+                    <i class="bi bi-info-circle-fill"></i>
+                    <span>Votre enfant a @_active.Age ans ou plus. Conformément à notre politique de confidentialité, certaines informations (rapports détaillés, messages, devoirs) ne sont pas accessibles aux parents pour les élèves autonomes.</span>
+                </div>
+            </div>
+        }
         <div class="ts-modal-tabs">
-            @foreach (var t in new[]{"Progression","Rapports","Devoirs","Présence"})
+            <button class="ts-tab @(_tab=="Progression"?"active":"")" @onclick='()=>_tab="Progression"'>Progression</button>
+            @if (!_active.IsAutonomous)
             {
-                <button class="ts-tab @(_tab==t?"active":"")" @onclick="()=>_tab=t">@t</button>
+                <button class="ts-tab @(_tab=="Rapports"?"active":"")" @onclick='()=>_tab="Rapports"'>Rapports</button>
+                <button class="ts-tab @(_tab=="Devoirs"?"active":"")" @onclick='()=>_tab="Devoirs"'>Devoirs</button>
             }
+            <button class="ts-tab @(_tab=="Présence"?"active":"")" @onclick='()=>_tab="Présence"'>Présence</button>
         </div>
         <div style="padding:1.5rem">
             @if (_tab == "Progression")
@@ -76,7 +118,7 @@
                     }
                 </div>
             }
-            else if (_tab == "Rapports")
+            else if (_tab == "Rapports" && !_active.IsAutonomous)
             {
                 <p class="text-muted">Consultez les rapports de séance envoyés par le répétiteur.</p>
                 @foreach (var r in _active.Reports)
@@ -132,6 +174,11 @@
         public int Present { get; set; }
         public int Absent { get; set; }
         public int Late { get; set; }
+        public DateTime? DateOfBirth { get; set; }
+        public int? Age => DateOfBirth.HasValue
+            ? (int)((DateTime.Today - DateOfBirth.Value).TotalDays / 365.25)
+            : null;
+        public bool IsAutonomous => Age.HasValue && Age >= 14;
     }
 
     private readonly List<ChildVM> _children =
@@ -143,7 +190,8 @@
             NextLesson="Demain à 10h00", Subjects=["Mathématiques","Physique"],
             SubjectProgress=[new("Mathématiques",78),new("Physique",65),new("Chimie",82)],
             Reports=[new("24/06/2026","Mathématiques","Envoyé"),new("17/06/2026","Mathématiques","Envoyé"),new("10/06/2026","Physique","Envoyé")],
-            Present=18, Absent=1, Late=1
+            Present=18, Absent=1, Late=1,
+            DateOfBirth=new DateTime(2009, 3, 12)
         },
         new(){
             Name="Lucas Johnson", Initials="LJ", Color="#0ea5e9",
@@ -152,7 +200,8 @@
             NextLesson="Jeudi à 14h00", Subjects=["Français","Histoire"],
             SubjectProgress=[new("Français",72),new("Histoire",68)],
             Reports=[new("22/06/2026","Français","Envoyé"),new("15/06/2026","Français","Envoyé")],
-            Present=14, Absent=2, Late=1
+            Present=14, Absent=2, Late=1,
+            DateOfBirth=new DateTime(2015, 9, 8)
         },
     ];
 }

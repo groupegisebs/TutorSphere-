@@ -101,7 +101,20 @@ else
                     <div class="ts-form-grid">
                         <div class="ts-form-row"><label>Prénom</label><span>@_profileStudent.FirstName</span></div>
                         <div class="ts-form-row"><label>Nom</label><span>@_profileStudent.LastName</span></div>
-                        <div class="ts-form-row"><label>Date de naissance</label><span>@_profileStudent.BirthDate</span></div>
+                        <div class="ts-form-row">
+                        <label>Date de naissance</label>
+                        <span>
+                            @_profileStudent.BirthDate
+                            @if (_profileStudent.Age.HasValue)
+                            {
+                                <span class="ms-2 text-muted">(@_profileStudent.Age ans)</span>
+                                if (_profileStudent.IsAutonomous)
+                                {
+                                    <span class="ts-badge ts-badge-neutral ms-2" title="Élève autonome — accès parental restreint">Autonome</span>
+                                }
+                            }
+                        </span>
+                    </div>
                         <div class="ts-form-row"><label>Sexe</label><span>@_profileStudent.Gender</span></div>
                         <div class="ts-form-row"><label>École</label><span>@_profileStudent.School</span></div>
                         <div class="ts-form-row"><label>Classe</label><span>@_profileStudent.Class</span></div>
@@ -210,6 +223,7 @@ else
         {
             FirstName = _form.FirstName, LastName = _form.LastName,
             BirthDate = _form.BirthDate?.ToString("dd/MM/yyyy") ?? "—",
+            BirthDateParsed = _form.BirthDate,
             Gender = _form.Gender, School = _form.School, Class = _form.Class,
             Level = _form.Class, Subject = _form.Subject, Email = _form.Email,
             Phone = _form.Phone, Observations = _form.Observations,
@@ -240,6 +254,7 @@ else
         public string FirstName { get; set; } = "";
         public string LastName { get; set; } = "";
         public string BirthDate { get; set; } = "";
+        public DateTime? BirthDateParsed { get; set; }
         public string Gender { get; set; } = "";
         public string School { get; set; } = "";
         public string Class { get; set; } = "";
@@ -257,31 +272,35 @@ else
         public int Late { get; set; }
         public int AttendanceRate { get; set; }
         public string Initials => $"{FirstName.FirstOrDefault()}{LastName.FirstOrDefault()}";
+        public int? Age => BirthDateParsed.HasValue
+            ? (int)((DateTime.Today - BirthDateParsed.Value).TotalDays / 365.25)
+            : null;
+        public bool IsAutonomous => Age.HasValue && Age >= 14;
     }
 
     private readonly List<StudentViewModel> _students =
     [
-        new(){ FirstName="Emma", LastName="Johnson", BirthDate="12/03/2009", Gender="Féminin",
+        new(){ FirstName="Emma", LastName="Johnson", BirthDate="12/03/2009", BirthDateParsed=new DateTime(2009,3,12), Gender="Féminin",
             School="Collège Victor Hugo", Class="4ème", Level="Collège", Subject="Mathématiques",
             Email="emma.j@email.com", Phone="06 12 34 56 78", ParentName="Marie Johnson",
             IsActive=true, SinceDate="09/2024", AvatarColor="#7c3aed",
             Present=18, Absent=2, Late=1, AttendanceRate=90, Observations="Bonne progression" },
-        new(){ FirstName="Liam", LastName="Brown", BirthDate="05/07/2010", Gender="Masculin",
+        new(){ FirstName="Liam", LastName="Brown", BirthDate="05/07/2010", BirthDateParsed=new DateTime(2010,7,5), Gender="Masculin",
             School="Collège Jules Ferry", Class="5ème", Level="Collège", Subject="Physique",
             Email="liam.b@email.com", Phone="06 98 76 54 32", ParentName="David Brown",
             IsActive=true, SinceDate="10/2024", AvatarColor="#0ea5e9",
             Present=15, Absent=3, Late=2, AttendanceRate=83, Observations="Difficultés en électricité" },
-        new(){ FirstName="Sophia", LastName="Davis", BirthDate="22/11/2007", Gender="Féminin",
+        new(){ FirstName="Sophia", LastName="Davis", BirthDate="22/11/2007", BirthDateParsed=new DateTime(2007,11,22), Gender="Féminin",
             School="Lycée Pasteur", Class="Terminale", Level="Lycée", Subject="Chimie",
             Email="sophia.d@email.com", Phone="07 11 22 33 44", ParentName="Laura Davis",
             IsActive=true, SinceDate="01/2025", AvatarColor="#10b981",
             Present=12, Absent=0, Late=1, AttendanceRate=97, Observations="Très motivée" },
-        new(){ FirstName="Noah", LastName="Wilson", BirthDate="14/06/2008", Gender="Masculin",
+        new(){ FirstName="Noah", LastName="Wilson", BirthDate="14/06/2008", BirthDateParsed=new DateTime(2008,6,14), Gender="Masculin",
             School="Lycée Molière", Class="1ère", Level="Lycée", Subject="Mathématiques",
             Email="noah.w@email.com", Phone="06 55 44 33 22", ParentName="James Wilson",
             IsActive=false, SinceDate="06/2024", AvatarColor="#f59e0b",
             Present=8, Absent=5, Late=3, AttendanceRate=62, Observations="Départ famille" },
-        new(){ FirstName="Olivia", LastName="Martinez", BirthDate="30/09/2011", Gender="Féminin",
+        new(){ FirstName="Olivia", LastName="Martinez", BirthDate="30/09/2011", BirthDateParsed=new DateTime(2011,9,30), Gender="Féminin",
             School="École Primaire Voltaire", Class="CM2", Level="Primaire", Subject="Français",
             Email="olivia.m@email.com", Phone="06 77 88 99 00", ParentName="Ana Martinez",
             IsActive=true, SinceDate="02/2025", AvatarColor="#ec4899",
