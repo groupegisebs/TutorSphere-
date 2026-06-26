@@ -6,26 +6,26 @@
 
 <div class="dashboard-header">
     <div>
-        <h1 class="dashboard-greeting">@L["TutorDashboard_Welcome", "John"]</h1>
-        <p class="dashboard-date">@L["TutorDashboard_DateLabel"] — @DateTime.Now.ToString("dddd d MMMM yyyy")</p>
-    </div>
-    <div class="dashboard-header-actions">
-        <input type="date" class="form-control form-control-sm dashboard-date-picker" value="@DateTime.Now.ToString("yyyy-MM-dd")" />
+        <h1 class="dashboard-greeting">@L["TutorDashboard_Title"]</h1>
+        <p class="dashboard-date">@L["TutorDashboard_Subtitle_Welcome", "John"]</p>
     </div>
 </div>
 
 <div class="row g-3 mb-4">
-    <div class="col-sm-6 col-xl-3">
-        <StatCard Label="@L["Stat_MonthlyRevenue"]" Value="2 450 $" Icon="bi-currency-dollar" Variant="revenue" Change="@L["Stat_Change_Positive", "+12%"]" />
+    <div class="col-sm-6 col-xl">
+        <StatCard Label="@L["Stat_MonthlyRevenue"]" Value="2 450 $" Icon="bi-currency-dollar" Variant="revenue" Change="@L["Stat_MonthlyRevenue_Change"]" />
     </div>
-    <div class="col-sm-6 col-xl-3">
-        <StatCard Label="@L["Stat_ActiveSubscriptions"]" Value="28" Icon="bi-credit-card" Variant="subscriptions" Change="@L["Stat_Change_Positive", "+4"]" />
+    <div class="col-sm-6 col-xl">
+        <StatCard Label="@L["Stat_ActiveSubscriptions"]" Value="28" Icon="bi-arrow-repeat" Variant="subscriptions" Change="@L["Stat_Change_Positive", "+4"]" />
     </div>
-    <div class="col-sm-6 col-xl-3">
+    <div class="col-sm-6 col-xl">
         <StatCard Label="@L["Stat_UpcomingLessons"]" Value="6" Icon="bi-calendar-check" Variant="lessons" Change="@L["Stat_Today"]" ChangeVariant="neutral" />
     </div>
-    <div class="col-sm-6 col-xl-3">
+    <div class="col-sm-6 col-xl">
         <StatCard Label="@L["Stat_ActiveStudents"]" Value="32" Icon="bi-people" Variant="students" Change="@L["Stat_Change_Positive", "+3"]" />
+    </div>
+    <div class="col-sm-6 col-xl">
+        <StatCard Label="@L["Stat_PendingPayments"]" Value="320 $" Icon="bi-hourglass-split" Variant="payments" Change="@L["Stat_PendingPayments_Change"]" ChangeVariant="negative" />
     </div>
 </div>
 
@@ -33,16 +33,36 @@
     <div class="col-lg-7">
         <div class="section-card h-100">
             <div class="section-card-header">
-                <h2>@L["TutorDashboard_RevenueChart"]</h2>
+                <div>
+                    <h2>@L["TutorDashboard_RevenueChart"]</h2>
+                    <p class="dashboard-amount">2 450 $</p>
+                </div>
                 <select class="form-select form-select-sm w-auto">
+                    <option>@L["Filter_ThisMonth"]</option>
                     <option>@L["Filter_Last6Months"]</option>
                 </select>
             </div>
             <div class="chart-placeholder chart-placeholder--line" aria-hidden="true">
-                <svg viewBox="0 0 400 120" preserveAspectRatio="none">
-                    <polyline points="0,90 50,70 100,75 150,45 200,55 250,30 300,40 350,15 400,25" fill="none" stroke="currentColor" stroke-width="2.5" />
-                    <polyline points="0,90 50,70 100,75 150,45 200,55 250,30 300,40 350,15 400,25 400,120 0,120" fill="currentColor" opacity="0.08" stroke="none" />
+                <svg viewBox="0 0 400 140" preserveAspectRatio="none" style="height:160px">
+                    <defs>
+                        <linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stop-color="var(--ts-primary)" stop-opacity="0.18"/>
+                            <stop offset="100%" stop-color="var(--ts-primary)" stop-opacity="0"/>
+                        </linearGradient>
+                    </defs>
+                    <path d="M0,120 C20,110 30,95 50,90 C70,85 80,60 100,62 C120,64 130,50 150,45 C170,40 180,55 200,52 C220,49 230,30 250,28 C270,26 280,38 300,35 C320,32 340,18 360,16 C380,14 390,20 400,22 L400,140 L0,140 Z" fill="url(#chartFill)" stroke="none"/>
+                    <path d="M0,120 C20,110 30,95 50,90 C70,85 80,60 100,62 C120,64 130,50 150,45 C170,40 180,55 200,52 C220,49 230,30 250,28 C270,26 280,38 300,35 C320,32 340,18 360,16 C380,14 390,20 400,22" fill="none" stroke="var(--ts-primary)" stroke-width="2.5" stroke-linejoin="round"/>
+                    @foreach (var pt in ChartPoints)
+                    {
+                        <circle cx="@pt.X" cy="@pt.Y" r="4" fill="white" stroke="var(--ts-primary)" stroke-width="2"/>
+                    }
                 </svg>
+                <div class="chart-x-labels">
+                    @foreach (var lbl in new[] { "1 Mai", "5 Mai", "10 Mai", "15 Mai", "20 Mai", "25 Mai", "30 Mai" })
+                    {
+                        <span>@lbl</span>
+                    }
+                </div>
             </div>
         </div>
     </div>
@@ -56,12 +76,13 @@
                 @foreach (var lesson in UpcomingLessons)
                 {
                     <li class="lesson-list-item">
+                        <span class="lesson-time-left">@lesson.Time</span>
                         <div class="lesson-avatar">@lesson.Initials</div>
                         <div class="lesson-info">
                             <strong>@lesson.Student</strong>
                             <span>@lesson.Subject</span>
                         </div>
-                        <span class="lesson-time">@lesson.Time</span>
+                        <span class="lesson-mode-badge lesson-mode-badge--@lesson.ModeClass">@lesson.Mode</span>
                     </li>
                 }
             </ul>
@@ -69,43 +90,87 @@
     </div>
 </div>
 
-<div class="row g-3">
-    <div class="col-md-4">
-        <div class="mini-stat-card">
-            <i class="bi bi-hourglass-split mini-stat-icon mini-stat-icon--warning"></i>
-            <div>
-                <span class="mini-stat-label">@L["TutorDashboard_PendingPayments"]</span>
-                <span class="mini-stat-value">320 $</span>
+<div class="row g-4">
+    <div class="col-lg-4">
+        <div class="row g-4">
+            <div class="col-12">
+                <div class="section-card">
+                    <div class="section-card-header">
+                        <h2>@L["TutorDashboard_UnreadMessages"]</h2>
+                        <a href="tutor/messages" class="btn btn-sm btn-link">@L["Button_ViewAll"]</a>
+                    </div>
+                    <p class="dashboard-big-stat">5</p>
+                    <p class="dashboard-big-stat-label">
+                        <span class="dot dot--primary"></span> @L["TutorDashboard_NewMessages"]
+                    </p>
+                </div>
+            </div>
+            <div class="col-12">
+                <div class="section-card">
+                    <div class="section-card-header">
+                        <h2>@L["TutorDashboard_RecentReviews"]</h2>
+                        <a href="tutor/profile" class="btn btn-sm btn-link">@L["Button_ViewAll"]</a>
+                    </div>
+                    <p class="dashboard-big-stat">4,9 <span class="dashboard-big-stat-unit">/ 5</span>
+                        <span class="star-rating--readonly ms-2">
+                            @for (var i = 0; i < 5; i++)
+                            {
+                                <i class="bi bi-star-fill"></i>
+                            }
+                        </span>
+                    </p>
+                    <p class="dashboard-big-stat-label">
+                        <span class="dot dot--success"></span> @L["TutorDashboard_BasedOnReviews", 28]
+                    </p>
+                </div>
             </div>
         </div>
     </div>
-    <div class="col-md-4">
-        <div class="mini-stat-card">
-            <i class="bi bi-chat-dots mini-stat-icon mini-stat-icon--info"></i>
-            <div>
-                <span class="mini-stat-label">@L["TutorDashboard_UnreadMessages"]</span>
-                <span class="mini-stat-value">5</span>
+    <div class="col-lg-8">
+        <div class="section-card h-100">
+            <div class="section-card-header">
+                <h2>@L["TutorDashboard_RecentActivity"]</h2>
+                <a href="tutor/students" class="btn btn-sm btn-link">@L["Button_ViewAll"]</a>
             </div>
-        </div>
-    </div>
-    <div class="col-md-4">
-        <div class="mini-stat-card">
-            <i class="bi bi-star-fill mini-stat-icon mini-stat-icon--success"></i>
-            <div>
-                <span class="mini-stat-label">@L["TutorDashboard_RecentReviews"]</span>
-                <span class="mini-stat-value">4,9 / 5</span>
-            </div>
+            <ul class="activity-feed">
+                @foreach (var item in RecentActivity)
+                {
+                    <li class="activity-item">
+                        <div class="activity-icon activity-icon--@item.IconVariant">
+                            <i class="bi @item.Icon" aria-hidden="true"></i>
+                        </div>
+                        <div class="activity-content">
+                            <strong class="activity-title">@item.Title</strong>
+                            <span class="activity-description">@item.Description</span>
+                        </div>
+                        <span class="activity-time">@item.Time</span>
+                    </li>
+                }
+            </ul>
         </div>
     </div>
 </div>
 
 @code {
-    private record LessonItem(string Student, string Subject, string Time, string Initials);
+    private record LessonItem(string Student, string Subject, string Time, string Initials, string Mode, string ModeClass);
+    private record ActivityItem(string Title, string Description, string Time, string Icon, string IconVariant);
+
+    private static readonly (double X, double Y)[] ChartPoints =
+    [
+        (50, 90), (100, 62), (150, 45), (200, 52), (250, 28), (300, 35), (360, 16)
+    ];
 
     private readonly List<LessonItem> UpcomingLessons =
     [
-        new("Emma Johnson", "Mathématiques", "10:00", "EJ"),
-        new("Liam Anderson", "Physique", "14:00", "LA"),
-        new("Sophie Martin", "Chimie", "16:30", "SM"),
+        new("Emma Johnson", "Mathématiques", "10:00", "EJ", "En ligne", "online"),
+        new("Liam Brown", "Physique", "14:00", "LB", "En ligne", "online"),
+        new("Sophia Davis", "Chimie", "16:00", "SD", "Présentiel", "inperson"),
+    ];
+
+    private readonly List<ActivityItem> RecentActivity =
+    [
+        new("Nouveau élève inscrit", "Michael Lee a rejoint votre école", "il y a 2h", "bi-person-plus", "success"),
+        new("Cours terminé", "Cours de Mathématiques avec Emma Johnson", "il y a 4h", "bi-calendar-check", "info"),
+        new("Rapport envoyé", "Rapport de séance envoyé à Liam Brown", "il y a 6h", "bi-send", "warning"),
     ];
 }

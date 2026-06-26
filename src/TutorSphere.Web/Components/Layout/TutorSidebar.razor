@@ -1,10 +1,26 @@
 @inject IStringLocalizer<SharedResources> L
+@inject NavigationManager Navigation
+@inject AuthService AuthSvc
 
 <div class="sidebar-brand sidebar-brand--navy">
     <a class="sidebar-brand-link" href="tutor/dashboard">
         <img class="sidebar-brand-logo" src="images/tutorsphere-logo.png" alt="@L["AppName"]" />
-        <span class="sidebar-brand-text">@L["AppName"]</span>
+        <div class="sidebar-brand-text-group">
+            <span class="sidebar-brand-text">@L["AppName"]</span>
+            <span class="sidebar-brand-tagline">@L["AppTagline"]</span>
+        </div>
     </a>
+</div>
+
+<div class="sidebar-profile sidebar-profile--navy">
+    <div class="sidebar-profile-avatar">JS</div>
+    <div class="sidebar-profile-info">
+        <span class="sidebar-user-name">John Smith</span>
+        <span class="sidebar-user-role">@L["Nav_Role_Tutor"]</span>
+        <span class="sidebar-school-badge">
+            <i class="bi bi-check-circle-fill"></i> @L["Sidebar_SchoolActive"]
+        </span>
+    </div>
 </div>
 
 <input type="checkbox" title="@L["Nav_MenuToggle"]" class="navbar-toggler navbar-toggler--light" aria-label="@L["Nav_MenuToggle"]" />
@@ -13,7 +29,7 @@
     <nav class="nav flex-column">
         <div class="nav-item">
             <NavLink class="nav-link" href="tutor/dashboard" Match="NavLinkMatch.All">
-                <i class="bi bi-house-door" aria-hidden="true"></i>
+                <i class="bi bi-speedometer2" aria-hidden="true"></i>
                 <span>@L["Nav_Dashboard"]</span>
             </NavLink>
         </div>
@@ -24,15 +40,15 @@
             </NavLink>
         </div>
         <div class="nav-item">
-            <NavLink class="nav-link" href="tutor/offers">
-                <i class="bi bi-tags" aria-hidden="true"></i>
-                <span>@L["Nav_Offers"]</span>
+            <NavLink class="nav-link" href="tutor/parents">
+                <i class="bi bi-person-hearts" aria-hidden="true"></i>
+                <span>@L["Nav_Parents"]</span>
             </NavLink>
         </div>
         <div class="nav-item">
-            <NavLink class="nav-link" href="tutor/offers/create">
-                <i class="bi bi-plus-circle" aria-hidden="true"></i>
-                <span>@L["Nav_CreateOffer"]</span>
+            <NavLink class="nav-link" href="tutor/offers">
+                <i class="bi bi-tags" aria-hidden="true"></i>
+                <span>@L["Nav_Offers"]</span>
             </NavLink>
         </div>
         <div class="nav-item">
@@ -60,12 +76,6 @@
             </NavLink>
         </div>
         <div class="nav-item">
-            <NavLink class="nav-link" href="tutor/reports/create">
-                <i class="bi bi-pencil-square" aria-hidden="true"></i>
-                <span>@L["Nav_CreateReport"]</span>
-            </NavLink>
-        </div>
-        <div class="nav-item">
             <NavLink class="nav-link" href="tutor/payments">
                 <i class="bi bi-credit-card" aria-hidden="true"></i>
                 <span>@L["Nav_Payments"]</span>
@@ -73,18 +83,45 @@
         </div>
         <div class="nav-item">
             <NavLink class="nav-link" href="tutor/messages">
-                <i class="bi bi-chat-dots" aria-hidden="true"></i>
+                <i class="bi bi-chat-left-text" aria-hidden="true"></i>
                 <span>@L["Nav_Messages"]</span>
+                @if (UnreadMessages > 0)
+                {
+                    <span class="sidebar-badge">@UnreadMessages</span>
+                }
+            </NavLink>
+        </div>
+        <div class="nav-item">
+            <NavLink class="nav-link" href="tutor/documents">
+                <i class="bi bi-folder2-open" aria-hidden="true"></i>
+                <span>@L["Nav_Documents"]</span>
+            </NavLink>
+        </div>
+
+        <div class="sidebar-divider"></div>
+
+        <div class="nav-item">
+            <NavLink class="nav-link" href="tutor/settings">
+                <i class="bi bi-sliders" aria-hidden="true"></i>
+                <span>@L["Nav_Settings"]</span>
             </NavLink>
         </div>
     </nav>
 
-    <div class="sidebar-user sidebar-user--navy" onclick="event.stopPropagation()">
-        <div class="sidebar-user-avatar">JS</div>
-        <div class="sidebar-user-info">
-            <span class="sidebar-user-name">John Smith</span>
-            <span class="sidebar-user-role">@L["Nav_Role_Tutor"]</span>
-        </div>
-        <i class="bi bi-chevron-down sidebar-user-chevron" aria-hidden="true"></i>
+    <div class="sidebar-bottom sidebar-bottom--navy">
+        <button type="button" class="sidebar-logout-btn" @onclick="LogoutAsync">
+            <i class="bi bi-box-arrow-left" aria-hidden="true"></i>
+            <span>@L["Nav_Logout"]</span>
+        </button>
     </div>
 </div>
+
+@code {
+    private int UnreadMessages => 3;
+
+    private void LogoutAsync()
+    {
+        AuthSvc.Logout();
+        Navigation.NavigateTo("/login");
+    }
+}
