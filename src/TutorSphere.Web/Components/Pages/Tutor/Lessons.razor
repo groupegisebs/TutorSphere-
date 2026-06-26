@@ -2,6 +2,7 @@
 @layout TutorLayout
 @rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
+@inject NavigationManager Navigation
 
 <PageTitle>Cours – TutorSphere</PageTitle>
 
@@ -79,7 +80,7 @@
                         <div class="ts-action-group">
                             @if (l.Status == "Planifié")
                             {
-                                <button class="ts-icon-btn" title="Démarrer" @onclick='() => l.Status = "En cours"'>
+                                <button class="ts-icon-btn" title="Démarrer" @onclick="() => StartLesson(l)">
                                     <i class="bi bi-play-fill text-success"></i>
                                 </button>
                             }
@@ -203,8 +204,15 @@
         public string Description { get; set; } = "";
     }
 
+    private void StartLesson(LessonVM lesson)
+    {
+        lesson.Status = "En cours";
+        Navigation.NavigateTo($"/tutor/classroom/{lesson.Id}");
+    }
+
     private class LessonVM
     {
+        public string Id { get; set; } = Guid.NewGuid().ToString("N")[..8];
         public string Title { get; set; } = "";
         public string StudentName { get; set; } = "";
         public string StudentInitials { get; set; } = "";
