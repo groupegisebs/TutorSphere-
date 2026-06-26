@@ -1,3 +1,4 @@
+@using System.Globalization
 @inject IStringLocalizer<SharedResources> L
 
 <section class="lp-hero lp-reveal">
@@ -56,11 +57,21 @@
             <img class="lp-hero-deco lp-hero-deco--plant" src="images/landing/hero-plant.svg" alt="" width="64" height="80" />
             <div class="lp-hero-glow"></div>
             <img class="lp-hero-mockup-img"
-                 src="images/landing/hero-laptop-phone-mockup.png"
-                 alt="Tableau de bord TutorSphere sur ordinateur et mobile"
+                 src="@HeroMockupImagePath"
+                 alt="@L["Hero_Mockup_Alt"]"
                  width="800"
                  height="450"
                  loading="eager" />
         </div>
     </div>
 </section>
+
+@code {
+    private string HeroMockupImagePath =>
+        SupportedLanguageCodes.Normalize(CultureInfo.CurrentUICulture.Name) switch
+        {
+            SupportedLanguageCodes.English => "images/landing/hero-laptop-phone-mockup-en.png",
+            SupportedLanguageCodes.Spanish => "images/landing/hero-laptop-phone-mockup-es.png",
+            _ => "images/landing/hero-laptop-phone-mockup-fr.png"
+        };
+}
