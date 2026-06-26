@@ -1,0 +1,187 @@
+@page "/login/eleve"
+@layout LoginLayout
+@rendermode InteractiveServer
+@inject NavigationManager Navigation
+@inject AuthService AuthSvc
+
+<PageTitle>Espace Élève — TutorSphere</PageTitle>
+
+<div class="login-page login-theme-eleve">
+
+    <!-- ── Left panel ── -->
+    <div class="login-illustration">
+        <div class="login-illustration-content">
+
+            <div class="login-brand">
+                <img src="images/tutorsphere-logo.png" alt="TutorSphere" class="login-logo" />
+                <div>
+                    <span class="login-brand-name">TutorSphere</span>
+                    <p class="login-brand-tagline">Plateforme éducative intelligente</p>
+                </div>
+            </div>
+
+            <div class="login-hero-block">
+                <h2 class="login-hero-title">
+                    Votre espace<br>
+                    <span>Élève</span>
+                </h2>
+                <p class="login-hero-subtitle">Accédez à vos cours, devoirs et progressez à votre rythme.</p>
+            </div>
+
+            <!-- Student illustration SVG -->
+            <svg class="login-illustration-img" viewBox="0 0 420 300" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <!-- Desk surface -->
+                <rect x="80" y="210" width="260" height="12" rx="6" fill="#f59e0b" opacity="0.2"/>
+                <rect x="100" y="222" width="8" height="50" rx="4" fill="#f59e0b" opacity="0.15"/>
+                <rect x="312" y="222" width="8" height="50" rx="4" fill="#f59e0b" opacity="0.15"/>
+                <!-- Open notebook -->
+                <rect x="110" y="175" width="100" height="45" rx="5" fill="#fff" stroke="#f59e0b" stroke-width="2.5"/>
+                <line x1="160" y1="175" x2="160" y2="220" stroke="#f59e0b" stroke-width="1.5" opacity="0.5"/>
+                <rect x="118" y="184" width="35" height="3" rx="1.5" fill="#f59e0b" opacity="0.4"/>
+                <rect x="118" y="191" width="30" height="3" rx="1.5" fill="#f59e0b" opacity="0.3"/>
+                <rect x="118" y="198" width="35" height="3" rx="1.5" fill="#f59e0b" opacity="0.4"/>
+                <rect x="118" y="205" width="25" height="3" rx="1.5" fill="#f59e0b" opacity="0.3"/>
+                <rect x="168" y="184" width="35" height="3" rx="1.5" fill="#d97706" opacity="0.4"/>
+                <rect x="168" y="191" width="28" height="3" rx="1.5" fill="#d97706" opacity="0.3"/>
+                <rect x="168" y="198" width="33" height="3" rx="1.5" fill="#d97706" opacity="0.4"/>
+                <!-- Stacked books -->
+                <rect x="235" y="186" width="65" height="12" rx="3" fill="#fbbf24" opacity="0.7"/>
+                <rect x="238" y="174" width="62" height="12" rx="3" fill="#f59e0b" opacity="0.6"/>
+                <rect x="241" y="162" width="58" height="12" rx="3" fill="#fcd34d" opacity="0.7"/>
+                <rect x="244" y="150" width="54" height="12" rx="3" fill="#f59e0b" opacity="0.5"/>
+                <!-- Lines on books -->
+                <rect x="243" y="152" width="30" height="2" rx="1" fill="#fff" opacity="0.5"/>
+                <rect x="247" y="176" width="28" height="2" rx="1" fill="#fff" opacity="0.5"/>
+                <!-- Student figure -->
+                <circle cx="330" cy="135" r="22" fill="#fef3c7"/>
+                <circle cx="330" cy="118" r="16" fill="#f59e0b" opacity="0.65"/>
+                <ellipse cx="330" cy="152" rx="18" ry="12" fill="#f59e0b" opacity="0.45"/>
+                <!-- Pencil in hand -->
+                <rect x="312" y="158" width="5" height="30" rx="2.5" fill="#fbbf24" transform="rotate(-20 312 158)"/>
+                <polygon points="312,188 317,188 314.5,196" fill="#d97706" transform="rotate(-20 312 188)"/>
+                <!-- Backpack (left side) -->
+                <rect x="72" y="155" width="38" height="48" rx="8" fill="#f59e0b" opacity="0.45"/>
+                <rect x="80" y="163" width="22" height="16" rx="4" fill="#fef3c7" opacity="0.6"/>
+                <rect x="87" y="195" width="8" height="10" rx="2" fill="#f59e0b" opacity="0.5"/>
+                <rect x="76" y="155" width="6" height="25" rx="3" fill="#d97706" opacity="0.3"/>
+                <rect x="98" y="155" width="6" height="25" rx="3" fill="#d97706" opacity="0.3"/>
+                <!-- Stars / sparkles -->
+                <circle cx="390" cy="100" r="3" fill="#f59e0b" opacity="0.3"/>
+                <circle cx="60" cy="130" r="4" fill="#fbbf24" opacity="0.25"/>
+                <circle cx="380" cy="200" r="2.5" fill="#f59e0b" opacity="0.2"/>
+                <!-- Star shape -->
+                <polygon points="200,50 203,60 213,60 205,66 208,76 200,70 192,76 195,66 187,60 197,60" fill="#f59e0b" opacity="0.25"/>
+            </svg>
+        </div>
+    </div>
+
+    <!-- ── Right panel ── -->
+    <div class="login-form-panel">
+        <div class="login-form-inner">
+
+            <a href="/login" class="login-back-link">
+                <i class="bi bi-arrow-left me-1"></i>Retour
+            </a>
+
+            <h1>Espace Élève</h1>
+            <p class="login-subtitle">Connectez-vous pour accéder à vos cours et devoirs</p>
+
+            @if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <div class="alert alert-danger mb-3" role="alert">
+                    <i class="bi bi-exclamation-circle me-2"></i>@_errorMessage
+                </div>
+            }
+
+            <form class="login-form" @onsubmit="LoginAsync" @onsubmit:preventDefault="true">
+                <div class="mb-3">
+                    <label class="form-label" for="login-email">Adresse e-mail</label>
+                    <div class="form-field-icon">
+                        <i class="bi bi-envelope field-icon" aria-hidden="true"></i>
+                        <input type="email" id="login-email" class="form-control"
+                               placeholder="votre@email.com"
+                               @bind="_email" @bind:event="oninput" />
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label" for="login-password">Mot de passe</label>
+                    <div class="form-field-icon">
+                        <i class="bi bi-lock field-icon" aria-hidden="true"></i>
+                        <input type="@(_showPassword ? "text" : "password")" id="login-password"
+                               class="form-control" placeholder="••••••••"
+                               @bind="_password" @bind:event="oninput"
+                               style="padding-right: 2.5rem;" />
+                        <button type="button" class="password-toggle" @onclick="() => _showPassword = !_showPassword"
+                                aria-label="Afficher/masquer le mot de passe">
+                            <i class="bi @(_showPassword ? "bi-eye-slash" : "bi-eye")" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="login-options mb-4">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="login-remember" @bind="_rememberMe" />
+                        <label class="form-check-label" for="login-remember">Se souvenir de moi</label>
+                    </div>
+                    <a href="#" class="login-forgot">Mot de passe oublié ?</a>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-lg w-100 mb-4 login-submit-btn" disabled="@_isLoading">
+                    @if (_isLoading)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                    }
+                    Se connecter
+                </button>
+            </form>
+
+            <p class="login-footer text-center">
+                Pas encore de compte ? <a href="/register">Créer un compte</a>
+            </p>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string _email = "";
+    private string _password = "";
+    private bool _rememberMe;
+    private bool _showPassword;
+    private bool _isLoading;
+    private string? _errorMessage;
+
+    private async Task LoginAsync()
+    {
+        _errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(_email) || string.IsNullOrWhiteSpace(_password))
+        {
+            _errorMessage = "Veuillez remplir tous les champs.";
+            return;
+        }
+
+        _isLoading = true;
+        try
+        {
+            var result = await AuthSvc.LoginAsync(_email, _password);
+            if (result.Success)
+            {
+                var role = AuthSvc.PrimaryRole ?? "";
+                if (role is not ("Student" or "SuperAdmin" or "PlatformAdmin"))
+                {
+                    _errorMessage = "Ce compte n'est pas un compte élève. Utilisez la page de connexion appropriée.";
+                    AuthSvc.Logout();
+                    return;
+                }
+                Navigation.NavigateTo(result.RedirectTo ?? "/student/dashboard");
+                return;
+            }
+            _errorMessage = result.Error ?? "Identifiants invalides.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+}

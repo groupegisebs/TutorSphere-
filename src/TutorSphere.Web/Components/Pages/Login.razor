@@ -1,167 +1,61 @@
 @page "/login"
 @layout LoginLayout
 @rendermode InteractiveServer
-@inject IStringLocalizer<SharedResources> L
 @inject NavigationManager Navigation
-@inject AuthService AuthSvc
 
-<PageTitle>@L["PageTitle_Login"]</PageTitle>
+<PageTitle>TutorSphere — Connexion</PageTitle>
 
-<div class="login-page">
-
-    <!-- ── Left panel ── -->
-    <div class="login-illustration">
-        <div class="login-illustration-content">
-
-            <div class="login-brand">
-                <img src="images/tutorsphere-logo.png" alt="@L["AppName"]" class="login-logo" />
-                <div>
-                    <span class="login-brand-name">@L["AppName"]</span>
-                    <p class="login-brand-tagline">@L["AppTagline"]</p>
-                </div>
-            </div>
-
-            <div class="login-hero-block">
-                <h2 class="login-hero-title">
-                    @L["Login_HeroTitle_Line1"]<br>
-                    <span>@L["Login_HeroTitle_Line2"]</span>
-                </h2>
-                <p class="login-hero-subtitle">@L["Login_HeroSubtitle"]</p>
-            </div>
-
-            <img src="images/login-illustration.svg"
-                 alt=""
-                 aria-hidden="true"
-                 class="login-illustration-img" />
+<div class="login-selector-page">
+    <div class="login-selector-header">
+        <img src="images/tutorsphere-logo.png" alt="TutorSphere" class="login-logo" />
+        <div>
+            <span class="login-brand-name">TutorSphere</span>
+            <p class="login-brand-tagline">Plateforme éducative intelligente</p>
         </div>
     </div>
 
-    <!-- ── Right panel ── -->
-    <div class="login-form-panel">
-        <div class="login-form-inner">
+    <div class="login-selector-hero">
+        <h1>Bienvenue sur <span>TutorSphere</span></h1>
+        <p>Choisissez votre espace de connexion</p>
+    </div>
 
-            <h1>@L["Login_Title"]</h1>
-            <p class="login-subtitle">@L["Login_Subtitle"]</p>
+    <div class="login-role-grid">
 
-            @if (!string.IsNullOrEmpty(_errorMessage))
-            {
-                <div class="alert alert-danger mb-3" role="alert">
-                    <i class="bi bi-exclamation-circle me-2"></i>@_errorMessage
-                </div>
-            }
-
-            <form class="login-form" @onsubmit="LoginAsync" @onsubmit:preventDefault="true">
-                <div class="mb-3">
-                    <label class="form-label" for="login-email">@L["Label_EmailAddress"]</label>
-                    <div class="form-field-icon">
-                        <i class="bi bi-envelope field-icon" aria-hidden="true"></i>
-                        <input type="email" id="login-email" class="form-control"
-                               placeholder="@L["Placeholder_Email"]"
-                               @bind="_email" @bind:event="oninput" />
-                    </div>
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label" for="login-password">@L["Label_Password"]</label>
-                    <div class="form-field-icon">
-                        <i class="bi bi-lock field-icon" aria-hidden="true"></i>
-                        <input type="@(_showPassword ? "text" : "password")" id="login-password"
-                               class="form-control" placeholder="••••••••"
-                               @bind="_password" @bind:event="oninput"
-                               style="padding-right: 2.5rem;" />
-                        <button type="button" class="password-toggle" @onclick="() => _showPassword = !_showPassword"
-                                aria-label="@L["Label_TogglePassword"]">
-                            <i class="bi @(_showPassword ? "bi-eye-slash" : "bi-eye")" aria-hidden="true"></i>
-                        </button>
-                    </div>
-                </div>
-
-                <div class="login-options mb-4">
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="login-remember" @bind="_rememberMe" />
-                        <label class="form-check-label" for="login-remember">@L["Login_RememberMe"]</label>
-                    </div>
-                    <a href="#" class="login-forgot">@L["Login_ForgotPassword"]</a>
-                </div>
-
-                <button type="submit" class="btn btn-primary btn-lg w-100 mb-4" disabled="@_isLoading">
-                    @if (_isLoading)
-                    {
-                        <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                    }
-                    @L["Login_SignIn"]
-                </button>
-            </form>
-
-            <div class="login-divider"><span>@L["Login_OrContinueWith"]</span></div>
-
-            <div class="row g-2 mb-4">
-                <div class="col-6">
-                    <button type="button" class="btn login-social-btn w-100"
-                            @onclick='() => _errorMessage = L["Login_SocialComingSoon"].Value'>
-                        <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" class="me-2">
-                            <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                            <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                            <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
-                            <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-                        </svg>
-                        Google
-                    </button>
-                </div>
-                <div class="col-6">
-                    <button type="button" class="btn login-social-btn w-100"
-                            @onclick='() => _errorMessage = L["Login_SocialComingSoon"].Value'>
-                        <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" class="me-2" fill="currentColor">
-                            <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"/>
-                        </svg>
-                        Apple
-                    </button>
-                </div>
+        <!-- Tuteur -->
+        <div class="login-role-card login-role-tutor" @onclick='() => Navigation.NavigateTo("/login/tuteur")'>
+            <div class="login-role-icon">
+                <i class="bi bi-person-workspace"></i>
             </div>
-
-            <p class="login-footer text-center">
-                @L["Login_NoAccount"] <a href="tutor/register">@L["Login_CreateAccount"]</a>
-            </p>
-
-            <div class="login-lang mt-3">
-                <LanguageSelector />
-            </div>
+            <h2>Tuteur / Enseignant</h2>
+            <p>Gérez vos cours, élèves et sessions</p>
+            <button class="login-role-btn">Se connecter <i class="bi bi-arrow-right"></i></button>
         </div>
+
+        <!-- Parent -->
+        <div class="login-role-card login-role-parent" @onclick='() => Navigation.NavigateTo("/login/parent")'>
+            <div class="login-role-icon">
+                <i class="bi bi-house-heart"></i>
+            </div>
+            <h2>Parent</h2>
+            <p>Suivez la progression de vos enfants</p>
+            <button class="login-role-btn">Se connecter <i class="bi bi-arrow-right"></i></button>
+        </div>
+
+        <!-- Élève -->
+        <div class="login-role-card login-role-eleve" @onclick='() => Navigation.NavigateTo("/login/eleve")'>
+            <div class="login-role-icon">
+                <i class="bi bi-backpack"></i>
+            </div>
+            <h2>Élève</h2>
+            <p>Accédez à vos cours et devoirs</p>
+            <button class="login-role-btn">Se connecter <i class="bi bi-arrow-right"></i></button>
+        </div>
+
+    </div>
+
+    <div class="login-selector-footer">
+        <a href="/login/admin" class="login-admin-link">
+            <i class="bi bi-shield-lock me-1"></i>Super Admin
+        </a>
     </div>
 </div>
-
-@code {
-    private string _email = "";
-    private string _password = "";
-    private bool _rememberMe;
-    private bool _showPassword;
-    private bool _isLoading;
-    private string? _errorMessage;
-
-    private async Task LoginAsync()
-    {
-        _errorMessage = null;
-
-        if (string.IsNullOrWhiteSpace(_email) || string.IsNullOrWhiteSpace(_password))
-        {
-            _errorMessage = L["Error_FillAllFields"].Value;
-            return;
-        }
-
-        _isLoading = true;
-        try
-        {
-            var result = await AuthSvc.LoginAsync(_email, _password);
-            if (result.Success)
-            {
-                Navigation.NavigateTo(result.RedirectTo ?? "/tutor/dashboard");
-                return;
-            }
-            _errorMessage = result.Error ?? L["Login_InvalidCredentials"].Value;
-        }
-        finally
-        {
-            _isLoading = false;
-        }
-    }
-}

@@ -1,0 +1,112 @@
+@page "/login/admin"
+@layout LoginLayout
+@rendermode InteractiveServer
+@inject NavigationManager Navigation
+@inject AuthService AuthSvc
+
+<PageTitle>Espace Super Admin — TutorSphere</PageTitle>
+
+<div class="login-admin-page login-theme-admin">
+    <div class="login-admin-inner">
+
+        <div class="login-admin-brand">
+            <img src="images/tutorsphere-logo.png" alt="TutorSphere" class="login-logo" />
+            <span class="login-brand-name">TutorSphere</span>
+        </div>
+
+        <div class="login-admin-icon">
+            <i class="bi bi-shield-lock-fill"></i>
+        </div>
+
+        <h1>Espace Super Admin</h1>
+        <p class="login-subtitle">Accès réservé aux administrateurs de la plateforme</p>
+
+        @if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <div class="alert alert-danger mb-3" role="alert">
+                <i class="bi bi-exclamation-circle me-2"></i>@_errorMessage
+            </div>
+        }
+
+        <form class="login-form w-100" @onsubmit="LoginAsync" @onsubmit:preventDefault="true">
+            <div class="mb-3">
+                <label class="form-label" for="login-email">Adresse e-mail</label>
+                <div class="form-field-icon">
+                    <i class="bi bi-envelope field-icon" aria-hidden="true"></i>
+                    <input type="email" id="login-email" class="form-control"
+                           placeholder="admin@tutorsphere.com"
+                           @bind="_email" @bind:event="oninput" />
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label" for="login-password">Mot de passe</label>
+                <div class="form-field-icon">
+                    <i class="bi bi-lock field-icon" aria-hidden="true"></i>
+                    <input type="@(_showPassword ? "text" : "password")" id="login-password"
+                           class="form-control" placeholder="••••••••"
+                           @bind="_password" @bind:event="oninput"
+                           style="padding-right: 2.5rem;" />
+                    <button type="button" class="password-toggle" @onclick="() => _showPassword = !_showPassword"
+                            aria-label="Afficher/masquer le mot de passe">
+                        <i class="bi @(_showPassword ? "bi-eye-slash" : "bi-eye")" aria-hidden="true"></i>
+                    </button>
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary btn-lg w-100 mb-3 login-submit-btn" disabled="@_isLoading">
+                @if (_isLoading)
+                {
+                    <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                }
+                <i class="bi bi-shield-check me-2"></i>Accès Admin
+            </button>
+        </form>
+
+        <a href="/login" class="login-back-link mt-2">
+            <i class="bi bi-arrow-left me-1"></i>Retour à la sélection
+        </a>
+    </div>
+</div>
+
+@code {
+    private string _email = "";
+    private string _password = "";
+    private bool _showPassword;
+    private bool _isLoading;
+    private string? _errorMessage;
+
+    private async Task LoginAsync()
+    {
+        _errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(_email) || string.IsNullOrWhiteSpace(_password))
+        {
+            _errorMessage = "Veuillez remplir tous les champs.";
+            return;
+        }
+
+        _isLoading = true;
+        try
+        {
+            var result = await AuthSvc.LoginAsync(_email, _password);
+            if (result.Success)
+            {
+                var role = AuthSvc.PrimaryRole ?? "";
+                if (role is not ("SuperAdmin" or "PlatformAdmin"))
+                {
+                    _errorMessage = "Accès refusé. Ce compte ne dispose pas des droits administrateur.";
+                    AuthSvc.Logout();
+                    return;
+                }
+                Navigation.NavigateTo(result.RedirectTo ?? "/admin/dashboard");
+                return;
+            }
+            _errorMessage = result.Error ?? "Identifiants invalides.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+}

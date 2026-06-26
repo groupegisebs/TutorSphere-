@@ -1,118 +1,185 @@
 @page "/admin/dashboard"
 @layout AdminLayout
+@rendermode InteractiveServer
+@inject AdminService AdminSvc
 @inject IStringLocalizer<SharedResources> L
 
 <PageTitle>@L["PageTitle_AdminDashboard"]</PageTitle>
 
-<div class="dashboard-header">
-    <div>
-        <h1 class="dashboard-greeting">@L["AdminDashboard_Title"]</h1>
-        <p class="dashboard-date">@L["TutorDashboard_DateLabel"] — @DateTime.Now.ToString("dddd d MMMM yyyy")</p>
-    </div>
-</div>
-
-<div class="row g-3 mb-4">
-    <div class="col-sm-6 col-xl-3">
-        <StatCard Label="@L["AdminDashboard_ActiveTutors"]" Value="47" Icon="bi-person-badge" Variant="students" Change="@L["Stat_Change_Positive", "+3"]" />
-    </div>
-    <div class="col-sm-6 col-xl-3">
-        <StatCard Label="@L["AdminDashboard_TotalRevenue"]" Value="18 420 $" Icon="bi-cash-stack" Variant="revenue" Change="@L["Stat_Change_Positive", "+8%"]" />
-    </div>
-    <div class="col-sm-6 col-xl-3">
-        <StatCard Label="@L["AdminDashboard_ActiveSubscriptions"]" Value="312" Icon="bi-arrow-repeat" Variant="subscriptions" Change="@L["Stat_Change_Positive", "+14"]" />
-    </div>
-    <div class="col-sm-6 col-xl-3">
-        <StatCard Label="@L["AdminDashboard_OpenDisputes"]" Value="3" Icon="bi-exclamation-triangle" Variant="payments" Change="@L["AdminDashboard_NeedsAttention"]" ChangeVariant="negative" />
-    </div>
-</div>
-
-<div class="row g-4 mb-4">
-    <div class="col-lg-8">
-        <div class="section-card h-100">
-            <div class="section-card-header">
-                <h2>@L["AdminDashboard_PlatformRevenue"]</h2>
-                <select class="form-select form-select-sm w-auto">
-                    <option>@L["Filter_Last6Months"]</option>
-                </select>
-            </div>
-            <div class="chart-placeholder chart-placeholder--line" aria-hidden="true">
-                <svg viewBox="0 0 400 120" preserveAspectRatio="none">
-                    <polyline points="0,100 50,85 100,78 150,55 200,60 250,35 300,42 350,20 400,28" fill="none" stroke="currentColor" stroke-width="2.5" />
-                    <polyline points="0,100 50,85 100,78 150,55 200,60 250,35 300,42 350,20 400,28 400,120 0,120" fill="currentColor" opacity="0.07" stroke="none" />
-                </svg>
+<AuthorizeView Roles="SuperAdmin,PlatformAdmin">
+    <Authorized Context="auth">
+        <div class="dashboard-header">
+            <div>
+                <h1 class="dashboard-greeting">@L["AdminDashboard_Title"]</h1>
+                <p class="dashboard-date">@L["TutorDashboard_DateLabel"] — @DateTime.Now.ToString("dddd d MMMM yyyy")</p>
             </div>
         </div>
-    </div>
-    <div class="col-lg-4">
-        <div class="section-card h-100">
-            <div class="section-card-header">
-                <h2>@L["AdminDashboard_Distribution"]</h2>
-            </div>
-            <div class="chart-placeholder chart-placeholder--donut">
-                <div class="donut-chart"><div class="donut-hole"></div></div>
-                <ul class="donut-legend">
-                    <li><span class="donut-legend-color donut-legend-color--primary"></span> @L["AdminDashboard_Tutors"] (55%)</li>
-                    <li><span class="donut-legend-color donut-legend-color--accent"></span> @L["AdminDashboard_Parents"] (25%)</li>
-                    <li><span class="donut-legend-color donut-legend-color--muted"></span> @L["AdminDashboard_Others"] (20%)</li>
-                </ul>
-            </div>
-        </div>
-    </div>
-</div>
 
-<div class="row g-4">
-    <div class="col-lg-6">
-        <div class="section-card">
-            <div class="section-card-header">
-                <h2>@L["AdminDashboard_RecentTutors"]</h2>
-                <a href="admin/tutors" class="btn btn-sm btn-link">@L["Button_ViewAll"]</a>
+        <div class="row g-3 mb-4">
+            <div class="col-sm-6 col-xl-3">
+                <StatCard Label="Tuteurs inscrits"
+                          Value="@(_stats is null ? "…" : _stats.TotalTutors.ToString())"
+                          Icon="bi-person-badge"
+                          Variant="students" />
             </div>
-            <ul class="lesson-list">
-                @foreach (var tutor in RecentTutors)
-                {
-                    <li class="lesson-list-item">
-                        <div class="lesson-avatar">@tutor.Initials</div>
-                        <div class="lesson-info">
-                            <strong>@tutor.Name</strong>
-                            <span>@tutor.School</span>
-                        </div>
-                        <span class="badge bg-success-subtle text-success">@L["AdminDashboard_Active"]</span>
-                    </li>
-                }
-            </ul>
+            <div class="col-sm-6 col-xl-3">
+                <StatCard Label="Parents inscrits"
+                          Value="@(_stats is null ? "…" : _stats.TotalParents.ToString())"
+                          Icon="bi-people"
+                          Variant="subscriptions" />
+            </div>
+            <div class="col-sm-6 col-xl-3">
+                <StatCard Label="Élèves inscrits"
+                          Value="@(_stats is null ? "…" : _stats.TotalStudents.ToString())"
+                          Icon="bi-mortarboard"
+                          Variant="revenue" />
+            </div>
+            <div class="col-sm-6 col-xl-3">
+                <StatCard Label="Comptes inactifs"
+                          Value="@(_stats is null ? "…" : _stats.InactiveUsers.ToString())"
+                          Icon="bi-person-slash"
+                          Variant="payments"
+                          Change="@(_stats?.InactiveUsers > 0 ? "Attention requise" : "Tout actif")"
+                          ChangeVariant="@(_stats?.InactiveUsers > 0 ? "negative" : "positive")" />
+            </div>
         </div>
-    </div>
-    <div class="col-lg-6">
-        <div class="section-card">
-            <div class="section-card-header">
-                <h2>@L["AdminDashboard_OpenDisputes"]</h2>
-                <a href="admin/disputes" class="btn btn-sm btn-link btn-danger">@L["Button_ViewAll"]</a>
-            </div>
-            @foreach (var dispute in OpenDisputes)
-            {
-                <div class="lesson-list-item mb-2">
-                    <div class="mini-stat-icon mini-stat-icon--danger"><i class="bi bi-exclamation-triangle"></i></div>
-                    <div class="lesson-info">
-                        <strong>@dispute.Subject</strong>
-                        <span>@dispute.Description</span>
+
+        <div class="row g-4 mb-4">
+            <div class="col-lg-8">
+                <div class="section-card h-100">
+                    <div class="section-card-header">
+                        <h2>Répartition des utilisateurs actifs</h2>
                     </div>
-                    <span class="stat-change stat-change--negative">@dispute.Date</span>
+                    @if (_stats is not null)
+                    {
+                        var total = Math.Max(_stats.TotalTutors + _stats.TotalParents + _stats.TotalStudents, 1);
+                        <div class="px-2 py-3">
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between small mb-1">
+                                    <span><i class="bi bi-person-badge me-1 text-primary"></i>Tuteurs</span>
+                                    <span class="fw-semibold">@_stats.TotalTutors</span>
+                                </div>
+                                <div class="progress" style="height:8px;">
+                                    <div class="progress-bar bg-primary" role="progressbar"
+                                         style="width:@(100 * _stats.TotalTutors / total)%"></div>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between small mb-1">
+                                    <span><i class="bi bi-people me-1 text-success"></i>Parents</span>
+                                    <span class="fw-semibold">@_stats.TotalParents</span>
+                                </div>
+                                <div class="progress" style="height:8px;">
+                                    <div class="progress-bar bg-success" role="progressbar"
+                                         style="width:@(100 * _stats.TotalParents / total)%"></div>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between small mb-1">
+                                    <span><i class="bi bi-mortarboard me-1 text-warning"></i>Élèves</span>
+                                    <span class="fw-semibold">@_stats.TotalStudents</span>
+                                </div>
+                                <div class="progress" style="height:8px;">
+                                    <div class="progress-bar bg-warning" role="progressbar"
+                                         style="width:@(100 * _stats.TotalStudents / total)%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="d-flex justify-content-center py-4">
+                            <span class="spinner-border text-primary" role="status"></span>
+                        </div>
+                    }
                 </div>
-            }
+            </div>
+            <div class="col-lg-4">
+                <div class="section-card h-100">
+                    <div class="section-card-header">
+                        <h2>Comptes actifs / inactifs</h2>
+                    </div>
+                    @if (_stats is not null)
+                    {
+                        <div class="text-center py-3">
+                            <div class="donut-chart" style="position:relative;width:120px;height:120px;margin:0 auto 1rem;">
+                                <div class="donut-hole"></div>
+                            </div>
+                            <ul class="donut-legend text-start" style="list-style:none;padding:0;">
+                                <li class="mb-1">
+                                    <span class="donut-legend-color donut-legend-color--primary"></span>
+                                    Actifs — @_stats.ActiveUsers
+                                </li>
+                                <li>
+                                    <span class="donut-legend-color" style="background:#ef4444;"></span>
+                                    Inactifs — @_stats.InactiveUsers
+                                </li>
+                            </ul>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="d-flex justify-content-center py-4">
+                            <span class="spinner-border text-primary" role="status"></span>
+                        </div>
+                    }
+                </div>
+            </div>
         </div>
-    </div>
-</div>
+
+        <div class="row g-4">
+            <div class="col-lg-6">
+                <div class="section-card">
+                    <div class="section-card-header">
+                        <h2>Accès rapide</h2>
+                    </div>
+                    <div class="d-flex flex-column gap-2 py-2">
+                        <a href="admin/users" class="btn btn-outline-primary d-flex align-items-center gap-2">
+                            <i class="bi bi-person-badge"></i> Gérer les tuteurs
+                        </a>
+                        <a href="admin/users" class="btn btn-outline-success d-flex align-items-center gap-2">
+                            <i class="bi bi-people"></i> Gérer les parents
+                        </a>
+                        <a href="admin/users" class="btn btn-outline-warning d-flex align-items-center gap-2">
+                            <i class="bi bi-mortarboard"></i> Gérer les élèves
+                        </a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="section-card">
+                    <div class="section-card-header">
+                        <h2>@L["AdminDashboard_OpenDisputes"]</h2>
+                        <a href="admin/disputes" class="btn btn-sm btn-link btn-danger">@L["Button_ViewAll"]</a>
+                    </div>
+                    @foreach (var dispute in OpenDisputes)
+                    {
+                        <div class="lesson-list-item mb-2">
+                            <div class="mini-stat-icon mini-stat-icon--danger"><i class="bi bi-exclamation-triangle"></i></div>
+                            <div class="lesson-info">
+                                <strong>@dispute.Subject</strong>
+                                <span>@dispute.Description</span>
+                            </div>
+                            <span class="stat-change stat-change--negative">@dispute.Date</span>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <div class="d-flex flex-column align-items-center justify-content-center py-5 text-muted">
+            <i class="bi bi-shield-lock fs-1 mb-3"></i>
+            <p>Accès réservé aux administrateurs.</p>
+            <a href="/login" class="btn btn-primary mt-2">Se connecter</a>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
 
 @code {
-    private record TutorItem(string Name, string School, string Initials);
-    private record DisputeItem(string Subject, string Description, string Date);
+    private AdminStats? _stats;
 
-    private readonly List<TutorItem> RecentTutors =
-    [
-        new("Jean Dupont", "École Jean Dupont", "JD"),
-        new("Marie Martin", "Cours Marie M.", "MM"),
-        new("Paul Bernard", "TutorPro Bernard", "PB"),
-    ];
+    private record DisputeItem(string Subject, string Description, string Date);
 
     private readonly List<DisputeItem> OpenDisputes =
     [
@@ -120,4 +187,10 @@
         new("Accès révoqué", "Étudiant signalé — emma.j", "il y a 5j"),
         new("Contenu signalé", "Rapport de séance — 15 juin", "il y a 7j"),
     ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { _stats = await AdminSvc.GetStatsAsync(); }
+        catch { /* silently fallback — stats will show "…" */ }
+    }
 }

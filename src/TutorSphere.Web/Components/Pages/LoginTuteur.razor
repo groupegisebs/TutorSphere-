@@ -1,0 +1,178 @@
+@page "/login/tuteur"
+@layout LoginLayout
+@rendermode InteractiveServer
+@inject NavigationManager Navigation
+@inject AuthService AuthSvc
+
+<PageTitle>Espace Tuteur — TutorSphere</PageTitle>
+
+<div class="login-page login-theme-tutor">
+
+    <!-- ── Left panel ── -->
+    <div class="login-illustration">
+        <div class="login-illustration-content">
+
+            <div class="login-brand">
+                <img src="images/tutorsphere-logo.png" alt="TutorSphere" class="login-logo" />
+                <div>
+                    <span class="login-brand-name">TutorSphere</span>
+                    <p class="login-brand-tagline">Plateforme éducative intelligente</p>
+                </div>
+            </div>
+
+            <div class="login-hero-block">
+                <h2 class="login-hero-title">
+                    Votre espace<br>
+                    <span>Tuteur &amp; Enseignant</span>
+                </h2>
+                <p class="login-hero-subtitle">Gérez vos cours, suivez vos élèves et planifiez vos sessions facilement.</p>
+            </div>
+
+            <!-- Tutor illustration SVG -->
+            <svg class="login-illustration-img" viewBox="0 0 420 300" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <!-- Desk -->
+                <rect x="60" y="200" width="300" height="14" rx="7" fill="#5831E0" opacity="0.15"/>
+                <rect x="80" y="214" width="10" height="60" rx="5" fill="#5831E0" opacity="0.12"/>
+                <rect x="330" y="214" width="10" height="60" rx="5" fill="#5831E0" opacity="0.12"/>
+                <!-- Monitor -->
+                <rect x="140" y="130" width="140" height="90" rx="10" fill="#fff" stroke="#5831E0" stroke-width="3"/>
+                <rect x="148" y="138" width="124" height="68" rx="6" fill="#ede9fe"/>
+                <rect x="195" y="218" width="30" height="8" rx="3" fill="#5831E0" opacity="0.25"/>
+                <rect x="180" y="226" width="60" height="5" rx="2.5" fill="#5831E0" opacity="0.15"/>
+                <!-- Lines on screen -->
+                <rect x="162" y="150" width="70" height="6" rx="3" fill="#5831E0" opacity="0.5"/>
+                <rect x="162" y="162" width="96" height="4" rx="2" fill="#5831E0" opacity="0.3"/>
+                <rect x="162" y="172" width="80" height="4" rx="2" fill="#5831E0" opacity="0.3"/>
+                <rect x="162" y="182" width="55" height="4" rx="2" fill="#5831E0" opacity="0.2"/>
+                <!-- Person (tutor) -->
+                <circle cx="310" cy="130" r="28" fill="#ede9fe"/>
+                <circle cx="310" cy="112" r="18" fill="#5831E0" opacity="0.7"/>
+                <ellipse cx="310" cy="148" rx="22" ry="14" fill="#5831E0" opacity="0.5"/>
+                <!-- Graduation cap -->
+                <rect x="296" y="96" width="28" height="6" rx="3" fill="#5831E0"/>
+                <polygon points="310,88 296,96 324,96" fill="#5831E0"/>
+                <line x1="324" y1="96" x2="328" y2="108" stroke="#5831E0" stroke-width="2"/>
+                <circle cx="328" cy="110" r="3" fill="#5831E0"/>
+                <!-- Book on desk -->
+                <rect x="92" y="178" width="50" height="30" rx="4" fill="#7C5CFF" opacity="0.7"/>
+                <rect x="96" y="182" width="42" height="4" rx="2" fill="#fff" opacity="0.6"/>
+                <rect x="96" y="190" width="35" height="3" rx="1.5" fill="#fff" opacity="0.4"/>
+                <!-- Stars -->
+                <circle cx="100" cy="80" r="3" fill="#5831E0" opacity="0.3"/>
+                <circle cx="340" cy="70" r="4" fill="#7C5CFF" opacity="0.25"/>
+                <circle cx="370" cy="140" r="2.5" fill="#5831E0" opacity="0.2"/>
+                <circle cx="70" cy="160" r="3" fill="#7C5CFF" opacity="0.2"/>
+            </svg>
+        </div>
+    </div>
+
+    <!-- ── Right panel ── -->
+    <div class="login-form-panel">
+        <div class="login-form-inner">
+
+            <a href="/login" class="login-back-link">
+                <i class="bi bi-arrow-left me-1"></i>Retour
+            </a>
+
+            <h1>Espace Tuteur</h1>
+            <p class="login-subtitle">Connectez-vous à votre compte tuteur ou enseignant</p>
+
+            @if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <div class="alert alert-danger mb-3" role="alert">
+                    <i class="bi bi-exclamation-circle me-2"></i>@_errorMessage
+                </div>
+            }
+
+            <form class="login-form" @onsubmit="LoginAsync" @onsubmit:preventDefault="true">
+                <div class="mb-3">
+                    <label class="form-label" for="login-email">Adresse e-mail</label>
+                    <div class="form-field-icon">
+                        <i class="bi bi-envelope field-icon" aria-hidden="true"></i>
+                        <input type="email" id="login-email" class="form-control"
+                               placeholder="votre@email.com"
+                               @bind="_email" @bind:event="oninput" />
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label" for="login-password">Mot de passe</label>
+                    <div class="form-field-icon">
+                        <i class="bi bi-lock field-icon" aria-hidden="true"></i>
+                        <input type="@(_showPassword ? "text" : "password")" id="login-password"
+                               class="form-control" placeholder="••••••••"
+                               @bind="_password" @bind:event="oninput"
+                               style="padding-right: 2.5rem;" />
+                        <button type="button" class="password-toggle" @onclick="() => _showPassword = !_showPassword"
+                                aria-label="Afficher/masquer le mot de passe">
+                            <i class="bi @(_showPassword ? "bi-eye-slash" : "bi-eye")" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="login-options mb-4">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="login-remember" @bind="_rememberMe" />
+                        <label class="form-check-label" for="login-remember">Se souvenir de moi</label>
+                    </div>
+                    <a href="#" class="login-forgot">Mot de passe oublié ?</a>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-lg w-100 mb-4 login-submit-btn" disabled="@_isLoading">
+                    @if (_isLoading)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                    }
+                    Se connecter
+                </button>
+            </form>
+
+            <p class="login-footer text-center">
+                Pas encore de compte ? <a href="/tutor/register">Créer un compte tuteur</a>
+            </p>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string _email = "";
+    private string _password = "";
+    private bool _rememberMe;
+    private bool _showPassword;
+    private bool _isLoading;
+    private string? _errorMessage;
+
+    private async Task LoginAsync()
+    {
+        _errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(_email) || string.IsNullOrWhiteSpace(_password))
+        {
+            _errorMessage = "Veuillez remplir tous les champs.";
+            return;
+        }
+
+        _isLoading = true;
+        try
+        {
+            var result = await AuthSvc.LoginAsync(_email, _password);
+            if (result.Success)
+            {
+                var role = AuthSvc.PrimaryRole ?? "";
+                if (role is not ("Tutor" or "TeachingAssistant" or "SuperAdmin" or "PlatformAdmin"))
+                {
+                    _errorMessage = "Ce compte n'est pas un compte tuteur. Utilisez la page de connexion appropriée.";
+                    AuthSvc.Logout();
+                    return;
+                }
+                Navigation.NavigateTo(result.RedirectTo ?? "/tutor/dashboard");
+                return;
+            }
+            _errorMessage = result.Error ?? "Identifiants invalides.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+}

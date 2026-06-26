@@ -78,6 +78,22 @@ public static class DependencyInjection
             await userManager.AddToRoleAsync(admin, UserRoles.SuperAdmin);
         }
 
+        const string superAdminEmail = "bediga.jean@gisebs.com";
+        if (await userManager.FindByEmailAsync(superAdminEmail) is null)
+        {
+            var superAdmin = new ApplicationUser
+            {
+                UserName = superAdminEmail,
+                Email = superAdminEmail,
+                FirstName = "Jean",
+                LastName = "Bediga",
+                EmailConfirmed = true
+            };
+            var createResult = await userManager.CreateAsync(superAdmin, "Mcd!35578");
+            if (createResult.Succeeded)
+                await userManager.AddToRoleAsync(superAdmin, UserRoles.SuperAdmin);
+        }
+
         await SeedPublicTutorsAsync(db);
     }
 

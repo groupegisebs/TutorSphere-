@@ -1,0 +1,183 @@
+@page "/login/parent"
+@layout LoginLayout
+@rendermode InteractiveServer
+@inject NavigationManager Navigation
+@inject AuthService AuthSvc
+
+<PageTitle>Espace Parent — TutorSphere</PageTitle>
+
+<div class="login-page login-theme-parent">
+
+    <!-- ── Left panel ── -->
+    <div class="login-illustration">
+        <div class="login-illustration-content">
+
+            <div class="login-brand">
+                <img src="images/tutorsphere-logo.png" alt="TutorSphere" class="login-logo" />
+                <div>
+                    <span class="login-brand-name">TutorSphere</span>
+                    <p class="login-brand-tagline">Plateforme éducative intelligente</p>
+                </div>
+            </div>
+
+            <div class="login-hero-block">
+                <h2 class="login-hero-title">
+                    Votre espace<br>
+                    <span>Parent</span>
+                </h2>
+                <p class="login-hero-subtitle">Suivez la progression scolaire de vos enfants et restez connecté à leurs tuteurs.</p>
+            </div>
+
+            <!-- Parent illustration SVG -->
+            <svg class="login-illustration-img" viewBox="0 0 420 300" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <!-- House -->
+                <polygon points="210,60 100,160 320,160" fill="#0d9488" opacity="0.15"/>
+                <rect x="120" y="160" width="180" height="110" rx="4" fill="#0d9488" opacity="0.12"/>
+                <!-- Roof -->
+                <polygon points="210,60 100,160 320,160" fill="none" stroke="#0d9488" stroke-width="3" stroke-linejoin="round"/>
+                <!-- Door -->
+                <rect x="185" y="210" width="50" height="60" rx="6" fill="#0d9488" opacity="0.4"/>
+                <circle cx="228" cy="242" r="3" fill="#fff"/>
+                <!-- Windows -->
+                <rect x="130" y="175" width="45" height="40" rx="5" fill="#ccfbf1" stroke="#0d9488" stroke-width="2"/>
+                <line x1="152" y1="175" x2="152" y2="215" stroke="#0d9488" stroke-width="1.5"/>
+                <line x1="130" y1="195" x2="175" y2="195" stroke="#0d9488" stroke-width="1.5"/>
+                <rect x="245" y="175" width="45" height="40" rx="5" fill="#ccfbf1" stroke="#0d9488" stroke-width="2"/>
+                <line x1="267" y1="175" x2="267" y2="215" stroke="#0d9488" stroke-width="1.5"/>
+                <line x1="245" y1="195" x2="290" y2="195" stroke="#0d9488" stroke-width="1.5"/>
+                <!-- Adult 1 (left) -->
+                <circle cx="340" cy="148" r="18" fill="#0d9488" opacity="0.6"/>
+                <ellipse cx="340" cy="172" rx="16" ry="10" fill="#0d9488" opacity="0.4"/>
+                <!-- Adult 2 (right) -->
+                <circle cx="370" cy="155" r="15" fill="#0d9488" opacity="0.5"/>
+                <ellipse cx="370" cy="177" rx="13" ry="9" fill="#0d9488" opacity="0.35"/>
+                <!-- Child -->
+                <circle cx="355" cy="165" r="10" fill="#14b8a6" opacity="0.7"/>
+                <ellipse cx="355" cy="178" rx="9" ry="6" fill="#14b8a6" opacity="0.5"/>
+                <!-- Heart above house -->
+                <path d="M210 45 C210 45 202 36 196 36 C190 36 186 42 186 47 C186 52 210 65 210 65 C210 65 234 52 234 47 C234 42 230 36 224 36 C218 36 210 45 210 45Z" fill="#0d9488" opacity="0.4"/>
+                <!-- Stars -->
+                <circle cx="80" cy="100" r="3" fill="#0d9488" opacity="0.25"/>
+                <circle cx="380" cy="80" r="4" fill="#14b8a6" opacity="0.2"/>
+                <circle cx="100" cy="230" r="2.5" fill="#0d9488" opacity="0.2"/>
+                <!-- Progress bar (chart) -->
+                <rect x="60" y="185" width="40" height="8" rx="4" fill="#0d9488" opacity="0.15"/>
+                <rect x="60" y="185" width="28" height="8" rx="4" fill="#0d9488" opacity="0.5"/>
+                <rect x="60" y="198" width="40" height="8" rx="4" fill="#0d9488" opacity="0.15"/>
+                <rect x="60" y="198" width="35" height="8" rx="4" fill="#14b8a6" opacity="0.45"/>
+                <rect x="60" y="211" width="40" height="8" rx="4" fill="#0d9488" opacity="0.15"/>
+                <rect x="60" y="211" width="20" height="8" rx="4" fill="#0d9488" opacity="0.4"/>
+            </svg>
+        </div>
+    </div>
+
+    <!-- ── Right panel ── -->
+    <div class="login-form-panel">
+        <div class="login-form-inner">
+
+            <a href="/login" class="login-back-link">
+                <i class="bi bi-arrow-left me-1"></i>Retour
+            </a>
+
+            <h1>Espace Parent</h1>
+            <p class="login-subtitle">Connectez-vous pour suivre la scolarité de vos enfants</p>
+
+            @if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <div class="alert alert-danger mb-3" role="alert">
+                    <i class="bi bi-exclamation-circle me-2"></i>@_errorMessage
+                </div>
+            }
+
+            <form class="login-form" @onsubmit="LoginAsync" @onsubmit:preventDefault="true">
+                <div class="mb-3">
+                    <label class="form-label" for="login-email">Adresse e-mail</label>
+                    <div class="form-field-icon">
+                        <i class="bi bi-envelope field-icon" aria-hidden="true"></i>
+                        <input type="email" id="login-email" class="form-control"
+                               placeholder="votre@email.com"
+                               @bind="_email" @bind:event="oninput" />
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label" for="login-password">Mot de passe</label>
+                    <div class="form-field-icon">
+                        <i class="bi bi-lock field-icon" aria-hidden="true"></i>
+                        <input type="@(_showPassword ? "text" : "password")" id="login-password"
+                               class="form-control" placeholder="••••••••"
+                               @bind="_password" @bind:event="oninput"
+                               style="padding-right: 2.5rem;" />
+                        <button type="button" class="password-toggle" @onclick="() => _showPassword = !_showPassword"
+                                aria-label="Afficher/masquer le mot de passe">
+                            <i class="bi @(_showPassword ? "bi-eye-slash" : "bi-eye")" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="login-options mb-4">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="login-remember" @bind="_rememberMe" />
+                        <label class="form-check-label" for="login-remember">Se souvenir de moi</label>
+                    </div>
+                    <a href="#" class="login-forgot">Mot de passe oublié ?</a>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-lg w-100 mb-4 login-submit-btn" disabled="@_isLoading">
+                    @if (_isLoading)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                    }
+                    Se connecter
+                </button>
+            </form>
+
+            <p class="login-footer text-center">
+                Pas encore de compte ? <a href="/register">Créer un compte</a>
+            </p>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string _email = "";
+    private string _password = "";
+    private bool _rememberMe;
+    private bool _showPassword;
+    private bool _isLoading;
+    private string? _errorMessage;
+
+    private async Task LoginAsync()
+    {
+        _errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(_email) || string.IsNullOrWhiteSpace(_password))
+        {
+            _errorMessage = "Veuillez remplir tous les champs.";
+            return;
+        }
+
+        _isLoading = true;
+        try
+        {
+            var result = await AuthSvc.LoginAsync(_email, _password);
+            if (result.Success)
+            {
+                var role = AuthSvc.PrimaryRole ?? "";
+                if (role is not ("Parent" or "SuperAdmin" or "PlatformAdmin"))
+                {
+                    _errorMessage = "Ce compte n'est pas un compte parent. Utilisez la page de connexion appropriée.";
+                    AuthSvc.Logout();
+                    return;
+                }
+                Navigation.NavigateTo(result.RedirectTo ?? "/parent");
+                return;
+            }
+            _errorMessage = result.Error ?? "Identifiants invalides.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+}
