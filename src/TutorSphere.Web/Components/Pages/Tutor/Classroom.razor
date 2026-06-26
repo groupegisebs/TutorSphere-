@@ -201,6 +201,11 @@
 @code {
     [Parameter] public string LessonId { get; set; } = "";
 
+    [SupplyParameterFromQuery] public string? Student { get; set; }
+    [SupplyParameterFromQuery] public string? Initials { get; set; }
+    [SupplyParameterFromQuery] public string? Title { get; set; }
+    [SupplyParameterFromQuery] public string? Subject { get; set; }
+
     private int _elapsedSeconds = 0;
     private System.Threading.Timer? _timer;
 
@@ -217,7 +222,14 @@
 
     protected override void OnInitialized()
     {
-        _lesson = GetLesson(LessonId);
+        _lesson = new ClassroomLesson
+        {
+            Title       = string.IsNullOrWhiteSpace(Title)    ? "Séance en cours" : Title,
+            StudentName = string.IsNullOrWhiteSpace(Student)  ? "Élève"           : Student,
+            StudentInitials = string.IsNullOrWhiteSpace(Initials) ? "EL"          : Initials,
+            Subject     = string.IsNullOrWhiteSpace(Subject)  ? "—"               : Subject,
+            AvatarColor = "#7c3aed",
+        };
         _participants = [
             new() { Name = "Vous (tuteur)", Initials = "MT", Color = "#5831E0", Role = "Tuteur", MicOn = _micOn, CamOn = _camOn },
             new() { Name = _lesson.StudentName, Initials = _lesson.StudentInitials, Color = _lesson.AvatarColor, Role = "Élève", MicOn = true, CamOn = false },
@@ -274,15 +286,6 @@
         _chatMessages.Add(new ChatMsg { Text = text, IsMe = true, Sender = "Vous", Time = DateTime.Now.ToString("HH:mm") });
         _newMessage = "";
     }
-
-    private static ClassroomLesson GetLesson(string id) => new()
-    {
-        Title = "Séance en cours",
-        StudentName = "Élève",
-        StudentInitials = "EL",
-        Subject = "—",
-        AvatarColor = "#7c3aed",
-    };
 
     private List<ParticipantVM> _participants = [];
 
