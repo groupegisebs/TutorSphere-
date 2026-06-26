@@ -46,10 +46,11 @@ public sealed class AuthService
             var result = await resp.Content.ReadFromJsonAsync<AuthResponse>(
                 new JsonSerializerOptions(JsonSerializerDefaults.Web));
 
-            if (result is null) return new LoginResult(false, "Réponse inattendue du serveur.", null);
+            if (result is null || string.IsNullOrWhiteSpace(result.Token))
+                return new LoginResult(false, "Réponse inattendue du serveur.", null);
 
             _authProvider.MarkAuthenticated(result);
-            var role = result.Roles?.FirstOrDefault() ?? "";
+            var role = result.Role ?? "";
             return new LoginResult(true, null, RoleToRoute(role));
         }
         catch (Exception ex)
@@ -87,9 +88,10 @@ public sealed record LoginResult(bool Success, string? Error, string? RedirectTo
 internal sealed record AuthResponse(
     string Token,
     string Email,
-    string? FirstName,
-    string? LastName,
-    IReadOnlyList<string>? Roles);
+    string FullName,
+    string Role,
+    Guid? TenantId,
+    DateTime ExpiresAt);
 
 /// <summary>
 /// Circuit-scoped authentication state.
@@ -125,20 +127,23 @@ public sealed class CustomAuthenticationStateProvider : AuthenticationStateProvi
         var claims = new List<Claim>
         {
             new(ClaimTypes.Email, auth.Email),
-            new(ClaimTypes.Name,
-                !string.IsNullOrWhiteSpace(auth.FirstName)
-                    ? $"{auth.FirstName} {auth.LastName}".Trim()
-                    : auth.Email)
+            new(ClaimTypes.Name, string.IsNullOrWhiteSpace(auth.FullName) ? auth.Email : auth.FullName)
         };
 
-        if (auth.Roles is not null)
-            claims.AddRange(auth.Roles.Select(r => new Claim(ClaimTypes.Role, r)));
+        if (!string.IsNullOrWhiteSpace(auth.Role))
+            claims.Add(new Claim(ClaimTypes.Role, auth.Role));
 
-        // Parse additional claims from JWT payload (e.g. tenant_id)
+        if (auth.TenantId.HasValue)
+            claims.Add(new Claim("tenant_id", auth.TenantId.Value.ToString()));
+
+        // Fallback: parse JWT payload for role/tenant if missing from response body
         foreach (var (key, value) in ParseJwtPayloadClaims(auth.Token))
         {
-            if (key is "tenant_id" or "sub")
-                claims.Add(new Claim(key, value));
+            if (key is "tenant_id" && claims.All(c => c.Type != "tenant_id"))
+                claims.Add(new Claim("tenant_id", value));
+            if (key is "role" or "http://schemas.microsoft.com/ws/2008/06/identity/claims/role"
+                && claims.All(c => c.Type != ClaimTypes.Role))
+                claims.Add(new Claim(ClaimTypes.Role, value));
         }
 
         _user = new ClaimsPrincipal(new ClaimsIdentity(claims, "TutorSphereJwt"));

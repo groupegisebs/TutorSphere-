@@ -73,6 +73,9 @@ public class AuthService : IAuthService
         var user = await _userManager.FindByEmailAsync(request.Email)
             ?? throw new UnauthorizedAccessException("Identifiants invalides.");
 
+        if (await _userManager.IsLockedOutAsync(user))
+            throw new UnauthorizedAccessException("Ce compte est désactivé. Contactez l'administrateur.");
+
         if (!await _userManager.CheckPasswordAsync(user, request.Password))
             throw new UnauthorizedAccessException("Identifiants invalides.");
 
