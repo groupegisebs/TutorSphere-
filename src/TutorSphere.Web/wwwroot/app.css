@@ -1879,6 +1879,29 @@ a:hover, .btn-link:hover {
     box-shadow: 0 0 0 3px rgba(88, 49, 224, 0.12);
 }
 
+/* ─── Global layout (applies to all layouts, not just MainLayout) ─── */
+
+/* Top bar – global so it works in TutorLayout and any other layout */
+.top-row {
+    background: var(--ts-surface-elevated);
+    border-bottom: 1px solid var(--ts-border);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    height: var(--ts-topbar-height);
+    padding: 0 1.5rem;
+    box-shadow: var(--ts-shadow-xs);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.top-row-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
 /* ─── Dashboard layouts ─── */
 .dashboard-page {
     position: relative;
@@ -1895,9 +1918,23 @@ a:hover, .btn-link:hover {
     background: var(--ts-surface);
 }
 
+/* Sidebar – global flex layout */
+.sidebar {
+    display: flex;
+    flex-direction: column;
+    background: var(--ts-surface-elevated);
+    border-right: 1px solid var(--ts-border);
+}
+
 .sidebar-navy {
     background: var(--ts-gradient-sidebar);
     border-right: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Sidebar brand row */
+.sidebar-brand {
+    display: flex;
+    align-items: center;
 }
 
 .sidebar-brand--navy {
@@ -1905,7 +1942,19 @@ a:hover, .btn-link:hover {
     padding: 1rem 1.25rem;
 }
 
-.sidebar-brand--navy .sidebar-brand-link { color: white; }
+.sidebar-brand--navy .sidebar-brand-link {
+    color: white;
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    text-decoration: none;
+}
+
+.sidebar-brand-logo {
+    height: 34px;
+    width: auto;
+    flex-shrink: 0;
+}
 
 .navbar-toggler--light {
     border-color: rgba(255, 255, 255, 0.2);
@@ -2000,12 +2049,23 @@ a:hover, .btn-link:hover {
 .sidebar-user--navy:hover { background: rgba(255, 255, 255, 0.04); }
 
 @media (min-width: 641px) {
+    /* All layout types go row at desktop */
+    .page { flex-direction: row; }
     .dashboard-page { flex-direction: row; }
+
+    .sidebar {
+        width: var(--ts-sidebar-width);
+        height: 100vh;
+        position: sticky;
+        top: 0;
+        flex-shrink: 0;
+    }
     .dashboard-page .sidebar-navy {
         width: var(--ts-sidebar-width);
         height: 100vh;
         position: sticky;
         top: 0;
+        flex-shrink: 0;
     }
     .dashboard-page .nav-scrollable--navy {
         display: flex;
@@ -2016,6 +2076,9 @@ a:hover, .btn-link:hover {
 @media (max-width: 640.98px) {
     .dashboard-page .nav-scrollable--navy { display: none; }
     .dashboard-page .navbar-toggler:checked ~ .nav-scrollable--navy { display: flex; }
+    .top-row {
+        padding: 0 1rem;
+    }
 }
 
 .dashboard-header {
