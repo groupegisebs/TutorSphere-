@@ -1,94 +1,220 @@
 ﻿@page "/"
+@layout PublicLayout
 @inject IStringLocalizer<SharedResources> L
 
 <PageTitle>@L["PageTitle_Home"]</PageTitle>
 
-<section class="hero">
-    <div class="hero-content">
-        <img class="hero-logo" src="images/tutorsphere-logo.png" alt="@L["AppName"]" />
-        <p class="hero-tagline">@L["AppTagline"]</p>
-        <p class="lead">@L["Hero_Lead"]</p>
-        <div class="hero-actions">
-            <a class="btn btn-primary btn-lg" href="/tutor/register">
-                <i class="bi bi-plus-circle me-2"></i>@L["Hero_CreateSchool"]
-            </a>
-            <a class="btn btn-ghost-light btn-lg" href="/login">
-                <i class="bi bi-box-arrow-in-right me-2"></i>@L["Nav_Login"]
-            </a>
+<!-- ══ HERO ══════════════════════════════════════════════════════════ -->
+<section class="lp-hero">
+    <div class="lp-hero-inner">
+
+        <!-- Left content -->
+        <div class="lp-hero-left">
+            <div class="lp-hero-badge">
+                <i class="bi bi-star-fill" aria-hidden="true"></i>
+                @L["Hero_Badge"]
+            </div>
+
+            <h1 class="lp-hero-headline">
+                @L["Hero_Headline_Line1"]<br/>
+                @L["Hero_Headline_Line2"]<br/>
+                <span class="lp-hero-highlight">@L["Hero_Headline_Line3"]</span>
+            </h1>
+
+            <p class="lp-hero-lead">@L["Hero_Lead"]</p>
+
+            <div class="lp-hero-actions">
+                <a href="/tutor/register" class="btn btn-primary btn-lg lp-btn-cta">
+                    <i class="bi bi-plus-circle me-2" aria-hidden="true"></i>@L["Hero_CreateSchool"]
+                </a>
+                <a href="#features" class="btn btn-outline-secondary btn-lg lp-btn-demo">
+                    <i class="bi bi-play-circle me-2" aria-hidden="true"></i>@L["Hero_DiscoverPlatform"]
+                </a>
+            </div>
+
+            <div class="lp-hero-stats">
+                <div class="lp-stat">
+                    <span class="lp-stat-value">500+</span>
+                    <span class="lp-stat-label">@L["Stat_Tutors"]</span>
+                </div>
+                <div class="lp-stat-divider"></div>
+                <div class="lp-stat">
+                    <span class="lp-stat-value">10K+</span>
+                    <span class="lp-stat-label">@L["Stat_Students"]</span>
+                </div>
+                <div class="lp-stat-divider"></div>
+                <div class="lp-stat">
+                    <span class="lp-stat-value">98%</span>
+                    <span class="lp-stat-label">@L["Stat_Parents"]</span>
+                </div>
+                <div class="lp-stat-divider"></div>
+                <div class="lp-stat">
+                    <span class="lp-stat-value">4,9/5</span>
+                    <span class="lp-stat-label">@L["Stat_Rating"]</span>
+                </div>
+            </div>
         </div>
-        <div class="hero-stats">
-            <div>
-                <span class="hero-stat-value">500+</span>
-                <span class="hero-stat-label">@L["Feature_Tutors_Title"]</span>
+
+        <!-- Right: floating dashboard widgets -->
+        <div class="lp-hero-right" aria-hidden="true">
+            <div class="lp-hero-glow"></div>
+
+            <!-- Revenue card (top left) -->
+            <div class="lp-widget lp-widget--tl">
+                <p class="lp-widget-label">@L["Stat_MonthlyRevenue"]</p>
+                <p class="lp-widget-value">2 450 $</p>
+                <div class="lp-widget-chart">
+                    <svg viewBox="0 0 120 40" preserveAspectRatio="none">
+                        <defs>
+                            <linearGradient id="wFill" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stop-color="#5831E0" stop-opacity="0.2"/>
+                                <stop offset="100%" stop-color="#5831E0" stop-opacity="0"/>
+                            </linearGradient>
+                        </defs>
+                        <path d="M0,32 C15,28 25,20 35,22 C45,24 55,12 70,10 C85,8 95,16 120,8 L120,40 L0,40 Z" fill="url(#wFill)"/>
+                        <path d="M0,32 C15,28 25,20 35,22 C45,24 55,12 70,10 C85,8 95,16 120,8" fill="none" stroke="#5831E0" stroke-width="2"/>
+                    </svg>
+                </div>
+                <span class="lp-widget-change positive"><i class="bi bi-arrow-up-short"></i> 12% @L["Stat_vs_last_month"]</span>
             </div>
-            <div>
-                <span class="hero-stat-value">10k+</span>
-                <span class="hero-stat-label">@L["Feature_Students_Title"]</span>
+
+            <!-- Upcoming lessons (center) -->
+            <div class="lp-widget lp-widget--center">
+                <p class="lp-widget-label">@L["Stat_UpcomingLessons"]</p>
+                <ul class="lp-widget-lessons">
+                    <li>
+                        <span class="lp-lesson-time">10:00</span>
+                        <span class="lp-lesson-avatar" style="background:#5831E0">EJ</span>
+                        <div>
+                            <strong>Emma Johnson</strong>
+                            <span>Mathématiques</span>
+                        </div>
+                    </li>
+                    <li>
+                        <span class="lp-lesson-time">14:00</span>
+                        <span class="lp-lesson-avatar" style="background:#10b981">LB</span>
+                        <div>
+                            <strong>Liam Brown</strong>
+                            <span>Physique</span>
+                        </div>
+                    </li>
+                    <li>
+                        <span class="lp-lesson-time">16:00</span>
+                        <span class="lp-lesson-avatar" style="background:#f59e0b">SD</span>
+                        <div>
+                            <strong>Sophia Davis</strong>
+                            <span>Chimie</span>
+                        </div>
+                    </li>
+                </ul>
+                <a class="lp-widget-link">@L["Button_ViewAll"]</a>
             </div>
-            <div>
-                <span class="hero-stat-value">98%</span>
-                <span class="hero-stat-label">@L["Feature_Parents_Title"]</span>
+
+            <!-- Active students (top right) -->
+            <div class="lp-widget lp-widget--tr">
+                <p class="lp-widget-label">@L["Stat_ActiveStudents"]</p>
+                <p class="lp-widget-value">32</p>
+                <span class="lp-widget-change positive"><i class="bi bi-arrow-up-short"></i> +3 @L["Stat_this_month"]</span>
+            </div>
+
+            <!-- Reviews (middle right) -->
+            <div class="lp-widget lp-widget--mr">
+                <p class="lp-widget-label">@L["TutorDashboard_RecentReviews"]</p>
+                <p class="lp-widget-value lp-widget-value--sm">4,9<span>/5</span></p>
+                <div class="lp-widget-stars">
+                    @for (var i = 0; i < 5; i++) { <i class="bi bi-star-fill"></i> }
+                </div>
+                <p class="lp-widget-sub">@L["TutorDashboard_BasedOnReviews", 28]</p>
+            </div>
+
+            <!-- Subscriptions (bottom right) -->
+            <div class="lp-widget lp-widget--br">
+                <p class="lp-widget-label">@L["Stat_ActiveSubscriptions"]</p>
+                <p class="lp-widget-value">28</p>
+                <div class="lp-widget-bar">
+                    <div class="lp-widget-bar-fill" style="width:70%"></div>
+                </div>
+                <span class="lp-widget-change positive"><i class="bi bi-arrow-up-short"></i> +4 @L["Stat_this_month"]</span>
             </div>
         </div>
     </div>
 </section>
 
-<section class="features container py-5">
-    <div class="row g-4">
-        <div class="col-md-4">
-            <div class="feature-card">
-                <div class="feature-icon feature-icon--indigo">
-                    <i class="bi bi-person-workspace"></i>
-                </div>
-                <h3>@L["Feature_Tutors_Title"]</h3>
-                <p>@L["Feature_Tutors_Description"]</p>
-            </div>
+<!-- ══ FEATURES ══════════════════════════════════════════════════════ -->
+<section class="lp-features" id="features">
+    <div class="lp-features-inner">
+        <div class="lp-section-header">
+            <h2>@L["Features_Title"]</h2>
+            <p>@L["Features_Subtitle"]</p>
         </div>
-        <div class="col-md-4">
-            <div class="feature-card">
-                <div class="feature-icon feature-icon--cyan">
-                    <i class="bi bi-heart"></i>
+        <div class="lp-feature-grid">
+            <div class="lp-feature-card">
+                <div class="lp-feature-icon lp-feature-icon--violet">
+                    <i class="bi bi-people-fill" aria-hidden="true"></i>
                 </div>
-                <h3>@L["Feature_Parents_Title"]</h3>
-                <p>@L["Feature_Parents_Description"]</p>
+                <h3>@L["Feature_Students_Manage"]</h3>
+                <p>@L["Feature_Students_Manage_Desc"]</p>
+                <a href="#" class="lp-feature-link">@L["Feature_LearnMore"] →</a>
             </div>
-        </div>
-        <div class="col-md-4">
-            <div class="feature-card">
-                <div class="feature-icon feature-icon--emerald">
-                    <i class="bi bi-mortarboard"></i>
+            <div class="lp-feature-card">
+                <div class="lp-feature-icon lp-feature-icon--teal">
+                    <i class="bi bi-calendar3" aria-hidden="true"></i>
                 </div>
-                <h3>@L["Feature_Students_Title"]</h3>
-                <p>@L["Feature_Students_Description"]</p>
+                <h3>@L["Feature_Schedule"]</h3>
+                <p>@L["Feature_Schedule_Desc"]</p>
+                <a href="#" class="lp-feature-link lp-feature-link--teal">@L["Feature_LearnMore"] →</a>
+            </div>
+            <div class="lp-feature-card">
+                <div class="lp-feature-icon lp-feature-icon--amber">
+                    <i class="bi bi-file-earmark-text" aria-hidden="true"></i>
+                </div>
+                <h3>@L["Feature_Offers"]</h3>
+                <p>@L["Feature_Offers_Desc"]</p>
+                <a href="#" class="lp-feature-link lp-feature-link--amber">@L["Feature_LearnMore"] →</a>
+            </div>
+            <div class="lp-feature-card">
+                <div class="lp-feature-icon lp-feature-icon--blue">
+                    <i class="bi bi-graph-up-arrow" aria-hidden="true"></i>
+                </div>
+                <h3>@L["Feature_Revenue"]</h3>
+                <p>@L["Feature_Revenue_Desc"]</p>
+                <a href="#" class="lp-feature-link lp-feature-link--blue">@L["Feature_LearnMore"] →</a>
+            </div>
+            <div class="lp-feature-card">
+                <div class="lp-feature-icon lp-feature-icon--rose">
+                    <i class="bi bi-chat-square-text-fill" aria-hidden="true"></i>
+                </div>
+                <h3>@L["Feature_Messaging"]</h3>
+                <p>@L["Feature_Messaging_Desc"]</p>
+                <a href="#" class="lp-feature-link lp-feature-link--rose">@L["Feature_LearnMore"] →</a>
             </div>
         </div>
     </div>
 </section>
 
-<section class="plans container pb-5">
-    <div class="section-header">
-        <h2>@L["Plans_Title"]</h2>
-    </div>
-    <div class="row g-4 justify-content-center">
-        <div class="col-md-4 col-lg-3">
-            <div class="plan-card">
+<!-- ══ PRICING ═══════════════════════════════════════════════════════ -->
+<section class="lp-pricing" id="pricing">
+    <div class="lp-features-inner">
+        <div class="lp-section-header">
+            <h2>@L["Plans_Title"]</h2>
+            <p>@L["Plans_Subtitle"]</p>
+        </div>
+        <div class="lp-pricing-grid">
+            <div class="lp-plan-card">
                 <h4>@L["Plan_Starter"]</h4>
-                <p class="price">@L["Plan_PricePerMonth", "14,99"]</p>
-                <p class="price-period">/ @L["Plan_Starter"]</p>
+                <p class="lp-plan-price">14,99 $<span>/mois</span></p>
+                <a href="/tutor/register" class="btn btn-outline-primary w-100 mt-3">@L["Hero_CreateSchool"]</a>
             </div>
-        </div>
-        <div class="col-md-4 col-lg-3">
-            <div class="plan-card featured">
+            <div class="lp-plan-card lp-plan-card--featured">
+                <span class="lp-plan-badge">@L["Plan_Popular"]</span>
                 <h4>@L["Plan_Professional"]</h4>
-                <p class="price">@L["Plan_PricePerMonth", "29,99"]</p>
-                <p class="price-period">/ @L["Plan_Professional"]</p>
+                <p class="lp-plan-price">29,99 $<span>/mois</span></p>
+                <a href="/tutor/register" class="btn btn-primary w-100 mt-3">@L["Hero_CreateSchool"]</a>
             </div>
-        </div>
-        <div class="col-md-4 col-lg-3">
-            <div class="plan-card">
+            <div class="lp-plan-card">
                 <h4>@L["Plan_Business"]</h4>
-                <p class="price">@L["Plan_PricePerMonth", "59,99"]</p>
-                <p class="price-period">/ @L["Plan_Business"]</p>
+                <p class="lp-plan-price">59,99 $<span>/mois</span></p>
+                <a href="/tutor/register" class="btn btn-outline-primary w-100 mt-3">@L["Hero_CreateSchool"]</a>
             </div>
         </div>
     </div>
