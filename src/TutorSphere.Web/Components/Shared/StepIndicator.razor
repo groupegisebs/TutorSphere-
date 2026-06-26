@@ -1,0 +1,33 @@
+<div class="step-indicator">
+    @for (var i = 0; i < Steps.Count; i++)
+    {
+        var step = Steps[i];
+        var stepNumber = i + 1;
+        var isActive = stepNumber == CurrentStep;
+        var isCompleted = stepNumber < CurrentStep;
+
+        <div class="step-indicator-item @(isActive ? "active" : "") @(isCompleted ? "completed" : "")">
+            <span class="step-indicator-number">
+                @if (isCompleted)
+                {
+                    <i class="bi bi-check-lg" aria-hidden="true"></i>
+                }
+                else
+                {
+                    @stepNumber
+                }
+            </span>
+            <span class="step-indicator-label">@step</span>
+        </div>
+
+        @if (i < Steps.Count - 1)
+        {
+            <div class="step-indicator-line @(isCompleted ? "completed" : "")"></div>
+        }
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<string> Steps { get; set; } = [];
+    [Parameter] public int CurrentStep { get; set; } = 1;
+}
