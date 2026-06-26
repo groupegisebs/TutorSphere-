@@ -3,7 +3,7 @@
 @rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
 @inject NavigationManager Navigation
-@inject HttpClient Http
+@inject AuthService AuthSvc
 
 <PageTitle>@L["PageTitle_Login"]</PageTitle>
 
@@ -127,52 +127,17 @@
         _isLoading = true;
         try
         {
-            var response = await Http.PostAsJsonAsync("api/auth/login",
-                new { email = _email, password = _password });
-
-            if (response.IsSuccessStatusCode)
+            var result = await AuthSvc.LoginAsync(_email, _password);
+            if (result.Success)
             {
-                var result = await response.Content.ReadFromJsonAsync<AuthResult>();
-                if (result is not null)
-                {
-                    var role = result.Roles?.FirstOrDefault() ?? "";
-                    var destination = role switch
-                    {
-                        "SuperAdmin" or "PlatformAdmin" => "/admin/dashboard",
-                        "Tutor" or "TeachingAssistant" => "/tutor/dashboard",
-                        "Parent" => "/parent",
-                        "Student" => "/student/dashboard",
-                        _ => "/tutor/dashboard"
-                    };
-                    Navigation.NavigateTo(destination);
-                    return;
-                }
+                Navigation.NavigateTo(result.RedirectTo ?? "/tutor/dashboard");
+                return;
             }
-
-            var body = await response.Content.ReadAsStringAsync();
-            _errorMessage = TryParseError(body) ?? L["Login_InvalidCredentials"].Value;
-        }
-        catch (Exception)
-        {
-            _errorMessage = L["Error_ApiConnection"].Value;
+            _errorMessage = result.Error ?? L["Login_InvalidCredentials"].Value;
         }
         finally
         {
             _isLoading = false;
         }
     }
-
-    private static string? TryParseError(string body)
-    {
-        if (string.IsNullOrWhiteSpace(body)) return null;
-        try
-        {
-            using var doc = System.Text.Json.JsonDocument.Parse(body);
-            if (doc.RootElement.TryGetProperty("error", out var e)) return e.GetString();
-        }
-        catch (System.Text.Json.JsonException) { return body; }
-        return body;
-    }
-
-    private record AuthResult(string Token, string Email, IReadOnlyList<string>? Roles);
 }
