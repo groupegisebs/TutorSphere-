@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: deploy-ubuntu1
+  group: deploy-tutorsphere-ubuntu1
   cancel-in-progress: true
 
 permissions:
@@ -53,12 +53,15 @@ jobs:
           echo "Secrets SSH (un seul suffit) :"
           echo "  SSH_PRIVATE_KEY_UBUNTU1         → ${{ secrets.SSH_PRIVATE_KEY_UBUNTU1 != '' && 'OK' || 'manquant' }}"
           echo "  TUTORSPHERE_SSH_PRIVATE_KEY     → ${{ secrets.TUTORSPHERE_SSH_PRIVATE_KEY != '' && 'OK' || 'manquant' }}"
+          echo "  SSH_PRIVATE_KEY (legacy ci.yml) → ${{ secrets.SSH_PRIVATE_KEY != '' && 'OK' || 'manquant' }}"
           echo ""
           echo "Connection string (un seul suffit) :"
           echo "  TUTORSPHERE_CONNECTION_STRING   → ${{ secrets.TUTORSPHERE_CONNECTION_STRING != '' && 'OK' || 'manquant' }}"
+          echo "  CONNECTIONSTRINGS__DEFAULTCONNECTION (legacy) → ${{ secrets.CONNECTIONSTRINGS__DEFAULTCONNECTION != '' && 'OK' || 'manquant' }}"
           echo ""
           echo "JWT (obligatoire) :"
           echo "  TUTORSPHERE_JWT_KEY             → ${{ secrets.TUTORSPHERE_JWT_KEY != '' && 'OK' || 'manquant' }}"
+          echo "  JWT__KEY (legacy ci.yml)        → ${{ secrets.JWT__KEY != '' && 'OK' || 'manquant' }}"
           echo ""
           echo "PayGateway (obligatoires pour les paiements) :"
           echo "  TUTORSPHERE_PAYGATEWAY_BASE_URL → ${{ secrets.TUTORSPHERE_PAYGATEWAY_BASE_URL != '' && 'OK' || 'manquant' }}"
@@ -70,6 +73,7 @@ jobs:
         env:
           KEY_UBUNTU1: ${{ secrets.SSH_PRIVATE_KEY_UBUNTU1 }}
           KEY_TUTOR: ${{ secrets.TUTORSPHERE_SSH_PRIVATE_KEY }}
+          KEY_LEGACY: ${{ secrets.SSH_PRIVATE_KEY }}
           HOST_VAR: ${{ vars.SSH_HOST_UBUNTU1 }}
           HOST_SECRET: ${{ secrets.SSH_HOST_UBUNTU1 }}
           USER_VAR: ${{ vars.SSH_USER_UBUNTU1 }}
@@ -77,6 +81,7 @@ jobs:
           PORT_VAR: ${{ vars.SSH_PORT_UBUNTU1 }}
           PORT_SECRET: ${{ secrets.SSH_PORT_UBUNTU1 }}
           CONN_TUTOR: ${{ secrets.TUTORSPHERE_CONNECTION_STRING }}
+          CONN_LEGACY: ${{ secrets.CONNECTIONSTRINGS__DEFAULTCONNECTION }}
           APP_ROOT_VAR: ${{ vars.TUTORSPHERE_APP_ROOT }}
           APP_ROOT_SECRET: ${{ secrets.TUTORSPHERE_APP_ROOT }}
           API_PORT_VAR: ${{ vars.TUTORSPHERE_API_PORT }}
@@ -84,6 +89,7 @@ jobs:
           WEB_PORT_VAR: ${{ vars.TUTORSPHERE_WEB_PORT }}
           WEB_PORT_SECRET: ${{ secrets.TUTORSPHERE_WEB_PORT }}
           JWT_KEY: ${{ secrets.TUTORSPHERE_JWT_KEY }}
+          JWT_KEY_LEGACY: ${{ secrets.JWT__KEY }}
           PG_BASE_URL: ${{ secrets.TUTORSPHERE_PAYGATEWAY_BASE_URL }}
           PG_API_KEY: ${{ secrets.TUTORSPHERE_PAYGATEWAY_API_KEY }}
           PG_APP_CODE_VAR: ${{ vars.TUTORSPHERE_PAYGATEWAY_APP_CODE }}
@@ -104,15 +110,15 @@ jobs:
             return 1
           }
 
-          SSH_PRIVATE_KEY=$(pick_first "$KEY_TUTOR" "$KEY_UBUNTU1") || true
+          SSH_PRIVATE_KEY=$(pick_first "$KEY_TUTOR" "$KEY_UBUNTU1" "$KEY_LEGACY") || true
           SSH_HOST_RAW=$(pick_first "$HOST_VAR" "$HOST_SECRET" "$DEFAULT_SSH_HOST") || true
           SSH_USER_RAW=$(pick_first "$USER_VAR" "$USER_SECRET" "$DEFAULT_SSH_USER") || true
           SSH_PORT_RAW=$(pick_first "$PORT_VAR" "$PORT_SECRET" "$DEFAULT_SSH_PORT") || true
-          CONNECTION_STRING_RAW=$(pick_first "$CONN_TUTOR") || true
+          CONNECTION_STRING_RAW=$(pick_first "$CONN_TUTOR" "$CONN_LEGACY") || true
           APP_ROOT_RAW=$(pick_first "$APP_ROOT_VAR" "$APP_ROOT_SECRET" "$DEFAULT_APP_ROOT") || true
           API_PORT_RAW=$(pick_first "$API_PORT_VAR" "$API_PORT_SECRET" "$DEFAULT_API_PORT") || true
           WEB_PORT_RAW=$(pick_first "$WEB_PORT_VAR" "$WEB_PORT_SECRET" "$DEFAULT_WEB_PORT") || true
-          JWT_KEY_RAW=$(pick_first "$JWT_KEY") || true
+          JWT_KEY_RAW=$(pick_first "$JWT_KEY" "$JWT_KEY_LEGACY") || true
           PAYGATEWAY_BASE_URL_RAW=$(pick_first "$PG_BASE_URL") || true
           PAYGATEWAY_API_KEY_RAW=$(pick_first "$PG_API_KEY") || true
           PAYGATEWAY_APP_CODE_RAW=$(pick_first "$PG_APP_CODE_VAR" "$PG_APP_CODE_SECRET" "$DEFAULT_PAYGATEWAY_APP_CODE") || true
@@ -121,17 +127,17 @@ jobs:
           missing=0
           if [ -z "$SSH_PRIVATE_KEY" ]; then
             echo "::error::Clé SSH manquante."
-            echo "→ SSH_PRIVATE_KEY_UBUNTU1 (org) ou TUTORSPHERE_SSH_PRIVATE_KEY"
+            echo "→ SSH_PRIVATE_KEY_UBUNTU1 (org), TUTORSPHERE_SSH_PRIVATE_KEY ou SSH_PRIVATE_KEY (legacy ci.yml)"
             missing=1
           fi
           if [ -z "$CONNECTION_STRING_RAW" ]; then
             echo "::error::Connection string PostgreSQL manquante."
-            echo "→ TUTORSPHERE_CONNECTION_STRING (Database=TutorSphere)"
+            echo "→ TUTORSPHERE_CONNECTION_STRING ou CONNECTIONSTRINGS__DEFAULTCONNECTION (legacy)"
             missing=1
           fi
           if [ -z "$JWT_KEY_RAW" ]; then
             echo "::error::Clé JWT manquante."
-            echo "→ TUTORSPHERE_JWT_KEY (min. 32 caractères)"
+            echo "→ TUTORSPHERE_JWT_KEY ou JWT__KEY (legacy, min. 32 caractères)"
             missing=1
           fi
           if [ -z "$PAYGATEWAY_BASE_URL_RAW" ]; then
@@ -203,6 +209,18 @@ jobs:
       - name: Deploy
         env:
           SSH_KEY_PATH: ${{ env.SSH_KEY_PATH }}
+          SSH_HOST: ${{ env.SSH_HOST }}
+          SSH_USER: ${{ env.SSH_USER }}
+          SSH_PORT: ${{ env.SSH_PORT }}
+          APP_ROOT: ${{ env.APP_ROOT }}
+          CONNECTION_STRING: ${{ env.CONNECTION_STRING }}
+          JWT_KEY: ${{ env.JWT_KEY }}
+          PAYGATEWAY_BASE_URL: ${{ env.PAYGATEWAY_BASE_URL }}
+          PAYGATEWAY_API_KEY: ${{ env.PAYGATEWAY_API_KEY }}
+          PAYGATEWAY_APP_CODE: ${{ env.PAYGATEWAY_APP_CODE }}
+          API_BASE_URL: ${{ env.API_BASE_URL }}
+          API_PORT: ${{ env.API_PORT }}
+          WEB_PORT: ${{ env.WEB_PORT }}
         run: bash deploy/deploy-gha.sh
 
       - name: Container status
