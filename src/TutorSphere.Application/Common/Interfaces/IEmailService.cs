@@ -4,6 +4,12 @@ public interface IEmailService
 {
     Task SendWelcomeAsync(string email, string firstName, CancellationToken ct = default);
 
+    Task SendEmailConfirmationAsync(
+        string email,
+        string firstName,
+        string confirmationUrl,
+        CancellationToken ct = default);
+
     Task SendLessonReportToParentAsync(
         string parentEmail,
         string parentFirstName,

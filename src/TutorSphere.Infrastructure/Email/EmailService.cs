@@ -7,6 +7,7 @@ namespace TutorSphere.Infrastructure.Email;
 internal static class EmailTemplates
 {
     public const string Welcome = "WELCOME";
+    public const string ConfirmEmail = "CONFIRM_EMAIL";
     public const string LessonReport = "LESSON_REPORT";
     public const string SchoolCreated = "SCHOOL_CREATED";
 }
@@ -42,6 +43,30 @@ public class EmailService : IEmailService
             BodyData: new Dictionary<string, string>
             {
                 ["FirstName"] = firstName
+            }
+        ), ct);
+    }
+
+    public async Task SendEmailConfirmationAsync(
+        string email,
+        string firstName,
+        string confirmationUrl,
+        CancellationToken ct = default)
+    {
+        if (!_client.IsConfigured)
+        {
+            _logger.LogWarning("MailGateway non configuré — confirmation non envoyée à {Email}.", email);
+            return;
+        }
+
+        await TrySendAsync(new SendMailRequest(
+            ClientCode: _settings.ClientCode,
+            TemplateCode: EmailTemplates.ConfirmEmail,
+            To: [email],
+            BodyData: new Dictionary<string, string>
+            {
+                ["FirstName"] = firstName,
+                ["ConfirmationUrl"] = confirmationUrl
             }
         ), ct);
     }

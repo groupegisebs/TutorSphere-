@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 using TutorSphere.Application.DTOs.Auth;
 using TutorSphere.Infrastructure.Identity;
 
@@ -10,8 +11,13 @@ namespace TutorSphere.Api.Controllers;
 public class AuthController : ControllerBase
 {
     private readonly IAuthService _authService;
+    private readonly IConfiguration _configuration;
 
-    public AuthController(IAuthService authService) => _authService = authService;
+    public AuthController(IAuthService authService, IConfiguration configuration)
+    {
+        _authService = authService;
+        _configuration = configuration;
+    }
 
     [HttpPost("register")]
     [AllowAnonymous]
@@ -24,6 +30,76 @@ public class AuthController : ControllerBase
         catch (InvalidOperationException ex)
         {
             return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("register-school")]
+    [AllowAnonymous]
+    public async Task<ActionResult<RegisterSchoolResponse>> RegisterSchool(
+        [FromBody] RegisterSchoolRequest request,
+        CancellationToken ct)
+    {
+        try
+        {
+            var result = await _authService.RegisterSchoolAsync(request, ct);
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpGet("confirm-email")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ConfirmEmail(
+        [FromQuery] string userId,
+        [FromQuery] string token,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(userId) || string.IsNullOrWhiteSpace(token))
+            return BadRequest(new { error = "Paramètres manquants." });
+
+        try
+        {
+            await _authService.ConfirmEmailAsync(userId, token, ct);
+
+            var webBase = (_configuration["WebBaseUrl"] ?? "").TrimEnd('/');
+            if (!string.IsNullOrWhiteSpace(webBase))
+                return Redirect($"{webBase}/login?confirmed=true");
+
+            return Content("""
+                <!doctype html>
+                <html lang="fr">
+                <head><meta charset="utf-8"><title>Adresse confirmée — TutorSphere</title>
+                <style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f8f7ff;}
+                .box{text-align:center;padding:2rem;background:#fff;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,.08);max-width:420px;}
+                .icon{font-size:3rem;}h1{color:#5b21b6;}p{color:#555;}a{color:#7c3aed;font-weight:600;}</style>
+                </head>
+                <body><div class="box">
+                <div class="icon">✅</div>
+                <h1>Adresse confirmée !</h1>
+                <p>Votre compte TutorSphere est maintenant activé.</p>
+                <p><a href="/login">Connexion →</a></p>
+                </div></body></html>
+                """, "text/html");
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Content($"""
+                <!doctype html>
+                <html lang="fr">
+                <head><meta charset="utf-8"><title>Erreur — TutorSphere</title>
+                <style>body{{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#fff5f5;}}
+                .box{{text-align:center;padding:2rem;background:#fff;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,.08);max-width:420px;}}
+                .icon{{font-size:3rem;}}h1{{color:#dc2626;}}p{{color:#555;}}</style>
+                </head>
+                <body><div class="box">
+                <div class="icon">❌</div>
+                <h1>Lien invalide</h1>
+                <p>{System.Net.WebUtility.HtmlEncode(ex.Message)}</p>
+                </div></body></html>
+                """, "text/html");
         }
     }
 

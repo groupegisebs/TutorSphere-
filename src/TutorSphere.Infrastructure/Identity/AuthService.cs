@@ -6,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.Auth;
+using TutorSphere.Domain.Entities;
 using TutorSphere.Domain.Enums;
 using TutorSphere.Infrastructure.Identity;
 
@@ -15,6 +16,8 @@ public interface IAuthService
 {
     Task<AuthResponse> RegisterAsync(RegisterRequest request, CancellationToken ct = default);
     Task<AuthResponse> LoginAsync(LoginRequest request, CancellationToken ct = default);
+    Task<RegisterSchoolResponse> RegisterSchoolAsync(RegisterSchoolRequest request, CancellationToken ct = default);
+    Task ConfirmEmailAsync(string userId, string token, CancellationToken ct = default);
 }
 
 public class AuthService : IAuthService
@@ -22,15 +25,18 @@ public class AuthService : IAuthService
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly IConfiguration _configuration;
     private readonly IEmailService _email;
+    private readonly IApplicationDbContext _db;
 
     public AuthService(
         UserManager<ApplicationUser> userManager,
         IConfiguration configuration,
-        IEmailService email)
+        IEmailService email,
+        IApplicationDbContext db)
     {
         _userManager = userManager;
         _configuration = configuration;
         _email = email;
+        _db = db;
     }
 
     public async Task<AuthResponse> RegisterAsync(RegisterRequest request, CancellationToken ct = default)
@@ -66,6 +72,63 @@ public class AuthService : IAuthService
         var roles = await _userManager.GetRolesAsync(user);
         var role = roles.FirstOrDefault() ?? UserRoles.Parent;
         return await BuildAuthResponse(user, role);
+    }
+
+    public async Task<RegisterSchoolResponse> RegisterSchoolAsync(RegisterSchoolRequest request, CancellationToken ct = default)
+    {
+        var slug = request.Slug.Trim().ToLowerInvariant();
+
+        if (_db.Tenants.Any(t => t.Slug == slug))
+            throw new InvalidOperationException("Cette adresse est déjà utilisée par une autre école.");
+
+        var user = new ApplicationUser
+        {
+            UserName = request.Email,
+            Email = request.Email,
+            FirstName = request.FirstName.Trim(),
+            LastName = request.LastName.Trim()
+        };
+
+        var result = await _userManager.CreateAsync(user, request.Password);
+        if (!result.Succeeded)
+            throw new InvalidOperationException(string.Join("; ", result.Errors.Select(e => e.Description)));
+
+        await _userManager.AddToRoleAsync(user, UserRoles.Tutor);
+
+        var tenant = new Tenant
+        {
+            Name = request.SchoolName.Trim(),
+            Slug = slug,
+            Subdomain = slug,
+            City = request.City,
+            Country = request.Country ?? "CA",
+            Status = TenantStatus.PendingValidation,
+            Plan = TenantPlan.Starter,
+            Branding = new TenantBranding()
+        };
+
+        _db.Add(tenant);
+        await _db.SaveChangesAsync(ct);
+
+        user.TenantId = tenant.Id;
+        await _userManager.UpdateAsync(user);
+
+        var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+        var apiBase = (_configuration["ApiBaseUrl"] ?? "https://api.tutorsphere.gisebs.com").TrimEnd('/');
+        var confirmUrl = $"{apiBase}/api/auth/confirm-email?userId={Uri.EscapeDataString(user.Id)}&token={Uri.EscapeDataString(token)}";
+        await _email.SendEmailConfirmationAsync(user.Email!, user.FirstName, confirmUrl, ct);
+
+        return new RegisterSchoolResponse(tenant.Id, tenant.Slug, user.Email!);
+    }
+
+    public async Task ConfirmEmailAsync(string userId, string token, CancellationToken ct = default)
+    {
+        var user = await _userManager.FindByIdAsync(userId)
+            ?? throw new InvalidOperationException("Utilisateur introuvable.");
+
+        var result = await _userManager.ConfirmEmailAsync(user, token);
+        if (!result.Succeeded)
+            throw new InvalidOperationException("Le lien de confirmation est invalide ou expiré.");
     }
 
     private async Task<AuthResponse> BuildAuthResponse(ApplicationUser user, string role)

@@ -37,6 +37,14 @@ public class TenantsController : ControllerBase
         return tenant is null ? NotFound() : Ok(tenant);
     }
 
+    [HttpGet("check-slug/{slug}")]
+    [AllowAnonymous]
+    public async Task<ActionResult<object>> CheckSlug(string slug, CancellationToken ct)
+    {
+        var existing = await _tenantService.GetBySlugAsync(slug.Trim().ToLowerInvariant(), ct);
+        return Ok(new { available = existing is null });
+    }
+
     [HttpGet("{id:guid}/dashboard")]
     [Authorize(Roles = $"{UserRoles.Tutor},{UserRoles.TeachingAssistant},{UserRoles.SuperAdmin}")]
     public async Task<ActionResult<TenantDashboardDto>> GetDashboard(Guid id, CancellationToken ct)

@@ -25,6 +25,7 @@ umask 077
   printf 'EMAIL__APIKEY=%s\n' "${EMAIL_API_KEY:-}"
   printf 'EMAIL__CLIENTCODE=%s\n' "${EMAIL_CLIENT_CODE:-TUTORSPHERE}"
   printf 'APIBASEURL=%s\n' "${API_BASE_URL:-https://api.tutorsphere.gisebs.com}"
+  printf 'WEBBASEURL=%s\n' "${WEB_BASE_URL:-}"
   printf 'INTERNALAPIBASEURL=http://127.0.0.1:%s\n' "${API_PORT:-55099}"
   printf 'API_PORT=%s\n' "${API_PORT:-55099}"
   printf 'WEB_PORT=%s\n' "${WEB_PORT:-55010}"

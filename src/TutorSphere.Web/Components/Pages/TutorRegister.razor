@@ -1,7 +1,7 @@
 @page "/tutor/register"
 @layout LoginLayout
 @rendermode InteractiveServer
-@using TutorSphere.Application.DTOs.Tenants
+@using TutorSphere.Application.DTOs.Auth
 @inject HttpClient Http
 @inject NavigationManager Navigation
 @inject IStringLocalizer<SharedResources> L
@@ -9,214 +9,243 @@
 <PageTitle>@L["PageTitle_TutorRegister"]</PageTitle>
 
 <div class="register-v2">
-    <PageHeader Title="@L["TutorRegister_Title"]"
-                Subtitle="@L["TutorRegister_Subtitle"]"
-                Icon="bi-stars"
-                CssClass="page-header--centered" />
+    <div class="register-v2-top">
+        <div class="register-v2-icon"><i class="bi bi-stars"></i></div>
+        <h1 class="register-v2-title">@L["TutorRegister_Title"]</h1>
+        <p class="register-v2-subtitle">@L["TutorRegister_Subtitle"]</p>
+    </div>
 
-    <StepIndicator Steps="@_steps" CurrentStep="1" />
+    <StepIndicator Steps="@_steps" CurrentStep="@_currentStep" />
 
-    <div class="register-v2-card">
-        <div class="register-v2-benefits">
-            <svg class="register-v2-illustration" viewBox="0 0 240 180" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                <!-- Sky background -->
-                <rect width="240" height="180" fill="#f0f4ff" rx="12"/>
-                <!-- Sun -->
-                <circle cx="200" cy="32" r="18" fill="#fde68a" opacity="0.8"/>
-                <!-- Ground -->
-                <rect x="0" y="148" width="240" height="32" fill="#d1fae5" rx="0"/>
-                <!-- School building body -->
-                <rect x="60" y="80" width="120" height="68" rx="3" fill="#e0e7ff"/>
-                <!-- Roof (triangle) -->
-                <polygon points="120,38 50,80 190,80" fill="#5831E0"/>
-                <!-- Roof highlight -->
-                <polygon points="120,38 110,80 130,80" fill="#4419c8" opacity="0.4"/>
-                <!-- Flag pole -->
-                <rect x="119" y="20" width="2" height="22" fill="#9ca3af"/>
-                <!-- Flag -->
-                <polygon points="121,20 135,26 121,32" fill="#f59e0b"/>
-                <!-- Door -->
-                <rect x="105" y="112" width="30" height="36" rx="15" fill="#4419c8"/>
-                <rect x="115" y="112" width="10" height="36" rx="0" fill="#3b0ea8" opacity="0.3"/>
-                <!-- Windows -->
-                <rect x="68" y="90" width="22" height="18" rx="3" fill="#bfdbfe"/>
-                <line x1="79" y1="90" x2="79" y2="108" stroke="white" stroke-width="1.5"/>
-                <line x1="68" y1="99" x2="90" y2="99" stroke="white" stroke-width="1.5"/>
-                <rect x="150" y="90" width="22" height="18" rx="3" fill="#bfdbfe"/>
-                <line x1="161" y1="90" x2="161" y2="108" stroke="white" stroke-width="1.5"/>
-                <line x1="150" y1="99" x2="172" y2="99" stroke="white" stroke-width="1.5"/>
-                <!-- Left tree -->
-                <rect x="28" y="128" width="6" height="20" fill="#6b7280"/>
-                <circle cx="31" cy="118" r="14" fill="#34d399"/>
-                <circle cx="22" cy="124" r="9" fill="#10b981"/>
-                <circle cx="40" cy="124" r="9" fill="#059669"/>
-                <!-- Right tree -->
-                <rect x="206" y="128" width="6" height="20" fill="#6b7280"/>
-                <circle cx="209" cy="118" r="14" fill="#34d399"/>
-                <circle cx="200" cy="124" r="9" fill="#10b981"/>
-                <circle cx="218" cy="124" r="9" fill="#059669"/>
-                <!-- Floating sparkle dots -->
-                <circle cx="42" cy="60" r="3" fill="#5831E0" opacity="0.5"/>
-                <circle cx="195" cy="70" r="2.5" fill="#f59e0b" opacity="0.6"/>
-                <circle cx="30" cy="100" r="2" fill="#10b981" opacity="0.5"/>
-            </svg>
-            <h2>@L["Register_Benefits_Title"]</h2>
-            <p>@L["Register_Benefits_Subtitle"]</p>
-            <ul class="register-benefit-list">
-                <li>
-                    <span class="register-benefit-icon register-benefit-icon--num">
-                        <i class="bi bi-globe2" aria-hidden="true"></i>
-                    </span>
-                    <div>
-                        <strong>@L["Register_Benefit1_Title"]</strong>
-                        <span>@L["Register_Benefit1_Description"]</span>
-                    </div>
-                </li>
-                <li>
-                    <span class="register-benefit-icon register-benefit-icon--num">
-                        <i class="bi bi-grid" aria-hidden="true"></i>
-                    </span>
-                    <div>
-                        <strong>@L["Register_Benefit2_Title"]</strong>
-                        <span>@L["Register_Benefit2_Description"]</span>
-                    </div>
-                </li>
-                <li>
-                    <span class="register-benefit-icon register-benefit-icon--num">
-                        <i class="bi bi-graph-up-arrow" aria-hidden="true"></i>
-                    </span>
-                    <div>
-                        <strong>@L["Register_Benefit3_Title"]</strong>
-                        <span>@L["Register_Benefit3_Description"]</span>
-                    </div>
-                </li>
-            </ul>
+    @if (_currentStep == 3)
+    {
+        <div class="register-v2-card register-v2-card--confirm">
+            <div class="register-confirm-icon"><i class="bi bi-envelope-check-fill"></i></div>
+            <h2>@L["Register_Confirm_Title"]</h2>
+            <p>@string.Format(L["Register_Confirm_Message"], Email)</p>
+            <p class="register-confirm-hint">@L["Register_Confirm_Hint"]</p>
+            <a href="/login" class="btn btn-primary px-5">@L["Nav_Login"]</a>
         </div>
-
-        <div class="register-v2-form">
-            @if (!string.IsNullOrEmpty(ErrorMessage))
-            {
-                <div class="alert alert-danger mb-4" role="alert">
-                    <i class="bi bi-exclamation-circle me-2"></i>@ErrorMessage
-                </div>
-            }
-            @if (!string.IsNullOrEmpty(SuccessMessage))
-            {
-                <div class="alert alert-success mb-4" role="alert">
-                    <i class="bi bi-check-circle me-2"></i>@SuccessMessage
-                </div>
-            }
-
-            <div class="mb-3">
-                <label class="form-label">@L["Label_SchoolName"]</label>
-                <div class="form-field-icon">
-                    <i class="bi bi-building field-icon" aria-hidden="true"></i>
-                    <input class="form-control" @bind="SchoolName" placeholder="@L["Placeholder_SchoolName"]" />
-                </div>
+    }
+    else
+    {
+        <div class="register-v2-card">
+            <div class="register-v2-benefits">
+                <svg class="register-v2-illustration" viewBox="0 0 240 180" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <rect width="240" height="180" fill="#f0f4ff" rx="12"/>
+                    <circle cx="200" cy="32" r="18" fill="#fde68a" opacity="0.8"/>
+                    <rect x="0" y="148" width="240" height="32" fill="#d1fae5" rx="0"/>
+                    <rect x="60" y="80" width="120" height="68" rx="3" fill="#e0e7ff"/>
+                    <polygon points="120,38 50,80 190,80" fill="#5831E0"/>
+                    <polygon points="120,38 110,80 130,80" fill="#4419c8" opacity="0.4"/>
+                    <rect x="119" y="20" width="2" height="22" fill="#9ca3af"/>
+                    <polygon points="121,20 135,26 121,32" fill="#f59e0b"/>
+                    <rect x="105" y="112" width="30" height="36" rx="15" fill="#4419c8"/>
+                    <rect x="115" y="112" width="10" height="36" rx="0" fill="#3b0ea8" opacity="0.3"/>
+                    <rect x="68" y="90" width="22" height="18" rx="3" fill="#bfdbfe"/>
+                    <line x1="79" y1="90" x2="79" y2="108" stroke="white" stroke-width="1.5"/>
+                    <line x1="68" y1="99" x2="90" y2="99" stroke="white" stroke-width="1.5"/>
+                    <rect x="150" y="90" width="22" height="18" rx="3" fill="#bfdbfe"/>
+                    <line x1="161" y1="90" x2="161" y2="108" stroke="white" stroke-width="1.5"/>
+                    <line x1="150" y1="99" x2="172" y2="99" stroke="white" stroke-width="1.5"/>
+                    <rect x="28" y="128" width="6" height="20" fill="#6b7280"/>
+                    <circle cx="31" cy="118" r="14" fill="#34d399"/>
+                    <circle cx="22" cy="124" r="9" fill="#10b981"/>
+                    <circle cx="40" cy="124" r="9" fill="#059669"/>
+                    <rect x="206" y="128" width="6" height="20" fill="#6b7280"/>
+                    <circle cx="209" cy="118" r="14" fill="#34d399"/>
+                    <circle cx="200" cy="124" r="9" fill="#10b981"/>
+                    <circle cx="218" cy="124" r="9" fill="#059669"/>
+                    <circle cx="42" cy="60" r="3" fill="#5831E0" opacity="0.5"/>
+                    <circle cx="195" cy="70" r="2.5" fill="#f59e0b" opacity="0.6"/>
+                    <circle cx="30" cy="100" r="2" fill="#10b981" opacity="0.5"/>
+                </svg>
+                <h2>@L["Register_Benefits_Title"]</h2>
+                <p>@L["Register_Benefits_Subtitle"]</p>
+                <ul class="register-benefit-list">
+                    <li>
+                        <span class="register-benefit-icon register-benefit-icon--num">
+                            <i class="bi bi-globe2" aria-hidden="true"></i>
+                        </span>
+                        <div>
+                            <strong>@L["Register_Benefit1_Title"]</strong>
+                            <span>@L["Register_Benefit1_Description"]</span>
+                        </div>
+                    </li>
+                    <li>
+                        <span class="register-benefit-icon register-benefit-icon--num">
+                            <i class="bi bi-grid" aria-hidden="true"></i>
+                        </span>
+                        <div>
+                            <strong>@L["Register_Benefit2_Title"]</strong>
+                            <span>@L["Register_Benefit2_Description"]</span>
+                        </div>
+                    </li>
+                    <li>
+                        <span class="register-benefit-icon register-benefit-icon--num">
+                            <i class="bi bi-graph-up-arrow" aria-hidden="true"></i>
+                        </span>
+                        <div>
+                            <strong>@L["Register_Benefit3_Title"]</strong>
+                            <span>@L["Register_Benefit3_Description"]</span>
+                        </div>
+                    </li>
+                </ul>
             </div>
 
-            <div class="mb-3">
-                <label class="form-label">@L["Label_SubdomainFull"]</label>
-                <div class="subdomain-field">
-                    <span class="subdomain-prefix">https://</span>
-                    <input @bind="Slug" @bind:event="oninput" placeholder="jean" aria-label="@L["Label_Subdomain"]" />
-                    <span class="subdomain-suffix">.tutorsphere.com</span>
-                    @if (!string.IsNullOrWhiteSpace(Slug))
+            <div class="register-v2-form">
+                @if (!string.IsNullOrEmpty(ErrorMessage))
+                {
+                    <div class="alert alert-danger mb-4" role="alert">
+                        <i class="bi bi-exclamation-circle me-2"></i>@ErrorMessage
+                    </div>
+                }
+
+                <div class="mb-3">
+                    <label class="form-label">@L["Label_SchoolName"] <span class="text-danger">*</span></label>
+                    <div class="form-field-icon">
+                        <i class="bi bi-building field-icon" aria-hidden="true"></i>
+                        <input class="form-control" @bind="SchoolName" placeholder="@L["Placeholder_SchoolName"]" />
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label">@L["Label_SubdomainFull"] <span class="text-danger">*</span></label>
+                    <div class="subdomain-field">
+                        <span class="subdomain-prefix">https://</span>
+                        <input @bind="Slug" @bind:event="oninput" @oninput="OnSlugInput" placeholder="jean" aria-label="@L["Label_Subdomain"]" />
+                        <span class="subdomain-suffix">.tutorsphere.com</span>
+                        @if (_checkingSlug)
+                        {
+                            <span class="subdomain-status"><span class="spinner-border spinner-border-sm" role="status"></span></span>
+                        }
+                        else if (!string.IsNullOrWhiteSpace(Slug) && IsSlugFormatValid)
+                        {
+                            <span class="subdomain-status @(_slugAvailable == true ? "" : "unavailable")">
+                                <i class="bi @(_slugAvailable == true ? "bi-check-circle-fill" : "bi-x-circle-fill")" aria-hidden="true"></i>
+                            </span>
+                        }
+                    </div>
+                    @if (_slugAvailable == false && !string.IsNullOrWhiteSpace(Slug))
                     {
-                        <span class="subdomain-status @(IsSlugValid ? "" : "unavailable")">
-                            <i class="bi @(IsSlugValid ? "bi-check-circle-fill" : "bi-x-circle-fill")" aria-hidden="true"></i>
-                        </span>
+                        <small class="text-danger">@L["Error_SlugTaken"]</small>
                     }
                 </div>
-            </div>
 
-            <div class="row">
-                <div class="col-md-6 mb-3">
-                    <label class="form-label">@L["Label_FirstName"]</label>
-                    <div class="form-field-icon">
-                        <i class="bi bi-person field-icon" aria-hidden="true"></i>
-                        <input class="form-control" @bind="FirstName" />
-                    </div>
-                </div>
-                <div class="col-md-6 mb-3">
-                    <label class="form-label">@L["Label_LastName"]</label>
-                    <div class="form-field-icon">
-                        <i class="bi bi-person field-icon" aria-hidden="true"></i>
-                        <input class="form-control" @bind="LastName" />
-                    </div>
-                </div>
-            </div>
-
-            <div class="mb-3">
-                <label class="form-label">@L["Label_Email"]</label>
-                <div class="form-field-icon">
-                    <i class="bi bi-envelope field-icon" aria-hidden="true"></i>
-                    <input type="email" class="form-control" @bind="Email" />
-                </div>
-            </div>
-
-            <div class="mb-3">
-                <label class="form-label">@L["Label_CreatePassword"]</label>
-                <div class="form-field-icon">
-                    <i class="bi bi-lock field-icon" aria-hidden="true"></i>
-                    <input type="@(ShowPassword ? "text" : "password")" class="form-control" style="padding-right: 2.5rem;"
-                           @bind="Password" @bind:event="oninput" />
-                    <button type="button" class="password-toggle" @onclick="TogglePassword" aria-label="@L["Label_TogglePassword"]">
-                        <i class="bi @(ShowPassword ? "bi-eye-slash" : "bi-eye")" aria-hidden="true"></i>
-                    </button>
-                </div>
-                @if (!string.IsNullOrEmpty(Password))
-                {
-                    <div class="password-strength">
-                        <div class="password-strength-label">
-                            @L["Password_Strength"]: <strong>@PasswordStrengthLabel</strong>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">@L["Label_FirstName"] <span class="text-danger">*</span></label>
+                        <div class="form-field-icon">
+                            <i class="bi bi-person field-icon" aria-hidden="true"></i>
+                            <input class="form-control" @bind="FirstName" placeholder="@L["Label_FirstName"]" />
                         </div>
-                        <div class="password-strength-bars">
-                            @for (var i = 0; i < 4; i++)
-                            {
-                                <div class="password-strength-bar @(i < PasswordStrengthBars ? $"filled {PasswordStrengthClass}" : "")"></div>
-                            }
-                        </div>
-                        <ul class="password-requirements">
-                            <li class="@(HasMinLength ? "met" : "")">
-                                <i class="bi @(HasMinLength ? "bi-check-circle-fill" : "bi-circle")" aria-hidden="true"></i>
-                                @L["Password_Req_Length"]
-                            </li>
-                            <li class="@(HasNumber ? "met" : "")">
-                                <i class="bi @(HasNumber ? "bi-check-circle-fill" : "bi-circle")" aria-hidden="true"></i>
-                                @L["Password_Req_Number"]
-                            </li>
-                            <li class="@(HasSpecial ? "met" : "")">
-                                <i class="bi @(HasSpecial ? "bi-check-circle-fill" : "bi-circle")" aria-hidden="true"></i>
-                                @L["Password_Req_Special"]
-                            </li>
-                        </ul>
                     </div>
-                }
-            </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">@L["Label_LastName"] <span class="text-danger">*</span></label>
+                        <div class="form-field-icon">
+                            <i class="bi bi-person field-icon" aria-hidden="true"></i>
+                            <input class="form-control" @bind="LastName" placeholder="@L["Label_LastName"]" />
+                        </div>
+                    </div>
+                </div>
 
-            <button class="btn btn-primary w-100 py-2" @onclick="CreateSchoolAsync" disabled="@IsSubmitting">
-                @if (IsSubmitting)
-                {
-                    <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                }
-                else
-                {
-                    <span>@L["Button_Continue"]</span>
-                    <i class="bi bi-arrow-right ms-2" aria-hidden="true"></i>
-                }
-            </button>
+                <div class="mb-3">
+                    <label class="form-label">@L["Label_Email"] <span class="text-danger">*</span></label>
+                    <div class="form-field-icon">
+                        <i class="bi bi-envelope field-icon" aria-hidden="true"></i>
+                        <input type="email" class="form-control" @bind="Email" placeholder="exemple@courriel.com" />
+                    </div>
+                </div>
 
-            <div class="register-security-note">
-                <i class="bi bi-shield-lock" aria-hidden="true"></i>
-                @L["Register_SecurityNote"]
+                <div class="mb-3">
+                    <label class="form-label">@L["Label_CreatePassword"] <span class="text-danger">*</span></label>
+                    <div class="form-field-icon">
+                        <i class="bi bi-lock field-icon" aria-hidden="true"></i>
+                        <input type="@(ShowPassword ? "text" : "password")" class="form-control" style="padding-right: 2.5rem;"
+                               @bind="Password" @bind:event="oninput" />
+                        <button type="button" class="password-toggle" @onclick="TogglePassword" aria-label="@L["Label_TogglePassword"]">
+                            <i class="bi @(ShowPassword ? "bi-eye-slash" : "bi-eye")" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                    @if (!string.IsNullOrEmpty(Password))
+                    {
+                        <div class="password-strength">
+                            <div class="password-strength-label">
+                                @L["Password_Strength"]: <strong class="@PasswordStrengthClass">@PasswordStrengthLabel</strong>
+                            </div>
+                            <div class="password-strength-bars">
+                                @for (var i = 0; i < 4; i++)
+                                {
+                                    <div class="password-strength-bar @(i < PasswordStrengthBars ? $"filled {PasswordStrengthClass}" : "")"></div>
+                                }
+                            </div>
+                            <ul class="password-requirements">
+                                <li class="@(HasMinLength ? "met" : "")">
+                                    <i class="bi @(HasMinLength ? "bi-check-circle-fill" : "bi-circle")" aria-hidden="true"></i>
+                                    @L["Password_Req_Length"]
+                                </li>
+                                <li class="@(HasNumber ? "met" : "")">
+                                    <i class="bi @(HasNumber ? "bi-check-circle-fill" : "bi-circle")" aria-hidden="true"></i>
+                                    @L["Password_Req_Number"]
+                                </li>
+                                <li class="@(HasSpecial ? "met" : "")">
+                                    <i class="bi @(HasSpecial ? "bi-check-circle-fill" : "bi-circle")" aria-hidden="true"></i>
+                                    @L["Password_Req_Special"]
+                                </li>
+                            </ul>
+                        </div>
+                    }
+                </div>
+
+                <div class="mb-4">
+                    <label class="form-label">@L["Label_ConfirmPassword"] <span class="text-danger">*</span></label>
+                    <div class="form-field-icon">
+                        <i class="bi bi-lock-fill field-icon" aria-hidden="true"></i>
+                        <input type="@(ShowConfirmPassword ? "text" : "password")" class="form-control @(ConfirmPasswordMismatch ? "is-invalid" : "")"
+                               style="padding-right: 2.5rem;"
+                               @bind="ConfirmPassword" @bind:event="oninput" placeholder="@L["Placeholder_ConfirmPassword"]" />
+                        <button type="button" class="password-toggle" @onclick="ToggleConfirmPassword" aria-label="@L["Label_TogglePassword"]">
+                            <i class="bi @(ShowConfirmPassword ? "bi-eye-slash" : "bi-eye")" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                    @if (ConfirmPasswordMismatch)
+                    {
+                        <small class="text-danger">@L["Error_PasswordMismatch"]</small>
+                    }
+                </div>
+
+                <button class="btn btn-primary w-100 py-2" @onclick="CreateSchoolAsync" disabled="@IsSubmitting">
+                    @if (IsSubmitting)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                        <span>@L["Button_Loading"]</span>
+                    }
+                    else
+                    {
+                        <span>@L["Button_Continue"]</span>
+                        <i class="bi bi-arrow-right ms-2" aria-hidden="true"></i>
+                    }
+                </button>
+
+                <div class="register-security-note">
+                    <i class="bi bi-shield-lock"></i>
+                    @L["Register_SecurityNote"]
+                </div>
+
+                <p class="text-center mt-3 mb-0" style="font-size:.875rem;color:var(--ts-muted);">
+                    @L["Register_AlreadyHaveAccount"] <a href="/login">@L["Nav_Login"]</a>
+                </p>
             </div>
         </div>
-    </div>
+    }
 </div>
 
 @code {
     private string[] _steps = [];
+    private int _currentStep = 1;
+    private bool? _slugAvailable = null;
+    private bool _checkingSlug;
+    private System.Threading.CancellationTokenSource? _slugCts;
 
     private string SchoolName { get; set; } = "";
     private string Slug { get; set; } = "";
@@ -224,19 +253,24 @@
     private string LastName { get; set; } = "";
     private string Email { get; set; } = "";
     private string Password { get; set; } = "";
+    private string ConfirmPassword { get; set; } = "";
     private string? ErrorMessage { get; set; }
-    private string? SuccessMessage { get; set; }
     private bool IsSubmitting { get; set; }
     private bool ShowPassword { get; set; }
+    private bool ShowConfirmPassword { get; set; }
 
-    private bool IsSlugValid => !string.IsNullOrWhiteSpace(Slug)
-        && System.Text.RegularExpressions.Regex.IsMatch(Slug, @"^[a-zA-Z0-9]([a-zA-Z0-9-]{1,48}[a-zA-Z0-9])?$");
+    private bool IsSlugFormatValid => !string.IsNullOrWhiteSpace(Slug)
+        && System.Text.RegularExpressions.Regex.IsMatch(Slug, @"^[a-z0-9]([a-z0-9-]{1,48}[a-z0-9])?$");
+
+    private bool ConfirmPasswordMismatch =>
+        !string.IsNullOrEmpty(ConfirmPassword) && Password != ConfirmPassword;
 
     private bool HasMinLength => Password.Length >= 8;
     private bool HasNumber => Password.Any(char.IsDigit);
     private bool HasSpecial => Password.Any(c => !char.IsLetterOrDigit(c));
 
-    private int PasswordStrengthBars => (HasMinLength ? 1 : 0) + (HasNumber ? 1 : 0) + (HasSpecial ? 1 : 0) + (Password.Length >= 12 ? 1 : 0);
+    private int PasswordStrengthBars =>
+        (HasMinLength ? 1 : 0) + (HasNumber ? 1 : 0) + (HasSpecial ? 1 : 0) + (Password.Length >= 12 ? 1 : 0);
 
     private string PasswordStrengthClass => PasswordStrengthBars <= 1 ? "weak" : PasswordStrengthBars <= 2 ? "medium" : "";
 
@@ -259,51 +293,98 @@
     }
 
     private void TogglePassword() => ShowPassword = !ShowPassword;
+    private void ToggleConfirmPassword() => ShowConfirmPassword = !ShowConfirmPassword;
+
+    private async Task OnSlugInput(ChangeEventArgs e)
+    {
+        Slug = (e.Value?.ToString() ?? "").Trim().ToLowerInvariant();
+        _slugAvailable = null;
+
+        if (!IsSlugFormatValid) return;
+
+        _slugCts?.Cancel();
+        _slugCts = new System.Threading.CancellationTokenSource();
+        var token = _slugCts.Token;
+
+        _checkingSlug = true;
+        StateHasChanged();
+
+        try
+        {
+            await Task.Delay(500, token);
+            if (token.IsCancellationRequested) return;
+
+            var response = await Http.GetAsync($"api/tenants/check-slug/{Uri.EscapeDataString(Slug)}", token);
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<SlugCheckResult>(cancellationToken: token);
+                _slugAvailable = result?.Available;
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch { }
+        finally
+        {
+            _checkingSlug = false;
+            StateHasChanged();
+        }
+    }
 
     private async Task CreateSchoolAsync()
     {
         ErrorMessage = null;
-        SuccessMessage = null;
 
         if (string.IsNullOrWhiteSpace(SchoolName) || string.IsNullOrWhiteSpace(Slug)
             || string.IsNullOrWhiteSpace(FirstName) || string.IsNullOrWhiteSpace(LastName)
-            || string.IsNullOrWhiteSpace(Email) || string.IsNullOrWhiteSpace(Password))
+            || string.IsNullOrWhiteSpace(Email) || string.IsNullOrWhiteSpace(Password)
+            || string.IsNullOrWhiteSpace(ConfirmPassword))
         {
             ErrorMessage = L["Error_FillAllFields"];
             return;
         }
 
-        if (!IsSlugValid)
+        if (!IsSlugFormatValid)
         {
             ErrorMessage = L["Error_InvalidSubdomain"];
+            return;
+        }
+
+        if (_slugAvailable == false)
+        {
+            ErrorMessage = L["Error_SlugTaken"];
+            return;
+        }
+
+        if (Password != ConfirmPassword)
+        {
+            ErrorMessage = L["Error_PasswordMismatch"];
+            return;
+        }
+
+        if (!HasMinLength || !HasNumber || !HasSpecial)
+        {
+            ErrorMessage = L["Error_PasswordWeak"];
             return;
         }
 
         IsSubmitting = true;
         try
         {
-            var request = new CreateTenantRequest(
-                SchoolName,
-                Slug,
-                Email,
-                Password,
-                FirstName,
-                LastName,
-                null,
-                "CA");
+            var request = new RegisterSchoolRequest(
+                SchoolName: SchoolName.Trim(),
+                Slug: Slug.Trim().ToLowerInvariant(),
+                FirstName: FirstName.Trim(),
+                LastName: LastName.Trim(),
+                Email: Email.Trim(),
+                Password: Password,
+                City: null,
+                Country: "CA");
 
-            var response = await Http.PostAsJsonAsync("api/tenants", request);
+            var response = await Http.PostAsJsonAsync("api/auth/register-school", request);
 
             if (response.IsSuccessStatusCode)
             {
-                var tenant = await response.Content.ReadFromJsonAsync<TenantDto>();
-                if (tenant is not null)
-                {
-                    Navigation.NavigateTo($"/school/{tenant.Slug}");
-                    return;
-                }
-
-                SuccessMessage = L["Success_SchoolCreated"];
+                _currentStep = 3;
             }
             else
             {
@@ -311,7 +392,7 @@
                 ErrorMessage = TryParseError(body) ?? L["Error_CreateSchool"];
             }
         }
-        catch (Exception)
+        catch
         {
             ErrorMessage = L["Error_ApiConnection"];
         }
@@ -323,20 +404,19 @@
 
     private static string? TryParseError(string body)
     {
-        if (string.IsNullOrWhiteSpace(body))
-            return null;
-
+        if (string.IsNullOrWhiteSpace(body)) return null;
         try
         {
             using var doc = System.Text.Json.JsonDocument.Parse(body);
             if (doc.RootElement.TryGetProperty("error", out var error))
                 return error.GetString();
         }
-        catch (System.Text.Json.JsonException)
-        {
-            return body;
-        }
-
+        catch { }
         return body;
+    }
+
+    private sealed class SlugCheckResult
+    {
+        public bool Available { get; set; }
     }
 }
