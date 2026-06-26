@@ -6,18 +6,32 @@
         <span class="lp-mockup-dot lp-mockup-dot--g"></span>
     </div>
     <div class="lp-mockup-body">
-        <aside class="lp-mockup-sidebar">
-            @if (Variant != "mobile")
+        <aside class="lp-mockup-sidebar @(Variant == "student" ? "lp-mockup-sidebar--student" : "")">
+            @if (Variant == "student")
+            {
+                <div class="lp-mockup-brand">
+                    <span class="lp-mockup-brand-icon"></span>
+                    <span class="lp-mockup-brand-text">TutorSphere</span>
+                </div>
+                @foreach (var item in StudentSidebarItems)
+                {
+                    <div class="lp-mockup-nav @(item.Active ? "active" : "")">
+                        <span class="lp-mockup-nav-icon"><i class="bi @item.Icon"></i></span>
+                        <span class="lp-mockup-nav-label">@item.Label</span>
+                        @if (item.HasBadge)
+                        {
+                            <span class="lp-mockup-nav-badge" aria-hidden="true"></span>
+                        }
+                    </div>
+                }
+            }
+            else if (Variant != "mobile")
             {
                 <div class="lp-mockup-logo"></div>
                 @foreach (var item in SidebarItems)
                 {
                     <div class="lp-mockup-nav @(item.Active ? "active" : "")">
                         <span class="lp-mockup-nav-icon"><i class="bi @item.Icon"></i></span>
-                        @if (Variant == "student")
-                        {
-                            <span class="lp-mockup-nav-label">@item.Label</span>
-                        }
                     </div>
                 }
             }
@@ -25,28 +39,76 @@
         <main class="lp-mockup-main">
             @if (Variant == "student")
             {
-                <div class="lp-mockup-greeting">Bonjour Emma !</div>
-                <div class="lp-mockup-progress">
-                    <div class="lp-mockup-progress-head">
-                        <span>Progression — Maths</span>
-                        <strong>72%</strong>
+                <header class="lp-mockup-header">
+                    <div class="lp-mockup-header-greet">Bonjour <span aria-hidden="true">👋</span> Emma</div>
+                    <div class="lp-mockup-header-search">
+                        <i class="bi bi-search" aria-hidden="true"></i>
+                        <span>Rechercher…</span>
                     </div>
-                    <div class="lp-mockup-progress-bar"><div style="width:72%"></div></div>
-                </div>
+                    <div class="lp-mockup-header-actions">
+                        <img class="lp-mockup-header-avatar" src="images/landing/avatar-1.png" alt="" width="20" height="20" />
+                        <i class="bi bi-list" aria-hidden="true"></i>
+                    </div>
+                </header>
+
                 <div class="lp-mockup-stats lp-mockup-stats--4">
-                    <div class="lp-mockup-stat"><span class="lbl">Cours cette semaine</span><span class="val">8</span></div>
-                    <div class="lp-mockup-stat"><span class="lbl">Devoirs à faire</span><span class="val">3</span></div>
-                    <div class="lp-mockup-stat"><span class="lbl">Moyenne générale</span><span class="val">15,8</span></div>
-                    <div class="lp-mockup-stat"><span class="lbl">Heures d'étude</span><span class="val">12h</span></div>
+                    <div class="lp-mockup-stat"><span class="lbl">Cours aujourd'hui</span><span class="val">3</span></div>
+                    <div class="lp-mockup-stat"><span class="lbl">Devoirs à rendre</span><span class="val">2</span></div>
+                    <div class="lp-mockup-stat"><span class="lbl">Moyenne générale</span><span class="val">16.4/20</span></div>
+                    <div class="lp-mockup-stat"><span class="lbl">Heures passées</span><span class="val">13hr 50m</span></div>
                 </div>
-                <div class="lp-mockup-week-cal">
-                    <span class="lp-mockup-cal-title">Cette semaine</span>
-                    <div class="lp-mockup-cal-grid lp-mockup-cal-grid--week">
-                        @foreach (var day in new[] { "L", "M", "M", "J", "V", "S", "D" })
-                        {
-                            <span class="lp-mockup-cal-day @(day is "M" or "J" ? "has-event" : "")">@day</span>
-                        }
+
+                <div class="lp-mockup-dashboard-row">
+                    <div class="lp-mockup-schedule">
+                        <div class="lp-mockup-schedule-days">
+                            @foreach (var day in ScheduleDays)
+                            {
+                                <span class="lp-mockup-schedule-day">@day</span>
+                            }
+                        </div>
+                        <div class="lp-mockup-schedule-grid">
+                            <div class="lp-mockup-schedule-times">
+                                <span>10:00</span>
+                                <span>14:00</span>
+                                <span>18:00</span>
+                            </div>
+                            <div class="lp-mockup-schedule-cols">
+                                @foreach (var evt in ScheduleEvents)
+                                {
+                                    <div class="lp-mockup-event lp-mockup-event--@evt.Color"
+                                         style="grid-column:@evt.Col; grid-row:@evt.Row;">
+                                        @evt.Label
+                                    </div>
+                                }
+                            </div>
+                        </div>
                     </div>
+
+                    <aside class="lp-mockup-aside">
+                        <div class="lp-mockup-ring-card">
+                            <span class="lp-mockup-ring-title">Progression mensuelle</span>
+                            <div class="lp-mockup-ring-wrap">
+                                <svg class="lp-mockup-ring" viewBox="0 0 36 36" aria-hidden="true">
+                                    <path class="lp-mockup-ring-bg"
+                                          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                    <path class="lp-mockup-ring-fill"
+                                          stroke-dasharray="72, 100"
+                                          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                                </svg>
+                                <span class="lp-mockup-ring-val">72%</span>
+                            </div>
+                        </div>
+                        <div class="lp-mockup-activities">
+                            <span class="lp-mockup-activities-title">Activités récentes</span>
+                            @foreach (var act in RecentActivities)
+                            {
+                                <div class="lp-mockup-activity">
+                                    <span class="lp-mockup-activity-dot lp-mockup-activity-dot--@act.Color"></span>
+                                    <span class="lp-mockup-activity-text">@act.Text</span>
+                                </div>
+                            }
+                        </div>
+                    </aside>
                 </div>
             }
             else if (Variant == "dashboard")
@@ -100,15 +162,30 @@
             }
             else if (Variant == "mobile")
             {
-                <div class="lp-mockup-mobile-stats">
-                    <div><span class="val">8</span><span class="lbl">Cours</span></div>
-                    <div><span class="val">3</span><span class="lbl">Devoirs</span></div>
+                <div class="lp-mockup-mobile-header">Bonjour <span aria-hidden="true">👋</span></div>
+                <div class="lp-mockup-mobile-stats lp-mockup-mobile-stats--4">
+                    <div><span class="val">5</span><span class="lbl">Matières</span></div>
+                    <div><span class="val">3</span><span class="lbl">Cours</span></div>
+                    <div><span class="val">16.4/20</span><span class="lbl">Moyenne</span></div>
+                    <div><span class="val">9</span><span class="lbl">Messages</span></div>
                 </div>
-                <div class="lp-mockup-mobile-list">
-                    <div class="item"><i class="bi bi-journal-text"></i> Maths — 10h00</div>
-                    <div class="item"><i class="bi bi-pencil"></i> Devoir chimie</div>
-                    <div class="item"><i class="bi bi-calendar3"></i> Physique — 14h00</div>
+                <div class="lp-mockup-mobile-contacts">
+                    @foreach (var contact in MobileContacts)
+                    {
+                        <div class="lp-mockup-contact">
+                            <img class="lp-mockup-contact-avatar" src="@contact.Avatar" alt="" width="22" height="22" />
+                            <span class="lp-mockup-contact-name">@contact.Name</span>
+                            <span class="lp-mockup-contact-status lp-mockup-contact-status--@contact.Status">@contact.StatusLabel</span>
+                        </div>
+                    }
                 </div>
+                <nav class="lp-mockup-mobile-tabs" aria-hidden="true">
+                    <span class="active"><i class="bi bi-house-fill"></i>Accueil</span>
+                    <span><i class="bi bi-calendar3"></i>Calendrier</span>
+                    <span><i class="bi bi-journal-text"></i>Cours</span>
+                    <span><i class="bi bi-chat-dots"></i>Messages</span>
+                    <span><i class="bi bi-person"></i>Profil</span>
+                </nav>
             }
         </main>
     </div>
@@ -120,22 +197,48 @@
     [Parameter] public string AriaLabel { get; set; } = "Aperçu TutorSphere";
     [Parameter] public IStringLocalizer<SharedResources> L { get; set; } = default!;
 
+    private static readonly (string Icon, string Label, bool Active, bool HasBadge)[] StudentSidebarItems =
+    [
+        ("bi-house-fill", "Accueil", true, false),
+        ("bi-journal-text", "Cours", false, false),
+        ("bi-calendar3", "Calendrier", false, false),
+        ("bi-folder2", "Documents", false, false),
+        ("bi-bar-chart-line", "Rapports", false, false),
+        ("bi-chat-dots", "Messages", false, true),
+        ("bi-collection", "Programmes", false, false),
+        ("bi-graph-up", "Progrès", false, false),
+        ("bi-gear", "Paramètres", false, false),
+    ];
+
+    private static readonly string[] ScheduleDays = ["Lun 20", "Mar 21", "Mer 22", "Jeu 23", "Ven 24"];
+
+    private static readonly (string Label, string Color, int Col, int Row)[] ScheduleEvents =
+    [
+        ("Maths", "green", 1, 1),
+        ("Physique-Chimie", "purple", 2, 2),
+        ("Anglais", "orange", 3, 1),
+        ("SVT", "pink", 4, 3),
+        ("Maths", "green", 5, 2),
+    ];
+
+    private static readonly (string Text, string Color)[] RecentActivities =
+    [
+        ("Devoir maths à rendre", "orange"),
+        ("Cours de physique demain", "purple"),
+        ("Message de M. Dupont", "green"),
+    ];
+
+    private static readonly (string Name, string Avatar, string Status, string StatusLabel)[] MobileContacts =
+    [
+        ("Sophie Martin", "images/landing/avatar-2.png", "online", "En ligne"),
+        ("Lucas Bernard", "images/landing/avatar-3.png", "busy", "Occupé"),
+        ("Emma Dubois", "images/landing/avatar-4.png", "online", "En ligne"),
+    ];
+
     private IEnumerable<(string Icon, string Label, bool Active)> SidebarItems => Variant switch
     {
-        "student" => [
-            ("bi-house-fill", "Accueil", true),
-            ("bi-journal-text", "Cours", false),
-            ("bi-calendar3", "Calendrier", false),
-            ("bi-pencil", "Devoirs", false),
-            ("bi-bar-chart-line", "Notes", false),
-            ("bi-chat-dots", "Messages", false),
-            ("bi-folder2", "Documents", false),
-            ("bi-graph-up", "Progrès", false),
-            ("bi-gear", "Paramètres", false),
-        ],
         "calendar" => [("bi-calendar3", "Calendrier", true), ("bi-house", "Accueil", false), ("bi-people", "Élèves", false)],
         "classroom" => [("bi-camera-video", "Salle virtuelle", true), ("bi-calendar3", "Calendrier", false)],
-        "mobile" => [],
         _ => [("bi-house", "Tableau de bord", true), ("bi-people", "Élèves", false), ("bi-calendar3", "Calendrier", false)]
     };
 }
