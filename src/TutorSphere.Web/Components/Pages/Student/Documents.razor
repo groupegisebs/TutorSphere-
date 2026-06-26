@@ -1,4 +1,60 @@
 @page "/student/documents"
 @layout StudentLayout
+@rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
-<ModuleSkeletonPage PageTitleKey="PageTitle_Documents" TitleKey="Nav_Documents" Icon="bi-folder2-open" EmptyIcon="bi-file-earmark" />
+
+<PageTitle>Mes Documents – TutorSphere</PageTitle>
+
+<div class="ts-page-header">
+    <div>
+        <h1><i class="bi bi-folder2-open me-2"></i>Mes Documents</h1>
+        <p class="ts-page-subtitle">Fichiers partagés par vos répétiteurs</p>
+    </div>
+</div>
+
+<div class="ts-toolbar">
+    <div class="ts-search-box">
+        <i class="bi bi-search ts-search-icon"></i>
+        <input class="form-control" placeholder="Rechercher…" @bind="_search" @bind:event="oninput" />
+    </div>
+    <select class="form-select w-auto" @bind="_subject">
+        <option value="">Toutes matières</option>
+        <option>Mathématiques</option><option>Physique</option>
+    </select>
+</div>
+
+<div class="docs-grid">
+    @foreach (var f in FilteredDocs)
+    {
+        <div class="doc-card">
+            <div class="doc-card-icon" style="color:@FileColor(f.Type)">
+                <i class="bi @FileIcon(f.Type)"></i>
+            </div>
+            <div class="doc-card-name">@f.Name</div>
+            <div class="doc-card-meta">@f.Size · @f.Subject</div>
+            <div class="doc-card-actions">
+                <button class="ts-icon-btn" title="Télécharger"><i class="bi bi-download"></i></button>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private string _search = "", _subject = "";
+    private IEnumerable<DocVM> FilteredDocs => _docs
+        .Where(d => string.IsNullOrEmpty(_search) || d.Name.Contains(_search, StringComparison.OrdinalIgnoreCase))
+        .Where(d => string.IsNullOrEmpty(_subject) || d.Subject == _subject);
+
+    private static string FileIcon(string e) => e switch {"pdf"=>"bi-file-earmark-pdf","docx"=>"bi-file-earmark-word","pptx"=>"bi-file-earmark-slides","xlsx"=>"bi-file-earmark-excel",_=>"bi-file-earmark"};
+    private static string FileColor(string e) => e switch {"pdf"=>"#ef4444","docx"=>"#0ea5e9","pptx"=>"#f59e0b","xlsx"=>"#10b981",_=>"#7c3aed"};
+
+    private record DocVM(string Name, string Type, string Size, string Subject, string Date);
+    private static readonly List<DocVM> _docs =
+    [
+        new("Exercices suites numériques.pdf","pdf","340 Ko","Mathématiques","24/06/2026"),
+        new("TD Fonctions dérivées.docx","docx","156 Ko","Mathématiques","22/06/2026"),
+        new("Formulaire bac maths.pdf","pdf","520 Ko","Mathématiques","18/06/2026"),
+        new("Présentation Optique.pptx","pptx","2.1 Mo","Physique","20/06/2026"),
+        new("TD Électricité.xlsx","xlsx","88 Ko","Physique","17/06/2026"),
+    ];
+}

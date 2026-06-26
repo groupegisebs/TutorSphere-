@@ -1,4 +1,91 @@
 @page "/parent/messages"
 @layout ParentLayout
+@rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
-<ModuleSkeletonPage PageTitleKey="PageTitle_Messages" TitleKey="Nav_Messages" Icon="bi-envelope" EmptyIcon="bi-chat-dots" />
+
+<PageTitle>Messagerie – TutorSphere</PageTitle>
+
+<div class="ts-page-header">
+    <div><h1><i class="bi bi-chat-dots me-2"></i>Messagerie</h1></div>
+</div>
+
+<div class="messages-layout">
+    <aside class="messages-sidebar">
+        <div class="messages-search">
+            <i class="bi bi-search"></i>
+            <input class="form-control form-control-sm" placeholder="Rechercher…" />
+        </div>
+        <div class="conversation-list">
+            @foreach (var c in _convs)
+            {
+                <div class="conversation-item @(_active?.Id==c.Id?"active":"") @(c.Unread>0?"unread":"")"
+                     @onclick="()=>{ _active=c; c.Unread=0; }">
+                    <div class="conv-avatar" style="background:@c.Color">@c.Initials</div>
+                    <div class="conv-info">
+                        <div class="conv-name">@c.Name</div>
+                        <div class="conv-last">@c.LastMessage</div>
+                    </div>
+                    <div class="conv-meta">
+                        <span class="conv-time">@c.LastTime</span>
+                        @if (c.Unread > 0) { <span class="conv-badge">@c.Unread</span> }
+                    </div>
+                </div>
+            }
+        </div>
+    </aside>
+    @if (_active != null)
+    {
+        <section class="messages-chat">
+            <div class="chat-header">
+                <div class="ts-avatar" style="background:@_active.Color">@_active.Initials</div>
+                <div><strong>@_active.Name</strong><span class="chat-role text-muted">@_active.Role</span></div>
+            </div>
+            <div class="chat-messages">
+                @foreach (var m in _active.Messages)
+                {
+                    <div class="chat-msg @(m.FromMe?"chat-msg--me":"chat-msg--them")">
+                        <div class="chat-bubble">@m.Text</div>
+                        <span class="chat-time">@m.Time</span>
+                    </div>
+                }
+            </div>
+            <div class="chat-input-area">
+                <input class="form-control" placeholder="Écrire un message…" @bind="_msg" @onkeydown="HandleKey" />
+                <button class="btn btn-primary btn-sm" @onclick="Send" disabled="@string.IsNullOrWhiteSpace(_msg)">
+                    <i class="bi bi-send-fill"></i>
+                </button>
+            </div>
+        </section>
+    }
+    else
+    {
+        <section class="messages-empty">
+            <i class="bi bi-chat-dots messages-empty-icon"></i>
+            <p>Sélectionnez une conversation</p>
+        </section>
+    }
+</div>
+
+@code {
+    private ConvVM? _active;
+    private string _msg = "";
+    private void Send() { if (_active == null || string.IsNullOrWhiteSpace(_msg)) return; _active.Messages.Add(new MsgItem { Text=_msg, FromMe=true, Time=DateTime.Now.ToString("HH:mm") }); _active.LastMessage=_msg; _msg=""; }
+    private async Task HandleKey(KeyboardEventArgs e) { if (e.Key=="Enter") Send(); }
+    private class MsgItem { public string Text{get;set;}=""; public bool FromMe{get;set;} public string Time{get;set;}=""; }
+    private class ConvVM { public int Id{get;set;} public string Name{get;set;}=""; public string Role{get;set;}=""; public string Initials{get;set;}=""; public string Color{get;set;}="#7c3aed"; public string LastMessage{get;set;}=""; public string LastTime{get;set;}=""; public int Unread{get;set;} public List<MsgItem> Messages{get;set;}=[]; }
+    private readonly List<ConvVM> _convs =
+    [
+        new(){ Id=1, Name="John Smith", Role="Répétiteur · Emma Johnson", Initials="JS", Color="#7c3aed",
+            LastMessage="Emma a très bien progressé cette semaine.", LastTime="10:32", Unread=1,
+            Messages=[
+                new(){ Text="Bonjour, comment se passe Emma en ce moment ?", FromMe=true, Time="10:15" },
+                new(){ Text="Emma a très bien progressé cette semaine.", FromMe=false, Time="10:32" },
+            ]},
+        new(){ Id=2, Name="Sophie Martin", Role="Répétiteur · Lucas Johnson", Initials="SM", Color="#10b981",
+            LastMessage="À la semaine prochaine !", LastTime="hier", Unread=0,
+            Messages=[
+                new(){ Text="Est-ce que Lucas a rendu son devoir ?", FromMe=true, Time="hier" },
+                new(){ Text="Oui, il l'a bien rendu. À la semaine prochaine !", FromMe=false, Time="hier" },
+            ]},
+    ];
+}

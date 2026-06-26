@@ -1,4 +1,259 @@
 @page "/tutor/documents"
 @layout TutorLayout
+@rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
-<ModuleSkeletonPage PageTitleKey="PageTitle_Documents" TitleKey="Nav_Documents" Icon="bi-folder2-open" EmptyIcon="bi-file-earmark-plus" />
+
+<PageTitle>Documents – TutorSphere</PageTitle>
+
+<div class="ts-page-header">
+    <div>
+        <h1><i class="bi bi-folder2-open me-2"></i>Documents</h1>
+        <p class="ts-page-subtitle">Gérez et partagez vos fichiers pédagogiques</p>
+    </div>
+    <div class="d-flex gap-2">
+        <button class="btn btn-outline-secondary" @onclick="NewFolder">
+            <i class="bi bi-folder-plus me-1"></i>Nouveau dossier
+        </button>
+        <button class="btn btn-primary" @onclick="() => _showUpload = true">
+            <i class="bi bi-cloud-upload me-1"></i>Téléverser
+        </button>
+    </div>
+</div>
+
+<div class="docs-layout">
+    <!-- Folder tree -->
+    <aside class="docs-tree">
+        <div class="docs-tree-header">Mes dossiers</div>
+        @foreach (var folder in _folders)
+        {
+            <div class="docs-tree-item @(_selectedFolder == folder ? "active" : "")"
+                 @onclick="() => _selectedFolder = folder">
+                <i class="bi bi-folder@(folder.IsOpen ? "2-open" : "") me-2 text-warning"></i>
+                <span>@folder.Name</span>
+                <span class="ms-auto text-muted small">@folder.FileCount</span>
+            </div>
+        }
+        <div class="docs-tree-item mt-2" style="opacity:0.6">
+            <i class="bi bi-cloud me-2 text-primary"></i><span>Google Drive</span>
+            <span class="ms-auto ts-badge ts-badge-neutral" style="font-size:0.65rem">Bientôt</span>
+        </div>
+        <div class="docs-tree-item" style="opacity:0.6">
+            <i class="bi bi-dropbox me-2 text-primary"></i><span>Dropbox</span>
+            <span class="ms-auto ts-badge ts-badge-neutral" style="font-size:0.65rem">Bientôt</span>
+        </div>
+    </aside>
+
+    <!-- File list -->
+    <main class="docs-main">
+        <!-- Breadcrumb & search -->
+        <div class="docs-main-header">
+            <span class="docs-breadcrumb">
+                <i class="bi bi-house me-1"></i>Mes Documents
+                @if (_selectedFolder != null)
+                {
+                    <span class="mx-1 text-muted">/</span>
+                    <strong>@_selectedFolder.Name</strong>
+                }
+            </span>
+            <div class="ts-search-box" style="max-width:260px">
+                <i class="bi bi-search ts-search-icon"></i>
+                <input class="form-control form-control-sm" placeholder="Rechercher…"
+                       @bind="_search" @bind:event="oninput" />
+            </div>
+        </div>
+
+        <!-- View toggle -->
+        <div class="docs-view-bar">
+            <span class="text-muted small">@FilteredFiles.Count() fichier(s)</span>
+            <div class="ms-auto d-flex gap-1">
+                <button class="ts-icon-btn @(_viewGrid ? "active" : "")" @onclick='() => _viewGrid = true'>
+                    <i class="bi bi-grid-3x3-gap"></i>
+                </button>
+                <button class="ts-icon-btn @(!_viewGrid ? "active" : "")" @onclick='() => _viewGrid = false'>
+                    <i class="bi bi-list-ul"></i>
+                </button>
+            </div>
+        </div>
+
+        @if (_viewGrid)
+        {
+            <div class="docs-grid">
+                @foreach (var f in FilteredFiles)
+                {
+                    <div class="doc-card" @onclick="() => _selected = f">
+                        <div class="doc-card-icon" style="color:@FileColor(f.Type)">
+                            <i class="bi @FileIcon(f.Type)"></i>
+                        </div>
+                        <div class="doc-card-name" title="@f.Name">@f.Name</div>
+                        <div class="doc-card-meta">@f.Size · @f.Modified</div>
+                        <div class="doc-card-actions">
+                            <button class="ts-icon-btn" title="Télécharger"><i class="bi bi-download"></i></button>
+                            <button class="ts-icon-btn" title="Partager"><i class="bi bi-share"></i></button>
+                            <button class="ts-icon-btn ts-icon-btn--danger" title="Supprimer"
+                                    @onclick:stopPropagation="true"
+                                    @onclick="() => _files.Remove(f)">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="ts-table-card">
+                <table class="table ts-table">
+                    <thead>
+                        <tr><th>Nom</th><th>Type</th><th>Taille</th><th>Modifié</th><th>Partagé avec</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var f in FilteredFiles)
+                        {
+                            <tr>
+                                <td>
+                                    <div class="ts-cell-user">
+                                        <i class="bi @FileIcon(f.Type) me-2" style="color:@FileColor(f.Type)"></i>
+                                        @f.Name
+                                    </div>
+                                </td>
+                                <td><span class="ts-badge ts-badge-neutral">@f.Type.ToUpper()</span></td>
+                                <td>@f.Size</td>
+                                <td>@f.Modified</td>
+                                <td>
+                                    @foreach (var s in f.SharedWith)
+                                    {
+                                        <span class="ts-badge ts-badge-neutral me-1">@s</span>
+                                    }
+                                </td>
+                                <td>
+                                    <div class="ts-action-group">
+                                        <button class="ts-icon-btn" title="Télécharger"><i class="bi bi-download"></i></button>
+                                        <button class="ts-icon-btn" title="Partager"><i class="bi bi-share"></i></button>
+                                        <button class="ts-icon-btn ts-icon-btn--danger" title="Supprimer"
+                                                @onclick="() => _files.Remove(f)">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </main>
+</div>
+
+<!-- Upload modal -->
+@if (_showUpload)
+{
+    <div class="ts-modal-backdrop" @onclick="() => _showUpload = false">
+        <div class="ts-modal" @onclick:stopPropagation="true">
+            <div class="ts-modal-header">
+                <h2>Téléverser des fichiers</h2>
+                <button class="ts-modal-close" @onclick="() => _showUpload = false"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <div class="ts-modal-body">
+                <div class="doc-upload-zone">
+                    <i class="bi bi-cloud-arrow-up doc-upload-icon"></i>
+                    <p>Glissez vos fichiers ici</p>
+                    <small class="text-muted">PDF, Word, Excel, PowerPoint, Images — max 50 Mo</small>
+                    <button class="btn btn-outline-primary btn-sm mt-2">Parcourir</button>
+                </div>
+                <div class="row g-3 mt-3">
+                    <div class="col-12">
+                        <label class="form-label">Dossier destination</label>
+                        <select class="form-select" @bind="_uploadFolder">
+                            @foreach (var folder in _folders)
+                            {
+                                <option>@folder.Name</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Partager avec (optionnel)</label>
+                        <div class="d-flex flex-wrap gap-2">
+                            @foreach (var s in new[]{"Emma Johnson","Liam Brown","Sophia Davis","Tous les élèves"})
+                            {
+                                var sel = _shareWith.Contains(s);
+                                <button type="button" class="ts-chip @(sel?"active":"")"
+                                        @onclick="()=>{ if(sel) _shareWith.Remove(s); else _shareWith.Add(s); }">
+                                    @s
+                                </button>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="ts-modal-footer">
+                <button class="btn btn-outline-secondary" @onclick="() => _showUpload = false">Annuler</button>
+                <button class="btn btn-primary" @onclick="SimulateUpload">Téléverser</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string _search = "";
+    private bool _viewGrid = true;
+    private bool _showUpload;
+    private DocFolder? _selectedFolder;
+    private DocFile? _selected;
+    private string _uploadFolder = "Mathématiques";
+    private readonly HashSet<string> _shareWith = [];
+
+    private IEnumerable<DocFile> FilteredFiles => _files
+        .Where(f => _selectedFolder == null || f.Folder == _selectedFolder.Name)
+        .Where(f => string.IsNullOrEmpty(_search) ||
+            f.Name.Contains(_search, StringComparison.OrdinalIgnoreCase));
+
+    private static string FileIcon(string ext) => ext switch {
+        "pdf" => "bi-file-earmark-pdf", "doc" or "docx" => "bi-file-earmark-word",
+        "xls" or "xlsx" => "bi-file-earmark-excel", "ppt" or "pptx" => "bi-file-earmark-slides",
+        "jpg" or "png" => "bi-file-earmark-image", "mp4" or "mov" => "bi-file-earmark-play",
+        _ => "bi-file-earmark"
+    };
+    private static string FileColor(string ext) => ext switch {
+        "pdf" => "#ef4444", "doc" or "docx" => "#0ea5e9", "xls" or "xlsx" => "#10b981",
+        "ppt" or "pptx" => "#f59e0b", _ => "#7c3aed"
+    };
+
+    private void NewFolder()
+    {
+        var n = $"Nouveau dossier {_folders.Count + 1}";
+        _folders.Add(new DocFolder { Name = n, FileCount = 0 });
+    }
+
+    private void SimulateUpload()
+    {
+        _files.Insert(0, new DocFile { Name = "Nouveau fichier.pdf", Type = "pdf", Size = "1.2 Mo",
+            Folder = _uploadFolder, Modified = DateTime.Today.ToString("dd/MM/yyyy"),
+            SharedWith = [.. _shareWith] });
+        _showUpload = false;
+        _shareWith.Clear();
+    }
+
+    private class DocFolder { public string Name { get; set; } = ""; public int FileCount { get; set; } public bool IsOpen { get; set; } }
+    private class DocFile { public string Name { get; set; } = ""; public string Type { get; set; } = ""; public string Size { get; set; } = ""; public string Folder { get; set; } = ""; public string Modified { get; set; } = ""; public List<string> SharedWith { get; set; } = []; }
+
+    private readonly List<DocFolder> _folders =
+    [
+        new(){ Name="Mathématiques", FileCount=4, IsOpen=true },
+        new(){ Name="Physique-Chimie", FileCount=2 },
+        new(){ Name="Rapports", FileCount=7 },
+        new(){ Name="Contrats", FileCount=3 },
+        new(){ Name="Ressources générales", FileCount=5 },
+    ];
+
+    private readonly List<DocFile> _files =
+    [
+        new(){ Name="Exercices suites numériques.pdf", Type="pdf", Size="340 Ko", Folder="Mathématiques", Modified="24/06/2026", SharedWith=["Emma Johnson","Liam Brown"] },
+        new(){ Name="TD Fonctions dérivées.docx", Type="docx", Size="156 Ko", Folder="Mathématiques", Modified="22/06/2026", SharedWith=["Emma Johnson"] },
+        new(){ Name="Formulaire bac maths.pdf", Type="pdf", Size="520 Ko", Folder="Mathématiques", Modified="18/06/2026", SharedWith=["Tous"] },
+        new(){ Name="Présentation Optique.pptx", Type="pptx", Size="2.1 Mo", Folder="Physique-Chimie", Modified="20/06/2026", SharedWith=["Liam Brown"] },
+        new(){ Name="TD Électricité.xlsx", Type="xlsx", Size="88 Ko", Folder="Physique-Chimie", Modified="17/06/2026", SharedWith=["Liam Brown"] },
+        new(){ Name="Rapport Emma 24-06.pdf", Type="pdf", Size="45 Ko", Folder="Rapports", Modified="24/06/2026", SharedWith=["Marie Johnson"] },
+        new(){ Name="Rapport Sophia 20-06.pdf", Type="pdf", Size="42 Ko", Folder="Rapports", Modified="20/06/2026", SharedWith=["Laura Davis"] },
+        new(){ Name="Contrat - Emma Johnson.pdf", Type="pdf", Size="78 Ko", Folder="Contrats", Modified="01/09/2024", SharedWith=[] },
+    ];
+}

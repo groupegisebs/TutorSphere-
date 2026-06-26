@@ -1,4 +1,66 @@
 @page "/student/reports"
 @layout StudentLayout
+@rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
-<ModuleSkeletonPage PageTitleKey="PageTitle_Reports" TitleKey="Nav_Reports" Icon="bi-clipboard-data" EmptyIcon="bi-graph-up" />
+
+<PageTitle>Mes Rapports – TutorSphere</PageTitle>
+
+<div class="ts-page-header">
+    <div>
+        <h1><i class="bi bi-file-earmark-bar-graph me-2"></i>Mes Rapports</h1>
+        <p class="ts-page-subtitle">Comptes-rendus de vos séances</p>
+    </div>
+</div>
+
+<div class="ts-table-card">
+    <table class="table ts-table">
+        <thead><tr><th>Date</th><th>Matière</th><th>Répétiteur</th><th>Actions</th></tr></thead>
+        <tbody>
+            @foreach (var r in _reports)
+            {
+                <tr>
+                    <td>@r.Date</td>
+                    <td>@r.Subject</td>
+                    <td>@r.Tutor</td>
+                    <td>
+                        <button class="ts-icon-btn" title="Voir" @onclick="() => _sel = r"><i class="bi bi-eye"></i></button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@if (_sel != null)
+{
+    <div class="ts-modal-backdrop" @onclick="() => _sel = null">
+        <div class="ts-modal ts-modal-lg" @onclick:stopPropagation="true">
+            <div class="ts-modal-header">
+                <h2>Rapport – @_sel.Date</h2>
+                <button class="ts-modal-close" @onclick="() => _sel = null"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <div class="ts-modal-body">
+                <div class="ts-form-grid">
+                    <div class="ts-form-row"><label>Matière</label><span>@_sel.Subject</span></div>
+                    <div class="ts-form-row"><label>Répétiteur</label><span>@_sel.Tutor</span></div>
+                    <div class="ts-form-row"><label>Travail effectué</label><span>@_sel.WorkDone</span></div>
+                    <div class="ts-form-row"><label>Points forts</label><span>@_sel.Strengths</span></div>
+                    <div class="ts-form-row"><label>À améliorer</label><span>@_sel.Improvements</span></div>
+                    <div class="ts-form-row"><label>Recommandations</label><span>@_sel.Recommendations</span></div>
+                    <div class="ts-form-row"><label>Devoir</label><span>@_sel.Homework</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private ReportVM? _sel;
+    private class ReportVM { public string Date{get;set;}=""; public string Subject{get;set;}=""; public string Tutor{get;set;}=""; public string WorkDone{get;set;}=""; public string Strengths{get;set;}=""; public string Improvements{get;set;}=""; public string Recommendations{get;set;}=""; public string Homework{get;set;}=""; }
+    private static readonly List<ReportVM> _reports =
+    [
+        new(){ Date="24/06/2026", Subject="Mathématiques", Tutor="John Smith", WorkDone="Suites arithmétiques.", Strengths="Logique solide.", Improvements="Vitesse.", Recommendations="Pratiquer davantage.", Homework="Exercices 5–10" },
+        new(){ Date="17/06/2026", Subject="Mathématiques", Tutor="John Smith", WorkDone="Fonctions dérivées.", Strengths="Méthode rigoureuse.", Improvements="Exercices variés.", Recommendations="Refaire le TD.", Homework="TD dérivées" },
+        new(){ Date="10/06/2026", Subject="Physique", Tutor="John Smith", WorkDone="Optique géométrique.", Strengths="Bonne compréhension.", Improvements="Lentilles.", Recommendations="Revoir lentilles.", Homework="Schémas optiques" },
+    ];
+}

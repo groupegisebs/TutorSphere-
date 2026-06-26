@@ -1,4 +1,88 @@
 @page "/parent/reports"
 @layout ParentLayout
+@rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
-<ModuleSkeletonPage PageTitleKey="PageTitle_Reports" TitleKey="Nav_Reports" Icon="bi-graph-up" EmptyIcon="bi-file-earmark-text" />
+
+<PageTitle>Rapports – TutorSphere</PageTitle>
+
+<div class="ts-page-header">
+    <div>
+        <h1><i class="bi bi-file-earmark-text me-2"></i>Rapports de séance</h1>
+        <p class="ts-page-subtitle">Suivez les comptes-rendus de chaque cours</p>
+    </div>
+</div>
+
+<div class="ts-toolbar">
+    <div class="ts-search-box">
+        <i class="bi bi-search ts-search-icon"></i>
+        <input class="form-control" placeholder="Chercher…" @bind="_search" @bind:event="oninput" />
+    </div>
+    <select class="form-select w-auto" @bind="_child">
+        <option value="">Tous les enfants</option>
+        <option>Emma Johnson</option><option>Lucas Johnson</option>
+    </select>
+</div>
+
+<div class="ts-table-card">
+    <table class="table ts-table">
+        <thead><tr><th>Date</th><th>Enfant</th><th>Matière</th><th>Répétiteur</th><th>Actions</th></tr></thead>
+        <tbody>
+            @foreach (var r in FilteredReports)
+            {
+                <tr>
+                    <td>@r.Date</td>
+                    <td><span class="ts-badge ts-badge-neutral">@r.Child</span></td>
+                    <td>@r.Subject</td>
+                    <td>@r.Tutor</td>
+                    <td>
+                        <button class="ts-icon-btn" title="Voir" @onclick="() => _selected = r">
+                            <i class="bi bi-eye"></i>
+                        </button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@if (_selected != null)
+{
+    <div class="ts-modal-backdrop" @onclick="() => _selected = null">
+        <div class="ts-modal ts-modal-lg" @onclick:stopPropagation="true">
+            <div class="ts-modal-header">
+                <h2>Rapport – @_selected.Child · @_selected.Date</h2>
+                <button class="ts-modal-close" @onclick="() => _selected = null"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <div class="ts-modal-body">
+                <div class="ts-form-grid">
+                    <div class="ts-form-row"><label>Enfant</label><span>@_selected.Child</span></div>
+                    <div class="ts-form-row"><label>Matière</label><span>@_selected.Subject</span></div>
+                    <div class="ts-form-row"><label>Répétiteur</label><span>@_selected.Tutor</span></div>
+                    <div class="ts-form-row"><label>Date</label><span>@_selected.Date</span></div>
+                    <div class="ts-form-row"><label>Travail effectué</label><span>@_selected.WorkDone</span></div>
+                    <div class="ts-form-row"><label>Points forts</label><span>@_selected.Strengths</span></div>
+                    <div class="ts-form-row"><label>À améliorer</label><span>@_selected.Improvements</span></div>
+                    <div class="ts-form-row"><label>Devoir</label><span>@_selected.Homework</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string _search = "", _child = "";
+    private ReportVM? _selected;
+
+    private IEnumerable<ReportVM> FilteredReports => _reports
+        .Where(r => string.IsNullOrEmpty(_search) || r.Subject.Contains(_search, StringComparison.OrdinalIgnoreCase))
+        .Where(r => string.IsNullOrEmpty(_child) || r.Child == _child);
+
+    private class ReportVM { public string Date{get;set;}=""; public string Child{get;set;}=""; public string Subject{get;set;}=""; public string Tutor{get;set;}=""; public string WorkDone{get;set;}=""; public string Strengths{get;set;}=""; public string Improvements{get;set;}=""; public string Homework{get;set;}=""; }
+
+    private static readonly List<ReportVM> _reports =
+    [
+        new(){ Date="24/06/2026", Child="Emma Johnson", Subject="Mathématiques", Tutor="John Smith", WorkDone="Suites arithmétiques et géométriques.", Strengths="Bonne logique.", Improvements="Vitesse de calcul.", Homework="Exercices 5–10 p.42" },
+        new(){ Date="17/06/2026", Child="Emma Johnson", Subject="Mathématiques", Tutor="John Smith", WorkDone="Fonctions dérivées.", Strengths="Méthode rigoureuse.", Improvements="Exercices pratiques.", Homework="TD dérivées" },
+        new(){ Date="22/06/2026", Child="Lucas Johnson", Subject="Français", Tutor="Sophie Martin", WorkDone="Rédaction argumentative.", Strengths="Vocabulaire riche.", Improvements="Structure du plan.", Homework="Rédiger 500 mots" },
+    ];
+}

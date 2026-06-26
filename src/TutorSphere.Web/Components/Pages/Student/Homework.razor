@@ -1,4 +1,59 @@
 @page "/student/homework"
 @layout StudentLayout
+@rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
-<ModuleSkeletonPage PageTitleKey="PageTitle_Homework" TitleKey="Nav_Homework" Icon="bi-pencil-square" EmptyIcon="bi-pencil" />
+
+<PageTitle>Mes Devoirs – TutorSphere</PageTitle>
+
+<div class="ts-page-header">
+    <div>
+        <h1><i class="bi bi-journal-text me-2"></i>Mes Devoirs</h1>
+        <p class="ts-page-subtitle">Devoirs à rendre et corrections</p>
+    </div>
+</div>
+
+<div class="homework-grid">
+    @foreach (var hw in _homeworks)
+    {
+        <div class="hw-card">
+            <div class="hw-card-head">
+                <span class="ts-badge @HwBadge(hw.Status)">@hw.Status</span>
+                <span class="hw-due @(hw.IsOverdue?"text-danger":"text-muted")">
+                    <i class="bi bi-calendar3 me-1"></i>@hw.DueDate.ToString("dd/MM")
+                </span>
+            </div>
+            <h3 class="hw-title">@hw.Title</h3>
+            <p class="hw-subject"><i class="bi bi-book me-1 text-muted"></i>@hw.Subject · @hw.Tutor</p>
+            @if (!string.IsNullOrEmpty(hw.Description))
+            {
+                <p class="hw-desc">@hw.Description</p>
+            }
+            @if (hw.Grade.HasValue)
+            {
+                <div class="hw-grade-chip">Note : <strong>@hw.Grade.Value/20</strong></div>
+            }
+            <div class="hw-card-footer">
+                @if (hw.Status == "À rendre")
+                {
+                    <button class="btn btn-sm btn-primary" @onclick='() => hw.Status = "Rendu"'>
+                        <i class="bi bi-check-lg me-1"></i>Marquer rendu
+                    </button>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private static string HwBadge(string s) => s switch { "Corrigé"=>"ts-badge-success","Rendu"=>"ts-badge-primary","En retard"=>"ts-badge-danger",_=>"ts-badge-muted" };
+
+    private class HwVM { public string Title{get;set;}=""; public string Subject{get;set;}=""; public string Tutor{get;set;}=""; public DateTime DueDate{get;set;} public string Description{get;set;}=""; public string Status{get;set;}="À rendre"; public int? Grade{get;set;} public bool IsOverdue=>Status!="Corrigé"&&DueDate<DateTime.Today; }
+
+    private readonly List<HwVM> _homeworks =
+    [
+        new(){ Title="Exercices suites numériques", Subject="Mathématiques", Tutor="John Smith", DueDate=DateTime.Today.AddDays(3), Description="Exercices 5 à 12, pages 42-44.", Status="À rendre" },
+        new(){ Title="TD Circuits électriques", Subject="Physique", Tutor="John Smith", DueDate=DateTime.Today.AddDays(7), Description="Compléter le TD distribué.", Status="À rendre" },
+        new(){ Title="QCM Réactions chimiques", Subject="Chimie", Tutor="John Smith", DueDate=DateTime.Today.AddDays(-3), Status="Corrigé", Grade=17 },
+        new(){ Title="Rédaction – Le progrès", Subject="Français", Tutor="Sophie Martin", DueDate=DateTime.Today.AddDays(-1), Description="500 mots.", Status="Rendu" },
+    ];
+}

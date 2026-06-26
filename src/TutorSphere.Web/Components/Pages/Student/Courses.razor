@@ -1,4 +1,73 @@
 @page "/student/courses"
 @layout StudentLayout
+@rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
-<ModuleSkeletonPage PageTitleKey="PageTitle_Courses" TitleKey="Nav_Courses" Icon="bi-book" EmptyIcon="bi-book-half" />
+
+<PageTitle>Mes Cours – TutorSphere</PageTitle>
+
+<div class="ts-page-header">
+    <div>
+        <h1><i class="bi bi-book me-2"></i>Mes Cours</h1>
+        <p class="ts-page-subtitle">Vos séances passées et à venir</p>
+    </div>
+</div>
+
+<div class="ts-toolbar">
+    <div class="ts-search-box">
+        <i class="bi bi-search ts-search-icon"></i>
+        <input class="form-control" placeholder="Chercher…" @bind="_search" @bind:event="oninput" />
+    </div>
+    <select class="form-select w-auto" @bind="_filter">
+        <option value="">Tous</option><option>À venir</option><option>Terminé</option><option>Annulé</option>
+    </select>
+</div>
+
+<div class="ts-table-card">
+    <table class="table ts-table">
+        <thead><tr><th>Date</th><th>Matière</th><th>Répétiteur</th><th>Durée</th><th>Mode</th><th>Statut</th><th></th></tr></thead>
+        <tbody>
+            @foreach (var c in FilteredCourses)
+            {
+                <tr>
+                    <td><strong>@c.Date.ToString("dd/MM/yyyy")</strong><br/><small class="text-muted">@c.Date.ToString("HH:mm")</small></td>
+                    <td>@c.Subject</td>
+                    <td>@c.Tutor</td>
+                    <td>@c.Duration h</td>
+                    <td><span class="ts-badge ts-badge-neutral">@c.Mode</span></td>
+                    <td>
+                        <span class="ts-badge @(c.Status=="Terminé"?"ts-badge-success":c.Status=="À venir"?"ts-badge-primary":"ts-badge-muted")">
+                            @c.Status
+                        </span>
+                    </td>
+                    <td>
+                        @if (c.Status == "À venir" && c.Mode == "En ligne")
+                        {
+                            <button class="btn btn-sm btn-primary">Rejoindre</button>
+                        }
+                        else if (c.Status == "Terminé")
+                        {
+                            <button class="ts-icon-btn" title="Voir rapport"><i class="bi bi-file-earmark-text"></i></button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    private string _search = "", _filter = "";
+    private IEnumerable<CourseVM> FilteredCourses => _courses
+        .Where(c => string.IsNullOrEmpty(_search) || c.Subject.Contains(_search, StringComparison.OrdinalIgnoreCase) || c.Tutor.Contains(_search, StringComparison.OrdinalIgnoreCase))
+        .Where(c => string.IsNullOrEmpty(_filter) || c.Status == _filter)
+        .OrderByDescending(c => c.Date);
+    private record CourseVM(DateTime Date, string Subject, string Tutor, double Duration, string Mode, string Status);
+    private static readonly List<CourseVM> _courses =
+    [
+        new(DateTime.Today.AddHours(10), "Mathématiques", "John Smith", 1, "En ligne", "À venir"),
+        new(DateTime.Today.AddDays(2).AddHours(14), "Physique", "John Smith", 1.5, "Présentiel", "À venir"),
+        new(DateTime.Today.AddDays(-1).AddHours(16), "Mathématiques", "John Smith", 1, "En ligne", "Terminé"),
+        new(DateTime.Today.AddDays(-3).AddHours(10), "Mathématiques", "John Smith", 1, "En ligne", "Terminé"),
+        new(DateTime.Today.AddDays(-7).AddHours(14), "Physique", "John Smith", 1, "En ligne", "Annulé"),
+    ];
+}

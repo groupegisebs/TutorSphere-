@@ -1,4 +1,158 @@
 @page "/parent/children"
 @layout ParentLayout
+@rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
-<ModuleSkeletonPage PageTitleKey="PageTitle_Children" TitleKey="Nav_MyChildren" Icon="bi-people-fill" EmptyIcon="bi-person-plus" />
+
+<PageTitle>Mes Enfants – TutorSphere</PageTitle>
+
+<div class="ts-page-header">
+    <div>
+        <h1><i class="bi bi-people-fill me-2"></i>Mes Enfants</h1>
+        <p class="ts-page-subtitle">Suivez la progression de vos enfants</p>
+    </div>
+</div>
+
+<div class="children-grid">
+    @foreach (var child in _children)
+    {
+        <div class="child-card @(_active?.Name == child.Name ? "active" : "")" @onclick="() => _active = child">
+            <div class="child-card-header">
+                <div class="ts-avatar ts-avatar-lg" style="background:@child.Color">@child.Initials</div>
+                <div>
+                    <h3>@child.Name</h3>
+                    <span class="text-muted">@child.Level · @child.School</span>
+                </div>
+                <span class="ts-badge @(child.IsActive ? "ts-badge-success" : "ts-badge-muted") ms-auto">
+                    @(child.IsActive ? "Actif" : "Inactif")
+                </span>
+            </div>
+            <div class="child-stats-row">
+                <div class="child-stat"><span>@child.SessionsThisMonth</span><small>Cours ce mois</small></div>
+                <div class="child-stat"><span>@child.AttendanceRate%</span><small>Présence</small></div>
+                <div class="child-stat"><span>@child.ReportsCount</span><small>Rapports</small></div>
+                <div class="child-stat"><span>@child.HomeworkDone/@child.HomeworkTotal</span><small>Devoirs</small></div>
+            </div>
+            <div class="child-subjects">
+                @foreach (var s in child.Subjects)
+                {
+                    <span class="ts-badge ts-badge-neutral">@s</span>
+                }
+            </div>
+            <div class="child-next-lesson">
+                <i class="bi bi-calendar-event me-2 text-primary"></i>
+                <span>Prochain cours : <strong>@child.NextLesson</strong></span>
+            </div>
+        </div>
+    }
+</div>
+
+@if (_active != null)
+{
+    <div class="section-card mt-4">
+        <div class="section-card-header">
+            <h2>Détail — @_active.Name</h2>
+        </div>
+        <div class="ts-modal-tabs">
+            @foreach (var t in new[]{"Progression","Rapports","Devoirs","Présence"})
+            {
+                <button class="ts-tab @(_tab==t?"active":"")" @onclick="()=>_tab=t">@t</button>
+            }
+        </div>
+        <div style="padding:1.5rem">
+            @if (_tab == "Progression")
+            {
+                <div class="row g-3">
+                    @foreach (var s in _active.SubjectProgress)
+                    {
+                        <div class="col-md-6">
+                            <label class="form-label d-flex justify-content-between">
+                                <span>@s.Subject</span>
+                                <span class="fw-bold" style="color:var(--ts-primary)">@s.Score%</span>
+                            </label>
+                            <div class="progress" style="height:8px">
+                                <div class="progress-bar" style="width:@s.Score%;background:var(--ts-primary)"></div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+            else if (_tab == "Rapports")
+            {
+                <p class="text-muted">Consultez les rapports de séance envoyés par le répétiteur.</p>
+                @foreach (var r in _active.Reports)
+                {
+                    <div class="ts-list-item d-flex align-items-center gap-2">
+                        <i class="bi bi-file-earmark-text text-primary"></i>
+                        <span>@r.Date — @r.Subject</span>
+                        <span class="ms-auto ts-badge ts-badge-success">@r.Sent</span>
+                    </div>
+                }
+            }
+            else if (_tab == "Présence")
+            {
+                <div class="presence-stats">
+                    <div class="presence-stat"><span class="presence-num text-success">@_active.Present</span><span>Présent</span></div>
+                    <div class="presence-stat"><span class="presence-num text-danger">@_active.Absent</span><span>Absent</span></div>
+                    <div class="presence-stat"><span class="presence-num text-warning">@_active.Late</span><span>Retard</span></div>
+                    <div class="presence-stat"><span class="presence-num" style="color:var(--ts-primary)">@_active.AttendanceRate%</span><span>Taux</span></div>
+                </div>
+            }
+            else
+            {
+                <p class="ts-empty-inline">Section disponible prochainement.</p>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private ChildVM? _active;
+    private string _tab = "Progression";
+
+    private record SubjectScore(string Subject, int Score);
+    private record ReportItem(string Date, string Subject, string Sent);
+
+    private class ChildVM
+    {
+        public string Name { get; set; } = "";
+        public string Initials { get; set; } = "";
+        public string Color { get; set; } = "#7c3aed";
+        public string Level { get; set; } = "";
+        public string School { get; set; } = "";
+        public bool IsActive { get; set; }
+        public int SessionsThisMonth { get; set; }
+        public int AttendanceRate { get; set; }
+        public int ReportsCount { get; set; }
+        public int HomeworkDone { get; set; }
+        public int HomeworkTotal { get; set; }
+        public string NextLesson { get; set; } = "";
+        public List<string> Subjects { get; set; } = [];
+        public List<SubjectScore> SubjectProgress { get; set; } = [];
+        public List<ReportItem> Reports { get; set; } = [];
+        public int Present { get; set; }
+        public int Absent { get; set; }
+        public int Late { get; set; }
+    }
+
+    private readonly List<ChildVM> _children =
+    [
+        new(){
+            Name="Emma Johnson", Initials="EJ", Color="#7c3aed",
+            Level="Lycée – 1ère", School="Lycée Pasteur", IsActive=true,
+            SessionsThisMonth=4, AttendanceRate=95, ReportsCount=8, HomeworkDone=6, HomeworkTotal=7,
+            NextLesson="Demain à 10h00", Subjects=["Mathématiques","Physique"],
+            SubjectProgress=[new("Mathématiques",78),new("Physique",65),new("Chimie",82)],
+            Reports=[new("24/06/2026","Mathématiques","Envoyé"),new("17/06/2026","Mathématiques","Envoyé"),new("10/06/2026","Physique","Envoyé")],
+            Present=18, Absent=1, Late=1
+        },
+        new(){
+            Name="Lucas Johnson", Initials="LJ", Color="#0ea5e9",
+            Level="Collège – 5ème", School="Collège Victor Hugo", IsActive=true,
+            SessionsThisMonth=3, AttendanceRate=88, ReportsCount=5, HomeworkDone=4, HomeworkTotal=5,
+            NextLesson="Jeudi à 14h00", Subjects=["Français","Histoire"],
+            SubjectProgress=[new("Français",72),new("Histoire",68)],
+            Reports=[new("22/06/2026","Français","Envoyé"),new("15/06/2026","Français","Envoyé")],
+            Present=14, Absent=2, Late=1
+        },
+    ];
+}

@@ -1,4 +1,59 @@
 @page "/parent/subscriptions"
 @layout ParentLayout
+@rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
-<ModuleSkeletonPage PageTitleKey="PageTitle_Subscriptions" TitleKey="Nav_MySubscriptions" Icon="bi-arrow-repeat" EmptyIcon="bi-plus-circle" />
+
+<PageTitle>Mes Abonnements – TutorSphere</PageTitle>
+
+<div class="ts-page-header">
+    <div>
+        <h1><i class="bi bi-arrow-repeat me-2"></i>Mes Abonnements</h1>
+        <p class="ts-page-subtitle">Gérez les abonnements de vos enfants</p>
+    </div>
+</div>
+
+@foreach (var sub in _subs)
+{
+    <div class="section-card mb-3">
+        <div class="d-flex align-items-center gap-3 p-3" style="border-bottom:1px solid var(--ts-border)">
+            <div class="ts-avatar" style="background:#7c3aed">@sub.ChildInitials</div>
+            <div>
+                <strong>@sub.ChildName</strong>
+                <span class="text-muted d-block small">@sub.PlanName chez @sub.TutorName</span>
+            </div>
+            <span class="ms-auto ts-badge @(sub.Status=="Actif"?"ts-badge-success":sub.Status=="Suspendu"?"ts-badge-warning":"ts-badge-danger")">
+                @sub.Status
+            </span>
+        </div>
+        <div class="row g-0">
+            <div class="col-6 col-md-3 p-3" style="border-right:1px solid var(--ts-border)">
+                <div class="ts-kpi-label">Montant</div>
+                <strong>@sub.Amount $/mois</strong>
+            </div>
+            <div class="col-6 col-md-3 p-3" style="border-right:1px solid var(--ts-border)">
+                <div class="ts-kpi-label">Renouvellement</div>
+                <strong>@sub.RenewalDate</strong>
+            </div>
+            <div class="col-6 col-md-3 p-3" style="border-right:1px solid var(--ts-border)">
+                <div class="ts-kpi-label">Séances / mois</div>
+                <strong>@sub.SessionsPerMonth</strong>
+            </div>
+            <div class="col-6 col-md-3 p-3 d-flex align-items-center justify-content-end gap-2">
+                @if (sub.Status == "Actif")
+                {
+                    <button class="btn btn-outline-danger btn-sm">Résilier</button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private record SubVM(string ChildName, string ChildInitials, string PlanName, string TutorName,
+        decimal Amount, string RenewalDate, int SessionsPerMonth, string Status);
+    private static readonly List<SubVM> _subs =
+    [
+        new("Emma Johnson","EJ","Professionnel","John Smith",200,"01/07/2026",8,"Actif"),
+        new("Lucas Johnson","LJ","Essentiel","Sophie Martin",120,"01/07/2026",4,"Actif"),
+    ];
+}
