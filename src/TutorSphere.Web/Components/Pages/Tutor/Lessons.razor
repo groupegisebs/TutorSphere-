@@ -2,6 +2,7 @@
 @layout TutorLayout
 @rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
+@inject LessonService LessonSvc
 @inject NavigationManager Navigation
 
 <PageTitle>Cours – TutorSphere</PageTitle>
@@ -51,51 +52,67 @@
 
 <!-- Lessons table -->
 <div class="ts-table-card">
-    <table class="table ts-table">
-        <thead>
-            <tr>
-                <th>Date / Heure</th><th>Élève</th><th>Matière</th>
-                <th>Durée</th><th>Mode</th><th>Statut</th><th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var l in FilteredLessons)
-            {
+    @if (_loading)
+    {
+        <div class="ts-loading-state">
+            <div class="spinner-border text-primary" role="status"></div>
+            <span class="ms-3 text-muted">Chargement…</span>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="alert alert-warning m-3">
+            <i class="bi bi-exclamation-triangle me-2"></i>@_error
+        </div>
+    }
+    else
+    {
+        <table class="table ts-table">
+            <thead>
                 <tr>
-                    <td>
-                        <strong>@l.Date.ToString("dd MMM yyyy")</strong><br/>
-                        <small class="text-muted">@l.Date.ToString("HH:mm") – @l.EndTime</small>
-                    </td>
-                    <td>
-                        <div class="ts-cell-user">
-                            <div class="ts-avatar ts-avatar-sm" style="background:@l.AvatarColor">@l.StudentInitials</div>
-                            @l.StudentName
-                        </div>
-                    </td>
-                    <td>@l.Subject</td>
-                    <td>@l.Duration h</td>
-                    <td><span class="ts-badge ts-badge-neutral">@l.Mode</span></td>
-                    <td><span class="ts-badge @StatusBadge(l.Status)">@l.Status</span></td>
-                    <td>
-                        <div class="ts-action-group">
-                            @if (l.Status == "Planifié")
-                            {
-                                <button class="ts-icon-btn" title="Démarrer" @onclick="() => StartLesson(l)">
-                                    <i class="bi bi-play-fill text-success"></i>
-                                </button>
-                            }
-                            @if (l.Status is "Terminé" or "En cours")
-                            {
-                                <button class="ts-icon-btn" title="Rapport"><i class="bi bi-file-earmark-text"></i></button>
-                            }
-                            <button class="ts-icon-btn" title="Présences"><i class="bi bi-person-check"></i></button>
-                            <button class="ts-icon-btn" title="Modifier" @onclick="()=>OpenEdit(l)"><i class="bi bi-pencil"></i></button>
-                        </div>
-                    </td>
+                    <th>Date / Heure</th><th>Élève</th><th>Matière</th>
+                    <th>Durée</th><th>Mode</th><th>Statut</th><th>Actions</th>
                 </tr>
-            }
-        </tbody>
-    </table>
+            </thead>
+            <tbody>
+                @foreach (var l in FilteredLessons)
+                {
+                    <tr>
+                        <td>
+                            <strong>@l.Date.ToString("dd MMM yyyy")</strong><br/>
+                            <small class="text-muted">@l.Date.ToString("HH:mm") – @l.EndTime</small>
+                        </td>
+                        <td>
+                            <div class="ts-cell-user">
+                                <div class="ts-avatar ts-avatar-sm" style="background:@l.AvatarColor">@l.StudentInitials</div>
+                                @(string.IsNullOrEmpty(l.StudentName) ? l.Title : l.StudentName)
+                            </div>
+                        </td>
+                        <td>@l.Subject</td>
+                        <td>@l.Duration h</td>
+                        <td><span class="ts-badge ts-badge-neutral">@l.Mode</span></td>
+                        <td><span class="ts-badge @StatusBadge(l.Status)">@l.Status</span></td>
+                        <td>
+                            <div class="ts-action-group">
+                                @if (l.Status == "Planifié")
+                                {
+                                    <button class="ts-icon-btn" title="Démarrer" @onclick="() => StartLesson(l)">
+                                        <i class="bi bi-play-fill text-success"></i>
+                                    </button>
+                                }
+                                @if (l.Status is "Terminé" or "En cours")
+                                {
+                                    <button class="ts-icon-btn" title="Rapport"><i class="bi bi-file-earmark-text"></i></button>
+                                }
+                                <button class="ts-icon-btn" title="Présences"><i class="bi bi-person-check"></i></button>
+                                <button class="ts-icon-btn" title="Modifier" @onclick="()=>OpenEdit(l)"><i class="bi bi-pencil"></i></button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
 </div>
 
 <!-- Add/Edit lesson modal -->
@@ -139,7 +156,7 @@
             </div>
             <div class="ts-modal-footer">
                 <button class="btn btn-outline-secondary" @onclick="CloseModal">Annuler</button>
-                <button class="btn btn-primary" @onclick="SaveLesson">Enregistrer</button>
+                <button class="btn btn-primary" @onclick="async () => await SaveLesson()">Enregistrer</button>
             </div>
         </div>
     </div>
@@ -148,6 +165,8 @@
 @code {
     private string _search = "", _filterStatus = "", _filterMode = "";
     private bool _showModal;
+    private bool _loading = true;
+    private string _error = "";
     private LessonVM? _editingLesson;
     private LessonForm _lf = new();
 
@@ -161,10 +180,36 @@
     private IEnumerable<LessonVM> FilteredLessons => _lessons
         .Where(l => string.IsNullOrEmpty(_search) ||
             l.StudentName.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+            l.Title.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
             l.Subject.Contains(_search, StringComparison.OrdinalIgnoreCase))
         .Where(l => string.IsNullOrEmpty(_filterStatus) || l.Status == _filterStatus)
         .Where(l => string.IsNullOrEmpty(_filterMode) || l.Mode == _filterMode)
         .OrderByDescending(l => l.Date);
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var dtos = await LessonSvc.GetLessonsAsync();
+            if (dtos.Count > 0)
+                _lessons = dtos.Select(MapFromDto).ToList();
+        }
+        catch { /* keep mock fallback */ }
+        finally { _loading = false; }
+    }
+
+    private static LessonVM MapFromDto(LessonDto d) => new()
+    {
+        ApiId      = d.Id,
+        Title      = d.Title,
+        Subject    = d.Subject ?? "",
+        Date       = d.StartTime.ToLocalTime(),
+        EndTime    = d.EndTime.ToLocalTime().ToString("HH:mm"),
+        Duration   = Math.Round((d.EndTime - d.StartTime).TotalHours, 1),
+        Mode       = LessonService.ModeToDisplay(d.Mode),
+        Status     = LessonService.DeriveStatus(d.StartTime, d.EndTime),
+        AvatarColor = "#7c3aed"
+    };
 
     private void OpenAdd() { _editingLesson = null; _lf = new(); _showModal = true; }
     private void OpenEdit(LessonVM l)
@@ -176,19 +221,66 @@
     }
     private void CloseModal() => _showModal = false;
 
-    private void SaveLesson()
+    private async Task SaveLesson()
     {
-        if (string.IsNullOrWhiteSpace(_lf.Student)) return;
+        if (string.IsNullOrWhiteSpace(_lf.Title)) return;
         var start = _lf.Date.Date.Add(_lf.StartTime.ToTimeSpan());
-        var end = start.AddHours(_lf.Duration);
+        var end   = start.AddHours(_lf.Duration);
+
         if (_editingLesson == null)
         {
-            _lessons.Add(new LessonVM { Title=_lf.Title, StudentName=_lf.Student, Subject=_lf.Subject,
-                Date=start, EndTime=end.ToString("HH:mm"), Duration=_lf.Duration,
-                Mode=_lf.Mode, Status="Planifié", AvatarColor="#7c3aed",
-                StudentInitials=string.Join("", _lf.Student.Split(' ').Take(2).Select(x=>x[0])) });
+            var dto = await LessonSvc.CreateLessonAsync(
+                _lf.Title, _lf.Description, _lf.Subject, start, end, _lf.Mode);
+            if (dto != null)
+            {
+                _lessons.Add(MapFromDto(dto));
+            }
+            else
+            {
+                _lessons.Add(new LessonVM
+                {
+                    Title          = _lf.Title,
+                    StudentName    = _lf.Student,
+                    Subject        = _lf.Subject,
+                    Date           = start,
+                    EndTime        = end.ToString("HH:mm"),
+                    Duration       = _lf.Duration,
+                    Mode           = _lf.Mode,
+                    Status         = "Planifié",
+                    AvatarColor    = "#7c3aed",
+                    StudentInitials = string.Join("",
+                        _lf.Student.Split(' ').Take(2).Select(x => x.Length > 0 ? x[0] : ' ')).Trim()
+                });
+            }
+        }
+        else if (_editingLesson.ApiId.HasValue)
+        {
+            var dto = await LessonSvc.UpdateLessonAsync(
+                _editingLesson.ApiId.Value,
+                _lf.Title, _lf.Description, _lf.Subject, start, end, _lf.Mode);
+            if (dto != null)
+            {
+                var updated = MapFromDto(dto);
+                var idx = _lessons.IndexOf(_editingLesson);
+                if (idx >= 0) _lessons[idx] = updated;
+            }
+            else
+            {
+                _editingLesson.Title   = _lf.Title;
+                _editingLesson.Subject = _lf.Subject;
+                _editingLesson.Date    = start;
+                _editingLesson.EndTime = end.ToString("HH:mm");
+                _editingLesson.Duration = _lf.Duration;
+                _editingLesson.Mode    = _lf.Mode;
+            }
         }
         _showModal = false;
+    }
+
+    private void StartLesson(LessonVM lesson)
+    {
+        lesson.Status = "En cours";
+        Navigation.NavigateTo($"/tutor/classroom/{lesson.Id}");
     }
 
     private class LessonForm
@@ -204,14 +296,9 @@
         public string Description { get; set; } = "";
     }
 
-    private void StartLesson(LessonVM lesson)
-    {
-        lesson.Status = "En cours";
-        Navigation.NavigateTo($"/tutor/classroom/{lesson.Id}");
-    }
-
     private class LessonVM
     {
+        public Guid? ApiId { get; set; }
         public string Id { get; set; } = Guid.NewGuid().ToString("N")[..8];
         public string Title { get; set; } = "";
         public string StudentName { get; set; } = "";
@@ -225,7 +312,7 @@
         public string AvatarColor { get; set; } = "#7c3aed";
     }
 
-    private readonly List<LessonVM> _lessons =
+    private List<LessonVM> _lessons =
     [
         new(){ Title="Cours Maths – Révisions brevet", StudentName="Emma Johnson", StudentInitials="EJ",
             Subject="Mathématiques", Date=DateTime.Today.AddHours(10), EndTime="11:00",

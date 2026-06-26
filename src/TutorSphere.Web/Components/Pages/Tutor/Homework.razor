@@ -2,6 +2,7 @@
 @layout TutorLayout
 @rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
+@inject HomeworkService HomeworkSvc
 
 <PageTitle>Devoirs – TutorSphere</PageTitle>
 
@@ -33,6 +34,21 @@
 </div>
 
 <!-- Homework cards -->
+@if (_loading)
+{
+    <div class="ts-loading-state">
+        <div class="spinner-border text-primary" role="status"></div>
+        <span class="ms-3 text-muted">Chargement…</span>
+    </div>
+}
+else if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-warning">
+        <i class="bi bi-exclamation-triangle me-2"></i>@_error
+    </div>
+}
+else
+{
 <div class="homework-grid">
     @foreach (var hw in FilteredHomework)
     {
@@ -73,13 +89,14 @@
                     </button>
                 }
                 <button class="ts-icon-btn ts-icon-btn--danger" title="Supprimer"
-                        @onclick="()=>_homeworks.Remove(hw)">
+                        @onclick="async () => await DeleteHomework(hw)">
                     <i class="bi bi-trash"></i>
                 </button>
             </div>
         </div>
     }
 </div>
+}
 
 <!-- Add/Edit modal -->
 @if (_showModal)
@@ -119,7 +136,7 @@
             </div>
             <div class="ts-modal-footer">
                 <button class="btn btn-outline-secondary" @onclick="CloseModal">Annuler</button>
-                <button class="btn btn-primary" @onclick="SaveHomework">Enregistrer</button>
+                <button class="btn btn-primary" @onclick="async () => await SaveHomework()">Enregistrer</button>
             </div>
         </div>
     </div>
@@ -163,6 +180,8 @@
 @code {
     private string _search = "", _filterStatus = "", _filterSubject = "";
     private bool _showModal;
+    private bool _loading = true;
+    private string _error = "";
     private HomeworkVM? _editing, _grading;
     private HomeworkForm _hf = new();
 
@@ -178,6 +197,18 @@
         .Where(h => string.IsNullOrEmpty(_filterSubject) || h.Subject == _filterSubject)
         .OrderBy(h => h.DueDate);
 
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // The API requires a studentId; no "list all homework for tutor" endpoint exists yet.
+            // Mock data is kept as fallback until student management is integrated.
+            await Task.CompletedTask;
+        }
+        catch { /* keep mock fallback */ }
+        finally { _loading = false; }
+    }
+
     private void OpenAdd() { _editing = null; _hf = new() { DueDate=DateTime.Today.AddDays(7) }; _showModal=true; }
     private void OpenEdit(HomeworkVM h) { _editing = h; _hf = new HomeworkForm { Title=h.Title, Subject=h.Subject, DueDate=h.DueDate, Description=h.Description, Students=[..h.Students] }; _showModal=true; }
     private void OpenGrade(HomeworkVM h) => _grading = h;
@@ -191,17 +222,45 @@
         else hw.Grades.Add(new GradeItem { Student = student, Score = score });
     }
 
-    private void SaveHomework()
+    private async Task SaveHomework()
     {
         if (string.IsNullOrWhiteSpace(_hf.Title)) return;
         if (_editing == null)
         {
-            _homeworks.Add(new HomeworkVM { Title=_hf.Title, Subject=_hf.Subject,
-                DueDate=_hf.DueDate, Description=_hf.Description, Students=[.._hf.Students],
-                Status=_hf.DueDate < DateTime.Today ? "En retard" : "À rendre" });
+            HomeworkVM newHw;
+            // Attempt API create if we have a valid student context in the future.
+            // For now create locally since we need a real StudentId.
+            newHw = new HomeworkVM
+            {
+                Title       = _hf.Title,
+                Subject     = _hf.Subject,
+                DueDate     = _hf.DueDate,
+                Description = _hf.Description,
+                Students    = [.._hf.Students],
+                Status      = _hf.DueDate < DateTime.Today ? "En retard" : "À rendre"
+            };
+            _homeworks.Add(newHw);
         }
-        else { _editing.Title=_hf.Title; _editing.Subject=_hf.Subject; _editing.DueDate=_hf.DueDate; _editing.Description=_hf.Description; }
+        else
+        {
+            if (_editing.ApiId.HasValue)
+            {
+                var req = new UpdateHomeworkRequest(_hf.Title, _hf.Description, _hf.DueDate);
+                await HomeworkSvc.UpdateHomeworkAsync(_editing.ApiId.Value, req);
+            }
+            _editing.Title       = _hf.Title;
+            _editing.Subject     = _hf.Subject;
+            _editing.DueDate     = _hf.DueDate;
+            _editing.Description = _hf.Description;
+        }
         _showModal = false;
+    }
+
+    private async Task DeleteHomework(HomeworkVM hw)
+    {
+        if (hw.ApiId.HasValue)
+            await HomeworkSvc.DeleteHomeworkAsync(hw.ApiId.Value);
+        _homeworks.Remove(hw);
     }
 
     private class HomeworkForm
@@ -219,6 +278,7 @@
     }
     private class HomeworkVM
     {
+        public Guid? ApiId { get; set; }
         public string Title { get; set; } = "";
         public string Subject { get; set; } = "";
         public DateTime DueDate { get; set; }
@@ -229,7 +289,7 @@
         public bool IsOverdue => Status == "En retard" || (DueDate < DateTime.Today && Status != "Corrigé");
     }
 
-    private readonly List<HomeworkVM> _homeworks =
+    private List<HomeworkVM> _homeworks =
     [
         new(){ Title="Exercices suites numériques", Subject="Mathématiques", DueDate=DateTime.Today.AddDays(3),
             Description="Faire les exercices 5 à 12 du chapitre 4 (pages 42-44).",

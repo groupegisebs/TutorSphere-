@@ -2,6 +2,7 @@
 @layout TutorLayout
 @rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
+@inject ReportService ReportSvc
 
 <PageTitle>Rapports – TutorSphere</PageTitle>
 
@@ -100,8 +101,8 @@
         {
             <div class="d-flex gap-2 mt-4">
                 <button class="btn btn-outline-secondary" @onclick="()=>_showForm=false">Annuler</button>
-                <button class="btn btn-outline-primary" @onclick="SaveDraft">Sauvegarder brouillon</button>
-                <button class="btn btn-primary ms-auto" @onclick="SendReport">
+                <button class="btn btn-outline-primary" @onclick="async () => await SaveDraft()">Sauvegarder brouillon</button>
+                <button class="btn btn-primary ms-auto" @onclick="async () => await SendReport()">
                     <i class="bi bi-send me-1"></i>Envoyer aux parents
                 </button>
             </div>
@@ -135,48 +136,79 @@ else
     </div>
 
     <div class="ts-table-card">
-        <table class="table ts-table">
-            <thead>
-                <tr><th>Date</th><th>Élève</th><th>Matière</th><th>Statut</th><th>Actions</th></tr>
-            </thead>
-            <tbody>
-                @foreach (var r in FilteredReports)
-                {
-                    <tr>
-                        <td>@r.SessionDate.ToString("dd/MM/yyyy")</td>
-                        <td>
-                            <div class="ts-cell-user">
-                                <div class="ts-avatar ts-avatar-sm" style="background:@r.AvatarColor">@r.Initials</div>
-                                @r.Student
-                            </div>
-                        </td>
-                        <td>@r.Subject</td>
-                        <td><span class="ts-badge @(r.Sent ? "ts-badge-success" : "ts-badge-muted")">
-                            @(r.Sent ? "Envoyé" : "Brouillon")</span></td>
-                        <td>
-                            <div class="ts-action-group">
-                                <button class="ts-icon-btn" title="Voir" @onclick="()=>ViewReport(r)"><i class="bi bi-eye"></i></button>
-                                @if (!r.Sent)
-                                {
-                                    <button class="ts-icon-btn" title="Envoyer" @onclick="()=>r.Sent=true">
-                                        <i class="bi bi-send text-primary"></i>
-                                    </button>
-                                }
-                                <button class="ts-icon-btn" title="PDF"><i class="bi bi-download"></i></button>
-                            </div>
-                        </td>
-                    </tr>
-                }
-            </tbody>
-        </table>
+        @if (_loading)
+        {
+            <div class="ts-loading-state">
+                <div class="spinner-border text-primary" role="status"></div>
+                <span class="ms-3 text-muted">Chargement…</span>
+            </div>
+        }
+        else if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-warning m-3">
+                <i class="bi bi-exclamation-triangle me-2"></i>@_error
+            </div>
+        }
+        else
+        {
+            <table class="table ts-table">
+                <thead>
+                    <tr><th>Date</th><th>Élève</th><th>Matière</th><th>Statut</th><th>Actions</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in FilteredReports)
+                    {
+                        <tr>
+                            <td>@r.SessionDate.ToString("dd/MM/yyyy")</td>
+                            <td>
+                                <div class="ts-cell-user">
+                                    <div class="ts-avatar ts-avatar-sm" style="background:@r.AvatarColor">@r.Initials</div>
+                                    @r.Student
+                                </div>
+                            </td>
+                            <td>@r.Subject</td>
+                            <td><span class="ts-badge @(r.Sent ? "ts-badge-success" : "ts-badge-muted")">
+                                @(r.Sent ? "Envoyé" : "Brouillon")</span></td>
+                            <td>
+                                <div class="ts-action-group">
+                                    <button class="ts-icon-btn" title="Voir" @onclick="()=>ViewReport(r)"><i class="bi bi-eye"></i></button>
+                                    @if (!r.Sent)
+                                    {
+                                        <button class="ts-icon-btn" title="Envoyer"
+                                                @onclick="async () => await SendToParent(r)">
+                                            <i class="bi bi-send text-primary"></i>
+                                        </button>
+                                    }
+                                    <button class="ts-icon-btn" title="PDF"><i class="bi bi-download"></i></button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
     </div>
 }
 
 @code {
     private string _search = "", _filterSent = "";
     private bool _showForm;
+    private bool _loading = true;
+    private string _error = "";
     private ReportVM? _viewReport;
     private ReportForm _rf = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // No "list all reports for tutor" endpoint exists yet — keep mock data.
+            // When lesson/student IDs are available, use ReportSvc.GetReportsByStudentAsync(id).
+            await Task.CompletedTask;
+        }
+        catch { /* keep mock fallback */ }
+        finally { _loading = false; }
+    }
 
     private void NewReport() { _rf = new(); _viewReport = null; _showForm = true; }
 
@@ -192,18 +224,34 @@ else
         _showForm = true;
     }
 
-    private void SaveDraft()
+    private async Task SaveDraft()
     {
         if (string.IsNullOrWhiteSpace(_rf.Student)) return;
         _reports.Insert(0, CreateVM(false));
         _showForm = false;
+        await Task.CompletedTask;
     }
 
-    private void SendReport()
+    private async Task SendReport()
     {
         if (string.IsNullOrWhiteSpace(_rf.Student)) return;
         _reports.Insert(0, CreateVM(true));
         _showForm = false;
+        await Task.CompletedTask;
+    }
+
+    private async Task SendToParent(ReportVM r)
+    {
+        if (r.ApiId.HasValue)
+        {
+            var dto = await ReportSvc.SendToParentAsync(r.ApiId.Value);
+            if (dto != null) r.Sent = dto.SentToParent;
+            else r.Sent = true;
+        }
+        else
+        {
+            r.Sent = true;
+        }
     }
 
     private ReportVM CreateVM(bool sent) => new()
@@ -244,6 +292,7 @@ else
 
     private class ReportVM
     {
+        public Guid? ApiId { get; set; }
         public string Student { get; set; } = "";
         public string Initials { get; set; } = "";
         public string AvatarColor { get; set; } = "#7c3aed";
@@ -258,7 +307,7 @@ else
         public bool Sent { get; set; }
     }
 
-    private readonly List<ReportVM> _reports =
+    private List<ReportVM> _reports =
     [
         new(){ Student="Emma Johnson", Initials="EJ", AvatarColor="#7c3aed",
             Subject="Mathématiques", SessionDate=DateTime.Today.AddDays(-2),

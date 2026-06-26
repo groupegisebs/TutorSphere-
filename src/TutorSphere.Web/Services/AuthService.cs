@@ -25,6 +25,7 @@ public sealed class AuthService
     public string? UserEmail => _authProvider.UserEmail;
     public string? UserName => _authProvider.UserName;
     public string? PrimaryRole => _authProvider.PrimaryRole;
+    public string? Token => _authProvider.Token;
 
     /// <summary>Calls the API login endpoint and caches the result.</summary>
     public async Task<LoginResult> LoginAsync(string email, string password)
@@ -105,8 +106,12 @@ public sealed class CustomAuthenticationStateProvider : AuthenticationStateProvi
     public override Task<AuthenticationState> GetAuthenticationStateAsync()
         => Task.FromResult(new AuthenticationState(_user));
 
+    internal string? Token { get; private set; }
+
     internal void MarkAuthenticated(AuthResponse auth)
     {
+        Token = auth.Token;
+
         var claims = new List<Claim>
         {
             new(ClaimTypes.Email, auth.Email),
@@ -125,6 +130,7 @@ public sealed class CustomAuthenticationStateProvider : AuthenticationStateProvi
 
     internal void MarkLoggedOut()
     {
+        Token = null;
         _user = new ClaimsPrincipal(new ClaimsIdentity());
         NotifyAuthenticationStateChanged(GetAuthenticationStateAsync());
     }

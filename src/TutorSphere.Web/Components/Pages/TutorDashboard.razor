@@ -1,6 +1,9 @@
 @page "/tutor/dashboard"
 @layout TutorLayout
+@rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
+@inject LessonService LessonSvc
+@inject AuthService Auth
 
 <PageTitle>@L["PageTitle_TutorDashboard"]</PageTitle>
 
@@ -72,20 +75,30 @@
                 <h2>@L["Stat_UpcomingLessons"]</h2>
                 <a href="tutor/calendar" class="btn btn-sm btn-link">@L["Button_ViewAll"]</a>
             </div>
-            <ul class="lesson-list">
-                @foreach (var lesson in UpcomingLessons)
-                {
-                    <li class="lesson-list-item">
-                        <span class="lesson-time-left">@lesson.Time</span>
-                        <div class="lesson-avatar">@lesson.Initials</div>
-                        <div class="lesson-info">
-                            <strong>@lesson.Student</strong>
-                            <span>@lesson.Subject</span>
-                        </div>
-                        <span class="lesson-mode-badge lesson-mode-badge--@lesson.ModeClass">@lesson.Mode</span>
-                    </li>
-                }
-            </ul>
+            @if (_lessonsLoading)
+            {
+                <div class="ts-loading-state" style="padding: 1.5rem;">
+                    <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                    <span class="ms-2 text-muted">Chargement…</span>
+                </div>
+            }
+            else
+            {
+                <ul class="lesson-list">
+                    @foreach (var lesson in UpcomingLessons)
+                    {
+                        <li class="lesson-list-item">
+                            <span class="lesson-time-left">@lesson.Time</span>
+                            <div class="lesson-avatar">@lesson.Initials</div>
+                            <div class="lesson-info">
+                                <strong>@lesson.Student</strong>
+                                <span>@lesson.Subject</span>
+                            </div>
+                            <span class="lesson-mode-badge lesson-mode-badge--@lesson.ModeClass">@lesson.Mode</span>
+                        </li>
+                    }
+                </ul>
+            }
         </div>
     </div>
 </div>
@@ -155,12 +168,14 @@
     private record LessonItem(string Student, string Subject, string Time, string Initials, string Mode, string ModeClass);
     private record ActivityItem(string Title, string Description, string Time, string Icon, string IconVariant);
 
+    private bool _lessonsLoading = true;
+
     private static readonly (double X, double Y)[] ChartPoints =
     [
         (50, 90), (100, 62), (150, 45), (200, 52), (250, 28), (300, 35), (360, 16)
     ];
 
-    private readonly List<LessonItem> UpcomingLessons =
+    private List<LessonItem> UpcomingLessons =
     [
         new("Emma Johnson", "Mathématiques", "10:00", "EJ", "En ligne", "online"),
         new("Liam Brown", "Physique", "14:00", "LB", "En ligne", "online"),
@@ -173,4 +188,36 @@
         new("Cours terminé", "Cours de Mathématiques avec Emma Johnson", "il y a 4h", "bi-calendar-check", "info"),
         new("Rapport envoyé", "Rapport de séance envoyé à Liam Brown", "il y a 6h", "bi-send", "warning"),
     ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var dtos = await LessonSvc.GetLessonsAsync();
+            var upcoming = dtos
+                .Where(d => d.StartTime >= DateTime.UtcNow)
+                .OrderBy(d => d.StartTime)
+                .Take(5)
+                .ToList();
+
+            if (upcoming.Count > 0)
+            {
+                UpcomingLessons = upcoming.Select(d =>
+                {
+                    var local    = d.StartTime.ToLocalTime();
+                    var mode     = LessonService.ModeToDisplay(d.Mode);
+                    var modeClass = d.Mode == "InPerson" ? "inperson" : "online";
+                    return new LessonItem(
+                        d.Title,
+                        d.Subject ?? "",
+                        local.ToString("HH:mm"),
+                        d.Title.Length > 0 ? d.Title[..1].ToUpperInvariant() : "?",
+                        mode,
+                        modeClass);
+                }).ToList();
+            }
+        }
+        catch { /* keep mock fallback */ }
+        finally { _lessonsLoading = false; }
+    }
 }
