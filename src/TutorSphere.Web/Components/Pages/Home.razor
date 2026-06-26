@@ -2,7 +2,6 @@
 @layout PublicLayout
 @rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
-@implements IAsyncDisposable
 @inject IJSRuntime JS
 
 <PageTitle>@L["PageTitle_Home"]</PageTitle>
@@ -27,16 +26,7 @@
 @code {
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender)
-        {
-            try { await JS.InvokeVoidAsync("landingInit"); }
-            catch { /* prerender */ }
-        }
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        try { await JS.InvokeVoidAsync("eval", "window.__landingInitialized = false"); }
-        catch { /* ignore */ }
+        try { await JS.InvokeVoidAsync("landingInit"); }
+        catch { /* prerender / no circuit */ }
     }
 }
