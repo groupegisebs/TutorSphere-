@@ -1,8 +1,10 @@
 @page "/login/parent"
 @layout LoginLayout
 @rendermode InteractiveServer
+@using Microsoft.Extensions.Localization
 @inject NavigationManager Navigation
 @inject AuthService AuthSvc
+@inject IStringLocalizer<SharedResources> L
 
 <PageTitle>Espace Parent — TutorSphere</PageTitle>
 
@@ -75,12 +77,10 @@
     <div class="login-form-panel">
         <div class="login-form-inner">
 
-            <a href="/login" class="login-back-link">
-                <i class="bi bi-arrow-left me-1"></i>Retour
-            </a>
+            <a href="/login" class="login-back-link">@L["Login_Back"]</a>
 
-            <h1>Espace Parent</h1>
-            <p class="login-subtitle">Connectez-vous pour suivre la scolarité de vos enfants</p>
+            <h1>@L["Login_Parent_Space"]</h1>
+            <p class="login-subtitle">@L["Login_Parent_Subtitle"]</p>
 
             @if (!string.IsNullOrEmpty(_errorMessage))
             {
@@ -91,7 +91,7 @@
 
             <form class="login-form" @onsubmit="LoginAsync" @onsubmit:preventDefault="true">
                 <div class="mb-3">
-                    <label class="form-label" for="login-email">Adresse e-mail</label>
+                    <label class="form-label" for="login-email">@L["Login_Email"]</label>
                     <div class="form-field-icon">
                         <i class="bi bi-envelope field-icon" aria-hidden="true"></i>
                         <input type="email" id="login-email" class="form-control"
@@ -101,7 +101,7 @@
                 </div>
 
                 <div class="mb-3">
-                    <label class="form-label" for="login-password">Mot de passe</label>
+                    <label class="form-label" for="login-password">@L["Login_Password"]</label>
                     <div class="form-field-icon">
                         <i class="bi bi-lock field-icon" aria-hidden="true"></i>
                         <input type="@(_showPassword ? "text" : "password")" id="login-password"
@@ -109,7 +109,7 @@
                                @bind="_password" @bind:event="oninput"
                                style="padding-right: 2.5rem;" />
                         <button type="button" class="password-toggle" @onclick="() => _showPassword = !_showPassword"
-                                aria-label="Afficher/masquer le mot de passe">
+                                aria-label="@L["Label_TogglePassword"]">
                             <i class="bi @(_showPassword ? "bi-eye-slash" : "bi-eye")" aria-hidden="true"></i>
                         </button>
                     </div>
@@ -118,22 +118,26 @@
                 <div class="login-options mb-4">
                     <div class="form-check">
                         <input class="form-check-input" type="checkbox" id="login-remember" @bind="_rememberMe" />
-                        <label class="form-check-label" for="login-remember">Se souvenir de moi</label>
+                        <label class="form-check-label" for="login-remember">@L["Login_RememberMe"]</label>
                     </div>
-                    <a href="#" class="login-forgot">Mot de passe oublié ?</a>
+                    <a href="#" class="login-forgot">@L["Login_ForgotPassword"]</a>
                 </div>
 
                 <button type="submit" class="btn btn-primary btn-lg w-100 mb-4 login-submit-btn" disabled="@_isLoading">
                     @if (_isLoading)
                     {
                         <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                        @L["Login_Loading"]
                     }
-                    Se connecter
+                    else
+                    {
+                        @L["Login_Submit"]
+                    }
                 </button>
             </form>
 
             <p class="login-footer text-center">
-                Pas encore de compte ? <a href="/register">Créer un compte</a>
+                @L["Login_NoAccount"] <a href="/register">@L["Login_Register"]</a>
             </p>
         </div>
     </div>
@@ -153,7 +157,7 @@
 
         if (string.IsNullOrWhiteSpace(_email) || string.IsNullOrWhiteSpace(_password))
         {
-            _errorMessage = "Veuillez remplir tous les champs.";
+            _errorMessage = L["Error_FillAllFields"];
             return;
         }
 
@@ -166,14 +170,14 @@
                 var role = AuthSvc.PrimaryRole ?? "";
                 if (role is not ("Parent" or "SuperAdmin" or "PlatformAdmin"))
                 {
-                    _errorMessage = "Ce compte n'est pas un compte parent. Utilisez la page de connexion appropriée.";
+                    _errorMessage = L["Login_Parent_WrongRole"];
                     AuthSvc.Logout();
                     return;
                 }
                 Navigation.NavigateTo(result.RedirectTo ?? "/parent");
                 return;
             }
-            _errorMessage = result.Error ?? "Identifiants invalides.";
+            _errorMessage = result.Error ?? L["Login_InvalidCredentials"];
         }
         finally
         {
