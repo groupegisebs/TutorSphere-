@@ -1,4 +1,278 @@
 @page "/tutor/reports"
 @layout TutorLayout
+@rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
-<ModuleSkeletonPage PageTitleKey="PageTitle_Reports" TitleKey="Nav_Reports" Icon="bi-file-earmark-bar-graph" EmptyIcon="bi-graph-up" />
+
+<PageTitle>Rapports – TutorSphere</PageTitle>
+
+@if (_showForm)
+{
+    <!-- ── Write/View Report form ── -->
+    <div class="ts-page-header">
+        <div>
+            <h1><i class="bi bi-file-earmark-text me-2"></i>@(_viewReport != null ? "Rapport de séance" : "Nouveau rapport")</h1>
+        </div>
+        <button class="btn btn-outline-secondary" @onclick="() => { _showForm=false; _viewReport=null; }">
+            <i class="bi bi-arrow-left me-1"></i>Retour
+        </button>
+    </div>
+    <div class="report-form-card">
+        <div class="row g-4">
+            <div class="col-md-6">
+                <label class="form-label">Élève *</label>
+                <select class="form-select" @bind="_rf.Student" disabled="@(_viewReport!=null)">
+                    <option value="">— Choisir —</option>
+                    <option>Emma Johnson</option><option>Liam Brown</option>
+                    <option>Sophia Davis</option><option>Olivia Martinez</option>
+                </select>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Matière</label>
+                <input class="form-control" @bind="_rf.Subject" disabled="@(_viewReport!=null)" />
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Date de la séance</label>
+                <input type="date" class="form-control" @bind="_rf.SessionDate" disabled="@(_viewReport!=null)" />
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Durée (h)</label>
+                <input type="number" step="0.5" class="form-control" @bind="_rf.Duration" disabled="@(_viewReport!=null)" />
+            </div>
+        </div>
+
+        <div class="report-section-title mt-4">Évaluation de la séance</div>
+        <div class="report-rating-grid">
+            @foreach (var item in _rf.Ratings)
+            {
+                <div class="report-rating-item">
+                    <label>@item.Label</label>
+                    <div class="report-stars">
+                        @for (int i = 1; i <= 5; i++)
+                        {
+                            var score = i;
+                            <button type="button"
+                                    class="report-star @(item.Score >= score ? "active" : "")"
+                                    disabled="@(_viewReport!=null)"
+                                    @onclick="() => item.Score = score">
+                                <i class="bi bi-star-fill"></i>
+                            </button>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+
+        <div class="report-section-title mt-4">Contenu de la séance</div>
+        <div class="row g-3">
+            <div class="col-12">
+                <label class="form-label">Travail effectué *</label>
+                <textarea class="form-control" rows="3" @bind="_rf.WorkDone"
+                    disabled="@(_viewReport!=null)"
+                    placeholder="Décrivez les exercices, chapitres, notions abordées…"></textarea>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Points forts</label>
+                <textarea class="form-control" rows="2" @bind="_rf.Strengths"
+                    disabled="@(_viewReport!=null)"
+                    placeholder="Ce que l'élève maîtrise bien…"></textarea>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Points à améliorer</label>
+                <textarea class="form-control" rows="2" @bind="_rf.Improvements"
+                    disabled="@(_viewReport!=null)"
+                    placeholder="Difficultés rencontrées…"></textarea>
+            </div>
+            <div class="col-12">
+                <label class="form-label">Recommandations & objectifs</label>
+                <textarea class="form-control" rows="2" @bind="_rf.Recommendations"
+                    disabled="@(_viewReport!=null)"
+                    placeholder="Conseils pour la prochaine séance, travail à faire…"></textarea>
+            </div>
+            <div class="col-12">
+                <label class="form-label">Devoir à rendre</label>
+                <input class="form-control" @bind="_rf.Homework"
+                    disabled="@(_viewReport!=null)"
+                    placeholder="Ex: Exercices 5 à 10 page 42" />
+            </div>
+        </div>
+
+        @if (_viewReport == null)
+        {
+            <div class="d-flex gap-2 mt-4">
+                <button class="btn btn-outline-secondary" @onclick="()=>_showForm=false">Annuler</button>
+                <button class="btn btn-outline-primary" @onclick="SaveDraft">Sauvegarder brouillon</button>
+                <button class="btn btn-primary ms-auto" @onclick="SendReport">
+                    <i class="bi bi-send me-1"></i>Envoyer aux parents
+                </button>
+            </div>
+        }
+    </div>
+}
+else
+{
+    <!-- ── Reports list ── -->
+    <div class="ts-page-header">
+        <div>
+            <h1><i class="bi bi-file-earmark-bar-graph me-2"></i>Rapports de séance</h1>
+            <p class="ts-page-subtitle">@_reports.Count rapport(s) au total</p>
+        </div>
+        <button class="btn btn-primary" @onclick="NewReport">
+            <i class="bi bi-plus-lg me-1"></i>Rédiger un rapport
+        </button>
+    </div>
+
+    <div class="ts-toolbar">
+        <div class="ts-search-box">
+            <i class="bi bi-search ts-search-icon"></i>
+            <input class="form-control" placeholder="Chercher un rapport…"
+                   @bind="_search" @bind:event="oninput" />
+        </div>
+        <select class="form-select w-auto" @bind="_filterSent">
+            <option value="">Tous</option>
+            <option value="sent">Envoyés</option>
+            <option value="draft">Brouillons</option>
+        </select>
+    </div>
+
+    <div class="ts-table-card">
+        <table class="table ts-table">
+            <thead>
+                <tr><th>Date</th><th>Élève</th><th>Matière</th><th>Statut</th><th>Actions</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var r in FilteredReports)
+                {
+                    <tr>
+                        <td>@r.SessionDate.ToString("dd/MM/yyyy")</td>
+                        <td>
+                            <div class="ts-cell-user">
+                                <div class="ts-avatar ts-avatar-sm" style="background:@r.AvatarColor">@r.Initials</div>
+                                @r.Student
+                            </div>
+                        </td>
+                        <td>@r.Subject</td>
+                        <td><span class="ts-badge @(r.Sent ? "ts-badge-success" : "ts-badge-muted")">
+                            @(r.Sent ? "Envoyé" : "Brouillon")</span></td>
+                        <td>
+                            <div class="ts-action-group">
+                                <button class="ts-icon-btn" title="Voir" @onclick="()=>ViewReport(r)"><i class="bi bi-eye"></i></button>
+                                @if (!r.Sent)
+                                {
+                                    <button class="ts-icon-btn" title="Envoyer" @onclick="()=>r.Sent=true">
+                                        <i class="bi bi-send text-primary"></i>
+                                    </button>
+                                }
+                                <button class="ts-icon-btn" title="PDF"><i class="bi bi-download"></i></button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private string _search = "", _filterSent = "";
+    private bool _showForm;
+    private ReportVM? _viewReport;
+    private ReportForm _rf = new();
+
+    private void NewReport() { _rf = new(); _viewReport = null; _showForm = true; }
+
+    private void ViewReport(ReportVM r)
+    {
+        _viewReport = r;
+        _rf = new ReportForm
+        {
+            Student = r.Student, Subject = r.Subject, SessionDate = r.SessionDate,
+            Duration = r.Duration, WorkDone = r.WorkDone, Strengths = r.Strengths,
+            Improvements = r.Improvements, Recommendations = r.Recommendations, Homework = r.Homework
+        };
+        _showForm = true;
+    }
+
+    private void SaveDraft()
+    {
+        if (string.IsNullOrWhiteSpace(_rf.Student)) return;
+        _reports.Insert(0, CreateVM(false));
+        _showForm = false;
+    }
+
+    private void SendReport()
+    {
+        if (string.IsNullOrWhiteSpace(_rf.Student)) return;
+        _reports.Insert(0, CreateVM(true));
+        _showForm = false;
+    }
+
+    private ReportVM CreateVM(bool sent) => new()
+    {
+        Student = _rf.Student, Subject = _rf.Subject, SessionDate = _rf.SessionDate,
+        Duration = _rf.Duration, WorkDone = _rf.WorkDone, Strengths = _rf.Strengths,
+        Improvements = _rf.Improvements, Recommendations = _rf.Recommendations,
+        Homework = _rf.Homework, Sent = sent,
+        AvatarColor = "#7c3aed",
+        Initials = string.Join("", _rf.Student.Split(' ').Take(2).Select(x => x.Length > 0 ? x[0].ToString() : ""))
+    };
+
+    private IEnumerable<ReportVM> FilteredReports => _reports
+        .Where(r => string.IsNullOrEmpty(_search) ||
+            r.Student.Contains(_search, StringComparison.OrdinalIgnoreCase))
+        .Where(r => string.IsNullOrEmpty(_filterSent) ||
+            (_filterSent == "sent" && r.Sent) ||
+            (_filterSent == "draft" && !r.Sent));
+
+    private class ReportForm
+    {
+        public string Student { get; set; } = "";
+        public string Subject { get; set; } = "";
+        public DateTime SessionDate { get; set; } = DateTime.Today;
+        public double Duration { get; set; } = 1;
+        public string WorkDone { get; set; } = "";
+        public string Strengths { get; set; } = "";
+        public string Improvements { get; set; } = "";
+        public string Recommendations { get; set; } = "";
+        public string Homework { get; set; } = "";
+        public List<RatingItem> Ratings { get; set; } =
+        [
+            new("Participation"), new("Comportement"), new("Progrès"), new("Effort")
+        ];
+    }
+
+    private class RatingItem(string label) { public string Label { get; } = label; public int Score { get; set; } = 3; }
+
+    private class ReportVM
+    {
+        public string Student { get; set; } = "";
+        public string Initials { get; set; } = "";
+        public string AvatarColor { get; set; } = "#7c3aed";
+        public string Subject { get; set; } = "";
+        public DateTime SessionDate { get; set; }
+        public double Duration { get; set; }
+        public string WorkDone { get; set; } = "";
+        public string Strengths { get; set; } = "";
+        public string Improvements { get; set; } = "";
+        public string Recommendations { get; set; } = "";
+        public string Homework { get; set; } = "";
+        public bool Sent { get; set; }
+    }
+
+    private readonly List<ReportVM> _reports =
+    [
+        new(){ Student="Emma Johnson", Initials="EJ", AvatarColor="#7c3aed",
+            Subject="Mathématiques", SessionDate=DateTime.Today.AddDays(-2),
+            Duration=1, WorkDone="Révision des suites arithmétiques et géométriques.",
+            Strengths="Bonne compréhension des formules.", Improvements="Doit travailler les exercices pratiques.",
+            Recommendations="Faire les exercices 5 à 10 page 42.", Homework="Exercices 5–10 p.42", Sent=true },
+        new(){ Student="Liam Brown", Initials="LB", AvatarColor="#0ea5e9",
+            Subject="Physique", SessionDate=DateTime.Today.AddDays(-5),
+            Duration=1.5, WorkDone="Électricité : loi d'Ohm et circuits.",
+            Strengths="Méthodique dans les calculs.", Improvements="Difficultés avec les circuits mixtes.",
+            Recommendations="Revoir les schémas de circuits.", Homework="TD circuits p.55", Sent=true },
+        new(){ Student="Sophia Davis", Initials="SD", AvatarColor="#10b981",
+            Subject="Chimie", SessionDate=DateTime.Today.AddDays(-1),
+            Duration=1, WorkDone="Réactions acido-basiques.", Strengths="Excellent niveau général.",
+            Improvements="—", Recommendations="Préparer l'épreuve du bac.", Homework="Réviser chapitre 8", Sent=false },
+    ];
+}

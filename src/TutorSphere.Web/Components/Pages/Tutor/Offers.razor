@@ -1,4 +1,239 @@
 @page "/tutor/offers"
 @layout TutorLayout
+@rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
-<ModuleSkeletonPage PageTitleKey="PageTitle_Offers" TitleKey="Nav_Offers" Icon="bi-tags" EmptyIcon="bi-plus-circle" />
+
+<PageTitle>Mes Offres – TutorSphere</PageTitle>
+
+<div class="ts-page-header">
+    <div>
+        <h1><i class="bi bi-tags me-2"></i>Mes Offres</h1>
+        <p class="ts-page-subtitle">Gérez vos formules et tarifs</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="/tutor/offers/create" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-eye me-1"></i>Catalogue public
+        </a>
+        <button class="btn btn-primary" @onclick="OpenAdd">
+            <i class="bi bi-plus-lg me-1"></i>Nouvelle offre
+        </button>
+    </div>
+</div>
+
+<!-- Stats row -->
+<div class="row g-3 mb-4">
+    <div class="col-sm-6 col-lg-3">
+        <div class="ts-kpi-card"><span class="ts-kpi-val">@_offers.Count</span><span class="ts-kpi-label">Offres créées</span></div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+        <div class="ts-kpi-card"><span class="ts-kpi-val">@_offers.Count(o=>o.IsPublished)</span><span class="ts-kpi-label">Publiées</span></div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+        <div class="ts-kpi-card"><span class="ts-kpi-val">@_offers.Sum(o=>o.Subscribers)</span><span class="ts-kpi-label">Abonnés actifs</span></div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+        <div class="ts-kpi-card"><span class="ts-kpi-val">@_offers.Sum(o=>o.MonthlyRevenue) $</span><span class="ts-kpi-label">Revenus / mois</span></div>
+    </div>
+</div>
+
+<!-- Offers list -->
+<div class="offers-list">
+    @foreach (var offer in _offers)
+    {
+        <div class="offer-card @(offer.IsPublished ? "" : "offer-card--draft")">
+            <div class="offer-card-header">
+                <div>
+                    <h3 class="offer-card-title">@offer.Name</h3>
+                    <p class="offer-card-desc">@offer.Description</p>
+                </div>
+                <span class="ts-badge @(offer.IsPublished ? "ts-badge-success" : "ts-badge-muted")">
+                    @(offer.IsPublished ? "Publié" : "Brouillon")
+                </span>
+            </div>
+            <div class="offer-card-meta">
+                <div class="offer-meta-item"><i class="bi bi-currency-dollar"></i><strong>@offer.Price @offer.Currency</strong> / @offer.Period</div>
+                <div class="offer-meta-item"><i class="bi bi-calendar3"></i>@offer.SessionsPerMonth séances/mois</div>
+                <div class="offer-meta-item"><i class="bi bi-clock"></i>@offer.SessionDuration min</div>
+                <div class="offer-meta-item"><i class="bi bi-book"></i>@offer.Subject · @offer.Level</div>
+                <div class="offer-meta-item"><i class="bi @(offer.Mode=="En ligne"?"bi-camera-video":"bi-geo-alt")"></i>@offer.Mode</div>
+            </div>
+            @if (offer.Variants.Any())
+            {
+                <div class="offer-variants">
+                    @foreach (var v in offer.Variants)
+                    {
+                        <span class="offer-variant-chip">@v.Label — @v.Price $</span>
+                    }
+                </div>
+            }
+            <div class="offer-card-footer">
+                <div class="offer-card-stats">
+                    <span><i class="bi bi-people me-1"></i>@offer.Subscribers abonné(s)</span>
+                    <span><i class="bi bi-graph-up me-1"></i>@offer.MonthlyRevenue $ / mois</span>
+                </div>
+                <div class="ts-action-group">
+                    <button class="ts-icon-btn" title="Modifier" @onclick="() => OpenEdit(offer)"><i class="bi bi-pencil"></i></button>
+                    <button class="ts-icon-btn" title="@(offer.IsPublished?"Dépublier":"Publier")"
+                            @onclick="() => offer.IsPublished = !offer.IsPublished">
+                        <i class="bi @(offer.IsPublished?"bi-eye-slash":"bi-eye")"></i>
+                    </button>
+                    <button class="ts-icon-btn ts-icon-btn--danger" title="Supprimer"
+                            @onclick="() => _offers.Remove(offer)">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+<!-- Add/Edit Modal -->
+@if (_showModal)
+{
+    <div class="ts-modal-backdrop" @onclick="CloseModal">
+        <div class="ts-modal ts-modal-lg" @onclick:stopPropagation="true">
+            <div class="ts-modal-header">
+                <h2>@(_editing == null ? "Nouvelle offre" : "Modifier l'offre")</h2>
+                <button class="ts-modal-close" @onclick="CloseModal"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <div class="ts-modal-body">
+                <div class="row g-3">
+                    <div class="col-12"><label class="form-label">Nom de l'offre *</label>
+                        <input class="form-control" @bind="_mf.Name" placeholder="Ex: Cours de maths intensif" /></div>
+                    <div class="col-12"><label class="form-label">Description</label>
+                        <textarea class="form-control" rows="2" @bind="_mf.Description"></textarea></div>
+                    <div class="col-4"><label class="form-label">Prix *</label>
+                        <input type="number" class="form-control" @bind="_mf.Price" /></div>
+                    <div class="col-4"><label class="form-label">Devise</label>
+                        <select class="form-select" @bind="_mf.Currency">
+                            <option>CAD</option><option>EUR</option><option>USD</option>
+                        </select></div>
+                    <div class="col-4"><label class="form-label">Période</label>
+                        <select class="form-select" @bind="_mf.Period">
+                            <option>mois</option><option>trimestre</option><option>semestre</option><option>an</option>
+                        </select></div>
+                    <div class="col-4"><label class="form-label">Séances / mois</label>
+                        <input type="number" class="form-control" @bind="_mf.SessionsPerMonth" /></div>
+                    <div class="col-4"><label class="form-label">Durée (min)</label>
+                        <input type="number" class="form-control" @bind="_mf.SessionDuration" /></div>
+                    <div class="col-4"><label class="form-label">Mode</label>
+                        <select class="form-select" @bind="_mf.Mode">
+                            <option>En ligne</option><option>Présentiel</option><option>Hybride</option>
+                        </select></div>
+                    <div class="col-6"><label class="form-label">Matière</label>
+                        <input class="form-control" @bind="_mf.Subject" placeholder="Mathématiques" /></div>
+                    <div class="col-6"><label class="form-label">Niveau</label>
+                        <select class="form-select" @bind="_mf.Level">
+                            <option>Tous niveaux</option><option>Primaire</option>
+                            <option>Collège</option><option>Lycée</option><option>Université</option>
+                        </select></div>
+                    <div class="col-12"><label class="form-label">Politique d'annulation</label>
+                        <textarea class="form-control" rows="2" @bind="_mf.CancellationPolicy"
+                            placeholder="Ex: Annulation gratuite 24h avant la séance"></textarea></div>
+                </div>
+                @if (!string.IsNullOrEmpty(_modalError))
+                {
+                    <div class="alert alert-danger mt-3">@_modalError</div>
+                }
+            </div>
+            <div class="ts-modal-footer">
+                <button class="btn btn-outline-secondary" @onclick="CloseModal">Annuler</button>
+                <button class="btn btn-primary" @onclick="SaveOffer">
+                    @(_editing == null ? "Créer l'offre" : "Enregistrer")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _showModal;
+    private OfferVM? _editing;
+    private string _modalError = "";
+    private OfferForm _mf = new();
+
+    private void OpenAdd() { _editing = null; _mf = new(); _modalError = ""; _showModal = true; }
+    private void OpenEdit(OfferVM o)
+    {
+        _editing = o;
+        _mf = new OfferForm { Name=o.Name, Description=o.Description, Price=o.Price,
+            Currency=o.Currency, Period=o.Period, SessionsPerMonth=o.SessionsPerMonth,
+            SessionDuration=o.SessionDuration, Mode=o.Mode, Subject=o.Subject,
+            Level=o.Level, CancellationPolicy=o.CancellationPolicy };
+        _modalError = ""; _showModal = true;
+    }
+    private void CloseModal() => _showModal = false;
+
+    private void SaveOffer()
+    {
+        if (string.IsNullOrWhiteSpace(_mf.Name)) { _modalError = "Le nom est obligatoire."; return; }
+        if (_editing == null)
+        {
+            _offers.Add(new OfferVM { Name=_mf.Name, Description=_mf.Description, Price=_mf.Price,
+                Currency=_mf.Currency, Period=_mf.Period, SessionsPerMonth=_mf.SessionsPerMonth,
+                SessionDuration=_mf.SessionDuration, Mode=_mf.Mode, Subject=_mf.Subject,
+                Level=_mf.Level, CancellationPolicy=_mf.CancellationPolicy,
+                IsPublished=false, Subscribers=0, MonthlyRevenue=0, Variants=[] });
+        }
+        else
+        {
+            _editing.Name = _mf.Name; _editing.Description = _mf.Description;
+            _editing.Price = _mf.Price; _editing.Currency = _mf.Currency;
+            _editing.Period = _mf.Period; _editing.SessionsPerMonth = _mf.SessionsPerMonth;
+            _editing.SessionDuration = _mf.SessionDuration; _editing.Mode = _mf.Mode;
+            _editing.Subject = _mf.Subject; _editing.Level = _mf.Level;
+        }
+        _showModal = false;
+    }
+
+    private class OfferForm
+    {
+        public string Name { get; set; } = "";
+        public string Description { get; set; } = "";
+        public decimal Price { get; set; } = 150;
+        public string Currency { get; set; } = "CAD";
+        public string Period { get; set; } = "mois";
+        public int SessionsPerMonth { get; set; } = 4;
+        public int SessionDuration { get; set; } = 60;
+        public string Mode { get; set; } = "En ligne";
+        public string Subject { get; set; } = "";
+        public string Level { get; set; } = "Tous niveaux";
+        public string CancellationPolicy { get; set; } = "";
+    }
+
+    private class OfferVM
+    {
+        public string Name { get; set; } = "";
+        public string Description { get; set; } = "";
+        public decimal Price { get; set; }
+        public string Currency { get; set; } = "CAD";
+        public string Period { get; set; } = "mois";
+        public int SessionsPerMonth { get; set; }
+        public int SessionDuration { get; set; }
+        public string Mode { get; set; } = "";
+        public string Subject { get; set; } = "";
+        public string Level { get; set; } = "";
+        public string CancellationPolicy { get; set; } = "";
+        public bool IsPublished { get; set; }
+        public int Subscribers { get; set; }
+        public decimal MonthlyRevenue { get; set; }
+        public List<(string Label, decimal Price)> Variants { get; set; } = [];
+    }
+
+    private readonly List<OfferVM> _offers =
+    [
+        new(){ Name="Cours de Maths Intensif", Description="Préparation brevet & bac. Méthode éprouvée.",
+            Price=150, Currency="CAD", Period="mois", SessionsPerMonth=8, SessionDuration=60,
+            Mode="Hybride", Subject="Mathématiques", Level="Lycée", IsPublished=true,
+            Subscribers=12, MonthlyRevenue=1800,
+            Variants=[("Collège 4×/mois",120),("Lycée 8×/mois",150),("Terminale 12×/mois",220)] },
+        new(){ Name="Physique-Chimie Lycée", Description="Cours particuliers de physique-chimie.",
+            Price=140, Currency="CAD", Period="mois", SessionsPerMonth=4, SessionDuration=90,
+            Mode="En ligne", Subject="Physique-Chimie", Level="Lycée", IsPublished=true,
+            Subscribers=6, MonthlyRevenue=840, Variants=[] },
+        new(){ Name="Stage Vacances Maths", Description="Stage intensif pendant les vacances scolaires.",
+            Price=350, Currency="CAD", Period="semaine", SessionsPerMonth=5, SessionDuration=120,
+            Mode="Présentiel", Subject="Mathématiques", Level="Collège", IsPublished=false,
+            Subscribers=0, MonthlyRevenue=0, Variants=[] },
+    ];
+}

@@ -1,4 +1,199 @@
 @page "/tutor/parents"
 @layout TutorLayout
+@rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
-<ModuleSkeletonPage PageTitleKey="PageTitle_Parents" TitleKey="Nav_Parents" Icon="bi-person-hearts" EmptyIcon="bi-people" />
+
+<PageTitle>Parents – TutorSphere</PageTitle>
+
+<div class="ts-page-header">
+    <div>
+        <h1><i class="bi bi-person-hearts me-2"></i>Parents</h1>
+        <p class="ts-page-subtitle">@_parents.Count contact(s) parent</p>
+    </div>
+    <button class="btn btn-primary" @onclick="OpenAdd">
+        <i class="bi bi-plus-lg me-1"></i>Ajouter
+    </button>
+</div>
+
+<div class="ts-toolbar">
+    <div class="ts-search-box">
+        <i class="bi bi-search ts-search-icon"></i>
+        <input class="form-control" placeholder="Rechercher un parent…"
+               @bind="_search" @bind:event="oninput" />
+    </div>
+</div>
+
+<div class="ts-table-card">
+    <table class="table ts-table">
+        <thead>
+            <tr>
+                <th>Parent</th><th>Enfants</th><th>Téléphone</th>
+                <th>Courriel</th><th>Solde</th><th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var p in FilteredParents)
+            {
+                <tr>
+                    <td>
+                        <div class="ts-cell-user">
+                            <div class="ts-avatar" style="background:@p.Color">@p.Initials</div>
+                            <div><strong>@p.FullName</strong><br/><small class="text-muted">@p.Address</small></div>
+                        </div>
+                    </td>
+                    <td>
+                        @foreach (var c in p.Children)
+                        {
+                            <span class="ts-badge ts-badge-neutral me-1">@c</span>
+                        }
+                    </td>
+                    <td>@p.Phone</td>
+                    <td>@p.Email</td>
+                    <td>
+                        <span class="@(p.Balance >= 0 ? "text-success" : "text-danger") fw-semibold">
+                            @p.Balance.ToString("+#;-#;0") $
+                        </span>
+                    </td>
+                    <td>
+                        <div class="ts-action-group">
+                            <button class="ts-icon-btn" title="Voir" @onclick="() => _selected = p"><i class="bi bi-eye"></i></button>
+                            <button class="ts-icon-btn" title="Message"><i class="bi bi-chat"></i></button>
+                            <button class="ts-icon-btn" title="Facture"><i class="bi bi-receipt"></i></button>
+                        </div>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@if (_selected != null)
+{
+    <div class="ts-modal-backdrop" @onclick="() => _selected = null">
+        <div class="ts-modal ts-modal-lg" @onclick:stopPropagation="true">
+            <div class="ts-modal-header">
+                <div class="ts-avatar ts-avatar-lg" style="background:@_selected.Color">@_selected.Initials</div>
+                <div>
+                    <h2>@_selected.FullName</h2>
+                    <small class="text-muted">@_selected.Address</small>
+                </div>
+                <button class="ts-modal-close" @onclick="() => _selected = null"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <div class="ts-modal-tabs">
+                @foreach (var t in new[]{"Infos","Enfants","Historique","Factures","Messages"})
+                {
+                    <button class="ts-tab @(_pTab==t?"active":"")" @onclick="()=>_pTab=t">@t</button>
+                }
+            </div>
+            <div class="ts-modal-body">
+                @if (_pTab == "Infos")
+                {
+                    <div class="ts-form-grid">
+                        <div class="ts-form-row"><label>Nom complet</label><span>@_selected.FullName</span></div>
+                        <div class="ts-form-row"><label>Téléphone</label><span>@_selected.Phone</span></div>
+                        <div class="ts-form-row"><label>Courriel</label><span>@_selected.Email</span></div>
+                        <div class="ts-form-row"><label>Adresse</label><span>@_selected.Address</span></div>
+                        <div class="ts-form-row"><label>Mode de paiement</label><span>Carte Visa **** 4242</span></div>
+                        <div class="ts-form-row"><label>Solde</label>
+                            <span class="@(_selected.Balance>=0?"text-success":"text-danger") fw-bold">
+                                @_selected.Balance.ToString("+#;-#;0") $
+                            </span>
+                        </div>
+                    </div>
+                }
+                else if (_pTab == "Enfants")
+                {
+                    @foreach (var c in _selected.Children)
+                    {
+                        <div class="ts-list-item"><i class="bi bi-person me-2 text-primary"></i>@c</div>
+                    }
+                }
+                else
+                {
+                    <p class="ts-empty-inline">Aucune donnée pour cet onglet.</p>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@if (_showAdd)
+{
+    <div class="ts-modal-backdrop" @onclick="() => _showAdd=false">
+        <div class="ts-modal" @onclick:stopPropagation="true">
+            <div class="ts-modal-header">
+                <h2>Ajouter un parent</h2>
+                <button class="ts-modal-close" @onclick="()=>_showAdd=false"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <div class="ts-modal-body">
+                <div class="row g-3">
+                    <div class="col-6"><label class="form-label">Prénom *</label>
+                        <input class="form-control" @bind="_pForm.First" /></div>
+                    <div class="col-6"><label class="form-label">Nom *</label>
+                        <input class="form-control" @bind="_pForm.Last" /></div>
+                    <div class="col-6"><label class="form-label">Téléphone</label>
+                        <input class="form-control" @bind="_pForm.Phone" /></div>
+                    <div class="col-6"><label class="form-label">Courriel</label>
+                        <input type="email" class="form-control" @bind="_pForm.Email" /></div>
+                    <div class="col-12"><label class="form-label">Adresse</label>
+                        <input class="form-control" @bind="_pForm.Address" /></div>
+                </div>
+            </div>
+            <div class="ts-modal-footer">
+                <button class="btn btn-outline-secondary" @onclick="()=>_showAdd=false">Annuler</button>
+                <button class="btn btn-primary" @onclick="SaveParent">Enregistrer</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string _search = "";
+    private ParentVM? _selected;
+    private string _pTab = "Infos";
+    private bool _showAdd;
+    private (string First, string Last, string Phone, string Email, string Address) _pForm;
+
+    private void OpenAdd() { _pForm = ("","","","",""); _showAdd = true; }
+
+    private void SaveParent()
+    {
+        if (string.IsNullOrWhiteSpace(_pForm.First)) return;
+        var colors = new[]{"#7c3aed","#0ea5e9","#10b981","#f59e0b"};
+        _parents.Add(new ParentVM {
+            FullName = $"{_pForm.First} {_pForm.Last}",
+            Phone = _pForm.Phone, Email = _pForm.Email, Address = _pForm.Address,
+            Children = [], Balance = 0,
+            Color = colors[_parents.Count % colors.Length]
+        });
+        _showAdd = false;
+    }
+
+    private IEnumerable<ParentVM> FilteredParents => _parents
+        .Where(p => string.IsNullOrEmpty(_search) ||
+            p.FullName.Contains(_search, StringComparison.OrdinalIgnoreCase));
+
+    private class ParentVM
+    {
+        public string FullName { get; set; } = "";
+        public string Phone { get; set; } = "";
+        public string Email { get; set; } = "";
+        public string Address { get; set; } = "";
+        public List<string> Children { get; set; } = [];
+        public decimal Balance { get; set; }
+        public string Color { get; set; } = "#7c3aed";
+        public string Initials => FullName.Split(' ') is [var a, var b, ..] ? $"{a[0]}{b[0]}" : FullName[..1].ToUpper();
+    }
+
+    private readonly List<ParentVM> _parents =
+    [
+        new(){ FullName="Marie Johnson", Phone="06 12 34 56 78", Email="marie.j@email.com",
+            Address="12 rue des Lilas, Paris 75011", Children=["Emma Johnson"], Balance=0, Color="#7c3aed" },
+        new(){ FullName="David Brown", Phone="06 98 76 54 32", Email="david.b@email.com",
+            Address="5 avenue Montaigne, Paris 75008", Children=["Liam Brown"], Balance=-120, Color="#0ea5e9" },
+        new(){ FullName="Laura Davis", Phone="07 11 22 33 44", Email="laura.d@email.com",
+            Address="8 rue du Commerce, Lyon 69001", Children=["Sophia Davis"], Balance=45, Color="#10b981" },
+        new(){ FullName="Ana Martinez", Phone="06 77 88 99 00", Email="ana.m@email.com",
+            Address="3 bd Haussmann, Paris 75009", Children=["Olivia Martinez"], Balance=200, Color="#ec4899" },
+    ];
+}

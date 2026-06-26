@@ -1,4 +1,241 @@
 @page "/tutor/lessons"
 @layout TutorLayout
+@rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
-<ModuleSkeletonPage PageTitleKey="PageTitle_Lessons" TitleKey="Nav_Lessons" Icon="bi-journal-bookmark" EmptyIcon="bi-calendar-plus" />
+
+<PageTitle>Cours – TutorSphere</PageTitle>
+
+<div class="ts-page-header">
+    <div>
+        <h1><i class="bi bi-journal-bookmark me-2"></i>Cours & Séances</h1>
+        <p class="ts-page-subtitle">Historique et planification de vos séances</p>
+    </div>
+    <button class="btn btn-primary" @onclick="OpenAdd">
+        <i class="bi bi-plus-lg me-1"></i>Nouvelle séance
+    </button>
+</div>
+
+<!-- Quick stats -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3">
+        <div class="ts-kpi-card"><span class="ts-kpi-val">@_lessons.Count(l=>l.Date.Date == DateTime.Today)</span><span class="ts-kpi-label">Aujourd'hui</span></div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="ts-kpi-card"><span class="ts-kpi-val">@_lessons.Count(l=>l.Date >= DateTime.Today.AddDays(-(int)DateTime.Today.DayOfWeek))</span><span class="ts-kpi-label">Cette semaine</span></div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="ts-kpi-card"><span class="ts-kpi-val">@_lessons.Count(l=>l.Status=="Terminé")</span><span class="ts-kpi-label">Terminées</span></div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="ts-kpi-card"><span class="ts-kpi-val">@_lessons.Sum(l=>l.Duration) h</span><span class="ts-kpi-label">Heures enseignées</span></div>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="ts-toolbar">
+    <div class="ts-search-box">
+        <i class="bi bi-search ts-search-icon"></i>
+        <input class="form-control" placeholder="Élève, matière…"
+               @bind="_search" @bind:event="oninput" />
+    </div>
+    <select class="form-select w-auto" @bind="_filterStatus">
+        <option value="">Tous les statuts</option>
+        <option>Planifié</option><option>En cours</option><option>Terminé</option><option>Annulé</option>
+    </select>
+    <select class="form-select w-auto" @bind="_filterMode">
+        <option value="">Tous les modes</option>
+        <option>En ligne</option><option>Présentiel</option>
+    </select>
+</div>
+
+<!-- Lessons table -->
+<div class="ts-table-card">
+    <table class="table ts-table">
+        <thead>
+            <tr>
+                <th>Date / Heure</th><th>Élève</th><th>Matière</th>
+                <th>Durée</th><th>Mode</th><th>Statut</th><th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var l in FilteredLessons)
+            {
+                <tr>
+                    <td>
+                        <strong>@l.Date.ToString("dd MMM yyyy")</strong><br/>
+                        <small class="text-muted">@l.Date.ToString("HH:mm") – @l.EndTime</small>
+                    </td>
+                    <td>
+                        <div class="ts-cell-user">
+                            <div class="ts-avatar ts-avatar-sm" style="background:@l.AvatarColor">@l.StudentInitials</div>
+                            @l.StudentName
+                        </div>
+                    </td>
+                    <td>@l.Subject</td>
+                    <td>@l.Duration h</td>
+                    <td><span class="ts-badge ts-badge-neutral">@l.Mode</span></td>
+                    <td><span class="ts-badge @StatusBadge(l.Status)">@l.Status</span></td>
+                    <td>
+                        <div class="ts-action-group">
+                            @if (l.Status == "Planifié")
+                            {
+                                <button class="ts-icon-btn" title="Démarrer" @onclick='() => l.Status = "En cours"'>
+                                    <i class="bi bi-play-fill text-success"></i>
+                                </button>
+                            }
+                            @if (l.Status is "Terminé" or "En cours")
+                            {
+                                <button class="ts-icon-btn" title="Rapport"><i class="bi bi-file-earmark-text"></i></button>
+                            }
+                            <button class="ts-icon-btn" title="Présences"><i class="bi bi-person-check"></i></button>
+                            <button class="ts-icon-btn" title="Modifier" @onclick="()=>OpenEdit(l)"><i class="bi bi-pencil"></i></button>
+                        </div>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+<!-- Add/Edit lesson modal -->
+@if (_showModal)
+{
+    <div class="ts-modal-backdrop" @onclick="CloseModal">
+        <div class="ts-modal" @onclick:stopPropagation="true">
+            <div class="ts-modal-header">
+                <h2>@(_editingLesson == null ? "Nouvelle séance" : "Modifier la séance")</h2>
+                <button class="ts-modal-close" @onclick="CloseModal"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <div class="ts-modal-body">
+                <div class="row g-3">
+                    <div class="col-12"><label class="form-label">Titre</label>
+                        <input class="form-control" @bind="_lf.Title" placeholder="Cours de Mathématiques" /></div>
+                    <div class="col-6"><label class="form-label">Élève *</label>
+                        <select class="form-select" @bind="_lf.Student">
+                            <option value="">— Choisir —</option>
+                            <option>Emma Johnson</option><option>Liam Brown</option>
+                            <option>Sophia Davis</option><option>Olivia Martinez</option>
+                        </select></div>
+                    <div class="col-6"><label class="form-label">Matière *</label>
+                        <input class="form-control" @bind="_lf.Subject" /></div>
+                    <div class="col-6"><label class="form-label">Date *</label>
+                        <input type="date" class="form-control" @bind="_lf.Date" /></div>
+                    <div class="col-3"><label class="form-label">Début</label>
+                        <input type="time" class="form-control" @bind="_lf.StartTime" /></div>
+                    <div class="col-3"><label class="form-label">Durée (h)</label>
+                        <input type="number" step="0.5" class="form-control" @bind="_lf.Duration" /></div>
+                    <div class="col-6"><label class="form-label">Mode</label>
+                        <select class="form-select" @bind="_lf.Mode">
+                            <option>En ligne</option><option>Présentiel</option>
+                        </select></div>
+                    <div class="col-6"><label class="form-label">Type</label>
+                        <select class="form-select" @bind="_lf.Type">
+                            <option>Individuel</option><option>Collectif</option><option>Intensif</option>
+                        </select></div>
+                    <div class="col-12"><label class="form-label">Description / Objectifs</label>
+                        <textarea class="form-control" rows="2" @bind="_lf.Description"></textarea></div>
+                </div>
+            </div>
+            <div class="ts-modal-footer">
+                <button class="btn btn-outline-secondary" @onclick="CloseModal">Annuler</button>
+                <button class="btn btn-primary" @onclick="SaveLesson">Enregistrer</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string _search = "", _filterStatus = "", _filterMode = "";
+    private bool _showModal;
+    private LessonVM? _editingLesson;
+    private LessonForm _lf = new();
+
+    private static string StatusBadge(string s) => s switch {
+        "Terminé" => "ts-badge-success",
+        "En cours" => "ts-badge-primary",
+        "Annulé" => "ts-badge-danger",
+        _ => "ts-badge-neutral"
+    };
+
+    private IEnumerable<LessonVM> FilteredLessons => _lessons
+        .Where(l => string.IsNullOrEmpty(_search) ||
+            l.StudentName.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+            l.Subject.Contains(_search, StringComparison.OrdinalIgnoreCase))
+        .Where(l => string.IsNullOrEmpty(_filterStatus) || l.Status == _filterStatus)
+        .Where(l => string.IsNullOrEmpty(_filterMode) || l.Mode == _filterMode)
+        .OrderByDescending(l => l.Date);
+
+    private void OpenAdd() { _editingLesson = null; _lf = new(); _showModal = true; }
+    private void OpenEdit(LessonVM l)
+    {
+        _editingLesson = l;
+        _lf = new LessonForm { Title=l.Title, Student=l.StudentName, Subject=l.Subject,
+            Date=l.Date, Duration=l.Duration, Mode=l.Mode };
+        _showModal = true;
+    }
+    private void CloseModal() => _showModal = false;
+
+    private void SaveLesson()
+    {
+        if (string.IsNullOrWhiteSpace(_lf.Student)) return;
+        var start = _lf.Date.Date.Add(_lf.StartTime.ToTimeSpan());
+        var end = start.AddHours(_lf.Duration);
+        if (_editingLesson == null)
+        {
+            _lessons.Add(new LessonVM { Title=_lf.Title, StudentName=_lf.Student, Subject=_lf.Subject,
+                Date=start, EndTime=end.ToString("HH:mm"), Duration=_lf.Duration,
+                Mode=_lf.Mode, Status="Planifié", AvatarColor="#7c3aed",
+                StudentInitials=string.Join("", _lf.Student.Split(' ').Take(2).Select(x=>x[0])) });
+        }
+        _showModal = false;
+    }
+
+    private class LessonForm
+    {
+        public string Title { get; set; } = "";
+        public string Student { get; set; } = "";
+        public string Subject { get; set; } = "";
+        public DateTime Date { get; set; } = DateTime.Today;
+        public TimeOnly StartTime { get; set; } = new TimeOnly(10, 0);
+        public double Duration { get; set; } = 1;
+        public string Mode { get; set; } = "En ligne";
+        public string Type { get; set; } = "Individuel";
+        public string Description { get; set; } = "";
+    }
+
+    private class LessonVM
+    {
+        public string Title { get; set; } = "";
+        public string StudentName { get; set; } = "";
+        public string StudentInitials { get; set; } = "";
+        public string Subject { get; set; } = "";
+        public DateTime Date { get; set; }
+        public string EndTime { get; set; } = "";
+        public double Duration { get; set; }
+        public string Mode { get; set; } = "";
+        public string Status { get; set; } = "";
+        public string AvatarColor { get; set; } = "#7c3aed";
+    }
+
+    private readonly List<LessonVM> _lessons =
+    [
+        new(){ Title="Cours Maths – Révisions brevet", StudentName="Emma Johnson", StudentInitials="EJ",
+            Subject="Mathématiques", Date=DateTime.Today.AddHours(10), EndTime="11:00",
+            Duration=1, Mode="En ligne", Status="Planifié", AvatarColor="#7c3aed" },
+        new(){ Title="Physique – Électricité", StudentName="Liam Brown", StudentInitials="LB",
+            Subject="Physique", Date=DateTime.Today.AddHours(14), EndTime="15:30",
+            Duration=1.5, Mode="Présentiel", Status="Planifié", AvatarColor="#0ea5e9" },
+        new(){ Title="Chimie – Exercices corrigés", StudentName="Sophia Davis", StudentInitials="SD",
+            Subject="Chimie", Date=DateTime.Today.AddDays(-1).AddHours(16), EndTime="17:00",
+            Duration=1, Mode="En ligne", Status="Terminé", AvatarColor="#10b981" },
+        new(){ Title="Maths – Suites numériques", StudentName="Emma Johnson", StudentInitials="EJ",
+            Subject="Mathématiques", Date=DateTime.Today.AddDays(-3).AddHours(10), EndTime="11:00",
+            Duration=1, Mode="En ligne", Status="Terminé", AvatarColor="#7c3aed" },
+        new(){ Title="Physique – Optique", StudentName="Liam Brown", StudentInitials="LB",
+            Subject="Physique", Date=DateTime.Today.AddDays(-7).AddHours(14), EndTime="15:00",
+            Duration=1, Mode="En ligne", Status="Annulé", AvatarColor="#0ea5e9" },
+        new(){ Title="Maths – Fonctions", StudentName="Olivia Martinez", StudentInitials="OM",
+            Subject="Mathématiques", Date=DateTime.Today.AddDays(2).AddHours(9), EndTime="10:30",
+            Duration=1.5, Mode="Présentiel", Status="Planifié", AvatarColor="#ec4899" },
+    ];
+}

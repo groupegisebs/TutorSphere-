@@ -1,4 +1,202 @@
 @page "/tutor/profile"
 @layout TutorLayout
+@rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
-<ModuleSkeletonPage PageTitleKey="PageTitle_TutorProfile" TitleKey="Nav_MyProfile" Icon="bi-person" EmptyIcon="bi-person-circle" />
+
+<PageTitle>Mon Profil – TutorSphere</PageTitle>
+
+<div class="ts-page-header">
+    <div>
+        <h1><i class="bi bi-person-badge me-2"></i>Mon Profil</h1>
+        <p class="ts-page-subtitle">Votre vitrine professionnelle publique</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="/tutor/public-profile" target="_blank" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-eye me-1"></i>Aperçu public
+        </a>
+        <button class="btn btn-primary" @onclick="SaveProfile" disabled="@_saving">
+            @if (_saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+            Enregistrer
+        </button>
+    </div>
+</div>
+
+@if (_saved)
+{
+    <div class="alert alert-success mb-4">
+        <i class="bi bi-check-circle me-2"></i>Profil mis à jour avec succès.
+    </div>
+}
+
+<div class="ts-tabs-bar mb-4">
+    @foreach (var t in _tabs)
+    {
+        <button class="ts-tab @(_tab==t?"active":"")" @onclick="()=>_tab=t">@t</button>
+    }
+</div>
+
+@if (_tab == "Présentation")
+{
+    <div class="profile-card-layout">
+        <div class="profile-avatar-card">
+            <div class="profile-avatar-large" style="background:var(--ts-gradient-primary)">JS</div>
+            <button class="btn btn-outline-secondary btn-sm w-100 mt-2">
+                <i class="bi bi-camera me-1"></i>Changer la photo
+            </button>
+            <div class="profile-status mt-3">
+                <label class="form-label">Statut</label>
+                <select class="form-select form-select-sm" @bind="_p.Status">
+                    <option>Disponible</option><option>Complet</option><option>Inactif</option>
+                </select>
+            </div>
+            <div class="mt-3">
+                @if (_p.IsVerified)
+                {
+                    <span class="ts-badge ts-badge-success"><i class="bi bi-patch-check-fill me-1"></i>Vérifié</span>
+                }
+            </div>
+        </div>
+        <div class="profile-info-card">
+            <div class="row g-3">
+                <div class="col-6"><label class="form-label">Prénom</label>
+                    <input class="form-control" @bind="_p.FirstName" /></div>
+                <div class="col-6"><label class="form-label">Nom</label>
+                    <input class="form-control" @bind="_p.LastName" /></div>
+                <div class="col-12"><label class="form-label">Biographie courte</label>
+                    <textarea class="form-control" rows="3" @bind="_p.Bio"
+                        placeholder="Décrivez votre approche pédagogique…"></textarea></div>
+                <div class="col-md-4"><label class="form-label">Années d'expérience</label>
+                    <input type="number" class="form-control" @bind="_p.YearsExperience" /></div>
+                <div class="col-md-4"><label class="form-label">Tarif horaire ($/h)</label>
+                    <input type="number" class="form-control" @bind="_p.HourlyRate" /></div>
+                <div class="col-md-4"><label class="form-label">Langues</label>
+                    <input class="form-control" @bind="_p.Languages" placeholder="Français, Anglais" /></div>
+                <div class="col-12"><label class="form-label">Présentation complète (CV)</label>
+                    <textarea class="form-control" rows="5" @bind="_p.FullBio"
+                        placeholder="Parcours, méthode pédagogique, spécialités…"></textarea></div>
+            </div>
+        </div>
+    </div>
+}
+else if (_tab == "Diplômes & Certifications")
+{
+    <div class="section-card p-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="mb-0">Diplômes</h5>
+            <button class="btn btn-sm btn-outline-primary" @onclick="AddDiploma">
+                <i class="bi bi-plus me-1"></i>Ajouter
+            </button>
+        </div>
+        @foreach (var d in _p.Diplomas)
+        {
+            <div class="credential-item">
+                <i class="bi bi-mortarboard credential-icon"></i>
+                <div class="credential-info">
+                    <strong>@d.Title</strong>
+                    <span class="text-muted">@d.Institution · @d.Year</span>
+                </div>
+                <button class="ts-icon-btn ts-icon-btn--danger" @onclick="()=>_p.Diplomas.Remove(d)">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </div>
+        }
+        <hr />
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="mb-0">Certifications</h5>
+            <button class="btn btn-sm btn-outline-primary" @onclick="AddCert">
+                <i class="bi bi-plus me-1"></i>Ajouter
+            </button>
+        </div>
+        @foreach (var c in _p.Certifications)
+        {
+            <div class="credential-item">
+                <i class="bi bi-award credential-icon text-warning"></i>
+                <div class="credential-info">
+                    <strong>@c.Title</strong>
+                    <span class="text-muted">@c.Institution · @c.Year</span>
+                </div>
+                <button class="ts-icon-btn ts-icon-btn--danger" @onclick="()=>_p.Certifications.Remove(c)">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </div>
+        }
+    </div>
+}
+else if (_tab == "Matières")
+{
+    <div class="section-card p-4">
+        <p class="text-muted mb-3">Sélectionnez les matières que vous enseignez.</p>
+        <div class="subject-chips">
+            @foreach (var s in _allSubjects)
+            {
+                var active = _p.Subjects.Contains(s);
+                <button type="button" class="ts-chip @(active?"active":"")"
+                        @onclick="()=>{ if(active) _p.Subjects.Remove(s); else _p.Subjects.Add(s); }">
+                    @s
+                </button>
+            }
+        </div>
+    </div>
+}
+else if (_tab == "Disponibilités")
+{
+    <div class="section-card p-4">
+        <p class="text-muted mb-3">Indiquez vos plages horaires disponibles.</p>
+        <div class="availability-grid">
+            @foreach (var day in _days)
+            {
+                <div class="avail-row">
+                    <span class="avail-day">@day</span>
+                    <div class="d-flex gap-2 flex-wrap">
+                        @foreach (var slot in _timeSlots)
+                        {
+                            var key = $"{day}-{slot}";
+                            var active = _p.Availability.Contains(key);
+                            <button type="button" class="avail-chip @(active?"active":"")"
+                                    @onclick="()=>{ if(active) _p.Availability.Remove(key); else _p.Availability.Add(key); }">
+                                @slot
+                            </button>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private readonly string[] _tabs = ["Présentation","Diplômes & Certifications","Matières","Disponibilités"];
+    private string _tab = "Présentation";
+    private bool _saving, _saved;
+
+    private static readonly string[] _allSubjects = ["Mathématiques","Physique","Chimie","Biologie","Français","Anglais","Espagnol","Histoire-Géo","Philosophie","Économie","Informatique","Comptabilité"];
+    private static readonly string[] _days = ["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"];
+    private static readonly string[] _timeSlots = ["Matin","Après-midi","Soir"];
+
+    private async Task SaveProfile()
+    {
+        _saving = true;
+        await Task.Delay(600);
+        _saving = false;
+        _saved = true;
+    }
+
+    private void AddDiploma() => _p.Diplomas.Add(new Credential { Title="Nouveau diplôme", Institution="Université", Year="2020" });
+    private void AddCert() => _p.Certifications.Add(new Credential { Title="Certification", Institution="Organisme", Year="2023" });
+
+    private class Credential { public string Title{get;set;}=""; public string Institution{get;set;}=""; public string Year{get;set;}=""; }
+    private class ProfileVM
+    {
+        public string FirstName{get;set;}="John"; public string LastName{get;set;}="Smith";
+        public string Bio{get;set;}="Professeur de mathématiques passionné, spécialisé dans la préparation aux examens.";
+        public string FullBio{get;set;}="Diplômé de l'École Polytechnique, j'accompagne les élèves du collège à l'université depuis 8 ans.";
+        public int YearsExperience{get;set;}=8; public decimal HourlyRate{get;set;}=75;
+        public string Languages{get;set;}="Français, Anglais"; public string Status{get;set;}="Disponible";
+        public bool IsVerified{get;set;}=true;
+        public List<Credential> Diplomas{get;set;}=[new(){Title="Master Mathématiques",Institution="École Polytechnique",Year="2016"},new(){Title="Licence Sciences",Institution="Université Paris VI",Year="2014"}];
+        public List<Credential> Certifications{get;set;}=[new(){Title="Certification Google Workspace",Institution="Google",Year="2022"}];
+        public List<string> Subjects{get;set;}=["Mathématiques","Physique"];
+        public HashSet<string> Availability{get;set;}=["Lundi-Après-midi","Mardi-Soir","Mercredi-Matin","Jeudi-Après-midi","Samedi-Matin"];
+    }
+    private ProfileVM _p = new();
+}

@@ -1,4 +1,246 @@
 @page "/tutor/homework"
 @layout TutorLayout
+@rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
-<ModuleSkeletonPage PageTitleKey="PageTitle_Homework" TitleKey="Nav_Homework" Icon="bi-journal-text" EmptyIcon="bi-pencil" />
+
+<PageTitle>Devoirs – TutorSphere</PageTitle>
+
+<div class="ts-page-header">
+    <div>
+        <h1><i class="bi bi-journal-text me-2"></i>Devoirs</h1>
+        <p class="ts-page-subtitle">Créez, gérez et corrigez les devoirs de vos élèves</p>
+    </div>
+    <button class="btn btn-primary" @onclick="OpenAdd">
+        <i class="bi bi-plus-lg me-1"></i>Nouveau devoir
+    </button>
+</div>
+
+<!-- Quick filters -->
+<div class="ts-toolbar">
+    <div class="ts-search-box">
+        <i class="bi bi-search ts-search-icon"></i>
+        <input class="form-control" placeholder="Chercher un devoir…"
+               @bind="_search" @bind:event="oninput" />
+    </div>
+    <select class="form-select w-auto" @bind="_filterStatus">
+        <option value="">Tous</option>
+        <option>À rendre</option><option>Rendu</option><option>Corrigé</option><option>En retard</option>
+    </select>
+    <select class="form-select w-auto" @bind="_filterSubject">
+        <option value="">Toutes matières</option>
+        <option>Mathématiques</option><option>Physique</option><option>Chimie</option><option>Français</option>
+    </select>
+</div>
+
+<!-- Homework cards -->
+<div class="homework-grid">
+    @foreach (var hw in FilteredHomework)
+    {
+        <div class="hw-card">
+            <div class="hw-card-head">
+                <span class="ts-badge @HwBadge(hw.Status)">@hw.Status</span>
+                <span class="hw-due @(hw.IsOverdue ? "text-danger" : "text-muted")">
+                    <i class="bi bi-calendar3 me-1"></i>@hw.DueDate.ToString("dd/MM")
+                </span>
+            </div>
+            <h3 class="hw-title">@hw.Title</h3>
+            <p class="hw-subject"><i class="bi bi-book me-1 text-muted"></i>@hw.Subject</p>
+            <div class="hw-students">
+                @foreach (var s in hw.Students)
+                {
+                    <span class="ts-badge ts-badge-neutral">@s</span>
+                }
+            </div>
+            @if (!string.IsNullOrEmpty(hw.Description))
+            {
+                <p class="hw-desc">@hw.Description</p>
+            }
+            @if (hw.Status == "Corrigé" && hw.Grades.Any())
+            {
+                <div class="hw-grades">
+                    @foreach (var g in hw.Grades)
+                    {
+                        <span class="hw-grade-chip">@g.Student : <strong>@g.Score/20</strong></span>
+                    }
+                </div>
+            }
+            <div class="hw-card-footer">
+                <button class="ts-icon-btn" title="Modifier" @onclick="()=>OpenEdit(hw)"><i class="bi bi-pencil"></i></button>
+                @if (hw.Status == "Rendu")
+                {
+                    <button class="ts-icon-btn" title="Corriger" @onclick="()=>OpenGrade(hw)">
+                        <i class="bi bi-check2-square text-success"></i>
+                    </button>
+                }
+                <button class="ts-icon-btn ts-icon-btn--danger" title="Supprimer"
+                        @onclick="()=>_homeworks.Remove(hw)">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </div>
+        </div>
+    }
+</div>
+
+<!-- Add/Edit modal -->
+@if (_showModal)
+{
+    <div class="ts-modal-backdrop" @onclick="CloseModal">
+        <div class="ts-modal" @onclick:stopPropagation="true">
+            <div class="ts-modal-header">
+                <h2>@(_editing == null ? "Nouveau devoir" : "Modifier le devoir")</h2>
+                <button class="ts-modal-close" @onclick="CloseModal"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <div class="ts-modal-body">
+                <div class="row g-3">
+                    <div class="col-12"><label class="form-label">Titre *</label>
+                        <input class="form-control" @bind="_hf.Title" placeholder="Exercices chapitre 4" /></div>
+                    <div class="col-6"><label class="form-label">Matière</label>
+                        <input class="form-control" @bind="_hf.Subject" /></div>
+                    <div class="col-6"><label class="form-label">Date limite *</label>
+                        <input type="date" class="form-control" @bind="_hf.DueDate" /></div>
+                    <div class="col-12"><label class="form-label">Description</label>
+                        <textarea class="form-control" rows="3" @bind="_hf.Description"
+                            placeholder="Décrivez le travail à faire…"></textarea></div>
+                    <div class="col-12">
+                        <label class="form-label">Élèves concernés</label>
+                        <div class="d-flex flex-wrap gap-2">
+                            @foreach (var s in new[]{"Emma Johnson","Liam Brown","Sophia Davis","Olivia Martinez"})
+                            {
+                                var selected = _hf.Students.Contains(s);
+                                <button type="button"
+                                        class="ts-chip @(selected ? "active" : "")"
+                                        @onclick="()=>{ if(selected) _hf.Students.Remove(s); else _hf.Students.Add(s); }">
+                                    @s
+                                </button>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="ts-modal-footer">
+                <button class="btn btn-outline-secondary" @onclick="CloseModal">Annuler</button>
+                <button class="btn btn-primary" @onclick="SaveHomework">Enregistrer</button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Grade modal -->
+@if (_grading != null)
+{
+    <div class="ts-modal-backdrop" @onclick="()=>_grading=null">
+        <div class="ts-modal" @onclick:stopPropagation="true">
+            <div class="ts-modal-header">
+                <h2>Corriger : @_grading.Title</h2>
+                <button class="ts-modal-close" @onclick="()=>_grading=null"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <div class="ts-modal-body">
+                @foreach (var s in _grading.Students)
+                {
+                    var existing = _grading.Grades.FirstOrDefault(g=>g.Student==s);
+                    var score = existing?.Score ?? 0;
+                    <div class="row align-items-center g-2 mb-2">
+                        <div class="col-6"><strong>@s</strong></div>
+                        <div class="col-4">
+                            <div class="input-group input-group-sm">
+                                <input type="number" min="0" max="20" class="form-control"
+                                       value="@score"
+                                       @onchange='e => SetGrade(_grading, s, int.Parse(e.Value?.ToString() ?? "0"))' />
+                                <span class="input-group-text">/20</span>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+            <div class="ts-modal-footer">
+                <button class="btn btn-outline-secondary" @onclick="()=>_grading=null">Annuler</button>
+                <button class="btn btn-primary" @onclick="MarkCorrected">Valider corrections</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string _search = "", _filterStatus = "", _filterSubject = "";
+    private bool _showModal;
+    private HomeworkVM? _editing, _grading;
+    private HomeworkForm _hf = new();
+
+    private static string HwBadge(string s) => s switch {
+        "Corrigé" => "ts-badge-success", "Rendu" => "ts-badge-primary",
+        "En retard" => "ts-badge-danger", _ => "ts-badge-muted"
+    };
+
+    private IEnumerable<HomeworkVM> FilteredHomework => _homeworks
+        .Where(h => string.IsNullOrEmpty(_search) ||
+            h.Title.Contains(_search, StringComparison.OrdinalIgnoreCase))
+        .Where(h => string.IsNullOrEmpty(_filterStatus) || h.Status == _filterStatus)
+        .Where(h => string.IsNullOrEmpty(_filterSubject) || h.Subject == _filterSubject)
+        .OrderBy(h => h.DueDate);
+
+    private void OpenAdd() { _editing = null; _hf = new() { DueDate=DateTime.Today.AddDays(7) }; _showModal=true; }
+    private void OpenEdit(HomeworkVM h) { _editing = h; _hf = new HomeworkForm { Title=h.Title, Subject=h.Subject, DueDate=h.DueDate, Description=h.Description, Students=[..h.Students] }; _showModal=true; }
+    private void OpenGrade(HomeworkVM h) => _grading = h;
+    private void CloseModal() => _showModal = false;
+    private void MarkCorrected() { if (_grading != null) { _grading.Status = "Corrigé"; _grading = null; } }
+
+    private void SetGrade(HomeworkVM hw, string student, int score)
+    {
+        var existing = hw.Grades.FirstOrDefault(g => g.Student == student);
+        if (existing != null) existing.Score = score;
+        else hw.Grades.Add(new GradeItem { Student = student, Score = score });
+    }
+
+    private void SaveHomework()
+    {
+        if (string.IsNullOrWhiteSpace(_hf.Title)) return;
+        if (_editing == null)
+        {
+            _homeworks.Add(new HomeworkVM { Title=_hf.Title, Subject=_hf.Subject,
+                DueDate=_hf.DueDate, Description=_hf.Description, Students=[.._hf.Students],
+                Status=_hf.DueDate < DateTime.Today ? "En retard" : "À rendre" });
+        }
+        else { _editing.Title=_hf.Title; _editing.Subject=_hf.Subject; _editing.DueDate=_hf.DueDate; _editing.Description=_hf.Description; }
+        _showModal = false;
+    }
+
+    private class HomeworkForm
+    {
+        public string Title { get; set; } = "";
+        public string Subject { get; set; } = "";
+        public DateTime DueDate { get; set; } = DateTime.Today.AddDays(7);
+        public string Description { get; set; } = "";
+        public List<string> Students { get; set; } = [];
+    }
+    private class GradeItem
+    {
+        public string Student { get; set; } = "";
+        public int Score { get; set; }
+    }
+    private class HomeworkVM
+    {
+        public string Title { get; set; } = "";
+        public string Subject { get; set; } = "";
+        public DateTime DueDate { get; set; }
+        public string Description { get; set; } = "";
+        public List<string> Students { get; set; } = [];
+        public string Status { get; set; } = "À rendre";
+        public List<GradeItem> Grades { get; set; } = [];
+        public bool IsOverdue => Status == "En retard" || (DueDate < DateTime.Today && Status != "Corrigé");
+    }
+
+    private readonly List<HomeworkVM> _homeworks =
+    [
+        new(){ Title="Exercices suites numériques", Subject="Mathématiques", DueDate=DateTime.Today.AddDays(3),
+            Description="Faire les exercices 5 à 12 du chapitre 4 (pages 42-44).",
+            Students=["Emma Johnson","Liam Brown"], Status="À rendre", Grades=[] },
+        new(){ Title="TD Circuits électriques", Subject="Physique", DueDate=DateTime.Today.AddDays(7),
+            Description="Compléter le TD distribué en séance.", Students=["Liam Brown"], Status="À rendre", Grades=[] },
+        new(){ Title="Rédaction argumentative", Subject="Français", DueDate=DateTime.Today.AddDays(-2),
+            Description="Rédiger 500 mots sur le thème du progrès.", Students=["Olivia Martinez"],
+            Status="Rendu", Grades=[] },
+        new(){ Title="QCM Réactions chimiques", Subject="Chimie", DueDate=DateTime.Today.AddDays(-5),
+            Students=["Sophia Davis"], Status="Corrigé",
+            Grades=[new(){ Student="Sophia Davis", Score=17 }] },
+    ];
+}

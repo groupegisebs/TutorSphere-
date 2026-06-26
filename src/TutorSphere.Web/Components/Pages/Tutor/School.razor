@@ -1,4 +1,197 @@
 @page "/tutor/school"
 @layout TutorLayout
+@rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
-<ModuleSkeletonPage PageTitleKey="PageTitle_School" TitleKey="Topbar_ViewMySchool" Icon="bi-building" EmptyIcon="bi-building-add" />
+
+<PageTitle>Mon École – TutorSphere</PageTitle>
+
+<div class="ts-page-header">
+    <div>
+        <h1><i class="bi bi-building me-2"></i>Mon École</h1>
+        <p class="ts-page-subtitle">Gérez l'identité et la présence en ligne de votre école</p>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="/school/@_school.Slug" target="_blank" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-box-arrow-up-right me-1"></i>Voir ma page publique
+        </a>
+        <button class="btn btn-primary" @onclick="SaveSchool" disabled="@_saving">
+            @if (_saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+            <i class="bi bi-check-lg me-1"></i>Enregistrer
+        </button>
+    </div>
+</div>
+
+@if (_saved)
+{
+    <div class="alert alert-success alert-dismissible mb-4">
+        <i class="bi bi-check-circle me-2"></i>Modifications enregistrées avec succès.
+        <button type="button" class="btn-close" @onclick="()=>_saved=false"></button>
+    </div>
+}
+
+<!-- Tab navigation -->
+<div class="ts-tabs-bar mb-4">
+    @foreach (var tab in _tabs)
+    {
+        <button class="ts-tab @(_activeTab==tab?"active":"")" @onclick="()=>_activeTab=tab">@tab</button>
+    }
+</div>
+
+@if (_activeTab == "Identité")
+{
+    <div class="school-form-grid">
+        <!-- Logo & banner -->
+        <div class="school-media-card">
+            <div class="school-banner" style="background:var(--ts-gradient-primary)">
+                <div class="school-logo-upload">
+                    <div class="school-logo-preview">
+                        <i class="bi bi-building text-white" style="font-size:2rem"></i>
+                    </div>
+                    <button class="btn btn-sm btn-light">Changer le logo</button>
+                </div>
+            </div>
+            <div class="p-3">
+                <label class="form-label">Bannière</label>
+                <button class="btn btn-outline-secondary btn-sm w-100">
+                    <i class="bi bi-image me-1"></i>Changer la bannière
+                </button>
+            </div>
+        </div>
+
+        <div class="school-info-card">
+            <div class="row g-3">
+                <div class="col-12">
+                    <label class="form-label">Nom de l'école *</label>
+                    <input class="form-control" @bind="_school.Name" />
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Slogan</label>
+                    <input class="form-control" @bind="_school.Tagline" placeholder="Votre réussite, notre mission." />
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Description</label>
+                    <textarea class="form-control" rows="3" @bind="_school.Description"></textarea>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Mission</label>
+                    <textarea class="form-control" rows="2" @bind="_school.Mission"></textarea>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Vision</label>
+                    <textarea class="form-control" rows="2" @bind="_school.Vision"></textarea>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else if (_activeTab == "Coordonnées")
+{
+    <div class="section-card p-4">
+        <div class="row g-3">
+            <div class="col-md-6"><label class="form-label">Pays</label>
+                <select class="form-select" @bind="_school.Country">
+                    <option>Canada</option><option>France</option><option>Belgique</option><option>Suisse</option><option>Maroc</option>
+                </select></div>
+            <div class="col-md-6"><label class="form-label">Province / État</label>
+                <input class="form-control" @bind="_school.Province" /></div>
+            <div class="col-md-6"><label class="form-label">Ville</label>
+                <input class="form-control" @bind="_school.City" /></div>
+            <div class="col-md-6"><label class="form-label">Code postal</label>
+                <input class="form-control" @bind="_school.PostalCode" /></div>
+            <div class="col-12"><label class="form-label">Adresse complète</label>
+                <input class="form-control" @bind="_school.Address" /></div>
+            <div class="col-md-6"><label class="form-label">Téléphone</label>
+                <input class="form-control" @bind="_school.Phone" /></div>
+            <div class="col-md-6"><label class="form-label">Courriel de contact</label>
+                <input type="email" class="form-control" @bind="_school.Email" /></div>
+        </div>
+    </div>
+}
+else if (_activeTab == "Présence web")
+{
+    <div class="section-card p-4">
+        <div class="row g-3">
+            <div class="col-12">
+                <label class="form-label">Sous-domaine TutorSphere</label>
+                <div class="input-group">
+                    <input class="form-control" @bind="_school.Slug" placeholder="votre-ecole" />
+                    <span class="input-group-text">.tutorsphere.com</span>
+                </div>
+                <small class="text-muted mt-1 d-block">Votre URL publique : <strong>https://@(_school.Slug).tutorsphere.com</strong></small>
+            </div>
+            <div class="col-12">
+                <label class="form-label">Domaine personnalisé</label>
+                <input class="form-control" @bind="_school.CustomDomain" placeholder="www.votre-ecole.com" />
+                <small class="text-muted">Configurez un CNAME vers tutorsphere.com dans votre registraire DNS.</small>
+            </div>
+        </div>
+        <hr />
+        <h5 class="mb-3">Réseaux sociaux</h5>
+        <div class="row g-3">
+            @foreach (var sn in _school.SocialLinks)
+            {
+                <div class="col-md-6">
+                    <label class="form-label"><i class="bi @sn.Icon me-1"></i>@sn.Name</label>
+                    <input class="form-control" @bind="sn.Url" placeholder="https://..." />
+                </div>
+            }
+        </div>
+    </div>
+}
+else if (_activeTab == "Médias")
+{
+    <div class="section-card p-4">
+        <p class="text-muted mb-3">Gérez la galerie photos, vidéos et certificats de votre école.</p>
+        <div class="school-media-grid">
+            <div class="school-media-upload">
+                <i class="bi bi-cloud-upload"></i>
+                <p>Glissez des fichiers ici ou cliquez pour téléverser</p>
+                <small class="text-muted">JPG, PNG, PDF · Max 10 Mo</small>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private readonly string[] _tabs = ["Identité","Coordonnées","Présence web","Médias"];
+    private string _activeTab = "Identité";
+    private bool _saving, _saved;
+
+    private async Task SaveSchool()
+    {
+        _saving = true;
+        await Task.Delay(600);
+        _saving = false;
+        _saved = true;
+    }
+
+    private class SocialLink { public string Name{get;set;}=""; public string Icon{get;set;}=""; public string Url{get;set;}=""; }
+
+    private class SchoolVM
+    {
+        public string Name{get;set;}="Mon École de Soutien";
+        public string Tagline{get;set;}="Votre réussite, notre mission.";
+        public string Description{get;set;}="École de soutien scolaire spécialisée en mathématiques et sciences.";
+        public string Mission{get;set;}="Aider chaque élève à réaliser son plein potentiel.";
+        public string Vision{get;set;}="Être la référence du soutien scolaire personnalisé.";
+        public string Country{get;set;}="Canada";
+        public string Province{get;set;}="Québec";
+        public string City{get;set;}="Montréal";
+        public string PostalCode{get;set;}="H2X 1X1";
+        public string Address{get;set;}="123 rue Sainte-Catherine Ouest";
+        public string Phone{get;set;}="514-555-1234";
+        public string Email{get;set;}="contact@monecole.com";
+        public string Slug{get;set;}="mon-ecole";
+        public string CustomDomain{get;set;}="";
+        public List<SocialLink> SocialLinks{get;set;}=
+        [
+            new(){Name="Facebook",Icon="bi-facebook",Url=""},
+            new(){Name="Instagram",Icon="bi-instagram",Url=""},
+            new(){Name="TikTok",Icon="bi-tiktok",Url=""},
+            new(){Name="LinkedIn",Icon="bi-linkedin",Url=""},
+            new(){Name="YouTube",Icon="bi-youtube",Url=""},
+            new(){Name="WhatsApp",Icon="bi-whatsapp",Url=""},
+        ];
+    }
+    private SchoolVM _school = new();
+}

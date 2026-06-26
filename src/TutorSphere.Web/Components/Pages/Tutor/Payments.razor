@@ -1,4 +1,203 @@
 @page "/tutor/payments"
 @layout TutorLayout
+@rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
-<ModuleSkeletonPage PageTitleKey="PageTitle_Payments" TitleKey="Nav_Payments" Icon="bi-credit-card" EmptyIcon="bi-wallet2" />
+
+<PageTitle>Paiements – TutorSphere</PageTitle>
+
+<div class="ts-page-header">
+    <div>
+        <h1><i class="bi bi-credit-card me-2"></i>Paiements</h1>
+        <p class="ts-page-subtitle">Historique et suivi de vos encaissements</p>
+    </div>
+    <div class="d-flex gap-2">
+        <button class="btn btn-outline-secondary" @onclick="() => {}">
+            <i class="bi bi-download me-1"></i>Exporter
+        </button>
+        <button class="btn btn-primary" @onclick="() => _showInvoiceModal = true">
+            <i class="bi bi-receipt me-1"></i>Créer une facture
+        </button>
+    </div>
+</div>
+
+<!-- KPI cards -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3">
+        <div class="ts-kpi-card ts-kpi-card--success">
+            <span class="ts-kpi-val">@_payments.Where(p=>p.Status=="Payé").Sum(p=>p.Amount).ToString("N0") $</span>
+            <span class="ts-kpi-label">Encaissé ce mois</span>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="ts-kpi-card ts-kpi-card--warning">
+            <span class="ts-kpi-val">@_payments.Where(p=>p.Status=="En attente").Sum(p=>p.Amount).ToString("N0") $</span>
+            <span class="ts-kpi-label">En attente</span>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="ts-kpi-card ts-kpi-card--danger">
+            <span class="ts-kpi-val">@_payments.Where(p=>p.Status=="Échoué").Sum(p=>p.Amount).ToString("N0") $</span>
+            <span class="ts-kpi-label">Échec / Retard</span>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="ts-kpi-card">
+            <span class="ts-kpi-val">@_payments.Count</span>
+            <span class="ts-kpi-label">Transactions totales</span>
+        </div>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="ts-toolbar">
+    <div class="ts-search-box">
+        <i class="bi bi-search ts-search-icon"></i>
+        <input class="form-control" placeholder="Chercher par parent, élève…"
+               @bind="_search" @bind:event="oninput" />
+    </div>
+    <select class="form-select w-auto" @bind="_filterStatus">
+        <option value="">Tous les statuts</option>
+        <option>Payé</option><option>En attente</option><option>Échoué</option><option>Remboursé</option>
+    </select>
+    <select class="form-select w-auto" @bind="_filterMethod">
+        <option value="">Tous les modes</option>
+        <option>Carte</option><option>Virement</option><option>Espèces</option>
+    </select>
+</div>
+
+<!-- Payments table -->
+<div class="ts-table-card">
+    <table class="table ts-table">
+        <thead>
+            <tr><th>Date</th><th>Parent / Élève</th><th>Offre</th>
+                <th>Montant</th><th>Mode</th><th>Statut</th><th>Actions</th></tr>
+        </thead>
+        <tbody>
+            @foreach (var p in FilteredPayments)
+            {
+                <tr>
+                    <td><strong>@p.Date.ToString("dd/MM/yyyy")</strong></td>
+                    <td>
+                        <div><strong>@p.Parent</strong></div>
+                        <small class="text-muted">@p.Student</small>
+                    </td>
+                    <td>@p.OfferName</td>
+                    <td class="fw-semibold @(p.Status == "Remboursé" ? "text-danger" : "")">@p.Amount.ToString("N0") $</td>
+                    <td><span class="ts-badge ts-badge-neutral">@p.Method</span></td>
+                    <td><span class="ts-badge @PaymentBadge(p.Status)">@p.Status</span></td>
+                    <td>
+                        <div class="ts-action-group">
+                            <button class="ts-icon-btn" title="Facture PDF"><i class="bi bi-file-pdf"></i></button>
+                            <button class="ts-icon-btn" title="Reçu"><i class="bi bi-receipt"></i></button>
+                            @if (p.Status == "En attente")
+                            {
+                                <button class="ts-icon-btn ts-icon-btn--success" title="Marquer payé"
+                                        @onclick='() => p.Status = "Payé"'>
+                                    <i class="bi bi-check-lg"></i>
+                                </button>
+                            }
+                        </div>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@if (_showInvoiceModal)
+{
+    <div class="ts-modal-backdrop" @onclick="()=>_showInvoiceModal=false">
+        <div class="ts-modal" @onclick:stopPropagation="true">
+            <div class="ts-modal-header">
+                <h2>Créer une facture manuelle</h2>
+                <button class="ts-modal-close" @onclick="()=>_showInvoiceModal=false"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <div class="ts-modal-body">
+                <div class="row g-3">
+                    <div class="col-6"><label class="form-label">Parent *</label>
+                        <select class="form-select" @bind="_invParent">
+                            <option value="">—</option>
+                            <option>Marie Johnson</option><option>David Brown</option>
+                            <option>Laura Davis</option><option>Ana Martinez</option>
+                        </select></div>
+                    <div class="col-6"><label class="form-label">Offre / Description *</label>
+                        <input class="form-control" @bind="_invOffer" /></div>
+                    <div class="col-6"><label class="form-label">Montant ($) *</label>
+                        <input type="number" class="form-control" @bind="_invAmount" /></div>
+                    <div class="col-6"><label class="form-label">Mode de paiement</label>
+                        <select class="form-select" @bind="_invMethod">
+                            <option>Carte</option><option>Virement</option><option>Espèces</option>
+                        </select></div>
+                    <div class="col-12"><label class="form-label">Date</label>
+                        <input type="date" class="form-control" @bind="_invDate" /></div>
+                </div>
+            </div>
+            <div class="ts-modal-footer">
+                <button class="btn btn-outline-secondary" @onclick="()=>_showInvoiceModal=false">Annuler</button>
+                <button class="btn btn-primary" @onclick="CreateInvoice">Créer</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string _search = "", _filterStatus = "", _filterMethod = "";
+    private bool _showInvoiceModal;
+    private string _invParent = "", _invOffer = "", _invMethod = "Carte";
+    private decimal _invAmount = 150;
+    private DateTime _invDate = DateTime.Today;
+
+    private static string PaymentBadge(string s) => s switch {
+        "Payé" => "ts-badge-success",
+        "En attente" => "ts-badge-warning",
+        "Échoué" => "ts-badge-danger",
+        "Remboursé" => "ts-badge-neutral",
+        _ => "ts-badge-neutral"
+    };
+
+    private IEnumerable<PaymentVM> FilteredPayments => _payments
+        .Where(p => string.IsNullOrEmpty(_search) ||
+            p.Parent.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+            p.Student.Contains(_search, StringComparison.OrdinalIgnoreCase))
+        .Where(p => string.IsNullOrEmpty(_filterStatus) || p.Status == _filterStatus)
+        .Where(p => string.IsNullOrEmpty(_filterMethod) || p.Method == _filterMethod)
+        .OrderByDescending(p => p.Date);
+
+    private void CreateInvoice()
+    {
+        if (string.IsNullOrWhiteSpace(_invParent) || _invAmount <= 0) return;
+        _payments.Insert(0, new PaymentVM {
+            Date = _invDate, Parent = _invParent, Student = "—",
+            OfferName = _invOffer, Amount = _invAmount,
+            Method = _invMethod, Status = "En attente"
+        });
+        _showInvoiceModal = false;
+    }
+
+    private class PaymentVM
+    {
+        public DateTime Date { get; set; }
+        public string Parent { get; set; } = "";
+        public string Student { get; set; } = "";
+        public string OfferName { get; set; } = "";
+        public decimal Amount { get; set; }
+        public string Method { get; set; } = "";
+        public string Status { get; set; } = "";
+    }
+
+    private readonly List<PaymentVM> _payments =
+    [
+        new(){ Date=DateTime.Today.AddDays(-1), Parent="Marie Johnson", Student="Emma Johnson",
+            OfferName="Cours Maths Intensif", Amount=150, Method="Carte", Status="Payé" },
+        new(){ Date=DateTime.Today.AddDays(-5), Parent="David Brown", Student="Liam Brown",
+            OfferName="Physique-Chimie Lycée", Amount=140, Method="Virement", Status="Payé" },
+        new(){ Date=DateTime.Today.AddDays(-10), Parent="Laura Davis", Student="Sophia Davis",
+            OfferName="Cours Maths Intensif", Amount=220, Method="Carte", Status="Payé" },
+        new(){ Date=DateTime.Today, Parent="Ana Martinez", Student="Olivia Martinez",
+            OfferName="Cours Français CE2", Amount=120, Method="Carte", Status="En attente" },
+        new(){ Date=DateTime.Today.AddDays(-15), Parent="David Brown", Student="Liam Brown",
+            OfferName="Physique-Chimie Lycée", Amount=140, Method="Carte", Status="Échoué" },
+        new(){ Date=DateTime.Today.AddDays(-20), Parent="Marie Johnson", Student="Emma Johnson",
+            OfferName="Stage Vacances", Amount=350, Method="Virement", Status="Remboursé" },
+    ];
+}

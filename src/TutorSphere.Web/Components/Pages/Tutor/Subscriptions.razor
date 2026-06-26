@@ -1,0 +1,231 @@
+@page "/tutor/subscriptions"
+@layout TutorLayout
+@rendermode InteractiveServer
+@inject IStringLocalizer<SharedResources> L
+
+<PageTitle>Abonnements – TutorSphere</PageTitle>
+
+<div class="ts-page-header">
+    <div>
+        <h1><i class="bi bi-arrow-repeat me-2"></i>Abonnements</h1>
+        <p class="ts-page-subtitle">Gérez vos plans et vos abonnés</p>
+    </div>
+    <button class="btn btn-primary" @onclick="()=>_showPlanModal=true">
+        <i class="bi bi-plus-lg me-1"></i>Créer un plan
+    </button>
+</div>
+
+<!-- KPIs -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3">
+        <div class="ts-kpi-card ts-kpi-card--success">
+            <span class="ts-kpi-val">@_subs.Count(s=>s.Status=="Actif")</span>
+            <span class="ts-kpi-label">Abonnements actifs</span>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="ts-kpi-card ts-kpi-card--warning">
+            <span class="ts-kpi-val">@_subs.Count(s=>s.ExpiresAt <= DateTime.Today.AddDays(14) && s.Status=="Actif")</span>
+            <span class="ts-kpi-label">Expirent bientôt</span>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="ts-kpi-card">
+            <span class="ts-kpi-val">@_subs.Where(s=>s.Status=="Actif").Sum(s=>s.Amount).ToString("N0") $</span>
+            <span class="ts-kpi-label">MRR (revenus récurrents)</span>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="ts-kpi-card">
+            <span class="ts-kpi-val">@((_subs.Count(s=>s.Status=="Actif") > 0 ? Math.Round(_subs.Where(s=>s.Status=="Actif").Average(s=>s.Amount),0) : 0).ToString("N0")) $</span>
+            <span class="ts-kpi-label">Montant moyen</span>
+        </div>
+    </div>
+</div>
+
+<!-- Plans section -->
+<div class="section-card mb-4">
+    <div class="section-card-header">
+        <h2>Mes plans</h2>
+    </div>
+    <div class="sub-plans-grid">
+        @foreach (var plan in _plans)
+        {
+            <div class="sub-plan-card @(plan.Popular?"sub-plan-card--featured":"")">
+                @if (plan.Popular) { <div class="sub-plan-badge">Populaire</div> }
+                <h3>@plan.Name</h3>
+                <div class="sub-plan-price">
+                    <span class="sub-plan-amount">@plan.Price $</span>
+                    <span class="sub-plan-period">/ @plan.Period</span>
+                </div>
+                <ul class="sub-plan-features">
+                    @foreach (var f in plan.Features)
+                    {
+                        <li><i class="bi bi-check-circle-fill text-success me-2"></i>@f</li>
+                    }
+                </ul>
+                <div class="sub-plan-footer">
+                    <span class="text-muted small">@_subs.Count(s=>s.PlanName==plan.Name&&s.Status=="Actif") abonné(s)</span>
+                    <button class="ts-icon-btn" title="Modifier"><i class="bi bi-pencil"></i></button>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+<!-- Subscribers table -->
+<div class="section-card">
+    <div class="section-card-header">
+        <h2>Abonnés</h2>
+        <div class="d-flex gap-2">
+            <select class="form-select form-select-sm w-auto" @bind="_filterSubStatus">
+                <option value="">Tous</option><option>Actif</option><option>Suspendu</option><option>Résilié</option>
+            </select>
+        </div>
+    </div>
+    <table class="table ts-table">
+        <thead>
+            <tr><th>Élève / Parent</th><th>Plan</th><th>Montant</th>
+                <th>Renouvellement</th><th>Statut</th><th>Actions</th></tr>
+        </thead>
+        <tbody>
+            @foreach (var s in FilteredSubs)
+            {
+                <tr class="@(s.ExpiresAt <= DateTime.Today.AddDays(7) && s.Status=="Actif" ? "ts-row-warning" : "")">
+                    <td>
+                        <div><strong>@s.StudentName</strong></div>
+                        <small class="text-muted">@s.ParentName</small>
+                    </td>
+                    <td><span class="ts-badge ts-badge-neutral">@s.PlanName</span></td>
+                    <td class="fw-semibold">@s.Amount $</td>
+                    <td>@s.ExpiresAt.ToString("dd/MM/yyyy")
+                        @if (s.ExpiresAt <= DateTime.Today.AddDays(14) && s.Status == "Actif")
+                        {
+                            <span class="text-warning ms-1"><i class="bi bi-exclamation-circle"></i></span>
+                        }
+                    </td>
+                    <td><span class="ts-badge @SubBadge(s.Status)">@s.Status</span></td>
+                    <td>
+                        <div class="ts-action-group">
+                            @if (s.Status == "Actif")
+                            {
+                                <button class="ts-icon-btn" title="Suspendre" @onclick='() => s.Status = "Suspendu"'>
+                                    <i class="bi bi-pause-circle text-warning"></i>
+                                </button>
+                            }
+                            else if (s.Status == "Suspendu")
+                            {
+                                <button class="ts-icon-btn" title="Réactiver" @onclick='() => s.Status = "Actif"'>
+                                    <i class="bi bi-play-circle text-success"></i>
+                                </button>
+                            }
+                            <button class="ts-icon-btn" title="Facture"><i class="bi bi-receipt"></i></button>
+                        </div>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@if (_showPlanModal)
+{
+    <div class="ts-modal-backdrop" @onclick="()=>_showPlanModal=false">
+        <div class="ts-modal" @onclick:stopPropagation="true">
+            <div class="ts-modal-header">
+                <h2>Créer un plan d'abonnement</h2>
+                <button class="ts-modal-close" @onclick="()=>_showPlanModal=false"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <div class="ts-modal-body">
+                <div class="row g-3">
+                    <div class="col-12"><label class="form-label">Nom du plan *</label>
+                        <input class="form-control" @bind="_pf.Name" placeholder="Ex: Mensuel Maths" /></div>
+                    <div class="col-6"><label class="form-label">Prix ($) *</label>
+                        <input type="number" class="form-control" @bind="_pf.Price" /></div>
+                    <div class="col-6"><label class="form-label">Période</label>
+                        <select class="form-select" @bind="_pf.Period">
+                            <option>mois</option><option>trimestre</option><option>semestre</option><option>an</option>
+                        </select></div>
+                    <div class="col-12"><label class="form-label">Fonctionnalités incluses (une par ligne)</label>
+                        <textarea class="form-control" rows="4" @bind="_pf.Features"
+                            placeholder="4 séances par mois&#10;Accès aux rapports&#10;Support WhatsApp"></textarea></div>
+                    <div class="col-12">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" @bind="_pf.Popular" id="plan-popular" />
+                            <label class="form-check-label" for="plan-popular">Marquer comme "Populaire"</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="ts-modal-footer">
+                <button class="btn btn-outline-secondary" @onclick="()=>_showPlanModal=false">Annuler</button>
+                <button class="btn btn-primary" @onclick="SavePlan">Créer</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string _filterSubStatus = "";
+    private bool _showPlanModal;
+    private PlanForm _pf = new();
+
+    private static string SubBadge(string s) => s switch {
+        "Actif" => "ts-badge-success", "Suspendu" => "ts-badge-warning",
+        "Résilié" => "ts-badge-danger", _ => "ts-badge-neutral"
+    };
+
+    private IEnumerable<SubVM> FilteredSubs => _subs
+        .Where(s => string.IsNullOrEmpty(_filterSubStatus) || s.Status == _filterSubStatus)
+        .OrderBy(s => s.ExpiresAt);
+
+    private void SavePlan()
+    {
+        if (string.IsNullOrWhiteSpace(_pf.Name)) return;
+        _plans.Add(new PlanVM { Name=_pf.Name, Price=_pf.Price, Period=_pf.Period, Popular=_pf.Popular,
+            Features=_pf.Features.Split('\n').Where(f=>!string.IsNullOrWhiteSpace(f)).ToList() });
+        _showPlanModal = false;
+    }
+
+    private class PlanForm
+    {
+        public string Name { get; set; } = "";
+        public decimal Price { get; set; } = 150;
+        public string Period { get; set; } = "mois";
+        public string Features { get; set; } = "";
+        public bool Popular { get; set; }
+    }
+    private class PlanVM
+    {
+        public string Name { get; set; } = "";
+        public decimal Price { get; set; }
+        public string Period { get; set; } = "";
+        public bool Popular { get; set; }
+        public List<string> Features { get; set; } = [];
+    }
+    private class SubVM
+    {
+        public string StudentName { get; set; } = "";
+        public string ParentName { get; set; } = "";
+        public string PlanName { get; set; } = "";
+        public decimal Amount { get; set; }
+        public DateTime ExpiresAt { get; set; }
+        public string Status { get; set; } = "Actif";
+    }
+
+    private readonly List<PlanVM> _plans =
+    [
+        new(){ Name="Essentiel", Price=120, Period="mois", Popular=false, Features=["4 séances / mois","Rapports de séance","Support email"] },
+        new(){ Name="Professionnel", Price=200, Period="mois", Popular=true, Features=["8 séances / mois","Rapports détaillés","Support WhatsApp","Devoirs corrigés"] },
+        new(){ Name="Intensif", Price=350, Period="mois", Popular=false, Features=["16 séances / mois","Tout inclus","Préparation examens","Appels illimités"] },
+    ];
+
+    private readonly List<SubVM> _subs =
+    [
+        new(){ StudentName="Emma Johnson", ParentName="Marie Johnson", PlanName="Professionnel", Amount=200, ExpiresAt=DateTime.Today.AddDays(12), Status="Actif" },
+        new(){ StudentName="Liam Brown", ParentName="David Brown", PlanName="Essentiel", Amount=120, ExpiresAt=DateTime.Today.AddDays(5), Status="Actif" },
+        new(){ StudentName="Sophia Davis", ParentName="Laura Davis", PlanName="Intensif", Amount=350, ExpiresAt=DateTime.Today.AddDays(28), Status="Actif" },
+        new(){ StudentName="Olivia Martinez", ParentName="Ana Martinez", PlanName="Essentiel", Amount=120, ExpiresAt=DateTime.Today.AddDays(-3), Status="Résilié" },
+        new(){ StudentName="Noah Wilson", ParentName="James Wilson", PlanName="Professionnel", Amount=200, ExpiresAt=DateTime.Today.AddDays(15), Status="Suspendu" },
+    ];
+}

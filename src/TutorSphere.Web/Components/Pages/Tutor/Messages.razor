@@ -1,4 +1,164 @@
 @page "/tutor/messages"
 @layout TutorLayout
+@rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
-<ModuleSkeletonPage PageTitleKey="PageTitle_Messages" TitleKey="Nav_Messages" Icon="bi-chat-dots" EmptyIcon="bi-envelope" />
+
+<PageTitle>Messagerie – TutorSphere</PageTitle>
+
+<div class="ts-page-header">
+    <div>
+        <h1><i class="bi bi-chat-dots me-2"></i>Messagerie</h1>
+    </div>
+    <button class="btn btn-primary btn-sm" @onclick="NewConversation">
+        <i class="bi bi-plus-lg me-1"></i>Nouveau message
+    </button>
+</div>
+
+<div class="messages-layout">
+    <!-- Conversation list -->
+    <aside class="messages-sidebar">
+        <div class="messages-search">
+            <i class="bi bi-search"></i>
+            <input class="form-control form-control-sm" placeholder="Rechercher…"
+                   @bind="_msgSearch" @bind:event="oninput" />
+        </div>
+        <div class="conversation-list">
+            @foreach (var c in FilteredConversations)
+            {
+                <div class="conversation-item @(_active?.Id == c.Id ? "active" : "") @(c.Unread > 0 ? "unread" : "")"
+                     @onclick="() => SelectConversation(c)">
+                    <div class="conv-avatar" style="background:@c.Color">@c.Initials</div>
+                    <div class="conv-info">
+                        <div class="conv-name">@c.Name</div>
+                        <div class="conv-last">@c.LastMessage</div>
+                    </div>
+                    <div class="conv-meta">
+                        <span class="conv-time">@c.LastTime</span>
+                        @if (c.Unread > 0)
+                        {
+                            <span class="conv-badge">@c.Unread</span>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </aside>
+
+    <!-- Chat panel -->
+    @if (_active != null)
+    {
+        <section class="messages-chat">
+            <div class="chat-header">
+                <div class="ts-avatar" style="background:@_active.Color">@_active.Initials</div>
+                <div>
+                    <strong>@_active.Name</strong>
+                    <span class="chat-role text-muted">@_active.Role</span>
+                </div>
+                <div class="ms-auto d-flex gap-2">
+                    <button class="ts-icon-btn" title="Appel vidéo"><i class="bi bi-camera-video"></i></button>
+                    <button class="ts-icon-btn" title="Appel"><i class="bi bi-telephone"></i></button>
+                </div>
+            </div>
+
+            <div class="chat-messages" id="chat-scroll">
+                @foreach (var m in _active.Messages)
+                {
+                    <div class="chat-msg @(m.FromMe ? "chat-msg--me" : "chat-msg--them")">
+                        <div class="chat-bubble">@m.Text</div>
+                        <span class="chat-time">@m.Time</span>
+                    </div>
+                }
+            </div>
+
+            <div class="chat-input-area">
+                <button class="ts-icon-btn" title="Pièce jointe"><i class="bi bi-paperclip"></i></button>
+                <input class="form-control" placeholder="Écrire un message…"
+                       @bind="_newMsg" @onkeydown="HandleKey" />
+                <button class="btn btn-primary btn-sm" @onclick="SendMessage"
+                        disabled="@string.IsNullOrWhiteSpace(_newMsg)">
+                    <i class="bi bi-send-fill"></i>
+                </button>
+            </div>
+        </section>
+    }
+    else
+    {
+        <section class="messages-empty">
+            <i class="bi bi-chat-dots messages-empty-icon"></i>
+            <p>Sélectionnez une conversation</p>
+        </section>
+    }
+</div>
+
+@code {
+    private string _msgSearch = "";
+    private ConversationVM? _active;
+    private string _newMsg = "";
+
+    private IEnumerable<ConversationVM> FilteredConversations => _convs
+        .Where(c => string.IsNullOrEmpty(_msgSearch) ||
+            c.Name.Contains(_msgSearch, StringComparison.OrdinalIgnoreCase));
+
+    private void SelectConversation(ConversationVM c) { _active = c; c.Unread = 0; }
+
+    private void NewConversation() { }
+
+    private void SendMessage()
+    {
+        if (_active == null || string.IsNullOrWhiteSpace(_newMsg)) return;
+        _active.Messages.Add(new ChatMsg { Text = _newMsg, FromMe = true, Time = DateTime.Now.ToString("HH:mm") });
+        _active.LastMessage = _newMsg;
+        _active.LastTime = DateTime.Now.ToString("HH:mm");
+        _newMsg = "";
+    }
+
+    private async Task HandleKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey) SendMessage();
+    }
+
+    private class ChatMsg { public string Text { get; set; } = ""; public bool FromMe { get; set; } public string Time { get; set; } = ""; }
+    private class ConversationVM
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = "";
+        public string Role { get; set; } = "";
+        public string Initials { get; set; } = "";
+        public string Color { get; set; } = "#7c3aed";
+        public string LastMessage { get; set; } = "";
+        public string LastTime { get; set; } = "";
+        public int Unread { get; set; }
+        public List<ChatMsg> Messages { get; set; } = [];
+    }
+
+    private readonly List<ConversationVM> _convs =
+    [
+        new(){ Id=1, Name="Marie Johnson", Role="Parent · Emma Johnson", Initials="MJ", Color="#7c3aed",
+            LastMessage="Merci pour le rapport ! Emma a bien progressé.", LastTime="10:32", Unread=2,
+            Messages=[
+                new(){ Text="Bonjour, comment s'est passée la séance d'aujourd'hui ?", FromMe=false, Time="10:15" },
+                new(){ Text="Très bien ! Emma a bien compris les suites arithmétiques. Elle doit revoir les géométriques.", FromMe=true, Time="10:20" },
+                new(){ Text="Merci pour le rapport ! Emma a bien progressé.", FromMe=false, Time="10:32" },
+            ]},
+        new(){ Id=2, Name="David Brown", Role="Parent · Liam Brown", Initials="DB", Color="#0ea5e9",
+            LastMessage="Est-ce que Liam peut avoir un cours supplémentaire ?", LastTime="hier", Unread=1,
+            Messages=[
+                new(){ Text="Bonjour, Liam a du mal avec les circuits électriques.", FromMe=false, Time="hier" },
+                new(){ Text="Je vais préparer des exercices spécifiques pour la prochaine séance.", FromMe=true, Time="hier" },
+                new(){ Text="Est-ce que Liam peut avoir un cours supplémentaire ?", FromMe=false, Time="hier" },
+            ]},
+        new(){ Id=3, Name="Laura Davis", Role="Parent · Sophia Davis", Initials="LD", Color="#10b981",
+            LastMessage="Super, à la semaine prochaine !", LastTime="lun.", Unread=0,
+            Messages=[
+                new(){ Text="Sophia est prête pour l'examen de chimie.", FromMe=true, Time="lun." },
+                new(){ Text="Super, à la semaine prochaine !", FromMe=false, Time="lun." },
+            ]},
+        new(){ Id=4, Name="Emma Johnson", Role="Élève · Lycée Pasteur", Initials="EJ", Color="#ec4899",
+            LastMessage="J'ai fini les exercices !", LastTime="dim.", Unread=0,
+            Messages=[
+                new(){ Text="Bonsoir, j'ai une question sur l'exercice 7.", FromMe=false, Time="dim." },
+                new(){ Text="Quelle est ta difficulté ? Tu peux m'envoyer une photo.", FromMe=true, Time="dim." },
+                new(){ Text="J'ai fini les exercices !", FromMe=false, Time="dim." },
+            ]},
+    ];
+}
