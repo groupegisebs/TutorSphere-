@@ -86,20 +86,13 @@ public class AuthController : ControllerBase
         }
         catch (InvalidOperationException ex)
         {
-            return Content($"""
-                <!doctype html>
-                <html lang="fr">
-                <head><meta charset="utf-8"><title>Erreur — TutorSphere</title>
-                <style>body{{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#fff5f5;}}
-                .box{{text-align:center;padding:2rem;background:#fff;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,.08);max-width:420px;}}
-                .icon{{font-size:3rem;}}h1{{color:#dc2626;}}p{{color:#555;}}</style>
-                </head>
-                <body><div class="box">
-                <div class="icon">❌</div>
-                <h1>Lien invalide</h1>
-                <p>{System.Net.WebUtility.HtmlEncode(ex.Message)}</p>
-                </div></body></html>
-                """, "text/html");
+            var msg = System.Net.WebUtility.HtmlEncode(ex.Message);
+            var errorHtml = "<html lang='fr'><head><meta charset='utf-8'><title>Erreur - TutorSphere</title>"
+                + "<style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#fff5f5}"
+                + ".box{text-align:center;padding:2rem;background:#fff;border-radius:12px;max-width:420px}"
+                + "h1{color:#dc2626}</style></head><body><div class='box'>"
+                + "<h1>Lien invalide</h1><p>" + msg + "</p></div></body></html>";
+            return Content(errorHtml, "text/html");
         }
     }
 

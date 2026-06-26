@@ -113,7 +113,7 @@
                     <label class="form-label">@L["Label_SubdomainFull"] <span class="text-danger">*</span></label>
                     <div class="subdomain-field">
                         <span class="subdomain-prefix">https://</span>
-                        <input @bind="Slug" @bind:event="oninput" @oninput="OnSlugInput" placeholder="jean" aria-label="@L["Label_Subdomain"]" />
+                        <input @bind="Slug" @bind:event="oninput" @bind:after="AfterSlugChanged" placeholder="jean" aria-label="@L["Label_Subdomain"]" />
                         <span class="subdomain-suffix">.tutorsphere.com</span>
                         @if (_checkingSlug)
                         {
@@ -295,9 +295,9 @@
     private void TogglePassword() => ShowPassword = !ShowPassword;
     private void ToggleConfirmPassword() => ShowConfirmPassword = !ShowConfirmPassword;
 
-    private async Task OnSlugInput(ChangeEventArgs e)
+    private async Task AfterSlugChanged()
     {
-        Slug = (e.Value?.ToString() ?? "").Trim().ToLowerInvariant();
+        Slug = Slug.Trim().ToLowerInvariant();
         _slugAvailable = null;
 
         if (!IsSlugFormatValid) return;
