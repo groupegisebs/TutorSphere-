@@ -1,62 +1,96 @@
 @page "/login"
 @layout LoginLayout
+@rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
+@inject NavigationManager Navigation
+@inject HttpClient Http
 
 <PageTitle>@L["PageTitle_Login"]</PageTitle>
 
 <div class="login-page">
     <div class="login-illustration">
         <div class="login-illustration-content">
-            <div class="login-illustration-scene" aria-hidden="true">
-                <i class="bi bi-laptop login-scene-icon login-scene-icon--laptop"></i>
-                <i class="bi bi-lightbulb login-scene-icon login-scene-icon--lamp"></i>
-                <i class="bi bi-flower1 login-scene-icon login-scene-icon--plant"></i>
-                <i class="bi bi-book login-scene-icon login-scene-icon--book"></i>
+            <div class="login-brand">
+                <img src="images/tutorsphere-logo.png" alt="@L["AppName"]" class="login-logo" />
+                <span class="login-brand-name">@L["AppName"]</span>
             </div>
-            <p class="login-illustration-tagline">@L["Login_IllustrationTagline"]</p>
+            <div class="login-illustration-tagline-block">
+                <p class="login-tagline-small">@L["AppTagline"]</p>
+                <h2 class="login-hero-title">@L["Login_HeroTitle"]</h2>
+                <p class="login-hero-subtitle">@L["Login_HeroSubtitle"]</p>
+            </div>
+            <img src="images/login-illustration.svg"
+                 alt=""
+                 aria-hidden="true"
+                 class="login-illustration-img" />
         </div>
     </div>
 
     <div class="login-form-panel">
         <div class="login-form-inner">
-            <div class="login-brand">
-                <img src="images/tutorsphere-logo.png" alt="@L["AppName"]" class="login-logo" />
-                <span class="login-brand-name">@L["AppName"]</span>
-            </div>
-
             <h1>@L["Login_Title"]</h1>
             <p class="login-subtitle">@L["Login_Subtitle"]</p>
 
-            <form class="login-form" @onsubmit:preventDefault="true">
+            @if (!string.IsNullOrEmpty(_errorMessage))
+            {
+                <div class="alert alert-danger mb-3" role="alert">
+                    <i class="bi bi-exclamation-circle me-2"></i>@_errorMessage
+                </div>
+            }
+
+            <form class="login-form" @onsubmit="LoginAsync" @onsubmit:preventDefault="true">
                 <div class="mb-3">
-                    <label class="form-label" for="email">@L["Label_EmailAddress"]</label>
-                    <input type="email" id="email" class="form-control" placeholder="@L["Placeholder_Email"]" />
+                    <label class="form-label" for="login-email">@L["Label_EmailAddress"]</label>
+                    <div class="form-field-icon">
+                        <i class="bi bi-envelope field-icon" aria-hidden="true"></i>
+                        <input type="email" id="login-email" class="form-control"
+                               placeholder="@L["Placeholder_Email"]"
+                               @bind="_email" @bind:event="oninput" />
+                    </div>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label" for="password">@L["Label_Password"]</label>
-                    <input type="password" id="password" class="form-control" placeholder="••••••••" />
+                    <label class="form-label" for="login-password">@L["Label_Password"]</label>
+                    <div class="form-field-icon">
+                        <i class="bi bi-lock field-icon" aria-hidden="true"></i>
+                        <input type="@(_showPassword ? "text" : "password")" id="login-password"
+                               class="form-control" placeholder="••••••••"
+                               @bind="_password" @bind:event="oninput"
+                               style="padding-right: 2.5rem;" />
+                        <button type="button" class="password-toggle" @onclick="() => _showPassword = !_showPassword"
+                                aria-label="@L["Label_TogglePassword"]">
+                            <i class="bi @(_showPassword ? "bi-eye-slash" : "bi-eye")" aria-hidden="true"></i>
+                        </button>
+                    </div>
                 </div>
                 <div class="login-options mb-4">
                     <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="remember" />
-                        <label class="form-check-label" for="remember">@L["Login_RememberMe"]</label>
+                        <input class="form-check-input" type="checkbox" id="login-remember" @bind="_rememberMe" />
+                        <label class="form-check-label" for="login-remember">@L["Login_RememberMe"]</label>
                     </div>
                     <a href="#" class="login-forgot">@L["Login_ForgotPassword"]</a>
                 </div>
-                <button type="submit" class="btn btn-primary btn-lg w-100 mb-4">@L["Login_SignIn"]</button>
+                <button type="submit" class="btn btn-primary btn-lg w-100 mb-4" disabled="@_isLoading">
+                    @if (_isLoading)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                    }
+                    @L["Login_SignIn"]
+                </button>
             </form>
 
             <div class="login-divider"><span>@L["Login_OrContinueWith"]</span></div>
 
             <div class="login-social row g-2 mb-4">
                 <div class="col-6">
-                    <button type="button" class="btn btn-outline-secondary w-100 login-social-btn">
-                        <i class="bi bi-google"></i> Google
+                    <button type="button" class="btn btn-outline-secondary w-100 login-social-btn"
+                            @onclick='() => _errorMessage = L["Login_SocialComingSoon"].Value'>
+                        <i class="bi bi-google" aria-hidden="true"></i> Google
                     </button>
                 </div>
                 <div class="col-6">
-                    <button type="button" class="btn btn-outline-secondary w-100 login-social-btn">
-                        <i class="bi bi-apple"></i> Apple
+                    <button type="button" class="btn btn-outline-secondary w-100 login-social-btn"
+                            @onclick='() => _errorMessage = L["Login_SocialComingSoon"].Value'>
+                        <i class="bi bi-apple" aria-hidden="true"></i> Apple
                     </button>
                 </div>
             </div>
@@ -71,3 +105,74 @@
         </div>
     </div>
 </div>
+
+@code {
+    private string _email = "";
+    private string _password = "";
+    private bool _rememberMe;
+    private bool _showPassword;
+    private bool _isLoading;
+    private string? _errorMessage;
+
+    private async Task LoginAsync()
+    {
+        _errorMessage = null;
+
+        if (string.IsNullOrWhiteSpace(_email) || string.IsNullOrWhiteSpace(_password))
+        {
+            _errorMessage = L["Error_FillAllFields"].Value;
+            return;
+        }
+
+        _isLoading = true;
+        try
+        {
+            var response = await Http.PostAsJsonAsync("api/auth/login",
+                new { email = _email, password = _password });
+
+            if (response.IsSuccessStatusCode)
+            {
+                var result = await response.Content.ReadFromJsonAsync<AuthResult>();
+                if (result is not null)
+                {
+                    var role = result.Roles?.FirstOrDefault() ?? "";
+                    var destination = role switch
+                    {
+                        "SuperAdmin" or "PlatformAdmin" => "/admin/dashboard",
+                        "Tutor" or "TeachingAssistant" => "/tutor/dashboard",
+                        "Parent" => "/parent",
+                        "Student" => "/student/dashboard",
+                        _ => "/tutor/dashboard"
+                    };
+                    Navigation.NavigateTo(destination);
+                    return;
+                }
+            }
+
+            var body = await response.Content.ReadAsStringAsync();
+            _errorMessage = TryParseError(body) ?? L["Login_InvalidCredentials"].Value;
+        }
+        catch (Exception)
+        {
+            _errorMessage = L["Error_ApiConnection"].Value;
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private static string? TryParseError(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return null;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("error", out var e)) return e.GetString();
+        }
+        catch (System.Text.Json.JsonException) { return body; }
+        return body;
+    }
+
+    private record AuthResult(string Token, string Email, IReadOnlyList<string>? Roles);
+}

@@ -5,98 +5,114 @@
 <PageTitle>@L["PageTitle_StudentDashboard"]</PageTitle>
 
 <div class="dashboard-header">
-    <h1 class="dashboard-greeting">@L["StudentDashboard_Welcome", "Emma"]</h1>
+    <div>
+        <h1 class="dashboard-greeting">@L["StudentDashboard_Welcome", "Emma"]</h1>
+        <p class="dashboard-date">@DateTime.Now.ToString("dddd d MMMM yyyy")</p>
+    </div>
 </div>
 
 <div class="row g-3 mb-4">
-    <div class="col-md-4">
-        <div class="section-card dashboard-action-card h-100">
-            <div class="dashboard-action-icon dashboard-action-icon--primary">
-                <i class="bi bi-camera-video"></i>
-            </div>
-            <h2>@L["Student_NextClass"]</h2>
-            <p class="dashboard-action-highlight">@L["Student_NextClassTime"]</p>
-            <p class="text-muted">@L["Subject_Math"] — John Smith</p>
-            <button type="button" class="btn btn-primary w-100">@L["Student_JoinClass"]</button>
-        </div>
+    <div class="col-sm-6 col-xl-3">
+        <StatCard Label="@L["StudentDashboard_CoursesThisWeek"]" Value="4" Icon="bi-book" Variant="lessons" Change="@L["Stat_Today"]" ChangeVariant="neutral" />
     </div>
-    <div class="col-md-4">
-        <div class="section-card dashboard-action-card h-100">
-            <div class="dashboard-action-icon dashboard-action-icon--warning">
-                <i class="bi bi-journal-text"></i>
-            </div>
-            <h2>@L["Student_HomeworkDue"]</h2>
-            <p class="dashboard-action-highlight">@L["Student_HomeworkCount", 2]</p>
-            <a href="student/homework" class="btn btn-outline-primary w-100">@L["Student_ViewHomework"]</a>
-        </div>
+    <div class="col-sm-6 col-xl-3">
+        <StatCard Label="@L["StudentDashboard_HomeworkDue"]" Value="2" Icon="bi-pencil-square" Variant="payments" Change="@L["StudentDashboard_DueToday"]" ChangeVariant="negative" />
     </div>
-    <div class="col-md-4">
-        <div class="section-card dashboard-action-card h-100">
-            <div class="dashboard-action-icon dashboard-action-icon--success">
-                <i class="bi bi-file-earmark-bar-graph"></i>
-            </div>
-            <h2>@L["Student_LastReport"]</h2>
-            <p class="dashboard-action-highlight">@L["Student_LastReportGrade"]</p>
-            <a href="student/reports" class="btn btn-outline-primary w-100">@L["Button_ViewReport"]</a>
-        </div>
+    <div class="col-sm-6 col-xl-3">
+        <StatCard Label="@L["StudentDashboard_AverageGrade"]" Value="86%" Icon="bi-graph-up" Variant="revenue" Change="@L["Stat_Change_Positive", "+4%"]" />
+    </div>
+    <div class="col-sm-6 col-xl-3">
+        <StatCard Label="@L["StudentDashboard_UnreadMessages"]" Value="3" Icon="bi-chat-dots" Variant="notifications" Change="@L["StudentDashboard_New"]" ChangeVariant="neutral" />
     </div>
 </div>
 
-<div class="row g-4">
+<div class="row g-4 mb-4">
     <div class="col-lg-7">
-        <div class="section-card">
+        <div class="section-card h-100">
             <div class="section-card-header">
-                <h2>@L["Student_WeeklyClasses"]</h2>
+                <h2>@L["StudentDashboard_UpcomingCourses"]</h2>
+                <a href="student/courses" class="btn btn-sm btn-link">@L["Button_ViewAll"]</a>
             </div>
             <ul class="lesson-list">
-                @foreach (var lesson in WeeklyClasses)
+                @foreach (var lesson in UpcomingCourses)
                 {
                     <li class="lesson-list-item">
+                        <div class="lesson-avatar" style="background: @lesson.Color">@lesson.Icon</div>
                         <div class="lesson-info">
                             <strong>@lesson.Subject</strong>
-                            <span>@lesson.Date</span>
+                            <span>@lesson.Tutor</span>
                         </div>
-                        <button type="button" class="btn btn-sm btn-primary">@L["Student_JoinClass"]</button>
+                        <span class="lesson-time">@lesson.Time</span>
                     </li>
                 }
             </ul>
         </div>
     </div>
     <div class="col-lg-5">
-        <div class="section-card">
+        <div class="section-card h-100">
             <div class="section-card-header">
-                <h2>@L["Student_RecentDocuments"]</h2>
+                <h2>@L["StudentDashboard_RecentReports"]</h2>
             </div>
-            <ul class="document-list">
-                @foreach (var doc in Documents)
-                {
-                    <li class="document-list-item">
-                        <i class="bi bi-file-earmark-pdf document-icon"></i>
-                        <span>@doc</span>
-                        <button type="button" class="btn btn-sm btn-link" aria-label="@L["Button_Download"]">
-                            <i class="bi bi-download"></i>
-                        </button>
-                    </li>
-                }
-            </ul>
+            @foreach (var report in RecentReports)
+            {
+                <div class="lesson-list-item mb-2">
+                    <div class="lesson-avatar">📋</div>
+                    <div class="lesson-info">
+                        <strong>@report.Subject</strong>
+                        <span>@report.Date</span>
+                    </div>
+                    <span class="stat-change stat-change--positive">@report.Grade</span>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-md-4">
+        <div class="mini-stat-card">
+            <i class="bi bi-journal-text mini-stat-icon mini-stat-icon--warning"></i>
+            <div>
+                <span class="mini-stat-label">@L["StudentDashboard_PendingHomework"]</span>
+                <span class="mini-stat-value">2</span>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="mini-stat-card">
+            <i class="bi bi-folder2-open mini-stat-icon mini-stat-icon--info"></i>
+            <div>
+                <span class="mini-stat-label">@L["StudentDashboard_Documents"]</span>
+                <span class="mini-stat-value">8</span>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="mini-stat-card">
+            <i class="bi bi-star-fill mini-stat-icon mini-stat-icon--success"></i>
+            <div>
+                <span class="mini-stat-label">@L["StudentDashboard_LastGrade"]</span>
+                <span class="mini-stat-value">92%</span>
+            </div>
         </div>
     </div>
 </div>
 
 @code {
-    private record WeeklyClass(string Subject, string Date);
+    private record CourseItem(string Subject, string Tutor, string Time, string Icon, string Color);
+    private record ReportItem(string Subject, string Date, string Grade);
 
-    private readonly List<WeeklyClass> WeeklyClasses =
+    private readonly List<CourseItem> UpcomingCourses =
     [
-        new("Mathématiques", "Lun. 10:00"),
-        new("Physique", "Mer. 14:00"),
-        new("Chimie", "Ven. 16:30"),
+        new("Mathématiques", "M. Dupont", "Lun 10:00", "M", "var(--ts-gradient-primary)"),
+        new("Physique", "Mme Martin", "Mar 14:00", "P", "linear-gradient(135deg,#14b8a6,#2563eb)"),
+        new("Chimie", "M. Bernard", "Jeu 09:00", "C", "linear-gradient(135deg,#f59e0b,#ef4444)"),
     ];
 
-    private readonly List<string> Documents =
+    private readonly List<ReportItem> RecentReports =
     [
-        "Exercices_Algebre.pdf",
-        "Resume_Chapitre5.pdf",
-        "Devoir_Physique.pdf",
+        new("Mathématiques", "12 juin 2026", "88%"),
+        new("Physique", "8 juin 2026", "92%"),
+        new("Chimie", "5 juin 2026", "79%"),
     ];
 }

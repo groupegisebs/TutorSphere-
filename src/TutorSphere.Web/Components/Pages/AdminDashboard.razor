@@ -4,90 +4,120 @@
 
 <PageTitle>@L["PageTitle_AdminDashboard"]</PageTitle>
 
-<PageHeader Title="@L["AdminDashboard_Title"]" Subtitle="@L["AdminDashboard_Subtitle"]" />
+<div class="dashboard-header">
+    <div>
+        <h1 class="dashboard-greeting">@L["AdminDashboard_Title"]</h1>
+        <p class="dashboard-date">@L["TutorDashboard_DateLabel"] — @DateTime.Now.ToString("dddd d MMMM yyyy")</p>
+    </div>
+</div>
 
 <div class="row g-3 mb-4">
     <div class="col-sm-6 col-xl-3">
-        <StatCard Label="@L["Admin_Stat_Tutors"]" Value="1 245" Icon="bi-person-badge" Variant="students" Change="@L["Stat_Change_Positive", "+42"]" />
+        <StatCard Label="@L["AdminDashboard_ActiveTutors"]" Value="47" Icon="bi-person-badge" Variant="students" Change="@L["Stat_Change_Positive", "+3"]" />
     </div>
     <div class="col-sm-6 col-xl-3">
-        <StatCard Label="@L["Admin_Stat_Parents"]" Value="3 562" Icon="bi-people" Variant="subscriptions" Change="@L["Stat_Change_Positive", "+128"]" />
+        <StatCard Label="@L["AdminDashboard_TotalRevenue"]" Value="18 420 $" Icon="bi-cash-stack" Variant="revenue" Change="@L["Stat_Change_Positive", "+8%"]" />
     </div>
     <div class="col-sm-6 col-xl-3">
-        <StatCard Label="@L["Admin_Stat_Students"]" Value="5 894" Icon="bi-mortarboard" Variant="lessons" Change="@L["Stat_Change_Positive", "+256"]" />
+        <StatCard Label="@L["AdminDashboard_ActiveSubscriptions"]" Value="312" Icon="bi-arrow-repeat" Variant="subscriptions" Change="@L["Stat_Change_Positive", "+14"]" />
     </div>
     <div class="col-sm-6 col-xl-3">
-        <StatCard Label="@L["Admin_Stat_Revenue"]" Value="12 450 $" Icon="bi-currency-dollar" Variant="revenue" Change="@L["Stat_Change_Positive", "+8%"]" />
+        <StatCard Label="@L["AdminDashboard_OpenDisputes"]" Value="3" Icon="bi-exclamation-triangle" Variant="payments" Change="@L["AdminDashboard_NeedsAttention"]" ChangeVariant="negative" />
     </div>
 </div>
 
 <div class="row g-4 mb-4">
-    <div class="col-lg-7">
+    <div class="col-lg-8">
         <div class="section-card h-100">
             <div class="section-card-header">
-                <h2>@L["Admin_RevenueChart"]</h2>
+                <h2>@L["AdminDashboard_PlatformRevenue"]</h2>
+                <select class="form-select form-select-sm w-auto">
+                    <option>@L["Filter_Last6Months"]</option>
+                </select>
             </div>
             <div class="chart-placeholder chart-placeholder--line" aria-hidden="true">
                 <svg viewBox="0 0 400 120" preserveAspectRatio="none">
-                    <polyline points="0,100 60,85 120,70 180,75 240,50 300,45 360,30 400,20" fill="none" stroke="currentColor" stroke-width="2.5" />
+                    <polyline points="0,100 50,85 100,78 150,55 200,60 250,35 300,42 350,20 400,28" fill="none" stroke="currentColor" stroke-width="2.5" />
+                    <polyline points="0,100 50,85 100,78 150,55 200,60 250,35 300,42 350,20 400,28 400,120 0,120" fill="currentColor" opacity="0.07" stroke="none" />
                 </svg>
             </div>
         </div>
     </div>
-    <div class="col-lg-5">
+    <div class="col-lg-4">
         <div class="section-card h-100">
             <div class="section-card-header">
-                <h2>@L["Admin_RevenueBreakdown"]</h2>
+                <h2>@L["AdminDashboard_Distribution"]</h2>
             </div>
-            <div class="chart-placeholder chart-placeholder--donut" aria-hidden="true">
-                <div class="donut-chart">
-                    <div class="donut-hole"></div>
-                </div>
+            <div class="chart-placeholder chart-placeholder--donut">
+                <div class="donut-chart"><div class="donut-hole"></div></div>
                 <ul class="donut-legend">
-                    <li><span class="donut-legend-color donut-legend-color--primary"></span>@L["Admin_Revenue_Subscriptions"]</li>
-                    <li><span class="donut-legend-color donut-legend-color--accent"></span>@L["Admin_Revenue_Commissions"]</li>
-                    <li><span class="donut-legend-color donut-legend-color--muted"></span>@L["Admin_Revenue_Other"]</li>
+                    <li><span class="donut-legend-color donut-legend-color--primary"></span> @L["AdminDashboard_Tutors"] (55%)</li>
+                    <li><span class="donut-legend-color donut-legend-color--accent"></span> @L["AdminDashboard_Parents"] (25%)</li>
+                    <li><span class="donut-legend-color donut-legend-color--muted"></span> @L["AdminDashboard_Others"] (20%)</li>
                 </ul>
             </div>
         </div>
     </div>
 </div>
 
-<div class="row g-3">
-    <div class="col-sm-6 col-xl-3">
-        <div class="mini-stat-card">
-            <i class="bi bi-arrow-repeat mini-stat-icon mini-stat-icon--info"></i>
-            <div>
-                <span class="mini-stat-label">@L["Admin_Mini_ActiveSubs"]</span>
-                <span class="mini-stat-value">892</span>
+<div class="row g-4">
+    <div class="col-lg-6">
+        <div class="section-card">
+            <div class="section-card-header">
+                <h2>@L["AdminDashboard_RecentTutors"]</h2>
+                <a href="admin/tutors" class="btn btn-sm btn-link">@L["Button_ViewAll"]</a>
             </div>
+            <ul class="lesson-list">
+                @foreach (var tutor in RecentTutors)
+                {
+                    <li class="lesson-list-item">
+                        <div class="lesson-avatar">@tutor.Initials</div>
+                        <div class="lesson-info">
+                            <strong>@tutor.Name</strong>
+                            <span>@tutor.School</span>
+                        </div>
+                        <span class="badge bg-success-subtle text-success">@L["AdminDashboard_Active"]</span>
+                    </li>
+                }
+            </ul>
         </div>
     </div>
-    <div class="col-sm-6 col-xl-3">
-        <div class="mini-stat-card">
-            <i class="bi bi-x-circle mini-stat-icon mini-stat-icon--warning"></i>
-            <div>
-                <span class="mini-stat-label">@L["Admin_Mini_FailedPayments"]</span>
-                <span class="mini-stat-value">12</span>
+    <div class="col-lg-6">
+        <div class="section-card">
+            <div class="section-card-header">
+                <h2>@L["AdminDashboard_OpenDisputes"]</h2>
+                <a href="admin/disputes" class="btn btn-sm btn-link btn-danger">@L["Button_ViewAll"]</a>
             </div>
-        </div>
-    </div>
-    <div class="col-sm-6 col-xl-3">
-        <div class="mini-stat-card">
-            <i class="bi bi-exclamation-triangle mini-stat-icon mini-stat-icon--danger"></i>
-            <div>
-                <span class="mini-stat-label">@L["Admin_Mini_Disputes"]</span>
-                <span class="mini-stat-value">3</span>
-            </div>
-        </div>
-    </div>
-    <div class="col-sm-6 col-xl-3">
-        <div class="mini-stat-card">
-            <i class="bi bi-person-plus mini-stat-icon mini-stat-icon--success"></i>
-            <div>
-                <span class="mini-stat-label">@L["Admin_Mini_NewSignups"]</span>
-                <span class="mini-stat-value">47</span>
-            </div>
+            @foreach (var dispute in OpenDisputes)
+            {
+                <div class="lesson-list-item mb-2">
+                    <div class="mini-stat-icon mini-stat-icon--danger"><i class="bi bi-exclamation-triangle"></i></div>
+                    <div class="lesson-info">
+                        <strong>@dispute.Subject</strong>
+                        <span>@dispute.Description</span>
+                    </div>
+                    <span class="stat-change stat-change--negative">@dispute.Date</span>
+                </div>
+            }
         </div>
     </div>
 </div>
+
+@code {
+    private record TutorItem(string Name, string School, string Initials);
+    private record DisputeItem(string Subject, string Description, string Date);
+
+    private readonly List<TutorItem> RecentTutors =
+    [
+        new("Jean Dupont", "École Jean Dupont", "JD"),
+        new("Marie Martin", "Cours Marie M.", "MM"),
+        new("Paul Bernard", "TutorPro Bernard", "PB"),
+    ];
+
+    private readonly List<DisputeItem> OpenDisputes =
+    [
+        new("Paiement refusé", "Abonnement mensuel — école jdupont", "il y a 2j"),
+        new("Accès révoqué", "Étudiant signalé — emma.j", "il y a 5j"),
+        new("Contenu signalé", "Rapport de séance — 15 juin", "il y a 7j"),
+    ];
+}
