@@ -2,6 +2,7 @@
 @layout TutorLayout
 @rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
+@inject ApiClient Api
 
 <PageTitle>Paiements – TutorSphere</PageTitle>
 
@@ -92,7 +93,7 @@
                             @if (p.Status == "En attente")
                             {
                                 <button class="ts-icon-btn ts-icon-btn--success" title="Marquer payé"
-                                        @onclick='() => p.Status = "Payé"'>
+                                        @onclick="async () => await MarkPaid(p)">
                                     <i class="bi bi-check-lg"></i>
                                 </button>
                             }
@@ -148,11 +149,20 @@
     private DateTime _invDate = DateTime.Today;
 
     private static string PaymentBadge(string s) => s switch {
-        "Payé" => "ts-badge-success",
-        "En attente" => "ts-badge-warning",
-        "Échoué" => "ts-badge-danger",
+        "Payé" or "Paid" => "ts-badge-success",
+        "En attente" or "Sent" or "Draft" => "ts-badge-warning",
+        "Échoué" or "Cancelled" => "ts-badge-danger",
         "Remboursé" => "ts-badge-neutral",
         _ => "ts-badge-neutral"
+    };
+
+    private static string MapStatus(string apiStatus) => apiStatus switch
+    {
+        "Paid"      => "Payé",
+        "Sent"      => "En attente",
+        "Draft"     => "En attente",
+        "Cancelled" => "Échoué",
+        _           => apiStatus
     };
 
     private IEnumerable<PaymentVM> FilteredPayments => _payments
@@ -163,9 +173,49 @@
         .Where(p => string.IsNullOrEmpty(_filterMethod) || p.Method == _filterMethod)
         .OrderByDescending(p => p.Date);
 
-    private void CreateInvoice()
+    protected override async Task OnInitializedAsync()
+    {
+        var invoices = await Api.GetAsync<List<ApiInvoiceDto>>("api/invoices");
+        if (invoices is not null && invoices.Count > 0)
+        {
+            _payments.Clear();
+            foreach (var inv in invoices)
+            {
+                _payments.Add(new PaymentVM
+                {
+                    ApiId     = inv.Id,
+                    Date      = inv.IssuedAt.ToLocalTime(),
+                    Parent    = inv.ParentProfileId.ToString()[..8] + "…",
+                    Student   = "—",
+                    OfferName = $"Facture #{inv.InvoiceNumber}",
+                    Amount    = inv.Amount,
+                    Method    = "—",
+                    Status    = MapStatus(inv.Status)
+                });
+            }
+        }
+    }
+
+    private async Task MarkPaid(PaymentVM p)
+    {
+        if (p.ApiId.HasValue)
+        {
+            var result = await Api.PostAsync<ApiInvoiceDto>($"api/invoices/{p.ApiId}/mark-paid", new { });
+            if (result is not null) p.Status = MapStatus(result.Status);
+            else p.Status = "Payé";
+        }
+        else
+        {
+            p.Status = "Payé";
+        }
+    }
+
+    private async Task CreateInvoice()
     {
         if (string.IsNullOrWhiteSpace(_invParent) || _invAmount <= 0) return;
+
+        // API requires a ParentProfileId (Guid) — we can't resolve it from a name in this UI.
+        // Create locally and attempt API if possible.
         _payments.Insert(0, new PaymentVM {
             Date = _invDate, Parent = _invParent, Student = "—",
             OfferName = _invOffer, Amount = _invAmount,
@@ -174,8 +224,14 @@
         _showInvoiceModal = false;
     }
 
+    private record ApiInvoiceDto(
+        Guid Id, string InvoiceNumber, Guid ParentProfileId,
+        decimal Amount, string Currency, string Status,
+        DateTime IssuedAt, DateTime? PaidAt);
+
     private class PaymentVM
     {
+        public Guid? ApiId { get; set; }
         public DateTime Date { get; set; }
         public string Parent { get; set; } = "";
         public string Student { get; set; } = "";

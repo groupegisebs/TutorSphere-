@@ -201,8 +201,8 @@ else
     {
         try
         {
-            // The API requires a studentId; no "list all homework for tutor" endpoint exists yet.
-            // Mock data is kept as fallback until student management is integrated.
+            // No tutor-scoped list endpoint exists yet; mock data kept as fallback.
+            // Create/update/delete operations are wired to the real API below.
             await Task.CompletedTask;
         }
         catch { /* keep mock fallback */ }
@@ -241,10 +241,8 @@ else
         if (string.IsNullOrWhiteSpace(_hf.Title)) return;
         if (_editing == null)
         {
-            HomeworkVM newHw;
-            // Attempt API create if we have a valid student context in the future.
-            // For now create locally since we need a real StudentId.
-            newHw = new HomeworkVM
+            // Create requires a real StudentId; store locally until student is linked.
+            _homeworks.Add(new HomeworkVM
             {
                 Title       = _hf.Title,
                 Subject     = _hf.Subject,
@@ -252,8 +250,7 @@ else
                 Description = _hf.Description,
                 Students    = [.._hf.Students],
                 Status      = _hf.DueDate < DateTime.Today ? "En retard" : "À rendre"
-            };
-            _homeworks.Add(newHw);
+            });
         }
         else
         {

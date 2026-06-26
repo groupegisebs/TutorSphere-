@@ -214,16 +214,49 @@
     private string _search = "";
     private bool _viewGrid = true;
     private bool _showUpload;
+    private bool _uploading;
     private DocFolder? _selectedFolder;
     private DocFile? _selected;
     private string _uploadFolder = "Mathématiques";
     private readonly HashSet<string> _shareWith = [];
     private readonly List<string> _pendingUploadFiles = [];
+    private List<IBrowserFile> _pendingBrowserFiles = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var docs = await Api.GetAsync<List<ApiDocumentDto>>("api/documents");
+        if (docs is not null && docs.Count > 0)
+        {
+            _files.Clear();
+            foreach (var d in docs)
+            {
+                var ext = System.IO.Path.GetExtension(d.FileName).TrimStart('.').ToLower();
+                _files.Add(new DocFile
+                {
+                    ApiId = d.Id,
+                    Name = d.FileName,
+                    Type = string.IsNullOrEmpty(ext) ? "bin" : ext,
+                    Size = FormatSize(d.FileSize),
+                    Folder = "Documents",
+                    Modified = d.UploadedAt.ToLocalTime().ToString("dd/MM/yyyy"),
+                    SharedWith = []
+                });
+            }
+        }
+    }
+
+    private static string FormatSize(long bytes) => bytes switch
+    {
+        < 1024          => $"{bytes} o",
+        < 1024 * 1024   => $"{bytes / 1024} Ko",
+        _               => $"{bytes / (1024 * 1024):F1} Mo"
+    };
 
     private void HandleUploadFileSelection(InputFileChangeEventArgs e)
     {
         _pendingUploadFiles.Clear();
-        foreach (var file in e.GetMultipleFiles(20))
+        _pendingBrowserFiles = e.GetMultipleFiles(20).ToList();
+        foreach (var file in _pendingBrowserFiles)
             _pendingUploadFiles.Add(file.Name);
     }
 
@@ -249,33 +282,78 @@
         _folders.Add(new DocFolder { Name = n, FileCount = 0 });
     }
 
-    private void SimulateUpload()
+    private async Task UploadFiles()
     {
-        var names = _pendingUploadFiles.Count > 0
-            ? _pendingUploadFiles.ToList()
-            : ["Nouveau fichier.pdf"];
-
-        foreach (var name in names)
+        _uploading = true;
+        try
         {
-            var ext = System.IO.Path.GetExtension(name).TrimStart('.').ToLower();
-            _files.Insert(0, new DocFile
+            if (_pendingBrowserFiles.Count > 0)
             {
-                Name = name,
-                Type = string.IsNullOrEmpty(ext) ? "pdf" : ext,
-                Size = "—",
-                Folder = _uploadFolder,
-                Modified = DateTime.Today.ToString("dd/MM/yyyy"),
-                SharedWith = [.. _shareWith]
-            });
-        }
+                foreach (var browserFile in _pendingBrowserFiles)
+                {
+                    using var content = new MultipartFormDataContent();
+                    var maxSize = 50L * 1024 * 1024;
+                    using var stream = browserFile.OpenReadStream(maxSize);
+                    var fileContent = new StreamContent(stream);
+                    fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
+                        string.IsNullOrEmpty(browserFile.ContentType) ? "application/octet-stream" : browserFile.ContentType);
+                    content.Add(fileContent, "file", browserFile.Name);
+                    content.Add(new StringContent(_uploadFolder), "folder");
 
-        _showUpload = false;
-        _shareWith.Clear();
-        _pendingUploadFiles.Clear();
+                    var ext = System.IO.Path.GetExtension(browserFile.Name).TrimStart('.').ToLower();
+                    _files.Insert(0, new DocFile
+                    {
+                        Name = browserFile.Name,
+                        Type = string.IsNullOrEmpty(ext) ? "bin" : ext,
+                        Size = FormatSize(browserFile.Size),
+                        Folder = _uploadFolder,
+                        Modified = DateTime.Today.ToString("dd/MM/yyyy"),
+                        SharedWith = [.. _shareWith]
+                    });
+                }
+            }
+            else
+            {
+                _files.Insert(0, new DocFile
+                {
+                    Name = "Nouveau fichier.pdf", Type = "pdf", Size = "—",
+                    Folder = _uploadFolder, Modified = DateTime.Today.ToString("dd/MM/yyyy"),
+                    SharedWith = [.. _shareWith]
+                });
+            }
+        }
+        finally
+        {
+            _uploading = false;
+            _showUpload = false;
+            _shareWith.Clear();
+            _pendingUploadFiles.Clear();
+            _pendingBrowserFiles.Clear();
+        }
     }
 
+    private async Task DeleteFile(DocFile f)
+    {
+        if (f.ApiId.HasValue)
+            await Api.DeleteAsync($"api/documents/{f.ApiId.Value}");
+        _files.Remove(f);
+    }
+
+    private record ApiDocumentDto(
+        Guid Id, string FileName, long FileSize, string ContentType,
+        DateTime UploadedAt, Guid? StudentId, Guid? LessonId, string Url);
+
     private class DocFolder { public string Name { get; set; } = ""; public int FileCount { get; set; } public bool IsOpen { get; set; } }
-    private class DocFile { public string Name { get; set; } = ""; public string Type { get; set; } = ""; public string Size { get; set; } = ""; public string Folder { get; set; } = ""; public string Modified { get; set; } = ""; public List<string> SharedWith { get; set; } = []; }
+    private class DocFile
+    {
+        public Guid? ApiId { get; set; }
+        public string Name { get; set; } = "";
+        public string Type { get; set; } = "";
+        public string Size { get; set; } = "";
+        public string Folder { get; set; } = "";
+        public string Modified { get; set; } = "";
+        public List<string> SharedWith { get; set; } = [];
+    }
 
     private readonly List<DocFolder> _folders =
     [

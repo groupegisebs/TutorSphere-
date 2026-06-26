@@ -2,6 +2,7 @@
 @layout TutorLayout
 @rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
+@inject ApiClient Api
 
 <PageTitle>Abonnements – TutorSphere</PageTitle>
 
@@ -66,7 +67,12 @@
                 </ul>
                 <div class="sub-plan-footer">
                     <span class="text-muted small">@_subs.Count(s=>s.PlanName==plan.Name&&s.Status=="Actif") abonné(s)</span>
-                    <button class="ts-icon-btn" title="Modifier"><i class="bi bi-pencil"></i></button>
+                    <div class="d-flex gap-1">
+                        <button class="ts-icon-btn" title="@(plan.IsActive ? "Désactiver" : "Activer")"
+                                @onclick="async () => await TogglePlan(plan)">
+                            <i class="bi @(plan.IsActive ? "bi-toggle-on text-success" : "bi-toggle-off text-muted")"></i>
+                        </button>
+                    </div>
                 </div>
             </div>
         }
@@ -159,7 +165,7 @@
             </div>
             <div class="ts-modal-footer">
                 <button class="btn btn-outline-secondary" @onclick="()=>_showPlanModal=false">Annuler</button>
-                <button class="btn btn-primary" @onclick="SavePlan">Créer</button>
+                <button class="btn btn-primary" @onclick="async () => await SavePlan()">Créer</button>
             </div>
         </div>
     </div>
@@ -179,13 +185,75 @@
         .Where(s => string.IsNullOrEmpty(_filterSubStatus) || s.Status == _filterSubStatus)
         .OrderBy(s => s.ExpiresAt);
 
-    private void SavePlan()
+    protected override async Task OnInitializedAsync()
+    {
+        var offerings = await Api.GetAsync<List<ApiOfferingDto>>("api/subscription-offerings");
+        if (offerings is not null && offerings.Count > 0)
+        {
+            _plans.Clear();
+            foreach (var o in offerings)
+            {
+                _plans.Add(new PlanVM
+                {
+                    ApiId   = o.Id,
+                    Name    = o.Title,
+                    Price   = o.Price,
+                    Period  = "mois",
+                    Popular = false,
+                    IsActive = o.IsActive,
+                    Features = string.IsNullOrEmpty(o.Description)
+                        ? []
+                        : o.Description.Split('\n').Where(f => !string.IsNullOrWhiteSpace(f)).ToList()
+                });
+            }
+        }
+    }
+
+    private async Task SavePlan()
     {
         if (string.IsNullOrWhiteSpace(_pf.Name)) return;
-        _plans.Add(new PlanVM { Name=_pf.Name, Price=_pf.Price, Period=_pf.Period, Popular=_pf.Popular,
-            Features=_pf.Features.Split('\n').Where(f=>!string.IsNullOrWhiteSpace(f)).ToList() });
+
+        var req = new
+        {
+            title       = _pf.Name,
+            description = _pf.Features,
+            subject     = (string?)null,
+            price       = _pf.Price,
+            currency    = "CAD",
+            durationDays = 30,
+            sessionCount = 4,
+            frequency   = _pf.Period
+        };
+        var created = await Api.PostAsync<ApiOfferingDto>("api/subscription-offerings", req);
+
+        _plans.Add(new PlanVM
+        {
+            ApiId   = created?.Id,
+            Name    = _pf.Name,
+            Price   = _pf.Price,
+            Period  = _pf.Period,
+            Popular = _pf.Popular,
+            IsActive = true,
+            Features = _pf.Features.Split('\n').Where(f => !string.IsNullOrWhiteSpace(f)).ToList()
+        });
         _showPlanModal = false;
     }
+
+    private async Task TogglePlan(PlanVM plan)
+    {
+        if (plan.ApiId is null) { plan.IsActive = !plan.IsActive; return; }
+        var endpoint = plan.IsActive
+            ? $"api/subscription-offerings/{plan.ApiId}/deactivate"
+            : $"api/subscription-offerings/{plan.ApiId}/activate";
+        var result = await Api.PostAsync<ApiOfferingDto>(endpoint, new { });
+        if (result is not null) plan.IsActive = result.IsActive;
+        else plan.IsActive = !plan.IsActive;
+    }
+
+    private record ApiOfferingDto(
+        Guid Id, string Title, string? Description, string? Subject,
+        decimal Price, string Currency, int DurationDays, int SessionCount,
+        string? Frequency, bool IsActive);
 
     private class PlanForm
     {
@@ -197,10 +265,12 @@
     }
     private class PlanVM
     {
+        public Guid? ApiId { get; set; }
         public string Name { get; set; } = "";
         public decimal Price { get; set; }
         public string Period { get; set; } = "";
         public bool Popular { get; set; }
+        public bool IsActive { get; set; } = true;
         public List<string> Features { get; set; } = [];
     }
     private class SubVM
