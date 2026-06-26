@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
+using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Domain.Enums;
 using TutorSphere.Infrastructure.Identity;
 
@@ -12,9 +14,21 @@ namespace TutorSphere.Api.Controllers;
 public class AdminController : ControllerBase
 {
     private readonly UserManager<ApplicationUser> _userManager;
+    private readonly IEmailService _email;
+    private readonly IApplicationDbContext _db;
+    private readonly IConfiguration _configuration;
 
-    public AdminController(UserManager<ApplicationUser> userManager)
-        => _userManager = userManager;
+    public AdminController(
+        UserManager<ApplicationUser> userManager,
+        IEmailService email,
+        IApplicationDbContext db,
+        IConfiguration configuration)
+    {
+        _userManager = userManager;
+        _email = email;
+        _db = db;
+        _configuration = configuration;
+    }
 
     /// <summary>Returns users belonging to a given role.</summary>
     [HttpGet("users")]
@@ -39,7 +53,7 @@ public class AdminController : ControllerBase
 
     /// <summary>Unlocks a user account.</summary>
     [HttpPost("users/{userId}/activate")]
-    public async Task<IActionResult> ActivateUser(string userId)
+    public async Task<IActionResult> ActivateUser(string userId, CancellationToken ct)
     {
         var user = await _userManager.FindByIdAsync(userId);
         if (user is null) return NotFound(new { error = "Utilisateur introuvable." });
@@ -51,12 +65,14 @@ public class AdminController : ControllerBase
         if (!result.Succeeded)
             return BadRequest(new { error = string.Join("; ", result.Errors.Select(e => e.Description)) });
 
+        await _email.SendAccountActivatedAsync(user.Email ?? string.Empty, user.FirstName, ct);
+
         return Ok(new { message = "Compte activé." });
     }
 
     /// <summary>Locks a user account indefinitely.</summary>
     [HttpPost("users/{userId}/deactivate")]
-    public async Task<IActionResult> DeactivateUser(string userId)
+    public async Task<IActionResult> DeactivateUser(string userId, [FromQuery] string? reason, CancellationToken ct)
     {
         var user = await _userManager.FindByIdAsync(userId);
         if (user is null) return NotFound(new { error = "Utilisateur introuvable." });
@@ -68,7 +84,30 @@ public class AdminController : ControllerBase
         if (!result.Succeeded)
             return BadRequest(new { error = string.Join("; ", result.Errors.Select(e => e.Description)) });
 
+        await _email.SendAccountDeactivatedAsync(user.Email ?? string.Empty, user.FirstName, reason ?? "Non spécifié", ct);
+
         return Ok(new { message = "Compte désactivé." });
+    }
+
+    /// <summary>Approves a pending school/tenant and notifies the owner.</summary>
+    [HttpPost("tenants/{tenantId:guid}/approve")]
+    public async Task<IActionResult> ApproveTenant(Guid tenantId, CancellationToken ct)
+    {
+        var tenant = _db.Tenants.FirstOrDefault(t => t.Id == tenantId);
+        if (tenant is null) return NotFound(new { error = "Tenant introuvable." });
+
+        tenant.Status = TutorSphere.Domain.Enums.TenantStatus.Active;
+        await _db.SaveChangesAsync(ct);
+
+        var owner = await _userManager.FindByIdAsync(tenant.OwnerUserId);
+        if (owner is not null)
+        {
+            var webBase = (_configuration["WebBaseUrl"] ?? "https://app.tutorsphere.gisebs.com").TrimEnd('/');
+            var loginUrl = $"{webBase}/login";
+            await _email.SendSchoolApprovedAsync(owner.Email ?? string.Empty, owner.FirstName, tenant.Name, loginUrl, ct);
+        }
+
+        return Ok(new { message = "Tenant approuvé." });
     }
 
     /// <summary>Returns aggregate counts used by the admin dashboard.</summary>

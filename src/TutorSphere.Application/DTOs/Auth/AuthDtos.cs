@@ -31,3 +31,7 @@ public record AuthResponse(
     string Role,
     Guid? TenantId,
     DateTime ExpiresAt);
+
+public record ForgotPasswordRequest(string Email);
+
+public record ResetPasswordRequest(string UserId, string Token, string NewPassword);

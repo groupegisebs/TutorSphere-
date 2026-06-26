@@ -18,6 +18,8 @@ public interface IAuthService
     Task<AuthResponse> LoginAsync(LoginRequest request, CancellationToken ct = default);
     Task<RegisterSchoolResponse> RegisterSchoolAsync(RegisterSchoolRequest request, CancellationToken ct = default);
     Task ConfirmEmailAsync(string userId, string token, CancellationToken ct = default);
+    Task ForgotPasswordAsync(string email, CancellationToken ct = default);
+    Task ResetPasswordAsync(string userId, string token, string newPassword, CancellationToken ct = default);
 }
 
 public class AuthService : IAuthService
@@ -57,6 +59,11 @@ public class AuthService : IAuthService
         await _userManager.AddToRoleAsync(user, role);
 
         await _email.SendWelcomeAsync(user.Email!, user.FirstName, ct);
+
+        var confirmToken = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+        var apiBase = (_configuration["ApiBaseUrl"] ?? "https://api.tutorsphere.gisebs.com").TrimEnd('/');
+        var confirmUrl = $"{apiBase}/api/auth/confirm-email?userId={Uri.EscapeDataString(user.Id)}&token={Uri.EscapeDataString(confirmToken)}";
+        await _email.SendEmailConfirmationSimpleAsync(user.Email!, user.FirstName, confirmUrl, ct);
 
         return await BuildAuthResponse(user, role);
     }
@@ -129,6 +136,29 @@ public class AuthService : IAuthService
         var result = await _userManager.ConfirmEmailAsync(user, token);
         if (!result.Succeeded)
             throw new InvalidOperationException("Le lien de confirmation est invalide ou expiré.");
+    }
+
+    public async Task ForgotPasswordAsync(string email, CancellationToken ct = default)
+    {
+        var user = await _userManager.FindByEmailAsync(email);
+        if (user is null) return; // silent — don't reveal whether email exists
+
+        var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+        var webBase = (_configuration["WebBaseUrl"] ?? "https://app.tutorsphere.gisebs.com").TrimEnd('/');
+        var resetUrl = $"{webBase}/reset-password?userId={Uri.EscapeDataString(user.Id)}&token={Uri.EscapeDataString(token)}";
+        await _email.SendResetPasswordAsync(user.Email!, user.FirstName, resetUrl, ct);
+    }
+
+    public async Task ResetPasswordAsync(string userId, string token, string newPassword, CancellationToken ct = default)
+    {
+        var user = await _userManager.FindByIdAsync(userId)
+            ?? throw new InvalidOperationException("Utilisateur introuvable.");
+
+        var result = await _userManager.ResetPasswordAsync(user, token, newPassword);
+        if (!result.Succeeded)
+            throw new InvalidOperationException(string.Join("; ", result.Errors.Select(e => e.Description)));
+
+        await _email.SendPasswordChangedAsync(user.Email!, user.FirstName, ct);
     }
 
     private async Task<AuthResponse> BuildAuthResponse(ApplicationUser user, string role)

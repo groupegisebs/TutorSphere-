@@ -11,7 +11,8 @@ public record CreateLessonRequest(
     LessonMode Mode,
     string? Location,
     string? MeetingUrl,
-    string? SessionNotes);
+    string? SessionNotes,
+    IReadOnlyList<Guid>? StudentIds = null);
 
 public record UpdateLessonRequest(
     string Title,

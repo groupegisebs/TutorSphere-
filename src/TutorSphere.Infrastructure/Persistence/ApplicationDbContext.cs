@@ -49,6 +49,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     IQueryable<Payment> IApplicationDbContext.Payments => PaymentsSet;
     IQueryable<Document> IApplicationDbContext.Documents => DocumentsSet;
     IQueryable<Message> IApplicationDbContext.Messages => MessagesSet;
+    IQueryable<LessonAttendance> IApplicationDbContext.LessonAttendances => LessonAttendancesSet;
 
     public new void Add<T>(T entity) where T : class => Set<T>().Add(entity);
     public new void Remove<T>(T entity) where T : class => Set<T>().Remove(entity);

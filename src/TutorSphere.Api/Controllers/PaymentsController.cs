@@ -1,8 +1,11 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.Payments;
 using TutorSphere.Domain.Enums;
+using TutorSphere.Infrastructure.Identity;
 
 namespace TutorSphere.Api.Controllers;
 
@@ -11,8 +14,21 @@ namespace TutorSphere.Api.Controllers;
 public class PaymentsController : ControllerBase
 {
     private readonly IPaymentGatewayService _paymentGateway;
+    private readonly IEmailService _email;
+    private readonly IApplicationDbContext _db;
+    private readonly UserManager<ApplicationUser> _userManager;
 
-    public PaymentsController(IPaymentGatewayService paymentGateway) => _paymentGateway = paymentGateway;
+    public PaymentsController(
+        IPaymentGatewayService paymentGateway,
+        IEmailService email,
+        IApplicationDbContext db,
+        UserManager<ApplicationUser> userManager)
+    {
+        _paymentGateway = paymentGateway;
+        _email = email;
+        _db = db;
+        _userManager = userManager;
+    }
 
     [HttpGet("config")]
     [AllowAnonymous]
@@ -43,7 +59,30 @@ public class PaymentsController : ControllerBase
     {
         try
         {
-            return Ok(await _paymentGateway.CreateSubscriptionCheckoutAsync(subscriptionId, request, ct));
+            var response = await _paymentGateway.CreateSubscriptionCheckoutAsync(subscriptionId, request, ct);
+
+            // Look up the student subscription to notify the parent
+            var subscription = _db.StudentSubscriptions.FirstOrDefault(s => s.Id == subscriptionId);
+            if (subscription is not null)
+            {
+                var student = _db.Students.FirstOrDefault(s => s.Id == subscription.StudentId);
+                if (student is not null)
+                {
+                    var parent = _db.ParentProfiles.FirstOrDefault(p => p.Id == student.ParentProfileId);
+                    if (parent is not null && !string.IsNullOrWhiteSpace(parent.Email))
+                    {
+                        await _email.SendParentPaymentReceiptAsync(
+                            parent.Email,
+                            parent.FirstName,
+                            $"{student.FirstName} {student.LastName}".Trim(),
+                            response.Amount,
+                            response.CheckoutUrl,
+                            ct);
+                    }
+                }
+            }
+
+            return Ok(response);
         }
         catch (InvalidOperationException ex)
         {
@@ -99,7 +138,23 @@ public class PaymentsController : ControllerBase
     {
         try
         {
-            return Ok(await _paymentGateway.CancelSubscriptionAsync(subscriptionId, cancelImmediately, ct));
+            var response = await _paymentGateway.CancelSubscriptionAsync(subscriptionId, cancelImmediately, ct);
+
+            var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (!string.IsNullOrEmpty(currentUserId))
+            {
+                var currentUser = await _userManager.FindByIdAsync(currentUserId);
+                if (currentUser is not null && !string.IsNullOrWhiteSpace(currentUser.Email))
+                {
+                    var roles = await _userManager.GetRolesAsync(currentUser);
+                    if (roles.Contains(UserRoles.Tutor))
+                        await _email.SendTutorSubscriptionCancelledAsync(currentUser.Email, currentUser.FirstName, ct);
+                    else
+                        await _email.SendParentPaymentFailedAsync(currentUser.Email, currentUser.FirstName, ct);
+                }
+            }
+
+            return Ok(response);
         }
         catch (InvalidOperationException ex)
         {

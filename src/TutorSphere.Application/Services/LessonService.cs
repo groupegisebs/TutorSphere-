@@ -2,6 +2,7 @@ using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.Calendar;
 using TutorSphere.Application.DTOs.Lessons;
 using TutorSphere.Domain.Entities;
+using Microsoft.Extensions.Logging;
 
 namespace TutorSphere.Application.Services;
 
@@ -19,20 +20,25 @@ public class LessonService : ILessonService
 {
     private readonly IApplicationDbContext _db;
     private readonly ITenantContext _tenantContext;
+    private readonly IEmailService _email;
+    private readonly ILogger<LessonService> _logger;
 
-    public LessonService(IApplicationDbContext db, ITenantContext tenantContext)
+    public LessonService(IApplicationDbContext db, ITenantContext tenantContext, IEmailService email, ILogger<LessonService> logger)
     {
         _db = db;
         _tenantContext = tenantContext;
+        _email = email;
+        _logger = logger;
     }
 
     public async Task<LessonDto> CreateAsync(CreateLessonRequest request, CancellationToken ct = default)
     {
         ValidateTimeRange(request.StartTime, request.EndTime);
 
+        var tenantId = RequireTenantId();
         var lesson = new Lesson
         {
-            TenantId = RequireTenantId(),
+            TenantId = tenantId,
             Title = request.Title.Trim(),
             Description = request.Description?.Trim(),
             Subject = request.Subject?.Trim(),
@@ -47,7 +53,73 @@ public class LessonService : ILessonService
         _db.Add(lesson);
         await _db.SaveChangesAsync(ct);
 
+        if (request.StudentIds is { Count: > 0 })
+            await SendLessonScheduledEmailsAsync(lesson, request.StudentIds, ct);
+
         return MapToDto(lesson);
+    }
+
+    private async Task SendLessonScheduledEmailsAsync(Lesson lesson, IReadOnlyList<Guid> studentIds, CancellationToken ct)
+    {
+        var tutorName = _db.Tenants.FirstOrDefault(t => t.Id == lesson.TenantId)?.Name ?? "Votre tuteur";
+        var subject = lesson.Subject ?? lesson.Title;
+
+        foreach (var studentId in studentIds)
+        {
+            try
+            {
+                var student = _db.Students.FirstOrDefault(s => s.Id == studentId);
+                if (student is null) continue;
+
+                if (!string.IsNullOrWhiteSpace(student.Email))
+                    await _email.SendLessonScheduledAsync(student.Email, $"{student.FirstName} {student.LastName}".Trim(), tutorName, subject, lesson.StartTime, ct);
+
+                if (student.IsMinor)
+                {
+                    var parent = _db.ParentProfiles.FirstOrDefault(p => p.Id == student.ParentProfileId);
+                    if (parent is not null && !string.IsNullOrWhiteSpace(parent.Email))
+                        await _email.SendLessonScheduledAsync(parent.Email, parent.FirstName, tutorName, subject, lesson.StartTime, ct);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Échec d'envoi d'e-mail de cours planifié pour l'étudiant {StudentId}", studentId);
+            }
+        }
+    }
+
+    private async Task SendLessonCancelledEmailsAsync(Lesson lesson, CancellationToken ct)
+    {
+        var tutorName = _db.Tenants.FirstOrDefault(t => t.Id == lesson.TenantId)?.Name ?? "Votre tuteur";
+        var subject = lesson.Subject ?? lesson.Title;
+
+        var studentIds = _db.LessonAttendances
+            .Where(a => a.LessonId == lesson.Id)
+            .Select(a => a.StudentId)
+            .ToList();
+
+        foreach (var studentId in studentIds)
+        {
+            try
+            {
+                var student = _db.Students.FirstOrDefault(s => s.Id == studentId);
+                if (student is null) continue;
+
+                if (!string.IsNullOrWhiteSpace(student.Email))
+                    await _email.SendLessonCancelledAsync(student.Email, $"{student.FirstName} {student.LastName}".Trim(), tutorName, subject, lesson.StartTime, ct);
+
+                if (student.IsMinor)
+                {
+                    var parent = _db.ParentProfiles.FirstOrDefault(p => p.Id == student.ParentProfileId);
+                    if (parent is not null && !string.IsNullOrWhiteSpace(parent.Email))
+                        await _email.SendLessonCancelledAsync(parent.Email, parent.FirstName, tutorName, subject, lesson.StartTime, ct);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Échec d'envoi d'e-mail d'annulation pour l'étudiant {StudentId}", studentId);
+            }
+        }
     }
 
     public Task<LessonDto?> GetByIdAsync(Guid id, CancellationToken ct = default)
@@ -103,6 +175,8 @@ public class LessonService : ILessonService
     {
         var lesson = _db.Lessons.FirstOrDefault(l => l.Id == id)
             ?? throw new InvalidOperationException("Cours introuvable.");
+
+        await SendLessonCancelledEmailsAsync(lesson, ct);
 
         _db.Remove(lesson);
         await _db.SaveChangesAsync(ct);

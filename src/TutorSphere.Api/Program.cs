@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Localization;
 using TutorSphere.Application.Common;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.IdentityModel.Tokens;
+using TutorSphere.Api.BackgroundServices;
 using TutorSphere.Api.Hubs;
 using TutorSphere.Api.Services;
 using TutorSphere.Application.Common.Interfaces;
@@ -29,6 +30,7 @@ builder.Services.AddSignalR(options => options.AddFilter<TenantHubFilter>());
 builder.Services.AddSingleton<IUserIdProvider, NameIdentifierUserIdProvider>();
 builder.Services.AddScoped<IRealTimeMessaging, SignalRMessageNotifier>();
 builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.AddHostedService<LessonReminderService>();
 
 var jwtSection = builder.Configuration.GetSection("Jwt");
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)

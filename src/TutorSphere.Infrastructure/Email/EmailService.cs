@@ -10,6 +10,33 @@ internal static class EmailTemplates
     public const string ConfirmEmail = "CONFIRM_EMAIL";
     public const string LessonReport = "LESSON_REPORT";
     public const string SchoolCreated = "SCHOOL_CREATED";
+
+    // Auth
+    public const string ConfirmEmailSimple = "CONFIRM_EMAIL_SIMPLE";
+    public const string ResetPassword = "RESET_PASSWORD";
+    public const string PasswordChanged = "PASSWORD_CHANGED";
+
+    // Tutor billing
+    public const string TutorTrialStarted = "TUTOR_TRIAL_STARTED";
+    public const string TutorPaymentReceipt = "TUTOR_PAYMENT_RECEIPT";
+    public const string TutorRenewalReminder = "TUTOR_RENEWAL_REMINDER";
+    public const string TutorPaymentFailed = "TUTOR_PAYMENT_FAILED";
+    public const string TutorSubCancelled = "TUTOR_SUB_CANCELLED";
+
+    // Account lifecycle
+    public const string AccountActivated = "ACCOUNT_ACTIVATED";
+    public const string AccountDeactivated = "ACCOUNT_DEACTIVATED";
+    public const string SchoolApproved = "SCHOOL_APPROVED";
+
+    // Lessons
+    public const string LessonScheduled = "LESSON_SCHEDULED";
+    public const string LessonReminder = "LESSON_REMINDER";
+    public const string LessonCancelled = "LESSON_CANCELLED";
+
+    // Parent billing
+    public const string ParentPaymentReceipt = "PARENT_PAYMENT_RECEIPT";
+    public const string ParentPaymentFailed = "PARENT_PAYMENT_FAILED";
+    public const string InvoiceReady = "INVOICE_READY";
 }
 
 public class EmailService : IEmailService
@@ -119,6 +146,125 @@ public class EmailService : IEmailService
                 ["SchoolName"] = schoolName
             }
         ), ct);
+    }
+
+    public async Task SendEmailConfirmationSimpleAsync(string to, string firstName, string confirmUrl, CancellationToken ct = default)
+    {
+        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — CONFIRM_EMAIL_SIMPLE non envoyé à {Email}.", to); return; }
+        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.ConfirmEmailSimple, [to],
+            new Dictionary<string, string> { ["FirstName"] = firstName, ["ConfirmationUrl"] = confirmUrl }), ct);
+    }
+
+    public async Task SendResetPasswordAsync(string to, string firstName, string resetUrl, CancellationToken ct = default)
+    {
+        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — RESET_PASSWORD non envoyé à {Email}.", to); return; }
+        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.ResetPassword, [to],
+            new Dictionary<string, string> { ["FirstName"] = firstName, ["ResetUrl"] = resetUrl }), ct);
+    }
+
+    public async Task SendPasswordChangedAsync(string to, string firstName, CancellationToken ct = default)
+    {
+        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — PASSWORD_CHANGED non envoyé à {Email}.", to); return; }
+        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.PasswordChanged, [to],
+            new Dictionary<string, string> { ["FirstName"] = firstName }), ct);
+    }
+
+    public async Task SendTutorTrialStartedAsync(string to, string firstName, CancellationToken ct = default)
+    {
+        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — TUTOR_TRIAL_STARTED non envoyé à {Email}.", to); return; }
+        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.TutorTrialStarted, [to],
+            new Dictionary<string, string> { ["FirstName"] = firstName }), ct);
+    }
+
+    public async Task SendTutorPaymentReceiptAsync(string to, string firstName, decimal amount, string invoiceUrl, CancellationToken ct = default)
+    {
+        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — TUTOR_PAYMENT_RECEIPT non envoyé à {Email}.", to); return; }
+        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.TutorPaymentReceipt, [to],
+            new Dictionary<string, string> { ["FirstName"] = firstName, ["Amount"] = amount.ToString("C"), ["InvoiceUrl"] = invoiceUrl }), ct);
+    }
+
+    public async Task SendTutorRenewalReminderAsync(string to, string firstName, DateTime renewalDate, CancellationToken ct = default)
+    {
+        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — TUTOR_RENEWAL_REMINDER non envoyé à {Email}.", to); return; }
+        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.TutorRenewalReminder, [to],
+            new Dictionary<string, string> { ["FirstName"] = firstName, ["RenewalDate"] = renewalDate.ToString("d MMMM yyyy") }), ct);
+    }
+
+    public async Task SendTutorPaymentFailedAsync(string to, string firstName, CancellationToken ct = default)
+    {
+        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — TUTOR_PAYMENT_FAILED non envoyé à {Email}.", to); return; }
+        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.TutorPaymentFailed, [to],
+            new Dictionary<string, string> { ["FirstName"] = firstName }), ct);
+    }
+
+    public async Task SendTutorSubscriptionCancelledAsync(string to, string firstName, CancellationToken ct = default)
+    {
+        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — TUTOR_SUB_CANCELLED non envoyé à {Email}.", to); return; }
+        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.TutorSubCancelled, [to],
+            new Dictionary<string, string> { ["FirstName"] = firstName }), ct);
+    }
+
+    public async Task SendAccountActivatedAsync(string to, string firstName, CancellationToken ct = default)
+    {
+        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — ACCOUNT_ACTIVATED non envoyé à {Email}.", to); return; }
+        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.AccountActivated, [to],
+            new Dictionary<string, string> { ["FirstName"] = firstName }), ct);
+    }
+
+    public async Task SendAccountDeactivatedAsync(string to, string firstName, string reason, CancellationToken ct = default)
+    {
+        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — ACCOUNT_DEACTIVATED non envoyé à {Email}.", to); return; }
+        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.AccountDeactivated, [to],
+            new Dictionary<string, string> { ["FirstName"] = firstName, ["Reason"] = reason }), ct);
+    }
+
+    public async Task SendSchoolApprovedAsync(string to, string firstName, string schoolName, string loginUrl, CancellationToken ct = default)
+    {
+        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — SCHOOL_APPROVED non envoyé à {Email}.", to); return; }
+        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.SchoolApproved, [to],
+            new Dictionary<string, string> { ["FirstName"] = firstName, ["SchoolName"] = schoolName, ["LoginUrl"] = loginUrl }), ct);
+    }
+
+    public async Task SendLessonScheduledAsync(string to, string recipientName, string tutorName, string subject, DateTime lessonDate, CancellationToken ct = default)
+    {
+        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — LESSON_SCHEDULED non envoyé à {Email}.", to); return; }
+        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.LessonScheduled, [to],
+            new Dictionary<string, string> { ["RecipientName"] = recipientName, ["TutorName"] = tutorName, ["Subject"] = subject, ["LessonDate"] = lessonDate.ToString("dddd d MMMM yyyy à HH:mm") }), ct);
+    }
+
+    public async Task SendLessonReminderAsync(string to, string recipientName, string tutorName, string subject, DateTime lessonDate, CancellationToken ct = default)
+    {
+        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — LESSON_REMINDER non envoyé à {Email}.", to); return; }
+        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.LessonReminder, [to],
+            new Dictionary<string, string> { ["RecipientName"] = recipientName, ["TutorName"] = tutorName, ["Subject"] = subject, ["LessonDate"] = lessonDate.ToString("dddd d MMMM yyyy à HH:mm") }), ct);
+    }
+
+    public async Task SendLessonCancelledAsync(string to, string recipientName, string tutorName, string subject, DateTime lessonDate, CancellationToken ct = default)
+    {
+        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — LESSON_CANCELLED non envoyé à {Email}.", to); return; }
+        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.LessonCancelled, [to],
+            new Dictionary<string, string> { ["RecipientName"] = recipientName, ["TutorName"] = tutorName, ["Subject"] = subject, ["LessonDate"] = lessonDate.ToString("dddd d MMMM yyyy à HH:mm") }), ct);
+    }
+
+    public async Task SendParentPaymentReceiptAsync(string to, string parentName, string studentName, decimal amount, string invoiceUrl, CancellationToken ct = default)
+    {
+        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — PARENT_PAYMENT_RECEIPT non envoyé à {Email}.", to); return; }
+        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.ParentPaymentReceipt, [to],
+            new Dictionary<string, string> { ["ParentName"] = parentName, ["StudentName"] = studentName, ["Amount"] = amount.ToString("C"), ["InvoiceUrl"] = invoiceUrl }), ct);
+    }
+
+    public async Task SendParentPaymentFailedAsync(string to, string parentName, CancellationToken ct = default)
+    {
+        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — PARENT_PAYMENT_FAILED non envoyé à {Email}.", to); return; }
+        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.ParentPaymentFailed, [to],
+            new Dictionary<string, string> { ["ParentName"] = parentName }), ct);
+    }
+
+    public async Task SendInvoiceReadyAsync(string to, string parentName, string invoiceUrl, CancellationToken ct = default)
+    {
+        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — INVOICE_READY non envoyé à {Email}.", to); return; }
+        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.InvoiceReady, [to],
+            new Dictionary<string, string> { ["ParentName"] = parentName, ["InvoiceUrl"] = invoiceUrl }), ct);
     }
 
     private async Task TrySendAsync(SendMailRequest request, CancellationToken ct)

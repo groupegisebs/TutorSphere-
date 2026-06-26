@@ -20,6 +20,7 @@ public interface IApplicationDbContext
     IQueryable<Payment> Payments { get; }
     IQueryable<Document> Documents { get; }
     IQueryable<Message> Messages { get; }
+    IQueryable<LessonAttendance> LessonAttendances { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     void Add<T>(T entity) where T : class;

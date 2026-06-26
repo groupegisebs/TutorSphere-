@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using TutorSphere.Application.DTOs.Auth;
 using TutorSphere.Infrastructure.Identity;
+using TutorSphere.Application.Common.Interfaces;
 
 namespace TutorSphere.Api.Controllers;
 
@@ -107,6 +108,29 @@ public class AuthController : ControllerBase
         catch (UnauthorizedAccessException ex)
         {
             return Unauthorized(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("forgot-password")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request, CancellationToken ct)
+    {
+        await _authService.ForgotPasswordAsync(request.Email, ct);
+        return Ok(new { message = "Si cette adresse e-mail est associée à un compte, un lien de réinitialisation a été envoyé." });
+    }
+
+    [HttpPost("reset-password")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request, CancellationToken ct)
+    {
+        try
+        {
+            await _authService.ResetPasswordAsync(request.UserId, request.Token, request.NewPassword, ct);
+            return Ok(new { message = "Mot de passe réinitialisé avec succès." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
         }
     }
 }
