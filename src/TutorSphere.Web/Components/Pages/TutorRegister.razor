@@ -7,31 +7,55 @@
 
 <PageTitle>@L["PageTitle_TutorRegister"]</PageTitle>
 
-<div class="register-page">
-    <div class="register-card">
-        <div class="register-card-header">
-            <h1>@L["TutorRegister_Title"]</h1>
-            <p>@L["TutorRegister_Subtitle"]</p>
+<div class="register-v2">
+    <PageHeader Title="@L["TutorRegister_Title"]"
+                Subtitle="@L["TutorRegister_Subtitle"]"
+                Icon="bi-stars"
+                CssClass="page-header--centered" />
+
+    <StepIndicator Steps="@_steps" CurrentStep="1" />
+
+    <div class="register-v2-card">
+        <div class="register-v2-benefits">
+            <svg class="register-v2-illustration" viewBox="0 0 200 160" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <rect x="40" y="70" width="120" height="70" rx="4" fill="#e0e7ff"/>
+                <polygon points="100,30 30,70 170,70" fill="#6366f1"/>
+                <rect x="85" y="95" width="30" height="45" fill="#4f46e5"/>
+                <rect x="55" y="85" width="20" height="15" rx="2" fill="#a5b4fc"/>
+                <rect x="125" y="85" width="20" height="15" rx="2" fill="#a5b4fc"/>
+                <polygon points="100,15 95,25 105,25" fill="#f59e0b"/>
+                <rect x="97" y="25" width="6" height="8" fill="#f59e0b"/>
+                <ellipse cx="35" cy="130" rx="18" ry="12" fill="#86efac" opacity="0.6"/>
+                <ellipse cx="165" cy="130" rx="18" ry="12" fill="#86efac" opacity="0.6"/>
+            </svg>
+            <h2>@L["Register_Benefits_Title"]</h2>
+            <p>@L["Register_Benefits_Subtitle"]</p>
+            <ul class="register-benefit-list">
+                <li>
+                    <span class="register-benefit-icon"><i class="bi bi-globe2" aria-hidden="true"></i></span>
+                    <div>
+                        <strong>@L["Register_Benefit1_Title"]</strong>
+                        <span>@L["Register_Benefit1_Description"]</span>
+                    </div>
+                </li>
+                <li>
+                    <span class="register-benefit-icon"><i class="bi bi-grid" aria-hidden="true"></i></span>
+                    <div>
+                        <strong>@L["Register_Benefit2_Title"]</strong>
+                        <span>@L["Register_Benefit2_Description"]</span>
+                    </div>
+                </li>
+                <li>
+                    <span class="register-benefit-icon"><i class="bi bi-graph-up-arrow" aria-hidden="true"></i></span>
+                    <div>
+                        <strong>@L["Register_Benefit3_Title"]</strong>
+                        <span>@L["Register_Benefit3_Description"]</span>
+                    </div>
+                </li>
+            </ul>
         </div>
 
-        <div class="register-steps">
-            <div class="register-step active">
-                <span class="register-step-number">1</span>
-                <span>@L["Label_SchoolName"]</span>
-            </div>
-            <span class="register-step-divider"></span>
-            <div class="register-step active">
-                <span class="register-step-number">2</span>
-                <span>@L["Label_Email"]</span>
-            </div>
-            <span class="register-step-divider"></span>
-            <div class="register-step">
-                <span class="register-step-number">3</span>
-                <span>@L["Button_CreateSchool"]</span>
-            </div>
-        </div>
-
-        <div class="register-form">
+        <div class="register-v2-form">
             @if (!string.IsNullOrEmpty(ErrorMessage))
             {
                 <div class="alert alert-danger mb-4" role="alert">
@@ -47,52 +71,115 @@
 
             <div class="mb-3">
                 <label class="form-label">@L["Label_SchoolName"]</label>
-                <input class="form-control" @bind="SchoolName" placeholder="@L["Placeholder_SchoolName"]" />
-            </div>
-            <div class="mb-3">
-                <label class="form-label">@L["Label_Subdomain"]</label>
-                <div class="input-group">
-                    <input class="form-control" @bind="Slug" placeholder="jean" />
-                    <span class="input-group-text">.tutorsphere.com</span>
+                <div class="form-field-icon">
+                    <i class="bi bi-building field-icon" aria-hidden="true"></i>
+                    <input class="form-control" @bind="SchoolName" placeholder="@L["Placeholder_SchoolName"]" />
                 </div>
-                @if (!string.IsNullOrWhiteSpace(Slug))
-                {
-                    <div class="subdomain-preview">
-                        <i class="bi bi-link-45deg"></i>
-                        <span>https://<strong>@(Slug.ToLowerInvariant())</strong>.tutorsphere.com</span>
-                    </div>
-                }
             </div>
+
+            <div class="mb-3">
+                <label class="form-label">@L["Label_SubdomainFull"]</label>
+                <div class="subdomain-field">
+                    <span class="subdomain-prefix">https://</span>
+                    <input @bind="Slug" @bind:event="oninput" placeholder="jean" aria-label="@L["Label_Subdomain"]" />
+                    <span class="subdomain-suffix">.tutorsphere.com</span>
+                    @if (!string.IsNullOrWhiteSpace(Slug))
+                    {
+                        <span class="subdomain-status @(IsSlugValid ? "" : "unavailable")">
+                            <i class="bi @(IsSlugValid ? "bi-check-circle-fill" : "bi-x-circle-fill")" aria-hidden="true"></i>
+                        </span>
+                    }
+                </div>
+            </div>
+
             <div class="row">
                 <div class="col-md-6 mb-3">
                     <label class="form-label">@L["Label_FirstName"]</label>
-                    <input class="form-control" @bind="FirstName" />
+                    <div class="form-field-icon">
+                        <i class="bi bi-person field-icon" aria-hidden="true"></i>
+                        <input class="form-control" @bind="FirstName" />
+                    </div>
                 </div>
                 <div class="col-md-6 mb-3">
                     <label class="form-label">@L["Label_LastName"]</label>
-                    <input class="form-control" @bind="LastName" />
+                    <div class="form-field-icon">
+                        <i class="bi bi-person field-icon" aria-hidden="true"></i>
+                        <input class="form-control" @bind="LastName" />
+                    </div>
                 </div>
             </div>
+
             <div class="mb-3">
                 <label class="form-label">@L["Label_Email"]</label>
-                <input type="email" class="form-control" @bind="Email" />
+                <div class="form-field-icon">
+                    <i class="bi bi-envelope field-icon" aria-hidden="true"></i>
+                    <input type="email" class="form-control" @bind="Email" />
+                </div>
             </div>
-            <div class="mb-4">
-                <label class="form-label">@L["Label_Password"]</label>
-                <input type="password" class="form-control" @bind="Password" />
+
+            <div class="mb-3">
+                <label class="form-label">@L["Label_CreatePassword"]</label>
+                <div class="form-field-icon">
+                    <i class="bi bi-lock field-icon" aria-hidden="true"></i>
+                    <input type="@(ShowPassword ? "text" : "password")" class="form-control" style="padding-right: 2.5rem;"
+                           @bind="Password" @bind:event="oninput" />
+                    <button type="button" class="password-toggle" @onclick="TogglePassword" aria-label="@L["Label_TogglePassword"]">
+                        <i class="bi @(ShowPassword ? "bi-eye-slash" : "bi-eye")" aria-hidden="true"></i>
+                    </button>
+                </div>
+                @if (!string.IsNullOrEmpty(Password))
+                {
+                    <div class="password-strength">
+                        <div class="password-strength-label">
+                            @L["Password_Strength"]: <strong>@PasswordStrengthLabel</strong>
+                        </div>
+                        <div class="password-strength-bars">
+                            @for (var i = 0; i < 4; i++)
+                            {
+                                <div class="password-strength-bar @(i < PasswordStrengthBars ? $"filled {PasswordStrengthClass}" : "")"></div>
+                            }
+                        </div>
+                        <ul class="password-requirements">
+                            <li class="@(HasMinLength ? "met" : "")">
+                                <i class="bi @(HasMinLength ? "bi-check-circle-fill" : "bi-circle")" aria-hidden="true"></i>
+                                @L["Password_Req_Length"]
+                            </li>
+                            <li class="@(HasNumber ? "met" : "")">
+                                <i class="bi @(HasNumber ? "bi-check-circle-fill" : "bi-circle")" aria-hidden="true"></i>
+                                @L["Password_Req_Number"]
+                            </li>
+                            <li class="@(HasSpecial ? "met" : "")">
+                                <i class="bi @(HasSpecial ? "bi-check-circle-fill" : "bi-circle")" aria-hidden="true"></i>
+                                @L["Password_Req_Special"]
+                            </li>
+                        </ul>
+                    </div>
+                }
             </div>
+
             <button class="btn btn-primary w-100 py-2" @onclick="CreateSchoolAsync" disabled="@IsSubmitting">
                 @if (IsSubmitting)
                 {
                     <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
                 }
-                @(IsSubmitting ? L["Button_Creating"] : L["Button_CreateSchool"])
+                else
+                {
+                    <span>@L["Button_Continue"]</span>
+                    <i class="bi bi-arrow-right ms-2" aria-hidden="true"></i>
+                }
             </button>
+
+            <div class="register-security-note">
+                <i class="bi bi-shield-lock" aria-hidden="true"></i>
+                @L["Register_SecurityNote"]
+            </div>
         </div>
     </div>
 </div>
 
 @code {
+    private string[] _steps = [];
+
     private string SchoolName { get; set; } = "";
     private string Slug { get; set; } = "";
     private string FirstName { get; set; } = "";
@@ -102,6 +189,38 @@
     private string? ErrorMessage { get; set; }
     private string? SuccessMessage { get; set; }
     private bool IsSubmitting { get; set; }
+    private bool ShowPassword { get; set; }
+
+    private bool IsSlugValid => !string.IsNullOrWhiteSpace(Slug)
+        && System.Text.RegularExpressions.Regex.IsMatch(Slug, @"^[a-zA-Z0-9]([a-zA-Z0-9-]{1,48}[a-zA-Z0-9])?$");
+
+    private bool HasMinLength => Password.Length >= 8;
+    private bool HasNumber => Password.Any(char.IsDigit);
+    private bool HasSpecial => Password.Any(c => !char.IsLetterOrDigit(c));
+
+    private int PasswordStrengthBars => (HasMinLength ? 1 : 0) + (HasNumber ? 1 : 0) + (HasSpecial ? 1 : 0) + (Password.Length >= 12 ? 1 : 0);
+
+    private string PasswordStrengthClass => PasswordStrengthBars <= 1 ? "weak" : PasswordStrengthBars <= 2 ? "medium" : "";
+
+    private string PasswordStrengthLabel => PasswordStrengthBars switch
+    {
+        <= 1 => L["Password_Weak"],
+        2 => L["Password_Medium"],
+        3 => L["Password_Good"],
+        _ => L["Password_Strong"]
+    };
+
+    protected override void OnInitialized()
+    {
+        _steps =
+        [
+            L["Register_Step1"],
+            L["Register_Step2"],
+            L["Register_Step3"]
+        ];
+    }
+
+    private void TogglePassword() => ShowPassword = !ShowPassword;
 
     private async Task CreateSchoolAsync()
     {
@@ -113,6 +232,12 @@
             || string.IsNullOrWhiteSpace(Email) || string.IsNullOrWhiteSpace(Password))
         {
             ErrorMessage = L["Error_FillAllFields"];
+            return;
+        }
+
+        if (!IsSlugValid)
+        {
+            ErrorMessage = L["Error_InvalidSubdomain"];
             return;
         }
 
