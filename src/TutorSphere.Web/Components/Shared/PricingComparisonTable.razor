@@ -1,64 +1,82 @@
 @inject IStringLocalizer<SharedResources> L
 
-<section class="lp-pricing-table lp-reveal" id="pricing">
-    <div class="lp-container">
-        <div class="lp-section-header">
-            <span class="lp-section-label">@L["Plans_Label"]</span>
-            <h2>@L["Plans_Title"]</h2>
-            <p>@L["Plans_Subtitle"]</p>
-        </div>
+<section class="lp-pricing-table" id="pricing">
+    <div class="lp-section-header mb-4">
+        <span class="lp-section-label">@L["Plans_Label"]</span>
+        <h2>@L["Plans_Title"]</h2>
+        <p>@L["Plans_Subtitle"]</p>
+    </div>
 
-        <div class="lp-pricing-compare-wrap">
-            <table class="lp-pricing-compare">
-                <thead>
+    <div class="lp-pricing-compare-wrap">
+        <table class="lp-pricing-compare">
+            <thead>
+                <tr>
+                    <th class="lp-pricing-feature-col">@L["Pricing_Features"]</th>
+                    @foreach (var plan in _plans)
+                    {
+                        <th class="@(plan.Featured ? "featured" : "")">
+                            @if (plan.Featured)
+                            {
+                                <span class="lp-plan-badge">@L["Plan_Popular"]</span>
+                            }
+                            <span class="plan-name">@L[plan.NameKey]</span>
+                            <span class="plan-price">
+                                @if (plan.ContactUs)
+                                {
+                                    @L["Plan_ContactUs"]
+                                }
+                                else
+                                {
+                                    @($"{plan.Price} $")
+                                    <small>/@L["Plan_PerMonth"]</small>
+                                }
+                            </span>
+                            @if (plan.ContactUs)
+                            {
+                                <a href="mailto:support@tutorsphere.com" class="btn btn-outline-primary btn-sm w-100 mt-2">
+                                    @L["Plan_ContactSales"]
+                                </a>
+                            }
+                            else
+                            {
+                                <button type="button"
+                                        class="btn @(plan.Featured ? "btn-primary" : "btn-outline-primary") btn-sm w-100 mt-2"
+                                        disabled="@(Subscribing && SubscribingPlanId == plan.Id)"
+                                        @onclick="() => OnSubscribe.InvokeAsync(plan.Id)">
+                                    @if (Subscribing && SubscribingPlanId == plan.Id)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-1"></span>
+                                    }
+                                    @L["Tutor_PricingCta"]
+                                </button>
+                            }
+                        </th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in _rows)
+                {
                     <tr>
-                        <th class="lp-pricing-feature-col">@L["Pricing_Features"]</th>
+                        <td>@L[row.LabelKey]</td>
                         @foreach (var plan in _plans)
                         {
-                            <th class="@(plan.Featured ? "featured" : "")">
-                                @if (plan.Featured)
-                                {
-                                    <span class="lp-plan-badge">@L["Plan_Popular"]</span>
-                                }
-                                <span class="plan-name">@L[plan.NameKey]</span>
-                                <span class="plan-price">
-                                    @if (plan.ContactUs)
-                                    {
-                                        @L["Plan_ContactUs"]
-                                    }
-                                    else
-                                    {
-                                        @($"{plan.Price} $")
-                                        <small>/@L["Plan_PerMonth"]</small>
-                                    }
-                                </span>
-                                <a href="@(plan.ContactUs ? "#" : "/tutor/register")" class="btn @(plan.Featured ? "btn-primary" : "btn-outline-primary") btn-sm w-100 mt-2">
-                                    @(plan.ContactUs ? L["Plan_ContactSales"] : L["Hero_CreateSchool"])
-                                </a>
-                            </th>
+                            <td class="@(plan.Featured ? "featured" : "")">
+                                @RenderCell(plan.Id, row.Id)
+                            </td>
                         }
                     </tr>
-                </thead>
-                <tbody>
-                    @foreach (var row in _rows)
-                    {
-                        <tr>
-                            <td>@L[row.LabelKey]</td>
-                            @foreach (var plan in _plans)
-                            {
-                                <td class="@(plan.Featured ? "featured" : "")">
-                                    @RenderCell(plan.Id, row.Id)
-                                </td>
-                            }
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
+                }
+            </tbody>
+        </table>
     </div>
 </section>
 
 @code {
+    [Parameter] public EventCallback<string> OnSubscribe { get; set; }
+    [Parameter] public bool Subscribing { get; set; }
+    [Parameter] public string? SubscribingPlanId { get; set; }
+
     private readonly record struct Plan(string Id, string NameKey, string Price, bool Featured, bool ContactUs);
     private readonly record struct Row(string Id, string LabelKey);
 

@@ -1,0 +1,25 @@
+@inject IStringLocalizer<SharedResources> L
+
+<section class="lp-stats-bar lp-reveal">
+    <div class="lp-container lp-stats-inner">
+        @foreach (var stat in _stats)
+        {
+            <div class="lp-stats-item">
+                <span class="lp-stats-value">@L[stat.ValueKey]</span>
+                <span class="lp-stats-label">@L[stat.LabelKey]</span>
+            </div>
+        }
+    </div>
+</section>
+
+@code {
+    private readonly record struct StatItem(string ValueKey, string LabelKey);
+
+    private readonly StatItem[] _stats =
+    [
+        new("Stats_ActiveStudents_Value", "Stats_ActiveStudents"),
+        new("Stats_OnlineCourses_Value", "Stats_OnlineCourses"),
+        new("Stats_Satisfaction_Value", "Stats_Satisfaction"),
+        new("Stats_Rating_Value", "Stat_Rating"),
+    ];
+}

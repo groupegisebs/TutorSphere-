@@ -14,13 +14,42 @@
                 {
                     <div class="lp-mockup-nav @(item.Active ? "active" : "")">
                         <span class="lp-mockup-nav-icon"><i class="bi @item.Icon"></i></span>
-                        <span class="lp-mockup-nav-label">@item.Label</span>
+                        @if (Variant == "student")
+                        {
+                            <span class="lp-mockup-nav-label">@item.Label</span>
+                        }
                     </div>
                 }
             }
         </aside>
         <main class="lp-mockup-main">
-            @if (Variant == "dashboard")
+            @if (Variant == "student")
+            {
+                <div class="lp-mockup-greeting">Bonjour Emma !</div>
+                <div class="lp-mockup-progress">
+                    <div class="lp-mockup-progress-head">
+                        <span>Progression — Maths</span>
+                        <strong>72%</strong>
+                    </div>
+                    <div class="lp-mockup-progress-bar"><div style="width:72%"></div></div>
+                </div>
+                <div class="lp-mockup-stats lp-mockup-stats--4">
+                    <div class="lp-mockup-stat"><span class="lbl">Cours cette semaine</span><span class="val">8</span></div>
+                    <div class="lp-mockup-stat"><span class="lbl">Devoirs à faire</span><span class="val">3</span></div>
+                    <div class="lp-mockup-stat"><span class="lbl">Moyenne générale</span><span class="val">15,8</span></div>
+                    <div class="lp-mockup-stat"><span class="lbl">Heures d'étude</span><span class="val">12h</span></div>
+                </div>
+                <div class="lp-mockup-week-cal">
+                    <span class="lp-mockup-cal-title">Cette semaine</span>
+                    <div class="lp-mockup-cal-grid lp-mockup-cal-grid--week">
+                        @foreach (var day in new[] { "L", "M", "M", "J", "V", "S", "D" })
+                        {
+                            <span class="lp-mockup-cal-day @(day is "M" or "J" ? "has-event" : "")">@day</span>
+                        }
+                    </div>
+                </div>
+            }
+            else if (Variant == "dashboard")
             {
                 <div class="lp-mockup-topbar">
                     <span class="lp-mockup-title">@L["TutorDashboard_Title"]</span>
@@ -69,67 +98,16 @@
                     </div>
                 </div>
             }
-            else if (Variant == "payments")
-            {
-                <div class="lp-mockup-topbar"><span class="lp-mockup-title">Paiements</span></div>
-                <div class="lp-mockup-pay-rows">
-                    <div class="lp-mockup-pay-row"><span>Abonnement Emma</span><span class="ok">245 $</span></div>
-                    <div class="lp-mockup-pay-row"><span>Cours Liam</span><span class="ok">85 $</span></div>
-                    <div class="lp-mockup-pay-row"><span>En attente</span><span class="pending">320 $</span></div>
-                </div>
-            }
-            else if (Variant == "reports")
-            {
-                <div class="lp-mockup-topbar"><span class="lp-mockup-title">Rapports</span></div>
-                <div class="lp-mockup-report-bars">
-                    <div class="lp-mockup-bar-row"><span>Maths</span><div class="bar"><div style="width:85%"></div></div></div>
-                    <div class="lp-mockup-bar-row"><span>Physique</span><div class="bar"><div style="width:72%"></div></div></div>
-                    <div class="lp-mockup-bar-row"><span>Chimie</span><div class="bar"><div style="width:90%"></div></div></div>
-                </div>
-            }
-            else if (Variant == "students")
-            {
-                <div class="lp-mockup-topbar"><span class="lp-mockup-title">Élèves</span></div>
-                <div class="lp-mockup-student-list">
-                    <div class="lp-mockup-student"><span class="av">EJ</span><span>Emma Johnson</span><span class="badge">Actif</span></div>
-                    <div class="lp-mockup-student"><span class="av av--g">LB</span><span>Liam Brown</span><span class="badge">Actif</span></div>
-                    <div class="lp-mockup-student"><span class="av av--a">SD</span><span>Sophia Davis</span><span class="badge">Actif</span></div>
-                </div>
-            }
-            else if (Variant == "crm")
-            {
-                <div class="lp-mockup-topbar"><span class="lp-mockup-title">CRM</span></div>
-                <div class="lp-mockup-crm-pipeline">
-                    <div class="col"><span class="lbl">Prospects</span><span class="num">12</span></div>
-                    <div class="col"><span class="lbl">Essai</span><span class="num">5</span></div>
-                    <div class="col"><span class="lbl">Clients</span><span class="num">32</span></div>
-                </div>
-            }
-            else if (Variant == "invoices")
-            {
-                <div class="lp-mockup-topbar"><span class="lp-mockup-title">Factures</span></div>
-                <div class="lp-mockup-invoice-list">
-                    <div class="lp-mockup-invoice"><span>#INV-1042</span><span class="paid">Payée</span></div>
-                    <div class="lp-mockup-invoice"><span>#INV-1043</span><span class="pending">En attente</span></div>
-                </div>
-            }
-            else if (Variant == "subscriptions")
-            {
-                <div class="lp-mockup-topbar"><span class="lp-mockup-title">Abonnements</span></div>
-                <div class="lp-mockup-sub-cards">
-                    <div class="lp-mockup-sub"><span>Forfait mensuel</span><span>28 actifs</span></div>
-                    <div class="lp-mockup-sub"><span>Forfait trimestriel</span><span>8 actifs</span></div>
-                </div>
-            }
             else if (Variant == "mobile")
             {
                 <div class="lp-mockup-mobile-stats">
-                    <div><span class="val">6</span><span class="lbl">Cours</span></div>
+                    <div><span class="val">8</span><span class="lbl">Cours</span></div>
                     <div><span class="val">3</span><span class="lbl">Devoirs</span></div>
                 </div>
                 <div class="lp-mockup-mobile-list">
-                    <div class="item"><i class="bi bi-calendar3"></i> Maths — 10h00</div>
+                    <div class="item"><i class="bi bi-journal-text"></i> Maths — 10h00</div>
                     <div class="item"><i class="bi bi-pencil"></i> Devoir chimie</div>
+                    <div class="item"><i class="bi bi-calendar3"></i> Physique — 14h00</div>
                 </div>
             }
         </main>
@@ -144,15 +122,20 @@
 
     private IEnumerable<(string Icon, string Label, bool Active)> SidebarItems => Variant switch
     {
+        "student" => [
+            ("bi-house-fill", "Accueil", true),
+            ("bi-journal-text", "Cours", false),
+            ("bi-calendar3", "Calendrier", false),
+            ("bi-pencil", "Devoirs", false),
+            ("bi-bar-chart-line", "Notes", false),
+            ("bi-chat-dots", "Messages", false),
+            ("bi-folder2", "Documents", false),
+            ("bi-graph-up", "Progrès", false),
+            ("bi-gear", "Paramètres", false),
+        ],
         "calendar" => [("bi-calendar3", "Calendrier", true), ("bi-house", "Accueil", false), ("bi-people", "Élèves", false)],
         "classroom" => [("bi-camera-video", "Salle virtuelle", true), ("bi-calendar3", "Calendrier", false)],
-        "payments" => [("bi-credit-card", "Paiements", true), ("bi-receipt", "Factures", false)],
-        "reports" => [("bi-graph-up", "Rapports", true), ("bi-people", "Élèves", false)],
-        "students" => [("bi-people", "Élèves", true), ("bi-chat", "Messages", false)],
-        "crm" => [("bi-kanban", "CRM", true), ("bi-people", "Contacts", false)],
-        "invoices" => [("bi-receipt", "Factures", true), ("bi-credit-card", "Paiements", false)],
-        "subscriptions" => [("bi-arrow-repeat", "Abonnements", true), ("bi-tag", "Offres", false)],
         "mobile" => [],
-        _ => [("bi-house", "Tableau de bord", true), ("bi-people", "Élèves", false), ("bi-calendar3", "Calendrier", false), ("bi-credit-card", "Paiements", false), ("bi-graph-up", "Rapports", false)]
+        _ => [("bi-house", "Tableau de bord", true), ("bi-people", "Élèves", false), ("bi-calendar3", "Calendrier", false)]
     };
 }
