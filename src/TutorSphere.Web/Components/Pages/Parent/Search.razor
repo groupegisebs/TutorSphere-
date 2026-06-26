@@ -1,4 +1,180 @@
 @page "/parent/search"
 @layout ParentLayout
+@rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
-<ModuleSkeletonPage PageTitleKey="PageTitle_FindTutor" TitleKey="Nav_FindTutor" Icon="bi-binoculars" EmptyIcon="bi-search" />
+@inject ApiClient Api
+
+<PageTitle>@L["PageTitle_FindTutor"]</PageTitle>
+
+<div class="ts-page-header">
+    <div>
+        <h1><i class="bi bi-binoculars me-2"></i>@L["Nav_FindTutor"]</h1>
+        <p class="ts-page-subtitle">Trouvez un répétiteur pour vos enfants</p>
+    </div>
+</div>
+
+<div class="search-layout">
+    <aside class="search-filters">
+        <h2><i class="bi bi-sliders"></i> @L["Search_Filters"]</h2>
+        <div class="mb-3">
+            <label class="form-label">@L["Label_Subject"]</label>
+            <input class="form-control" @bind="_subject" placeholder="@L["Placeholder_Subject"]" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">@L["Label_City"]</label>
+            <input class="form-control" @bind="_city" placeholder="@L["Placeholder_City"]" />
+        </div>
+        <div class="row g-2 mb-3">
+            <div class="col-6">
+                <label class="form-label">@L["Label_MinPrice"]</label>
+                <input type="number" class="form-control" @bind="_minPrice" min="0" step="1" />
+            </div>
+            <div class="col-6">
+                <label class="form-label">@L["Label_MaxPrice"]</label>
+                <input type="number" class="form-control" @bind="_maxPrice" min="0" step="1" />
+            </div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">@L["Label_Level"]</label>
+            <input class="form-control" @bind="_level" placeholder="@L["Placeholder_Level"]" />
+        </div>
+        <button class="btn btn-primary w-100" @onclick="SearchAsync" disabled="@_loading">
+            @if (_loading)
+            {
+                <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+            }
+            @(_loading ? L["Button_Searching"] : L["Button_Search"])
+        </button>
+    </aside>
+
+    <section class="search-results">
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger">
+                <i class="bi bi-exclamation-circle me-2"></i>@_error
+            </div>
+        }
+        else if (_loading)
+        {
+            <div class="loading-state">
+                <div class="loading-spinner"></div>
+                <span>@L["Search_Loading"]</span>
+            </div>
+        }
+        else if (_results.Count == 0)
+        {
+            <div class="empty-state">
+                <div class="empty-state-icon"><i class="bi bi-search"></i></div>
+                <h2 class="h5">@L["Search_NoResults_Title"]</h2>
+                <p class="text-muted mb-0">@L["Search_NoResults_Description"]</p>
+            </div>
+        }
+        else
+        {
+            <p class="results-count">@L["Search_ResultsCount", _results.Count]</p>
+            <div class="results-grid">
+                @foreach (var tutor in _results)
+                {
+                    <article class="tutor-card">
+                        <div class="tutor-card-top">
+                            <div class="tutor-avatar" aria-hidden="true">@GetInitials(tutor.Name)</div>
+                            <div class="tutor-card-header">
+                                <h3>@tutor.Name</h3>
+                                @if (!string.IsNullOrWhiteSpace(tutor.City))
+                                {
+                                    <span class="tutor-location">
+                                        <i class="bi bi-geo-alt"></i>
+                                        @tutor.City@(string.IsNullOrWhiteSpace(tutor.Country) ? "" : $", {tutor.Country}")
+                                    </span>
+                                }
+                            </div>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(tutor.Description))
+                        {
+                            <p class="tutor-description">@tutor.Description</p>
+                        }
+                        <div class="tutor-meta">
+                            @if (tutor.Subjects.Count > 0)
+                            {
+                                <div class="tutor-tags">
+                                    @foreach (var subject in tutor.Subjects)
+                                    {
+                                        <span class="badge bg-light text-dark">@subject</span>
+                                    }
+                                </div>
+                            }
+                            @if (tutor.MinPrice.HasValue)
+                            {
+                                <p class="tutor-price">
+                                    <strong>@L["Search_Price"]</strong>
+                                    <span>@tutor.MinPrice.Value.ToString("0.##") $ @tutor.Currency</span>
+                                </p>
+                            }
+                        </div>
+                        <div class="tutor-card-footer">
+                            <a class="btn btn-outline-primary btn-sm" href="/tutor/@tutor.Slug">
+                                <i class="bi bi-arrow-right me-1"></i>@L["Button_ViewProfile"]
+                            </a>
+                            <a class="btn btn-primary btn-sm ms-2" href="/parent/subscriptions">
+                                <i class="bi bi-plus-lg me-1"></i>S'abonner
+                            </a>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    private string  _subject  = "";
+    private string  _city     = "";
+    private string  _level    = "";
+    private decimal? _minPrice;
+    private decimal? _maxPrice;
+    private bool    _loading  = true;
+    private string? _error;
+    private List<TutorSearchResultDto> _results = [];
+
+    protected override async Task OnInitializedAsync() => await SearchAsync();
+
+    private async Task SearchAsync()
+    {
+        _loading = true;
+        _error   = null;
+        try
+        {
+            var parts = new List<string>();
+            if (!string.IsNullOrWhiteSpace(_subject))   parts.Add($"subject={Uri.EscapeDataString(_subject.Trim())}");
+            if (!string.IsNullOrWhiteSpace(_city))      parts.Add($"city={Uri.EscapeDataString(_city.Trim())}");
+            if (!string.IsNullOrWhiteSpace(_level))     parts.Add($"level={Uri.EscapeDataString(_level.Trim())}");
+            if (_minPrice.HasValue)                     parts.Add($"minPrice={_minPrice.Value}");
+            if (_maxPrice.HasValue)                     parts.Add($"maxPrice={_maxPrice.Value}");
+            var query = parts.Count == 0 ? "" : "?" + string.Join("&", parts);
+
+            var result = await Api.GetAsync<List<TutorSearchResultDto>>($"api/search/tutors{query}");
+            _results = result ?? [];
+        }
+        catch
+        {
+            _error   = L["Search_Error_Load"];
+            _results = [];
+        }
+        finally { _loading = false; }
+    }
+
+    private static string GetInitials(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "?";
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2
+            ? $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant()
+            : parts[0][0].ToString().ToUpperInvariant();
+    }
+
+    private record TutorSearchResultDto(
+        string Name, string Slug, string? City, string? Country,
+        string? Description, string Language, string Currency,
+        decimal? MinPrice, decimal? MaxPrice,
+        List<string> Subjects, List<string> Modes);
+}

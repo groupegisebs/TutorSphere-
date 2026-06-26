@@ -26,3 +26,21 @@ public record TenantDashboardDto(
     int ActiveSubscriptions,
     int UpcomingLessons,
     int PendingPayments);
+
+public record TutorProfileDto(
+    Guid Id,
+    string Name,
+    string? Description,
+    string? City,
+    string? Country,
+    string Language,
+    string Currency,
+    string Slug);
+
+public record UpdateTutorProfileRequest(
+    string? Name,
+    string? Description,
+    string? City,
+    string? Country,
+    string? Language,
+    string? Currency);

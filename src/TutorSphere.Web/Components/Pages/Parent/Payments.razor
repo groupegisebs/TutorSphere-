@@ -2,6 +2,7 @@
 @layout ParentLayout
 @rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
+@inject ApiClient Api
 
 <PageTitle>Mes Paiements – TutorSphere</PageTitle>
 
@@ -12,54 +13,82 @@
     </div>
 </div>
 
-<div class="row g-3 mb-4">
-    <div class="col-6 col-lg-3">
-        <div class="ts-kpi-card ts-kpi-card--success">
-            <span class="ts-kpi-val">@_payments.Where(p=>p.Status=="Payé").Sum(p=>p.Amount).ToString("N0") $</span>
-            <span class="ts-kpi-label">Total payé</span>
+@if (_loading)
+{
+    <div class="d-flex align-items-center justify-content-center py-5">
+        <span class="spinner-border text-primary me-3" role="status"></span>
+        <span class="text-muted">Chargement des paiements…</span>
+    </div>
+}
+else
+{
+    <div class="row g-3 mb-4">
+        <div class="col-6 col-lg-3">
+            <div class="ts-kpi-card ts-kpi-card--success">
+                <span class="ts-kpi-val">@_payments.Where(p => p.Status == "paid").Sum(p => p.Amount).ToString("N0") $</span>
+                <span class="ts-kpi-label">Total payé</span>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="ts-kpi-card ts-kpi-card--warning">
+                <span class="ts-kpi-val">@_payments.Where(p => p.Status == "open").Sum(p => p.Amount).ToString("N0") $</span>
+                <span class="ts-kpi-label">En attente</span>
+            </div>
         </div>
     </div>
-    <div class="col-6 col-lg-3">
-        <div class="ts-kpi-card ts-kpi-card--warning">
-            <span class="ts-kpi-val">@_payments.Where(p=>p.Status=="En attente").Sum(p=>p.Amount).ToString("N0") $</span>
-            <span class="ts-kpi-label">En attente</span>
-        </div>
-    </div>
-</div>
 
-<div class="ts-table-card">
-    <table class="table ts-table">
-        <thead><tr><th>Date</th><th>Description</th><th>Enfant</th><th>Montant</th><th>Statut</th><th></th></tr></thead>
-        <tbody>
-            @foreach (var p in _payments)
-            {
-                <tr>
-                    <td>@p.Date.ToString("dd/MM/yyyy")</td>
-                    <td>@p.Description</td>
-                    <td><span class="ts-badge ts-badge-neutral">@p.Child</span></td>
-                    <td class="fw-semibold">@p.Amount $ CAD</td>
-                    <td>
-                        <span class="ts-badge @(p.Status=="Payé"?"ts-badge-success":p.Status=="En attente"?"ts-badge-warning":"ts-badge-danger")">
-                            @p.Status
-                        </span>
-                    </td>
-                    <td>
-                        <button class="ts-icon-btn" title="Facture PDF"><i class="bi bi-file-pdf"></i></button>
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table>
-</div>
+    <div class="ts-table-card">
+        <table class="table ts-table">
+            <thead><tr><th>Date</th><th>Description</th><th>Montant</th><th>Statut</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var p in _payments)
+                {
+                    var statusLabel = p.Status switch { "paid" => "Payé", "open" => "En attente", "void" => "Annulé", _ => p.Status };
+                    var statusBadge = p.Status switch { "paid" => "ts-badge-success", "open" => "ts-badge-warning", _ => "ts-badge-danger" };
+                    <tr>
+                        <td>@p.CreatedAt.ToString("dd/MM/yyyy")</td>
+                        <td>@(p.Description ?? "Facture")</td>
+                        <td class="fw-semibold">@p.Amount.ToString("N0") $ @p.Currency.ToUpper()</td>
+                        <td><span class="ts-badge @statusBadge">@statusLabel</span></td>
+                        <td>
+                            @if (!string.IsNullOrEmpty(p.PdfUrl))
+                            {
+                                <a class="ts-icon-btn" href="@p.PdfUrl" target="_blank" title="Facture PDF">
+                                    <i class="bi bi-file-pdf"></i>
+                                </a>
+                            }
+                            else
+                            {
+                                <button class="ts-icon-btn" title="Facture PDF" disabled><i class="bi bi-file-pdf"></i></button>
+                            }
+                        </td>
+                    </tr>
+                }
+                @if (_payments.Count == 0)
+                {
+                    <tr><td colspan="5" class="text-center text-muted py-4">Aucun paiement trouvé.</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
 
 @code {
-    private record PaymentVM(DateTime Date, string Description, string Child, decimal Amount, string Status);
-    private static readonly List<PaymentVM> _payments =
-    [
-        new(DateTime.Today.AddDays(-2), "Cours de Maths – Juin", "Emma Johnson", 200, "Payé"),
-        new(DateTime.Today.AddDays(-2), "Cours de Français – Juin", "Lucas Johnson", 160, "Payé"),
-        new(DateTime.Today, "Cours de Maths – Juillet", "Emma Johnson", 200, "En attente"),
-        new(DateTime.Today.AddDays(-32), "Cours de Maths – Mai", "Emma Johnson", 200, "Payé"),
-        new(DateTime.Today.AddDays(-32), "Cours de Français – Mai", "Lucas Johnson", 160, "Payé"),
-    ];
+    private bool _loading = true;
+    private List<InvoiceDto> _payments = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var result = await Api.GetAsync<List<InvoiceDto>>("api/invoices");
+            _payments = result ?? [];
+        }
+        catch { }
+        finally { _loading = false; }
+    }
+
+    private record InvoiceDto(
+        Guid Id, string? Description, decimal Amount, string Currency,
+        string Status, DateTime CreatedAt, string? PdfUrl);
 }

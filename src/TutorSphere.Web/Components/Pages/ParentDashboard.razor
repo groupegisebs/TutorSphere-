@@ -1,23 +1,37 @@
 @page "/parent/dashboard"
 @page "/parent"
 @layout ParentLayout
+@rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
+@inject ApiClient Api
+@inject LessonService LessonSvc
 
 <PageTitle>@L["PageTitle_ParentDashboard"]</PageTitle>
 
 <div class="dashboard-header">
-    <h1 class="dashboard-greeting">@L["ParentDashboard_Welcome", "Sarah"]</h1>
+    <h1 class="dashboard-greeting">@L["ParentDashboard_Welcome", _parentName]</h1>
 </div>
 
 <section class="section-card mb-4">
     <h2>@L["Parent_MyChildren_Title"]</h2>
     <div class="children-list">
-        @foreach (var child in Children)
+        @if (_childrenLoading)
         {
-            <div class="child-card @(child.Active ? "active" : "")">
-                <div class="child-avatar">@child.Initials</div>
-                <span>@child.Name</span>
-            </div>
+            <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+        }
+        else if (_children.Count == 0)
+        {
+            <span class="text-muted small">Aucun enfant trouvé.</span>
+        }
+        else
+        {
+            @foreach (var child in _children)
+            {
+                <div class="child-card active">
+                    <div class="child-avatar">@child.Initials</div>
+                    <span>@child.Name</span>
+                </div>
+            }
         }
     </div>
 </section>
@@ -28,27 +42,41 @@
             <div class="section-card-header">
                 <h2>@L["Stat_UpcomingLessons"]</h2>
             </div>
-            <ul class="lesson-list">
-                @foreach (var lesson in UpcomingLessons)
-                {
-                    <li class="lesson-list-item">
-                        <div class="lesson-avatar">@lesson.Initials</div>
-                        <div class="lesson-info">
-                            <strong>@lesson.Child</strong>
-                            <span>@lesson.Subject — @lesson.Tutor</span>
-                        </div>
-                        <span class="lesson-time">@lesson.Time</span>
-                    </li>
-                }
-            </ul>
+            @if (_lessonsLoading)
+            {
+                <div class="d-flex align-items-center gap-2 p-3">
+                    <span class="spinner-border spinner-border-sm text-primary"></span>
+                    <span class="text-muted small">Chargement…</span>
+                </div>
+            }
+            else if (_upcomingLessons.Count == 0)
+            {
+                <p class="text-muted small p-3">Aucune séance à venir.</p>
+            }
+            else
+            {
+                <ul class="lesson-list">
+                    @foreach (var lesson in _upcomingLessons)
+                    {
+                        <li class="lesson-list-item">
+                            <div class="lesson-avatar">@lesson.Initials</div>
+                            <div class="lesson-info">
+                                <strong>@lesson.Title</strong>
+                                <span>@(lesson.Subject ?? "—") — @lesson.StartTime.ToString("ddd dd/MM HH:mm")</span>
+                            </div>
+                            <span class="lesson-time">@LessonService.ModeToDisplay(lesson.Mode)</span>
+                        </li>
+                    }
+                </ul>
+            }
         </div>
     </div>
     <div class="col-lg-5">
         <div class="section-card subscription-card h-100">
             <h2>@L["Parent_ActiveSubscription"]</h2>
             <p class="subscription-plan">@L["Parent_SubscriptionPlan"]</p>
-            <p class="subscription-detail">@L["Parent_SubscriptionDetail", "John Smith", "45 $"]</p>
-            <button type="button" class="btn btn-outline-primary">@L["Parent_ManageSubscription"]</button>
+            <p class="subscription-detail">@L["Parent_SubscriptionDetail", "—", "—"]</p>
+            <a href="/parent/subscriptions" class="btn btn-outline-primary">@L["Parent_ManageSubscription"]</a>
         </div>
     </div>
 </div>
@@ -58,46 +86,82 @@
         <div class="section-card">
             <h2>@L["Parent_LastReport"]</h2>
             <div class="report-summary">
-                <div class="star-rating star-rating--readonly">
-                    @for (var i = 0; i < 5; i++)
-                    {
-                        <i class="bi bi-star-fill active"></i>
-                    }
-                </div>
-                <p>@L["Parent_LastReportText"]</p>
-                <a href="parent/reports" class="btn btn-sm btn-link">@L["Button_ViewReport"]</a>
+                <p class="text-muted small">Consultez les derniers rapports de séance.</p>
+                <a href="/parent/reports" class="btn btn-sm btn-link">@L["Button_ViewReport"]</a>
             </div>
         </div>
     </div>
     <div class="col-md-4">
         <div class="section-card">
             <h2>@L["Parent_RecentPayment"]</h2>
-            <p class="payment-amount">180,00 $</p>
-            <p class="text-muted small">@DateTime.Today.AddDays(-5).ToString("d MMMM yyyy")</p>
+            <p class="text-muted small">Consultez l'historique de vos paiements.</p>
+            <a href="/parent/payments" class="btn btn-sm btn-link">@L["Button_ViewAll"]</a>
         </div>
     </div>
     <div class="col-md-4">
         <div class="section-card">
             <h2>@L["Nav_Messages"]</h2>
-            <p>@L["Parent_UnreadMessages", 2]</p>
-            <a href="parent/messages" class="btn btn-sm btn-link">@L["Button_ViewAll"]</a>
+            <p class="text-muted small">Messagerie avec les répétiteurs.</p>
+            <a href="/parent/messages" class="btn btn-sm btn-link">@L["Button_ViewAll"]</a>
         </div>
     </div>
 </div>
 
 @code {
-    private record ChildItem(string Name, string Initials, bool Active);
-    private record ParentLesson(string Child, string Subject, string Tutor, string Time, string Initials);
+    private string _parentName = "Parent";
+    private bool _childrenLoading = true;
+    private bool _lessonsLoading = true;
+    private List<ChildSummary> _children = [];
+    private List<LessonSummary> _upcomingLessons = [];
 
-    private readonly List<ChildItem> Children =
-    [
-        new("Emma Johnson", "EJ", true),
-        new("Liam Anderson", "LA", false),
-    ];
+    protected override async Task OnInitializedAsync()
+    {
+        var studentsTask = LoadChildrenAsync();
+        var lessonsTask  = LoadLessonsAsync();
+        await Task.WhenAll(studentsTask, lessonsTask);
+    }
 
-    private readonly List<ParentLesson> UpcomingLessons =
-    [
-        new("Emma Johnson", "Mathématiques", "John Smith", "Aujourd'hui 10:00", "EJ"),
-        new("Liam Anderson", "Français", "Marie Dubois", "Demain 15:00", "LA"),
-    ];
+    private async Task LoadChildrenAsync()
+    {
+        try
+        {
+            var students = await Api.GetAsync<List<StudentDto>>("api/students") ?? [];
+            _children = students.Select(s =>
+            {
+                var name = $"{s.FirstName} {s.LastName}".Trim();
+                var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                var initials = parts.Length >= 2
+                    ? $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant()
+                    : name.Length > 0 ? name[..1].ToUpperInvariant() : "?";
+                return new ChildSummary(name, initials);
+            }).ToList();
+        }
+        catch { }
+        finally { _childrenLoading = false; }
+    }
+
+    private async Task LoadLessonsAsync()
+    {
+        try
+        {
+            var lessons = await LessonSvc.GetLessonsAsync();
+            _upcomingLessons = lessons
+                .Where(l => l.StartTime >= DateTime.UtcNow)
+                .OrderBy(l => l.StartTime)
+                .Take(5)
+                .Select(l =>
+                {
+                    var title  = l.Title;
+                    var initials = title.Length > 0 ? title[0].ToString().ToUpperInvariant() : "?";
+                    return new LessonSummary(l.Id, title, l.Subject, l.StartTime, l.Mode, initials);
+                })
+                .ToList();
+        }
+        catch { }
+        finally { _lessonsLoading = false; }
+    }
+
+    private record ChildSummary(string Name, string Initials);
+    private record LessonSummary(Guid Id, string Title, string? Subject, DateTime StartTime, string Mode, string Initials);
+    private record StudentDto(Guid Id, string FirstName, string LastName, DateTime? DateOfBirth);
 }

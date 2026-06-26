@@ -26,6 +26,7 @@ public sealed class AuthService
     public string? UserName => _authProvider.UserName;
     public string? PrimaryRole => _authProvider.PrimaryRole;
     public string? Token => _authProvider.Token;
+    public Guid? TenantId => _authProvider.TenantId;
 
     /// <summary>Calls the API login endpoint and caches the result.</summary>
     public async Task<LoginResult> LoginAsync(string email, string password)
@@ -103,6 +104,15 @@ public sealed class CustomAuthenticationStateProvider : AuthenticationStateProvi
     public string? UserName => _user.FindFirst(ClaimTypes.Name)?.Value;
     public string? PrimaryRole => _user.FindFirst(ClaimTypes.Role)?.Value;
 
+    public Guid? TenantId
+    {
+        get
+        {
+            var val = _user.FindFirst("tenant_id")?.Value;
+            return val is not null && Guid.TryParse(val, out var g) ? g : null;
+        }
+    }
+
     public override Task<AuthenticationState> GetAuthenticationStateAsync()
         => Task.FromResult(new AuthenticationState(_user));
 
@@ -124,8 +134,35 @@ public sealed class CustomAuthenticationStateProvider : AuthenticationStateProvi
         if (auth.Roles is not null)
             claims.AddRange(auth.Roles.Select(r => new Claim(ClaimTypes.Role, r)));
 
+        // Parse additional claims from JWT payload (e.g. tenant_id)
+        foreach (var (key, value) in ParseJwtPayloadClaims(auth.Token))
+        {
+            if (key is "tenant_id" or "sub")
+                claims.Add(new Claim(key, value));
+        }
+
         _user = new ClaimsPrincipal(new ClaimsIdentity(claims, "TutorSphereJwt"));
         NotifyAuthenticationStateChanged(GetAuthenticationStateAsync());
+    }
+
+    private static IEnumerable<(string Key, string Value)> ParseJwtPayloadClaims(string token)
+    {
+        var parts = token.Split('.');
+        if (parts.Length != 3) yield break;
+        var payload = parts[1];
+        var mod = payload.Length % 4;
+        if (mod != 0) payload += new string('=', 4 - mod);
+        string json;
+        try { json = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(payload.Replace('-', '+').Replace('_', '/'))); }
+        catch { yield break; }
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            foreach (var prop in doc.RootElement.EnumerateObject())
+                if (prop.Value.ValueKind == JsonValueKind.String)
+                    yield return (prop.Name, prop.Value.GetString()!);
+        }
+        catch { }
     }
 
     internal void MarkLoggedOut()

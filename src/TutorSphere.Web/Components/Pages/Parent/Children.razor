@@ -2,6 +2,7 @@
 @layout ParentLayout
 @rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
+@inject ApiClient Api
 
 <PageTitle>Mes Enfants – TutorSphere</PageTitle>
 
@@ -12,168 +13,153 @@
     </div>
 </div>
 
-@if (_children.All(c => c.IsAutonomous))
+@if (_loading)
 {
-    <div class="autonomous-notice mb-3">
-        <i class="bi bi-info-circle-fill"></i>
-        <span>Tous vos enfants ont atteint l'autonomie (14 ans et plus). Vous pouvez toujours consulter leur planning et les informations générales.</span>
+    <div class="d-flex align-items-center justify-content-center py-5">
+        <span class="spinner-border text-primary me-3" role="status"></span>
+        <span class="text-muted">Chargement…</span>
     </div>
 }
-
-<div class="children-grid">
-    @foreach (var child in _children)
+else
+{
+    @if (_children.All(c => c.IsAutonomous))
     {
-        <div class="child-card @(_active?.Name == child.Name ? "active" : "")" @onclick="() => _active = child">
-            <div class="child-card-header">
-                <div class="ts-avatar ts-avatar-lg" style="background:@child.Color">@child.Initials</div>
-                <div>
-                    <h3>
-                        @child.Name
-                        @if (child.Age.HasValue)
-                        {
-                            <span class="text-muted ms-2" style="font-size:0.85rem;font-weight:400">(@child.Age ans)</span>
-                        }
-                    </h3>
-                    <span class="text-muted">@child.Level · @child.School</span>
-                </div>
-                <span class="ts-badge @(child.IsActive ? "ts-badge-success" : "ts-badge-muted") ms-auto">
-                    @(child.IsActive ? "Actif" : "Inactif")
-                </span>
-            </div>
-            @if (child.IsAutonomous)
-            {
-                <div class="autonomous-notice">
-                    <i class="bi bi-info-circle-fill"></i>
-                    <span>Votre enfant a @child.Age ans ou plus. Conformément à notre politique de confidentialité, certaines informations (rapports détaillés, messages, devoirs) ne sont pas accessibles aux parents pour les élèves autonomes.</span>
-                </div>
-            }
-            <div class="child-stats-row">
-                <div class="child-stat"><span>@child.SessionsThisMonth</span><small>Cours ce mois</small></div>
-                <div class="child-stat"><span>@child.AttendanceRate%</span><small>Présence</small></div>
-                @if (!child.IsAutonomous)
-                {
-                    <div class="child-stat"><span>@child.ReportsCount</span><small>Rapports</small></div>
-                    <div class="child-stat"><span>@child.HomeworkDone/@child.HomeworkTotal</span><small>Devoirs</small></div>
-                }
-            </div>
-            <div class="child-subjects">
-                @foreach (var s in child.Subjects)
-                {
-                    <span class="ts-badge ts-badge-neutral">@s</span>
-                }
-            </div>
-            <div class="child-next-lesson">
-                <i class="bi bi-calendar-event me-2 text-primary"></i>
-                <span>Prochain cours : <strong>@child.NextLesson</strong></span>
-            </div>
+        <div class="autonomous-notice mb-3">
+            <i class="bi bi-info-circle-fill"></i>
+            <span>Tous vos enfants ont atteint l'autonomie (14 ans et plus). Vous pouvez toujours consulter leur planning et les informations générales.</span>
         </div>
     }
-</div>
 
-@if (_active != null)
-{
-    <div class="section-card mt-4">
-        <div class="section-card-header">
-            <h2>
-                Détail — @_active.Name
-                @if (_active.Age.HasValue)
-                {
-                    <span class="text-muted ms-2" style="font-size:0.9rem;font-weight:400">(@_active.Age ans)</span>
-                }
-            </h2>
-        </div>
-        @if (_active.IsAutonomous)
+    <div class="children-grid">
+        @foreach (var child in _children)
         {
-            <div style="padding:1rem 1.5rem 0">
-                <div class="autonomous-notice">
-                    <i class="bi bi-info-circle-fill"></i>
-                    <span>Votre enfant a @_active.Age ans ou plus. Conformément à notre politique de confidentialité, certaines informations (rapports détaillés, messages, devoirs) ne sont pas accessibles aux parents pour les élèves autonomes.</span>
+            <div class="child-card @(_active?.Id == child.Id ? "active" : "")" @onclick="() => _active = child">
+                <div class="child-card-header">
+                    <div class="ts-avatar ts-avatar-lg" style="background:@child.Color">@child.Initials</div>
+                    <div>
+                        <h3>
+                            @child.Name
+                            @if (child.Age.HasValue)
+                            {
+                                <span class="text-muted ms-2" style="font-size:0.85rem;font-weight:400">(@child.Age ans)</span>
+                            }
+                        </h3>
+                        <span class="text-muted">@(child.Level ?? "—") · @(child.School ?? "—")</span>
+                    </div>
+                    <span class="ts-badge @(child.IsActive ? "ts-badge-success" : "ts-badge-muted") ms-auto">
+                        @(child.IsActive ? "Actif" : "Inactif")
+                    </span>
+                </div>
+                @if (child.IsAutonomous)
+                {
+                    <div class="autonomous-notice">
+                        <i class="bi bi-info-circle-fill"></i>
+                        <span>Votre enfant a @child.Age ans ou plus. Conformément à notre politique de confidentialité, certaines informations (rapports détaillés, messages, devoirs) ne sont pas accessibles aux parents pour les élèves autonomes.</span>
+                    </div>
+                }
+                <div class="child-subjects">
+                    @foreach (var s in child.Subjects)
+                    {
+                        <span class="ts-badge ts-badge-neutral">@s</span>
+                    }
                 </div>
             </div>
         }
-        <div class="ts-modal-tabs">
-            <button class="ts-tab @(_tab=="Progression"?"active":"")" @onclick='()=>_tab="Progression"'>Progression</button>
-            @if (!_active.IsAutonomous)
-            {
-                <button class="ts-tab @(_tab=="Rapports"?"active":"")" @onclick='()=>_tab="Rapports"'>Rapports</button>
-                <button class="ts-tab @(_tab=="Devoirs"?"active":"")" @onclick='()=>_tab="Devoirs"'>Devoirs</button>
-            }
-            <button class="ts-tab @(_tab=="Présence"?"active":"")" @onclick='()=>_tab="Présence"'>Présence</button>
-        </div>
-        <div style="padding:1.5rem">
-            @if (_tab == "Progression")
-            {
-                <div class="row g-3">
-                    @foreach (var s in _active.SubjectProgress)
-                    {
-                        <div class="col-md-6">
-                            <label class="form-label d-flex justify-content-between">
-                                <span>@s.Subject</span>
-                                <span class="fw-bold" style="color:var(--ts-primary)">@s.Score%</span>
-                            </label>
-                            <div class="progress" style="height:8px">
-                                <div class="progress-bar" style="width:@s.Score%;background:var(--ts-primary)"></div>
-                            </div>
-                        </div>
-                    }
-                </div>
-            }
-            else if (_tab == "Rapports" && !_active.IsAutonomous)
-            {
-                <p class="text-muted">Consultez les rapports de séance envoyés par le répétiteur.</p>
-                @foreach (var r in _active.Reports)
-                {
-                    <div class="ts-list-item d-flex align-items-center gap-2">
-                        <i class="bi bi-file-earmark-text text-primary"></i>
-                        <span>@r.Date — @r.Subject</span>
-                        <span class="ms-auto ts-badge ts-badge-success">@r.Sent</span>
-                    </div>
-                }
-            }
-            else if (_tab == "Présence")
-            {
-                <div class="presence-stats">
-                    <div class="presence-stat"><span class="presence-num text-success">@_active.Present</span><span>Présent</span></div>
-                    <div class="presence-stat"><span class="presence-num text-danger">@_active.Absent</span><span>Absent</span></div>
-                    <div class="presence-stat"><span class="presence-num text-warning">@_active.Late</span><span>Retard</span></div>
-                    <div class="presence-stat"><span class="presence-num" style="color:var(--ts-primary)">@_active.AttendanceRate%</span><span>Taux</span></div>
-                </div>
-            }
-            else
-            {
-                <p class="ts-empty-inline">Section disponible prochainement.</p>
-            }
-        </div>
+        @if (_children.Count == 0)
+        {
+            <div class="text-center py-5 text-muted col-span-full">
+                <i class="bi bi-people fs-1 d-block mb-3 opacity-50"></i>
+                <p>Aucun enfant trouvé.</p>
+            </div>
+        }
     </div>
+
+    @if (_active != null)
+    {
+        <div class="section-card mt-4">
+            <div class="section-card-header">
+                <h2>
+                    Détail — @_active.Name
+                    @if (_active.Age.HasValue)
+                    {
+                        <span class="text-muted ms-2" style="font-size:0.9rem;font-weight:400">(@_active.Age ans)</span>
+                    }
+                </h2>
+            </div>
+            @if (_active.IsAutonomous)
+            {
+                <div style="padding:1rem 1.5rem 0">
+                    <div class="autonomous-notice">
+                        <i class="bi bi-info-circle-fill"></i>
+                        <span>Votre enfant a @_active.Age ans ou plus. Conformément à notre politique de confidentialité, certaines informations (rapports détaillés, messages, devoirs) ne sont pas accessibles aux parents pour les élèves autonomes.</span>
+                    </div>
+                </div>
+            }
+            <div style="padding:1.5rem">
+                <div class="ts-form-grid">
+                    <div class="ts-form-row"><label>Nom</label><span>@_active.Name</span></div>
+                    <div class="ts-form-row"><label>Âge</label><span>@(_active.Age.HasValue ? $"{_active.Age} ans" : "—")</span></div>
+                    <div class="ts-form-row"><label>Niveau</label><span>@(_active.Level ?? "—")</span></div>
+                    <div class="ts-form-row"><label>École</label><span>@(_active.School ?? "—")</span></div>
+                    <div class="ts-form-row"><label>Matières</label><span>@(string.Join(", ", _active.Subjects))</span></div>
+                </div>
+            </div>
+        </div>
+    }
 }
 
 @code {
+    private bool _loading = true;
     private ChildVM? _active;
-    private string _tab = "Progression";
+    private List<ChildVM> _children = [];
 
-    private record SubjectScore(string Subject, int Score);
-    private record ReportItem(string Date, string Subject, string Sent);
+    private static readonly string[] Colors = ["#7c3aed", "#0ea5e9", "#10b981", "#ec4899", "#f59e0b"];
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var students = await Api.GetAsync<List<StudentDto>>("api/students") ?? [];
+            _children = students.Select((s, i) =>
+            {
+                var name = $"{s.FirstName} {s.LastName}".Trim();
+                var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                var initials = parts.Length >= 2
+                    ? $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant()
+                    : name.Length > 0 ? name[..1].ToUpperInvariant() : "?";
+
+                int? age = s.DateOfBirth.HasValue
+                    ? (int)((DateTime.Today - s.DateOfBirth.Value).TotalDays / 365.25)
+                    : null;
+
+                return new ChildVM
+                {
+                    Id       = s.Id,
+                    Name     = name,
+                    Initials = initials,
+                    Color    = Colors[i % Colors.Length],
+                    IsActive = true,
+                    Level    = s.Level,
+                    School   = s.School,
+                    Subjects = s.Subjects ?? [],
+                    DateOfBirth = s.DateOfBirth
+                };
+            }).ToList();
+        }
+        catch { }
+        finally { _loading = false; }
+    }
 
     private class ChildVM
     {
-        public string Name { get; set; } = "";
-        public string Initials { get; set; } = "";
-        public string Color { get; set; } = "#7c3aed";
-        public string Level { get; set; } = "";
-        public string School { get; set; } = "";
-        public bool IsActive { get; set; }
-        public int SessionsThisMonth { get; set; }
-        public int AttendanceRate { get; set; }
-        public int ReportsCount { get; set; }
-        public int HomeworkDone { get; set; }
-        public int HomeworkTotal { get; set; }
-        public string NextLesson { get; set; } = "";
+        public Guid    Id          { get; set; }
+        public string  Name        { get; set; } = "";
+        public string  Initials    { get; set; } = "";
+        public string  Color       { get; set; } = "#7c3aed";
+        public bool    IsActive    { get; set; }
+        public string? Level       { get; set; }
+        public string? School      { get; set; }
         public List<string> Subjects { get; set; } = [];
-        public List<SubjectScore> SubjectProgress { get; set; } = [];
-        public List<ReportItem> Reports { get; set; } = [];
-        public int Present { get; set; }
-        public int Absent { get; set; }
-        public int Late { get; set; }
         public DateTime? DateOfBirth { get; set; }
         public int? Age => DateOfBirth.HasValue
             ? (int)((DateTime.Today - DateOfBirth.Value).TotalDays / 365.25)
@@ -181,27 +167,8 @@
         public bool IsAutonomous => Age.HasValue && Age >= 14;
     }
 
-    private readonly List<ChildVM> _children =
-    [
-        new(){
-            Name="Emma Johnson", Initials="EJ", Color="#7c3aed",
-            Level="Lycée – 1ère", School="Lycée Pasteur", IsActive=true,
-            SessionsThisMonth=4, AttendanceRate=95, ReportsCount=8, HomeworkDone=6, HomeworkTotal=7,
-            NextLesson="Demain à 10h00", Subjects=["Mathématiques","Physique"],
-            SubjectProgress=[new("Mathématiques",78),new("Physique",65),new("Chimie",82)],
-            Reports=[new("24/06/2026","Mathématiques","Envoyé"),new("17/06/2026","Mathématiques","Envoyé"),new("10/06/2026","Physique","Envoyé")],
-            Present=18, Absent=1, Late=1,
-            DateOfBirth=new DateTime(2009, 3, 12)
-        },
-        new(){
-            Name="Lucas Johnson", Initials="LJ", Color="#0ea5e9",
-            Level="Collège – 5ème", School="Collège Victor Hugo", IsActive=true,
-            SessionsThisMonth=3, AttendanceRate=88, ReportsCount=5, HomeworkDone=4, HomeworkTotal=5,
-            NextLesson="Jeudi à 14h00", Subjects=["Français","Histoire"],
-            SubjectProgress=[new("Français",72),new("Histoire",68)],
-            Reports=[new("22/06/2026","Français","Envoyé"),new("15/06/2026","Français","Envoyé")],
-            Present=14, Absent=2, Late=1,
-            DateOfBirth=new DateTime(2015, 9, 8)
-        },
-    ];
+    private record StudentDto(
+        Guid Id, string FirstName, string LastName,
+        DateTime? DateOfBirth, string? Level, string? School,
+        List<string>? Subjects);
 }

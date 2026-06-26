@@ -2,6 +2,7 @@
 @layout ParentLayout
 @rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
+@inject ApiClient Api
 
 <PageTitle>Mes Abonnements – TutorSphere</PageTitle>
 
@@ -12,48 +13,125 @@
     </div>
 </div>
 
-@foreach (var sub in _subs)
+@if (_loading)
 {
-    <div class="section-card mb-3">
-        <div class="d-flex align-items-center gap-3 p-3" style="border-bottom:1px solid var(--ts-border)">
-            <div class="ts-avatar" style="background:#7c3aed">@sub.ChildInitials</div>
-            <div>
-                <strong>@sub.ChildName</strong>
-                <span class="text-muted d-block small">@sub.PlanName chez @sub.TutorName</span>
-            </div>
-            <span class="ms-auto ts-badge @(sub.Status=="Actif"?"ts-badge-success":sub.Status=="Suspendu"?"ts-badge-warning":"ts-badge-danger")">
-                @sub.Status
-            </span>
-        </div>
-        <div class="row g-0">
-            <div class="col-6 col-md-3 p-3" style="border-right:1px solid var(--ts-border)">
-                <div class="ts-kpi-label">Montant</div>
-                <strong>@sub.Amount $/mois</strong>
-            </div>
-            <div class="col-6 col-md-3 p-3" style="border-right:1px solid var(--ts-border)">
-                <div class="ts-kpi-label">Renouvellement</div>
-                <strong>@sub.RenewalDate</strong>
-            </div>
-            <div class="col-6 col-md-3 p-3" style="border-right:1px solid var(--ts-border)">
-                <div class="ts-kpi-label">Séances / mois</div>
-                <strong>@sub.SessionsPerMonth</strong>
-            </div>
-            <div class="col-6 col-md-3 p-3 d-flex align-items-center justify-content-end gap-2">
-                @if (sub.Status == "Actif")
-                {
-                    <button class="btn btn-outline-danger btn-sm">Résilier</button>
-                }
-            </div>
-        </div>
+    <div class="d-flex align-items-center justify-content-center py-5">
+        <span class="spinner-border text-primary me-3" role="status"></span>
+        <span class="text-muted">Chargement des abonnements…</span>
     </div>
+}
+else if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-danger"><i class="bi bi-exclamation-circle me-2"></i>@_error</div>
+}
+else if (_subs.Count == 0)
+{
+    <div class="text-center py-5 text-muted">
+        <i class="bi bi-arrow-repeat fs-1 d-block mb-3 opacity-50"></i>
+        <p>Aucun abonnement actif trouvé.</p>
+    </div>
+}
+else
+{
+    @foreach (var sub in _subs)
+    {
+        var statusBadge = sub.Status switch {
+            "active" => "ts-badge-success",
+            "past_due" => "ts-badge-warning",
+            _ => "ts-badge-danger"
+        };
+        var statusLabel = sub.Status switch {
+            "active" => "Actif",
+            "past_due" => "En retard",
+            "canceled" => "Annulé",
+            _ => sub.Status
+        };
+
+        <div class="section-card mb-3">
+            <div class="d-flex align-items-center gap-3 p-3" style="border-bottom:1px solid var(--ts-border)">
+                <div class="ts-avatar" style="background:#7c3aed">AB</div>
+                <div>
+                    <strong>@sub.PlanCode</strong>
+                    <span class="text-muted d-block small">@sub.ProductCode</span>
+                </div>
+                <span class="ms-auto ts-badge @statusBadge">@statusLabel</span>
+            </div>
+            <div class="row g-0">
+                <div class="col-6 col-md-3 p-3" style="border-right:1px solid var(--ts-border)">
+                    <div class="ts-kpi-label">Période en cours</div>
+                    <strong>@(sub.CurrentPeriodStart?.ToString("dd/MM") ?? "—") – @(sub.CurrentPeriodEnd?.ToString("dd/MM/yyyy") ?? "—")</strong>
+                </div>
+                <div class="col-6 col-md-3 p-3" style="border-right:1px solid var(--ts-border)">
+                    <div class="ts-kpi-label">Annulation à la fin</div>
+                    <strong>@(sub.CancelAtPeriodEnd ? "Oui" : "Non")</strong>
+                </div>
+                <div class="col-6 col-md-3 p-3" style="border-right:1px solid var(--ts-border)">
+                    <div class="ts-kpi-label">Code</div>
+                    <strong class="small">@sub.SubscriptionCode[..Math.Min(12, sub.SubscriptionCode.Length)]…</strong>
+                </div>
+                <div class="col-6 col-md-3 p-3 d-flex align-items-center justify-content-end gap-2">
+                    @if (sub.Status == "active" && !sub.CancelAtPeriodEnd)
+                    {
+                        <button class="btn btn-outline-danger btn-sm"
+                                disabled="@(_cancelling == sub.SubscriptionCode)"
+                                @onclick="async () => await CancelAsync(sub.SubscriptionCode)">
+                            @if (_cancelling == sub.SubscriptionCode)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            Résilier
+                        </button>
+                    }
+                </div>
+            </div>
+        </div>
+    }
 }
 
 @code {
-    private record SubVM(string ChildName, string ChildInitials, string PlanName, string TutorName,
-        decimal Amount, string RenewalDate, int SessionsPerMonth, string Status);
-    private static readonly List<SubVM> _subs =
-    [
-        new("Emma Johnson","EJ","Professionnel","John Smith",200,"01/07/2026",8,"Actif"),
-        new("Lucas Johnson","LJ","Essentiel","Sophie Martin",120,"01/07/2026",4,"Actif"),
-    ];
+    private bool _loading = true;
+    private string? _error;
+    private string? _cancelling;
+    private List<GatewaySubscriptionResponse> _subs = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var profile = await Api.GetAsync<ParentProfileDto>("api/auth/me/parent-profile");
+            if (profile != null)
+            {
+                var result = await Api.GetAsync<List<GatewaySubscriptionResponse>>(
+                    $"api/payments/customers/parents/{profile.Id}/subscriptions");
+                _subs = result ?? [];
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Impossible de charger les abonnements : {ex.Message}";
+        }
+        finally { _loading = false; }
+    }
+
+    private async Task CancelAsync(string code)
+    {
+        _cancelling = code;
+        try
+        {
+            var sub = _subs.FirstOrDefault(s => s.SubscriptionCode == code);
+            if (sub != null)
+            {
+                await Api.PostAsync<object>($"api/payments/subscriptions/{code}/cancel", new { });
+                _subs = _subs.Select(s => s.SubscriptionCode == code
+                    ? s with { CancelAtPeriodEnd = true }
+                    : s).ToList();
+            }
+        }
+        finally { _cancelling = null; }
+    }
+
+    private record ParentProfileDto(Guid Id);
+    private record GatewaySubscriptionResponse(
+        string SubscriptionCode, string Status, string ProductCode, string PlanCode,
+        DateTime? CurrentPeriodStart, DateTime? CurrentPeriodEnd, bool CancelAtPeriodEnd);
 }

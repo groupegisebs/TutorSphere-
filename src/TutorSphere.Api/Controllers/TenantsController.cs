@@ -51,4 +51,26 @@ public class TenantsController : ControllerBase
     {
         return Ok(await _tenantService.GetDashboardAsync(id, ct));
     }
+
+    [HttpGet("{id:guid}/profile")]
+    [Authorize(Roles = $"{UserRoles.Tutor},{UserRoles.TeachingAssistant},{UserRoles.SuperAdmin}")]
+    public async Task<ActionResult<TutorProfileDto>> GetProfile(Guid id, CancellationToken ct)
+    {
+        var profile = await _tenantService.GetProfileAsync(id, ct);
+        return profile is null ? NotFound() : Ok(profile);
+    }
+
+    [HttpPut("{id:guid}/profile")]
+    [Authorize(Roles = $"{UserRoles.Tutor},{UserRoles.SuperAdmin}")]
+    public async Task<ActionResult<TutorProfileDto>> UpdateProfile(Guid id, [FromBody] UpdateTutorProfileRequest request, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _tenantService.UpdateProfileAsync(id, request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
 }

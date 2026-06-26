@@ -11,6 +11,8 @@ public interface ITenantService
     Task<TenantDto> CreateTenantAsync(CreateTenantRequest request, CancellationToken ct = default);
     Task<TenantDto?> GetBySlugAsync(string slug, CancellationToken ct = default);
     Task<TenantDashboardDto> GetDashboardAsync(Guid tenantId, CancellationToken ct = default);
+    Task<TutorProfileDto?> GetProfileAsync(Guid tenantId, CancellationToken ct = default);
+    Task<TutorProfileDto> UpdateProfileAsync(Guid tenantId, UpdateTutorProfileRequest request, CancellationToken ct = default);
 }
 
 public class TenantService : ITenantService
@@ -88,6 +90,35 @@ public class TenantService : ITenantService
             revenue, activeStudents, activeSubscriptions, upcomingLessons, pendingPayments));
     }
 
+    public Task<TutorProfileDto?> GetProfileAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        var tenant = _db.Tenants.FirstOrDefault(t => t.Id == tenantId);
+        return Task.FromResult(tenant is null ? null : MapToProfileDto(tenant));
+    }
+
+    public async Task<TutorProfileDto> UpdateProfileAsync(Guid tenantId, UpdateTutorProfileRequest request, CancellationToken ct = default)
+    {
+        var tenant = _db.Tenants.FirstOrDefault(t => t.Id == tenantId)
+            ?? throw new InvalidOperationException("Locataire introuvable.");
+
+        if (!string.IsNullOrWhiteSpace(request.Name))
+            tenant.Name = request.Name.Trim();
+        if (request.Description is not null)
+            tenant.Description = request.Description.Trim();
+        if (request.City is not null)
+            tenant.City = request.City.Trim();
+        if (request.Country is not null)
+            tenant.Country = request.Country.Trim();
+        if (!string.IsNullOrWhiteSpace(request.Language))
+            tenant.Language = request.Language.Trim();
+        if (!string.IsNullOrWhiteSpace(request.Currency))
+            tenant.Currency = request.Currency.Trim();
+
+        tenant.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        return MapToProfileDto(tenant);
+    }
+
     private static TenantDto MapToDto(Tenant tenant) => new(
         tenant.Id,
         tenant.Name,
@@ -97,4 +128,14 @@ public class TenantService : ITenantService
         tenant.Plan.ToString(),
         tenant.Currency,
         tenant.Language);
+
+    private static TutorProfileDto MapToProfileDto(Tenant tenant) => new(
+        tenant.Id,
+        tenant.Name,
+        tenant.Description,
+        tenant.City,
+        tenant.Country,
+        tenant.Language,
+        tenant.Currency,
+        tenant.Slug);
 }
