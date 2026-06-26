@@ -1,92 +1,345 @@
 @page "/tutor/calendar"
 @layout TutorLayout
+@rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
 
 <PageTitle>@L["PageTitle_Calendar"]</PageTitle>
 
-<div class="calendar-header">
-    <PageHeader Title="@L["Nav_Calendar"]" />
-    <div class="calendar-controls">
-        <div class="btn-group calendar-view-toggle" role="group">
-            <button type="button" class="btn btn-sm @(ViewMode == "day" ? "btn-primary" : "btn-outline-secondary")" @onclick='() => ViewMode = "day"'>@L["Calendar_Day"]</button>
-            <button type="button" class="btn btn-sm @(ViewMode == "week" ? "btn-primary" : "btn-outline-secondary")" @onclick='() => ViewMode = "week"'>@L["Calendar_Week"]</button>
-            <button type="button" class="btn btn-sm @(ViewMode == "month" ? "btn-primary" : "btn-outline-secondary")" @onclick='() => ViewMode = "month"'>@L["Calendar_Month"]</button>
+<!-- Page header -->
+<div class="cal-page-header">
+    <div class="cal-page-title">
+        <i class="bi bi-calendar2-week cal-page-icon" aria-hidden="true"></i>
+        <div>
+            <h1>@L["Nav_Calendar"]</h1>
+            <p>@L["Calendar_Subtitle"]</p>
         </div>
-        <div class="calendar-nav">
-            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="PreviousWeek"><i class="bi bi-chevron-left"></i></button>
-            <span class="calendar-range">@WeekStart.ToString("d MMM") — @WeekStart.AddDays(6).ToString("d MMM yyyy")</span>
-            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="NextWeek"><i class="bi bi-chevron-right"></i></button>
-        </div>
+    </div>
+    <div class="cal-page-actions">
+        <button type="button" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-calendar2-check me-1" aria-hidden="true"></i>@L["Calendar_Availabilities"]
+        </button>
+        <button type="button" class="btn btn-primary btn-sm">
+            <i class="bi bi-plus me-1" aria-hidden="true"></i>@L["Calendar_NewLesson"]
+            <i class="bi bi-chevron-down ms-1" aria-hidden="true"></i>
+        </button>
     </div>
 </div>
 
-<div class="calendar-week-grid">
-    <div class="calendar-grid-header">
-        <div class="calendar-time-gutter"></div>
-        @for (var d = 0; d < 7; d++)
-        {
-            var date = WeekStart.AddDays(d);
-            <div class="calendar-day-header @(date.Date == DateTime.Today ? "today" : "")">
-                <span class="calendar-day-name">@date.ToString("ddd")</span>
-                <span class="calendar-day-num">@date.Day</span>
+<div class="cal-layout">
+
+    <!-- ── Left panel ── -->
+    <aside class="cal-side">
+        <div class="mini-cal">
+            <div class="mini-cal-header">
+                <button type="button" class="mini-cal-nav" @onclick="PreviousMonth"><i class="bi bi-chevron-left"></i></button>
+                <span class="mini-cal-month">@DisplayMonth.ToString("MMMM yyyy")</span>
+                <button type="button" class="mini-cal-nav" @onclick="NextMonth"><i class="bi bi-chevron-right"></i></button>
             </div>
-        }
-    </div>
-    <div class="calendar-grid-body">
-        @foreach (var hour in Hours)
-        {
-            <div class="calendar-row">
-                <div class="calendar-time-label">@hour:00</div>
+            <div class="mini-cal-grid">
+                @foreach (var dow in new[] { "L","M","M","J","V","S","D" })
+                {
+                    <span class="mini-cal-dow">@dow</span>
+                }
+                @foreach (var day in MiniCalDays)
+                {
+                    var isToday = day.Date.Date == DateTime.Today;
+                    var inCurrentWeek = day.Date >= WeekStart && day.Date < WeekStart.AddDays(7);
+                    <button type="button"
+                            class="mini-cal-day @(day.InMonth ? "" : "other-month") @(isToday ? "today" : "") @(inCurrentWeek ? "in-week" : "")"
+                            @onclick="() => GoToWeek(day.Date)">
+                        @day.Date.Day
+                    </button>
+                }
+            </div>
+        </div>
+
+        <div class="cal-legend">
+            <h4 class="cal-legend-title">@L["Calendar_LessonTypes"]</h4>
+            <ul class="cal-legend-list">
+                <li><span class="cal-legend-dot cal-legend-dot--online"></span>@L["Calendar_Type_Online"]</li>
+                <li><span class="cal-legend-dot cal-legend-dot--inperson"></span>@L["Calendar_Type_InPerson"]</li>
+                <li><span class="cal-legend-dot cal-legend-dot--group"></span>@L["Calendar_Type_Group"]</li>
+                <li><span class="cal-legend-dot cal-legend-dot--unavailable"></span>@L["Calendar_Type_Unavailable"]</li>
+                <li><span class="cal-legend-dot cal-legend-dot--other"></span>@L["Calendar_Type_Other"]</li>
+            </ul>
+        </div>
+
+        <div class="cal-legend mt-3">
+            <h4 class="cal-legend-title">@L["Calendar_MyCalendars"]</h4>
+            <ul class="cal-filter-list">
+                @foreach (var filter in _filters)
+                {
+                    <li>
+                        <label class="cal-filter-item">
+                            <input type="checkbox" @bind="filter.Checked" />
+                            @filter.Label
+                        </label>
+                    </li>
+                }
+            </ul>
+        </div>
+    </aside>
+
+    <!-- ── Main area ── -->
+    <div class="cal-main">
+        <!-- Toolbar -->
+        <div class="cal-toolbar">
+            <div class="cal-toolbar-left">
+                <button type="button" class="btn btn-primary btn-sm" @onclick="GoToToday">@L["Calendar_Today"]</button>
+                <div class="cal-toolbar-nav ms-2">
+                    <button type="button" class="cal-nav-btn" @onclick="PreviousWeek"><i class="bi bi-chevron-left"></i></button>
+                    <button type="button" class="cal-nav-btn" @onclick="NextWeek"><i class="bi bi-chevron-right"></i></button>
+                </div>
+                <button type="button" class="cal-range-btn ms-2">
+                    @WeekStart.ToString("d") – @WeekStart.AddDays(6).ToString("d MMM yyyy")
+                    <i class="bi bi-chevron-down ms-1" aria-hidden="true"></i>
+                </button>
+            </div>
+            <div class="cal-toolbar-right">
+                <div class="btn-group cal-view-toggle" role="group">
+                    <button type="button" class="btn btn-sm @(ViewMode == "day" ? "btn-primary" : "btn-outline-secondary")" @onclick='() => ViewMode = "day"'>@L["Calendar_Day"]</button>
+                    <button type="button" class="btn btn-sm @(ViewMode == "week" ? "btn-primary" : "btn-outline-secondary")" @onclick='() => ViewMode = "week"'>@L["Calendar_Week"]</button>
+                    <button type="button" class="btn btn-sm @(ViewMode == "month" ? "btn-primary" : "btn-outline-secondary")" @onclick='() => ViewMode = "month"'>@L["Calendar_Month"]</button>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-secondary ms-2">
+                    <i class="bi bi-funnel me-1" aria-hidden="true"></i>@L["Calendar_Filter"]
+                </button>
+            </div>
+        </div>
+
+        <!-- Week grid -->
+        <div class="cal-week-view">
+            <!-- Day headers row -->
+            <div class="cal-grid-header">
+                <div class="cal-time-gutter"></div>
                 @for (var d = 0; d < 7; d++)
                 {
                     var date = WeekStart.AddDays(d);
-                    var events = GetEvents(date, hour);
-                    <div class="calendar-cell">
-                        @foreach (var evt in events)
-                        {
-                            <div class="calendar-event calendar-event--@evt.Color" style="height: @(evt.Duration * 48)px">
-                                <strong>@evt.Title</strong>
-                                <span>@evt.Student</span>
-                            </div>
-                        }
+                    var isToday = date.Date == DateTime.Today;
+                    <div class="cal-day-header @(isToday ? "today" : "")">
+                        <span class="cal-day-name">@date.ToString("ddd").ToUpper()</span>
+                        <span class="cal-day-num @(isToday ? "today" : "")">@date.Day</span>
                     </div>
                 }
             </div>
-        }
+
+            <!-- Scrollable body -->
+            <div class="cal-grid-body-scroll">
+                <div class="cal-grid-body">
+                    <!-- Time column -->
+                    <div class="cal-time-col">
+                        @foreach (var h in Hours)
+                        {
+                            <div class="cal-time-slot"><span>@h:00</span></div>
+                        }
+                    </div>
+
+                    <!-- Day columns -->
+                    @for (var d = 0; d < 7; d++)
+                    {
+                        var date = WeekStart.AddDays(d);
+                        var isToday = date.Date == DateTime.Today;
+                        <div class="cal-day-col @(isToday ? "today" : "")">
+                            @foreach (var h in Hours)
+                            {
+                                <div class="cal-hour-cell"></div>
+                            }
+                            @foreach (var evt in GetEventsForDay(date))
+                            {
+                                <div class="cal-event cal-event--@evt.Type"
+                                     style="top:@(evt.TopPx)px;height:@(Math.Max(evt.HeightPx, 26))px;left:4px;right:4px;">
+                                    <span class="cal-event-time">@evt.TimeLabel</span>
+                                    <strong class="cal-event-title">@evt.Title</strong>
+                                    @if (!string.IsNullOrEmpty(evt.Subtitle))
+                                    {
+                                        <span class="cal-event-sub">@evt.Subtitle</span>
+                                    }
+                                </div>
+                            }
+                            @if (isToday && NowTopPx is {} nowTop)
+                            {
+                                <div class="cal-now-indicator" style="top:@nowTop px">
+                                    <div class="cal-now-dot"></div>
+                                    <div class="cal-now-line"></div>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats bar -->
+        <div class="cal-stat-bar">
+            <div class="cal-stat">
+                <span class="cal-now-dot cal-now-dot--bar" style="background:#ef4444"></span>
+                <span class="cal-stat-label">@L["Calendar_CurrentTime"]</span>
+                <strong class="cal-stat-value">@DateTime.Now.ToString("HH:mm")</strong>
+            </div>
+            <div class="cal-stat">
+                <i class="bi bi-calendar3 cal-stat-icon" aria-hidden="true"></i>
+                <span class="cal-stat-label">@L["Calendar_ScheduledLessons"]</span>
+                <strong class="cal-stat-value">@TotalLessons</strong>
+            </div>
+            <div class="cal-stat">
+                <i class="bi bi-clock cal-stat-icon" aria-hidden="true"></i>
+                <span class="cal-stat-label">@L["Calendar_HoursTaught"]</span>
+                <strong class="cal-stat-value">18h 30min</strong>
+            </div>
+            <div class="cal-stat">
+                <i class="bi bi-people cal-stat-icon" aria-hidden="true"></i>
+                <span class="cal-stat-label">@L["Calendar_StudentsToday"]</span>
+                <strong class="cal-stat-value">@StudentsToday</strong>
+            </div>
+            <button type="button" class="btn btn-sm btn-link ms-auto cal-export-btn">
+                <i class="bi bi-box-arrow-up me-1" aria-hidden="true"></i>@L["Calendar_Export"]
+            </button>
+        </div>
     </div>
 </div>
 
-<button type="button" class="calendar-fab btn btn-primary" aria-label="@L["Calendar_AddSession"]">
-    <i class="bi bi-plus-lg"></i>
-</button>
-
 @code {
+    // ── Constants ──────────────────────────────────────────────────────────────
+    private const int CalStartH = 8;
+    private const int HourPx = 60;
+
+    private static readonly int[] Hours = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19];
+
+    // ── State ──────────────────────────────────────────────────────────────────
     private string ViewMode { get; set; } = "week";
     private DateTime WeekStart { get; set; }
+    private DateTime DisplayMonth { get; set; }
 
-    private static readonly int[] Hours = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
+    // ── Calendar filter model ──────────────────────────────────────────────────
+    private class CalFilter { public required string Label; public bool Checked = true; }
+    private List<CalFilter> _filters = [];
 
-    private record CalendarEvent(string Title, string Student, string Color, int Duration);
-
-    private readonly List<(DateTime Date, int Hour, CalendarEvent Event)> _events =
-    [
-        (DateTime.Today, 10, new("Math", "Emma J.", "purple", 2)),
-        (DateTime.Today.AddDays(1), 14, new("Physique", "Liam A.", "blue", 1)),
-        (DateTime.Today.AddDays(2), 9, new("Chimie", "Sophie M.", "amber", 2)),
-        (DateTime.Today.AddDays(3), 16, new("Math", "Emma J.", "purple", 1)),
-    ];
-
-    protected override void OnInitialized()
+    // ── Event model ────────────────────────────────────────────────────────────
+    private sealed class CalEvent
     {
-        var today = DateTime.Today;
-        WeekStart = today.AddDays(-(int)today.DayOfWeek + (int)DayOfWeek.Monday);
-        if (today.DayOfWeek == DayOfWeek.Sunday)
-            WeekStart = WeekStart.AddDays(-7);
+        public string Title = "";
+        public string Subtitle = "";
+        public string Type = "";
+        private readonly int _startH, _startM, _durMin;
+
+        public CalEvent(string title, string sub, string type, int h, int m, int dur)
+        {
+            Title = title; Subtitle = sub; Type = type;
+            _startH = h; _startM = m; _durMin = dur;
+        }
+
+        public int TopPx => (_startH - CalStartH) * HourPx + (int)(_startM / 60.0 * HourPx);
+        public int HeightPx => (int)(_durMin / 60.0 * HourPx);
+
+        public string TimeLabel
+        {
+            get
+            {
+                var endMin = _startH * 60 + _startM + _durMin;
+                return $"{_startH:D2}:{_startM:D2} – {endMin / 60:D2}:{endMin % 60:D2}";
+            }
+        }
     }
 
-    private IEnumerable<CalendarEvent> GetEvents(DateTime date, int hour) =>
-        _events.Where(e => e.Date.Date == date.Date && e.Hour == hour).Select(e => e.Event);
+    // ── Mock event definitions (dayOffset, hour, min, duration, title, sub, type) ──
+    private static readonly (int DayOff, int H, int M, int Dur, string Title, string Sub, string Type)[] EventDefs =
+    [
+        (0, 10,  0,  60, "Emma Johnson",     "Mathématiques",    "online"),
+        (1,  9,  0,  90, "Groupe – Maths",   "4 élèves",         "group"),
+        (1, 11,  0,  60, "Sophia Davis",     "Chimie",           "online"),
+        (1, 14,  0,  90, "Liam Brown",       "Physique",         "online"),
+        (1, 16,  0,  90, "Michael Lee",      "Mathématiques",    "online"),
+        (1, 17,  0,  60, "Indisponible",     "",                 "unavailable"),
+        (2, 10, 30,  90, "Olivia Wilson",    "Physique",         "inperson"),
+        (2, 15,  0,  90, "Groupe – Physique","3 élèves",         "group"),
+        (2, 18,  0,  60, "James Taylor",     "Mathématiques",    "online"),
+        (2, 19,  0,  60, "Indisponible",     "",                 "unavailable"),
+        (3, 11,  0,  60, "William Jones",    "Mathématiques",    "online"),
+        (3, 14,  0,  90, "Ava Martinez",     "Chimie",           "online"),
+        (4,  9,  0,  90, "Noah Anderson",    "Mathématiques",    "online"),
+        (4, 13,  0,  90, "Groupe – Chimie",  "5 élèves",         "group"),
+        (4, 16,  0,  90, "Isabella Thomas",  "Physique",         "inperson"),
+        (5, 10,  0,  90, "Henry White",      "Mathématiques",    "online"),
+    ];
 
-    private void PreviousWeek() => WeekStart = WeekStart.AddDays(-7);
-    private void NextWeek() => WeekStart = WeekStart.AddDays(7);
+    // ── Derived ────────────────────────────────────────────────────────────────
+    private IEnumerable<CalEvent> GetEventsForDay(DateTime date)
+    {
+        var off = (int)(date.Date - WeekStart.Date).TotalDays;
+        return EventDefs
+            .Where(e => e.DayOff == off)
+            .Select(e => new CalEvent(e.Title, e.Sub, e.Type, e.H, e.M, e.Dur));
+    }
+
+    private int? NowTopPx
+    {
+        get
+        {
+            var now = DateTime.Now;
+            var mins = (now.Hour - CalStartH) * 60 + now.Minute;
+            if (mins < 0 || now.Hour >= 20) return null;
+            return (int)(mins / 60.0 * HourPx);
+        }
+    }
+
+    private int TotalLessons => EventDefs.Count(e => e.Type != "unavailable");
+
+    private int StudentsToday
+    {
+        get
+        {
+            var off = (int)(DateTime.Today - WeekStart.Date).TotalDays;
+            return EventDefs.Count(e => e.DayOff == off && e.Type != "unavailable");
+        }
+    }
+
+    // ── Mini calendar ──────────────────────────────────────────────────────────
+    private IEnumerable<(DateTime Date, bool InMonth)> MiniCalDays
+    {
+        get
+        {
+            var first = new DateTime(DisplayMonth.Year, DisplayMonth.Month, 1);
+            var startDow = (int)first.DayOfWeek;
+            var gridStart = first.AddDays(startDow == 0 ? -6 : -(startDow - 1));
+            for (var i = 0; i < 42; i++)
+            {
+                var d = gridStart.AddDays(i);
+                yield return (d, d.Month == DisplayMonth.Month);
+            }
+        }
+    }
+
+    // ── Lifecycle ──────────────────────────────────────────────────────────────
+    protected override void OnInitialized()
+    {
+        GoToToday();
+        _filters =
+        [
+            new() { Label = L["Calendar_Filter_All"].Value },
+            new() { Label = L["Calendar_Filter_Individual"].Value },
+            new() { Label = L["Calendar_Filter_Group"].Value },
+            new() { Label = L["Calendar_Filter_Availabilities"].Value },
+            new() { Label = L["Calendar_Filter_Unavailabilities"].Value, Checked = false },
+        ];
+    }
+
+    // ── Navigation ─────────────────────────────────────────────────────────────
+    private void GoToToday()
+    {
+        var today = DateTime.Today;
+        var dow = (int)today.DayOfWeek;
+        WeekStart = today.AddDays(dow == 0 ? -6 : -(dow - 1));
+        DisplayMonth = new DateTime(today.Year, today.Month, 1);
+    }
+
+    private void GoToWeek(DateTime date)
+    {
+        var dow = (int)date.DayOfWeek;
+        WeekStart = date.AddDays(dow == 0 ? -6 : -(dow - 1));
+    }
+
+    private void PreviousWeek() { WeekStart = WeekStart.AddDays(-7); DisplayMonth = new DateTime(WeekStart.Year, WeekStart.Month, 1); }
+    private void NextWeek()     { WeekStart = WeekStart.AddDays(7);  DisplayMonth = new DateTime(WeekStart.Year, WeekStart.Month, 1); }
+    private void PreviousMonth() => DisplayMonth = DisplayMonth.AddMonths(-1);
+    private void NextMonth()     => DisplayMonth = DisplayMonth.AddMonths(1);
 }
