@@ -218,10 +218,32 @@ jobs:
         env:
           SSH_KEY_PATH: ${{ env.SSH_KEY_PATH }}
           APP_ENV_FILE: ${{ env.APP_ENV_FILE }}
+          SSH_HOST: ${{ env.SSH_HOST }}
+          SSH_USER: ${{ env.SSH_USER }}
+          SSH_PORT: ${{ env.SSH_PORT }}
+          APP_ROOT: ${{ env.APP_ROOT }}
+          CONNECTION_STRING: ${{ env.CONNECTION_STRING }}
+          JWT_KEY: ${{ env.JWT_KEY }}
+          PAYGATEWAY_BASE_URL: ${{ env.PAYGATEWAY_BASE_URL }}
+          PAYGATEWAY_API_KEY: ${{ env.PAYGATEWAY_API_KEY }}
+          PAYGATEWAY_APP_CODE: ${{ env.PAYGATEWAY_APP_CODE }}
+          API_BASE_URL: ${{ env.API_BASE_URL }}
+          API_PORT: ${{ env.API_PORT }}
+          WEB_PORT: ${{ env.WEB_PORT }}
         run: bash deploy/deploy-gha.sh
 
       - name: Container status
         if: always() && steps.ssh.outcome == 'success'
         run: |
-          ssh -i "$SSH_KEY_PATH" -p "$SSH_PORT" -o BatchMode=yes "${SSH_USER}@${SSH_HOST}" \
-            "cd '${APP_ROOT}/app' && docker compose -f docker-compose.yml -f docker-compose.prod.yml ps || true"
+          ssh -i "$SSH_KEY_PATH" -p "$SSH_PORT" -o BatchMode=yes "${SSH_USER}@${SSH_HOST}" bash -s <<REMOTE
+          set -eu
+          cd "${APP_ROOT}/app"
+          if docker compose version >/dev/null 2>&1; then
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml ps || true
+          elif command -v docker-compose >/dev/null 2>&1; then
+            docker-compose -f docker-compose.yml -f docker-compose.prod.yml ps || true
+          else
+            echo "Docker Compose introuvable sur le serveur"
+            ls -la . || true
+          fi
+          REMOTE

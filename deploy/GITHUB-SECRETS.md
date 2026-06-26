@@ -75,9 +75,9 @@ ssh ubuntu@51.79.53.197
 sudo mkdir -p /opt/apps/tutorsphere
 sudo chown ubuntu:ubuntu /opt/apps/tutorsphere
 
-# Docker Engine + Compose plugin requis
+# Docker Engine requis — plugin Compose (`docker compose`) **ou** binaire standalone (`docker-compose`)
 docker --version
-docker compose version
+docker compose version 2>/dev/null || docker-compose --version
 ```
 
 Le workflow écrit `/opt/apps/tutorsphere/app/.env` (chmod 600) avec la connection string, JWT et PayGateway — **rien de sensible dans le dépôt**.
@@ -105,16 +105,18 @@ Reverse proxy nginx natif (alternative) : `deploy/nginx/tutorsphere.conf.example
 
 ## Vérification
 
-1. **Actions** → **Deploy Production** → **Run workflow**
-2. Étape **Diagnose secrets** : tous les `OK`
-3. Healthcheck sur le serveur :
+1. Configurer **tous** les secrets obligatoires (voir checklist ci-dessous)
+2. **Actions** → **Deploy Production** → **Run workflow** (ne pas compter sur un push tant que le premier déploiement n’a pas réussi)
+3. Étape **Diagnose secrets** : tous les `OK`
+4. Étape **Deploy** : messages `Staging OK` et `App OK` (sinon le workflow échoue — répertoire `/opt/apps/tutorsphere/app` vide = rsync ou secrets SSH incorrects)
+5. Healthcheck sur le serveur :
 
 ```bash
 curl -s http://127.0.0.1:55099/health
 curl -s http://127.0.0.1:55010/health
 ```
 
-4. Healthcheck Pay Gateway : `https://gisebsapipaygateway.gisebs.com/health` → `Healthy`
+6. Healthcheck Pay Gateway : `https://gisebsapipaygateway.gisebs.com/health` → `Healthy`
 
 ### Dépannage paiement — erreur « PayGateway (404) »
 
@@ -134,6 +136,17 @@ curl -s -o /dev/null -w "%{http_code}" -X POST "https://gisebsapipaygateway.gise
 ```
 
 Réponse attendue sur `/api/auth/token` : **200** (token) ou **401** (mauvaise clé) — **pas 404**.
+
+---
+
+## Dépannage déploiement
+
+| Symptôme | Cause probable | Correction |
+|----------|----------------|------------|
+| `/opt/apps/tutorsphere/app` **vide** (seulement `.` et `..`) | `rsync` depuis GHA sans clé SSH (corrigé dans `deploy-gha.sh`) ou workflow arrêté avant l’étape Deploy | Re-run **Deploy Production** après merge des correctifs ; vérifier `Staging OK` / `App OK` dans les logs |
+| `unknown shorthand flag: 'f'` | Plugin `docker compose` absent — Docker interprète `-f` comme option de `docker` | Le script détecte automatiquement `docker-compose` (tiret) ; installer l’un des deux sur le serveur |
+| **502** sur `tutorsphere.gisebs.com` | NPM pointe vers `:5010` (dev) au lieu de **`:55010`** | NPM → Forward `172.17.0.1:55010` (Web) et `:55099` (API) |
+| Healthcheck 127.0.0.1 OK, 172.17.0.1 KO | Apps écoutent sur `127.0.0.1` seulement | `docker-compose.prod.yml` doit avoir `ASPNETCORE_URLS=http://0.0.0.0:55010` (déjà le cas) |
 
 ---
 

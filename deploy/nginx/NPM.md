@@ -112,9 +112,12 @@ curl -sI https://api.tutorsphere.gisebs.com/health
 
 ## Dépannage 502 Bad Gateway
 
+Guide complet : [TROUBLESHOOTING-502.md](../TROUBLESHOOTING-502.md)
+
 | Cause | Correction |
 |-------|------------|
 | NPM pointe vers `:5010` (port dev) | Changer Forward Port → **`55010`** |
+| App écoute `127.0.0.1` seulement | Redéployer — prod écoute **`0.0.0.0:55010`** / **`:55099`** |
 | Conteneurs arrêtés | `cd /opt/apps/tutorsphere/app && docker compose -f docker-compose.yml -f docker-compose.prod.yml ps` |
 | Déploiement jamais exécuté | Lancer **Deploy Production** dans GitHub Actions |
 | `172.17.0.1` inaccessible depuis NPM | Essayer **`127.0.0.1`** si NPM n’est pas conteneurisé |
