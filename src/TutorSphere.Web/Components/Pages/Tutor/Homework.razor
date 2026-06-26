@@ -213,7 +213,21 @@ else
     private void OpenEdit(HomeworkVM h) { _editing = h; _hf = new HomeworkForm { Title=h.Title, Subject=h.Subject, DueDate=h.DueDate, Description=h.Description, Students=[..h.Students] }; _showModal=true; }
     private void OpenGrade(HomeworkVM h) => _grading = h;
     private void CloseModal() => _showModal = false;
-    private void MarkCorrected() { if (_grading != null) { _grading.Status = "Corrigé"; _grading = null; } }
+    private async Task MarkCorrected()
+    {
+        if (_grading is null) return;
+
+        // Call grade API for each graded student if this homework has an ApiId
+        if (_grading.ApiId.HasValue && _grading.Grades.Any())
+        {
+            var topGrade = _grading.Grades.OrderByDescending(g => g.Score).First();
+            var req = new GradeHomeworkRequest(topGrade.Score, null);
+            await HomeworkSvc.GradeHomeworkAsync(_grading.ApiId.Value, req);
+        }
+
+        _grading.Status = "Corrigé";
+        _grading = null;
+    }
 
     private void SetGrade(HomeworkVM hw, string student, int score)
     {

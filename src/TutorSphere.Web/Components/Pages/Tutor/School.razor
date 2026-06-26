@@ -2,6 +2,8 @@
 @layout TutorLayout
 @rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
+@inject AuthService AuthSvc
+@inject ApiClient Api
 
 <PageTitle>Mon École – TutorSphere</PageTitle>
 
@@ -192,15 +194,81 @@ else if (_activeTab == "Médias")
         return $"data:{file.ContentType};base64,{Convert.ToBase64String(ms.ToArray())}";
     }
 
+    protected override async Task OnInitializedAsync()
+    {
+        var tenantId = AuthSvc.TenantId;
+        if (tenantId is null) return;
+
+        // Load branding
+        var branding = await Api.GetAsync<BrandingDto>($"api/branding/tenant/{tenantId}");
+        if (branding is not null)
+        {
+            if (!string.IsNullOrEmpty(branding.LogoUrl)) _logoDataUrl = branding.LogoUrl;
+            if (!string.IsNullOrEmpty(branding.BannerUrl)) _bannerDataUrl = branding.BannerUrl;
+            if (!string.IsNullOrEmpty(branding.Presentation)) _school.Description = branding.Presentation;
+        }
+
+        // Load profile (name, city, country)
+        var profile = await Api.GetAsync<TutorProfileDto>($"api/tenants/{tenantId}/profile");
+        if (profile is not null)
+        {
+            _school.Name = profile.Name;
+            if (!string.IsNullOrEmpty(profile.Description)) _school.Tagline = profile.Description;
+            if (!string.IsNullOrEmpty(profile.City)) _school.City = profile.City;
+            if (!string.IsNullOrEmpty(profile.Country)) _school.Country = profile.Country;
+            if (!string.IsNullOrEmpty(profile.Slug)) _school.Slug = profile.Slug;
+        }
+    }
+
     private async Task SaveSchool()
     {
+        var tenantId = AuthSvc.TenantId;
+        if (tenantId is null) return;
+
         _saving = true;
-        await Task.Delay(600);
-        _saving = false;
-        _saved = true;
+        try
+        {
+            // Update branding
+            var brandingReq = new
+            {
+                logoUrl = _logoDataUrl,
+                bannerUrl = _bannerDataUrl,
+                primaryColor = "#5831E0",
+                secondaryColor = "#7C5CFF",
+                presentation = _school.Description,
+                portfolio = (string?)null
+            };
+            await Api.PutAsync<object>($"api/branding/tenant/{tenantId}", brandingReq);
+
+            // Update profile (name, city, country, slug)
+            var profileReq = new
+            {
+                name = _school.Name,
+                description = _school.Tagline,
+                city = _school.City,
+                country = _school.Country,
+                language = "fr",
+                currency = "CAD"
+            };
+            await Api.PutAsync<object>($"api/tenants/{tenantId}/profile", profileReq);
+
+            _saved = true;
+        }
+        finally
+        {
+            _saving = false;
+        }
     }
 
     private class SocialLink { public string Name{get;set;}=""; public string Icon{get;set;}=""; public string Url{get;set;}=""; }
+
+    private record BrandingDto(
+        Guid Id, Guid TenantId, string? LogoUrl, string? BannerUrl,
+        string PrimaryColor, string SecondaryColor, string? Presentation, string? Portfolio);
+
+    private record TutorProfileDto(
+        Guid Id, string Name, string? Description, string? City, string? Country,
+        string Language, string Currency, string Slug);
 
     private class SchoolVM
     {

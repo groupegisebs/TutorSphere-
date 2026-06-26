@@ -2,6 +2,8 @@
 @layout TutorLayout
 @rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
+@inject ApiClient Api
+@inject AuthService Auth
 
 <PageTitle>Mon Profil – TutorSphere</PageTitle>
 
@@ -192,13 +194,52 @@ else if (_tab == "Disponibilités")
     private static readonly string[] _days = ["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"];
     private static readonly string[] _timeSlots = ["Matin","Après-midi","Soir"];
 
+    protected override async Task OnInitializedAsync()
+    {
+        var tenantId = Auth.TenantId;
+        if (tenantId is null) return;
+
+        var profile = await Api.GetAsync<ApiTutorProfileDto>($"api/tenants/{tenantId}/profile");
+        if (profile is not null)
+        {
+            var parts = (profile.Name ?? "").Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+            _p.FirstName = parts.Length > 0 ? parts[0] : "";
+            _p.LastName  = parts.Length > 1 ? parts[1] : "";
+            if (!string.IsNullOrEmpty(profile.Description)) _p.Bio = profile.Description;
+            if (!string.IsNullOrEmpty(profile.City))        _p.Languages = profile.Language ?? _p.Languages;
+        }
+    }
+
     private async Task SaveProfile()
     {
+        var tenantId = Auth.TenantId;
         _saving = true;
-        await Task.Delay(600);
-        _saving = false;
-        _saved = true;
+        try
+        {
+            if (tenantId is not null)
+            {
+                var req = new
+                {
+                    name = $"{_p.FirstName} {_p.LastName}".Trim(),
+                    description = _p.Bio,
+                    city = (string?)null,
+                    country = (string?)null,
+                    language = _p.Languages,
+                    currency = "CAD"
+                };
+                await Api.PutAsync<object>($"api/tenants/{tenantId}/profile", req);
+            }
+            _saved = true;
+        }
+        finally
+        {
+            _saving = false;
+        }
     }
+
+    private record ApiTutorProfileDto(
+        Guid Id, string Name, string? Description, string? City,
+        string? Country, string? Language, string Currency, string Slug);
 
     private void AddDiploma() => _p.Diplomas.Add(new Credential { Title="Nouveau diplôme", Institution="Université", Year="2020" });
     private void AddCert() => _p.Certifications.Add(new Credential { Title="Certification", Institution="Organisme", Year="2023" });

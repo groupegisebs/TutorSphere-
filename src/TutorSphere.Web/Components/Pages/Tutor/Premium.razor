@@ -1,0 +1,232 @@
+@page "/tutor/premium"
+@layout TutorLayout
+@rendermode InteractiveServer
+@inject AuthService AuthSvc
+@inject ApiClient Api
+@inject NavigationManager Navigation
+
+<PageTitle>Premium – TutorSphere</PageTitle>
+
+<div class="ts-page-header">
+    <div>
+        <h1><i class="bi bi-stars me-2" style="color:#5831E0"></i>TutorSphere Premium</h1>
+        <p class="ts-page-subtitle">Déverrouillez tout le potentiel de votre école en ligne</p>
+    </div>
+    @if (_plan != null)
+    {
+        <span class="ts-badge @(_plan == "Active" ? "ts-badge-success" : "ts-badge-muted")" style="font-size:1rem;padding:.5rem 1rem">
+            <i class="bi bi-patch-check-fill me-1"></i>
+            @(_plan == "Active" ? "Plan Actif" : "Essai gratuit")
+        </span>
+    }
+</div>
+
+@if (_checkoutUrl != null)
+{
+    <div class="alert alert-success mb-4">
+        <i class="bi bi-check-circle-fill me-2"></i>
+        Redirection vers le paiement… <a href="@_checkoutUrl" target="_blank" class="alert-link">Cliquez ici si vous n'êtes pas redirigé.</a>
+    </div>
+}
+@if (_error != null)
+{
+    <div class="alert alert-danger mb-4">
+        <i class="bi bi-exclamation-circle me-2"></i>@_error
+    </div>
+}
+
+<!-- Plan card -->
+<div class="row justify-content-center mb-5">
+    <div class="col-lg-5 col-md-7">
+        <div class="premium-plan-card">
+            <div class="premium-plan-header">
+                <span class="premium-popular-badge">
+                    <i class="bi bi-lightning-fill me-1"></i>Recommandé
+                </span>
+                <h2 class="premium-plan-name">Plan Professionnel</h2>
+                <div class="premium-plan-price">
+                    <span class="premium-price-amount">100 $</span>
+                    <span class="premium-price-period">/ mois</span>
+                </div>
+                <p class="premium-plan-trial">Essai gratuit 14 jours inclus · Annulable à tout moment</p>
+            </div>
+            <ul class="premium-feature-list">
+                <li><i class="bi bi-check-circle-fill text-success me-2"></i><strong>Page école publique personnalisée</strong> (sous-domaine + domaine custom)</li>
+                <li><i class="bi bi-check-circle-fill text-success me-2"></i><strong>Gestion illimitée d'élèves</strong> et de parents</li>
+                <li><i class="bi bi-check-circle-fill text-success me-2"></i><strong>Calendrier interactif</strong> avec gestion des disponibilités</li>
+                <li><i class="bi bi-check-circle-fill text-success me-2"></i><strong>Rapports de séance</strong> envoyés automatiquement aux parents</li>
+                <li><i class="bi bi-check-circle-fill text-success me-2"></i><strong>Devoirs et corrections</strong> en ligne</li>
+                <li><i class="bi bi-check-circle-fill text-success me-2"></i><strong>Facturation et abonnements</strong> élèves intégrés</li>
+                <li><i class="bi bi-check-circle-fill text-success me-2"></i><strong>Salle de classe virtuelle</strong> (tableau blanc, vidéo, chat)</li>
+                <li><i class="bi bi-check-circle-fill text-success me-2"></i><strong>Messagerie</strong> avec élèves et parents</li>
+                <li><i class="bi bi-check-circle-fill text-success me-2"></i><strong>Tableau de bord analytique</strong> et rapports financiers</li>
+                <li><i class="bi bi-check-circle-fill text-success me-2"></i><strong>Support prioritaire</strong> par chat et email</li>
+            </ul>
+            <div class="premium-plan-footer">
+                <button class="btn btn-primary btn-lg w-100 premium-subscribe-btn"
+                        @onclick="SubscribeAsync" disabled="@_subscribing">
+                    @if (_subscribing)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2"></span>
+                    }
+                    <i class="bi bi-lightning-fill me-1"></i>
+                    S'abonner maintenant
+                </button>
+                <p class="text-center text-muted mt-2" style="font-size:.8rem">
+                    <i class="bi bi-shield-lock me-1"></i>Paiement sécurisé par Stripe
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- FAQ -->
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="section-card p-4">
+            <h3 class="mb-4 text-center" style="color:var(--ts-primary)">Questions fréquentes</h3>
+            @foreach (var faq in _faqs)
+            {
+                <div class="premium-faq-item">
+                    <button class="premium-faq-question"
+                            @onclick="() => faq.Open = !faq.Open">
+                        <span>@faq.Question</span>
+                        <i class="bi @(faq.Open ? "bi-chevron-up" : "bi-chevron-down")"></i>
+                    </button>
+                    @if (faq.Open)
+                    {
+                        <div class="premium-faq-answer">@faq.Answer</div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+<style>
+    .premium-plan-card {
+        background: linear-gradient(135deg, #f5f3ff 0%, #fff 60%);
+        border: 2px solid #5831E0;
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 8px 32px rgba(88,49,224,.15);
+    }
+    .premium-plan-header {
+        background: linear-gradient(135deg, #5831E0 0%, #7C5CFF 100%);
+        color: white;
+        padding: 2rem;
+        text-align: center;
+        position: relative;
+    }
+    .premium-popular-badge {
+        display: inline-block;
+        background: rgba(255,255,255,.2);
+        border: 1px solid rgba(255,255,255,.4);
+        border-radius: 20px;
+        padding: .25rem .9rem;
+        font-size: .8rem;
+        font-weight: 600;
+        margin-bottom: .75rem;
+    }
+    .premium-plan-name { font-size: 1.5rem; font-weight: 700; margin: 0 0 .5rem; }
+    .premium-plan-price { margin: 1rem 0 .5rem; }
+    .premium-price-amount { font-size: 3rem; font-weight: 800; }
+    .premium-price-period { font-size: 1rem; opacity: .8; }
+    .premium-plan-trial { font-size: .8rem; opacity: .75; margin: 0; }
+    .premium-feature-list {
+        list-style: none;
+        padding: 1.5rem;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        gap: .75rem;
+    }
+    .premium-feature-list li { font-size: .9rem; }
+    .premium-plan-footer { padding: 0 1.5rem 1.5rem; }
+    .premium-subscribe-btn {
+        background: linear-gradient(135deg, #5831E0, #7C5CFF);
+        border: none;
+        font-weight: 600;
+        letter-spacing: .02em;
+    }
+    .premium-subscribe-btn:hover { background: linear-gradient(135deg, #4a28c8, #6b4de0); }
+    .premium-faq-item { border-bottom: 1px solid var(--ts-border); }
+    .premium-faq-item:last-child { border-bottom: none; }
+    .premium-faq-question {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        width: 100%;
+        background: none;
+        border: none;
+        padding: 1rem 0;
+        font-weight: 600;
+        font-size: .95rem;
+        cursor: pointer;
+        color: var(--ts-text);
+        text-align: left;
+    }
+    .premium-faq-question:hover { color: var(--ts-primary); }
+    .premium-faq-answer {
+        padding: 0 0 1rem;
+        color: var(--ts-muted);
+        font-size: .9rem;
+        line-height: 1.6;
+    }
+</style>
+
+@code {
+    private string? _plan;
+    private bool _subscribing;
+    private string? _checkoutUrl;
+    private string? _error;
+
+    private class FaqItem { public string Question { get; set; } = ""; public string Answer { get; set; } = ""; public bool Open { get; set; } }
+
+    private readonly List<FaqItem> _faqs =
+    [
+        new()
+        {
+            Question = "Puis-je annuler mon abonnement à tout moment ?",
+            Answer = "Oui. Vous pouvez annuler votre abonnement depuis les paramètres de votre compte. L'accès reste actif jusqu'à la fin de la période déjà payée."
+        },
+        new()
+        {
+            Question = "Qu'est-ce qui se passe après l'essai gratuit ?",
+            Answer = "Après 14 jours d'essai, votre carte sera débitée automatiquement de 100 $/mois. Aucun frais pendant l'essai."
+        },
+        new()
+        {
+            Question = "Combien d'élèves puis-je gérer avec le plan ?",
+            Answer = "Le plan Professionnel ne limite pas le nombre d'élèves. Ajoutez autant d'élèves et de parents que vous le souhaitez."
+        },
+        new()
+        {
+            Question = "La facturation est-elle sécurisée ?",
+            Answer = "Oui. Tous les paiements sont traités par Stripe, leader mondial du paiement en ligne. Nous ne stockons jamais vos informations bancaires."
+        },
+    ];
+
+    protected override void OnInitialized()
+    {
+        _plan = AuthSvc.IsAuthenticated ? "Trial" : null;
+    }
+
+    private async Task SubscribeAsync()
+    {
+        _error = null;
+        _subscribing = true;
+        try
+        {
+            // The subscription checkout requires a subscriptionId (StudentSubscription entity).
+            // Without a selected subscription, we show info about how to subscribe.
+            // Once student subscriptions exist, call: POST api/payments/subscriptions/{id}/checkout
+            await Task.Delay(500);
+            _error = "Pour vous abonner, veuillez contacter le support ou créer un abonnement élève dans l'onglet Abonnements, puis accéder au paiement.";
+        }
+        finally
+        {
+            _subscribing = false;
+        }
+    }
+}

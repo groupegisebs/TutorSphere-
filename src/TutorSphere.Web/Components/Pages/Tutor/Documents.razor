@@ -2,6 +2,8 @@
 @layout TutorLayout
 @rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
+@inject ApiClient Api
+@inject AuthService Auth
 
 <PageTitle>Documents – TutorSphere</PageTitle>
 
@@ -91,7 +93,7 @@
                             <button class="ts-icon-btn" title="Partager"><i class="bi bi-share"></i></button>
                             <button class="ts-icon-btn ts-icon-btn--danger" title="Supprimer"
                                     @onclick:stopPropagation="true"
-                                    @onclick="() => _files.Remove(f)">
+                                    @onclick="async () => await DeleteFile(f)">
                                 <i class="bi bi-trash"></i>
                             </button>
                         </div>
@@ -130,7 +132,7 @@
                                         <button class="ts-icon-btn" title="Télécharger"><i class="bi bi-download"></i></button>
                                         <button class="ts-icon-btn" title="Partager"><i class="bi bi-share"></i></button>
                                         <button class="ts-icon-btn ts-icon-btn--danger" title="Supprimer"
-                                                @onclick="() => _files.Remove(f)">
+                                                @onclick="async () => await DeleteFile(f)">
                                             <i class="bi bi-trash"></i>
                                         </button>
                                     </div>
@@ -199,7 +201,10 @@
             </div>
             <div class="ts-modal-footer">
                 <button class="btn btn-outline-secondary" @onclick="() => _showUpload = false">Annuler</button>
-                <button class="btn btn-primary" @onclick="SimulateUpload">Téléverser</button>
+                <button class="btn btn-primary" @onclick="UploadFiles" disabled="@_uploading">
+                    @if (_uploading) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                    Téléverser
+                </button>
             </div>
         </div>
     </div>

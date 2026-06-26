@@ -2,6 +2,7 @@
 @layout TutorLayout
 @rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
+@inject ApiClient Api
 
 <PageTitle>@L["PageTitle_Calendar"]</PageTitle>
 
@@ -241,33 +242,22 @@
         }
     }
 
-    // ── Mock event definitions (dayOffset, hour, min, duration, title, sub, type) ──
-    private static readonly (int DayOff, int H, int M, int Dur, string Title, string Sub, string Type)[] EventDefs =
-    [
-        (0, 10,  0,  60, "Emma Johnson",     "Mathématiques",    "online"),
-        (1,  9,  0,  90, "Groupe – Maths",   "4 élèves",         "group"),
-        (1, 11,  0,  60, "Sophia Davis",     "Chimie",           "online"),
-        (1, 14,  0,  90, "Liam Brown",       "Physique",         "online"),
-        (1, 16,  0,  90, "Michael Lee",      "Mathématiques",    "online"),
-        (1, 17,  0,  60, "Indisponible",     "",                 "unavailable"),
-        (2, 10, 30,  90, "Olivia Wilson",    "Physique",         "inperson"),
-        (2, 15,  0,  90, "Groupe – Physique","3 élèves",         "group"),
-        (2, 18,  0,  60, "James Taylor",     "Mathématiques",    "online"),
-        (2, 19,  0,  60, "Indisponible",     "",                 "unavailable"),
-        (3, 11,  0,  60, "William Jones",    "Mathématiques",    "online"),
-        (3, 14,  0,  90, "Ava Martinez",     "Chimie",           "online"),
-        (4,  9,  0,  90, "Noah Anderson",    "Mathématiques",    "online"),
-        (4, 13,  0,  90, "Groupe – Chimie",  "5 élèves",         "group"),
-        (4, 16,  0,  90, "Isabella Thomas",  "Physique",         "inperson"),
-        (5, 10,  0,  90, "Henry White",      "Mathématiques",    "online"),
-    ];
+    // ── API events (loaded from CalendarController) ─────────────────────────────
+    private readonly List<(DateTime Date, int H, int M, int Dur, string Title, string Sub, string Type)> _apiEvents = [];
+    private bool _apiLoaded;
+
+    private static string MapMode(string mode) => mode switch
+    {
+        "InPerson" => "inperson",
+        "Hybrid"   => "inperson",
+        _          => "online"
+    };
 
     // ── Derived ────────────────────────────────────────────────────────────────
     private IEnumerable<CalEvent> GetEventsForDay(DateTime date)
     {
-        var off = (int)(date.Date - WeekStart.Date).TotalDays;
-        return EventDefs
-            .Where(e => e.DayOff == off)
+        return _apiEvents
+            .Where(e => e.Date.Date == date.Date)
             .Select(e => new CalEvent(e.Title, e.Sub, e.Type, e.H, e.M, e.Dur));
     }
 
@@ -282,14 +272,13 @@
         }
     }
 
-    private int TotalLessons => EventDefs.Count(e => e.Type != "unavailable");
+    private int TotalLessons => _apiEvents.Count(e => e.Type != "unavailable");
 
     private int StudentsToday
     {
         get
         {
-            var off = (int)(DateTime.Today - WeekStart.Date).TotalDays;
-            return EventDefs.Count(e => e.DayOff == off && e.Type != "unavailable");
+            return _apiEvents.Count(e => e.Date.Date == DateTime.Today && e.Type != "unavailable");
         }
     }
 
@@ -309,8 +298,20 @@
         }
     }
 
+    // ── Records for API deserialization ────────────────────────────────────────
+    private record CalendarViewDto(
+        DateTime RangeStart, DateTime RangeEnd,
+        List<ApiLessonDto> Lessons,
+        List<ApiUnavailabilityDto> Unavailabilities);
+
+    private record ApiLessonDto(
+        Guid Id, string Title, string? Subject, DateTime StartTime, DateTime EndTime, string Mode);
+
+    private record ApiUnavailabilityDto(
+        Guid Id, string? Reason, DateTime StartTime, DateTime EndTime);
+
     // ── Lifecycle ──────────────────────────────────────────────────────────────
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         GoToToday();
         _filters =
@@ -321,6 +322,37 @@
             new() { Label = L["Calendar_Filter_Availabilities"].Value },
             new() { Label = L["Calendar_Filter_Unavailabilities"].Value, Checked = false },
         ];
+
+        await LoadCalendarDataAsync();
+    }
+
+    private async Task LoadCalendarDataAsync()
+    {
+        var start = Uri.EscapeDataString(WeekStart.AddDays(-7).ToString("O"));
+        var end   = Uri.EscapeDataString(WeekStart.AddDays(35).ToString("O"));
+
+        var view = await Api.GetAsync<CalendarViewDto>($"api/calendar/view?start={start}&end={end}");
+        if (view is null) return;
+
+        _apiEvents.Clear();
+
+        foreach (var lesson in view.Lessons)
+        {
+            var local = lesson.StartTime.ToLocalTime();
+            var dur   = (int)(lesson.EndTime - lesson.StartTime).TotalMinutes;
+            _apiEvents.Add((local.Date, local.Hour, local.Minute, dur,
+                lesson.Title, lesson.Subject ?? "", MapMode(lesson.Mode)));
+        }
+
+        foreach (var unavail in view.Unavailabilities)
+        {
+            var local = unavail.StartTime.ToLocalTime();
+            var dur   = (int)(unavail.EndTime - unavail.StartTime).TotalMinutes;
+            _apiEvents.Add((local.Date, local.Hour, local.Minute, dur,
+                unavail.Reason ?? "Indisponible", "", "unavailable"));
+        }
+
+        _apiLoaded = true;
     }
 
     // ── Navigation ─────────────────────────────────────────────────────────────
