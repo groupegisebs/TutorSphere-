@@ -176,33 +176,6 @@
     private string _filterSubStatus = "";
     private bool _showPlanModal;
     private PlanForm _pf = new();
-    private bool _loading = true;
-
-    protected override async Task OnInitializedAsync()
-    {
-        try
-        {
-            // Load plans from API once SubscriptionOfferingsController is available
-            var apiPlans = await Api.GetAsync<List<OfferingDto>>("api/subscription-offerings");
-            if (apiPlans is { Count: > 0 })
-            {
-                _plans.Clear();
-                foreach (var p in apiPlans)
-                    _plans.Add(new PlanVM
-                    {
-                        Name     = p.Title,
-                        Price    = p.Price,
-                        Period   = "mois",
-                        Popular  = false,
-                        Features = p.Description is not null ? p.Description.Split('\n').ToList() : []
-                    });
-            }
-        }
-        catch { /* keep mock data */ }
-        finally { _loading = false; }
-    }
-
-    private record OfferingDto(Guid Id, string Title, string? Description, decimal Price, bool IsActive);
 
     private static string SubBadge(string s) => s switch {
         "Actif" => "ts-badge-success", "Suspendu" => "ts-badge-warning",
