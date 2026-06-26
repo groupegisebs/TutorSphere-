@@ -8,16 +8,6 @@ Le workflow **Deploy Production** échoue tant que les secrets ci-dessous ne son
 
 ---
 
-## Créer la base PostgreSQL (SSH, une fois)
-
-```bash
-ssh ubuntu@51.79.53.197
-sudo -u postgres psql -v ON_ERROR_STOP=1 -c 'CREATE DATABASE "TutorSphere" OWNER gisedocuser;'
-sudo -u postgres psql -d TutorSphere -c 'GRANT ALL ON SCHEMA public TO gisedocuser;'
-```
-
----
-
 ## Secrets obligatoires
 
 | Secret | Description | Exemple |
@@ -70,15 +60,9 @@ La clé PayGateway se génère dans l'admin **[GISEBS Pay Gateway](https://giseb
 
 ## Sur le serveur (une fois)
 
-```bash
-ssh ubuntu@51.79.53.197
-sudo mkdir -p /opt/apps/tutorsphere
-sudo chown ubuntu:ubuntu /opt/apps/tutorsphere
+Le workflow crée automatiquement `/opt/apps/tutorsphere/app` et la base PostgreSQL `TutorSphere` si nécessaire.
 
-# Docker Engine requis — plugin Compose (`docker compose`) **ou** binaire standalone (`docker-compose`)
-docker --version
-docker compose version 2>/dev/null || docker-compose --version
-```
+Prérequis serveur : **Docker Engine** + plugin Compose (`docker compose`) **ou** binaire `docker-compose`, utilisateur `ubuntu` dans le groupe `docker`.
 
 Le workflow écrit `/opt/apps/tutorsphere/app/.env` (chmod 600) avec la connection string, JWT et PayGateway — **rien de sensible dans le dépôt**.
 
@@ -106,10 +90,10 @@ Reverse proxy nginx natif (alternative) : `deploy/nginx/tutorsphere.conf.example
 ## Vérification
 
 1. Configurer **tous** les secrets obligatoires (voir checklist ci-dessous)
-2. **Actions** → **Deploy Production** → **Run workflow** (ne pas compter sur un push tant que le premier déploiement n’a pas réussi)
+2. **Push sur `main`** — le workflow **Deploy Production** se lance automatiquement
 3. Étape **Diagnose secrets** : tous les `OK`
-4. Étape **Deploy** : messages `Staging OK` et `App OK` (sinon le workflow échoue — répertoire `/opt/apps/tutorsphere/app` vide = rsync ou secrets SSH incorrects)
-5. Healthcheck sur le serveur :
+4. Étape **Deploy** : messages `Staging OK` et `App OK`
+5. Healthcheck sur le serveur (optionnel) :
 
 ```bash
 curl -s http://127.0.0.1:55099/health
@@ -143,7 +127,7 @@ Réponse attendue sur `/api/auth/token` : **200** (token) ou **401** (mauvaise c
 
 | Symptôme | Cause probable | Correction |
 |----------|----------------|------------|
-| `/opt/apps/tutorsphere/app` **vide** (seulement `.` et `..`) | `rsync` depuis GHA sans clé SSH (corrigé dans `deploy-gha.sh`) ou workflow arrêté avant l’étape Deploy | Re-run **Deploy Production** après merge des correctifs ; vérifier `Staging OK` / `App OK` dans les logs |
+| `/opt/apps/tutorsphere/app` **vide** | Transfert scp sans clé SSH ou workflow arrêté avant Deploy | Vérifier `SSH_PRIVATE_KEY_UBUNTU1` ; relancer via push sur `main` |
 | `unknown shorthand flag: 'f'` | Plugin `docker compose` absent — Docker interprète `-f` comme option de `docker` | Le script détecte automatiquement `docker-compose` (tiret) ; installer l’un des deux sur le serveur |
 | **502** sur `tutorsphere.gisebs.com` | NPM pointe vers `:5010` (dev) au lieu de **`:55010`** | NPM → Forward `172.17.0.1:55010` (Web) et `:55099` (API) |
 | Healthcheck 127.0.0.1 OK, 172.17.0.1 KO | Apps écoutent sur `127.0.0.1` seulement | `docker-compose.prod.yml` doit avoir `ASPNETCORE_URLS=http://0.0.0.0:55010` (déjà le cas) |
@@ -158,10 +142,10 @@ Réponse attendue sur `/api/auth/token` : **200** (token) ou **401** (mauvaise c
 - [ ] `TUTORSPHERE_PAYGATEWAY_BASE_URL` = `https://gisebsapipaygateway.gisebs.com`
 - [ ] `TUTORSPHERE_PAYGATEWAY_API_KEY`
 - [ ] App `TUTORSPHERE` dans PayGateway
-- [ ] Répertoire `/opt/apps/tutorsphere` sur le serveur
-- [ ] Base PostgreSQL `TutorSphere` créée
+- [ ] Répertoire `/opt/apps/tutorsphere` (créé automatiquement par le workflow si absent)
+- [ ] Base PostgreSQL `TutorSphere` (créée automatiquement au premier déploiement)
 - [ ] Docker installé, utilisateur `ubuntu` dans le groupe `docker`
-- [ ] Re-run du workflow Deploy Production
+- [ ] Push sur `main` déclenche **Deploy Production**
 - [ ] NPM : `tutorsphere.gisebs.com` → `172.17.0.1:55010` (Websockets ✓)
 - [ ] NPM : `api.tutorsphere.gisebs.com` → `172.17.0.1:55099` (Websockets ✓)
 - [ ] DNS A records vers `51.79.53.197`

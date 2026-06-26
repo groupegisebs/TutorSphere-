@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Déploiement TutorSphere depuis GitHub Actions vers Ubuntu (Docker Compose).
+# Même principe que BoutiqueGisie : scp + clé SSH, rsync sur le serveur uniquement.
 # Secrets : voir deploy/GITHUB-SECRETS.md
 
 set -euo pipefail
@@ -19,7 +20,6 @@ source "${SCRIPT_DIR}/database.defaults.sh"
 : "${SSH_PORT:=22}"
 : "${API_PORT:=55099}"
 : "${WEB_PORT:=55010}"
-: "${APP_ENV_FILE:?APP_ENV_FILE requis}"
 : "${COMPOSE_PROJECT_NAME:=tutorsphere}"
 
 sanitize() {
@@ -47,8 +47,6 @@ PAYGATEWAY_BASE_URL="${PAYGATEWAY_BASE_URL%/}"
 PAYGATEWAY_API_KEY=$(sanitize "${PAYGATEWAY_API_KEY}")
 PAYGATEWAY_APP_CODE=$(sanitize "${PAYGATEWAY_APP_CODE:-TUTORSPHERE}")
 JWT_KEY=$(sanitize "${JWT_KEY}")
-JWT__ISSUER=$(sanitize "${JWT__ISSUER:-TutorSphere}")
-JWT__AUDIENCE=$(sanitize "${JWT__AUDIENCE:-TutorSphere}")
 API_BASE_URL=$(sanitize "${API_BASE_URL:-https://api.tutorsphere.gisebs.com}")
 
 PG_URL_LOWER=$(printf '%s' "${PAYGATEWAY_BASE_URL}" | tr '[:upper:]' '[:lower:]')
@@ -59,10 +57,6 @@ fi
 if [[ ! "$SSH_HOST" =~ ^[0-9a-zA-Z.-]+$ ]]; then
   die "SSH_HOST invalide : ${SSH_HOST}"
 fi
-
-[[ -f "${APP_ENV_FILE}" ]] || die "Fichier env introuvable : ${APP_ENV_FILE}"
-
-command -v rsync >/dev/null 2>&1 || die "rsync introuvable sur le runner GitHub Actions"
 
 APP_DIR="${APP_ROOT}/app"
 BACKUP_DIR="${APP_ROOT}/backups"
@@ -76,20 +70,16 @@ if [[ -n "${SSH_KEY_PATH:-}" ]]; then
   SSH_OPTS+=(-i "${SSH_KEY_PATH}")
   SCP_OPTS+=(-i "${SSH_KEY_PATH}")
 else
-  die "SSH_KEY_PATH requis pour rsync/scp depuis GitHub Actions"
+  die "SSH_KEY_PATH requis pour scp/ssh depuis GitHub Actions"
 fi
 
-# rsync utilise son propre client SSH — doit recevoir les mêmes options que ssh/scp
-RSYNC_SSH=(ssh "${SSH_OPTS[@]}")
-
-RSYNC_EXCLUDES=(
-  --exclude '.git'
-  --exclude '**/bin'
-  --exclude '**/obj'
-  --exclude 'tests'
-  --exclude '.github'
-  --exclude 'publish'
-)
+DB_NAME="$(printf '%s' "${CONNECTION_STRING}" | sed -n 's/.*[Dd]atabase=\([^;]*\).*/\1/p')"
+DB_NAME="${DB_NAME:-${TUTORSPHERE_POSTGRES_DATABASE}}"
+DB_OWNER="$(printf '%s' "${CONNECTION_STRING}" | sed -n 's/.*[Uu]ser [Ii][Dd]=\([^;]*\).*/\1/p')"
+if [[ -z "${DB_OWNER}" ]]; then
+  DB_OWNER="$(printf '%s' "${CONNECTION_STRING}" | sed -n 's/.*[Uu]sername=\([^;]*\).*/\1/p')"
+fi
+DB_OWNER="${DB_OWNER:-gisedocuser}"
 
 verify_remote_staging() {
   ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" bash -s <<VERIFY
@@ -98,7 +88,7 @@ STAGING='${STAGING_REMOTE}'
 missing=0
 for path in docker-compose.yml docker-compose.prod.yml .dockerignore TutorSphere.slnx src/TutorSphere.Api/TutorSphere.Api.csproj; do
   if [[ ! -e "\${STAGING}/\${path}" ]]; then
-    echo "Manquant après rsync : \${STAGING}/\${path}" >&2
+    echo "Manquant après scp : \${STAGING}/\${path}" >&2
     missing=1
   fi
 done
@@ -148,21 +138,42 @@ if [[ -f '${APP_DIR}/.env' ]]; then
 fi
 REMOTE_BACKUP
 
-ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" "mkdir -p '${STAGING_REMOTE}'"
+STAGING_LOCAL="$(mktemp -d)"
+trap 'rm -rf "${STAGING_LOCAL}"' EXIT
 
-echo "Rsync sources vers ${STAGING_REMOTE}..."
-rsync -az --info=stats2 "${RSYNC_EXCLUDES[@]}" \
-  -e "${RSYNC_SSH[*]}" \
+rsync -a \
+  --exclude '.git' \
+  --exclude '**/bin' \
+  --exclude '**/obj' \
+  --exclude 'tests' \
+  --exclude '.github' \
+  --exclude 'publish' \
   "${REPO_ROOT}/src" \
   "${REPO_ROOT}/docker-compose.yml" \
   "${REPO_ROOT}/docker-compose.prod.yml" \
   "${REPO_ROOT}/.dockerignore" \
   "${REPO_ROOT}/TutorSphere.slnx" \
-  "${SSH_TARGET}:${STAGING_REMOTE}/"
+  "${STAGING_LOCAL}/"
+
+ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" "mkdir -p '${STAGING_REMOTE}'"
+echo "Transfert sources vers ${STAGING_REMOTE} (scp)..."
+scp "${SCP_OPTS[@]}" -r "${STAGING_LOCAL}/." "${SSH_TARGET}:${STAGING_REMOTE}/"
 
 verify_remote_staging
 
-scp "${SCP_OPTS[@]}" "${APP_ENV_FILE}" "${SSH_TARGET}:/tmp/tutorsphere.app.env"
+ENV_FILE="$(mktemp)"
+trap 'rm -f "${ENV_FILE}"; rm -rf "${STAGING_LOCAL}"' EXIT
+CONNECTION_STRING="${CONNECTION_STRING}" \
+JWT_KEY="${JWT_KEY}" \
+PAYGATEWAY_BASE_URL="${PAYGATEWAY_BASE_URL}" \
+PAYGATEWAY_API_KEY="${PAYGATEWAY_API_KEY}" \
+PAYGATEWAY_APP_CODE="${PAYGATEWAY_APP_CODE}" \
+API_BASE_URL="${API_BASE_URL}" \
+API_PORT="${API_PORT}" \
+WEB_PORT="${WEB_PORT}" \
+bash "${SCRIPT_DIR}/build-app-env.sh" "${ENV_FILE}"
+
+scp "${SCP_OPTS[@]}" "${ENV_FILE}" "${SSH_TARGET}:/tmp/tutorsphere.app.env"
 
 ssh "${SSH_OPTS[@]}" "${SSH_TARGET}" bash -s <<REMOTE_DEPLOY
 set -eu
@@ -188,6 +199,16 @@ compose() {
     docker-compose -f docker-compose.yml -f docker-compose.prod.yml "\$@"
   fi
 }
+
+DB_NAME='${DB_NAME}'
+DB_OWNER='${DB_OWNER}'
+if command -v psql >/dev/null 2>&1; then
+  if ! sudo -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='\${DB_NAME}'" | grep -q 1; then
+    echo "Création base \${DB_NAME}..."
+    sudo -u postgres psql -v ON_ERROR_STOP=1 -c "CREATE DATABASE \"\${DB_NAME}\" OWNER \${DB_OWNER};" || true
+  fi
+  sudo -u postgres psql -d "\${DB_NAME}" -v ON_ERROR_STOP=1 -c "GRANT ALL ON SCHEMA public TO \${DB_OWNER};" || true
+fi
 
 echo "Arrêt conteneurs TutorSphere..."
 cd '${APP_DIR}' 2>/dev/null || true

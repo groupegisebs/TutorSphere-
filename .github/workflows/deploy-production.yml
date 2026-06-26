@@ -185,20 +185,6 @@ jobs:
           fi
           echo "OK → ${SSH_USER}@${SSH_HOST}:${SSH_PORT} app=${APP_ROOT} api=${API_PORT} web=${WEB_PORT}"
 
-      - name: Build production .env from secrets
-        env:
-          CONNECTION_STRING: ${{ env.CONNECTION_STRING }}
-          JWT_KEY: ${{ env.JWT_KEY }}
-          PAYGATEWAY_BASE_URL: ${{ env.PAYGATEWAY_BASE_URL }}
-          PAYGATEWAY_API_KEY: ${{ env.PAYGATEWAY_API_KEY }}
-          PAYGATEWAY_APP_CODE: ${{ env.PAYGATEWAY_APP_CODE }}
-          API_BASE_URL: ${{ env.API_BASE_URL }}
-          API_PORT: ${{ env.API_PORT }}
-          WEB_PORT: ${{ env.WEB_PORT }}
-        run: |
-          bash deploy/build-app-env.sh /tmp/tutorsphere.app.env
-          echo "APP_ENV_FILE=/tmp/tutorsphere.app.env" >> "$GITHUB_ENV"
-
       - name: Setup SSH key
         id: ssh
         run: |
@@ -217,19 +203,6 @@ jobs:
       - name: Deploy
         env:
           SSH_KEY_PATH: ${{ env.SSH_KEY_PATH }}
-          APP_ENV_FILE: ${{ env.APP_ENV_FILE }}
-          SSH_HOST: ${{ env.SSH_HOST }}
-          SSH_USER: ${{ env.SSH_USER }}
-          SSH_PORT: ${{ env.SSH_PORT }}
-          APP_ROOT: ${{ env.APP_ROOT }}
-          CONNECTION_STRING: ${{ env.CONNECTION_STRING }}
-          JWT_KEY: ${{ env.JWT_KEY }}
-          PAYGATEWAY_BASE_URL: ${{ env.PAYGATEWAY_BASE_URL }}
-          PAYGATEWAY_API_KEY: ${{ env.PAYGATEWAY_API_KEY }}
-          PAYGATEWAY_APP_CODE: ${{ env.PAYGATEWAY_APP_CODE }}
-          API_BASE_URL: ${{ env.API_BASE_URL }}
-          API_PORT: ${{ env.API_PORT }}
-          WEB_PORT: ${{ env.WEB_PORT }}
         run: bash deploy/deploy-gha.sh
 
       - name: Container status

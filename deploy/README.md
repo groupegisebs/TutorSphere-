@@ -6,18 +6,19 @@ Le déploiement production se fait via **GitHub Actions** (push sur `main` ou d�
 
 | Fichier | Rôle |
 |---------|------|
-| `.github/workflows/ci.yml` | Build, tests, validation images Docker |
-| `.github/workflows/deploy-production.yml` | Déploiement Docker via SSH |
+| `.github/workflows/deploy-production.yml` | Build, déploiement Docker via SSH (push `main`) |
 | `deploy/deploy-gha.sh` | Script bash exécuté par le workflow |
 | `deploy/build-app-env.sh` | Génère `.env` depuis les secrets GitHub |
 | `deploy/gha-env.sh` | Sanitisation variables CI |
 | `deploy/database.defaults.sh` | Base PostgreSQL `TutorSphere` |
 | `deploy/GITHUB-SECRETS.md` | Secrets à configurer dans GitHub |
 
+*(CI PR : `.github/workflows/ci.yml` — build et tests sur les pull requests.)*
+
 ### Déclencher un déploiement
 
-1. **Automatique** : merge / push sur la branche `main`
-2. **Manuel** : GitHub → **Actions** → **Deploy Production** → **Run workflow**
+1. **Automatique** : merge / push sur la branche `main` (comme BoutiqueGisie)
+2. **Manuel** (secours) : GitHub → **Actions** → **Deploy Production** → **Run workflow**
 
 ### Vérification
 
@@ -80,16 +81,9 @@ git pull
 
 ## Première installation serveur
 
-```bash
-sudo mkdir -p /opt/apps/tutorsphere/app
-sudo chown -R ubuntu:ubuntu /opt/apps/tutorsphere
+Docker Engine + Compose plugin (`docker compose`) **ou** binaire `docker-compose`. Utilisateur `ubuntu` dans le groupe `docker`.
 
-# Docker Engine + Compose plugin requis
-docker --version
-docker compose version
-```
-
-L'utilisateur `ubuntu` doit pouvoir exécuter `docker` (groupe `docker`).
+Le workflow GitHub Actions crée `/opt/apps/tutorsphere/app`, la base PostgreSQL `TutorSphere` si absente, et déploie automatiquement — **aucune commande SSH manuelle requise** après configuration des secrets.
 
 Reverse proxy (Nginx Proxy Manager ou nginx) — voir section ci-dessous et `deploy/nginx/NPM.md`.
 
@@ -118,7 +112,7 @@ Guide pas à pas : [`deploy/nginx/NPM.md`](nginx/NPM.md). Exemple nginx natif : 
 
 1. Vérifier que NPM n’utilise **pas** `:5010` (port dev).
 2. Sur le serveur : `curl http://127.0.0.1:55010/health` et `:55099/health` → HTTP 200.
-3. Si les healthchecks échouent : relancer **Deploy Production** (GitHub Actions).
+3. Si les healthchecks échouent : un nouveau **push sur `main`** relance le déploiement automatiquement
 
 ---
 
