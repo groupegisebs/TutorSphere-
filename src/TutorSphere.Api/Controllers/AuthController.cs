@@ -1,9 +1,12 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using TutorSphere.Application.DTOs.Auth;
 using TutorSphere.Infrastructure.Identity;
 using TutorSphere.Application.Common.Interfaces;
+using TutorSphere.Infrastructure.Persistence;
 
 namespace TutorSphere.Api.Controllers;
 
@@ -13,11 +16,19 @@ public class AuthController : ControllerBase
 {
     private readonly IAuthService _authService;
     private readonly IConfiguration _configuration;
+    private readonly UserManager<ApplicationUser> _userManager;
+    private readonly ApplicationDbContext _db;
 
-    public AuthController(IAuthService authService, IConfiguration configuration)
+    public AuthController(
+        IAuthService authService,
+        IConfiguration configuration,
+        UserManager<ApplicationUser> userManager,
+        ApplicationDbContext db)
     {
         _authService = authService;
         _configuration = configuration;
+        _userManager = userManager;
+        _db = db;
     }
 
     [HttpPost("register")]
@@ -109,6 +120,65 @@ public class AuthController : ControllerBase
         {
             return Unauthorized(new { error = ex.Message });
         }
+    }
+
+    /// <summary>
+    /// Lightweight auth/DB diagnostics (no secrets). Use after deploy to verify seed accounts and JWT config.
+    /// </summary>
+    [HttpGet("diagnostics")]
+    [AllowAnonymous]
+    public async Task<IActionResult> Diagnostics(CancellationToken ct)
+    {
+        var jwtKey = _configuration["Jwt:Key"] ?? "";
+        var dbOk = false;
+        string? dbError = null;
+        int userCount = 0;
+
+        try
+        {
+            dbOk = await _db.Database.CanConnectAsync(ct);
+            if (dbOk)
+                userCount = await _db.Users.CountAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            dbError = ex.Message;
+        }
+
+        var seedEmails = new[] { "admin@tutorsphere.com", "bediga.jean@gisebs.com" };
+        var accounts = new List<object>();
+        foreach (var email in seedEmails)
+        {
+            var user = await _userManager.FindByEmailAsync(email);
+            if (user is null)
+            {
+                accounts.Add(new { email, exists = false });
+                continue;
+            }
+
+            var roles = await _userManager.GetRolesAsync(user);
+            accounts.Add(new
+            {
+                email,
+                exists = true,
+                emailConfirmed = user.EmailConfirmed,
+                lockedOut = user.LockoutEnd is not null && user.LockoutEnd > DateTimeOffset.UtcNow,
+                roles
+            });
+        }
+
+        return Ok(new
+        {
+            database = new { connected = dbOk, error = dbError, userCount },
+            jwt = new
+            {
+                configured = jwtKey.Length >= 32,
+                issuer = _configuration["Jwt:Issuer"],
+                audience = _configuration["Jwt:Audience"]
+            },
+            seedAccounts = accounts,
+            resetKnownAdminPasswords = _configuration.GetValue("Seed:ResetKnownAdminPasswords", true)
+        });
     }
 
     [HttpPost("forgot-password")]

@@ -34,6 +34,14 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddHostedService<LessonReminderService>();
 
 var jwtSection = builder.Configuration.GetSection("Jwt");
+var jwtKey = jwtSection["Key"] ?? "";
+if (jwtKey.Length < 32)
+{
+    throw new InvalidOperationException(
+        "Jwt:Key manquant ou trop court (min. 32 caractères). " +
+        "Définissez JWT__KEY dans .env / secrets de déploiement.");
+}
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
@@ -101,6 +109,15 @@ app.MapControllers();
 app.MapHub<MessagesHub>("/hubs/messages");
 app.MapHealthChecks("/health");
 
-await DependencyInjection.SeedAsync(app.Services);
+try
+{
+    await DependencyInjection.SeedAsync(app.Services);
+}
+catch (Exception ex)
+{
+    var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("TutorSphere.Startup");
+    logger.LogCritical(ex, "Database migration or seed failed — API will not start.");
+    throw;
+}
 
 app.Run();

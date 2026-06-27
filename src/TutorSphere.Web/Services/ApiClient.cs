@@ -47,6 +47,11 @@ public sealed class ApiClient
         return null;
     }
 
+    private void HandleUnauthorizedResponse()
+    {
+        _auth.MarkSessionExpired();
+    }
+
     private static ApiResult<T> UnauthorizedResult<T>() where T : class =>
         new(null, SessionExpiredMessage);
 
@@ -76,7 +81,7 @@ public sealed class ApiClient
 
             if (resp.StatusCode == HttpStatusCode.Unauthorized)
             {
-                _auth.Logout();
+                HandleUnauthorizedResponse();
                 return UnauthorizedResult<T>();
             }
 
@@ -125,7 +130,7 @@ public sealed class ApiClient
 
             if (resp.StatusCode == HttpStatusCode.Unauthorized)
             {
-                _auth.Logout();
+                HandleUnauthorizedResponse();
                 return UnauthorizedResult<T>();
             }
 
@@ -162,7 +167,7 @@ public sealed class ApiClient
 
             if (resp.StatusCode == HttpStatusCode.Unauthorized)
             {
-                _auth.Logout();
+                HandleUnauthorizedResponse();
                 return UnauthorizedResult<T>();
             }
 
@@ -203,7 +208,7 @@ public sealed class ApiClient
 
             if (resp.StatusCode == HttpStatusCode.Unauthorized)
             {
-                _auth.Logout();
+                HandleUnauthorizedResponse();
                 return new ApiResult<bool>(false, SessionExpiredMessage);
             }
 

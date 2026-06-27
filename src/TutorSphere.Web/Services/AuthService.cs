@@ -15,6 +15,7 @@ public sealed class AuthService
     private readonly HttpClient _http;
     private readonly CustomAuthenticationStateProvider _authProvider;
     private readonly IJSRuntime _js;
+    private readonly SemaphoreSlim _restoreLock = new(1, 1);
     private bool _restoreAttempted;
 
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
@@ -27,6 +28,7 @@ public sealed class AuthService
     }
 
     public bool IsAuthenticated => _authProvider.IsAuthenticated;
+    public bool IsSessionExpired { get; private set; }
     public string? UserEmail => _authProvider.UserEmail;
     public string? UserName => _authProvider.UserName;
     public string? PrimaryRole => _authProvider.PrimaryRole;
@@ -44,7 +46,10 @@ public sealed class AuthService
             if (!resp.IsSuccessStatusCode)
             {
                 var body = await resp.Content.ReadAsStringAsync();
-                var msg = TryExtractError(body) ?? "Identifiants invalides.";
+                var apiError = TryExtractError(body);
+                var msg = apiError is not null
+                    ? $"({(int)resp.StatusCode}) {apiError}"
+                    : $"({(int)resp.StatusCode}) Identifiants invalides.";
                 return new LoginResult(false, msg, null);
             }
 
@@ -53,6 +58,7 @@ public sealed class AuthService
             if (result is null || string.IsNullOrWhiteSpace(result.Token))
                 return new LoginResult(false, "Réponse inattendue du serveur.", null);
 
+            IsSessionExpired = false;
             _authProvider.MarkAuthenticated(result);
             await PersistSessionAsync(result);
             _restoreAttempted = true;
@@ -68,6 +74,19 @@ public sealed class AuthService
 
     public void Logout()
     {
+        IsSessionExpired = false;
+        _authProvider.MarkLoggedOut();
+        _restoreAttempted = false;
+        _ = ClearSessionAsync();
+    }
+
+    /// <summary>Marks the session as expired without forcing a navigation loop.</summary>
+    public void MarkSessionExpired()
+    {
+        if (IsSessionExpired && string.IsNullOrEmpty(Token))
+            return;
+
+        IsSessionExpired = true;
         _authProvider.MarkLoggedOut();
         _restoreAttempted = false;
         _ = ClearSessionAsync();
@@ -79,27 +98,49 @@ public sealed class AuthService
         if (!string.IsNullOrEmpty(Token))
             return;
 
-        if (_restoreAttempted)
-            return;
-
-        _restoreAttempted = true;
-
+        await _restoreLock.WaitAsync();
         try
         {
-            var json = await _js.InvokeAsync<string?>("tsAuth.load");
-            if (string.IsNullOrWhiteSpace(json))
+            if (!string.IsNullOrEmpty(Token))
                 return;
 
-            var auth = JsonSerializer.Deserialize<AuthResponse>(json, JsonOpts);
-            if (auth is not null && !string.IsNullOrWhiteSpace(auth.Token))
+            if (_restoreAttempted)
+                return;
+
+            try
+            {
+                var json = await _js.InvokeAsync<string?>("tsAuth.load");
+                _restoreAttempted = true;
+
+                if (string.IsNullOrWhiteSpace(json))
+                    return;
+
+                var auth = JsonSerializer.Deserialize<AuthResponse>(json, JsonOpts);
+                if (auth is null || string.IsNullOrWhiteSpace(auth.Token))
+                    return;
+
+                if (IsStoredSessionExpired(auth))
+                {
+                    MarkSessionExpired();
+                    return;
+                }
+
+                IsSessionExpired = false;
                 _authProvider.MarkAuthenticated(auth);
+            }
+            catch (InvalidOperationException)
+            {
+                // Static prerender — JS interop unavailable; allow retry later
+            }
+            catch (JSException)
+            {
+                _restoreAttempted = true;
+            }
         }
-        catch (InvalidOperationException)
+        finally
         {
-            // Static prerender — JS interop unavailable; allow retry later
-            _restoreAttempted = false;
+            _restoreLock.Release();
         }
-        catch (JSException) { }
     }
 
     private async Task PersistSessionAsync(AuthResponse auth)
@@ -118,6 +159,42 @@ public sealed class AuthService
         try { await _js.InvokeVoidAsync("tsAuth.clear"); }
         catch (InvalidOperationException) { }
         catch (JSException) { }
+    }
+
+    private static bool IsStoredSessionExpired(AuthResponse auth)
+    {
+        if (auth.ExpiresAt != default && auth.ExpiresAt.ToUniversalTime() <= DateTime.UtcNow)
+            return true;
+
+        return IsJwtExpired(auth.Token);
+    }
+
+    private static bool IsJwtExpired(string token)
+    {
+        var parts = token.Split('.');
+        if (parts.Length != 3)
+            return false;
+
+        var payload = parts[1];
+        var mod = payload.Length % 4;
+        if (mod != 0)
+            payload += new string('=', 4 - mod);
+
+        try
+        {
+            var json = System.Text.Encoding.UTF8.GetString(
+                Convert.FromBase64String(payload.Replace('-', '+').Replace('_', '/')));
+            using var doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("exp", out var exp) || exp.ValueKind != JsonValueKind.Number)
+                return false;
+
+            var expiresAt = DateTimeOffset.FromUnixTimeSeconds(exp.GetInt64());
+            return expiresAt <= DateTimeOffset.UtcNow;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static string RoleToRoute(string role) => role switch

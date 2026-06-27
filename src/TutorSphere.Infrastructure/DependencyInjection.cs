@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using TutorSphere.Application;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Domain.Entities;
@@ -52,51 +53,120 @@ public static class DependencyInjection
     public static async Task SeedAsync(IServiceProvider services)
     {
         using var scope = services.CreateScope();
+        var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>()
+            .CreateLogger("TutorSphere.Seed");
+        var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+        logger.LogInformation("Applying database migrations…");
         await db.Database.MigrateAsync();
+        logger.LogInformation("Database migrations applied.");
 
         var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
         foreach (var role in UserRoles.All)
         {
             if (!await roleManager.RoleExistsAsync(role))
+            {
                 await roleManager.CreateAsync(new IdentityRole(role));
+                logger.LogInformation("Created role {Role}.", role);
+            }
         }
 
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
-        const string adminEmail = "admin@tutorsphere.com";
-        if (await userManager.FindByEmailAsync(adminEmail) is null)
-        {
-            var admin = new ApplicationUser
-            {
-                UserName = adminEmail,
-                Email = adminEmail,
-                FirstName = "Super",
-                LastName = "Admin",
-                EmailConfirmed = true
-            };
-            await userManager.CreateAsync(admin, "Admin123!");
-            await userManager.AddToRoleAsync(admin, UserRoles.SuperAdmin);
-        }
+        var resetKnownPasswords = configuration.GetValue("Seed:ResetKnownAdminPasswords", true);
 
-        const string superAdminEmail = "bediga.jean@gisebs.com";
-        if (await userManager.FindByEmailAsync(superAdminEmail) is null)
-        {
-            var superAdmin = new ApplicationUser
-            {
-                UserName = superAdminEmail,
-                Email = superAdminEmail,
-                FirstName = "Jean",
-                LastName = "Bediga",
-                EmailConfirmed = true
-            };
-            var createResult = await userManager.CreateAsync(superAdmin, "Mcd!35578");
-            if (createResult.Succeeded)
-                await userManager.AddToRoleAsync(superAdmin, UserRoles.SuperAdmin);
-        }
+        await EnsureSeedAdminUserAsync(
+            userManager, logger, resetKnownPasswords,
+            "admin@tutorsphere.com", "Admin123!", "Super", "Admin", UserRoles.SuperAdmin);
+
+        await EnsureSeedAdminUserAsync(
+            userManager, logger, resetKnownPasswords,
+            "bediga.jean@gisebs.com", "Mcd!35578", "Jean", "Bediga", UserRoles.SuperAdmin);
 
         await SeedPublicTutorsAsync(db);
         await SeedDemoAccountsAsync(db, userManager);
         await EnsureExistingParentProfilesAsync(db, userManager);
+
+        var userCount = await db.Users.CountAsync();
+        logger.LogInformation("Seed complete — {UserCount} user(s) in database.", userCount);
+    }
+
+    /// <summary>
+    /// Ensures bootstrap SuperAdmin accounts exist with the documented seed passwords.
+    /// When <paramref name="resetPassword"/> is true, known accounts always get the seed password
+    /// (recovery after a bad deploy or manual DB edits).
+    /// </summary>
+    private static async Task EnsureSeedAdminUserAsync(
+        UserManager<ApplicationUser> userManager,
+        ILogger logger,
+        bool resetPassword,
+        string email,
+        string password,
+        string firstName,
+        string lastName,
+        string role)
+    {
+        var user = await userManager.FindByEmailAsync(email);
+        if (user is null)
+        {
+            user = new ApplicationUser
+            {
+                UserName = email,
+                Email = email,
+                FirstName = firstName,
+                LastName = lastName,
+                EmailConfirmed = true
+            };
+
+            var createResult = await userManager.CreateAsync(user, password);
+            if (!createResult.Succeeded)
+            {
+                logger.LogError(
+                    "Seed failed to create {Email}: {Errors}",
+                    email,
+                    string.Join("; ", createResult.Errors.Select(e => e.Description)));
+                return;
+            }
+
+            await userManager.AddToRoleAsync(user, role);
+            logger.LogInformation("Seed created {Email} with role {Role}.", email, role);
+            return;
+        }
+
+        if (!user.EmailConfirmed)
+        {
+            user.EmailConfirmed = true;
+            await userManager.UpdateAsync(user);
+            logger.LogInformation("Seed confirmed email for {Email}.", email);
+        }
+
+        if (user.LockoutEnd is not null && user.LockoutEnd > DateTimeOffset.UtcNow)
+        {
+            await userManager.SetLockoutEndDateAsync(user, null);
+            logger.LogInformation("Seed unlocked {Email}.", email);
+        }
+
+        if (!await userManager.IsInRoleAsync(user, role))
+        {
+            await userManager.AddToRoleAsync(user, role);
+            logger.LogInformation("Seed assigned role {Role} to {Email}.", role, email);
+        }
+
+        if (!resetPassword)
+            return;
+
+        var token = await userManager.GeneratePasswordResetTokenAsync(user);
+        var resetResult = await userManager.ResetPasswordAsync(user, token, password);
+        if (!resetResult.Succeeded)
+        {
+            logger.LogError(
+                "Seed failed to reset password for {Email}: {Errors}",
+                email,
+                string.Join("; ", resetResult.Errors.Select(e => e.Description)));
+            return;
+        }
+
+        logger.LogInformation("Seed reset password for {Email}.", email);
     }
 
     private static async Task SeedPublicTutorsAsync(ApplicationDbContext db)

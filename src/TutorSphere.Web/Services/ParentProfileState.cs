@@ -28,6 +28,16 @@ public sealed class ParentProfileState
 
     private async Task LoadCoreAsync()
     {
+        await _auth.EnsureSessionRestoredAsync();
+        if (string.IsNullOrEmpty(_auth.Token))
+        {
+            if (string.IsNullOrWhiteSpace(DisplayName))
+                DisplayName = _auth.UserName ?? _auth.UserEmail ?? "Parent";
+            if (string.IsNullOrWhiteSpace(Email))
+                Email = _auth.UserEmail ?? "";
+            return;
+        }
+
         var profile = await _api.GetAsync<ParentMeDto>("api/parent/me");
 
         if (profile is not null)

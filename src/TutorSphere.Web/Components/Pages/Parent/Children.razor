@@ -6,7 +6,6 @@
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
 @inject AuthService Auth
-@inject NavigationManager Navigation
 <PageTitle>Mes Enfants – TutorSphere</PageTitle>
 
 <div class="ts-page-header">
@@ -21,8 +20,13 @@
 
 @if (!string.IsNullOrEmpty(_loadError))
 {
-    <div class="alert alert-warning mb-3" role="alert">
-        <i class="bi bi-exclamation-triangle me-2"></i>@_loadError
+    <div class="alert alert-warning mb-3 d-flex flex-wrap align-items-center gap-2" role="alert">
+        <i class="bi bi-exclamation-triangle me-2"></i>
+        <span class="flex-grow-1">@_loadError</span>
+        @if (_sessionExpired)
+        {
+            <a class="btn btn-sm btn-outline-dark" href="/login/parent">Se reconnecter</a>
+        }
     </div>
 }
 
@@ -219,6 +223,7 @@ else
     private string? _formError;
     private string? _loadError;
     private string? _detailError;
+    private bool _sessionExpired;
     private ChildVM? _active;
     private List<ChildVM> _children = [];
     private ChildForm _form = new();
@@ -235,12 +240,14 @@ else
     {
         _loading = true;
         _loadError = null;
+        _sessionExpired = false;
         try
         {
             await Auth.EnsureSessionRestoredAsync();
             if (string.IsNullOrEmpty(Auth.Token))
             {
-                _loadError = "Session expirée. Veuillez vous reconnecter.";
+                _sessionExpired = true;
+                _loadError = ApiClient.SessionExpiredMessage;
                 _children = [];
                 return;
             }
@@ -250,7 +257,9 @@ else
             {
                 if (result.Error == ApiClient.SessionExpiredMessage)
                 {
-                    Navigation.NavigateTo("/login/parent", forceLoad: true);
+                    _sessionExpired = true;
+                    _loadError = result.Error;
+                    _children = [];
                     return;
                 }
 
@@ -359,7 +368,8 @@ else
             var result = await Api.DeleteWithErrorAsync($"api/parent/children/{_active.Id}");
             if (result.Error == ApiClient.SessionExpiredMessage)
             {
-                Navigation.NavigateTo("/login/parent", forceLoad: true);
+                _sessionExpired = true;
+                _loadError = result.Error;
                 return;
             }
 
@@ -426,7 +436,8 @@ else
 
         if (error == ApiClient.SessionExpiredMessage)
         {
-            Navigation.NavigateTo("/login/parent", forceLoad: true);
+            _sessionExpired = true;
+            _loadError = error;
             return false;
         }
 

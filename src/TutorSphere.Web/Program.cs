@@ -53,11 +53,15 @@ builder.Services.AddHttpClient("TutorSphereApi", client =>
 {
     client.BaseAddress = new Uri(apiBaseUrl.TrimEnd('/') + "/");
 });
+builder.Services.AddSingleton(new ApiConnectionInfo(apiBaseUrl));
 builder.Services.AddScoped(sp =>
     sp.GetRequiredService<IHttpClientFactory>().CreateClient("TutorSphereApi"));
 builder.Services.AddHealthChecks();
 
 var app = builder.Build();
+
+var apiInfo = app.Services.GetRequiredService<ApiConnectionInfo>();
+app.Logger.LogInformation("TutorSphere Web — API backend: {ApiBaseUrl}", apiInfo.BaseUrl);
 
 if (!app.Environment.IsDevelopment())
 {
@@ -95,3 +99,6 @@ app.MapRazorComponents<App>()
 app.MapHealthChecks("/health");
 
 app.Run();
+
+/// <summary>Resolved API base URL for server-side HttpClient calls.</summary>
+internal sealed record ApiConnectionInfo(string BaseUrl);
