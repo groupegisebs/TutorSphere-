@@ -93,12 +93,42 @@ app.Use(async (context, next) =>
 app.UseRequestLocalization();
 app.UseAntiforgery();
 
+MapAuthBffEndpoints(app);
+
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 app.MapHealthChecks("/health");
 
 app.Run();
+
+static void MapAuthBffEndpoints(WebApplication app)
+{
+    app.MapPost("/bff/auth/establish", (HttpContext ctx, EstablishAuthRequest req) =>
+    {
+        if (string.IsNullOrWhiteSpace(req.Token))
+            return Results.BadRequest();
+
+        if (AuthService.IsJwtExpired(req.Token))
+            return Results.Unauthorized();
+
+        var expiresAt = req.ExpiresAt ?? AuthService.AuthResponseFromJwt(req.Token)?.ExpiresAt ?? DateTime.UtcNow.AddHours(24);
+        ctx.Response.Cookies.Append(
+            AuthCookieConstants.CookieName,
+            req.Token,
+            AuthService.BuildCookieOptions(expiresAt, ctx.Request.IsHttps));
+
+        return Results.Ok();
+    }).DisableAntiforgery();
+
+    app.MapPost("/bff/auth/logout", (HttpContext ctx) =>
+    {
+        ctx.Response.Cookies.Delete(AuthCookieConstants.CookieName, new CookieOptions { Path = "/" });
+        return Results.Ok();
+    }).DisableAntiforgery();
+}
+
+internal sealed record EstablishAuthRequest(string Token, DateTime? ExpiresAt);
 
 /// <summary>Resolved API base URL for server-side HttpClient calls.</summary>
 internal sealed record ApiConnectionInfo(string BaseUrl);

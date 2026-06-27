@@ -230,10 +230,17 @@ else
 
     private static readonly string[] Colors = ["#7c3aed", "#0ea5e9", "#10b981", "#ec4899", "#f59e0b"];
 
-    protected override async Task OnInitializedAsync()
+    private bool _initialLoadDone;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        await Auth.EnsureSessionRestoredAsync();
+        if (!firstRender || _initialLoadDone)
+            return;
+
+        _initialLoadDone = true;
+        await Auth.EnsureSessionRestoredAsync(forceJs: true);
         await LoadChildrenAsync();
+        StateHasChanged();
     }
 
     private async Task LoadChildrenAsync()
@@ -243,11 +250,16 @@ else
         _sessionExpired = false;
         try
         {
-            await Auth.EnsureSessionRestoredAsync();
+            await Auth.EnsureSessionRestoredAsync(forceJs: true);
+
             if (string.IsNullOrEmpty(Auth.Token))
             {
-                _sessionExpired = true;
-                _loadError = ApiClient.SessionExpiredMessage;
+                if (Auth.IsSessionExpired)
+                {
+                    _sessionExpired = true;
+                    _loadError = ApiClient.SessionExpiredMessage;
+                }
+
                 _children = [];
                 return;
             }

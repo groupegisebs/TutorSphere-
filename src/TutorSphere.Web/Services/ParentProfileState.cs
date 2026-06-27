@@ -28,13 +28,19 @@ public sealed class ParentProfileState
 
     private async Task LoadCoreAsync()
     {
-        await _auth.EnsureSessionRestoredAsync();
+        await _auth.EnsureSessionRestoredAsync(forceJs: true);
         if (string.IsNullOrEmpty(_auth.Token))
         {
-            if (string.IsNullOrWhiteSpace(DisplayName))
-                DisplayName = _auth.UserName ?? _auth.UserEmail ?? "Parent";
+            if (!string.IsNullOrWhiteSpace(_auth.UserName))
+                DisplayName = _auth.UserName!;
+            else if (!string.IsNullOrWhiteSpace(_auth.UserEmail))
+                DisplayName = _auth.UserEmail!;
+            else if (_auth.IsSessionExpired)
+                DisplayName = "Parent";
+
             if (string.IsNullOrWhiteSpace(Email))
                 Email = _auth.UserEmail ?? "";
+
             return;
         }
 

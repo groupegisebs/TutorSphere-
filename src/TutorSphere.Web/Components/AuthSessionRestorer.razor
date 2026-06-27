@@ -1,0 +1,14 @@
+@rendermode InteractiveServer
+@inject AuthService Auth
+
+@* Restores JWT from cookie / sessionStorage once JS interop is available. *@
+
+@code {
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        await Auth.EnsureSessionRestoredAsync(forceJs: true);
+    }
+}

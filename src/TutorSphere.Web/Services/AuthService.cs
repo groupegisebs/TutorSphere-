@@ -8,27 +8,40 @@ namespace TutorSphere.Web.Services;
 
 /// <summary>
 /// Holds login state for the current Blazor circuit.
-/// Tokens are mirrored to sessionStorage so interactive circuits can restore auth after reconnect.
+/// JWT is mirrored to an HttpOnly cookie (BFF) and sessionStorage for circuit restore.
 /// </summary>
 public sealed class AuthService
 {
     private readonly HttpClient _http;
     private readonly CustomAuthenticationStateProvider _authProvider;
     private readonly IJSRuntime _js;
+    private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly ILogger<AuthService> _logger;
     private readonly SemaphoreSlim _restoreLock = new(1, 1);
-    private bool _restoreAttempted;
+    private bool _jsRestoreAttempted;
 
     private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
 
-    public AuthService(HttpClient http, AuthenticationStateProvider authProvider, IJSRuntime js)
+    public AuthService(
+        HttpClient http,
+        AuthenticationStateProvider authProvider,
+        IJSRuntime js,
+        IHttpContextAccessor httpContextAccessor,
+        ILogger<AuthService> logger)
     {
         _http = http;
         _authProvider = (CustomAuthenticationStateProvider)authProvider;
         _js = js;
+        _httpContextAccessor = httpContextAccessor;
+        _logger = logger;
     }
 
     public bool IsAuthenticated => _authProvider.IsAuthenticated;
     public bool IsSessionExpired { get; private set; }
+
+    /// <summary>True once cookie and/or sessionStorage restore has been attempted.</summary>
+    public bool SessionRestoreCompleted { get; private set; }
+
     public string? UserEmail => _authProvider.UserEmail;
     public string? UserName => _authProvider.UserName;
     public string? PrimaryRole => _authProvider.PrimaryRole;
@@ -58,10 +71,8 @@ public sealed class AuthService
             if (result is null || string.IsNullOrWhiteSpace(result.Token))
                 return new LoginResult(false, "Réponse inattendue du serveur.", null);
 
-            IsSessionExpired = false;
-            _authProvider.MarkAuthenticated(result);
+            ApplyAuthenticatedSession(result);
             await PersistSessionAsync(result);
-            _restoreAttempted = true;
 
             var role = result.Role ?? "";
             return new LoginResult(true, null, RoleToRoute(role));
@@ -75,8 +86,10 @@ public sealed class AuthService
     public void Logout()
     {
         IsSessionExpired = false;
+        SessionRestoreCompleted = false;
+        _jsRestoreAttempted = false;
         _authProvider.MarkLoggedOut();
-        _restoreAttempted = false;
+        ClearAuthCookie();
         _ = ClearSessionAsync();
     }
 
@@ -86,31 +99,54 @@ public sealed class AuthService
         if (IsSessionExpired && string.IsNullOrEmpty(Token))
             return;
 
+        _logger.LogInformation("Auth session marked expired.");
         IsSessionExpired = true;
         _authProvider.MarkLoggedOut();
-        _restoreAttempted = false;
+        SessionRestoreCompleted = false;
+        _jsRestoreAttempted = false;
+        ClearAuthCookie();
         _ = ClearSessionAsync();
     }
 
-    /// <summary>Restores auth from sessionStorage when the circuit lost in-memory state.</summary>
-    public async Task EnsureSessionRestoredAsync()
+    /// <summary>
+    /// Restores auth from HttpOnly cookie and/or sessionStorage when the circuit lost in-memory state.
+    /// </summary>
+    /// <param name="forceJs">When true, retries sessionStorage even if a prior prerender attempt failed.</param>
+    public async Task EnsureSessionRestoredAsync(bool forceJs = false)
     {
         if (!string.IsNullOrEmpty(Token))
+        {
+            SessionRestoreCompleted = true;
             return;
+        }
 
         await _restoreLock.WaitAsync();
         try
         {
             if (!string.IsNullOrEmpty(Token))
+            {
+                SessionRestoreCompleted = true;
                 return;
+            }
 
-            if (_restoreAttempted)
+            if (TryRestoreFromCookie())
+            {
+                SessionRestoreCompleted = true;
+                _logger.LogDebug("Auth restored from HttpOnly cookie.");
                 return;
+            }
+
+            if (_jsRestoreAttempted && !forceJs)
+            {
+                SessionRestoreCompleted = true;
+                return;
+            }
 
             try
             {
                 var json = await _js.InvokeAsync<string?>("tsAuth.load");
-                _restoreAttempted = true;
+                _jsRestoreAttempted = true;
+                SessionRestoreCompleted = true;
 
                 if (string.IsNullOrWhiteSpace(json))
                     return;
@@ -121,20 +157,23 @@ public sealed class AuthService
 
                 if (IsStoredSessionExpired(auth))
                 {
+                    _logger.LogInformation("Stored session expired during JS restore.");
                     MarkSessionExpired();
                     return;
                 }
 
-                IsSessionExpired = false;
-                _authProvider.MarkAuthenticated(auth);
+                ApplyAuthenticatedSession(auth);
+                _logger.LogDebug("Auth restored from sessionStorage.");
             }
             catch (InvalidOperationException)
             {
-                // Static prerender — JS interop unavailable; allow retry later
+                // Static prerender — JS interop unavailable; retry after first interactive render
             }
-            catch (JSException)
+            catch (JSException ex)
             {
-                _restoreAttempted = true;
+                _jsRestoreAttempted = true;
+                SessionRestoreCompleted = true;
+                _logger.LogDebug(ex, "sessionStorage restore failed.");
             }
         }
         finally
@@ -143,25 +182,94 @@ public sealed class AuthService
         }
     }
 
+    internal static CookieOptions BuildCookieOptions(DateTime expiresAtUtc, bool secure)
+    {
+        var maxAge = expiresAtUtc.ToUniversalTime() - DateTime.UtcNow;
+        if (maxAge < TimeSpan.Zero)
+            maxAge = TimeSpan.FromHours(1);
+
+        return new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = secure,
+            SameSite = SameSiteMode.Lax,
+            Path = "/",
+            MaxAge = maxAge
+        };
+    }
+
+    internal void SetAuthCookie(string token, DateTime expiresAtUtc)
+    {
+        var ctx = _httpContextAccessor.HttpContext;
+        if (ctx is null || string.IsNullOrWhiteSpace(token))
+            return;
+
+        ctx.Response.Cookies.Append(
+            AuthCookieConstants.CookieName,
+            token,
+            BuildCookieOptions(expiresAtUtc, ctx.Request.IsHttps));
+    }
+
+    internal void ClearAuthCookie()
+    {
+        var ctx = _httpContextAccessor.HttpContext;
+        if (ctx is null)
+            return;
+
+        ctx.Response.Cookies.Delete(AuthCookieConstants.CookieName, new CookieOptions { Path = "/" });
+    }
+
+    private void ApplyAuthenticatedSession(AuthResponse auth)
+    {
+        IsSessionExpired = false;
+        _authProvider.MarkAuthenticated(auth);
+    }
+
+    private bool TryRestoreFromCookie()
+    {
+        var token = _httpContextAccessor.HttpContext?.Request.Cookies[AuthCookieConstants.CookieName];
+        if (string.IsNullOrWhiteSpace(token))
+            return false;
+
+        if (IsJwtExpired(token))
+        {
+            _logger.LogInformation("HttpOnly auth cookie JWT expired.");
+            ClearAuthCookie();
+            return false;
+        }
+
+        var auth = AuthResponseFromJwt(token);
+        if (auth is null)
+            return false;
+
+        ApplyAuthenticatedSession(auth);
+        return true;
+    }
+
     private async Task PersistSessionAsync(AuthResponse auth)
     {
+        SetAuthCookie(auth.Token, auth.ExpiresAt);
+
         try
         {
             var json = JsonSerializer.Serialize(auth, JsonOpts);
-            await _js.InvokeVoidAsync("tsAuth.save", json);
+            await _js.InvokeVoidAsync("tsAuth.persist", json);
         }
         catch (InvalidOperationException) { }
-        catch (JSException) { }
+        catch (JSException ex)
+        {
+            _logger.LogDebug(ex, "Could not persist auth to sessionStorage/cookie via JS.");
+        }
     }
 
     private async Task ClearSessionAsync()
     {
-        try { await _js.InvokeVoidAsync("tsAuth.clear"); }
+        try { await _js.InvokeVoidAsync("tsAuth.clearAll"); }
         catch (InvalidOperationException) { }
         catch (JSException) { }
     }
 
-    private static bool IsStoredSessionExpired(AuthResponse auth)
+    internal static bool IsStoredSessionExpired(AuthResponse auth)
     {
         if (auth.ExpiresAt != default && auth.ExpiresAt.ToUniversalTime() <= DateTime.UtcNow)
             return true;
@@ -169,11 +277,60 @@ public sealed class AuthService
         return IsJwtExpired(auth.Token);
     }
 
-    private static bool IsJwtExpired(string token)
+    internal static bool IsJwtExpired(string token)
+    {
+        var exp = TryGetJwtExpiry(token);
+        return exp is not null && exp <= DateTimeOffset.UtcNow;
+    }
+
+    internal static AuthResponse? AuthResponseFromJwt(string token)
     {
         var parts = token.Split('.');
         if (parts.Length != 3)
-            return false;
+            return null;
+
+        var payload = parts[1];
+        var mod = payload.Length % 4;
+        if (mod != 0)
+            payload += new string('=', 4 - mod);
+
+        try
+        {
+            var json = System.Text.Encoding.UTF8.GetString(
+                Convert.FromBase64String(payload.Replace('-', '+').Replace('_', '/')));
+            using var doc = JsonDocument.Parse(json);
+
+            var email = GetClaim(doc, ClaimTypes.Email, "email") ?? "";
+            var name = GetClaim(doc, ClaimTypes.Name, "name", "unique_name") ?? email;
+            var role = GetClaim(doc, ClaimTypes.Role, "role") ?? "";
+            var tenantRaw = GetClaim(doc, "tenant_id");
+            Guid? tenantId = tenantRaw is not null && Guid.TryParse(tenantRaw, out var g) ? g : null;
+
+            var expiresAt = TryGetJwtExpiry(token)?.UtcDateTime ?? DateTime.UtcNow.AddHours(24);
+            return new AuthResponse(token, email, name, role, tenantId, expiresAt);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? GetClaim(JsonDocument doc, params string[] keys)
+    {
+        foreach (var key in keys)
+        {
+            if (doc.RootElement.TryGetProperty(key, out var prop) && prop.ValueKind == JsonValueKind.String)
+                return prop.GetString();
+        }
+
+        return null;
+    }
+
+    private static DateTimeOffset? TryGetJwtExpiry(string token)
+    {
+        var parts = token.Split('.');
+        if (parts.Length != 3)
+            return null;
 
         var payload = parts[1];
         var mod = payload.Length % 4;
@@ -186,14 +343,13 @@ public sealed class AuthService
                 Convert.FromBase64String(payload.Replace('-', '+').Replace('_', '/')));
             using var doc = JsonDocument.Parse(json);
             if (!doc.RootElement.TryGetProperty("exp", out var exp) || exp.ValueKind != JsonValueKind.Number)
-                return false;
+                return null;
 
-            var expiresAt = DateTimeOffset.FromUnixTimeSeconds(exp.GetInt64());
-            return expiresAt <= DateTimeOffset.UtcNow;
+            return DateTimeOffset.FromUnixTimeSeconds(exp.GetInt64());
         }
         catch
         {
-            return false;
+            return null;
         }
     }
 
@@ -231,7 +387,6 @@ internal sealed record AuthResponse(
 
 /// <summary>
 /// Circuit-scoped authentication state.
-/// The state lives as long as the Blazor Server circuit; sessionStorage restores it after reconnect.
 /// </summary>
 public sealed class CustomAuthenticationStateProvider : AuthenticationStateProvider
 {
@@ -272,7 +427,6 @@ public sealed class CustomAuthenticationStateProvider : AuthenticationStateProvi
         if (auth.TenantId.HasValue)
             claims.Add(new Claim("tenant_id", auth.TenantId.Value.ToString()));
 
-        // Fallback: parse JWT payload for role/tenant if missing from response body
         foreach (var (key, value) in ParseJwtPayloadClaims(auth.Token))
         {
             if (key is "tenant_id" && claims.All(c => c.Type != "tenant_id"))

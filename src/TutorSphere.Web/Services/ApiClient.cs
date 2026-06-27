@@ -43,13 +43,20 @@ public sealed class ApiClient
     {
         await _auth.EnsureSessionRestoredAsync();
         if (string.IsNullOrEmpty(_auth.Token))
-            return new ApiResult<T>(null, SessionExpiredMessage);
+        {
+            if (_auth.IsSessionExpired)
+                return new ApiResult<T>(null, SessionExpiredMessage);
+
+            return new ApiResult<T>(null, "Authentification requise.");
+        }
+
         return null;
     }
 
     private void HandleUnauthorizedResponse()
     {
-        _auth.MarkSessionExpired();
+        if (!string.IsNullOrEmpty(_auth.Token))
+            _auth.MarkSessionExpired();
     }
 
     private static ApiResult<T> UnauthorizedResult<T>() where T : class =>
@@ -199,7 +206,12 @@ public sealed class ApiClient
     {
         await _auth.EnsureSessionRestoredAsync();
         if (string.IsNullOrEmpty(_auth.Token))
-            return new ApiResult<bool>(false, SessionExpiredMessage);
+        {
+            if (_auth.IsSessionExpired)
+                return new ApiResult<bool>(false, SessionExpiredMessage);
+
+            return new ApiResult<bool>(false, "Authentification requise.");
+        }
 
         try
         {
