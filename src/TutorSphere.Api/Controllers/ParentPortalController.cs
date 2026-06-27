@@ -38,6 +38,17 @@ public class ParentPortalController : ControllerBase
         return Ok(await _parentService.GetChildrenForUserAsync(userId, ct));
     }
 
+    [HttpGet("dashboard")]
+    public async Task<ActionResult<ParentDashboardDto>> Dashboard(CancellationToken ct)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        var dashboard = await _parentService.GetDashboardForUserAsync(userId, ct);
+        return dashboard is null ? NotFound(new { error = "Profil parent introuvable." }) : Ok(dashboard);
+    }
+
     [HttpPost("children")]
     public async Task<ActionResult<StudentDto>> AddChild([FromBody] ParentAddChildRequest request, CancellationToken ct)
     {

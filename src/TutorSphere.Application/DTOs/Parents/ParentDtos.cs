@@ -6,7 +6,8 @@ public record ParentDto(
     string LastName,
     string Email,
     string? Phone,
-    int ChildrenCount);
+    int ChildrenCount,
+    int UnreadMessagesCount = 0);
 
 public record CreateParentRequest(
     string FirstName,

@@ -2,6 +2,7 @@ using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.Parents;
 using TutorSphere.Application.DTOs.Students;
 using TutorSphere.Domain.Entities;
+using TutorSphere.Domain.Enums;
 
 namespace TutorSphere.Application.Services;
 
@@ -16,6 +17,7 @@ public interface IParentService
     Task<IReadOnlyList<StudentDto>> GetChildrenAsync(Guid parentId, CancellationToken ct = default);
     Task<IReadOnlyList<StudentDto>> GetChildrenForUserAsync(string userId, CancellationToken ct = default);
     Task<StudentDto> AddChildForUserAsync(string userId, ParentAddChildRequest request, CancellationToken ct = default);
+    Task<ParentDashboardDto?> GetDashboardForUserAsync(string userId, CancellationToken ct = default);
 }
 
 public class ParentService : IParentService
@@ -52,7 +54,8 @@ public class ParentService : IParentService
         var parent = _db.ParentProfiles.FirstOrDefault(p => p.UserId == userId);
         if (parent is null) return Task.FromResult<ParentDto?>(null);
         var count = _db.Students.Count(s => s.ParentProfileId == parent.Id);
-        return Task.FromResult<ParentDto?>(MapToDto(parent, count));
+        var unread = _db.Messages.Count(m => m.RecipientUserId == userId && !m.IsRead);
+        return Task.FromResult<ParentDto?>(MapToDto(parent, count, unread));
     }
 
     public async Task<ParentDto> CreateAsync(CreateParentRequest request, CancellationToken ct = default)
@@ -145,6 +148,192 @@ public class ParentService : IParentService
         return MapStudentToDto(student);
     }
 
+    public Task<ParentDashboardDto?> GetDashboardForUserAsync(string userId, CancellationToken ct = default)
+    {
+        var parent = _db.ParentProfiles.FirstOrDefault(p => p.UserId == userId);
+        if (parent is null)
+            return Task.FromResult<ParentDashboardDto?>(null);
+
+        var children = _db.Students
+            .Where(s => s.ParentProfileId == parent.Id)
+            .OrderBy(s => s.LastName).ThenBy(s => s.FirstName)
+            .ToList();
+
+        var childIds = children.Select(c => c.Id).ToList();
+        var unread = _db.Messages.Count(m => m.RecipientUserId == userId && !m.IsRead);
+        var parentDto = MapToDto(parent, children.Count, unread);
+
+        if (childIds.Count == 0)
+        {
+            return Task.FromResult<ParentDashboardDto?>(new ParentDashboardDto(
+                parentDto,
+                null,
+                0,
+                null,
+                null,
+                [],
+                [],
+                [],
+                [],
+                [],
+                null,
+                [],
+                BuildEmptyWeekCalendar()));
+        }
+
+        var attendances = _db.LessonAttendances
+            .Where(a => childIds.Contains(a.StudentId))
+            .ToList();
+
+        var lessonIds = attendances.Select(a => a.LessonId).Distinct().ToHashSet();
+        var lessons = _db.Lessons
+            .Where(l => lessonIds.Contains(l.Id))
+            .OrderBy(l => l.StartTime)
+            .ToList();
+
+        var tenantIds = lessons.Select(l => l.TenantId).Distinct().ToList();
+        var tenants = _db.Tenants
+            .Where(t => tenantIds.Contains(t.Id))
+            .ToDictionary(t => t.Id);
+
+        var now = DateTime.UtcNow;
+        var today = DateTime.Today;
+        var lessonsToday = lessons.Count(l => l.StartTime.ToLocalTime().Date == today);
+        var nextLesson = lessons.FirstOrDefault(l => l.StartTime >= now);
+
+        var gradedHomework = _db.Homeworks
+            .Where(h => childIds.Contains(h.StudentId) && h.IsGraded && h.Grade.HasValue)
+            .ToList();
+
+        decimal? averageGrade = gradedHomework.Count > 0
+            ? Math.Round(gradedHomework.Average(h => h.Grade!.Value), 1)
+            : null;
+
+        var childDtos = children
+            .Select(s => MapDashboardChild(s, lessons, attendances, gradedHomework))
+            .ToList();
+
+        var upcomingSessions = lessons
+            .Where(l => l.StartTime >= now)
+            .Take(5)
+            .Select(l => MapDashboardSession(l, tenants))
+            .ToList();
+
+        var childNameLookup = children.ToDictionary(c => c.Id, c => $"{c.FirstName} {c.LastName}".Trim());
+
+        var pendingHomework = _db.Homeworks
+            .Where(h => childIds.Contains(h.StudentId) && !h.IsGraded && !h.SubmittedAt.HasValue)
+            .OrderBy(h => h.DueDate ?? DateTime.MaxValue)
+            .Take(5)
+            .ToList()
+            .Select(h => new ParentDashboardHomeworkDto(
+                h.Id,
+                h.Title,
+                childNameLookup.GetValueOrDefault(h.StudentId, "—"),
+                h.DueDate,
+                h.SubmittedAt.HasValue,
+                h.IsGraded))
+            .ToList();
+
+        var recentReports = _db.LessonReports
+            .Where(r => childIds.Contains(r.StudentId))
+            .OrderByDescending(r => r.CreatedAt)
+            .Take(5)
+            .ToList()
+            .Select(r =>
+            {
+                var lesson = lessons.FirstOrDefault(l => l.Id == r.LessonId);
+                tenants.TryGetValue(lesson?.TenantId ?? Guid.Empty, out var tenant);
+                return new ParentDashboardReportDto(
+                    r.Id,
+                    tenant?.Name ?? "—",
+                    lesson?.Subject,
+                    r.TopicsStudied,
+                    r.CreatedAt,
+                    childNameLookup.GetValueOrDefault(r.StudentId, "—"));
+            })
+            .ToList();
+
+        var recentMessageEntities = _db.Messages
+            .Where(m => m.RecipientUserId == userId || m.SenderUserId == userId)
+            .OrderByDescending(m => m.CreatedAt)
+            .Take(5)
+            .ToList();
+
+        var recentMessages = recentMessageEntities
+            .Select(m => new ParentDashboardMessageDto(
+                m.Id,
+                ResolveUserDisplayName(m.SenderUserId == userId ? m.RecipientUserId : m.SenderUserId),
+                TruncatePreview(m.Body),
+                m.RecipientUserId == userId && !m.IsRead,
+                m.CreatedAt))
+            .ToList();
+
+        var subscriptionIds = _db.StudentSubscriptions
+            .Where(ss => childIds.Contains(ss.StudentId))
+            .Select(ss => ss.Id)
+            .ToList();
+
+        var recentPayment = _db.Payments
+            .Where(p => p.SubscriptionId.HasValue
+                        && subscriptionIds.Contains(p.SubscriptionId.Value)
+                        && p.Status == PaymentStatus.Completed)
+            .OrderByDescending(p => p.CompletedAt ?? p.CreatedAt)
+            .Select(p => new ParentDashboardPaymentDto(
+                p.Id,
+                p.Amount,
+                p.Currency,
+                p.Status.ToString(),
+                p.CompletedAt))
+            .FirstOrDefault();
+
+        var recentDocuments = _db.Documents
+            .Where(d => d.StudentId.HasValue && childIds.Contains(d.StudentId.Value))
+            .OrderByDescending(d => d.CreatedAt)
+            .Take(5)
+            .Select(d => new ParentDashboardDocumentDto(
+                d.Id,
+                d.Name,
+                d.FileSizeBytes,
+                d.ContentType,
+                d.FileUrl,
+                d.CreatedAt))
+            .ToList();
+
+        var activeSubEntity = _db.StudentSubscriptions
+            .Where(ss => childIds.Contains(ss.StudentId) && ss.Status == SubscriptionStatus.Active)
+            .OrderByDescending(ss => ss.StartDate)
+            .FirstOrDefault();
+
+        ParentDashboardSubscriptionDto? activeSubscription = null;
+        if (activeSubEntity is not null)
+        {
+            var offering = _db.SubscriptionOfferings.FirstOrDefault(o => o.Id == activeSubEntity.OfferingId);
+            activeSubscription = new ParentDashboardSubscriptionDto(
+                activeSubEntity.Id,
+                offering?.Title ?? "—",
+                activeSubEntity.Status.ToString(),
+                activeSubEntity.EndDate);
+        }
+
+        var weekCalendar = BuildWeekCalendar(lessons, children, attendances);
+
+        return Task.FromResult<ParentDashboardDto?>(new ParentDashboardDto(
+            parentDto,
+            averageGrade,
+            lessonsToday,
+            nextLesson?.StartTime,
+            activeSubscription,
+            childDtos,
+            upcomingSessions,
+            pendingHomework,
+            recentReports,
+            recentMessages,
+            recentPayment,
+            recentDocuments,
+            weekCalendar));
+    }
+
     private Guid RequireTenantId()
     {
         if (!_tenantContext.HasTenant || _tenantContext.TenantId is null)
@@ -152,13 +341,14 @@ public class ParentService : IParentService
         return _tenantContext.TenantId.Value;
     }
 
-    private static ParentDto MapToDto(ParentProfile p, int childrenCount) => new(
+    private static ParentDto MapToDto(ParentProfile p, int childrenCount, int unreadMessagesCount = 0) => new(
         p.Id,
         p.FirstName,
         p.LastName,
         p.Email,
         p.Phone,
-        childrenCount);
+        childrenCount,
+        unreadMessagesCount);
 
     private static StudentDto MapStudentToDto(Student s) => new(
         s.Id,
@@ -171,9 +361,154 @@ public class ParentService : IParentService
         s.IsAutonomous,
         s.ParentProfileId,
         null,
+        s.PhotoUrl,
         s.SchoolLevel,
         s.SchoolName,
         ParseSubjects(s.Subjects));
+
+    private static ParentDashboardChildDto MapDashboardChild(
+        Student student,
+        IReadOnlyList<Lesson> lessons,
+        IReadOnlyList<LessonAttendance> attendances,
+        IReadOnlyList<Homework> gradedHomework)
+    {
+        var studentLessonIds = attendances
+            .Where(a => a.StudentId == student.Id)
+            .Select(a => a.LessonId)
+            .ToHashSet();
+
+        var studentLessons = lessons.Where(l => studentLessonIds.Contains(l.Id)).ToList();
+        var now = DateTime.UtcNow;
+        var nextLesson = studentLessons.FirstOrDefault(l => l.StartTime >= now);
+
+        var childGrades = gradedHomework
+            .Where(h => h.StudentId == student.Id && h.Grade.HasValue)
+            .Select(h => h.Grade!.Value)
+            .ToList();
+
+        decimal? average = childGrades.Count > 0
+            ? Math.Round(childGrades.Average(), 1)
+            : null;
+
+        int? progress = average.HasValue
+            ? (int)Math.Round(average.Value / 20m * 100m)
+            : null;
+
+        return new ParentDashboardChildDto(
+            student.Id,
+            student.FirstName,
+            student.LastName,
+            student.PhotoUrl,
+            student.SchoolLevel,
+            average,
+            progress,
+            nextLesson?.StartTime,
+            nextLesson?.Subject);
+    }
+
+    private static ParentDashboardSessionDto MapDashboardSession(
+        Lesson lesson,
+        IReadOnlyDictionary<Guid, Tenant> tenants)
+    {
+        tenants.TryGetValue(lesson.TenantId, out var tenant);
+        var tutorName = tenant?.Name ?? lesson.Title;
+        return new ParentDashboardSessionDto(
+            lesson.Id,
+            tutorName,
+            lesson.Subject,
+            lesson.StartTime,
+            lesson.Mode.ToString());
+    }
+
+    private static IReadOnlyList<ParentDashboardCalendarDayDto> BuildWeekCalendar(
+        IReadOnlyList<Lesson> lessons,
+        IReadOnlyList<Student> children,
+        IReadOnlyList<LessonAttendance> attendances)
+    {
+        var start = DateTime.Today;
+        while (start.DayOfWeek != DayOfWeek.Monday)
+            start = start.AddDays(-1);
+
+        if (DateTime.Today.DayOfWeek == DayOfWeek.Sunday)
+            start = start.AddDays(-7);
+
+        var childLookup = children.ToDictionary(c => c.Id);
+        var eventColors = new[] { "purple", "pink", "green", "orange" };
+        var days = new List<ParentDashboardCalendarDayDto>();
+
+        for (var i = 0; i < 5; i++)
+        {
+            var date = start.AddDays(i);
+            var dayLessons = lessons
+                .Where(l => l.StartTime.ToLocalTime().Date == date)
+                .OrderBy(l => l.StartTime)
+                .ToList();
+
+            var events = new List<ParentDashboardCalendarEventDto>();
+            foreach (var lesson in dayLessons)
+            {
+                var studentId = attendances.FirstOrDefault(a => a.LessonId == lesson.Id)?.StudentId;
+                var studentName = studentId.HasValue && childLookup.TryGetValue(studentId.Value, out var child)
+                    ? child.FirstName
+                    : "—";
+
+                events.Add(new ParentDashboardCalendarEventDto(
+                    lesson.Subject ?? lesson.Title,
+                    studentName,
+                    lesson.StartTime.ToLocalTime().ToString("HH:mm"),
+                    eventColors[events.Count % eventColors.Length]));
+            }
+
+            days.Add(new ParentDashboardCalendarDayDto(
+                date,
+                date.ToString("ddd dd"),
+                date == DateTime.Today,
+                events));
+        }
+
+        return days;
+    }
+
+    private static IReadOnlyList<ParentDashboardCalendarDayDto> BuildEmptyWeekCalendar()
+    {
+        var start = DateTime.Today;
+        while (start.DayOfWeek != DayOfWeek.Monday)
+            start = start.AddDays(-1);
+
+        if (DateTime.Today.DayOfWeek == DayOfWeek.Sunday)
+            start = start.AddDays(-7);
+
+        return Enumerable.Range(0, 5)
+            .Select(i =>
+            {
+                var date = start.AddDays(i);
+                return new ParentDashboardCalendarDayDto(
+                    date,
+                    date.ToString("ddd dd"),
+                    date == DateTime.Today,
+                    []);
+            })
+            .ToList();
+    }
+
+    private string ResolveUserDisplayName(string userId)
+    {
+        var parent = _db.ParentProfiles.FirstOrDefault(p => p.UserId == userId);
+        if (parent is not null)
+            return $"{parent.FirstName} {parent.LastName}".Trim();
+
+        var tenant = _db.Tenants.FirstOrDefault(t => t.OwnerUserId == userId);
+        if (tenant is not null)
+            return tenant.Name;
+
+        return "Utilisateur";
+    }
+
+    private static string TruncatePreview(string body)
+    {
+        var trimmed = body.Trim();
+        return trimmed.Length <= 80 ? trimmed : $"{trimmed[..77]}…";
+    }
 
     private static IReadOnlyList<string> ParseSubjects(string? subjects) =>
         string.IsNullOrWhiteSpace(subjects)

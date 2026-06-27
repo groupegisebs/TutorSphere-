@@ -128,6 +128,7 @@ public class StudentService : IStudentService
         s.IsAutonomous,
         s.ParentProfileId,
         null,
+        s.PhotoUrl,
         s.SchoolLevel,
         s.SchoolName,
         ParseSubjects(s.Subjects));

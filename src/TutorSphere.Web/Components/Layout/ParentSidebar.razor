@@ -2,11 +2,15 @@
 @inject IStringLocalizer<SharedResources> L
 @inject AuthService AuthSvc
 @inject NavigationManager Navigation
+@inject ApiClient Api
 
 <div class="sidebar-brand sidebar-brand--navy">
     <a class="sidebar-brand-link" href="parent/dashboard">
-        <img class="sidebar-brand-logo" src="images/tutorsphere-logo.png" alt="@L["AppName"]" />
-        <span class="sidebar-brand-text">@L["AppName"]</span>
+        <img class="sidebar-brand-logo app-logo-compact" src="images/tutorsphere-logo-full.png" alt="@L["AppName"]" />
+        <div class="sidebar-brand-text-group">
+            <span class="sidebar-brand-text">@L["AppName"]</span>
+            <span class="sidebar-brand-tagline">@L["AppTagline"]</span>
+        </div>
     </a>
 </div>
 
@@ -60,9 +64,9 @@
             <NavLink class="nav-link" href="parent/messages">
                 <i class="bi bi-chat-left-text" aria-hidden="true"></i>
                 <span>@L["Nav_Messages"]</span>
-                @if (UnreadMessages > 0)
+                @if (_unreadMessages > 0)
                 {
-                    <span class="sidebar-badge sidebar-badge--purple">@UnreadMessages</span>
+                    <span class="sidebar-badge sidebar-badge--purple">@_unreadMessages</span>
                 }
             </NavLink>
         </div>
@@ -101,5 +105,23 @@
 </div>
 
 @code {
-    private const int UnreadMessages = 3;
+    private int _unreadMessages;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var me = await Api.GetAsync<ParentMeDto>("api/parent/me");
+            if (me is not null)
+                _unreadMessages = me.UnreadMessagesCount;
+        }
+        catch { }
+    }
+
+    private record ParentMeDto(
+        string FirstName,
+        string LastName,
+        string Email,
+        int ChildrenCount,
+        int UnreadMessagesCount);
 }

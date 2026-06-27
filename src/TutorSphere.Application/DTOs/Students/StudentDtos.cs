@@ -11,6 +11,7 @@ public record StudentDto(
     bool IsAutonomous,
     Guid ParentProfileId,
     string? ParentName,
+    string? PhotoUrl,
     string? SchoolLevel,
     string? SchoolName,
     IReadOnlyList<string> Subjects);
