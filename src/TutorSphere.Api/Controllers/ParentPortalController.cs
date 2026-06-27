@@ -1,7 +1,7 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using TutorSphere.Application.Common;
 using TutorSphere.Application.DTOs.Parents;
 using TutorSphere.Application.DTOs.Students;
 using TutorSphere.Application.Services;
@@ -21,7 +21,7 @@ public class ParentPortalController : ControllerBase
     [HttpGet("me")]
     public async Task<ActionResult<ParentDto>> Me(CancellationToken ct)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = User.GetUserId();
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
@@ -32,7 +32,7 @@ public class ParentPortalController : ControllerBase
     [HttpGet("children")]
     public async Task<ActionResult<IReadOnlyList<StudentDto>>> Children(CancellationToken ct)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = User.GetUserId();
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
@@ -42,7 +42,7 @@ public class ParentPortalController : ControllerBase
     [HttpGet("dashboard")]
     public async Task<ActionResult<ParentDashboardDto>> Dashboard(CancellationToken ct)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = User.GetUserId();
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
@@ -53,7 +53,7 @@ public class ParentPortalController : ControllerBase
     [HttpPost("children")]
     public async Task<ActionResult<StudentDto>> AddChild([FromBody] ParentAddChildRequest request, CancellationToken ct)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = User.GetUserId();
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 

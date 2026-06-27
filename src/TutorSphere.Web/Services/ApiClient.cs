@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -15,6 +16,8 @@ public sealed record ApiResult<T>(T? Value, string? Error)
 /// </summary>
 public sealed class ApiClient
 {
+    public const string SessionExpiredMessage = "Session expirée. Veuillez vous reconnecter.";
+
     private readonly HttpClient _http;
     private readonly AuthService _auth;
 
@@ -27,19 +30,44 @@ public sealed class ApiClient
         _auth = auth;
     }
 
-    private HttpRequestMessage BuildRequest(HttpMethod method, string url)
+    private async Task<HttpRequestMessage> BuildRequestAsync(HttpMethod method, string url)
     {
+        await _auth.EnsureSessionRestoredAsync();
         var req = new HttpRequestMessage(method, url);
         if (!string.IsNullOrEmpty(_auth.Token))
             req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _auth.Token);
         return req;
     }
 
+    private async Task<ApiResult<T>?> FailIfUnauthenticatedAsync<T>() where T : class
+    {
+        await _auth.EnsureSessionRestoredAsync();
+        if (string.IsNullOrEmpty(_auth.Token))
+            return new ApiResult<T>(null, SessionExpiredMessage);
+        return null;
+    }
+
+    private static ApiResult<T> UnauthorizedResult<T>() where T : class =>
+        new(null, SessionExpiredMessage);
+
     public async Task<T?> GetAsync<T>(string url) where T : class
     {
         try
         {
-            using var resp = await _http.SendAsync(BuildRequest(HttpMethod.Get, url));
+            if (string.IsNullOrEmpty(_auth.Token))
+            {
+                await _auth.EnsureSessionRestoredAsync();
+                if (string.IsNullOrEmpty(_auth.Token))
+                    return null;
+            }
+
+            using var resp = await _http.SendAsync(await BuildRequestAsync(HttpMethod.Get, url));
+            if (resp.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                _auth.Logout();
+                return null;
+            }
+
             if (!resp.IsSuccessStatusCode) return null;
             return await resp.Content.ReadFromJsonAsync<T>(JsonOpts);
         }
@@ -54,12 +82,22 @@ public sealed class ApiClient
 
     public async Task<ApiResult<T>> PostWithErrorAsync<T>(string url, object body) where T : class
     {
+        var authFailure = await FailIfUnauthenticatedAsync<T>();
+        if (authFailure is not null)
+            return authFailure;
+
         try
         {
-            var req = BuildRequest(HttpMethod.Post, url);
+            var req = await BuildRequestAsync(HttpMethod.Post, url);
             req.Content = JsonContent.Create(body, options: JsonOpts);
             using var resp = await _http.SendAsync(req);
             var responseBody = await resp.Content.ReadAsStringAsync();
+
+            if (resp.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                _auth.Logout();
+                return UnauthorizedResult<T>();
+            }
 
             if (!resp.IsSuccessStatusCode)
             {
@@ -87,9 +125,22 @@ public sealed class ApiClient
     {
         try
         {
-            var req = BuildRequest(HttpMethod.Put, url);
+            if (string.IsNullOrEmpty(_auth.Token))
+            {
+                await _auth.EnsureSessionRestoredAsync();
+                if (string.IsNullOrEmpty(_auth.Token))
+                    return null;
+            }
+
+            var req = await BuildRequestAsync(HttpMethod.Put, url);
             req.Content = JsonContent.Create(body, options: JsonOpts);
             using var resp = await _http.SendAsync(req);
+            if (resp.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                _auth.Logout();
+                return null;
+            }
+
             if (!resp.IsSuccessStatusCode) return null;
             return await resp.Content.ReadFromJsonAsync<T>(JsonOpts);
         }
@@ -100,7 +151,20 @@ public sealed class ApiClient
     {
         try
         {
-            using var resp = await _http.SendAsync(BuildRequest(HttpMethod.Delete, url));
+            if (string.IsNullOrEmpty(_auth.Token))
+            {
+                await _auth.EnsureSessionRestoredAsync();
+                if (string.IsNullOrEmpty(_auth.Token))
+                    return false;
+            }
+
+            using var resp = await _http.SendAsync(await BuildRequestAsync(HttpMethod.Delete, url));
+            if (resp.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                _auth.Logout();
+                return false;
+            }
+
             return resp.IsSuccessStatusCode;
         }
         catch { return false; }

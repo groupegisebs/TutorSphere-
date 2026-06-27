@@ -2,23 +2,28 @@ using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.JSInterop;
 
 namespace TutorSphere.Web.Services;
 
 /// <summary>
 /// Holds login state for the current Blazor circuit.
-/// On a page reload the state is lost and the user lands on /login again.
-/// A future phase can promote tokens to HttpOnly cookies for persistence.
+/// Tokens are mirrored to sessionStorage so interactive circuits can restore auth after reconnect.
 /// </summary>
 public sealed class AuthService
 {
     private readonly HttpClient _http;
     private readonly CustomAuthenticationStateProvider _authProvider;
+    private readonly IJSRuntime _js;
+    private bool _restoreAttempted;
 
-    public AuthService(HttpClient http, AuthenticationStateProvider authProvider)
+    private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
+
+    public AuthService(HttpClient http, AuthenticationStateProvider authProvider, IJSRuntime js)
     {
         _http = http;
         _authProvider = (CustomAuthenticationStateProvider)authProvider;
+        _js = js;
     }
 
     public bool IsAuthenticated => _authProvider.IsAuthenticated;
@@ -43,13 +48,15 @@ public sealed class AuthService
                 return new LoginResult(false, msg, null);
             }
 
-            var result = await resp.Content.ReadFromJsonAsync<AuthResponse>(
-                new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            var result = await resp.Content.ReadFromJsonAsync<AuthResponse>(JsonOpts);
 
             if (result is null || string.IsNullOrWhiteSpace(result.Token))
                 return new LoginResult(false, "Réponse inattendue du serveur.", null);
 
             _authProvider.MarkAuthenticated(result);
+            await PersistSessionAsync(result);
+            _restoreAttempted = true;
+
             var role = result.Role ?? "";
             return new LoginResult(true, null, RoleToRoute(role));
         }
@@ -59,7 +66,59 @@ public sealed class AuthService
         }
     }
 
-    public void Logout() => _authProvider.MarkLoggedOut();
+    public void Logout()
+    {
+        _authProvider.MarkLoggedOut();
+        _restoreAttempted = false;
+        _ = ClearSessionAsync();
+    }
+
+    /// <summary>Restores auth from sessionStorage when the circuit lost in-memory state.</summary>
+    public async Task EnsureSessionRestoredAsync()
+    {
+        if (!string.IsNullOrEmpty(Token))
+            return;
+
+        if (_restoreAttempted)
+            return;
+
+        _restoreAttempted = true;
+
+        try
+        {
+            var json = await _js.InvokeAsync<string?>("tsAuth.load");
+            if (string.IsNullOrWhiteSpace(json))
+                return;
+
+            var auth = JsonSerializer.Deserialize<AuthResponse>(json, JsonOpts);
+            if (auth is not null && !string.IsNullOrWhiteSpace(auth.Token))
+                _authProvider.MarkAuthenticated(auth);
+        }
+        catch (InvalidOperationException)
+        {
+            // Static prerender — JS interop unavailable; allow retry later
+            _restoreAttempted = false;
+        }
+        catch (JSException) { }
+    }
+
+    private async Task PersistSessionAsync(AuthResponse auth)
+    {
+        try
+        {
+            var json = JsonSerializer.Serialize(auth, JsonOpts);
+            await _js.InvokeVoidAsync("tsAuth.save", json);
+        }
+        catch (InvalidOperationException) { }
+        catch (JSException) { }
+    }
+
+    private async Task ClearSessionAsync()
+    {
+        try { await _js.InvokeVoidAsync("tsAuth.clear"); }
+        catch (InvalidOperationException) { }
+        catch (JSException) { }
+    }
 
     private static string RoleToRoute(string role) => role switch
     {
@@ -95,7 +154,7 @@ internal sealed record AuthResponse(
 
 /// <summary>
 /// Circuit-scoped authentication state.
-/// The state lives as long as the Blazor Server circuit; it does not persist across browser refreshes.
+/// The state lives as long as the Blazor Server circuit; sessionStorage restores it after reconnect.
 /// </summary>
 public sealed class CustomAuthenticationStateProvider : AuthenticationStateProvider
 {

@@ -1,6 +1,6 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using TutorSphere.Application.Common;
 using TutorSphere.Application.DTOs.Students;
 using TutorSphere.Application.Services;
 using TutorSphere.Domain.Enums;
@@ -19,7 +19,7 @@ public class StudentPortalController : ControllerBase
     [HttpGet("me")]
     public async Task<ActionResult<StudentDto>> Me(CancellationToken ct)
     {
-        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userId = User.GetUserId();
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 

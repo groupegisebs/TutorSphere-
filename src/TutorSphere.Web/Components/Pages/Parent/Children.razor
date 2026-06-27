@@ -5,6 +5,8 @@
 @using TutorSphere.Application.DTOs.Students
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
+@inject AuthService Auth
+@inject NavigationManager Navigation
 <PageTitle>Mes Enfants – TutorSphere</PageTitle>
 
 <div class="ts-page-header">
@@ -196,7 +198,11 @@ else
 
     private static readonly string[] Colors = ["#7c3aed", "#0ea5e9", "#10b981", "#ec4899", "#f59e0b"];
 
-    protected override async Task OnInitializedAsync() => await LoadChildrenAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.EnsureSessionRestoredAsync();
+        await LoadChildrenAsync();
+    }
 
     private async Task LoadChildrenAsync()
     {
@@ -256,6 +262,13 @@ else
         _saving = true;
         try
         {
+            await Auth.EnsureSessionRestoredAsync();
+            if (string.IsNullOrEmpty(Auth.Token))
+            {
+                Navigation.NavigateTo("/login/parent", forceLoad: true);
+                return;
+            }
+
             var payload = new
             {
                 firstName = _form.FirstName.Trim(),
@@ -270,6 +283,12 @@ else
             var result = await Api.PostWithErrorAsync<StudentDto>("api/parent/children", payload);
             if (!result.IsSuccess)
             {
+                if (result.Error == ApiClient.SessionExpiredMessage)
+                {
+                    Navigation.NavigateTo("/login/parent", forceLoad: true);
+                    return;
+                }
+
                 _formError = result.Error ?? "Impossible d'ajouter l'enfant. Vérifiez les informations saisies.";
                 return;
             }

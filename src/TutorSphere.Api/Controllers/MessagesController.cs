@@ -1,6 +1,6 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using TutorSphere.Application.Common;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.Messages;
 using TutorSphere.Domain.Enums;
@@ -55,6 +55,6 @@ public class MessagesController : ControllerBase
     }
 
     private string GetUserId() =>
-        User.FindFirstValue(ClaimTypes.NameIdentifier)
+        User.GetUserId()
         ?? throw new UnauthorizedAccessException("Utilisateur non authentifié.");
 }

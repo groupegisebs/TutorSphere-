@@ -1,7 +1,7 @@
-using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using TutorSphere.Application.Common;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.Payments;
 using TutorSphere.Domain.Enums;
@@ -140,7 +140,7 @@ public class PaymentsController : ControllerBase
         {
             var response = await _paymentGateway.CancelSubscriptionAsync(subscriptionId, cancelImmediately, ct);
 
-            var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var currentUserId = User.GetUserId();
             if (!string.IsNullOrEmpty(currentUserId))
             {
                 var currentUser = await _userManager.FindByIdAsync(currentUserId);
