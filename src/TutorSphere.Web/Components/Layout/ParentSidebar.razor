@@ -62,7 +62,7 @@
                 <span>@L["Nav_Messages"]</span>
                 @if (UnreadMessages > 0)
                 {
-                    <span class="sidebar-badge">@UnreadMessages</span>
+                    <span class="sidebar-badge sidebar-badge--purple">@UnreadMessages</span>
                 }
             </NavLink>
         </div>
@@ -93,27 +93,13 @@
     </nav>
 
     <div class="sidebar-upgrade sidebar-upgrade--parent" onclick="event.stopPropagation()">
-        <div class="sidebar-upgrade-icon"><i class="bi bi-star-fill" aria-hidden="true"></i></div>
+        <div class="sidebar-upgrade-icon sidebar-upgrade-icon--crown" aria-hidden="true">👑</div>
         <p class="sidebar-upgrade-title">@L["Sidebar_Upgrade_Title"]</p>
         <p class="sidebar-upgrade-text">@L["Parent_Sidebar_Upgrade_Text"]</p>
-        <a href="parent/subscriptions" class="sidebar-upgrade-btn">@L["Sidebar_Upgrade_CTA"]</a>
+        <a href="parent/subscriptions" class="sidebar-upgrade-btn sidebar-upgrade-btn--gradient">@L["Sidebar_Upgrade_CTA"]</a>
     </div>
 </div>
 
 @code {
-    private int UnreadMessages => 3;
-
-    private string _displayName => AuthSvc.UserName ?? AuthSvc.UserEmail ?? "Parent";
-    private string _initials
-    {
-        get
-        {
-            var name = _displayName;
-            if (string.IsNullOrWhiteSpace(name)) return "?";
-            var parts = name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            return parts.Length >= 2
-                ? $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant()
-                : name[..Math.Min(2, name.Length)].ToUpperInvariant();
-        }
-    }
+    private const int UnreadMessages = 3;
 }

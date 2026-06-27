@@ -2,23 +2,26 @@
 @inject IStringLocalizer<SharedResources> L
 @inject NavigationManager Navigation
 @inject AuthService AuthSvc
+@inject ApiClient Api
 
-<div class="top-row px-4 @(_showUserMenu ? "top-row--menu-open" : null)">
+<div class="top-row top-row--parent px-4 @(_showUserMenu ? "top-row--menu-open" : null)">
     <div class="top-row-actions ms-auto">
         <button type="button" class="topbar-notification" aria-label="@L["Nav_Notifications"]">
             <i class="bi bi-bell" aria-hidden="true"></i>
-            <span class="topbar-notification-badge">@NotificationCount</span>
+            <span class="topbar-notification-badge topbar-notification-badge--danger">@NotificationCount</span>
         </button>
-        <div class="topbar-user-menu-wrapper ms-2">
-            <span class="topbar-premium-badge d-none d-md-inline-flex">
-                <i class="bi bi-star-fill" aria-hidden="true"></i>
-                @L["Parent_PremiumBadge"]
-            </span>
-            <button type="button" class="topbar-user-btn" aria-label="@L["Nav_UserMenu"]"
+        <div class="topbar-user-menu-wrapper">
+            <button type="button" class="topbar-user-btn topbar-user-btn--parent" aria-label="@L["Nav_UserMenu"]"
                     @onclick="ToggleUserMenu" @onclick:stopPropagation="true">
-                <span class="topbar-user-avatar">@_initials</span>
-                <span class="topbar-user-name d-none d-lg-inline">@_displayName</span>
-                <i class="bi bi-chevron-down ms-1" aria-hidden="true"></i>
+                <img class="topbar-user-photo" src="images/parent/parent-profile.png" alt="" />
+                <span class="topbar-user-info d-none d-md-flex">
+                    <span class="topbar-user-name">@_displayName</span>
+                    <span class="topbar-user-role">
+                        <i class="bi bi-star-fill" aria-hidden="true"></i>
+                        @L["Parent_PremiumBadge"]
+                    </span>
+                </span>
+                <i class="bi bi-chevron-down topbar-user-chevron" aria-hidden="true"></i>
             </button>
             @if (_showUserMenu)
             {
@@ -54,9 +57,25 @@
 @code {
     private bool _showUserMenu;
     private const int NotificationCount = 5;
+    private string _displayName = "Parent";
 
-    private string _displayName => AuthSvc.UserName ?? AuthSvc.UserEmail ?? "Parent";
-    private string _initials => GetInitials(_displayName);
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var me = await Api.GetAsync<ParentMeDto>("api/parent/me");
+            if (me is not null)
+            {
+                var name = $"{me.FirstName} {me.LastName}".Trim();
+                if (!string.IsNullOrWhiteSpace(name))
+                    _displayName = name;
+            }
+        }
+        catch { }
+
+        if (_displayName == "Parent")
+            _displayName = AuthSvc.UserName ?? AuthSvc.UserEmail ?? "Parent";
+    }
 
     private void ToggleUserMenu() => _showUserMenu = !_showUserMenu;
     private void CloseUserMenu() => _showUserMenu = false;
@@ -69,12 +88,5 @@
         return Task.CompletedTask;
     }
 
-    private static string GetInitials(string name)
-    {
-        if (string.IsNullOrWhiteSpace(name)) return "?";
-        var parts = name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        return parts.Length >= 2
-            ? $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant()
-            : name[..Math.Min(2, name.Length)].ToUpperInvariant();
-    }
+    private record ParentMeDto(string FirstName, string LastName, string Email, int ChildrenCount);
 }
