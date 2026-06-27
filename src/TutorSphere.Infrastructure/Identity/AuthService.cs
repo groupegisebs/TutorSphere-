@@ -20,6 +20,7 @@ public interface IAuthService
     Task ConfirmEmailAsync(string userId, string token, CancellationToken ct = default);
     Task ForgotPasswordAsync(string email, CancellationToken ct = default);
     Task ResetPasswordAsync(string userId, string token, string newPassword, CancellationToken ct = default);
+    Task EnsureParentProfileForUserAsync(string userId, CancellationToken ct = default);
 }
 
 public class AuthService : IAuthService
@@ -58,7 +59,7 @@ public class AuthService : IAuthService
 
         await _userManager.AddToRoleAsync(user, role);
 
-        if (role == UserRoles.Parent)
+        if (UserRoles.ParentPortalRoles.Contains(role))
             await EnsureParentProfileAsync(user, ct);
 
         await _email.SendWelcomeAsync(user.Email!, user.FirstName, ct);
@@ -85,10 +86,26 @@ public class AuthService : IAuthService
         var roles = await _userManager.GetRolesAsync(user);
         var role = roles.FirstOrDefault() ?? UserRoles.Parent;
 
-        if (role == UserRoles.Parent)
+        if (UserRoles.ParentPortalRoles.Contains(role))
             await EnsureParentProfileAsync(user, ct);
 
         return await BuildAuthResponse(user, role);
+    }
+
+    public async Task EnsureParentProfileForUserAsync(string userId, CancellationToken ct = default)
+    {
+        if (_db.ParentProfilesForAnyTenant.Any(p => p.UserId == userId))
+            return;
+
+        var user = await _userManager.FindByIdAsync(userId);
+        if (user is null)
+            return;
+
+        var roles = await _userManager.GetRolesAsync(user);
+        if (!roles.Any(r => UserRoles.ParentPortalRoles.Contains(r)))
+            return;
+
+        await EnsureParentProfileAsync(user, ct);
     }
 
     public async Task<RegisterSchoolResponse> RegisterSchoolAsync(RegisterSchoolRequest request, CancellationToken ct = default)

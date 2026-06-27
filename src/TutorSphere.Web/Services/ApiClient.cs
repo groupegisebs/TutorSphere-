@@ -50,28 +50,58 @@ public sealed class ApiClient
     private static ApiResult<T> UnauthorizedResult<T>() where T : class =>
         new(null, SessionExpiredMessage);
 
-    public async Task<T?> GetAsync<T>(string url) where T : class
+    private static ApiResult<T> ForbiddenResult<T>() where T : class =>
+        new(null, "Accès refusé. Connectez-vous avec un compte parent.");
+
+    private static ApiResult<T> FailFromResponse<T>(HttpResponseMessage resp, string responseBody) where T : class
     {
+        if (resp.StatusCode == HttpStatusCode.Forbidden)
+            return ForbiddenResult<T>();
+
+        var error = ExtractError(responseBody)
+            ?? $"La requête a échoué ({(int)resp.StatusCode}).";
+        return new ApiResult<T>(null, error);
+    }
+
+    public async Task<ApiResult<T>> GetWithErrorAsync<T>(string url) where T : class
+    {
+        var authFailure = await FailIfUnauthenticatedAsync<T>();
+        if (authFailure is not null)
+            return authFailure;
+
         try
         {
-            if (string.IsNullOrEmpty(_auth.Token))
-            {
-                await _auth.EnsureSessionRestoredAsync();
-                if (string.IsNullOrEmpty(_auth.Token))
-                    return null;
-            }
-
             using var resp = await _http.SendAsync(await BuildRequestAsync(HttpMethod.Get, url));
+            var responseBody = await resp.Content.ReadAsStringAsync();
+
             if (resp.StatusCode == HttpStatusCode.Unauthorized)
             {
                 _auth.Logout();
-                return null;
+                return UnauthorizedResult<T>();
             }
 
-            if (!resp.IsSuccessStatusCode) return null;
-            return await resp.Content.ReadFromJsonAsync<T>(JsonOpts);
+            if (!resp.IsSuccessStatusCode)
+                return FailFromResponse<T>(resp, responseBody);
+
+            if (string.IsNullOrWhiteSpace(responseBody))
+                return new ApiResult<T>(null, "Réponse vide du serveur.");
+
+            var value = JsonSerializer.Deserialize<T>(responseBody, JsonOpts);
+            if (value is null)
+                return new ApiResult<T>(null, "Réponse inattendue du serveur.");
+
+            return new ApiResult<T>(value, null);
         }
-        catch { return null; }
+        catch (Exception ex)
+        {
+            return new ApiResult<T>(null, $"Erreur de connexion à l'API : {ex.Message}");
+        }
+    }
+
+    public async Task<T?> GetAsync<T>(string url) where T : class
+    {
+        var result = await GetWithErrorAsync<T>(url);
+        return result.Value;
     }
 
     public async Task<T?> PostAsync<T>(string url, object body) where T : class
@@ -100,11 +130,44 @@ public sealed class ApiClient
             }
 
             if (!resp.IsSuccessStatusCode)
+                return FailFromResponse<T>(resp, responseBody);
+
+            if (string.IsNullOrWhiteSpace(responseBody))
+                return new ApiResult<T>(null, "Réponse vide du serveur.");
+
+            var value = JsonSerializer.Deserialize<T>(responseBody, JsonOpts);
+            if (value is null)
+                return new ApiResult<T>(null, "Réponse inattendue du serveur.");
+
+            return new ApiResult<T>(value, null);
+        }
+        catch (Exception ex)
+        {
+            return new ApiResult<T>(null, $"Erreur de connexion à l'API : {ex.Message}");
+        }
+    }
+
+    public async Task<ApiResult<T>> PutWithErrorAsync<T>(string url, object body) where T : class
+    {
+        var authFailure = await FailIfUnauthenticatedAsync<T>();
+        if (authFailure is not null)
+            return authFailure;
+
+        try
+        {
+            var req = await BuildRequestAsync(HttpMethod.Put, url);
+            req.Content = JsonContent.Create(body, options: JsonOpts);
+            using var resp = await _http.SendAsync(req);
+            var responseBody = await resp.Content.ReadAsStringAsync();
+
+            if (resp.StatusCode == HttpStatusCode.Unauthorized)
             {
-                var error = ExtractError(responseBody)
-                    ?? $"La requête a échoué ({(int)resp.StatusCode}).";
-                return new ApiResult<T>(null, error);
+                _auth.Logout();
+                return UnauthorizedResult<T>();
             }
+
+            if (!resp.IsSuccessStatusCode)
+                return FailFromResponse<T>(resp, responseBody);
 
             if (string.IsNullOrWhiteSpace(responseBody))
                 return new ApiResult<T>(null, "Réponse vide du serveur.");
@@ -123,51 +186,49 @@ public sealed class ApiClient
 
     public async Task<T?> PutAsync<T>(string url, object body) where T : class
     {
+        var result = await PutWithErrorAsync<T>(url, body);
+        return result.Value;
+    }
+
+    public async Task<ApiResult<bool>> DeleteWithErrorAsync(string url)
+    {
+        await _auth.EnsureSessionRestoredAsync();
+        if (string.IsNullOrEmpty(_auth.Token))
+            return new ApiResult<bool>(false, SessionExpiredMessage);
+
         try
         {
-            if (string.IsNullOrEmpty(_auth.Token))
-            {
-                await _auth.EnsureSessionRestoredAsync();
-                if (string.IsNullOrEmpty(_auth.Token))
-                    return null;
-            }
+            using var resp = await _http.SendAsync(await BuildRequestAsync(HttpMethod.Delete, url));
+            var responseBody = await resp.Content.ReadAsStringAsync();
 
-            var req = await BuildRequestAsync(HttpMethod.Put, url);
-            req.Content = JsonContent.Create(body, options: JsonOpts);
-            using var resp = await _http.SendAsync(req);
             if (resp.StatusCode == HttpStatusCode.Unauthorized)
             {
                 _auth.Logout();
-                return null;
+                return new ApiResult<bool>(false, SessionExpiredMessage);
             }
 
-            if (!resp.IsSuccessStatusCode) return null;
-            return await resp.Content.ReadFromJsonAsync<T>(JsonOpts);
+            if (resp.StatusCode == HttpStatusCode.Forbidden)
+                return new ApiResult<bool>(false, "Accès refusé. Connectez-vous avec un compte parent.");
+
+            if (!resp.IsSuccessStatusCode)
+            {
+                var error = ExtractError(responseBody)
+                    ?? $"La requête a échoué ({(int)resp.StatusCode}).";
+                return new ApiResult<bool>(false, error);
+            }
+
+            return new ApiResult<bool>(true, null);
         }
-        catch { return null; }
+        catch (Exception ex)
+        {
+            return new ApiResult<bool>(false, $"Erreur de connexion à l'API : {ex.Message}");
+        }
     }
 
     public async Task<bool> DeleteAsync(string url)
     {
-        try
-        {
-            if (string.IsNullOrEmpty(_auth.Token))
-            {
-                await _auth.EnsureSessionRestoredAsync();
-                if (string.IsNullOrEmpty(_auth.Token))
-                    return false;
-            }
-
-            using var resp = await _http.SendAsync(await BuildRequestAsync(HttpMethod.Delete, url));
-            if (resp.StatusCode == HttpStatusCode.Unauthorized)
-            {
-                _auth.Logout();
-                return false;
-            }
-
-            return resp.IsSuccessStatusCode;
-        }
-        catch { return false; }
+        var result = await DeleteWithErrorAsync(url);
+        return result.Error is null;
     }
 
     internal static string? ExtractError(string body)

@@ -331,11 +331,21 @@ public static class DependencyInjection
         if (tenant is null)
             return;
 
-        var parentUsers = await userManager.GetUsersInRoleAsync(UserRoles.Parent);
-        var added = false;
-        foreach (var user in parentUsers)
+        var parentUserIds = new HashSet<string>();
+        foreach (var role in UserRoles.ParentPortalRoles)
         {
-            if (db.ParentProfilesSet.Any(p => p.UserId == user.Id))
+            foreach (var user in await userManager.GetUsersInRoleAsync(role))
+                parentUserIds.Add(user.Id);
+        }
+
+        var added = false;
+        foreach (var userId in parentUserIds)
+        {
+            if (db.ParentProfilesSet.Any(p => p.UserId == userId))
+                continue;
+
+            var user = await userManager.FindByIdAsync(userId);
+            if (user is null)
                 continue;
 
             db.ParentProfilesSet.Add(new ParentProfile

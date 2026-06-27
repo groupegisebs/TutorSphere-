@@ -18,4 +18,9 @@ public static class UserRoles
         Parent,
         Student
     ];
+
+    /// <summary>Roles allowed to use the parent portal API and UI.</summary>
+    public const string ParentPortalAccess = $"{Parent},{SuperAdmin},{PlatformAdmin}";
+
+    public static readonly string[] ParentPortalRoles = [Parent, SuperAdmin, PlatformAdmin];
 }

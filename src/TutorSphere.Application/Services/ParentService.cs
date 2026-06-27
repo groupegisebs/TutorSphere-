@@ -17,6 +17,8 @@ public interface IParentService
     Task<IReadOnlyList<StudentDto>> GetChildrenAsync(Guid parentId, CancellationToken ct = default);
     Task<IReadOnlyList<StudentDto>> GetChildrenForUserAsync(string userId, CancellationToken ct = default);
     Task<StudentDto> AddChildForUserAsync(string userId, ParentAddChildRequest request, CancellationToken ct = default);
+    Task<StudentDto> UpdateChildForUserAsync(string userId, Guid childId, ParentUpdateChildRequest request, CancellationToken ct = default);
+    Task DeleteChildForUserAsync(string userId, Guid childId, CancellationToken ct = default);
     Task<ParentDashboardDto?> GetDashboardForUserAsync(string userId, CancellationToken ct = default);
 }
 
@@ -126,20 +128,56 @@ public class ParentService : IParentService
         var parent = _db.ParentProfilesForAnyTenant.FirstOrDefault(p => p.UserId == userId)
             ?? throw new InvalidOperationException("Profil parent introuvable. Déconnectez-vous puis reconnectez-vous, ou contactez le support.");
 
-        if (string.IsNullOrWhiteSpace(request.FirstName) || string.IsNullOrWhiteSpace(request.LastName))
-            throw new InvalidOperationException("Le prénom et le nom sont obligatoires.");
+        return await AddChildForParentAsync(parent, request, ct);
+    }
 
-        DateTime? dateOfBirth = null;
-        if (request.DateOfBirth.HasValue)
-        {
-            var dob = request.DateOfBirth.Value.Date;
-            if (dob > DateTime.UtcNow.Date)
-                throw new InvalidOperationException("La date de naissance ne peut pas être dans le futur.");
+    public async Task<StudentDto> UpdateChildForUserAsync(string userId, Guid childId, ParentUpdateChildRequest request, CancellationToken ct = default)
+    {
+        var parent = _db.ParentProfilesForAnyTenant.FirstOrDefault(p => p.UserId == userId)
+            ?? throw new InvalidOperationException("Profil parent introuvable. Déconnectez-vous puis reconnectez-vous, ou contactez le support.");
 
-            dateOfBirth = DateTime.SpecifyKind(dob, DateTimeKind.Utc);
-        }
+        var student = _db.StudentsForAnyTenant.FirstOrDefault(s => s.Id == childId && s.ParentProfileId == parent.Id)
+            ?? throw new InvalidOperationException("Enfant introuvable.");
 
-        var email = string.IsNullOrWhiteSpace(request.Email) ? null : request.Email.Trim();
+        ValidateChildNames(request.FirstName, request.LastName);
+        var dateOfBirth = NormalizeDateOfBirth(request.DateOfBirth);
+        var email = NormalizeEmail(request.Email);
+
+        if (email is not null &&
+            _db.StudentsForAnyTenant.Any(s => s.Id != childId && s.Email != null && s.Email.ToLower() == email.ToLower()))
+            throw new InvalidOperationException("Cette adresse courriel est déjà utilisée par un autre élève.");
+
+        student.FirstName = request.FirstName.Trim();
+        student.LastName = request.LastName.Trim();
+        student.Email = email;
+        student.DateOfBirth = dateOfBirth;
+        student.SchoolLevel = request.SchoolLevel?.Trim();
+        student.SchoolName = request.SchoolName?.Trim();
+        student.Subjects = request.Subjects?.Trim();
+        student.UpdatedAt = DateTime.UtcNow;
+
+        await _db.SaveChangesAsync(ct);
+        return MapStudentToDto(student);
+    }
+
+    public async Task DeleteChildForUserAsync(string userId, Guid childId, CancellationToken ct = default)
+    {
+        var parent = _db.ParentProfilesForAnyTenant.FirstOrDefault(p => p.UserId == userId)
+            ?? throw new InvalidOperationException("Profil parent introuvable. Déconnectez-vous puis reconnectez-vous, ou contactez le support.");
+
+        var student = _db.StudentsForAnyTenant.FirstOrDefault(s => s.Id == childId && s.ParentProfileId == parent.Id)
+            ?? throw new InvalidOperationException("Enfant introuvable.");
+
+        _db.Remove(student);
+        await _db.SaveChangesAsync(ct);
+    }
+
+    private async Task<StudentDto> AddChildForParentAsync(ParentProfile parent, ParentAddChildRequest request, CancellationToken ct)
+    {
+        ValidateChildNames(request.FirstName, request.LastName);
+        var dateOfBirth = NormalizeDateOfBirth(request.DateOfBirth);
+        var email = NormalizeEmail(request.Email);
+
         if (email is not null &&
             _db.StudentsForAnyTenant.Any(s => s.Email != null && s.Email.ToLower() == email.ToLower()))
             throw new InvalidOperationException("Cette adresse courriel est déjà utilisée par un autre élève.");
@@ -162,6 +200,27 @@ public class ParentService : IParentService
         await _db.SaveChangesAsync(ct);
         return MapStudentToDto(student);
     }
+
+    private static void ValidateChildNames(string firstName, string lastName)
+    {
+        if (string.IsNullOrWhiteSpace(firstName) || string.IsNullOrWhiteSpace(lastName))
+            throw new InvalidOperationException("Le prénom et le nom sont obligatoires.");
+    }
+
+    private static DateTime? NormalizeDateOfBirth(DateTime? dateOfBirth)
+    {
+        if (!dateOfBirth.HasValue)
+            return null;
+
+        var dob = dateOfBirth.Value.Date;
+        if (dob > DateTime.UtcNow.Date)
+            throw new InvalidOperationException("La date de naissance ne peut pas être dans le futur.");
+
+        return DateTime.SpecifyKind(dob, DateTimeKind.Utc);
+    }
+
+    private static string? NormalizeEmail(string? email) =>
+        string.IsNullOrWhiteSpace(email) ? null : email.Trim();
 
     public Task<ParentDashboardDto?> GetDashboardForUserAsync(string userId, CancellationToken ct = default)
     {
