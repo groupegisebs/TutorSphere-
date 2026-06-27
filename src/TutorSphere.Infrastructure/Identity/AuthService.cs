@@ -84,6 +84,10 @@ public class AuthService : IAuthService
 
         var roles = await _userManager.GetRolesAsync(user);
         var role = roles.FirstOrDefault() ?? UserRoles.Parent;
+
+        if (role == UserRoles.Parent)
+            await EnsureParentProfileAsync(user, ct);
+
         return await BuildAuthResponse(user, role);
     }
 
@@ -202,7 +206,7 @@ public class AuthService : IAuthService
 
     private async Task EnsureParentProfileAsync(ApplicationUser user, CancellationToken ct)
     {
-        if (_db.ParentProfiles.Any(p => p.UserId == user.Id))
+        if (_db.ParentProfilesForAnyTenant.Any(p => p.UserId == user.Id))
             return;
 
         var tenantId = user.TenantId ?? _db.Tenants.Select(t => t.Id).FirstOrDefault();

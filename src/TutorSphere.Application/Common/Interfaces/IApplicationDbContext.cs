@@ -7,7 +7,11 @@ public interface IApplicationDbContext
     IQueryable<Tenant> Tenants { get; }
     IQueryable<TenantBranding> TenantBrandings { get; }
     IQueryable<Student> Students { get; }
+    /// <summary>Students without tenant query filter (parent portal).</summary>
+    IQueryable<Student> StudentsForAnyTenant { get; }
     IQueryable<ParentProfile> ParentProfiles { get; }
+    /// <summary>Parent profiles without tenant query filter (parent portal).</summary>
+    IQueryable<ParentProfile> ParentProfilesForAnyTenant { get; }
     IQueryable<SubscriptionOffering> SubscriptionOfferings { get; }
     IQueryable<StudentSubscription> StudentSubscriptions { get; }
     IQueryable<Lesson> Lessons { get; }

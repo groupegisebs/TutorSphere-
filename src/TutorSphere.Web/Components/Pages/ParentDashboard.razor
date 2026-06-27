@@ -4,7 +4,7 @@
 @rendermode InteractiveServer
 @using TutorSphere.Application.DTOs.Parents
 @inject IStringLocalizer<SharedResources> L
-@inject AuthService AuthSvc
+@inject ParentProfileState ParentProfile
 @inject ApiClient Api
 
 <PageTitle>@L["PageTitle_ParentDashboard"]</PageTitle>
@@ -12,7 +12,7 @@
 <div class="parent-dashboard">
     <header class="parent-dashboard-header">
         <div>
-            <h1 class="dashboard-greeting">@L["ParentDashboard_Welcome", _parentName] 👋</h1>
+            <h1 class="dashboard-greeting">@L["ParentDashboard_Welcome", ParentProfile.DisplayName] 👋</h1>
             <p class="dashboard-date">@L["ParentDashboard_Subtitle"]</p>
         </div>
     </header>
@@ -359,7 +359,6 @@
 
     private static readonly string[] ProgressVariants = ["purple", "pink", "purple", "pink"];
 
-    private string _parentName = "Parent";
     private bool _loading = true;
     private ParentDashboardDto? _dashboard;
     private int _lessonsToday;
@@ -379,12 +378,13 @@
 
     protected override async Task OnInitializedAsync()
     {
+        var profileTask = ParentProfile.EnsureLoadedAsync();
+
         try
         {
             _dashboard = await Api.GetAsync<ParentDashboardDto>("api/parent/dashboard");
             if (_dashboard is not null)
             {
-                _parentName = $"{_dashboard.Parent.FirstName} {_dashboard.Parent.LastName}".Trim();
                 _children = _dashboard.Children.ToList();
                 _lessonsToday = _dashboard.LessonsTodayCount;
                 _upcomingSessions = _dashboard.UpcomingSessions.Take(3).ToList();
@@ -415,14 +415,9 @@
                 }
             }
         }
-        catch
-        {
-            _parentName = AuthSvc.UserName ?? AuthSvc.UserEmail ?? "Parent";
-        }
+        catch { }
 
-        if (string.IsNullOrWhiteSpace(_parentName))
-            _parentName = AuthSvc.UserName ?? AuthSvc.UserEmail ?? "Parent";
-
+        await profileTask;
         _loading = false;
     }
 

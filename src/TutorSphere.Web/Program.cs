@@ -26,6 +26,7 @@ builder.Services.AddScoped<CustomAuthenticationStateProvider>();
 builder.Services.AddScoped<AuthenticationStateProvider>(sp =>
     sp.GetRequiredService<CustomAuthenticationStateProvider>());
 builder.Services.AddScoped<AuthService>();
+builder.Services.AddScoped<ParentProfileState>();
 builder.Services.AddScoped<ApiClient>();
 builder.Services.AddScoped<LessonService>();
 builder.Services.AddScoped<HomeworkService>();

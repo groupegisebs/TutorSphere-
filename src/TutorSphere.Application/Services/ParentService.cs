@@ -51,9 +51,9 @@ public class ParentService : IParentService
 
     public Task<ParentDto?> GetByUserIdAsync(string userId, CancellationToken ct = default)
     {
-        var parent = _db.ParentProfiles.FirstOrDefault(p => p.UserId == userId);
+        var parent = _db.ParentProfilesForAnyTenant.FirstOrDefault(p => p.UserId == userId);
         if (parent is null) return Task.FromResult<ParentDto?>(null);
-        var count = _db.Students.Count(s => s.ParentProfileId == parent.Id);
+        var count = _db.StudentsForAnyTenant.Count(s => s.ParentProfileId == parent.Id);
         var unread = _db.Messages.Count(m => m.RecipientUserId == userId && !m.IsRead);
         return Task.FromResult<ParentDto?>(MapToDto(parent, count, unread));
     }
@@ -103,7 +103,7 @@ public class ParentService : IParentService
 
     public Task<IReadOnlyList<StudentDto>> GetChildrenAsync(Guid parentId, CancellationToken ct = default)
     {
-        var children = _db.Students
+        var children = _db.StudentsForAnyTenant
             .Where(s => s.ParentProfileId == parentId)
             .OrderBy(s => s.LastName).ThenBy(s => s.FirstName)
             .ToList()
@@ -114,7 +114,7 @@ public class ParentService : IParentService
 
     public async Task<IReadOnlyList<StudentDto>> GetChildrenForUserAsync(string userId, CancellationToken ct = default)
     {
-        var parent = _db.ParentProfiles.FirstOrDefault(p => p.UserId == userId);
+        var parent = _db.ParentProfilesForAnyTenant.FirstOrDefault(p => p.UserId == userId);
         if (parent is null)
             return [];
 
@@ -123,11 +123,26 @@ public class ParentService : IParentService
 
     public async Task<StudentDto> AddChildForUserAsync(string userId, ParentAddChildRequest request, CancellationToken ct = default)
     {
-        var parent = _db.ParentProfiles.FirstOrDefault(p => p.UserId == userId)
-            ?? throw new InvalidOperationException("Profil parent introuvable.");
+        var parent = _db.ParentProfilesForAnyTenant.FirstOrDefault(p => p.UserId == userId)
+            ?? throw new InvalidOperationException("Profil parent introuvable. Déconnectez-vous puis reconnectez-vous, ou contactez le support.");
 
         if (string.IsNullOrWhiteSpace(request.FirstName) || string.IsNullOrWhiteSpace(request.LastName))
             throw new InvalidOperationException("Le prénom et le nom sont obligatoires.");
+
+        DateTime? dateOfBirth = null;
+        if (request.DateOfBirth.HasValue)
+        {
+            var dob = request.DateOfBirth.Value.Date;
+            if (dob > DateTime.UtcNow.Date)
+                throw new InvalidOperationException("La date de naissance ne peut pas être dans le futur.");
+
+            dateOfBirth = DateTime.SpecifyKind(dob, DateTimeKind.Utc);
+        }
+
+        var email = string.IsNullOrWhiteSpace(request.Email) ? null : request.Email.Trim();
+        if (email is not null &&
+            _db.StudentsForAnyTenant.Any(s => s.Email != null && s.Email.ToLower() == email.ToLower()))
+            throw new InvalidOperationException("Cette adresse courriel est déjà utilisée par un autre élève.");
 
         var student = new Student
         {
@@ -135,8 +150,8 @@ public class ParentService : IParentService
             ParentProfileId = parent.Id,
             FirstName = request.FirstName.Trim(),
             LastName = request.LastName.Trim(),
-            Email = request.Email?.Trim(),
-            DateOfBirth = request.DateOfBirth,
+            Email = email,
+            DateOfBirth = dateOfBirth,
             SchoolLevel = request.SchoolLevel?.Trim(),
             SchoolName = request.SchoolName?.Trim(),
             Subjects = request.Subjects?.Trim(),
@@ -150,11 +165,11 @@ public class ParentService : IParentService
 
     public Task<ParentDashboardDto?> GetDashboardForUserAsync(string userId, CancellationToken ct = default)
     {
-        var parent = _db.ParentProfiles.FirstOrDefault(p => p.UserId == userId);
+        var parent = _db.ParentProfilesForAnyTenant.FirstOrDefault(p => p.UserId == userId);
         if (parent is null)
             return Task.FromResult<ParentDashboardDto?>(null);
 
-        var children = _db.Students
+        var children = _db.StudentsForAnyTenant
             .Where(s => s.ParentProfileId == parent.Id)
             .OrderBy(s => s.LastName).ThenBy(s => s.FirstName)
             .ToList();
@@ -493,7 +508,7 @@ public class ParentService : IParentService
 
     private string ResolveUserDisplayName(string userId)
     {
-        var parent = _db.ParentProfiles.FirstOrDefault(p => p.UserId == userId);
+        var parent = _db.ParentProfilesForAnyTenant.FirstOrDefault(p => p.UserId == userId);
         if (parent is not null)
             return $"{parent.FirstName} {parent.LastName}".Trim();
 

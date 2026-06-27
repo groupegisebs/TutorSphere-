@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using TutorSphere.Application.DTOs.Parents;
 using TutorSphere.Application.DTOs.Students;
 using TutorSphere.Application.Services;
@@ -64,6 +65,10 @@ public class ParentPortalController : ControllerBase
         catch (InvalidOperationException ex)
         {
             return BadRequest(new { error = ex.Message });
+        }
+        catch (DbUpdateException)
+        {
+            return BadRequest(new { error = "Impossible d'enregistrer l'enfant. Vérifiez les informations saisies." });
         }
     }
 }

@@ -36,7 +36,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     IQueryable<Tenant> IApplicationDbContext.Tenants => TenantsSet;
     IQueryable<TenantBranding> IApplicationDbContext.TenantBrandings => TenantBrandingsSet;
     IQueryable<Student> IApplicationDbContext.Students => StudentsSet;
+    IQueryable<Student> IApplicationDbContext.StudentsForAnyTenant => StudentsSet.IgnoreQueryFilters();
     IQueryable<ParentProfile> IApplicationDbContext.ParentProfiles => ParentProfilesSet;
+    IQueryable<ParentProfile> IApplicationDbContext.ParentProfilesForAnyTenant => ParentProfilesSet.IgnoreQueryFilters();
     IQueryable<SubscriptionOffering> IApplicationDbContext.SubscriptionOfferings => SubscriptionOfferingsSet;
     IQueryable<StudentSubscription> IApplicationDbContext.StudentSubscriptions => StudentSubscriptionsSet;
     IQueryable<Lesson> IApplicationDbContext.Lessons => LessonsSet;

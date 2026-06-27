@@ -2,7 +2,7 @@
 @inject IStringLocalizer<SharedResources> L
 @inject AuthService AuthSvc
 @inject NavigationManager Navigation
-@inject ApiClient Api
+@inject ParentProfileState ParentProfile
 
 <div class="sidebar-brand sidebar-brand--navy">
     <a class="sidebar-brand-link" href="parent/dashboard">
@@ -95,13 +95,6 @@
             </NavLink>
         </div>
     </nav>
-
-    <div class="sidebar-upgrade sidebar-upgrade--parent" onclick="event.stopPropagation()">
-        <div class="sidebar-upgrade-icon sidebar-upgrade-icon--crown" aria-hidden="true">👑</div>
-        <p class="sidebar-upgrade-title">@L["Sidebar_Upgrade_Title"]</p>
-        <p class="sidebar-upgrade-text">@L["Parent_Sidebar_Upgrade_Text"]</p>
-        <a href="parent/subscriptions" class="sidebar-upgrade-btn sidebar-upgrade-btn--gradient">@L["Sidebar_Upgrade_CTA"]</a>
-    </div>
 </div>
 
 @code {
@@ -109,19 +102,7 @@
 
     protected override async Task OnInitializedAsync()
     {
-        try
-        {
-            var me = await Api.GetAsync<ParentMeDto>("api/parent/me");
-            if (me is not null)
-                _unreadMessages = me.UnreadMessagesCount;
-        }
-        catch { }
+        await ParentProfile.EnsureLoadedAsync();
+        _unreadMessages = ParentProfile.UnreadMessagesCount;
     }
-
-    private record ParentMeDto(
-        string FirstName,
-        string LastName,
-        string Email,
-        int ChildrenCount,
-        int UnreadMessagesCount);
 }
