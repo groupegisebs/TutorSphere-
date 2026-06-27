@@ -7,12 +7,17 @@
     <div class="top-row-actions ms-auto">
         <button type="button" class="topbar-notification" aria-label="@L["Nav_Notifications"]">
             <i class="bi bi-bell" aria-hidden="true"></i>
-            <span class="topbar-notification-badge">3</span>
+            <span class="topbar-notification-badge">@NotificationCount</span>
         </button>
         <div class="topbar-user-menu-wrapper ms-2">
+            <span class="topbar-premium-badge d-none d-md-inline-flex">
+                <i class="bi bi-star-fill" aria-hidden="true"></i>
+                @L["Parent_PremiumBadge"]
+            </span>
             <button type="button" class="topbar-user-btn" aria-label="@L["Nav_UserMenu"]"
                     @onclick="ToggleUserMenu" @onclick:stopPropagation="true">
                 <span class="topbar-user-avatar">@_initials</span>
+                <span class="topbar-user-name d-none d-lg-inline">@_displayName</span>
                 <i class="bi bi-chevron-down ms-1" aria-hidden="true"></i>
             </button>
             @if (_showUserMenu)
@@ -21,6 +26,7 @@
                     <div class="topbar-dropdown-header">
                         <span class="topbar-dropdown-name">@_displayName</span>
                         <span class="topbar-dropdown-email">@AuthSvc.UserEmail</span>
+                        <span class="topbar-dropdown-badge">@L["Parent_PremiumBadge"]</span>
                     </div>
                     <div class="topbar-dropdown-divider"></div>
                     <a class="topbar-dropdown-item" href="parent/profile" @onclick="CloseUserMenu">
@@ -47,6 +53,7 @@
 
 @code {
     private bool _showUserMenu;
+    private const int NotificationCount = 5;
 
     private string _displayName => AuthSvc.UserName ?? AuthSvc.UserEmail ?? "Parent";
     private string _initials => GetInitials(_displayName);

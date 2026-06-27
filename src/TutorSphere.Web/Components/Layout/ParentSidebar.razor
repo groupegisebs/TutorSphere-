@@ -1,5 +1,7 @@
+@rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
 @inject AuthService AuthSvc
+@inject NavigationManager Navigation
 
 <div class="sidebar-brand sidebar-brand--navy">
     <a class="sidebar-brand-link" href="parent/dashboard">
@@ -15,7 +17,7 @@
         <div class="nav-item">
             <NavLink class="nav-link" href="parent/dashboard" Match="NavLinkMatch.All">
                 <i class="bi bi-speedometer2" aria-hidden="true"></i>
-                <span>@L["Nav_ParentDashboard"]</span>
+                <span>@L["Nav_Dashboard"]</span>
             </NavLink>
         </div>
         <div class="nav-item">
@@ -26,20 +28,8 @@
         </div>
         <div class="nav-item">
             <NavLink class="nav-link" href="parent/search">
-                <i class="bi bi-binoculars" aria-hidden="true"></i>
-                <span>@L["Nav_FindTutor"]</span>
-            </NavLink>
-        </div>
-        <div class="nav-item">
-            <NavLink class="nav-link" href="parent/subscriptions">
-                <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
-                <span>@L["Nav_MySubscriptions"]</span>
-            </NavLink>
-        </div>
-        <div class="nav-item">
-            <NavLink class="nav-link" href="parent/payments">
-                <i class="bi bi-wallet2" aria-hidden="true"></i>
-                <span>@L["Nav_Payments"]</span>
+                <i class="bi bi-person-workspace" aria-hidden="true"></i>
+                <span>@L["Nav_Tutors"]</span>
             </NavLink>
         </div>
         <div class="nav-item">
@@ -49,30 +39,70 @@
             </NavLink>
         </div>
         <div class="nav-item">
+            <NavLink class="nav-link" href="parent/homework">
+                <i class="bi bi-journal-text" aria-hidden="true"></i>
+                <span>@L["Nav_Homework"]</span>
+            </NavLink>
+        </div>
+        <div class="nav-item">
+            <NavLink class="nav-link" href="parent/progress">
+                <i class="bi bi-graph-up-arrow" aria-hidden="true"></i>
+                <span>@L["Nav_Progress"]</span>
+            </NavLink>
+        </div>
+        <div class="nav-item">
             <NavLink class="nav-link" href="parent/reports">
-                <i class="bi bi-graph-up" aria-hidden="true"></i>
+                <i class="bi bi-file-earmark-bar-graph" aria-hidden="true"></i>
                 <span>@L["Nav_Reports"]</span>
             </NavLink>
         </div>
         <div class="nav-item">
             <NavLink class="nav-link" href="parent/messages">
-                <i class="bi bi-envelope" aria-hidden="true"></i>
+                <i class="bi bi-chat-left-text" aria-hidden="true"></i>
                 <span>@L["Nav_Messages"]</span>
+                @if (UnreadMessages > 0)
+                {
+                    <span class="sidebar-badge">@UnreadMessages</span>
+                }
+            </NavLink>
+        </div>
+        <div class="nav-item">
+            <NavLink class="nav-link" href="parent/payments">
+                <i class="bi bi-credit-card" aria-hidden="true"></i>
+                <span>@L["Nav_Payments"]</span>
+            </NavLink>
+        </div>
+        <div class="nav-item">
+            <NavLink class="nav-link" href="parent/documents">
+                <i class="bi bi-folder2-open" aria-hidden="true"></i>
+                <span>@L["Nav_Documents"]</span>
+            </NavLink>
+        </div>
+        <div class="nav-item">
+            <NavLink class="nav-link" href="parent/favorites">
+                <i class="bi bi-heart" aria-hidden="true"></i>
+                <span>@L["Nav_Favorites"]</span>
+            </NavLink>
+        </div>
+        <div class="nav-item">
+            <NavLink class="nav-link" href="parent/settings">
+                <i class="bi bi-sliders" aria-hidden="true"></i>
+                <span>@L["Nav_Settings"]</span>
             </NavLink>
         </div>
     </nav>
 
-    <div class="sidebar-user sidebar-user--navy" onclick="event.stopPropagation()">
-        <div class="sidebar-user-avatar">@_initials</div>
-        <div class="sidebar-user-info">
-            <span class="sidebar-user-name">@_displayName</span>
-            <span class="sidebar-user-role">@L["Nav_Role_Parent"]</span>
-        </div>
-        <i class="bi bi-chevron-down sidebar-user-chevron" aria-hidden="true"></i>
+    <div class="sidebar-upgrade sidebar-upgrade--parent" onclick="event.stopPropagation()">
+        <div class="sidebar-upgrade-icon"><i class="bi bi-star-fill" aria-hidden="true"></i></div>
+        <p class="sidebar-upgrade-title">@L["Sidebar_Upgrade_Title"]</p>
+        <p class="sidebar-upgrade-text">@L["Parent_Sidebar_Upgrade_Text"]</p>
+        <a href="parent/subscriptions" class="sidebar-upgrade-btn">@L["Sidebar_Upgrade_CTA"]</a>
     </div>
 </div>
 
 @code {
+    private int UnreadMessages => 3;
+
     private string _displayName => AuthSvc.UserName ?? AuthSvc.UserEmail ?? "Parent";
     private string _initials
     {
