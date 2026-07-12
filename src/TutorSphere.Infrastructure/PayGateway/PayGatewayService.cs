@@ -121,6 +121,12 @@ internal sealed class PayGatewayService : IPaymentGatewayService
         _cachedPublishableKey ??= checkout.PublishableKey;
         await _db.SaveChangesAsync(ct);
 
+        _logger.LogInformation(
+            "Checkout PayGateway créé pour l'abonnement {SubscriptionId} (paymentCode={PaymentCode}, stripeMode={StripeMode})",
+            subscription.Id,
+            checkout.PaymentCode,
+            checkout.StripeMode ?? "?");
+
         return new SubscriptionCheckoutResponse(
             payment.Id,
             checkout.PaymentCode,

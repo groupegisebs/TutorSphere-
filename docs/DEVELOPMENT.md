@@ -83,6 +83,18 @@ dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Host=db.example.c
 
 TutorSphere ne communique plus directement avec Stripe. Les paiements passent par [GiseBs Pay Gateway](https://gisebsapipaygateway.gisebs.com) via l'API HTTP authentifiée (`X-App-Code`, `X-Api-Key`).
 
+**Mode Stripe (prod vs test) :**
+
+| Environnement TutorSphere | Header envoyé | Secrets Pay Gateway |
+|---------------------------|---------------|---------------------|
+| Development / Staging | `X-Stripe-Env: DEV` | Stripe Test |
+| Production | *(aucun)* | Stripe Live |
+
+- Override optionnel : `PayGateway:UseSandbox` (`true` / `false`) — **ne jamais mettre `true` en production utilisateurs**.
+- La réponse checkout peut inclure `stripeMode` (`PROD` ou `DEV`).
+- Cartes de test : [docs.stripe.com/testing](https://docs.stripe.com/testing) (ex. `4242 4242 4242 4242`).
+- Les objets Stripe (customers, prices, subscriptions) sont séparés entre test et live.
+
 **Flux :**
 
 1. `POST /api/payments/subscriptions/{id}/checkout` — crée un paiement local et une session Checkout Stripe via la passerelle
@@ -101,6 +113,8 @@ cd src/TutorSphere.Api
 dotnet user-secrets set "PayGateway:BaseUrl" "https://gisebsapipaygateway.gisebs.com"
 dotnet user-secrets set "PayGateway:AppCode" "TUTORSPHERE"
 dotnet user-secrets set "PayGateway:ApiKey" "gbsk_..."
+# Optionnel : forcer le bac à sable (déjà true en Development via appsettings)
+dotnet user-secrets set "PayGateway:UseSandbox" "true"
 ```
 
 **Web** — URL de l'API si différente du défaut :

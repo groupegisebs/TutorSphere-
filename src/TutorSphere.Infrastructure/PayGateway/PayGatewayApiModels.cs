@@ -21,7 +21,9 @@ internal sealed record GatewayCheckoutSessionResponse(
     string SessionId,
     string Status,
     string? ClientSecret = null,
-    string? PublishableKey = null);
+    string? PublishableKey = null,
+    /// <summary>Mode Stripe réellement utilisé par Pay Gateway : <c>PROD</c> ou <c>DEV</c>.</summary>
+    string? StripeMode = null);
 
 internal sealed record GatewayPaymentResponse(
     string PaymentCode,

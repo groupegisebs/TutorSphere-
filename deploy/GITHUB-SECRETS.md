@@ -17,6 +17,8 @@ Le workflow **Deploy Production** échoue tant que les secrets ci-dessous ne son
 | `TUTORSPHERE_PAYGATEWAY_BASE_URL` | URL publique du Pay Gateway (nginx HTTPS) | `https://gisebsapipaygateway.gisebs.com` |
 | `TUTORSPHERE_PAYGATEWAY_API_KEY` | Clé API app `TUTORSPHERE` | `gbsk_...` |
 
+> **Stripe :** en production (`ASPNETCORE_ENVIRONMENT=Production`), TutorSphere **n'envoie pas** `X-Stripe-Env: DEV` → Stripe Live. Le bac à sable est réservé à Development / Staging (ou override `PAYGATEWAY__USESANDBOX` en QA uniquement).
+
 > **Ne pas utiliser** `giseboutique.gisebs.com` (boutique) ni le port interne `http://51.79.53.197:7843` — l'API est exposée via **[GISEBS Pay Gateway](https://gisebsapipaygateway.gisebs.com/)**.
 
 ## Secret SSH (un seul suffit)

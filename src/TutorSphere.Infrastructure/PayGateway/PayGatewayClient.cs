@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -15,15 +16,18 @@ internal sealed class PayGatewayClient
 
     private readonly HttpClient _http;
     private readonly PayGatewaySettings _settings;
+    private readonly IHostEnvironment _environment;
     private readonly ILogger<PayGatewayClient> _logger;
 
     public PayGatewayClient(
         HttpClient http,
         IOptions<PayGatewaySettings> settings,
+        IHostEnvironment environment,
         ILogger<PayGatewayClient> logger)
     {
         _http = http;
         _settings = settings.Value;
+        _environment = environment;
         _logger = logger;
 
         if (!string.IsNullOrWhiteSpace(_settings.BaseUrl))
@@ -96,11 +100,34 @@ internal sealed class PayGatewayClient
         request.Headers.TryAddWithoutValidation("X-App-Code", _settings.AppCode);
         request.Headers.TryAddWithoutValidation("X-Api-Key", _settings.ApiKey);
 
+        // Pay Gateway : sans header → Stripe Live ; X-Stripe-Env: DEV → Stripe Test.
+        // Ne jamais envoyer DEV en production utilisateurs (règle Pay Gateway).
+        var useSandbox = ShouldUseSandbox();
+        if (useSandbox)
+            request.Headers.TryAddWithoutValidation("X-Stripe-Env", "DEV");
+
         if (body is not null)
             request.Content = JsonContent.Create(body, options: JsonOptions);
 
-        _logger.LogDebug("PayGateway {Method} {Path}", method, path);
+        _logger.LogDebug(
+            "PayGateway {Method} {Path} (stripeEnv={StripeEnv})",
+            method,
+            path,
+            useSandbox ? "DEV" : "PROD");
         return await _http.SendAsync(request, ct);
+    }
+
+    /// <summary>
+    /// Development / Staging → sandbox ; Production → Live.
+    /// Override explicite via <see cref="PayGatewaySettings.UseSandbox"/>.
+    /// </summary>
+    private bool ShouldUseSandbox()
+    {
+        if (_settings.UseSandbox.HasValue)
+            return _settings.UseSandbox.Value;
+
+        return _environment.IsDevelopment()
+            || _environment.IsStaging();
     }
 
     private void EnsureConfigured()
