@@ -5,6 +5,7 @@
 @inject IStringLocalizer<SharedResources> L
 @inject LessonService LessonSvc
 @inject ApiClient Api
+@inject AuthService Auth
 
 <PageTitle>@L["PageTitle_StudentDashboard"]</PageTitle>
 
@@ -153,8 +154,8 @@
     {
         try
         {
-            var lessons = await LessonSvc.GetLessonsAsync();
-            var now     = DateTime.UtcNow;
+            var lessons = await Api.GetAsync<List<LessonDto>>("api/students/me/lessons") ?? [];
+            var now = DateTime.UtcNow;
             _upcomingLessons = lessons
                 .Where(l => l.StartTime >= now)
                 .OrderBy(l => l.StartTime)
@@ -174,31 +175,24 @@
         {
             var profile = await Api.GetAsync<StudentProfileDto>("api/students/me");
             if (profile != null)
-            {
                 _studentName = profile.FirstName ?? "Élève";
 
-                var reports = await Api.GetAsync<List<LessonReportApiDto>>(
-                    $"api/lessonreports/student/{profile.Id}") ?? [];
-                _recentReports = [.. reports.OrderByDescending(r => r.CreatedAt).Take(3)];
-                _reportsLoading = false;
+            var reports = await Api.GetAsync<List<LessonReportApiDto>>("api/students/me/reports") ?? [];
+            _recentReports = [.. reports.OrderByDescending(r => r.CreatedAt).Take(3)];
 
-                var homework = await Api.GetAsync<List<HomeworkDto>>(
-                    $"api/homework/student/{profile.Id}") ?? [];
-                _pendingHomework = homework.Count(h => h.SubmittedAt == null && !h.IsGraded);
-                _lastGrade = homework
-                    .Where(h => h.Grade.HasValue)
-                    .OrderByDescending(h => h.CreatedAt)
-                    .Select(h => h.Grade)
-                    .FirstOrDefault();
+            var homework = await Api.GetAsync<List<HomeworkDto>>("api/students/me/homework") ?? [];
+            _pendingHomework = homework.Count(h => h.SubmittedAt == null && !h.IsGraded);
+            _lastGrade = homework
+                .Where(h => h.Grade.HasValue)
+                .OrderByDescending(h => h.CreatedAt)
+                .Select(h => h.Grade)
+                .FirstOrDefault();
 
-                var docs = await Api.GetAsync<List<DocumentDto>>(
-                    $"api/documents?studentId={profile.Id}") ?? [];
-                _documentCount = docs.Count;
-                return;
-            }
+            var docs = await Api.GetAsync<List<DocumentDto>>("api/students/me/documents") ?? [];
+            _documentCount = docs.Count;
         }
         catch { }
-        _reportsLoading = false;
+        finally { _reportsLoading = false; }
     }
 
     private record LessonReportApiDto(
@@ -213,6 +207,8 @@
         DateTime? SubmittedAt, string? SubmissionNotes, decimal? Grade,
         string? Feedback, bool IsGraded, DateTime CreatedAt, DateTime? UpdatedAt);
 
-    private record DocumentDto(Guid Id, string Name, string? Url, long? Size, DateTime CreatedAt);
+    private record DocumentDto(
+        Guid Id, string FileName, long FileSize, string ContentType,
+        DateTime UploadedAt, Guid? StudentId, Guid? LessonId, string Url);
     private record StudentProfileDto(Guid Id, string? FirstName, string? LastName);
 }

@@ -4,6 +4,7 @@
 @inject IStringLocalizer<SharedResources> L
 @inject MessageService MessageSvc
 @inject AuthService Auth
+@inject ApiClient Api
 
 <PageTitle>Messagerie – TutorSphere</PageTitle>
 
@@ -97,9 +98,19 @@
     {
         try
         {
-            var dtos = await MessageSvc.GetConversationsAsync();
-            if (dtos.Count > 0)
-                _convs = dtos.Select((d, i) => MapConversation(d, i)).ToList();
+            var teachers = await Api.GetAsync<List<ConversationDto>>("api/students/me/teachers") ?? [];
+            var existing = await MessageSvc.GetConversationsAsync();
+
+            var byId = new Dictionary<string, ConversationDto>(StringComparer.Ordinal);
+            foreach (var t in teachers)
+                byId[t.OtherUserId] = t;
+            foreach (var c in existing)
+                byId[c.OtherUserId] = c; // prefer richer conversation data
+
+            _convs = byId.Values
+                .Select((d, i) => MapConversation(d, i))
+                .OrderByDescending(c => c.LastTime)
+                .ToList();
         }
         catch { }
         finally { _loading = false; }

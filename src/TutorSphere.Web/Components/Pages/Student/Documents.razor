@@ -113,29 +113,25 @@ else
     {
         try
         {
-            var profile = await Api.GetAsync<StudentProfileDto>("api/students/me");
-            if (profile != null)
+            var result = await Api.GetAsync<List<DocumentDto>>("api/students/me/documents") ?? [];
+
+            _docs = result.Select(d =>
             {
-                var result = await Api.GetAsync<List<DocumentDto>>(
-                    $"api/documents?studentId={profile.Id}") ?? [];
+                var ext = d.FileName.Contains('.') ? d.FileName.Split('.').Last().ToLower() : "";
+                return new DocVM(d.FileName, ext, FormatSize(d.FileSize), null, d.Url, d.UploadedAt);
+            }).ToList();
 
-                _docs = result.Select(d =>
-                {
-                    var ext = d.Name.Contains('.') ? d.Name.Split('.').Last().ToLower() : "";
-                    return new DocVM(d.Name, ext, FormatSize(d.Size), d.Subject, d.Url, d.CreatedAt);
-                }).ToList();
-
-                _subjects = [.. _docs.Where(d => !string.IsNullOrEmpty(d.Subject))
-                                    .Select(d => d.Subject!)
-                                    .Distinct()
-                                    .OrderBy(s => s)];
-            }
+            _subjects = [.. _docs.Where(d => !string.IsNullOrEmpty(d.Subject))
+                                .Select(d => d.Subject!)
+                                .Distinct()
+                                .OrderBy(s => s)];
         }
         catch { }
         finally { _loading = false; }
     }
 
     private record DocVM(string Name, string Extension, string SizeLabel, string? Subject, string? Url, DateTime UploadedAt);
-    private record DocumentDto(Guid Id, string Name, string? Url, long? Size, string? Subject, DateTime CreatedAt);
-    private record StudentProfileDto(Guid Id, string? FirstName, string? LastName);
+    private record DocumentDto(
+        Guid Id, string FileName, long FileSize, string ContentType,
+        DateTime UploadedAt, Guid? StudentId, Guid? LessonId, string Url);
 }

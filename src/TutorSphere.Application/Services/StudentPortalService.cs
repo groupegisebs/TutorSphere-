@@ -189,7 +189,7 @@ public class StudentPortalService : IStudentPortalService
 
             contacts.Add(new ConversationDto(
                 owner.OwnerUserId,
-                owner.Name,
+                string.IsNullOrWhiteSpace(owner.Name) ? "Enseignant" : $"Enseignant — {owner.Name}",
                 last is null
                     ? null
                     : new MessageDto(

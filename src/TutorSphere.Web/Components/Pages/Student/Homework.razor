@@ -93,13 +93,8 @@ else
     {
         try
         {
-            var profile = await Api.GetAsync<StudentProfileDto>("api/students/me");
-            if (profile != null)
-            {
-                var result = await Api.GetAsync<List<HomeworkDto>>(
-                    $"api/homework/student/{profile.Id}") ?? [];
-                _homeworks = [.. result.OrderBy(h => h.DueDate ?? DateTime.MaxValue)];
-            }
+            var result = await Api.GetAsync<List<HomeworkDto>>("api/students/me/homework") ?? [];
+            _homeworks = [.. result.OrderBy(h => h.DueDate ?? DateTime.MaxValue)];
         }
         catch { }
         finally { _loading = false; }
@@ -111,7 +106,7 @@ else
         try
         {
             var result = await Api.PostAsync<HomeworkDto>(
-                $"api/homework/{id}/submit", new { SubmissionNotes = "" });
+                $"api/students/me/homework/{id}/submit", new { SubmissionNotes = "" });
             if (result != null)
             {
                 var idx = _homeworks.FindIndex(h => h.Id == id);
@@ -126,6 +121,4 @@ else
         string Title, string? Description, DateTime? DueDate,
         DateTime? SubmittedAt, string? SubmissionNotes, decimal? Grade,
         string? Feedback, bool IsGraded, DateTime CreatedAt, DateTime? UpdatedAt);
-
-    private record StudentProfileDto(Guid Id, string? FirstName, string? LastName);
 }

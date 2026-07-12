@@ -81,13 +81,8 @@ else
     {
         try
         {
-            var profile = await Api.GetAsync<StudentProfileDto>("api/students/me");
-            if (profile != null)
-            {
-                var result = await Api.GetAsync<List<LessonReportDto>>(
-                    $"api/lessonreports/student/{profile.Id}") ?? [];
-                _reports = [.. result.OrderByDescending(r => r.CreatedAt)];
-            }
+            var result = await Api.GetAsync<List<LessonReportDto>>("api/students/me/reports") ?? [];
+            _reports = [.. result.OrderByDescending(r => r.CreatedAt)];
         }
         catch { }
         finally { _loading = false; }
@@ -98,6 +93,4 @@ else
         string? TopicsStudied, string? Participation, string? Strengths,
         string? Weaknesses, string? HomeworkAssigned, string? Observations,
         bool SentToParent, DateTime? SentAt, DateTime CreatedAt, DateTime? UpdatedAt);
-
-    private record StudentProfileDto(Guid Id, string? FirstName, string? LastName);
 }
