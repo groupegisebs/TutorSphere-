@@ -3,6 +3,7 @@
 @rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
+@inject LessonService LessonSvc
 
 <PageTitle>@L["PageTitle_Calendar"]</PageTitle>
 
@@ -16,17 +17,40 @@
         </div>
     </div>
     <div class="cal-page-actions">
-        <button type="button" class="btn btn-outline-secondary btn-sm">
+        <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="OpenUnavailabilityModal">
             <i class="bi bi-calendar2-check me-1" aria-hidden="true"></i>@L["Calendar_Availabilities"]
         </button>
-        <button type="button" class="btn btn-primary btn-sm">
-            <i class="bi bi-plus me-1" aria-hidden="true"></i>@L["Calendar_NewLesson"]
-            <i class="bi bi-chevron-down ms-1" aria-hidden="true"></i>
-        </button>
+        <div class="dropdown">
+            <button type="button" class="btn btn-primary btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"
+                    @onclick="ToggleNewMenu" @onclick:stopPropagation="true">
+                <i class="bi bi-plus me-1" aria-hidden="true"></i>@L["Calendar_NewLesson"]
+            </button>
+            @if (_showNewMenu)
+            {
+                <ul class="dropdown-menu show cal-new-menu">
+                    <li><button type="button" class="dropdown-item" @onclick="() => OpenLessonModal()"><i class="bi bi-journal-bookmark me-2"></i>Nouveau cours</button></li>
+                    <li><button type="button" class="dropdown-item" @onclick="OpenUnavailabilityModal"><i class="bi bi-slash-circle me-2"></i>Indisponibilité</button></li>
+                </ul>
+            }
+        </div>
     </div>
 </div>
 
-<div class="cal-layout">
+@if (!string.IsNullOrEmpty(_bannerError))
+{
+    <div class="alert alert-danger py-2 px-3 mb-3" role="alert">
+        <i class="bi bi-exclamation-triangle me-1"></i>@_bannerError
+        <button type="button" class="btn-close btn-close-sm float-end" @onclick='() => _bannerError = null'></button>
+    </div>
+}
+@if (!string.IsNullOrEmpty(_bannerSuccess))
+{
+    <div class="alert alert-success py-2 px-3 mb-3" role="alert">
+        <i class="bi bi-check-circle me-1"></i>@_bannerSuccess
+    </div>
+}
+
+<div class="cal-layout" @onclick="CloseNewMenu">
 
     <!-- ── Left panel ── -->
     <aside class="cal-side">
@@ -47,7 +71,7 @@
                     var inCurrentWeek = day.Date >= WeekStart && day.Date < WeekStart.AddDays(7);
                     <button type="button"
                             class="mini-cal-day @(day.InMonth ? "" : "other-month") @(isToday ? "today" : "") @(inCurrentWeek ? "in-week" : "")"
-                            @onclick="() => GoToWeek(day.Date)">
+                            @onclick="() => GoToWeekAndReload(day.Date)">
                         @day.Date.Day
                     </button>
                 }
@@ -86,10 +110,10 @@
         <!-- Toolbar -->
         <div class="cal-toolbar">
             <div class="cal-toolbar-left">
-                <button type="button" class="btn btn-primary btn-sm" @onclick="GoToToday">@L["Calendar_Today"]</button>
+                <button type="button" class="btn btn-primary btn-sm" @onclick="GoToTodayAndReload">@L["Calendar_Today"]</button>
                 <div class="cal-toolbar-nav ms-2">
-                    <button type="button" class="cal-nav-btn" @onclick="PreviousWeek"><i class="bi bi-chevron-left"></i></button>
-                    <button type="button" class="cal-nav-btn" @onclick="NextWeek"><i class="bi bi-chevron-right"></i></button>
+                    <button type="button" class="cal-nav-btn" @onclick="PreviousWeekAsync"><i class="bi bi-chevron-left"></i></button>
+                    <button type="button" class="cal-nav-btn" @onclick="NextWeekAsync"><i class="bi bi-chevron-right"></i></button>
                 </div>
                 <button type="button" class="cal-range-btn ms-2">
                     @WeekStart.ToString("d") – @WeekStart.AddDays(6).ToString("d MMM yyyy")
@@ -143,7 +167,12 @@
                         <div class="cal-day-col @(isToday ? "today" : "")">
                             @foreach (var h in Hours)
                             {
-                                <div class="cal-hour-cell"></div>
+                                var hour = h;
+                                var slotDate = date;
+                                <div class="cal-hour-cell cal-hour-cell--clickable"
+                                     title="Créer un cours à @hour:00"
+                                     @onclick="() => OpenLessonModal(slotDate, hour)"
+                                     @onclick:stopPropagation="true"></div>
                             }
                             @foreach (var evt in GetEventsForDay(date))
                             {
@@ -199,6 +228,114 @@
     </div>
 </div>
 
+@if (_showLessonModal)
+{
+    <div class="ts-modal-backdrop" @onclick="CloseLessonModal">
+        <div class="ts-modal" @onclick:stopPropagation="true">
+            <div class="ts-modal-header">
+                <h2>Nouveau cours</h2>
+                <button type="button" class="ts-modal-close" @onclick="CloseLessonModal"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <div class="ts-modal-body">
+                @if (!string.IsNullOrEmpty(_formError))
+                {
+                    <div class="alert alert-danger py-2">@_formError</div>
+                }
+                <div class="row g-3">
+                    <div class="col-12">
+                        <label class="form-label">Titre *</label>
+                        <input class="form-control" @bind="_lessonForm.Title" placeholder="Cours de mathématiques" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Matière</label>
+                        <input class="form-control" @bind="_lessonForm.Subject" placeholder="Mathématiques" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Mode</label>
+                        <select class="form-select" @bind="_lessonForm.Mode">
+                            <option>En ligne</option>
+                            <option>Présentiel</option>
+                            <option>Hybride</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Date *</label>
+                        <input type="date" class="form-control" @bind="_lessonForm.Date" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Début</label>
+                        <input type="time" class="form-control" @bind="_lessonForm.StartTime" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Durée (h)</label>
+                        <input type="number" step="0.5" min="0.5" max="8" class="form-control" @bind="_lessonForm.Duration" />
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Lieu / lien</label>
+                        <input class="form-control" @bind="_lessonForm.LocationOrUrl"
+                               placeholder="Adresse ou URL de visioconférence" />
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Description</label>
+                        <textarea class="form-control" rows="2" @bind="_lessonForm.Description"></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="ts-modal-footer">
+                <button type="button" class="btn btn-outline-secondary" @onclick="CloseLessonModal" disabled="@_saving">Annuler</button>
+                <button type="button" class="btn btn-primary" @onclick="SaveLessonAsync" disabled="@_saving">
+                    @if (_saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                    Enregistrer
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_showUnavailModal)
+{
+    <div class="ts-modal-backdrop" @onclick="CloseUnavailabilityModal">
+        <div class="ts-modal" @onclick:stopPropagation="true">
+            <div class="ts-modal-header">
+                <h2>Indisponibilité</h2>
+                <button type="button" class="ts-modal-close" @onclick="CloseUnavailabilityModal"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <div class="ts-modal-body">
+                @if (!string.IsNullOrEmpty(_formError))
+                {
+                    <div class="alert alert-danger py-2">@_formError</div>
+                }
+                <p class="text-muted small mb-3">Bloquez une plage horaire (congés, rendez-vous, etc.).</p>
+                <div class="row g-3">
+                    <div class="col-12">
+                        <label class="form-label">Motif</label>
+                        <input class="form-control" @bind="_unavailForm.Reason" placeholder="Congé, rendez-vous…" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Date *</label>
+                        <input type="date" class="form-control" @bind="_unavailForm.Date" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Début</label>
+                        <input type="time" class="form-control" @bind="_unavailForm.StartTime" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Fin</label>
+                        <input type="time" class="form-control" @bind="_unavailForm.EndTime" />
+                    </div>
+                </div>
+            </div>
+            <div class="ts-modal-footer">
+                <button type="button" class="btn btn-outline-secondary" @onclick="CloseUnavailabilityModal" disabled="@_saving">Annuler</button>
+                <button type="button" class="btn btn-primary" @onclick="SaveUnavailabilityAsync" disabled="@_saving">
+                    @if (_saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                    Enregistrer
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     // ── Constants ──────────────────────────────────────────────────────────────
     private const int CalStartH = 8;
@@ -210,6 +347,17 @@
     private string ViewMode { get; set; } = "week";
     private DateTime WeekStart { get; set; }
     private DateTime DisplayMonth { get; set; }
+
+    private bool _showNewMenu;
+    private bool _showLessonModal;
+    private bool _showUnavailModal;
+    private bool _saving;
+    private string? _formError;
+    private string? _bannerError;
+    private string? _bannerSuccess;
+
+    private LessonFormModel _lessonForm = new();
+    private UnavailFormModel _unavailForm = new();
 
     // ── Calendar filter model ──────────────────────────────────────────────────
     private class CalFilter { public required string Label; public bool Checked = true; }
@@ -273,13 +421,8 @@
 
     private int TotalLessons => _apiEvents.Count(e => e.Type != "unavailable");
 
-    private int StudentsToday
-    {
-        get
-        {
-            return _apiEvents.Count(e => e.Date.Date == DateTime.Today && e.Type != "unavailable");
-        }
-    }
+    private int StudentsToday =>
+        _apiEvents.Count(e => e.Date.Date == DateTime.Today && e.Type != "unavailable");
 
     // ── Mini calendar ──────────────────────────────────────────────────────────
     private IEnumerable<(DateTime Date, bool InMonth)> MiniCalDays
@@ -309,6 +452,26 @@
     private record ApiUnavailabilityDto(
         Guid Id, string? Reason, DateTime StartTime, DateTime EndTime);
 
+    private sealed class LessonFormModel
+    {
+        public string Title { get; set; } = "";
+        public string Subject { get; set; } = "";
+        public string Description { get; set; } = "";
+        public string Mode { get; set; } = "En ligne";
+        public string LocationOrUrl { get; set; } = "";
+        public DateTime Date { get; set; } = DateTime.Today;
+        public TimeOnly StartTime { get; set; } = new(10, 0);
+        public double Duration { get; set; } = 1;
+    }
+
+    private sealed class UnavailFormModel
+    {
+        public string Reason { get; set; } = "";
+        public DateTime Date { get; set; } = DateTime.Today;
+        public TimeOnly StartTime { get; set; } = new(9, 0);
+        public TimeOnly EndTime { get; set; } = new(12, 0);
+    }
+
     // ── Lifecycle ──────────────────────────────────────────────────────────────
     protected override async Task OnInitializedAsync()
     {
@@ -327,30 +490,199 @@
 
     private async Task LoadCalendarDataAsync()
     {
+        _bannerError = null;
         var start = Uri.EscapeDataString(WeekStart.AddDays(-7).ToString("O"));
         var end   = Uri.EscapeDataString(WeekStart.AddDays(35).ToString("O"));
 
         var view = await Api.GetAsync<CalendarViewDto>($"api/calendar/view?start={start}&end={end}");
-        if (view is null) return;
+        if (view is null)
+        {
+            _bannerError = "Impossible de charger le calendrier. Vérifiez votre connexion.";
+            return;
+        }
 
         _apiEvents.Clear();
 
-        foreach (var lesson in view.Lessons)
+        foreach (var lesson in view.Lessons ?? [])
         {
-            var local = lesson.StartTime.ToLocalTime();
-            var dur   = (int)(lesson.EndTime - lesson.StartTime).TotalMinutes;
+            var local = lesson.StartTime.Kind == DateTimeKind.Utc
+                ? lesson.StartTime.ToLocalTime()
+                : DateTime.SpecifyKind(lesson.StartTime, DateTimeKind.Local);
+            var endLocal = lesson.EndTime.Kind == DateTimeKind.Utc
+                ? lesson.EndTime.ToLocalTime()
+                : DateTime.SpecifyKind(lesson.EndTime, DateTimeKind.Local);
+            var dur = Math.Max(15, (int)(endLocal - local).TotalMinutes);
             _apiEvents.Add((local.Date, local.Hour, local.Minute, dur,
                 lesson.Title, lesson.Subject ?? "", MapMode(lesson.Mode)));
         }
 
-        foreach (var unavail in view.Unavailabilities)
+        foreach (var unavail in view.Unavailabilities ?? [])
         {
-            var local = unavail.StartTime.ToLocalTime();
-            var dur   = (int)(unavail.EndTime - unavail.StartTime).TotalMinutes;
+            var local = unavail.StartTime.Kind == DateTimeKind.Utc
+                ? unavail.StartTime.ToLocalTime()
+                : DateTime.SpecifyKind(unavail.StartTime, DateTimeKind.Local);
+            var endLocal = unavail.EndTime.Kind == DateTimeKind.Utc
+                ? unavail.EndTime.ToLocalTime()
+                : DateTime.SpecifyKind(unavail.EndTime, DateTimeKind.Local);
+            var dur = Math.Max(15, (int)(endLocal - local).TotalMinutes);
             _apiEvents.Add((local.Date, local.Hour, local.Minute, dur,
                 unavail.Reason ?? "Indisponible", "", "unavailable"));
         }
+    }
 
+    // ── Create UI ──────────────────────────────────────────────────────────────
+    private void ToggleNewMenu() => _showNewMenu = !_showNewMenu;
+    private void CloseNewMenu() => _showNewMenu = false;
+
+    private void OpenLessonModal(DateTime? date = null, int? hour = null)
+    {
+        CloseNewMenu();
+        _formError = null;
+        _bannerSuccess = null;
+        _lessonForm = new LessonFormModel
+        {
+            Date = (date ?? WeekStart.AddDays(Math.Max(0, (DateTime.Today - WeekStart).Days))).Date,
+            StartTime = hour is int h ? new TimeOnly(h, 0) : new TimeOnly(10, 0),
+            Duration = 1,
+            Mode = "En ligne"
+        };
+        _showLessonModal = true;
+    }
+
+    private void CloseLessonModal()
+    {
+        _showLessonModal = false;
+        _formError = null;
+    }
+
+    private void OpenUnavailabilityModal()
+    {
+        CloseNewMenu();
+        _formError = null;
+        _bannerSuccess = null;
+        _unavailForm = new UnavailFormModel
+        {
+            Date = DateTime.Today,
+            StartTime = new TimeOnly(9, 0),
+            EndTime = new TimeOnly(12, 0)
+        };
+        _showUnavailModal = true;
+    }
+
+    private void CloseUnavailabilityModal()
+    {
+        _showUnavailModal = false;
+        _formError = null;
+    }
+
+    private async Task SaveLessonAsync()
+    {
+        _formError = null;
+        if (string.IsNullOrWhiteSpace(_lessonForm.Title))
+        {
+            _formError = "Le titre est obligatoire.";
+            return;
+        }
+
+        if (_lessonForm.Duration < 0.5)
+        {
+            _formError = "La durée minimale est de 30 minutes.";
+            return;
+        }
+
+        var start = DateTime.SpecifyKind(
+            _lessonForm.Date.Date.Add(_lessonForm.StartTime.ToTimeSpan()),
+            DateTimeKind.Local);
+        var end = start.AddHours(_lessonForm.Duration);
+
+        var isOnline = _lessonForm.Mode is "En ligne" or "Hybride";
+        var location = isOnline ? null : _lessonForm.LocationOrUrl;
+        var meetingUrl = isOnline ? _lessonForm.LocationOrUrl : null;
+
+        _saving = true;
+        try
+        {
+            var mode = _lessonForm.Mode switch
+            {
+                "Présentiel" => Domain.Enums.LessonMode.InPerson,
+                "Hybride" => Domain.Enums.LessonMode.Hybrid,
+                _ => Domain.Enums.LessonMode.Online
+            };
+
+            var req = new Application.DTOs.Lessons.CreateLessonRequest(
+                _lessonForm.Title.Trim(),
+                string.IsNullOrWhiteSpace(_lessonForm.Description) ? null : _lessonForm.Description.Trim(),
+                string.IsNullOrWhiteSpace(_lessonForm.Subject) ? null : _lessonForm.Subject.Trim(),
+                start.ToUniversalTime(),
+                end.ToUniversalTime(),
+                mode,
+                location,
+                meetingUrl,
+                null);
+
+            var result = await Api.PostWithErrorAsync<Application.DTOs.Lessons.LessonDto>("api/lessons", req);
+
+            if (!result.IsSuccess || result.Value is null)
+            {
+                _formError = result.Error ?? "Échec de la création. Vérifiez que vous êtes connecté en tant que tuteur.";
+                return;
+            }
+
+            var dto = result.Value;
+
+            _showLessonModal = false;
+            _bannerSuccess = $"Cours « {dto.Title} » ajouté au calendrier.";
+            await LoadCalendarDataAsync();
+            GoToWeek(start);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task SaveUnavailabilityAsync()
+    {
+        _formError = null;
+        var start = DateTime.SpecifyKind(
+            _unavailForm.Date.Date.Add(_unavailForm.StartTime.ToTimeSpan()),
+            DateTimeKind.Local);
+        var end = DateTime.SpecifyKind(
+            _unavailForm.Date.Date.Add(_unavailForm.EndTime.ToTimeSpan()),
+            DateTimeKind.Local);
+
+        if (end <= start)
+        {
+            _formError = "L'heure de fin doit être après l'heure de début.";
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var body = new
+            {
+                reason = string.IsNullOrWhiteSpace(_unavailForm.Reason) ? null : _unavailForm.Reason.Trim(),
+                startTime = start.ToUniversalTime(),
+                endTime = end.ToUniversalTime()
+            };
+
+            var created = await Api.PostAsync<ApiUnavailabilityDto>("api/calendar/unavailabilities", body);
+            if (created is null)
+            {
+                _formError = "Échec de l'enregistrement de l'indisponibilité.";
+                return;
+            }
+
+            _showUnavailModal = false;
+            _bannerSuccess = "Indisponibilité enregistrée.";
+            await LoadCalendarDataAsync();
+            GoToWeek(start);
+        }
+        finally
+        {
+            _saving = false;
+        }
     }
 
     // ── Navigation ─────────────────────────────────────────────────────────────
@@ -366,10 +698,35 @@
     {
         var dow = (int)date.DayOfWeek;
         WeekStart = date.AddDays(dow == 0 ? -6 : -(dow - 1));
+        DisplayMonth = new DateTime(WeekStart.Year, WeekStart.Month, 1);
     }
 
-    private void PreviousWeek() { WeekStart = WeekStart.AddDays(-7); DisplayMonth = new DateTime(WeekStart.Year, WeekStart.Month, 1); }
-    private void NextWeek()     { WeekStart = WeekStart.AddDays(7);  DisplayMonth = new DateTime(WeekStart.Year, WeekStart.Month, 1); }
+    private async Task GoToTodayAndReload()
+    {
+        GoToToday();
+        await LoadCalendarDataAsync();
+    }
+
+    private async Task PreviousWeekAsync()
+    {
+        WeekStart = WeekStart.AddDays(-7);
+        DisplayMonth = new DateTime(WeekStart.Year, WeekStart.Month, 1);
+        await LoadCalendarDataAsync();
+    }
+
+    private async Task NextWeekAsync()
+    {
+        WeekStart = WeekStart.AddDays(7);
+        DisplayMonth = new DateTime(WeekStart.Year, WeekStart.Month, 1);
+        await LoadCalendarDataAsync();
+    }
+
+    private async Task GoToWeekAndReload(DateTime date)
+    {
+        GoToWeek(date);
+        await LoadCalendarDataAsync();
+    }
+
     private void PreviousMonth() => DisplayMonth = DisplayMonth.AddMonths(-1);
     private void NextMonth()     => DisplayMonth = DisplayMonth.AddMonths(1);
 }

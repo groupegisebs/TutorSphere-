@@ -187,7 +187,7 @@
                     <div class="col-12">
                         <label class="form-label">Partager avec (optionnel)</label>
                         <div class="d-flex flex-wrap gap-2">
-                            @foreach (var s in new[]{"Emma Johnson","Liam Brown","Sophia Davis","Tous les élèves"})
+                            @foreach (var s in _shareChoices)
                             {
                                 var sel = _shareWith.Contains(s);
                                 <button type="button" class="ts-chip @(sel?"active":"")"
@@ -355,24 +355,8 @@
         public List<string> SharedWith { get; set; } = [];
     }
 
-    private readonly List<DocFolder> _folders =
-    [
-        new(){ Name="Mathématiques", FileCount=4, IsOpen=true },
-        new(){ Name="Physique-Chimie", FileCount=2 },
-        new(){ Name="Rapports", FileCount=7 },
-        new(){ Name="Contrats", FileCount=3 },
-        new(){ Name="Ressources générales", FileCount=5 },
-    ];
+    private readonly List<DocFolder> _folders = [];
 
-    private readonly List<DocFile> _files =
-    [
-        new(){ Name="Exercices suites numériques.pdf", Type="pdf", Size="340 Ko", Folder="Mathématiques", Modified="24/06/2026", SharedWith=["Emma Johnson","Liam Brown"] },
-        new(){ Name="TD Fonctions dérivées.docx", Type="docx", Size="156 Ko", Folder="Mathématiques", Modified="22/06/2026", SharedWith=["Emma Johnson"] },
-        new(){ Name="Formulaire bac maths.pdf", Type="pdf", Size="520 Ko", Folder="Mathématiques", Modified="18/06/2026", SharedWith=["Tous"] },
-        new(){ Name="Présentation Optique.pptx", Type="pptx", Size="2.1 Mo", Folder="Physique-Chimie", Modified="20/06/2026", SharedWith=["Liam Brown"] },
-        new(){ Name="TD Électricité.xlsx", Type="xlsx", Size="88 Ko", Folder="Physique-Chimie", Modified="17/06/2026", SharedWith=["Liam Brown"] },
-        new(){ Name="Rapport Emma 24-06.pdf", Type="pdf", Size="45 Ko", Folder="Rapports", Modified="24/06/2026", SharedWith=["Marie Johnson"] },
-        new(){ Name="Rapport Sophia 20-06.pdf", Type="pdf", Size="42 Ko", Folder="Rapports", Modified="20/06/2026", SharedWith=["Laura Davis"] },
-        new(){ Name="Contrat - Emma Johnson.pdf", Type="pdf", Size="78 Ko", Folder="Contrats", Modified="01/09/2024", SharedWith=[] },
-    ];
+    private readonly List<DocFile> _files = [];
+    private readonly List<string> _shareChoices = [];
 }

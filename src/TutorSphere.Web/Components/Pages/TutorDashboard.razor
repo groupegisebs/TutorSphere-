@@ -175,19 +175,9 @@
         (50, 90), (100, 62), (150, 45), (200, 52), (250, 28), (300, 35), (360, 16)
     ];
 
-    private List<LessonItem> UpcomingLessons =
-    [
-        new("Emma Johnson", "Mathématiques", "10:00", "EJ", "En ligne", "online"),
-        new("Liam Brown", "Physique", "14:00", "LB", "En ligne", "online"),
-        new("Sophia Davis", "Chimie", "16:00", "SD", "Présentiel", "inperson"),
-    ];
+    private List<LessonItem> UpcomingLessons = [];
 
-    private readonly List<ActivityItem> RecentActivity =
-    [
-        new("Nouveau élève inscrit", "Michael Lee a rejoint votre école", "il y a 2h", "bi-person-plus", "success"),
-        new("Cours terminé", "Cours de Mathématiques avec Emma Johnson", "il y a 4h", "bi-calendar-check", "info"),
-        new("Rapport envoyé", "Rapport de séance envoyé à Liam Brown", "il y a 6h", "bi-send", "warning"),
-    ];
+    private readonly List<ActivityItem> RecentActivity = [];
 
     protected override async Task OnInitializedAsync()
     {
@@ -200,24 +190,21 @@
                 .Take(5)
                 .ToList();
 
-            if (upcoming.Count > 0)
+            UpcomingLessons = upcoming.Select(d =>
             {
-                UpcomingLessons = upcoming.Select(d =>
-                {
-                    var local    = d.StartTime.ToLocalTime();
-                    var mode     = LessonService.ModeToDisplay(d.Mode);
-                    var modeClass = d.Mode == "InPerson" ? "inperson" : "online";
-                    return new LessonItem(
-                        d.Title,
-                        d.Subject ?? "",
-                        local.ToString("HH:mm"),
-                        d.Title.Length > 0 ? d.Title[..1].ToUpperInvariant() : "?",
-                        mode,
-                        modeClass);
-                }).ToList();
-            }
+                var local    = d.StartTime.ToLocalTime();
+                var mode     = LessonService.ModeToDisplay(d.Mode);
+                var modeClass = d.Mode == "InPerson" ? "inperson" : "online";
+                return new LessonItem(
+                    d.Title,
+                    d.Subject ?? "",
+                    local.ToString("HH:mm"),
+                    d.Title.Length > 0 ? d.Title[..1].ToUpperInvariant() : "?",
+                    mode,
+                    modeClass);
+            }).ToList();
         }
-        catch { /* keep mock fallback */ }
+        catch { /* empty until API available */ }
         finally { _lessonsLoading = false; }
     }
 }

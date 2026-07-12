@@ -121,7 +121,7 @@ else
                     <div class="col-12">
                         <label class="form-label">Élèves concernés</label>
                         <div class="d-flex flex-wrap gap-2">
-                            @foreach (var s in new[]{"Emma Johnson","Liam Brown","Sophia Davis","Olivia Martinez"})
+                            @foreach (var s in _studentChoices)
                             {
                                 var selected = _hf.Students.Contains(s);
                                 <button type="button"
@@ -300,18 +300,6 @@ else
         public bool IsOverdue => Status == "En retard" || (DueDate < DateTime.Today && Status != "Corrigé");
     }
 
-    private List<HomeworkVM> _homeworks =
-    [
-        new(){ Title="Exercices suites numériques", Subject="Mathématiques", DueDate=DateTime.Today.AddDays(3),
-            Description="Faire les exercices 5 à 12 du chapitre 4 (pages 42-44).",
-            Students=["Emma Johnson","Liam Brown"], Status="À rendre", Grades=[] },
-        new(){ Title="TD Circuits électriques", Subject="Physique", DueDate=DateTime.Today.AddDays(7),
-            Description="Compléter le TD distribué en séance.", Students=["Liam Brown"], Status="À rendre", Grades=[] },
-        new(){ Title="Rédaction argumentative", Subject="Français", DueDate=DateTime.Today.AddDays(-2),
-            Description="Rédiger 500 mots sur le thème du progrès.", Students=["Olivia Martinez"],
-            Status="Rendu", Grades=[] },
-        new(){ Title="QCM Réactions chimiques", Subject="Chimie", DueDate=DateTime.Today.AddDays(-5),
-            Students=["Sophia Davis"], Status="Corrigé",
-            Grades=[new(){ Student="Sophia Davis", Score=17 }] },
-    ];
+    private List<HomeworkVM> _homeworks = [];
+    private readonly List<string> _studentChoices = [];
 }

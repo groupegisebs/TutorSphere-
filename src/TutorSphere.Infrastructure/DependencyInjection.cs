@@ -74,6 +74,7 @@ public static class DependencyInjection
 
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
         var resetKnownPasswords = configuration.GetValue("Seed:ResetKnownAdminPasswords", true);
+        var includeDemoData = configuration.GetValue("Seed:IncludeDemoData", false);
 
         await EnsureSeedAdminUserAsync(
             userManager, logger, resetKnownPasswords,
@@ -83,8 +84,17 @@ public static class DependencyInjection
             userManager, logger, resetKnownPasswords,
             "bediga.jean@gisebs.com", "Mcd!35578", "Jean", "Bediga", UserRoles.SuperAdmin);
 
-        await SeedPublicTutorsAsync(db);
-        await SeedDemoAccountsAsync(db, userManager);
+        if (includeDemoData)
+        {
+            await SeedPublicTutorsAsync(db);
+            await SeedDemoAccountsAsync(db, userManager);
+            logger.LogInformation("Demo seed enabled (Seed:IncludeDemoData=true).");
+        }
+        else
+        {
+            await RemoveDemoDataAsync(db, userManager, logger);
+        }
+
         await EnsureExistingParentProfilesAsync(db, userManager);
 
         var userCount = await db.Users.CountAsync();
@@ -167,6 +177,71 @@ public static class DependencyInjection
         }
 
         logger.LogInformation("Seed reset password for {Email}.", email);
+    }
+
+    private static async Task RemoveDemoDataAsync(
+        ApplicationDbContext db,
+        UserManager<ApplicationUser> userManager,
+        ILogger logger)
+    {
+        try
+        {
+            string[] demoEmails =
+            [
+                "sarah.anderson@demo.tutorsphere.com",
+                "marie.tremblay@demo.tutorsphere.com",
+                "emma.johnson@demo.tutorsphere.com",
+                "lucas.anderson@demo.tutorsphere.com"
+            ];
+
+            string[] demoSlugs = ["marie-maths", "sarah-english", "physique-pro"];
+
+            var removedUsers = 0;
+            foreach (var email in demoEmails)
+            {
+                var user = await userManager.FindByEmailAsync(email);
+                if (user is null) continue;
+
+                var parentProfiles = db.ParentProfilesSet.Where(p => p.UserId == user.Id).ToList();
+                if (parentProfiles.Count > 0)
+                {
+                    var parentIds = parentProfiles.Select(p => p.Id).ToList();
+                    var students = db.StudentsSet.Where(s => parentIds.Contains(s.ParentProfileId)).ToList();
+                    db.StudentsSet.RemoveRange(students);
+                    db.ParentProfilesSet.RemoveRange(parentProfiles);
+                }
+
+                var orphanStudents = db.StudentsSet.Where(s => s.UserId == user.Id).ToList();
+                if (orphanStudents.Count > 0)
+                    db.StudentsSet.RemoveRange(orphanStudents);
+
+                await userManager.DeleteAsync(user);
+                removedUsers++;
+            }
+
+            var demoTenants = db.TenantsSet.Where(t => demoSlugs.Contains(t.Slug)).ToList();
+            if (demoTenants.Count > 0)
+            {
+                var tenantIds = demoTenants.Select(t => t.Id).ToList();
+                var offerings = db.SubscriptionOfferingsSet.Where(o => tenantIds.Contains(o.TenantId)).ToList();
+                if (offerings.Count > 0)
+                    db.SubscriptionOfferingsSet.RemoveRange(offerings);
+
+                db.TenantsSet.RemoveRange(demoTenants);
+            }
+
+            if (removedUsers > 0 || demoTenants.Count > 0)
+            {
+                await db.SaveChangesAsync();
+                logger.LogInformation(
+                    "Demo data removed ({UserCount} user(s), {TenantCount} tenant(s)). Set Seed:IncludeDemoData=true to keep sample data.",
+                    removedUsers, demoTenants.Count);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Could not fully remove demo seed data (FK constraints may remain).");
+        }
     }
 
     private static async Task SeedPublicTutorsAsync(ApplicationDbContext db)
