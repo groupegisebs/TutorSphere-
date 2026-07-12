@@ -1,0 +1,332 @@
+@using TutorSphere.Application.DTOs.Branding
+
+@if (Profile is null)
+{
+    return;
+}
+
+<div class="tutor-detail"
+     style="--ts-primary: @Profile.PrimaryColor; --ts-primary-dark: @Profile.SecondaryColor;">
+    <div class="tutor-detail-banner @(string.IsNullOrWhiteSpace(Profile.BannerUrl) ? "tutor-detail-banner--fallback" : null)"
+         style="@(!string.IsNullOrWhiteSpace(Profile.BannerUrl) ? $"background-image:url('{Profile.BannerUrl.Replace("'", "%27")}')" : null)">
+        <div class="tutor-detail-banner-overlay"></div>
+    </div>
+
+    <div class="tutor-detail-body">
+        <div class="tutor-detail-header">
+            @if (!string.IsNullOrWhiteSpace(Profile.PhotoUrl))
+            {
+                <div class="tutor-detail-avatar tutor-detail-avatar--photo"
+                     style="background-image:url('@Profile.PhotoUrl.Replace("'", "%27")')"></div>
+            }
+            else
+            {
+                <div class="tutor-detail-avatar">@Initials</div>
+            }
+
+            <div class="tutor-detail-info">
+                <h1>@DisplayName</h1>
+                <p class="tutor-detail-school">
+                    <i class="bi bi-building"></i> @Profile.SchoolName
+                </p>
+                @if (!string.IsNullOrWhiteSpace(Location))
+                {
+                    <p class="tutor-detail-location"><i class="bi bi-geo-alt"></i> @Location</p>
+                }
+                @if (!string.IsNullOrWhiteSpace(Profile.Status))
+                {
+                    <span class="tutor-detail-status">@Profile.Status</span>
+                }
+            </div>
+
+            <div class="tutor-detail-actions">
+                @if (!string.IsNullOrWhiteSpace(SubscribeHref))
+                {
+                    <a class="btn btn-primary" href="@SubscribeHref">
+                        <i class="bi bi-plus-lg me-1"></i>@L["PublicProfile_Subscribe"]
+                    </a>
+                }
+            </div>
+        </div>
+
+        <div class="tutor-detail-stats">
+            @if (Profile.YearsExperience > 0)
+            {
+                <div class="tutor-detail-stat">
+                    <strong>@Profile.YearsExperience @L["PublicProfile_Years"]</strong>
+                    <span>@L["PublicProfile_Experience"]</span>
+                </div>
+            }
+            @if (Profile.HourlyRate > 0)
+            {
+                <div class="tutor-detail-stat">
+                    <strong>@Profile.HourlyRate.ToString("0.##") $/@Profile.Currency</strong>
+                    <span>Tarif horaire</span>
+                </div>
+            }
+            @if (Profile.Subjects.Count > 0)
+            {
+                <div class="tutor-detail-stat">
+                    <strong>@Profile.Subjects.Count</strong>
+                    <span>@L["PublicProfile_Tab_Subjects"]</span>
+                </div>
+            }
+            @if (Profile.Offerings.Count > 0)
+            {
+                <div class="tutor-detail-stat">
+                    <strong>@Profile.Offerings.Count</strong>
+                    <span>@L["PublicProfile_Tab_Offers"]</span>
+                </div>
+            }
+        </div>
+
+        <ul class="nav nav-tabs tutor-detail-tabs">
+            @foreach (var tab in _tabs)
+            {
+                <li class="nav-item">
+                    <button type="button"
+                            class="nav-link @(_activeTab == tab.Key ? "active" : null)"
+                            @onclick="() => _activeTab = tab.Key">
+                        @tab.Label
+                    </button>
+                </li>
+            }
+        </ul>
+
+        <div class="tutor-detail-tab-content">
+            @if (_activeTab == "about")
+            {
+                <section class="section-card">
+                    <h2>@L["PublicProfile_AboutMe"]</h2>
+                    @if (!string.IsNullOrWhiteSpace(Profile.FullBio))
+                    {
+                        <p class="tutor-detail-bio">@Profile.FullBio</p>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(Profile.ShortBio))
+                    {
+                        <p class="tutor-detail-bio">@Profile.ShortBio</p>
+                    }
+                    else
+                    {
+                        <p class="text-muted mb-0">Aucune présentation renseignée pour le moment.</p>
+                    }
+                </section>
+
+                @if (!string.IsNullOrWhiteSpace(Profile.ShortBio) && !string.IsNullOrWhiteSpace(Profile.FullBio)
+                     && !string.Equals(Profile.ShortBio.Trim(), Profile.FullBio.Trim(), StringComparison.Ordinal))
+                {
+                    <section class="section-card mt-3">
+                        <h2>Résumé</h2>
+                        <p class="tutor-detail-bio mb-0">@Profile.ShortBio</p>
+                    </section>
+                }
+            }
+            else if (_activeTab == "credentials")
+            {
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <section class="section-card h-100">
+                            <h2>Diplômes</h2>
+                            @if (Profile.Diplomas.Count == 0)
+                            {
+                                <p class="text-muted mb-0">Aucun diplôme publié.</p>
+                            }
+                            else
+                            {
+                                <ul class="tutor-detail-list">
+                                    @foreach (var d in Profile.Diplomas)
+                                    {
+                                        <li>
+                                            <strong>@d.Title</strong>
+                                            @if (!string.IsNullOrWhiteSpace(d.Institution) || !string.IsNullOrWhiteSpace(d.Year))
+                                            {
+                                                <span>@FormatCredentialMeta(d.Institution, d.Year)</span>
+                                            }
+                                        </li>
+                                    }
+                                </ul>
+                            }
+                        </section>
+                    </div>
+                    <div class="col-md-6">
+                        <section class="section-card h-100">
+                            <h2>Certifications</h2>
+                            @if (Profile.Certifications.Count == 0)
+                            {
+                                <p class="text-muted mb-0">Aucune certification publiée.</p>
+                            }
+                            else
+                            {
+                                <ul class="tutor-detail-list">
+                                    @foreach (var c in Profile.Certifications)
+                                    {
+                                        <li>
+                                            <strong>@c.Title</strong>
+                                            @if (!string.IsNullOrWhiteSpace(c.Institution) || !string.IsNullOrWhiteSpace(c.Year))
+                                            {
+                                                <span>@FormatCredentialMeta(c.Institution, c.Year)</span>
+                                            }
+                                        </li>
+                                    }
+                                </ul>
+                            }
+                        </section>
+                    </div>
+                </div>
+            }
+            else if (_activeTab == "subjects")
+            {
+                <section class="section-card">
+                    <h2>@L["PublicProfile_SubjectsTaught"]</h2>
+                    @if (Profile.Subjects.Count == 0)
+                    {
+                        <p class="text-muted mb-0">Aucune matière indiquée.</p>
+                    }
+                    else
+                    {
+                        <div class="tutor-tags">
+                            @foreach (var subject in Profile.Subjects)
+                            {
+                                <span class="badge">@subject</span>
+                            }
+                        </div>
+                    }
+                </section>
+            }
+            else if (_activeTab == "offers")
+            {
+                @if (Profile.Offerings.Count == 0)
+                {
+                    <section class="section-card">
+                        <p class="text-muted mb-0">Aucune offre active pour le moment.</p>
+                    </section>
+                }
+                else
+                {
+                    <div class="row g-3">
+                        @foreach (var offer in Profile.Offerings)
+                        {
+                            <div class="col-md-6 col-lg-4">
+                                <div class="offering-card">
+                                    @if (!string.IsNullOrWhiteSpace(offer.Subject))
+                                    {
+                                        <span class="offering-subject">@offer.Subject</span>
+                                    }
+                                    <h3>@offer.Title</h3>
+                                    @if (!string.IsNullOrWhiteSpace(offer.Description))
+                                    {
+                                        <p class="offering-description">@offer.Description</p>
+                                    }
+                                    <p class="offering-price">@offer.Price.ToString("N2") $ @offer.Currency</p>
+                                    <ul class="offering-meta">
+                                        <li>@offer.SessionCount séance(s)</li>
+                                        <li>@offer.DurationDays jour(s)</li>
+                                        @if (!string.IsNullOrWhiteSpace(offer.Frequency))
+                                        {
+                                            <li>@offer.Frequency</li>
+                                        }
+                                        <li>@offer.Mode</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            }
+            else if (_activeTab == "availability")
+            {
+                <section class="section-card">
+                    <h2>@L["PublicProfile_Tab_About"] — disponibilités</h2>
+                    @if (Profile.Availability.Count == 0)
+                    {
+                        <p class="text-muted mb-0">Aucune disponibilité publiée.</p>
+                    }
+                    else
+                    {
+                        <div class="tutor-detail-availability">
+                            @foreach (var group in GroupAvailability(Profile.Availability))
+                            {
+                                <div class="tutor-detail-avail-row">
+                                    <strong>@group.Day</strong>
+                                    <div class="tutor-tags">
+                                        @foreach (var slot in group.Slots)
+                                        {
+                                            <span class="badge">@slot</span>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                </section>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public PublicTutorDetailDto Profile { get; set; } = default!;
+    [Parameter] public string? SubscribeHref { get; set; }
+    [Inject] private IStringLocalizer<SharedResources> L { get; set; } = default!;
+
+    private string _activeTab = "about";
+
+    private (string Key, string Label)[] _tabs =>
+    [
+        ("about", L["PublicProfile_Tab_About"]),
+        ("credentials", "Diplômes"),
+        ("subjects", L["PublicProfile_Tab_Subjects"]),
+        ("offers", L["PublicProfile_Tab_Offers"]),
+        ("availability", "Disponibilités"),
+    ];
+
+    private string DisplayName =>
+        !string.IsNullOrWhiteSpace(Profile.TutorFullName) ? Profile.TutorFullName! : Profile.SchoolName;
+
+    private string Location
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(Profile.City) && string.IsNullOrWhiteSpace(Profile.Country))
+                return "";
+            if (string.IsNullOrWhiteSpace(Profile.City))
+                return Profile.Country!;
+            if (string.IsNullOrWhiteSpace(Profile.Country))
+                return Profile.City!;
+            return $"{Profile.City}, {Profile.Country}";
+        }
+    }
+
+    private string Initials
+    {
+        get
+        {
+            var name = DisplayName;
+            var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            return parts.Length >= 2
+                ? $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[^1][0])}"
+                : name.Length > 0 ? char.ToUpperInvariant(name[0]).ToString() : "?";
+        }
+    }
+
+    private static string FormatCredentialMeta(string? institution, string? year)
+    {
+        if (!string.IsNullOrWhiteSpace(institution) && !string.IsNullOrWhiteSpace(year))
+            return $"{institution} · {year}";
+        return institution ?? year ?? "";
+    }
+
+    private static IEnumerable<(string Day, List<string>Slots)> GroupAvailability(IReadOnlyList<string> keys)
+    {
+        return keys
+            .Select(k =>
+            {
+                var idx = k.IndexOf('-');
+                if (idx <= 0)
+                    return (Day: k, Slot: "");
+                return (Day: k[..idx], Slot: k[(idx + 1)..]);
+            })
+            .GroupBy(x => x.Day)
+            .Select(g => (g.Key, g.Select(x => x.Slot).Where(s => !string.IsNullOrWhiteSpace(s)).Distinct().ToList()));
+    }
+}

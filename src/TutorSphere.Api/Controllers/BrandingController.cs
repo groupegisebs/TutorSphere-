@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using TutorSphere.Application.DTOs.Branding;
 using TutorSphere.Application.Services;
 using TutorSphere.Domain.Enums;
+using TutorSphere.Infrastructure.Identity;
 
 namespace TutorSphere.Api.Controllers;
 
@@ -11,8 +13,13 @@ namespace TutorSphere.Api.Controllers;
 public class BrandingController : ControllerBase
 {
     private readonly IBrandingService _brandingService;
+    private readonly UserManager<ApplicationUser> _userManager;
 
-    public BrandingController(IBrandingService brandingService) => _brandingService = brandingService;
+    public BrandingController(IBrandingService brandingService, UserManager<ApplicationUser> userManager)
+    {
+        _brandingService = brandingService;
+        _userManager = userManager;
+    }
 
     [HttpGet("{slug}")]
     [AllowAnonymous]
@@ -20,6 +27,37 @@ public class BrandingController : ControllerBase
     {
         var site = await _brandingService.GetPublicSiteBySlugAsync(slug, ct);
         return site is null ? NotFound() : Ok(site);
+    }
+
+    /// <summary>Full public tutor/school profile for directory "View profile".</summary>
+    [HttpGet("{slug}/tutor")]
+    [AllowAnonymous]
+    public async Task<ActionResult<PublicTutorDetailDto>> GetPublicTutorDetail(string slug, CancellationToken ct)
+    {
+        var detail = await _brandingService.GetPublicTutorDetailAsync(slug, ct);
+        if (detail is null)
+            return NotFound();
+
+        if (string.IsNullOrWhiteSpace(detail.OwnerUserId))
+            return Ok(detail with { TutorFullName = detail.SchoolName });
+
+        var owner = await _userManager.FindByIdAsync(detail.OwnerUserId);
+        if (owner is null)
+            return Ok(detail with { TutorFullName = detail.SchoolName });
+
+        var fullName = owner.FullName;
+        if (string.IsNullOrWhiteSpace(fullName))
+            fullName = detail.SchoolName;
+
+        return Ok(detail with
+        {
+            TutorFirstName = owner.FirstName,
+            TutorLastName = owner.LastName,
+            TutorFullName = fullName,
+            Language = string.IsNullOrWhiteSpace(owner.PreferredLanguage)
+                ? detail.Language
+                : owner.PreferredLanguage
+        });
     }
 
     [HttpGet("tenant/{tenantId:guid}")]

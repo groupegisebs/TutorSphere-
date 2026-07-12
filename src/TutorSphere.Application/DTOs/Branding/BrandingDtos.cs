@@ -39,3 +39,33 @@ public record PublicTenantSiteDto(
     string? Country,
     TenantBrandingDto Branding,
     IReadOnlyList<PublicOfferingDto> Offerings);
+
+public record PublicCredentialDto(string Title, string? Institution, string? Year);
+
+public record PublicTutorDetailDto(
+    Guid TenantId,
+    string SchoolName,
+    string Slug,
+    string? ShortBio,
+    string? City,
+    string? Country,
+    string Language,
+    string Currency,
+    bool IsPublicProfile,
+    string? OwnerUserId,
+    string? TutorFirstName,
+    string? TutorLastName,
+    string? TutorFullName,
+    string? PhotoUrl,
+    string? BannerUrl,
+    string PrimaryColor,
+    string SecondaryColor,
+    string? FullBio,
+    int YearsExperience,
+    decimal HourlyRate,
+    string? Status,
+    IReadOnlyList<PublicCredentialDto> Diplomas,
+    IReadOnlyList<PublicCredentialDto> Certifications,
+    IReadOnlyList<string> Subjects,
+    IReadOnlyList<string> Availability,
+    IReadOnlyList<PublicOfferingDto> Offerings);
