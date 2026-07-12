@@ -24,6 +24,15 @@ public record RegisterSchoolResponse(
 
 public record LoginRequest(string Email, string Password);
 
+/// <summary>Connexion élève sans e-mail propre : e-mail du parent + code généré.</summary>
+public record ChildLoginRequest(string ParentEmail, string AccessCode);
+
+public record ChildLoginAccessDto(
+    Guid StudentId,
+    bool HasLoginAccess,
+    string? AccessCode,
+    string? LoginHint);
+
 public record AuthResponse(
     string Token,
     string Email,

@@ -12,6 +12,12 @@ public class Student : BaseEntity, ITenantEntity
     public string LastName { get; set; } = string.Empty;
     public string? PhotoUrl { get; set; }
     public string? Email { get; set; }
+
+    /// <summary>
+    /// Code de connexion généré par le parent (enfants sans e-mail).
+    /// Sert aussi de mot de passe Identity ; renvoyé au parent à la génération uniquement.
+    /// </summary>
+    public string? LoginAccessCode { get; set; }
     public string? Phone { get; set; }
     public string? SchoolLevel { get; set; }
     public string? SchoolName { get; set; }

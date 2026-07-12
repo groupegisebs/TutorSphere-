@@ -117,6 +117,21 @@ public class AuthController : ControllerBase
         }
     }
 
+    /// <summary>Connexion élève : e-mail du parent + code d'accès généré pour l'enfant.</summary>
+    [HttpPost("login-child")]
+    [AllowAnonymous]
+    public async Task<ActionResult<AuthResponse>> LoginChild([FromBody] ChildLoginRequest request, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _authService.LoginChildAsync(request, ct));
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Unauthorized(new { error = ex.Message });
+        }
+    }
+
     /// <summary>
     /// Lightweight auth/DB diagnostics (no secrets). Use after deploy to verify seed accounts and JWT config.
     /// </summary>

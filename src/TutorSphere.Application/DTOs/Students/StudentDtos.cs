@@ -18,7 +18,8 @@ public record StudentDto(
     IReadOnlyList<string> Subjects,
     string? Notes,
     bool IsActive,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    bool HasLoginAccess = false);
 
 public record CreateStudentRequest(
     string FirstName,

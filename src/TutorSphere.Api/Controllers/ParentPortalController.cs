@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TutorSphere.Application.Common;
+using TutorSphere.Application.DTOs.Auth;
 using TutorSphere.Application.DTOs.Lessons;
 using TutorSphere.Application.DTOs.Parents;
 using TutorSphere.Application.DTOs.Payments;
@@ -141,6 +142,59 @@ public class ParentPortalController : ControllerBase
         catch (DbUpdateException)
         {
             return BadRequest(new { error = "Impossible de supprimer l'enfant." });
+        }
+    }
+
+    /// <summary>Crée un compte de connexion pour l'enfant et renvoie le code (e-mail parent + code).</summary>
+    [HttpPost("children/{id:guid}/access")]
+    public async Task<ActionResult<ChildLoginAccessDto>> EnableChildAccess(Guid id, CancellationToken ct)
+    {
+        var userId = await ResolveParentUserIdAsync(ct);
+        if (userId is null)
+            return Unauthorized();
+
+        try
+        {
+            return Ok(await _authService.EnableChildLoginAccessAsync(userId, id, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("children/{id:guid}/access/regenerate")]
+    public async Task<ActionResult<ChildLoginAccessDto>> RegenerateChildAccess(Guid id, CancellationToken ct)
+    {
+        var userId = await ResolveParentUserIdAsync(ct);
+        if (userId is null)
+            return Unauthorized();
+
+        try
+        {
+            return Ok(await _authService.RegenerateChildLoginAccessAsync(userId, id, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpDelete("children/{id:guid}/access")]
+    public async Task<IActionResult> RevokeChildAccess(Guid id, CancellationToken ct)
+    {
+        var userId = await ResolveParentUserIdAsync(ct);
+        if (userId is null)
+            return Unauthorized();
+
+        try
+        {
+            await _authService.RevokeChildLoginAccessAsync(userId, id, ct);
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
         }
     }
 

@@ -118,17 +118,50 @@ public sealed class AuthService
             var result = await resp.Content.ReadFromJsonAsync<AuthResponse>(JsonOpts);
 
             if (result is null || string.IsNullOrWhiteSpace(result.Token))
-                return new LoginResult(false, "Réponse inattendue du serveur.", null);
+                return new LoginResult(false, "Réponse de connexion invalide.", null);
 
             ApplyAuthenticatedSession(result);
             await PersistSessionAsync(result);
-
-            var role = result.Role ?? "";
-            return new LoginResult(true, null, RoleToRoute(role));
+            return new LoginResult(true, null, RoleToRoute(result.Role ?? ""));
         }
         catch (Exception ex)
         {
-            return new LoginResult(false, $"Erreur de connexion à l'API : {ex.Message}", null);
+            _logger.LogError(ex, "Login failed");
+            return new LoginResult(false, "Impossible de se connecter. Réessayez.", null);
+        }
+    }
+
+    /// <summary>Connexion élève via e-mail parent + code d'accès.</summary>
+    public async Task<LoginResult> LoginChildAsync(string parentEmail, string accessCode)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("api/auth/login-child",
+                new { parentEmail, accessCode });
+
+            if (!resp.IsSuccessStatusCode)
+            {
+                var body = await resp.Content.ReadAsStringAsync();
+                var apiError = TryExtractError(body);
+                var msg = apiError is not null
+                    ? $"({(int)resp.StatusCode}) {apiError}"
+                    : $"({(int)resp.StatusCode}) Identifiants invalides.";
+                return new LoginResult(false, msg, null);
+            }
+
+            var result = await resp.Content.ReadFromJsonAsync<AuthResponse>(JsonOpts);
+
+            if (result is null || string.IsNullOrWhiteSpace(result.Token))
+                return new LoginResult(false, "Réponse de connexion invalide.", null);
+
+            ApplyAuthenticatedSession(result);
+            await PersistSessionAsync(result);
+            return new LoginResult(true, null, RoleToRoute(result.Role ?? ""));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Child login failed");
+            return new LoginResult(false, "Impossible de se connecter. Réessayez.", null);
         }
     }
 

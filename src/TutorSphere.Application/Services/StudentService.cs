@@ -181,7 +181,8 @@ public class StudentService : IStudentService
         ParseSubjects(s.Subjects),
         s.Notes,
         s.IsActive,
-        s.CreatedAt);
+        s.CreatedAt,
+        !string.IsNullOrEmpty(s.UserId));
 
     private static LessonDto MapLessonToDto(Lesson l) => new(
         l.Id,

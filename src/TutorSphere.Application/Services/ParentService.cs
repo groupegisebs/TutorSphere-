@@ -630,7 +630,8 @@ public class ParentService : IParentService
         ParseSubjects(s.Subjects),
         s.Notes,
         s.IsActive,
-        s.CreatedAt);
+        s.CreatedAt,
+        !string.IsNullOrEmpty(s.UserId));
 
     private static ParentDashboardChildDto MapDashboardChild(
         Student student,

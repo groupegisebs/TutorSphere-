@@ -16,6 +16,10 @@ public interface IAuthService
 {
     Task<AuthResponse> RegisterAsync(RegisterRequest request, CancellationToken ct = default);
     Task<AuthResponse> LoginAsync(LoginRequest request, CancellationToken ct = default);
+    Task<AuthResponse> LoginChildAsync(ChildLoginRequest request, CancellationToken ct = default);
+    Task<ChildLoginAccessDto> EnableChildLoginAccessAsync(string parentUserId, Guid studentId, CancellationToken ct = default);
+    Task<ChildLoginAccessDto> RegenerateChildLoginAccessAsync(string parentUserId, Guid studentId, CancellationToken ct = default);
+    Task RevokeChildLoginAccessAsync(string parentUserId, Guid studentId, CancellationToken ct = default);
     Task<RegisterSchoolResponse> RegisterSchoolAsync(RegisterSchoolRequest request, CancellationToken ct = default);
     Task ConfirmEmailAsync(string userId, string token, CancellationToken ct = default);
     Task ForgotPasswordAsync(string email, CancellationToken ct = default);
@@ -90,6 +94,174 @@ public class AuthService : IAuthService
             await EnsureParentProfileAsync(user, ct);
 
         return await BuildAuthResponse(user, role);
+    }
+
+    public async Task<AuthResponse> LoginChildAsync(ChildLoginRequest request, CancellationToken ct = default)
+    {
+        var parentEmail = request.ParentEmail.Trim();
+        var accessCode = request.AccessCode.Trim();
+        if (string.IsNullOrWhiteSpace(parentEmail) || string.IsNullOrWhiteSpace(accessCode))
+            throw new UnauthorizedAccessException("Identifiants invalides.");
+
+        var parentUser = await _userManager.FindByEmailAsync(parentEmail)
+            ?? throw new UnauthorizedAccessException("Identifiants invalides.");
+
+        var parent = _db.ParentProfilesForAnyTenant.FirstOrDefault(p => p.UserId == parentUser.Id)
+            ?? throw new UnauthorizedAccessException("Identifiants invalides.");
+
+        var codeNorm = accessCode.Trim();
+        var student = _db.StudentsForAnyTenant
+            .Where(s => s.ParentProfileId == parent.Id && s.IsActive && s.LoginAccessCode != null)
+            .AsEnumerable()
+            .FirstOrDefault(s =>
+                string.Equals(s.LoginAccessCode, codeNorm, StringComparison.Ordinal));
+
+        if (student is null || string.IsNullOrEmpty(student.UserId))
+            throw new UnauthorizedAccessException("Identifiants invalides.");
+
+        var user = await _userManager.FindByIdAsync(student.UserId)
+            ?? throw new UnauthorizedAccessException("Identifiants invalides.");
+
+        if (await _userManager.IsLockedOutAsync(user))
+            throw new UnauthorizedAccessException("Ce compte est désactivé. Contactez votre parent.");
+
+        if (!await _userManager.CheckPasswordAsync(user, codeNorm))
+            throw new UnauthorizedAccessException("Identifiants invalides.");
+
+        var roles = await _userManager.GetRolesAsync(user);
+        var role = roles.FirstOrDefault(r => r == UserRoles.Student) ?? UserRoles.Student;
+        return await BuildAuthResponse(user, role);
+    }
+
+    public Task<ChildLoginAccessDto> EnableChildLoginAccessAsync(
+        string parentUserId,
+        Guid studentId,
+        CancellationToken ct = default) =>
+        ProvisionOrRegenerateChildAccessAsync(parentUserId, studentId, ct);
+
+    public Task<ChildLoginAccessDto> RegenerateChildLoginAccessAsync(
+        string parentUserId,
+        Guid studentId,
+        CancellationToken ct = default) =>
+        ProvisionOrRegenerateChildAccessAsync(parentUserId, studentId, ct);
+
+    public async Task RevokeChildLoginAccessAsync(string parentUserId, Guid studentId, CancellationToken ct = default)
+    {
+        var student = await GetOwnedChildAsync(parentUserId, studentId, ct);
+
+        if (!string.IsNullOrEmpty(student.UserId))
+        {
+            var user = await _userManager.FindByIdAsync(student.UserId);
+            if (user is not null)
+            {
+                await _userManager.SetLockoutEnabledAsync(user, true);
+                await _userManager.SetLockoutEndDateAsync(user, DateTimeOffset.UtcNow.AddYears(100));
+            }
+        }
+
+        student.UserId = null;
+        student.LoginAccessCode = null;
+        student.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
+    }
+
+    private async Task<ChildLoginAccessDto> ProvisionOrRegenerateChildAccessAsync(
+        string parentUserId,
+        Guid studentId,
+        CancellationToken ct)
+    {
+        var student = await GetOwnedChildAsync(parentUserId, studentId, ct);
+        var accessCode = GenerateChildAccessCode();
+
+        ApplicationUser user;
+        if (!string.IsNullOrEmpty(student.UserId))
+        {
+            user = await _userManager.FindByIdAsync(student.UserId)
+                ?? throw new InvalidOperationException("Compte de connexion introuvable pour cet enfant.");
+
+            await _userManager.SetLockoutEndDateAsync(user, null);
+            await _userManager.SetLockoutEnabledAsync(user, false);
+
+            var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+            var reset = await _userManager.ResetPasswordAsync(user, token, accessCode);
+            if (!reset.Succeeded)
+                throw new InvalidOperationException(string.Join("; ", reset.Errors.Select(e => e.Description)));
+        }
+        else
+        {
+            var loginEmail = await ResolveChildIdentityEmailAsync(student, ct);
+            user = new ApplicationUser
+            {
+                UserName = loginEmail,
+                Email = loginEmail,
+                FirstName = student.FirstName,
+                LastName = student.LastName,
+                EmailConfirmed = true,
+                TenantId = student.TenantId
+            };
+
+            var create = await _userManager.CreateAsync(user, accessCode);
+            if (!create.Succeeded)
+                throw new InvalidOperationException(string.Join("; ", create.Errors.Select(e => e.Description)));
+
+            await _userManager.AddToRoleAsync(user, UserRoles.Student);
+            student.UserId = user.Id;
+        }
+
+        student.LoginAccessCode = accessCode;
+        student.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
+
+        var parent = _db.ParentProfilesForAnyTenant.First(p => p.UserId == parentUserId);
+        var hint = string.IsNullOrWhiteSpace(student.Email)
+            ? $"Connexion : e-mail du parent ({parent.Email}) + ce code"
+            : $"Connexion : e-mail du parent ({parent.Email}) + ce code, ou le courriel de l'enfant avec le code";
+
+        return new ChildLoginAccessDto(student.Id, true, accessCode, hint);
+    }
+
+    private async Task<Student> GetOwnedChildAsync(string parentUserId, Guid studentId, CancellationToken ct)
+    {
+        var parent = _db.ParentProfilesForAnyTenant.FirstOrDefault(p => p.UserId == parentUserId)
+            ?? throw new InvalidOperationException("Profil parent introuvable.");
+
+        var student = _db.StudentsForAnyTenant.FirstOrDefault(s => s.Id == studentId && s.ParentProfileId == parent.Id)
+            ?? throw new InvalidOperationException("Enfant introuvable.");
+
+        await Task.CompletedTask;
+        return student;
+    }
+
+    private async Task<string> ResolveChildIdentityEmailAsync(Student student, CancellationToken ct)
+    {
+        if (!string.IsNullOrWhiteSpace(student.Email))
+        {
+            var email = student.Email.Trim();
+            var existing = await _userManager.FindByEmailAsync(email);
+            if (existing is null)
+                return email;
+        }
+
+        // E-mail synthétique unique : un parent peut avoir plusieurs enfants sans adresse.
+        return $"child.{student.Id:N}@child.tutorsphere.local";
+    }
+
+    /// <summary>Code 8 caractères respectant la politique Identity (digit + length 8 + maj/min/symbole).</summary>
+    private static string GenerateChildAccessCode()
+    {
+        const string upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+        const string lower = "abcdefghijkmnpqrstuvwxyz";
+        const string digits = "23456789";
+        Span<char> code = stackalloc char[8];
+        code[0] = upper[Random.Shared.Next(upper.Length)];
+        code[1] = upper[Random.Shared.Next(upper.Length)];
+        code[2] = digits[Random.Shared.Next(digits.Length)];
+        code[3] = digits[Random.Shared.Next(digits.Length)];
+        code[4] = digits[Random.Shared.Next(digits.Length)];
+        code[5] = digits[Random.Shared.Next(digits.Length)];
+        code[6] = lower[Random.Shared.Next(lower.Length)];
+        code[7] = '!';
+        return new string(code);
     }
 
     public async Task EnsureParentProfileForUserAsync(string userId, CancellationToken ct = default)
