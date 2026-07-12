@@ -113,6 +113,16 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+{
+    var payGw = app.Configuration.GetSection("PayGateway");
+    var useSandbox = payGw.GetValue<bool?>("UseSandbox") ?? app.Environment.IsDevelopment() || app.Environment.IsStaging();
+    app.Logger.LogWarning(
+        "PayGateway Stripe mode au démarrage : {Mode} (UseSandbox={UseSandbox}, Env={Env})",
+        useSandbox ? "DEV/TEST (bac à sable)" : "LIVE",
+        payGw["UseSandbox"] ?? "(auto)",
+        app.Environment.EnvironmentName);
+}
+
 if (app.Environment.IsDevelopment())
     app.MapOpenApi();
 

@@ -109,11 +109,12 @@ internal sealed class PayGatewayClient
         if (body is not null)
             request.Content = JsonContent.Create(body, options: JsonOptions);
 
-        _logger.LogDebug(
-            "PayGateway {Method} {Path} (stripeEnv={StripeEnv})",
+        _logger.LogInformation(
+            "PayGateway {Method} {Path} → Stripe {StripeEnv} (UseSandbox={UseSandbox})",
             method,
             path,
-            useSandbox ? "DEV" : "PROD");
+            useSandbox ? "DEV/TEST" : "LIVE",
+            _settings.UseSandbox);
         return await _http.SendAsync(request, ct);
     }
 

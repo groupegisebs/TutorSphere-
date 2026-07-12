@@ -29,8 +29,8 @@ Contrôle le header `X-Stripe-Env: DEV` écrit dans `/opt/apps/tutorsphere/app/.
 
 | Valeur | Header envoyé à Pay Gateway | Secrets Stripe |
 |--------|-----------------------------|----------------|
-| `true` | `X-Stripe-Env: DEV` | Test (`pk_test_` / `sk_test_`) |
-| `false` (défaut si absent) | *(aucun)* | Live |
+| `true` (défaut actuel) | `X-Stripe-Env: DEV` | Test (`pk_test_` / `sk_test_`) |
+| `false` | *(aucun)* | Live |
 
 ```bash
 # Bac à sable (tests / QA sur le serveur déployé)
@@ -72,7 +72,7 @@ Les autres valeurs Pay Gateway restent des **secrets** :
 | Port API (`TUTORSPHERE_API_PORT`) | `55099` |
 | Port Web (`TUTORSPHERE_WEB_PORT`) | `55010` |
 | `TUTORSPHERE_PAYGATEWAY_APP_CODE` | `TUTORSPHERE` |
-| `TUTORSPHERE_PAYGATEWAY_USE_SANDBOX` | `false` (Stripe Live) — mettre `true` pour le bac à sable |
+| `TUTORSPHERE_PAYGATEWAY_USE_SANDBOX` | `true` (défaut bac à sable) — mettre `false` pour Stripe Live |
 | `TUTORSPHERE_API_BASE_URL` | `https://api.tutorsphere.gisebs.com` (URL publique API pour le navigateur Blazor) |
 
 Host/User/Port SSH : secret org, variable org, ou défaut workflow (`51.79.53.197` / `ubuntu` / `22`).
