@@ -703,8 +703,13 @@
     private static string GetSenderColor(string sender) =>
         sender.StartsWith("É", StringComparison.OrdinalIgnoreCase) ? "#7c3aed" : "#5831E0";
 
-    private static string GetSenderInitials(string sender) =>
-        sender.Length >= 2 ? sender[..2].ToUpper() : sender.ToUpper();
+    private static string GetSenderInitials(string sender)
+    {
+        var parts = sender.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length >= 2)
+            return $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[^1][0])}";
+        return sender.Length > 0 ? sender[..Math.Min(2, sender.Length)].ToUpperInvariant() : "?";
+    }
 
     private List<ParticipantVM> _participants = [];
 
@@ -712,13 +717,14 @@
 
     private void InitChatMessages()
     {
+        var tutor = _participants.FirstOrDefault(p => p.Role == "Tuteur")?.Name ?? "Tuteur";
         _chatMessages =
         [
             new() { Text = "Bonjour ! Je suis prêt(e).",
-                    IsMe = false, Sender = "Élève",
+                    IsMe = true, Sender = SelfDisplayName,
                     Time = DateTime.Now.AddMinutes(-5).ToString("HH:mm") },
             new() { Text = "Parfait, on commence par les exercices du chapitre 3.",
-                    IsMe = false,  Sender = "Tuteur",
+                    IsMe = false,  Sender = tutor,
                     Time = DateTime.Now.AddMinutes(-4).ToString("HH:mm") },
             new() { Text = "D'accord, j'ai mon cahier ouvert.",
                     IsMe = true, Sender = SelfDisplayName,

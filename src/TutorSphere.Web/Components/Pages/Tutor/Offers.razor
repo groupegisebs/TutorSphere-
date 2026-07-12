@@ -58,6 +58,7 @@
                 <div class="offer-meta-item"><i class="bi bi-calendar3"></i>@offer.SessionsPerMonth @L["Offers_Sessions"]</div>
                 <div class="offer-meta-item"><i class="bi bi-clock"></i>@offer.SessionDuration min</div>
                 <div class="offer-meta-item"><i class="bi bi-book"></i>@offer.Subject@(string.IsNullOrWhiteSpace(offer.Level) ? "" : $" · {LevelLabel(offer.Level)}")</div>
+                <div class="offer-meta-item"><i class="bi bi-people"></i>@offer.Subscribers / @offer.MaxCapacity @L["Offers_Places"]</div>
                 <div class="offer-meta-item"><i class="bi @(offer.Mode=="En ligne"?"bi-camera-video":"bi-geo-alt")"></i>@ModeLabel(offer.Mode)</div>
             </div>
             @{
@@ -173,6 +174,9 @@
                             <option value="Lycée">@L["Level_High"]</option>
                             <option value="Université">@L["Level_University"]</option>
                         </select></div>
+                    <div class="col-6"><label class="form-label">@L["Offers_MaxCapacity"]</label>
+                        <input type="number" class="form-control" min="1" max="500" @bind="_mf.MaxCapacity" />
+                        <small class="text-muted">@L["Offers_MaxCapacityHint"]</small></div>
                     <div class="col-12"><label class="form-label">@L["Offers_CancellationPolicy"]</label>
                         <textarea class="form-control" rows="2" @bind="_mf.CancellationPolicy"></textarea></div>
                 </div>
@@ -309,7 +313,8 @@
             Mode = string.IsNullOrWhiteSpace(o.Mode) ? "En ligne" : o.Mode,
             Subject = o.Subject,
             Level = string.IsNullOrWhiteSpace(o.Level) ? "Tous niveaux" : o.Level,
-            CancellationPolicy = o.CancellationPolicy
+            CancellationPolicy = o.CancellationPolicy,
+            MaxCapacity = Math.Max(1, o.MaxCapacity)
         };
 
         foreach (var day in _days)
@@ -431,6 +436,7 @@
             sessionCount = Math.Max(1, _mf.SessionsPerMonth),
             frequency = _mf.Period,
             mode = _mf.Mode,
+            maxCapacity = Math.Clamp(_mf.MaxCapacity, 1, 500),
             schedule
         };
 
@@ -515,7 +521,8 @@
             Slots = slots,
             IsPublished = o.IsActive,
             Subscribers = o.ActiveSubscribers,
-            MonthlyRevenue = o.MonthlyRevenue
+            MonthlyRevenue = o.MonthlyRevenue,
+            MaxCapacity = o.MaxCapacity > 0 ? o.MaxCapacity : 20
         };
     }
 
@@ -530,7 +537,8 @@
         string? Frequency, bool IsActive, string? Mode, string? Conditions,
         ApiScheduleDto? Schedule,
         int ActiveSubscribers = 0,
-        decimal MonthlyRevenue = 0);
+        decimal MonthlyRevenue = 0,
+        int MaxCapacity = 20);
 
     private class DaySlot
     {
@@ -553,6 +561,7 @@
         public string Subject { get; set; } = "";
         public string Level { get; set; } = "Tous niveaux";
         public string CancellationPolicy { get; set; } = "";
+        public int MaxCapacity { get; set; } = 20;
         public Dictionary<string, DaySlot> DaySlots { get; set; } =
             _days.ToDictionary(d => d, _ => new DaySlot());
     }
@@ -578,5 +587,6 @@
         public bool IsPublished { get; set; }
         public int Subscribers { get; set; }
         public decimal MonthlyRevenue { get; set; }
+        public int MaxCapacity { get; set; } = 20;
     }
 }

@@ -89,6 +89,7 @@ public class SubscriptionOfferingService : ISubscriptionOfferingService
             Frequency = frequency,
             Conditions = conditions,
             Mode = mode,
+            MaxCapacity = Math.Clamp(request.MaxCapacity, 1, 500),
             IsActive = true
         };
 
@@ -116,6 +117,7 @@ public class SubscriptionOfferingService : ISubscriptionOfferingService
         offering.Frequency = frequency;
         offering.Conditions = conditions;
         offering.Mode = mode;
+        offering.MaxCapacity = Math.Clamp(request.MaxCapacity, 1, 500);
         offering.UpdatedAt = DateTime.UtcNow;
 
         await _db.SaveChangesAsync(ct);
@@ -336,7 +338,8 @@ public class SubscriptionOfferingService : ISubscriptionOfferingService
             o.Conditions,
             TryParseSchedule(o.Conditions),
             activeSubscribers,
-            Math.Round(monthlyUnit * activeSubscribers, 2));
+            Math.Round(monthlyUnit * activeSubscribers, 2),
+            o.MaxCapacity);
     }
 
     /// <summary>Normalise le prix de l'offre en revenu mensuel récurrent (MRR unitaire).</summary>

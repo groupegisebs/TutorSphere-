@@ -275,13 +275,19 @@
                         <label class="form-label">Durée (h)</label>
                         <input type="number" step="0.5" min="0.5" max="8" class="form-control" @bind="_lessonForm.Duration" />
                     </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Nombre max d'élèves</label>
+                        <input type="number" class="form-control" min="1" max="100"
+                               @bind="_lessonForm.MaxStudents" @bind:after="ClampSelectedStudents" />
+                        <small class="text-muted">Limite les inscriptions à cette séance.</small>
+                    </div>
                     <div class="col-12">
                         <label class="form-label">Lieu / lien</label>
                         <input class="form-control" @bind="_lessonForm.LocationOrUrl"
                                placeholder="Adresse ou URL de visioconférence" />
                     </div>
                     <div class="col-12">
-                        <label class="form-label">Élèves (pour rappels e-mail)</label>
+                        <label class="form-label">Élèves (pour rappels e-mail) — @_lessonForm.StudentIds.Count / @_lessonForm.MaxStudents</label>
                         @if (_students.Count == 0)
                         {
                             <p class="text-muted small mb-0">Aucun élève — ajoutez-en dans « Mes élèves ».</p>
@@ -291,10 +297,13 @@
                             <div class="border rounded p-2" style="max-height:140px;overflow:auto">
                                 @foreach (var s in _students)
                                 {
+                                    var selected = _lessonForm.StudentIds.Contains(s.Id);
+                                    var atCap = !selected && _lessonForm.StudentIds.Count >= _lessonForm.MaxStudents;
                                     <div class="form-check">
                                         <input class="form-check-input" type="checkbox"
                                                id="cal-stu-@s.Id"
-                                               checked="@_lessonForm.StudentIds.Contains(s.Id)"
+                                               checked="@selected"
+                                               disabled="@atCap"
                                                @onchange="e => ToggleStudent(s.Id, (bool)(e.Value ?? false))" />
                                         <label class="form-check-label" for="cal-stu-@s.Id">@s.Name</label>
                                     </div>
@@ -412,16 +421,17 @@
         public string? Description;
         public string? Location;
         public string? MeetingUrl;
+        public int MaxStudents = 1;
         private readonly int _startH, _startM, _durMin;
         public DateTime Date { get; }
 
         public CalEvent(Guid? id, DateTime date, string title, string sub, string type, int h, int m, int dur,
             string modeApi = "Online", string? description = null, string? location = null, string? meetingUrl = null,
-            Guid? offeringId = null)
+            Guid? offeringId = null, int maxStudents = 1)
         {
             Id = id; Date = date.Date; Title = title; Subtitle = sub; Type = type;
             ModeApi = modeApi; Description = description; Location = location; MeetingUrl = meetingUrl;
-            OfferingId = offeringId;
+            OfferingId = offeringId; MaxStudents = Math.Max(1, maxStudents);
             _startH = h; _startM = m; _durMin = dur;
         }
 
@@ -518,7 +528,8 @@
     private record ApiLessonDto(
         Guid Id, string Title, string? Description, string? Subject,
         DateTime StartTime, DateTime EndTime, string Mode,
-        string? Location, string? MeetingUrl);
+        string? Location, string? MeetingUrl,
+        int MaxStudents = 1);
 
     private record ApiUnavailabilityDto(
         Guid Id, string? Reason, DateTime StartTime, DateTime EndTime);
@@ -537,6 +548,7 @@
         public DateTime Date { get; set; } = DateTime.Today;
         public TimeOnly StartTime { get; set; } = new(10, 0);
         public double Duration { get; set; } = 1;
+        public int MaxStudents { get; set; } = 1;
         public HashSet<Guid> StudentIds { get; set; } = [];
     }
 
@@ -597,7 +609,8 @@
             var dur = Math.Max(15, (int)(endLocal - local).TotalMinutes);
             _apiEvents.Add(new CalEvent(
                 lesson.Id, local.Date, lesson.Title, lesson.Subject ?? "", MapMode(lesson.Mode),
-                local.Hour, local.Minute, dur, lesson.Mode, lesson.Description, lesson.Location, lesson.MeetingUrl));
+                local.Hour, local.Minute, dur, lesson.Mode, lesson.Description, lesson.Location, lesson.MeetingUrl,
+                maxStudents: lesson.MaxStudents));
         }
 
         foreach (var unavail in view.Unavailabilities ?? [])
@@ -679,7 +692,8 @@
             LocationOrUrl = locOrUrl,
             Date = evt.Date,
             StartTime = new TimeOnly(evt.StartH, evt.StartM),
-            Duration = Math.Max(0.5, Math.Round(evt.DurMin / 60.0, 1))
+            Duration = Math.Max(0.5, Math.Round(evt.DurMin / 60.0, 1)),
+            MaxStudents = Math.Max(1, evt.MaxStudents)
         };
         _showLessonModal = true;
     }
@@ -693,8 +707,22 @@
 
     private void ToggleStudent(Guid id, bool selected)
     {
-        if (selected) _lessonForm.StudentIds.Add(id);
-        else _lessonForm.StudentIds.Remove(id);
+        if (selected)
+        {
+            if (_lessonForm.StudentIds.Count >= _lessonForm.MaxStudents)
+                return;
+            _lessonForm.StudentIds.Add(id);
+        }
+        else
+            _lessonForm.StudentIds.Remove(id);
+    }
+
+    private void ClampSelectedStudents()
+    {
+        _lessonForm.MaxStudents = Math.Clamp(_lessonForm.MaxStudents, 1, 100);
+        if (_lessonForm.StudentIds.Count <= _lessonForm.MaxStudents)
+            return;
+        _lessonForm.StudentIds = _lessonForm.StudentIds.Take(_lessonForm.MaxStudents).ToHashSet();
     }
 
     private void OpenUnavailabilityModal()
@@ -762,7 +790,8 @@
                     mode,
                     location,
                     meetingUrl,
-                    null);
+                    null,
+                    Math.Clamp(_lessonForm.MaxStudents, 1, 100));
 
                 var updated = await Api.PutWithErrorAsync<Application.DTOs.Lessons.LessonDto>(
                     $"api/lessons/{_editingLessonId}", updateReq);
@@ -788,7 +817,8 @@
                     location,
                     meetingUrl,
                     null,
-                    _lessonForm.StudentIds.Count > 0 ? _lessonForm.StudentIds.ToList() : null);
+                    _lessonForm.StudentIds.Count > 0 ? _lessonForm.StudentIds.ToList() : null,
+                    MaxStudents: Math.Clamp(_lessonForm.MaxStudents, 1, 100));
 
                 var result = await Api.PostWithErrorAsync<List<Application.DTOs.Lessons.LessonDto>>("api/lessons", req);
 

@@ -53,6 +53,12 @@ public class LessonService : ILessonService
     {
         ValidateTimeRange(request.StartTime, request.EndTime);
 
+        var maxStudents = Math.Clamp(request.MaxStudents, 1, 100);
+        var studentIds = request.StudentIds?.Distinct().ToList() ?? [];
+        if (studentIds.Count > maxStudents)
+            throw new InvalidOperationException(
+                $"Cette séance est limitée à {maxStudents} élève(s). Vous en avez sélectionné {studentIds.Count}.");
+
         var tenantId = RequireTenantId();
         var slots = BuildRecurrenceSlots(request.StartTime, request.EndTime, request);
         var created = new List<Lesson>();
@@ -70,7 +76,8 @@ public class LessonService : ILessonService
                 Mode = request.Mode,
                 Location = request.Location?.Trim(),
                 MeetingUrl = request.MeetingUrl?.Trim(),
-                SessionNotes = request.SessionNotes?.Trim()
+                SessionNotes = request.SessionNotes?.Trim(),
+                MaxStudents = maxStudents
             };
             _db.Add(lesson);
             created.Add(lesson);
@@ -78,11 +85,11 @@ public class LessonService : ILessonService
 
         await _db.SaveChangesAsync(ct);
 
-        if (request.StudentIds is { Count: > 0 })
+        if (studentIds.Count > 0)
         {
             foreach (var lesson in created)
             {
-                foreach (var studentId in request.StudentIds.Distinct())
+                foreach (var studentId in studentIds)
                 {
                     var student = _db.Students.FirstOrDefault(s => s.Id == studentId);
                     if (student is null) continue;
@@ -98,10 +105,10 @@ public class LessonService : ILessonService
             }
 
             await _db.SaveChangesAsync(ct);
-            await SendLessonScheduledEmailsAsync(created[0], request.StudentIds, ct);
+            await SendLessonScheduledEmailsAsync(created[0], studentIds, ct);
         }
 
-        return created.Select(MapToDto).ToList();
+        return MapManyToDto(created);
     }
 
     private static List<(DateTime Start, DateTime End)> BuildRecurrenceSlots(
@@ -217,7 +224,7 @@ public class LessonService : ILessonService
     public Task<LessonDto?> GetByIdAsync(Guid id, CancellationToken ct = default)
     {
         var lesson = _db.Lessons.FirstOrDefault(l => l.Id == id);
-        return Task.FromResult(lesson is null ? null : MapToDto(lesson));
+        return Task.FromResult(lesson is null ? null : MapToDto(lesson, LoadStudentNames([lesson.Id])));
     }
 
     public async Task<IReadOnlyList<LessonDto>> GetByDateRangeAsync(DateTime start, DateTime end, CancellationToken ct = default)
@@ -228,11 +235,9 @@ public class LessonService : ILessonService
         var lessons = _db.Lessons
             .Where(l => l.StartTime < end && l.EndTime > start)
             .OrderBy(l => l.StartTime)
-            .ToList()
-            .Select(MapToDto)
             .ToList();
 
-        return lessons;
+        return MapManyToDto(lessons);
     }
 
     public async Task<IReadOnlyList<LessonDto>> GetByViewAsync(CalendarView view, DateTime date, CancellationToken ct = default)
@@ -267,6 +272,12 @@ public class LessonService : ILessonService
                     $"Impossible de modifier la date/heure à moins de {CancelFreeHours} h avant le début du cours.");
         }
 
+        var maxStudents = Math.Clamp(request.MaxStudents, 1, 100);
+        var enrolled = _db.LessonAttendances.Count(a => a.LessonId == lesson.Id);
+        if (enrolled > maxStudents)
+            throw new InvalidOperationException(
+                $"Impossible de limiter à {maxStudents} élève(s) : {enrolled} déjà inscrit(s).");
+
         lesson.Title = request.Title.Trim();
         lesson.Description = request.Description?.Trim();
         lesson.Subject = request.Subject?.Trim();
@@ -276,6 +287,7 @@ public class LessonService : ILessonService
         lesson.Location = request.Location?.Trim();
         lesson.MeetingUrl = request.MeetingUrl?.Trim();
         lesson.SessionNotes = request.SessionNotes?.Trim();
+        lesson.MaxStudents = maxStudents;
         lesson.UpdatedAt = DateTime.UtcNow;
 
         await _db.SaveChangesAsync(ct);
@@ -291,7 +303,7 @@ public class LessonService : ILessonService
                 await SendLessonScheduledEmailsAsync(lesson, studentIds, ct);
         }
 
-        return MapToDto(lesson);
+        return MapToDto(lesson, LoadStudentNames([lesson.Id]));
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
@@ -596,22 +608,60 @@ public class LessonService : ILessonService
             throw new InvalidOperationException("La date de fin doit être postérieure à la date de début.");
     }
 
-    private static LessonDto MapToDto(Lesson lesson) => new(
-        lesson.Id,
-        lesson.Title,
-        lesson.Description,
-        lesson.Subject,
-        lesson.StartTime,
-        lesson.EndTime,
-        lesson.Mode.ToString(),
-        lesson.Location,
-        lesson.MeetingUrl,
-        lesson.SessionNotes,
-        lesson.CreatedAt,
-        lesson.UpdatedAt,
-        lesson.SettlementStatus.ToString(),
-        lesson.CancelledAt,
-        lesson.SessionCounted,
-        lesson.TutorLiable,
-        lesson.TutorLiabilityResolution);
+    private IReadOnlyList<LessonDto> MapManyToDto(IReadOnlyList<Lesson> lessons)
+    {
+        var names = LoadStudentNames(lessons.Select(l => l.Id));
+        return lessons.Select(l => MapToDto(l, names)).ToList();
+    }
+
+    private Dictionary<Guid, List<string>> LoadStudentNames(IEnumerable<Guid> lessonIds)
+    {
+        var ids = lessonIds.Distinct().ToList();
+        if (ids.Count == 0)
+            return new Dictionary<Guid, List<string>>();
+
+        var rows = _db.LessonAttendances.Where(a => ids.Contains(a.LessonId)).ToList();
+        var studentIds = rows.Select(r => r.StudentId).Distinct().ToList();
+        var students = _db.Students.Where(s => studentIds.Contains(s.Id)).ToDictionary(s => s.Id);
+
+        return rows
+            .GroupBy(r => r.LessonId)
+            .ToDictionary(
+                g => g.Key,
+                g => g.Select(a =>
+                {
+                    students.TryGetValue(a.StudentId, out var student);
+                    return student is null ? "" : $"{student.FirstName} {student.LastName}".Trim();
+                }).Where(n => n.Length > 0).ToList());
+    }
+
+    private static LessonDto MapToDto(
+        Lesson lesson,
+        Dictionary<Guid, List<string>>? studentNamesByLesson = null)
+    {
+        IReadOnlyList<string>? names = null;
+        if (studentNamesByLesson is not null && studentNamesByLesson.TryGetValue(lesson.Id, out var list))
+            names = list;
+
+        return new(
+            lesson.Id,
+            lesson.Title,
+            lesson.Description,
+            lesson.Subject,
+            lesson.StartTime,
+            lesson.EndTime,
+            lesson.Mode.ToString(),
+            lesson.Location,
+            lesson.MeetingUrl,
+            lesson.SessionNotes,
+            lesson.CreatedAt,
+            lesson.UpdatedAt,
+            lesson.SettlementStatus.ToString(),
+            lesson.CancelledAt,
+            lesson.SessionCounted,
+            lesson.TutorLiable,
+            lesson.TutorLiabilityResolution,
+            lesson.MaxStudents,
+            names);
+    }
 }

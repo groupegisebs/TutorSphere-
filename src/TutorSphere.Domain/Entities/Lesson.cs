@@ -15,6 +15,10 @@ public class Lesson : BaseEntity, ITenantEntity
     public string? Location { get; set; }
     public string? MeetingUrl { get; set; }
     public string? SessionNotes { get; set; }
+
+    /// <summary>Nombre maximum d'élèves pouvant être inscrits à cette séance (1 = individuel).</summary>
+    public int MaxStudents { get; set; } = 1;
+
     public DateTime? ReminderSentAt { get; set; }
 
     /// <summary>Statut de comptabilisation (absence / annulation / moniteur).</summary>

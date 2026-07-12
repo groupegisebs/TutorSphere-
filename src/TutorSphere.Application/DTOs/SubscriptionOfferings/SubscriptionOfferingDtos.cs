@@ -28,7 +28,8 @@ public record SubscriptionOfferingDto(
     string? Conditions,
     OfferingScheduleDto? Schedule,
     int ActiveSubscribers = 0,
-    decimal MonthlyRevenue = 0);
+    decimal MonthlyRevenue = 0,
+    int MaxCapacity = 20);
 
 public record CreateSubscriptionOfferingRequest(
     string Title,
@@ -41,7 +42,8 @@ public record CreateSubscriptionOfferingRequest(
     string? Frequency,
     string? Mode = null,
     string? Conditions = null,
-    OfferingScheduleDto? Schedule = null);
+    OfferingScheduleDto? Schedule = null,
+    int MaxCapacity = 20);
 
 public record UpdateSubscriptionOfferingRequest(
     string Title,
@@ -54,4 +56,5 @@ public record UpdateSubscriptionOfferingRequest(
     string? Frequency,
     string? Mode = null,
     string? Conditions = null,
-    OfferingScheduleDto? Schedule = null);
+    OfferingScheduleDto? Schedule = null,
+    int MaxCapacity = 20);

@@ -24,16 +24,19 @@ public sealed class LessonService
         string? location = null, string? meetingUrl = null, string? sessionNotes = null,
         string? recurrenceFrequency = null,
         int? recurrenceOccurrences = null,
-        DateTime? recurrenceUntil = null)
+        DateTime? recurrenceUntil = null,
+        int maxStudents = 1,
+        IReadOnlyList<Guid>? studentIds = null)
     {
         var mode = MapMode(modeDisplay);
         var req = new CreateLessonRequest(
             title, description, subject, startTime, endTime,
             mode, location, meetingUrl, sessionNotes,
-            StudentIds: null,
+            StudentIds: studentIds,
             RecurrenceFrequency: recurrenceFrequency,
             RecurrenceOccurrences: recurrenceOccurrences,
-            RecurrenceUntil: recurrenceUntil);
+            RecurrenceUntil: recurrenceUntil,
+            MaxStudents: maxStudents);
         return await _api.PostAsync<List<LessonDto>>("api/lessons", req) ?? [];
     }
 
@@ -41,10 +44,11 @@ public sealed class LessonService
         Guid id, string title, string? description, string? subject,
         DateTime startTime, DateTime endTime,
         string modeDisplay,
-        string? location = null, string? meetingUrl = null, string? sessionNotes = null)
+        string? location = null, string? meetingUrl = null, string? sessionNotes = null,
+        int maxStudents = 1)
     {
         var result = await UpdateLessonWithErrorAsync(
-            id, title, description, subject, startTime, endTime, modeDisplay, location, meetingUrl, sessionNotes);
+            id, title, description, subject, startTime, endTime, modeDisplay, location, meetingUrl, sessionNotes, maxStudents);
         return result.Value;
     }
 
@@ -52,12 +56,13 @@ public sealed class LessonService
         Guid id, string title, string? description, string? subject,
         DateTime startTime, DateTime endTime,
         string modeDisplay,
-        string? location = null, string? meetingUrl = null, string? sessionNotes = null)
+        string? location = null, string? meetingUrl = null, string? sessionNotes = null,
+        int maxStudents = 1)
     {
         var mode = MapMode(modeDisplay);
         var req = new UpdateLessonRequest(
             title, description, subject, startTime, endTime,
-            mode, location, meetingUrl, sessionNotes);
+            mode, location, meetingUrl, sessionNotes, maxStudents);
         return await _api.PutWithErrorAsync<LessonDto>($"api/lessons/{id}", req);
     }
 

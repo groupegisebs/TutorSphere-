@@ -18,7 +18,9 @@ public record CreateLessonRequest(
     /// <summary>Total occurrences including the first (2–52). Ignored if RecurrenceUntil is set.</summary>
     int? RecurrenceOccurrences = null,
     /// <summary>Last date (inclusive) for recurring sessions. Takes precedence over Occurrences when both set.</summary>
-    DateTime? RecurrenceUntil = null);
+    DateTime? RecurrenceUntil = null,
+    /// <summary>Max élèves inscrits à la séance (défaut 1).</summary>
+    int MaxStudents = 1);
 
 public record UpdateLessonRequest(
     string Title,
@@ -29,7 +31,8 @@ public record UpdateLessonRequest(
     LessonMode Mode,
     string? Location,
     string? MeetingUrl,
-    string? SessionNotes);
+    string? SessionNotes,
+    int MaxStudents = 1);
 
 public record LessonDto(
     Guid Id,
@@ -48,7 +51,9 @@ public record LessonDto(
     DateTime? CancelledAt = null,
     bool SessionCounted = false,
     bool TutorLiable = false,
-    string? TutorLiabilityResolution = null);
+    string? TutorLiabilityResolution = null,
+    int MaxStudents = 1,
+    IReadOnlyList<string>? StudentNames = null);
 
 public record CancelLessonRequest(string? Reason = null);
 

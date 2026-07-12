@@ -40,6 +40,13 @@ public class StudentSubscriptionService : IStudentSubscriptionService
         if (duplicate)
             throw new InvalidOperationException("Cet enfant est déjà abonné (ou en cours d'abonnement) à cette offre.");
 
+        var activeCount = _db.StudentSubscriptionsForAnyTenant.Count(s =>
+            s.OfferingId == offering.Id
+            && (s.Status == SubscriptionStatus.Pending || s.Status == SubscriptionStatus.Active));
+        if (activeCount >= offering.MaxCapacity)
+            throw new InvalidOperationException(
+                $"Cette offre est complète ({offering.MaxCapacity} place(s) maximum).");
+
         // Ensure the child is linked to the tutor school for subsequent lessons.
         if (student.TenantId != offering.TenantId)
         {

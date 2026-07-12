@@ -184,11 +184,14 @@
                             <option value="Présentiel">@L["Common_InPerson"]</option>
                         </select></div>
                     <div class="col-6"><label class="form-label">@L["Lessons_Type"]</label>
-                        <select class="form-select" @bind="_lf.Type">
+                        <select class="form-select" @bind="_lf.Type" @bind:after="OnLessonTypeChanged">
                             <option value="Individuel">@L["Lessons_Individual"]</option>
                             <option value="Collectif">@L["Lessons_Group"]</option>
                             <option value="Intensif">@L["Lessons_Intensive"]</option>
                         </select></div>
+                    <div class="col-6"><label class="form-label">@L["Lessons_MaxStudents"]</label>
+                        <input type="number" class="form-control" min="1" max="100"
+                               @bind="_lf.MaxStudents" disabled="@(_lf.Type == "Individuel")" /></div>
                     <div class="col-12">
                         <label class="form-label">@L["Lessons_Recurrence"]</label>
                         <select class="form-select" @bind="_lf.Recurrence">
@@ -309,28 +312,60 @@
         finally { _loading = false; }
     }
 
-    private static LessonVM MapFromDto(LessonDto d) => new()
+    private static LessonVM MapFromDto(LessonDto d)
     {
-        ApiId = d.Id,
-        Title = d.Title,
-        Subject = d.Subject ?? "",
-        Date = d.StartTime.ToLocalTime(),
-        EndTime = d.EndTime.ToLocalTime().ToString("HH:mm"),
-        Duration = Math.Round((d.EndTime - d.StartTime).TotalHours, 1),
-        Mode = LessonService.ModeToDisplay(d.Mode),
-        Status = LessonService.DeriveStatus(d.StartTime, d.EndTime, d.SettlementStatus),
-        SettlementStatus = d.SettlementStatus,
-        SessionCounted = d.SessionCounted,
-        TutorLiable = d.TutorLiable,
-        AvatarColor = "#7c3aed"
-    };
+        var names = d.StudentNames?.Where(n => !string.IsNullOrWhiteSpace(n)).ToList() ?? [];
+        var studentName = names.Count == 0 ? ""
+            : names.Count == 1 ? names[0]
+            : string.Join(", ", names);
+        var initials = names.Count == 0 ? ""
+            : string.Join("", names[0].Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Take(2).Select(x => x.Length > 0 ? char.ToUpperInvariant(x[0]) : ' ')).Trim();
+
+        return new()
+        {
+            ApiId = d.Id,
+            Title = d.Title,
+            StudentName = studentName,
+            StudentInitials = initials,
+            Subject = d.Subject ?? "",
+            Date = d.StartTime.ToLocalTime(),
+            EndTime = d.EndTime.ToLocalTime().ToString("HH:mm"),
+            Duration = Math.Round((d.EndTime - d.StartTime).TotalHours, 1),
+            Mode = LessonService.ModeToDisplay(d.Mode),
+            Status = LessonService.DeriveStatus(d.StartTime, d.EndTime, d.SettlementStatus),
+            SettlementStatus = d.SettlementStatus,
+            SessionCounted = d.SessionCounted,
+            TutorLiable = d.TutorLiable,
+            MaxStudents = d.MaxStudents,
+            AvatarColor = "#7c3aed"
+        };
+    }
+
+    private void OnLessonTypeChanged()
+    {
+        if (_lf.Type == "Individuel")
+            _lf.MaxStudents = 1;
+        else if (_lf.MaxStudents < 2)
+            _lf.MaxStudents = 5;
+    }
 
     private void OpenAdd() { _editingLesson = null; _lf = new(); _dateLocked = false; _showModal = true; }
     private void OpenEdit(LessonVM l)
     {
         _editingLesson = l;
-        _lf = new LessonForm { Title=l.Title, Student=l.StudentName, Subject=l.Subject,
-            Date=l.Date, StartTime=TimeOnly.FromDateTime(l.Date), Duration=l.Duration, Mode=l.Mode };
+        _lf = new LessonForm
+        {
+            Title = l.Title,
+            Student = l.StudentName,
+            Subject = l.Subject,
+            Date = l.Date,
+            StartTime = TimeOnly.FromDateTime(l.Date),
+            Duration = l.Duration,
+            Mode = l.Mode,
+            Type = l.MaxStudents > 1 ? "Collectif" : "Individuel",
+            MaxStudents = Math.Max(1, l.MaxStudents)
+        };
         var hoursLeft = l.Date.ToUniversalTime() - DateTime.UtcNow;
         _dateLocked = hoursLeft < TimeSpan.FromHours(24)
                       || l.SettlementStatus is "CancelledFree" or "TutorNoShow" or "LiabilityResolved";
@@ -457,7 +492,8 @@
                 start.ToUniversalTime(), end.ToUniversalTime(), _lf.Mode,
                 recurrenceFrequency: recurrence == "none" ? null : recurrence,
                 recurrenceOccurrences: occurrences,
-                recurrenceUntil: until?.ToUniversalTime());
+                recurrenceUntil: until?.ToUniversalTime(),
+                maxStudents: _lf.Type == "Individuel" ? 1 : Math.Clamp(_lf.MaxStudents, 1, 100));
 
             if (created.Count > 0)
             {
@@ -491,7 +527,8 @@
             var result = await LessonSvc.UpdateLessonWithErrorAsync(
                 _editingLesson.ApiId.Value,
                 _lf.Title, _lf.Description, _lf.Subject,
-                editStart.ToUniversalTime(), editEnd.ToUniversalTime(), _lf.Mode);
+                editStart.ToUniversalTime(), editEnd.ToUniversalTime(), _lf.Mode,
+                maxStudents: _lf.Type == "Individuel" ? 1 : Math.Clamp(_lf.MaxStudents, 1, 100));
             if (result.Error is not null)
             {
                 _error = result.Error;
@@ -539,6 +576,7 @@
         public double Duration { get; set; } = 1;
         public string Mode { get; set; } = "En ligne";
         public string Type { get; set; } = "Individuel";
+        public int MaxStudents { get; set; } = 1;
         public string Description { get; set; } = "";
         public string Recurrence { get; set; } = "none";
         public int Occurrences { get; set; } = 8;
@@ -561,6 +599,7 @@
         public string? SettlementStatus { get; set; }
         public bool SessionCounted { get; set; }
         public bool TutorLiable { get; set; }
+        public int MaxStudents { get; set; } = 1;
         public string AvatarColor { get; set; } = "#7c3aed";
     }
 
