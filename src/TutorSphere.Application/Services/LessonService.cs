@@ -21,6 +21,8 @@ public interface ILessonService
     Task<IReadOnlyList<LessonAttendanceDto>> GetAttendancesAsync(Guid lessonId, CancellationToken ct = default);
     Task<LessonAttendanceDto> SetAttendanceAsync(Guid lessonId, SetAttendanceRequest request, CancellationToken ct = default);
     Task SettleDueLessonsAsync(CancellationToken ct = default);
+    /// <summary>Notifie les élèves (et parents mineurs) via SignalR que la salle est ouverte.</summary>
+    Task NotifySessionStartedAsync(Guid lessonId, CancellationToken ct = default);
 }
 
 public class LessonService : ILessonService
@@ -30,13 +32,20 @@ public class LessonService : ILessonService
     private readonly IApplicationDbContext _db;
     private readonly ITenantContext _tenantContext;
     private readonly IEmailService _email;
+    private readonly IRealTimeMessaging _realtime;
     private readonly ILogger<LessonService> _logger;
 
-    public LessonService(IApplicationDbContext db, ITenantContext tenantContext, IEmailService email, ILogger<LessonService> logger)
+    public LessonService(
+        IApplicationDbContext db,
+        ITenantContext tenantContext,
+        IEmailService email,
+        IRealTimeMessaging realtime,
+        ILogger<LessonService> logger)
     {
         _db = db;
         _tenantContext = tenantContext;
         _email = email;
+        _realtime = realtime;
         _logger = logger;
     }
 
@@ -510,6 +519,53 @@ public class LessonService : ILessonService
         if (sub is null) return;
         sub.SessionsRemaining -= 1;
         sub.UpdatedAt = DateTime.UtcNow;
+    }
+
+    public async Task NotifySessionStartedAsync(Guid lessonId, CancellationToken ct = default)
+    {
+        var lesson = _db.Lessons.FirstOrDefault(l => l.Id == lessonId)
+            ?? throw new InvalidOperationException("Cours introuvable.");
+
+        if (lesson.SettlementStatus is LessonSettlementStatus.CancelledFree
+            or LessonSettlementStatus.TutorNoShow
+            or LessonSettlementStatus.LiabilityResolved)
+            throw new InvalidOperationException("Ce cours est clôturé — impossible de démarrer la salle.");
+
+        var studentIds = _db.LessonAttendances
+            .Where(a => a.LessonId == lessonId)
+            .Select(a => a.StudentId)
+            .Distinct()
+            .ToList();
+
+        var students = _db.Students.Where(s => studentIds.Contains(s.Id)).ToList();
+        var recipientIds = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var student in students)
+        {
+            if (!string.IsNullOrWhiteSpace(student.UserId))
+                recipientIds.Add(student.UserId);
+
+            if (student.IsMinor && student.ParentProfileId is Guid parentId)
+            {
+                var parent = _db.ParentProfiles.FirstOrDefault(p => p.Id == parentId);
+                if (parent is not null && !string.IsNullOrWhiteSpace(parent.UserId))
+                    recipientIds.Add(parent.UserId);
+            }
+        }
+
+        var tutorName = _db.Tenants.FirstOrDefault(t => t.Id == lesson.TenantId)?.Name ?? "Votre tuteur";
+        var payload = new LessonStartedNotificationDto(
+            lesson.Id,
+            lesson.Title,
+            lesson.Subject,
+            tutorName,
+            DateTime.UtcNow);
+
+        await _realtime.NotifyLessonStartedAsync(recipientIds, payload, ct);
+        _logger.LogInformation(
+            "Notification démarrage séance {LessonId} envoyée à {Count} destinataire(s).",
+            lessonId,
+            recipientIds.Count);
     }
 
     private static DateTime ToUtc(DateTime dt) =>

@@ -103,7 +103,7 @@
                             <div class="ts-action-group">
                                 @if (l.Status == "Planifié")
                                 {
-                                    <button class="ts-icon-btn" title="@L["Lessons_Start"]" @onclick="() => StartLesson(l)">
+                                    <button class="ts-icon-btn" title="@L["Lessons_Start"]" @onclick="async () => await StartLesson(l)">
                                         <i class="bi bi-play-fill text-success"></i>
                                     </button>
                                 }
@@ -520,10 +520,13 @@
         _showModal = false;
     }
 
-    private void StartLesson(LessonVM lesson)
+    private async Task StartLesson(LessonVM lesson)
     {
         lesson.Status = "En cours";
-        Navigation.NavigateTo($"/tutor/classroom/{lesson.Id}?student={Uri.EscapeDataString(lesson.StudentName)}&initials={Uri.EscapeDataString(lesson.StudentInitials)}&title={Uri.EscapeDataString(lesson.Title)}&subject={Uri.EscapeDataString(lesson.Subject)}");
+        var routeId = lesson.ApiId?.ToString() ?? lesson.Id;
+        Navigation.NavigateTo(
+            $"/tutor/classroom/{routeId}?student={Uri.EscapeDataString(lesson.StudentName)}&initials={Uri.EscapeDataString(lesson.StudentInitials)}&title={Uri.EscapeDataString(lesson.Title)}&subject={Uri.EscapeDataString(lesson.Subject)}");
+        await Task.CompletedTask;
     }
 
     private class LessonForm

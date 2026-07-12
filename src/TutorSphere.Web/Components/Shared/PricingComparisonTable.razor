@@ -25,6 +25,12 @@
                                 {
                                     @L["Plan_ContactUs"]
                                 }
+                                else if (plan.IsFree)
+                                {
+                                    <span class="plan-price-struck" aria-hidden="true">@($"{plan.Price} $")</span>
+                                    <span class="plan-price-now">0 $</span>
+                                    <small>/@L["Plan_PerMonth"]</small>
+                                }
                                 else
                                 {
                                     @($"{plan.Price} $")
@@ -77,12 +83,12 @@
     [Parameter] public bool Subscribing { get; set; }
     [Parameter] public string? SubscribingPlanId { get; set; }
 
-    private readonly record struct Plan(string Id, string NameKey, string Price, bool Featured, bool ContactUs);
+    private readonly record struct Plan(string Id, string NameKey, string Price, bool Featured, bool ContactUs, bool IsFree = false);
     private readonly record struct Row(string Id, string LabelKey);
 
     private readonly Plan[] _plans =
     [
-        new("starter", "Plan_Starter", "14,99", false, false),
+        new("starter", "Plan_Starter", "14,99", false, false, IsFree: true),
         new("pro", "Plan_Professional", "29,99", true, false),
         new("business", "Plan_Business", "59,99", false, false),
         new("enterprise", "Plan_Enterprise", "", false, true),

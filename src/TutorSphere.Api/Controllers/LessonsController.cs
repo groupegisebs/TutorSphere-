@@ -91,6 +91,21 @@ public class LessonsController : ControllerBase
         }
     }
 
+    /// <summary>Démarre la salle virtuelle et notifie les élèves en temps réel (SignalR).</summary>
+    [HttpPost("{id:guid}/start")]
+    public async Task<IActionResult> Start(Guid id, CancellationToken ct)
+    {
+        try
+        {
+            await _lessonService.NotifySessionStartedAsync(id, ct);
+            return Ok(new { started = true, lessonId = id });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     /// <summary>Annulation : ≥24h = non comptée ; sinon validée (comptée).</summary>
     [HttpPost("{id:guid}/cancel")]
     public async Task<ActionResult<LessonDto>> Cancel(Guid id, [FromBody] CancelLessonRequest? request, CancellationToken ct)

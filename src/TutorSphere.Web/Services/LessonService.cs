@@ -64,6 +64,9 @@ public sealed class LessonService
     public async Task<bool> DeleteLessonAsync(Guid id) =>
         await _api.DeleteAsync($"api/lessons/{id}");
 
+    public async Task NotifyLessonStartedAsync(Guid id) =>
+        await _api.PostWithErrorAsync<object>($"api/lessons/{id}/start", new { });
+
     public async Task<LessonDto?> CancelLessonAsync(Guid id, string? reason = null) =>
         await _api.PostAsync<LessonDto>($"api/lessons/{id}/cancel", new { reason });
 

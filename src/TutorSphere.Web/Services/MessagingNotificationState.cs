@@ -1,3 +1,4 @@
+using TutorSphere.Application.DTOs.Lessons;
 using TutorSphere.Application.DTOs.Messages;
 
 namespace TutorSphere.Web.Services;
@@ -41,10 +42,11 @@ public sealed class MessagingNotificationState
         ShowIncomingToast(senderDisplayName ?? "Nouveau message", message.Body);
     }
 
-    public void ShowIncomingToast(string from, string preview)
+    public void ShowIncomingToast(string from, string preview, string? href = null)
     {
         ToastFrom = from;
         ToastPreview = Truncate(preview, 72);
+        ToastHref = href;
         ShowToast = true;
         Notify();
 
@@ -54,11 +56,23 @@ public sealed class MessagingNotificationState
         _ = DismissAfterDelayAsync(token);
     }
 
+    public void ShowLessonStarted(LessonStartedNotificationDto n, string href)
+    {
+        var subject = string.IsNullOrWhiteSpace(n.Subject) ? n.Title : n.Subject!;
+        ShowIncomingToast(
+            "Cours démarré",
+            $"{n.TutorName} — {subject}. Cliquez pour rejoindre.",
+            href);
+    }
+
+    public string? ToastHref { get; private set; }
+
     public void DismissToast()
     {
         ShowToast = false;
         ToastFrom = null;
         ToastPreview = null;
+        ToastHref = null;
         Notify();
     }
 
@@ -66,7 +80,7 @@ public sealed class MessagingNotificationState
     {
         try
         {
-            await Task.Delay(4500, ct);
+            await Task.Delay(8000, ct);
             if (!ct.IsCancellationRequested)
                 DismissToast();
         }

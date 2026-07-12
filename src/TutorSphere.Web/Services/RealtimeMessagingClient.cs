@@ -1,11 +1,12 @@
 using Microsoft.AspNetCore.SignalR.Client;
+using TutorSphere.Application.DTOs.Lessons;
 using TutorSphere.Application.DTOs.Messages;
 
 namespace TutorSphere.Web.Services;
 
 /// <summary>
 /// Circuit-scoped SignalR client for /hubs/messages.
-/// Receives <c>ReceiveMessage</c> pushed by the API after each send.
+/// Receives <c>ReceiveMessage</c> and <c>LessonStarted</c> from the API.
 /// </summary>
 public sealed class RealtimeMessagingClient : IAsyncDisposable
 {
@@ -33,6 +34,7 @@ public sealed class RealtimeMessagingClient : IAsyncDisposable
     }
 
     public event Action<MessageDto>? MessageReceived;
+    public event Action<LessonStartedNotificationDto>? LessonStarted;
 
     public bool IsConnected => _hub?.State == HubConnectionState.Connected;
 
@@ -98,6 +100,25 @@ public sealed class RealtimeMessagingClient : IAsyncDisposable
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Erreur lors du traitement ReceiveMessage.");
+            }
+        });
+
+        hub.On<LessonStartedNotificationDto>("LessonStarted", notification =>
+        {
+            try
+            {
+                var href = _auth.PrimaryRole switch
+                {
+                    "Parent" => "parent/calendar",
+                    "Student" => $"/student/classroom/{notification.LessonId}?title={Uri.EscapeDataString(notification.Title)}&subject={Uri.EscapeDataString(notification.Subject ?? "")}",
+                    _ => $"/tutor/classroom/{notification.LessonId}"
+                };
+                _notifications.ShowLessonStarted(notification, href);
+                LessonStarted?.Invoke(notification);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Erreur lors du traitement LessonStarted.");
             }
         });
 
