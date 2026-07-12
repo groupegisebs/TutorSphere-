@@ -15,6 +15,7 @@ public class Lesson : BaseEntity, ITenantEntity
     public string? Location { get; set; }
     public string? MeetingUrl { get; set; }
     public string? SessionNotes { get; set; }
+    public DateTime? ReminderSentAt { get; set; }
 
     public Tenant Tenant { get; set; } = null!;
     public ICollection<LessonAttendance> Attendances { get; set; } = [];

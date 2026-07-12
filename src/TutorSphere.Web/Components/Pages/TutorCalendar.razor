@@ -276,6 +276,28 @@
                                placeholder="Adresse ou URL de visioconférence" />
                     </div>
                     <div class="col-12">
+                        <label class="form-label">Élèves (pour rappels e-mail)</label>
+                        @if (_students.Count == 0)
+                        {
+                            <p class="text-muted small mb-0">Aucun élève — ajoutez-en dans « Mes élèves ».</p>
+                        }
+                        else
+                        {
+                            <div class="border rounded p-2" style="max-height:140px;overflow:auto">
+                                @foreach (var s in _students)
+                                {
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox"
+                                               id="cal-stu-@s.Id"
+                                               checked="@_lessonForm.StudentIds.Contains(s.Id)"
+                                               @onchange="e => ToggleStudent(s.Id, (bool)(e.Value ?? false))" />
+                                        <label class="form-check-label" for="cal-stu-@s.Id">@s.Name</label>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                    <div class="col-12">
                         <label class="form-label">Description</label>
                         <textarea class="form-control" rows="2" @bind="_lessonForm.Description"></textarea>
                     </div>
@@ -358,6 +380,9 @@
 
     private LessonFormModel _lessonForm = new();
     private UnavailFormModel _unavailForm = new();
+    private readonly List<StudentOption> _students = [];
+
+    private record StudentOption(Guid Id, string Name);
 
     // ── Calendar filter model ──────────────────────────────────────────────────
     private class CalFilter { public required string Label; public bool Checked = true; }
@@ -462,6 +487,7 @@
         public DateTime Date { get; set; } = DateTime.Today;
         public TimeOnly StartTime { get; set; } = new(10, 0);
         public double Duration { get; set; } = 1;
+        public HashSet<Guid> StudentIds { get; set; } = [];
     }
 
     private sealed class UnavailFormModel
@@ -486,7 +512,13 @@
         ];
 
         await LoadCalendarDataAsync();
+
+        var students = await Api.GetAsync<List<ApiStudentListDto>>("api/students") ?? [];
+        _students.Clear();
+        _students.AddRange(students.Select(s => new StudentOption(s.Id, $"{s.FirstName} {s.LastName}".Trim())));
     }
+
+    private record ApiStudentListDto(Guid Id, string FirstName, string LastName);
 
     private async Task LoadCalendarDataAsync()
     {
@@ -555,6 +587,12 @@
         _formError = null;
     }
 
+    private void ToggleStudent(Guid id, bool selected)
+    {
+        if (selected) _lessonForm.StudentIds.Add(id);
+        else _lessonForm.StudentIds.Remove(id);
+    }
+
     private void OpenUnavailabilityModal()
     {
         CloseNewMenu();
@@ -618,7 +656,8 @@
                 mode,
                 location,
                 meetingUrl,
-                null);
+                null,
+                _lessonForm.StudentIds.Count > 0 ? _lessonForm.StudentIds.ToList() : null);
 
             var result = await Api.PostWithErrorAsync<Application.DTOs.Lessons.LessonDto>("api/lessons", req);
 

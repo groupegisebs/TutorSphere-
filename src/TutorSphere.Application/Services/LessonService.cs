@@ -54,7 +54,24 @@ public class LessonService : ILessonService
         await _db.SaveChangesAsync(ct);
 
         if (request.StudentIds is { Count: > 0 })
+        {
+            foreach (var studentId in request.StudentIds.Distinct())
+            {
+                var student = _db.Students.FirstOrDefault(s => s.Id == studentId);
+                if (student is null) continue;
+
+                _db.Add(new LessonAttendance
+                {
+                    TenantId = tenantId,
+                    LessonId = lesson.Id,
+                    StudentId = student.Id,
+                    IsPresent = false
+                });
+            }
+
+            await _db.SaveChangesAsync(ct);
             await SendLessonScheduledEmailsAsync(lesson, request.StudentIds, ct);
+        }
 
         return MapToDto(lesson);
     }

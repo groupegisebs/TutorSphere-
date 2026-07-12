@@ -10,5 +10,11 @@ public class ApplicationUser : IdentityUser
     public string PreferredLanguage { get; set; } = "fr";
     public string TimeZone { get; set; } = "America/Montreal";
 
+    /// <summary>When true, receive lesson reminder emails (~24h before).</summary>
+    public bool EmailLessonReminders { get; set; } = true;
+
+    /// <summary>Secret token for ICS calendar subscription (webcal / Google / Outlook).</summary>
+    public string? CalendarFeedToken { get; set; }
+
     public string FullName => $"{FirstName} {LastName}".Trim();
 }

@@ -126,6 +126,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
         {
             e.Property(u => u.FirstName).HasMaxLength(100);
             e.Property(u => u.LastName).HasMaxLength(100);
+            e.Property(u => u.CalendarFeedToken).HasMaxLength(128);
+            e.HasIndex(u => u.CalendarFeedToken);
         });
 
         ApplyTenantFilters(builder);

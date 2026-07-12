@@ -3,6 +3,7 @@
 @rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
 @inject AuthService Auth
+@inject ApiClient Api
 
 <PageTitle>@L["Nav_Settings"] – TutorSphere</PageTitle>
 
@@ -11,22 +12,88 @@
         <h1><i class="bi bi-sliders me-2"></i>@L["Nav_Settings"]</h1>
         <p class="ts-page-subtitle">Préférences de votre compte</p>
     </div>
+    <button class="btn btn-primary" @onclick="SaveAsync" disabled="@_saving">
+        @if (_saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+        Enregistrer
+    </button>
 </div>
 
-<div class="card ts-card">
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-danger">@_error</div>
+}
+@if (_saved)
+{
+    <div class="alert alert-success">Préférences enregistrées.</div>
+}
+
+<div class="card ts-card mb-4">
     <div class="card-body">
         <h2 class="h5 mb-3">Compte</h2>
-        <dl class="row mb-4">
+        <dl class="row mb-0">
             <dt class="col-sm-3">Courriel</dt>
             <dd class="col-sm-9">@(Auth.UserEmail ?? "—")</dd>
             <dt class="col-sm-3">Nom</dt>
             <dd class="col-sm-9">@(Auth.UserName ?? "—")</dd>
         </dl>
+    </div>
+</div>
 
+<div class="card ts-card mb-4">
+    <div class="card-body">
+        <h2 class="h5 mb-3">Notifications</h2>
+        <p class="text-muted small">Rappels de cours envoyés par e-mail (Mail Sender) environ 24&nbsp;h avant la séance.</p>
+        <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="parent-reminders" @bind="_emailLessonReminders" />
+            <label class="form-check-label" for="parent-reminders">Recevoir les rappels de cours par e-mail</label>
+        </div>
+    </div>
+</div>
+
+<div class="card ts-card">
+    <div class="card-body">
         <h2 class="h5 mb-3">Sécurité</h2>
-        <p class="text-muted mb-3">Pour modifier votre mot de passe, utilisez la fonction « Mot de passe oublié » depuis la page de connexion.</p>
+        <p class="text-muted mb-3">Pour modifier votre mot de passe, utilisez « Mot de passe oublié » sur la page de connexion.</p>
         <a href="/forgot-password" class="btn btn-outline-primary btn-sm">
             <i class="bi bi-key me-1"></i>Réinitialiser le mot de passe
         </a>
     </div>
 </div>
+
+@code {
+    private bool _emailLessonReminders = true;
+    private bool _saving, _saved;
+    private string? _error;
+
+    private record NotificationPreferencesDto(bool EmailLessonReminders);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var prefs = await Api.GetAsync<NotificationPreferencesDto>("api/me/notification-preferences");
+        if (prefs is not null)
+            _emailLessonReminders = prefs.EmailLessonReminders;
+    }
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        _saved = false;
+        _error = null;
+        try
+        {
+            var result = await Api.PutWithErrorAsync<NotificationPreferencesDto>(
+                "api/me/notification-preferences",
+                new { emailLessonReminders = _emailLessonReminders });
+            if (result.Error is not null)
+            {
+                _error = result.Error;
+                return;
+            }
+            _saved = true;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

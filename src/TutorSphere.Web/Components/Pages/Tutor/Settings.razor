@@ -2,13 +2,16 @@
 @layout TutorLayout
 @rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
+@inject ApiClient Api
+@inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <PageTitle>Paramètres – TutorSphere</PageTitle>
 
 <div class="ts-page-header">
     <div>
         <h1><i class="bi bi-sliders me-2"></i>Paramètres</h1>
-        <p class="ts-page-subtitle">Configurez votre compte et votre application</p>
+        <p class="ts-page-subtitle">Notifications, agenda et préférences</p>
     </div>
     <button class="btn btn-primary" @onclick="SaveSettings" disabled="@_saving">
         @if (_saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
@@ -16,6 +19,10 @@
     </button>
 </div>
 
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-danger mb-4">@_error</div>
+}
 @if (_saved)
 {
     <div class="alert alert-success mb-4">
@@ -24,7 +31,6 @@
 }
 
 <div class="settings-layout">
-    <!-- Settings nav -->
     <nav class="settings-nav">
         @foreach (var s in _sections)
         {
@@ -36,159 +42,93 @@
         }
     </nav>
 
-    <!-- Settings content -->
     <div class="settings-content">
-        @if (_section == "general")
+        @if (_section == "notifications")
+        {
+            <div class="settings-section">
+                <h2 class="settings-section-title">Notifications par e-mail</h2>
+                <p class="text-muted small mb-3">
+                    Les rappels de cours sont envoyés via Mail Sender environ 24&nbsp;h avant la séance
+                    (enseignant, élève et parent selon les inscriptions).
+                </p>
+                <div class="settings-toggle-row">
+                    <div>
+                        <strong>Rappel de cours</strong>
+                        <p class="text-muted mb-0 small">Recevoir un e-mail avant chaque séance planifiée.</p>
+                    </div>
+                    <div class="form-check form-switch mb-0">
+                        <input class="form-check-input" type="checkbox" @bind="_emailLessonReminders" id="notif-lesson" />
+                        <label class="form-check-label small" for="notif-lesson">E-mail</label>
+                    </div>
+                </div>
+            </div>
+        }
+        else if (_section == "calendar")
+        {
+            <div class="settings-section">
+                <h2 class="settings-section-title">Synchroniser mon agenda</h2>
+                <p class="text-muted small mb-3">
+                    Abonnez-vous à votre calendrier TutorSphere depuis Google Agenda, Outlook, Apple Calendar
+                    ou toute application compatible ICS / webcal.
+                </p>
+
+                @if (_feedLoading)
+                {
+                    <div class="text-muted">Chargement…</div>
+                }
+                else if (_feed is null || !_feed.IsEnabled || string.IsNullOrEmpty(_feed.FeedUrl))
+                {
+                    <p class="mb-3">Aucun abonnement actif.</p>
+                    <button class="btn btn-primary" @onclick="EnableFeedAsync" disabled="@_feedBusy">
+                        Activer la synchronisation
+                    </button>
+                }
+                else
+                {
+                    <div class="mb-3">
+                        <label class="form-label">URL HTTPS (Google, Outlook…)</label>
+                        <div class="input-group">
+                            <input class="form-control" readonly value="@_feed.FeedUrl" />
+                            <button class="btn btn-outline-secondary" type="button" @onclick="() => Copy(_feed.FeedUrl!)">Copier</button>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">URL webcal (Apple Calendar…)</label>
+                        <div class="input-group">
+                            <input class="form-control" readonly value="@_feed.WebcalUrl" />
+                            <button class="btn btn-outline-secondary" type="button" @onclick="() => Copy(_feed.WebcalUrl!)">Copier</button>
+                        </div>
+                    </div>
+                    <p class="text-muted small">@_feed.Instructions</p>
+                    <div class="d-flex gap-2 mt-3">
+                        <button class="btn btn-outline-secondary btn-sm" @onclick="EnableFeedAsync" disabled="@_feedBusy">
+                            Régénérer le lien
+                        </button>
+                        <button class="btn btn-outline-danger btn-sm" @onclick="DisableFeedAsync" disabled="@_feedBusy">
+                            Désactiver
+                        </button>
+                    </div>
+                    @if (!string.IsNullOrEmpty(_copyMsg))
+                    {
+                        <div class="alert alert-info mt-3 py-2 mb-0">@_copyMsg</div>
+                    }
+                }
+            </div>
+        }
+        else if (_section == "general")
         {
             <div class="settings-section">
                 <h2 class="settings-section-title">Général</h2>
                 <div class="row g-3">
                     <div class="col-md-6"><label class="form-label">Langue</label>
                         <select class="form-select" @bind="_s.Language">
-                            <option>Français</option><option>English</option><option>العربية</option>
-                        </select></div>
-                    <div class="col-md-6"><label class="form-label">Devise</label>
-                        <select class="form-select" @bind="_s.Currency">
-                            <option>CAD ($)</option><option>EUR (€)</option><option>USD ($)</option><option>MAD (د.م.)</option>
+                            <option>Français</option><option>English</option>
                         </select></div>
                     <div class="col-md-6"><label class="form-label">Fuseau horaire</label>
                         <select class="form-select" @bind="_s.Timezone">
                             <option>America/Montreal</option><option>Europe/Paris</option>
                             <option>Europe/Brussels</option><option>Africa/Casablanca</option>
                         </select></div>
-                    <div class="col-md-6"><label class="form-label">Format de date</label>
-                        <select class="form-select" @bind="_s.DateFormat">
-                            <option>JJ/MM/AAAA</option><option>MM/JJ/AAAA</option><option>AAAA-MM-JJ</option>
-                        </select></div>
-                </div>
-            </div>
-        }
-        else if (_section == "notifications")
-        {
-            <div class="settings-section">
-                <h2 class="settings-section-title">Notifications</h2>
-                @foreach (var n in _s.Notifications)
-                {
-                    <div class="settings-toggle-row">
-                        <div>
-                            <strong>@n.Label</strong>
-                            <p class="text-muted mb-0 small">@n.Description</p>
-                        </div>
-                        <div class="d-flex gap-3">
-                            <div class="form-check form-switch mb-0">
-                                <input class="form-check-input" type="checkbox" @bind="n.Email" id="notif-email-@n.Key" />
-                                <label class="form-check-label small" for="notif-email-@n.Key">Email</label>
-                            </div>
-                            <div class="form-check form-switch mb-0">
-                                <input class="form-check-input" type="checkbox" @bind="n.Push" id="notif-push-@n.Key" />
-                                <label class="form-check-label small" for="notif-push-@n.Key">Push</label>
-                            </div>
-                        </div>
-                    </div>
-                }
-            </div>
-        }
-        else if (_section == "appearance")
-        {
-            <div class="settings-section">
-                <h2 class="settings-section-title">Apparence</h2>
-                <div class="row g-3">
-                    <div class="col-12">
-                        <label class="form-label">Thème</label>
-                        <div class="theme-selector">
-                            @foreach (var t in new[]{"Clair","Sombre","Système"})
-                            {
-                                <button type="button"
-                                        class="theme-option @(_s.Theme==t?"active":"")"
-                                        @onclick="()=>_s.Theme=t">
-                                    <i class="bi @(t=="Clair"?"bi-sun":t=="Sombre"?"bi-moon":"bi-circle-half")"></i>
-                                    @t
-                                </button>
-                            }
-                        </div>
-                    </div>
-                    <div class="col-12">
-                        <label class="form-label">Couleur principale</label>
-                        <div class="color-selector">
-                            @foreach (var c in new[]{("#5831E0","Violet"),("#0ea5e9","Bleu"),("#10b981","Vert"),("#f59e0b","Ambre"),("#ef4444","Rouge"),("#ec4899","Rose")})
-                            {
-                                <button type="button"
-                                        class="color-swatch @(_s.PrimaryColor==c.Item1?"active":"")"
-                                        style="background:@c.Item1"
-                                        title="@c.Item2"
-                                        @onclick="()=>_s.PrimaryColor=c.Item1">
-                                </button>
-                            }
-                        </div>
-                    </div>
-                </div>
-            </div>
-        }
-        else if (_section == "billing")
-        {
-            <div class="settings-section">
-                <h2 class="settings-section-title">Abonnement & Facturation</h2>
-                <div class="billing-plan-card">
-                    <div class="billing-plan-badge">Plan Professionnel</div>
-                    <p class="text-muted">Votre abonnement se renouvelle le <strong>1er juillet 2026</strong>.</p>
-                    <div class="d-flex gap-2">
-                        <button class="btn btn-outline-secondary btn-sm">Gérer l'abonnement</button>
-                        <button class="btn btn-outline-danger btn-sm">Annuler</button>
-                    </div>
-                </div>
-                <h5 class="mt-4 mb-3">Historique des factures</h5>
-                <table class="table ts-table">
-                    <thead><tr><th>Date</th><th>Plan</th><th>Montant</th><th></th></tr></thead>
-                    <tbody>
-                        <tr><td>01/06/2026</td><td>Professionnel (mensuel)</td><td>49 $</td><td><button class="ts-icon-btn"><i class="bi bi-download"></i></button></td></tr>
-                        <tr><td>01/05/2026</td><td>Professionnel (mensuel)</td><td>49 $</td><td><button class="ts-icon-btn"><i class="bi bi-download"></i></button></td></tr>
-                    </tbody>
-                </table>
-            </div>
-        }
-        else if (_section == "security")
-        {
-            <div class="settings-section">
-                <h2 class="settings-section-title">Sécurité</h2>
-                <div class="row g-3">
-                    <div class="col-md-8">
-                        <h5>Changer le mot de passe</h5>
-                        <div class="row g-2 mt-1">
-                            <div class="col-12"><label class="form-label">Mot de passe actuel</label>
-                                <input type="password" class="form-control" @bind="_s.CurrentPassword" /></div>
-                            <div class="col-12"><label class="form-label">Nouveau mot de passe</label>
-                                <input type="password" class="form-control" @bind="_s.NewPassword" /></div>
-                            <div class="col-12"><label class="form-label">Confirmer</label>
-                                <input type="password" class="form-control" @bind="_s.ConfirmPassword" /></div>
-                            <div class="col-12">
-                                <button class="btn btn-primary btn-sm">Mettre à jour</button>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-8 mt-4">
-                        <h5>Authentification à deux facteurs</h5>
-                        <div class="settings-toggle-row">
-                            <div>
-                                <strong>2FA par SMS / Email</strong>
-                                <p class="text-muted mb-0 small">Sécurisez votre compte avec une vérification en deux étapes.</p>
-                            </div>
-                            <div class="form-check form-switch mb-0">
-                                <input class="form-check-input" type="checkbox" @bind="_s.TwoFactor" />
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        }
-        else if (_section == "legal")
-        {
-            <div class="settings-section">
-                <h2 class="settings-section-title">Mentions légales</h2>
-                <div class="row g-3">
-                    <div class="col-12"><label class="form-label">Conditions d'utilisation</label>
-                        <textarea class="form-control" rows="5" @bind="_s.Terms"></textarea></div>
-                    <div class="col-12"><label class="form-label">Politique de confidentialité</label>
-                        <textarea class="form-control" rows="5" @bind="_s.PrivacyPolicy"></textarea></div>
                 </div>
             </div>
         }
@@ -196,46 +136,102 @@
 </div>
 
 @code {
-    private string _section = "general";
-    private bool _saving, _saved;
+    private string _section = "notifications";
+    private bool _saving, _saved, _feedLoading = true, _feedBusy;
+    private bool _emailLessonReminders = true;
+    private string? _error;
+    private string? _copyMsg;
+    private CalendarFeedDto? _feed;
 
     private static readonly (string Key, string Label, string Icon)[] _sections =
     [
-        ("general","Général","bi-gear"),
-        ("notifications","Notifications","bi-bell"),
-        ("appearance","Apparence","bi-palette"),
-        ("billing","Facturation","bi-credit-card"),
-        ("security","Sécurité","bi-shield-lock"),
-        ("legal","Mentions légales","bi-file-earmark-text"),
+        ("notifications", "Notifications", "bi-bell"),
+        ("calendar", "Agenda", "bi-calendar2-check"),
+        ("general", "Général", "bi-gear"),
     ];
+
+    private class SettingsVM
+    {
+        public string Language { get; set; } = "Français";
+        public string Timezone { get; set; } = "America/Montreal";
+    }
+    private SettingsVM _s = new();
+
+    private record NotificationPreferencesDto(bool EmailLessonReminders);
+    private record CalendarFeedDto(bool IsEnabled, string? FeedUrl, string? WebcalUrl, string Instructions);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var prefs = await Api.GetAsync<NotificationPreferencesDto>("api/me/notification-preferences");
+        if (prefs is not null)
+            _emailLessonReminders = prefs.EmailLessonReminders;
+
+        _feed = await Api.GetAsync<CalendarFeedDto>("api/me/calendar-feed");
+        _feedLoading = false;
+    }
 
     private async Task SaveSettings()
     {
         _saving = true;
-        await Task.Delay(600);
-        _saving = false;
-        _saved = true;
+        _saved = false;
+        _error = null;
+        try
+        {
+            var result = await Api.PutWithErrorAsync<NotificationPreferencesDto>(
+                "api/me/notification-preferences",
+                new { emailLessonReminders = _emailLessonReminders });
+            if (result.Error is not null)
+            {
+                _error = result.Error;
+                return;
+            }
+            _saved = true;
+        }
+        finally
+        {
+            _saving = false;
+        }
     }
 
-    private class NotifSetting { public string Key{get;set;}=""; public string Label{get;set;}=""; public string Description{get;set;}=""; public bool Email{get;set;}=true; public bool Push{get;set;}=true; }
-    private class SettingsVM
+    private async Task EnableFeedAsync()
     {
-        public string Language{get;set;}="Français"; public string Currency{get;set;}="CAD ($)";
-        public string Timezone{get;set;}="America/Montreal"; public string DateFormat{get;set;}="JJ/MM/AAAA";
-        public string Theme{get;set;}="Clair"; public string PrimaryColor{get;set;}="#5831E0";
-        public string CurrentPassword{get;set;}=""; public string NewPassword{get;set;}=""; public string ConfirmPassword{get;set;}="";
-        public bool TwoFactor{get;set;}=false;
-        public string Terms{get;set;}="Les présentes conditions régissent l'utilisation de nos services.";
-        public string PrivacyPolicy{get;set;}="Nous collectons uniquement les données nécessaires à la prestation de services.";
-        public List<NotifSetting> Notifications{get;set;}=
-        [
-            new(){Key="new_student",Label="Nouvel élève",Description="Quand un élève s'inscrit.",Email=true,Push=true},
-            new(){Key="payment",Label="Paiement reçu",Description="Confirmation de paiement.",Email=true,Push=true},
-            new(){Key="payment_fail",Label="Paiement échoué",Description="Paiement refusé ou annulé.",Email=true,Push=true},
-            new(){Key="lesson",Label="Rappel de cours",Description="1h avant chaque séance planifiée.",Email=false,Push=true},
-            new(){Key="report",Label="Rapport à rédiger",Description="Rappel après chaque séance terminée.",Email=true,Push=false},
-            new(){Key="message",Label="Nouveau message",Description="Quand vous recevez un message.",Email=false,Push=true},
-        ];
+        _feedBusy = true;
+        _copyMsg = null;
+        try
+        {
+            _feed = await Api.PostAsync<CalendarFeedDto>("api/me/calendar-feed/regenerate", new { });
+        }
+        finally
+        {
+            _feedBusy = false;
+        }
     }
-    private SettingsVM _s = new();
+
+    private async Task DisableFeedAsync()
+    {
+        _feedBusy = true;
+        _copyMsg = null;
+        try
+        {
+            await Api.DeleteAsync("api/me/calendar-feed");
+            _feed = await Api.GetAsync<CalendarFeedDto>("api/me/calendar-feed");
+        }
+        finally
+        {
+            _feedBusy = false;
+        }
+    }
+
+    private async Task Copy(string value)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", value);
+            _copyMsg = "URL copiée dans le presse-papiers.";
+        }
+        catch
+        {
+            _copyMsg = $"Copiez l’URL : {value}";
+        }
+    }
 }
