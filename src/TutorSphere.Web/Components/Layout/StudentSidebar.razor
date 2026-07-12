@@ -1,5 +1,9 @@
+@rendermode InteractiveServer
+@implements IDisposable
 @inject IStringLocalizer<SharedResources> L
 @inject AuthService AuthSvc
+@inject MessagingNotificationState NotifyState
+@inject RealtimeMessagingClient Realtime
 
 <div class="sidebar-brand sidebar-brand--navy">
     <a class="sidebar-brand-link" href="student/dashboard">
@@ -55,6 +59,10 @@
             <NavLink class="nav-link" href="student/messages">
                 <i class="bi bi-chat-left-text" aria-hidden="true"></i>
                 <span>@L["Nav_Messages"]</span>
+                @if (NotifyState.UnreadTotal > 0)
+                {
+                    <span class="sidebar-badge">@NotifyState.UnreadTotal</span>
+                }
             </NavLink>
         </div>
     </nav>
@@ -83,4 +91,15 @@
                 : name[..Math.Min(2, name.Length)].ToUpperInvariant();
         }
     }
+
+    protected override async Task OnInitializedAsync()
+    {
+        NotifyState.Changed += OnNotifyChanged;
+        await AuthSvc.EnsureSessionRestoredAsync();
+        await Realtime.EnsureConnectedAsync();
+    }
+
+    private void OnNotifyChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => NotifyState.Changed -= OnNotifyChanged;
 }

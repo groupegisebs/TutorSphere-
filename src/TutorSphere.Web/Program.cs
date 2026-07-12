@@ -32,6 +32,8 @@ builder.Services.AddScoped<LessonService>();
 builder.Services.AddScoped<HomeworkService>();
 builder.Services.AddScoped<ReportService>();
 builder.Services.AddScoped<MessageService>();
+builder.Services.AddScoped<MessagingNotificationState>();
+builder.Services.AddScoped<RealtimeMessagingClient>();
 builder.Services.AddScoped<AdminService>();
 
 builder.Services.AddRazorComponents()

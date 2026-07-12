@@ -1,22 +1,26 @@
 @page "/student/messages"
 @layout StudentLayout
 @rendermode InteractiveServer
+@implements IDisposable
+@using TutorSphere.Application.DTOs.Messages
 @inject IStringLocalizer<SharedResources> L
 @inject MessageService MessageSvc
 @inject AuthService Auth
 @inject ApiClient Api
+@inject RealtimeMessagingClient Realtime
+@inject MessagingNotificationState NotifyState
 
-<PageTitle>Messagerie – TutorSphere</PageTitle>
+<PageTitle>@L["Messages_Title"] – TutorSphere</PageTitle>
 
 <div class="ts-page-header">
-    <div><h1><i class="bi bi-chat-dots me-2"></i>Messagerie</h1></div>
+    <div><h1><i class="bi bi-chat-dots me-2"></i>@L["Messages_Title"]</h1></div>
 </div>
 
 <div class="messages-layout">
     <aside class="messages-sidebar">
         <div class="messages-search">
             <i class="bi bi-search"></i>
-            <input class="form-control form-control-sm" placeholder="Rechercher…"
+            <input class="form-control form-control-sm" placeholder="@L["Messages_Search"]"
                    @bind="_msgSearch" @bind:event="oninput" />
         </div>
         <div class="conversation-list">
@@ -24,7 +28,7 @@
             {
                 <div class="ts-loading-state" style="padding: 1.5rem;">
                     <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
-                    <span class="ms-2 text-muted small">Chargement…</span>
+                    <span class="ms-2 text-muted small">@L["Common_Loading"]</span>
                 </div>
             }
             @foreach (var c in FilteredConversations)
@@ -52,7 +56,7 @@
                 <div class="ts-avatar" style="background:@_active.Color">@_active.Initials</div>
                 <div>
                     <strong>@_active.Name</strong>
-                    <span class="chat-role text-muted">Enseignant</span>
+                    <span class="chat-role text-muted">@L["Nav_Role_Tutor"]</span>
                 </div>
             </div>
             <div class="chat-messages" id="chat-scroll">
@@ -65,8 +69,8 @@
                 }
             </div>
             <div class="chat-input-area">
-                <input class="form-control" placeholder="Écrire un message…"
-                       @bind="_newMsg" @onkeydown="HandleKey" />
+                <input class="form-control" placeholder="@L["Messages_Write"]"
+                       @bind="_newMsg" @bind:event="oninput" @onkeydown="HandleKey" />
                 <button class="btn btn-primary btn-sm" @onclick="async () => await SendMessage()"
                         disabled="@string.IsNullOrWhiteSpace(_newMsg)">
                     <i class="bi bi-send-fill"></i>
@@ -78,7 +82,7 @@
     {
         <section class="messages-empty">
             <i class="bi bi-chat-dots messages-empty-icon"></i>
-            <p>Sélectionnez une conversation</p>
+            <p>@L["Messages_SelectConversation"]</p>
         </section>
     }
 </div>
@@ -96,8 +100,10 @@
 
     protected override async Task OnInitializedAsync()
     {
+        Realtime.MessageReceived += OnRealtimeMessage;
         try
         {
+            await Realtime.EnsureConnectedAsync();
             var teachers = await Api.GetAsync<List<ConversationDto>>("api/students/me/teachers") ?? [];
             var existing = await MessageSvc.GetConversationsAsync();
 
@@ -105,15 +111,72 @@
             foreach (var t in teachers)
                 byId[t.OtherUserId] = t;
             foreach (var c in existing)
-                byId[c.OtherUserId] = c; // prefer richer conversation data
+                byId[c.OtherUserId] = c;
 
             _convs = byId.Values
                 .Select((d, i) => MapConversation(d, i))
                 .OrderByDescending(c => c.LastTime)
                 .ToList();
+            NotifyState.SetUnreadTotal(_convs.Sum(c => c.Unread));
         }
         catch { }
         finally { _loading = false; }
+    }
+
+    private void OnRealtimeMessage(MessageDto message) =>
+        _ = InvokeAsync(() => ApplyIncomingMessage(message));
+
+    private async Task ApplyIncomingMessage(MessageDto message)
+    {
+        var peerId = message.SenderUserId;
+        var conv = _convs.FirstOrDefault(c => c.ApiUserId == peerId);
+        if (conv is null)
+        {
+            conv = new ConversationVM
+            {
+                ApiUserId = peerId,
+                Id = _convs.Count + 1,
+                Name = peerId,
+                Initials = "?",
+                Color = "#7c3aed",
+                LastMessage = message.Body,
+                LastTime = FormatTime(message.CreatedAt),
+                Unread = 1
+            };
+            _convs.Insert(0, conv);
+        }
+        else
+        {
+            conv.LastMessage = message.Body;
+            conv.LastTime = FormatTime(message.CreatedAt);
+            _convs.Remove(conv);
+            _convs.Insert(0, conv);
+        }
+
+        var isActive = _active?.ApiUserId == peerId;
+        if (isActive)
+        {
+            if (conv.Messages.All(m => m.ApiId != message.Id))
+            {
+                conv.Messages.Add(new ChatMsg
+                {
+                    ApiId = message.Id,
+                    Text = message.Body,
+                    FromMe = false,
+                    Time = FormatTime(message.CreatedAt)
+                });
+            }
+            conv.Unread = 0;
+            await MessageSvc.MarkConversationReadAsync(peerId);
+        }
+        else
+        {
+            conv.Unread++;
+            if (!string.IsNullOrWhiteSpace(conv.Name) && conv.Name != peerId)
+                NotifyState.ShowIncomingToast(conv.Name, message.Body);
+        }
+
+        StateHasChanged();
     }
 
     private static ConversationVM MapConversation(ConversationDto d, int index)
@@ -148,25 +211,25 @@
 
     private async Task SelectConversation(ConversationVM c)
     {
+        var previousUnread = c.Unread;
         _active = c;
+        NotifyState.ActiveConversationUserId = c.ApiUserId;
         c.Unread = 0;
-
-        if (!string.IsNullOrEmpty(c.ApiUserId) && c.Messages.Count == 0)
-        {
-            var msgs = await MessageSvc.GetMessagesAsync(c.ApiUserId);
-            if (msgs.Count > 0)
-            {
-                c.Messages = msgs.Select(m => new ChatMsg
-                {
-                    Text   = m.Body,
-                    FromMe = m.SenderUserId != c.ApiUserId,
-                    Time   = FormatTime(m.CreatedAt)
-                }).ToList();
-            }
-        }
+        if (previousUnread > 0)
+            NotifyState.AdjustUnread(-previousUnread);
 
         if (!string.IsNullOrEmpty(c.ApiUserId))
+        {
+            var msgs = await MessageSvc.GetMessagesAsync(c.ApiUserId);
+            c.Messages = msgs.Select(m => new ChatMsg
+            {
+                ApiId  = m.Id,
+                Text   = m.Body,
+                FromMe = m.SenderUserId != c.ApiUserId,
+                Time   = FormatTime(m.CreatedAt)
+            }).ToList();
             await MessageSvc.MarkConversationReadAsync(c.ApiUserId);
+        }
     }
 
     private async Task SendMessage()
@@ -181,7 +244,7 @@
                 new SendMessageRequest(_active.ApiUserId, "(TutorSphere)", text));
             if (dto != null)
             {
-                _active.Messages.Add(new ChatMsg { Text = dto.Body, FromMe = true, Time = FormatTime(dto.CreatedAt) });
+                _active.Messages.Add(new ChatMsg { ApiId = dto.Id, Text = dto.Body, FromMe = true, Time = FormatTime(dto.CreatedAt) });
                 _active.LastMessage = dto.Body;
                 _active.LastTime    = FormatTime(dto.CreatedAt);
                 return;
@@ -198,7 +261,21 @@
         if (e.Key == "Enter" && !e.ShiftKey) await SendMessage();
     }
 
-    private class ChatMsg { public string Text { get; set; } = ""; public bool FromMe { get; set; } public string Time { get; set; } = ""; }
+    public void Dispose()
+    {
+        Realtime.MessageReceived -= OnRealtimeMessage;
+        if (_active?.ApiUserId is { } id
+            && string.Equals(NotifyState.ActiveConversationUserId, id, StringComparison.Ordinal))
+            NotifyState.ActiveConversationUserId = null;
+    }
+
+    private class ChatMsg
+    {
+        public Guid? ApiId { get; set; }
+        public string Text { get; set; } = "";
+        public bool FromMe { get; set; }
+        public string Time { get; set; } = "";
+    }
     private class ConversationVM
     {
         public string? ApiUserId  { get; set; }
