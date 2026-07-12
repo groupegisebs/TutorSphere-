@@ -12,7 +12,13 @@ public record CreateLessonRequest(
     string? Location,
     string? MeetingUrl,
     string? SessionNotes,
-    IReadOnlyList<Guid>? StudentIds = null);
+    IReadOnlyList<Guid>? StudentIds = null,
+    /// <summary>none | weekly | biweekly | monthly</summary>
+    string? RecurrenceFrequency = null,
+    /// <summary>Total occurrences including the first (2–52). Ignored if RecurrenceUntil is set.</summary>
+    int? RecurrenceOccurrences = null,
+    /// <summary>Last date (inclusive) for recurring sessions. Takes precedence over Occurrences when both set.</summary>
+    DateTime? RecurrenceUntil = null);
 
 public record UpdateLessonRequest(
     string Title,

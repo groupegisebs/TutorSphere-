@@ -675,18 +675,21 @@
                 null,
                 _lessonForm.StudentIds.Count > 0 ? _lessonForm.StudentIds.ToList() : null);
 
-            var result = await Api.PostWithErrorAsync<Application.DTOs.Lessons.LessonDto>("api/lessons", req);
+            var result = await Api.PostWithErrorAsync<List<Application.DTOs.Lessons.LessonDto>>("api/lessons", req);
 
-            if (!result.IsSuccess || result.Value is null)
+            if (!result.IsSuccess || result.Value is null || result.Value.Count == 0)
             {
                 _formError = result.Error ?? "Échec de la création. Vérifiez que vous êtes connecté en tant que tuteur.";
                 return;
             }
 
-            var dto = result.Value;
+            var dto = result.Value[0];
+            var count = result.Value.Count;
 
             _showLessonModal = false;
-            _bannerSuccess = $"Cours « {dto.Title} » ajouté au calendrier.";
+            _bannerSuccess = count > 1
+                ? $"{count} cours « {dto.Title} » ajoutés au calendrier."
+                : $"Cours « {dto.Title} » ajouté au calendrier.";
             await LoadCalendarDataAsync();
             GoToWeek(start);
         }

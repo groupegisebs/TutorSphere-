@@ -146,6 +146,28 @@
                         <select class="form-select" @bind="_lf.Type">
                             <option>Individuel</option><option>Collectif</option><option>Intensif</option>
                         </select></div>
+                    <div class="col-12">
+                        <label class="form-label">Récurrence</label>
+                        <select class="form-select" @bind="_lf.Recurrence">
+                            <option value="none">Une seule fois</option>
+                            <option value="weekly">Chaque semaine</option>
+                            <option value="biweekly">Toutes les 2 semaines</option>
+                            <option value="monthly">Chaque mois</option>
+                        </select>
+                    </div>
+                    @if (_lf.Recurrence != "none" && _editingLesson is null)
+                    {
+                        <div class="col-6">
+                            <label class="form-label">Nombre de séances</label>
+                            <input type="number" class="form-control" min="2" max="52" @bind="_lf.Occurrences" />
+                            <small class="text-muted">Inclut la première (2 à 52)</small>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label">Ou jusqu’au</label>
+                            <input type="date" class="form-control" @bind="_lf.UntilDate" />
+                            <small class="text-muted">Prioritaire si renseigné</small>
+                        </div>
+                    }
                     <div class="col-12"><label class="form-label">Description / Objectifs</label>
                         <textarea class="form-control" rows="2" @bind="_lf.Description"></textarea></div>
                 </div>
@@ -219,17 +241,36 @@
 
     private async Task SaveLesson()
     {
-        if (string.IsNullOrWhiteSpace(_lf.Title)) return;
+        if (string.IsNullOrWhiteSpace(_lf.Title) || string.IsNullOrWhiteSpace(_lf.Subject))
+            return;
+
         var start = _lf.Date.Date.Add(_lf.StartTime.ToTimeSpan());
         var end   = start.AddHours(_lf.Duration);
 
         if (_editingLesson == null)
         {
-            var dto = await LessonSvc.CreateLessonAsync(
-                _lf.Title, _lf.Description, _lf.Subject, start, end, _lf.Mode);
-            if (dto != null)
+            var recurrence = _lf.Recurrence;
+            int? occurrences = null;
+            DateTime? until = null;
+            if (recurrence != "none")
             {
-                _lessons.Add(MapFromDto(dto));
+                if (_lf.UntilDate is { } u && u.Date >= _lf.Date.Date)
+                    until = u.Date;
+                else
+                    occurrences = Math.Clamp(_lf.Occurrences, 2, 52);
+            }
+
+            var created = await LessonSvc.CreateLessonAsync(
+                _lf.Title, _lf.Description, _lf.Subject,
+                start.ToUniversalTime(), end.ToUniversalTime(), _lf.Mode,
+                recurrenceFrequency: recurrence == "none" ? null : recurrence,
+                recurrenceOccurrences: occurrences,
+                recurrenceUntil: until?.ToUniversalTime());
+
+            if (created.Count > 0)
+            {
+                foreach (var dto in created)
+                    _lessons.Add(MapFromDto(dto));
             }
             else
             {
@@ -290,6 +331,9 @@
         public string Mode { get; set; } = "En ligne";
         public string Type { get; set; } = "Individuel";
         public string Description { get; set; } = "";
+        public string Recurrence { get; set; } = "none";
+        public int Occurrences { get; set; } = 8;
+        public DateTime? UntilDate { get; set; }
     }
 
     private class LessonVM

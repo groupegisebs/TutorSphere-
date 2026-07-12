@@ -9,7 +9,7 @@
 <div class="ts-page-header">
     <div>
         <h1><i class="bi bi-tags me-2"></i>Mes Offres</h1>
-        <p class="ts-page-subtitle">Gérez vos formules et tarifs</p>
+        <p class="ts-page-subtitle">Gérez vos formules, tarifs et horaires de cours</p>
     </div>
     <div class="d-flex gap-2">
         <a href="/tutor/offers/create" class="btn btn-outline-secondary btn-sm">
@@ -21,7 +21,6 @@
     </div>
 </div>
 
-<!-- Stats row -->
 <div class="row g-3 mb-4">
     <div class="col-sm-6 col-lg-3">
         <div class="ts-kpi-card"><span class="ts-kpi-val">@_offers.Count</span><span class="ts-kpi-label">Offres créées</span></div>
@@ -37,7 +36,6 @@
     </div>
 </div>
 
-<!-- Offers list -->
 <div class="offers-list">
     @foreach (var offer in _offers)
     {
@@ -53,18 +51,19 @@
             </div>
             <div class="offer-card-meta">
                 <div class="offer-meta-item"><i class="bi bi-currency-dollar"></i><strong>@offer.Price @offer.Currency</strong> / @offer.Period</div>
-                <div class="offer-meta-item"><i class="bi bi-calendar3"></i>@offer.SessionsPerMonth séances/mois</div>
+                @if (offer.HourlyRate is > 0)
+                {
+                    <div class="offer-meta-item"><i class="bi bi-cash-coin"></i>@offer.HourlyRate.Value.ToString("0.##") $/h</div>
+                }
+                <div class="offer-meta-item"><i class="bi bi-calendar3"></i>@offer.SessionsPerMonth séances</div>
                 <div class="offer-meta-item"><i class="bi bi-clock"></i>@offer.SessionDuration min</div>
-                <div class="offer-meta-item"><i class="bi bi-book"></i>@offer.Subject · @offer.Level</div>
+                <div class="offer-meta-item"><i class="bi bi-book"></i>@offer.Subject@(string.IsNullOrWhiteSpace(offer.Level) ? "" : $" · {offer.Level}")</div>
                 <div class="offer-meta-item"><i class="bi @(offer.Mode=="En ligne"?"bi-camera-video":"bi-geo-alt")"></i>@offer.Mode</div>
             </div>
-            @if (offer.Variants.Any())
+            @if (!string.IsNullOrWhiteSpace(offer.ScheduleSummary))
             {
-                <div class="offer-variants">
-                    @foreach (var v in offer.Variants)
-                    {
-                        <span class="offer-variant-chip">@v.Label — @v.Price $</span>
-                    }
+                <div class="offer-schedule-summary">
+                    <i class="bi bi-calendar-week me-1"></i>@offer.ScheduleSummary
                 </div>
             }
             <div class="offer-card-footer">
@@ -88,7 +87,6 @@
     }
 </div>
 
-<!-- Add/Edit Modal -->
 @if (_showModal)
 {
     <div class="ts-modal-backdrop" @onclick="CloseModal">
@@ -103,27 +101,66 @@
                         <input class="form-control" @bind="_mf.Name" placeholder="Ex: Cours de maths intensif" /></div>
                     <div class="col-12"><label class="form-label">Description</label>
                         <textarea class="form-control" rows="2" @bind="_mf.Description"></textarea></div>
-                    <div class="col-4"><label class="form-label">Prix *</label>
+
+                    <div class="col-3"><label class="form-label">Prix forfait *</label>
                         <input type="number" class="form-control" @bind="_mf.Price" /></div>
-                    <div class="col-4"><label class="form-label">Devise</label>
+                    <div class="col-3"><label class="form-label">Taux horaire ($/h)</label>
+                        <input type="number" step="0.01" min="0" class="form-control" @bind="_mf.HourlyRate"
+                               @bind:after="SuggestPackagePrice" /></div>
+                    <div class="col-3"><label class="form-label">Devise</label>
                         <select class="form-select" @bind="_mf.Currency">
                             <option>CAD</option><option>EUR</option><option>USD</option>
                         </select></div>
-                    <div class="col-4"><label class="form-label">Période</label>
-                        <select class="form-select" @bind="_mf.Period">
-                            <option>mois</option><option>trimestre</option><option>semestre</option><option>an</option>
+                    <div class="col-3"><label class="form-label">Période de facturation</label>
+                        <select class="form-select" @bind="_mf.Period" @bind:after="RecalcSessions">
+                            <option value="semaine">Semaine</option>
+                            <option value="mois">Mois</option>
+                            <option value="trimestre">Trimestre</option>
+                            <option value="semestre">Semestre</option>
+                            <option value="an">Année</option>
                         </select></div>
-                    <div class="col-4"><label class="form-label">Séances / mois</label>
-                        <input type="number" class="form-control" @bind="_mf.SessionsPerMonth" /></div>
-                    <div class="col-4"><label class="form-label">Durée (min)</label>
-                        <input type="number" class="form-control" @bind="_mf.SessionDuration" /></div>
+
+                    <div class="col-6"><label class="form-label">Fréquence des cours</label>
+                        <select class="form-select" @bind="_mf.Cadence" @bind:after="RecalcSessions">
+                            <option value="weekly">Chaque semaine</option>
+                            <option value="biweekly">Toutes les 2 semaines</option>
+                        </select></div>
+                    <div class="col-3"><label class="form-label">Durée (min)</label>
+                        <input type="number" class="form-control" min="15" step="15"
+                               @bind="_mf.SessionDuration" @bind:after="SuggestPackagePrice" /></div>
+                    <div class="col-3"><label class="form-label">Séances / période</label>
+                        <input type="number" class="form-control" min="1" @bind="_mf.SessionsPerMonth" />
+                        <small class="text-muted">Calculé selon jours × période</small></div>
+
+                    <div class="col-12">
+                        <label class="form-label">Jours et heures du cours *</label>
+                        <p class="text-muted small mb-2">Cochez les jours et précisez l’heure de début pour chaque créneau.</p>
+                        <div class="offer-day-grid">
+                            @foreach (var day in _days)
+                            {
+                                var slot = _mf.DaySlots[day];
+                                <div class="offer-day-row @(slot.Enabled ? "is-on" : null)">
+                                    <label class="offer-day-check">
+                                        <input type="checkbox" checked="@slot.Enabled"
+                                               @onchange="e => OnDayToggle(day, e)" />
+                                        <span>@day</span>
+                                    </label>
+                                    <input type="time" class="form-control form-control-sm offer-day-time"
+                                           disabled="@(!slot.Enabled)"
+                                           value="@slot.Time"
+                                           @onchange="e => SetDayTime(day, e.Value?.ToString())" />
+                                </div>
+                            }
+                        </div>
+                    </div>
+
                     <div class="col-4"><label class="form-label">Mode</label>
                         <select class="form-select" @bind="_mf.Mode">
                             <option>En ligne</option><option>Présentiel</option><option>Hybride</option>
                         </select></div>
-                    <div class="col-6"><label class="form-label">Matière</label>
+                    <div class="col-4"><label class="form-label">Matière</label>
                         <input class="form-control" @bind="_mf.Subject" placeholder="Mathématiques" /></div>
-                    <div class="col-6"><label class="form-label">Niveau</label>
+                    <div class="col-4"><label class="form-label">Niveau</label>
                         <select class="form-select" @bind="_mf.Level">
                             <option>Tous niveaux</option><option>Primaire</option>
                             <option>Collège</option><option>Lycée</option><option>Université</option>
@@ -148,6 +185,9 @@
 }
 
 @code {
+    private static readonly string[] _days =
+        ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
+
     private bool _showModal;
     private OfferVM? _editing;
     private string _modalError = "";
@@ -161,46 +201,159 @@
         _offers.AddRange(offerings.Select(MapOffer));
     }
 
-    private void OpenAdd() { _editing = null; _mf = new(); _modalError = ""; _showModal = true; }
+    private void OpenAdd()
+    {
+        _editing = null;
+        _mf = new OfferForm();
+        _modalError = "";
+        RecalcSessions();
+        _showModal = true;
+    }
+
     private void OpenEdit(OfferVM o)
     {
         _editing = o;
         _mf = new OfferForm
         {
-            Name = o.Name, Description = o.Description, Price = o.Price,
-            Currency = o.Currency, Period = o.Period, SessionsPerMonth = o.SessionsPerMonth,
-            Subject = o.Subject
+            Name = o.Name,
+            Description = o.Description,
+            Price = o.Price,
+            HourlyRate = o.HourlyRate ?? 0,
+            Currency = o.Currency,
+            Period = NormalizePeriod(o.Period),
+            Cadence = o.Cadence,
+            SessionsPerMonth = o.SessionsPerMonth,
+            SessionDuration = o.SessionDuration,
+            Mode = string.IsNullOrWhiteSpace(o.Mode) ? "En ligne" : o.Mode,
+            Subject = o.Subject,
+            Level = string.IsNullOrWhiteSpace(o.Level) ? "Tous niveaux" : o.Level,
+            CancellationPolicy = o.CancellationPolicy
         };
+
+        foreach (var day in _days)
+            _mf.DaySlots[day] = new DaySlot();
+
+        foreach (var s in o.Slots)
+        {
+            if (_mf.DaySlots.ContainsKey(s.Day))
+                _mf.DaySlots[s.Day] = new DaySlot { Enabled = true, Time = s.Time };
+        }
+
         _modalError = "";
         _showModal = true;
     }
+
     private void CloseModal() => _showModal = false;
+
+    private void OnDayToggle(string day, ChangeEventArgs e)
+    {
+        var enabled = e.Value switch
+        {
+            bool b => b,
+            string s => s is "true" or "on",
+            _ => false
+        };
+        ToggleDay(day, enabled);
+    }
+
+    private void ToggleDay(string day, bool enabled)
+    {
+        _mf.DaySlots[day].Enabled = enabled;
+        if (enabled && string.IsNullOrWhiteSpace(_mf.DaySlots[day].Time))
+            _mf.DaySlots[day].Time = "16:00";
+        RecalcSessions();
+    }
+
+    private void SetDayTime(string day, string? time)
+    {
+        _mf.DaySlots[day].Time = string.IsNullOrWhiteSpace(time) ? "16:00" : time;
+    }
+
+    private void RecalcSessions()
+    {
+        var slotCount = _mf.DaySlots.Values.Count(s => s.Enabled);
+        if (slotCount == 0)
+            return;
+
+        var weeks = _mf.Period switch
+        {
+            "semaine" => 1,
+            "trimestre" => 12,
+            "semestre" => 26,
+            "an" => 52,
+            _ => 4
+        };
+        if (_mf.Cadence == "biweekly")
+            weeks = Math.Max(1, weeks / 2);
+
+        _mf.SessionsPerMonth = weeks * slotCount;
+        SuggestPackagePrice();
+    }
+
+    private void SuggestPackagePrice()
+    {
+        if (_mf.HourlyRate <= 0 || _mf.SessionsPerMonth <= 0 || _mf.SessionDuration <= 0)
+            return;
+
+        var hoursPerSession = _mf.SessionDuration / 60m;
+        _mf.Price = Math.Round(_mf.HourlyRate * hoursPerSession * _mf.SessionsPerMonth, 2);
+    }
 
     private async Task SaveOffer()
     {
-        if (string.IsNullOrWhiteSpace(_mf.Name)) { _modalError = "Le nom est obligatoire."; return; }
+        if (string.IsNullOrWhiteSpace(_mf.Name))
+        {
+            _modalError = "Le nom est obligatoire.";
+            return;
+        }
+
+        var slots = _mf.DaySlots
+            .Where(kv => kv.Value.Enabled)
+            .Select(kv => new { day = kv.Key, time = kv.Value.Time })
+            .ToList();
+
+        if (slots.Count == 0)
+        {
+            _modalError = "Sélectionnez au moins un jour et une heure de cours.";
+            return;
+        }
 
         var durationDays = _mf.Period switch
         {
+            "semaine" => 7,
             "trimestre" => 90,
             "semestre" => 180,
             "an" => 365,
             _ => 30
         };
 
+        var schedule = new
+        {
+            billingPeriod = _mf.Period,
+            cadence = _mf.Cadence,
+            sessionDurationMin = _mf.SessionDuration,
+            hourlyRate = _mf.HourlyRate > 0 ? (decimal?)_mf.HourlyRate : null,
+            level = _mf.Level,
+            cancellationPolicy = string.IsNullOrWhiteSpace(_mf.CancellationPolicy) ? null : _mf.CancellationPolicy.Trim(),
+            slots
+        };
+
+        var req = new
+        {
+            title = _mf.Name.Trim(),
+            description = _mf.Description,
+            subject = string.IsNullOrWhiteSpace(_mf.Subject) ? null : _mf.Subject.Trim(),
+            price = _mf.Price,
+            currency = _mf.Currency,
+            durationDays,
+            sessionCount = Math.Max(1, _mf.SessionsPerMonth),
+            frequency = _mf.Period,
+            mode = _mf.Mode,
+            schedule
+        };
+
         if (_editing is null)
         {
-            var req = new
-            {
-                title = _mf.Name.Trim(),
-                description = _mf.Description,
-                subject = string.IsNullOrWhiteSpace(_mf.Subject) ? null : _mf.Subject.Trim(),
-                price = _mf.Price,
-                currency = _mf.Currency,
-                durationDays,
-                sessionCount = _mf.SessionsPerMonth,
-                frequency = _mf.Period
-            };
             var created = await Api.PostWithErrorAsync<ApiOfferingDto>("api/subscription-offerings", req);
             if (created.Error is not null || created.Value is null)
             {
@@ -211,17 +364,6 @@
         }
         else if (_editing.Id.HasValue)
         {
-            var req = new
-            {
-                title = _mf.Name.Trim(),
-                description = _mf.Description,
-                subject = string.IsNullOrWhiteSpace(_mf.Subject) ? null : _mf.Subject.Trim(),
-                price = _mf.Price,
-                currency = _mf.Currency,
-                durationDays,
-                sessionCount = _mf.SessionsPerMonth,
-                frequency = _mf.Period
-            };
             var updated = await Api.PutWithErrorAsync<ApiOfferingDto>($"api/subscription-offerings/{_editing.Id}", req);
             if (updated.Error is not null || updated.Value is null)
             {
@@ -253,43 +395,82 @@
         _offers.Remove(offer);
     }
 
-    private static OfferVM MapOffer(ApiOfferingDto o) => new()
+    private static string NormalizePeriod(string? period)
     {
-        Id = o.Id,
-        Name = o.Title,
-        Description = o.Description ?? "",
-        Price = o.Price,
-        Currency = o.Currency,
-        Period = o.Frequency ?? "mois",
-        SessionsPerMonth = o.SessionCount,
-        SessionDuration = 60,
-        Mode = "En ligne",
-        Subject = o.Subject ?? "",
-        Level = "",
-        IsPublished = o.IsActive,
-        Subscribers = 0,
-        MonthlyRevenue = 0,
-        Variants = []
-    };
+        var p = (period ?? "mois").ToLowerInvariant();
+        if (p.Contains("semaine")) return "semaine";
+        if (p.Contains("trimestre")) return "trimestre";
+        if (p.Contains("semestre")) return "semestre";
+        if (p.Contains("an")) return "an";
+        if (p.Contains("mois") || p is "month") return "mois";
+        return "mois";
+    }
 
+    private static OfferVM MapOffer(ApiOfferingDto o)
+    {
+        var schedule = o.Schedule;
+        var slots = schedule?.Slots?.Select(s => (s.Day, s.Time)).ToList() ?? [];
+        var period = schedule?.BillingPeriod ?? NormalizePeriod(o.Frequency);
+        var cadence = schedule?.Cadence ?? "weekly";
+
+        return new OfferVM
+        {
+            Id = o.Id,
+            Name = o.Title,
+            Description = o.Description ?? "",
+            Price = o.Price,
+            HourlyRate = schedule?.HourlyRate,
+            Currency = o.Currency,
+            Period = period,
+            Cadence = cadence,
+            SessionsPerMonth = o.SessionCount,
+            SessionDuration = schedule?.SessionDurationMin > 0 ? schedule.SessionDurationMin : 60,
+            Mode = string.IsNullOrWhiteSpace(o.Mode) ? "En ligne" : o.Mode,
+            Subject = o.Subject ?? "",
+            Level = schedule?.Level ?? "",
+            CancellationPolicy = schedule?.CancellationPolicy ?? "",
+            ScheduleSummary = o.Frequency,
+            Slots = slots,
+            IsPublished = o.IsActive,
+            Subscribers = 0,
+            MonthlyRevenue = 0
+        };
+    }
+
+    private record ApiSlotDto(string Day, string Time);
+    private record ApiScheduleDto(
+        string BillingPeriod, string Cadence, int SessionDurationMin,
+        string? Level, string? CancellationPolicy, List<ApiSlotDto>? Slots,
+        decimal? HourlyRate);
     private record ApiOfferingDto(
         Guid Id, string Title, string? Description, string? Subject,
         decimal Price, string Currency, int DurationDays, int SessionCount,
-        string? Frequency, bool IsActive);
+        string? Frequency, bool IsActive, string? Mode, string? Conditions,
+        ApiScheduleDto? Schedule);
+
+    private class DaySlot
+    {
+        public bool Enabled { get; set; }
+        public string Time { get; set; } = "16:00";
+    }
 
     private class OfferForm
     {
         public string Name { get; set; } = "";
         public string Description { get; set; } = "";
         public decimal Price { get; set; } = 150;
+        public decimal HourlyRate { get; set; }
         public string Currency { get; set; } = "CAD";
         public string Period { get; set; } = "mois";
+        public string Cadence { get; set; } = "weekly";
         public int SessionsPerMonth { get; set; } = 4;
         public int SessionDuration { get; set; } = 60;
         public string Mode { get; set; } = "En ligne";
         public string Subject { get; set; } = "";
         public string Level { get; set; } = "Tous niveaux";
         public string CancellationPolicy { get; set; } = "";
+        public Dictionary<string, DaySlot> DaySlots { get; set; } =
+            _days.ToDictionary(d => d, _ => new DaySlot());
     }
 
     private class OfferVM
@@ -298,17 +479,20 @@
         public string Name { get; set; } = "";
         public string Description { get; set; } = "";
         public decimal Price { get; set; }
+        public decimal? HourlyRate { get; set; }
         public string Currency { get; set; } = "CAD";
         public string Period { get; set; } = "mois";
+        public string Cadence { get; set; } = "weekly";
         public int SessionsPerMonth { get; set; }
         public int SessionDuration { get; set; }
         public string Mode { get; set; } = "";
         public string Subject { get; set; } = "";
         public string Level { get; set; } = "";
         public string CancellationPolicy { get; set; } = "";
+        public string? ScheduleSummary { get; set; }
+        public List<(string Day, string Time)>Slots { get; set; } = [];
         public bool IsPublished { get; set; }
         public int Subscribers { get; set; }
         public decimal MonthlyRevenue { get; set; }
-        public List<(string Label, decimal Price)> Variants { get; set; } = [];
     }
 }

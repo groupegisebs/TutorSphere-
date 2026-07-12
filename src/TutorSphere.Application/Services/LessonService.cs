@@ -8,7 +8,7 @@ namespace TutorSphere.Application.Services;
 
 public interface ILessonService
 {
-    Task<LessonDto> CreateAsync(CreateLessonRequest request, CancellationToken ct = default);
+    Task<IReadOnlyList<LessonDto>> CreateAsync(CreateLessonRequest request, CancellationToken ct = default);
     Task<LessonDto?> GetByIdAsync(Guid id, CancellationToken ct = default);
     Task<IReadOnlyList<LessonDto>> GetByDateRangeAsync(DateTime start, DateTime end, CancellationToken ct = default);
     Task<IReadOnlyList<LessonDto>> GetByViewAsync(CalendarView view, DateTime date, CancellationToken ct = default);
@@ -31,49 +31,106 @@ public class LessonService : ILessonService
         _logger = logger;
     }
 
-    public async Task<LessonDto> CreateAsync(CreateLessonRequest request, CancellationToken ct = default)
+    public async Task<IReadOnlyList<LessonDto>> CreateAsync(CreateLessonRequest request, CancellationToken ct = default)
     {
         ValidateTimeRange(request.StartTime, request.EndTime);
 
         var tenantId = RequireTenantId();
-        var lesson = new Lesson
-        {
-            TenantId = tenantId,
-            Title = request.Title.Trim(),
-            Description = request.Description?.Trim(),
-            Subject = request.Subject?.Trim(),
-            StartTime = request.StartTime,
-            EndTime = request.EndTime,
-            Mode = request.Mode,
-            Location = request.Location?.Trim(),
-            MeetingUrl = request.MeetingUrl?.Trim(),
-            SessionNotes = request.SessionNotes?.Trim()
-        };
+        var slots = BuildRecurrenceSlots(request.StartTime, request.EndTime, request);
+        var created = new List<Lesson>();
 
-        _db.Add(lesson);
+        foreach (var (start, end) in slots)
+        {
+            var lesson = new Lesson
+            {
+                TenantId = tenantId,
+                Title = request.Title.Trim(),
+                Description = request.Description?.Trim(),
+                Subject = request.Subject?.Trim(),
+                StartTime = start,
+                EndTime = end,
+                Mode = request.Mode,
+                Location = request.Location?.Trim(),
+                MeetingUrl = request.MeetingUrl?.Trim(),
+                SessionNotes = request.SessionNotes?.Trim()
+            };
+            _db.Add(lesson);
+            created.Add(lesson);
+        }
+
         await _db.SaveChangesAsync(ct);
 
         if (request.StudentIds is { Count: > 0 })
         {
-            foreach (var studentId in request.StudentIds.Distinct())
+            foreach (var lesson in created)
             {
-                var student = _db.Students.FirstOrDefault(s => s.Id == studentId);
-                if (student is null) continue;
-
-                _db.Add(new LessonAttendance
+                foreach (var studentId in request.StudentIds.Distinct())
                 {
-                    TenantId = tenantId,
-                    LessonId = lesson.Id,
-                    StudentId = student.Id,
-                    IsPresent = false
-                });
+                    var student = _db.Students.FirstOrDefault(s => s.Id == studentId);
+                    if (student is null) continue;
+
+                    _db.Add(new LessonAttendance
+                    {
+                        TenantId = tenantId,
+                        LessonId = lesson.Id,
+                        StudentId = student.Id,
+                        IsPresent = false
+                    });
+                }
             }
 
             await _db.SaveChangesAsync(ct);
-            await SendLessonScheduledEmailsAsync(lesson, request.StudentIds, ct);
+            await SendLessonScheduledEmailsAsync(created[0], request.StudentIds, ct);
         }
 
-        return MapToDto(lesson);
+        return created.Select(MapToDto).ToList();
+    }
+
+    private static List<(DateTime Start, DateTime End)> BuildRecurrenceSlots(
+        DateTime start,
+        DateTime end,
+        CreateLessonRequest request)
+    {
+        var duration = end - start;
+        var frequency = (request.RecurrenceFrequency ?? "none").Trim().ToLowerInvariant();
+        if (frequency is "" or "none" or "once")
+            return [(start, end)];
+
+        var step = frequency switch
+        {
+            "weekly" => TimeSpan.FromDays(7),
+            "biweekly" or "fortnightly" => TimeSpan.FromDays(14),
+            "monthly" => TimeSpan.Zero, // handled specially
+            _ => throw new InvalidOperationException(
+                "Récurrence invalide. Utilisez none, weekly, biweekly ou monthly.")
+        };
+
+        const int maxOccurrences = 52;
+        var until = request.RecurrenceUntil?.Date;
+        var targetCount = request.RecurrenceOccurrences is > 1
+            ? Math.Min(request.RecurrenceOccurrences.Value, maxOccurrences)
+            : maxOccurrences;
+
+        if (until is null && request.RecurrenceOccurrences is null or < 2)
+            throw new InvalidOperationException(
+                "Pour une récurrence, indiquez le nombre de séances (2–52) ou une date de fin.");
+
+        var slots = new List<(DateTime, DateTime)> { (start, end) };
+        var cursor = start;
+
+        while (slots.Count < targetCount)
+        {
+            cursor = frequency == "monthly"
+                ? cursor.AddMonths(1)
+                : cursor.Add(step);
+
+            if (until is not null && cursor.Date > until.Value)
+                break;
+
+            slots.Add((cursor, cursor + duration));
+        }
+
+        return slots;
     }
 
     private async Task SendLessonScheduledEmailsAsync(Lesson lesson, IReadOnlyList<Guid> studentIds, CancellationToken ct)

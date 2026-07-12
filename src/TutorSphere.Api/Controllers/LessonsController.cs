@@ -48,12 +48,15 @@ public class LessonsController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<ActionResult<LessonDto>> Create([FromBody] CreateLessonRequest request, CancellationToken ct)
+    public async Task<ActionResult<IReadOnlyList<LessonDto>>> Create([FromBody] CreateLessonRequest request, CancellationToken ct)
     {
         try
         {
-            var lesson = await _lessonService.CreateAsync(request, ct);
-            return CreatedAtAction(nameof(GetById), new { id = lesson.Id }, lesson);
+            var lessons = await _lessonService.CreateAsync(request, ct);
+            if (lessons.Count == 0)
+                return BadRequest(new { error = "Aucune séance créée." });
+
+            return CreatedAtAction(nameof(GetById), new { id = lessons[0].Id }, lessons);
         }
         catch (InvalidOperationException ex)
         {
