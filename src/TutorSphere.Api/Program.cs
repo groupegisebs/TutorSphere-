@@ -67,6 +67,14 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
         options.Events = new JwtBearerEvents
         {
+            OnAuthenticationFailed = context =>
+            {
+                var logger = context.HttpContext.RequestServices
+                    .GetRequiredService<ILoggerFactory>()
+                    .CreateLogger("TutorSphere.Jwt");
+                logger.LogWarning(context.Exception, "JWT authentication failed for {Path}", context.Request.Path);
+                return Task.CompletedTask;
+            },
             OnMessageReceived = context =>
             {
                 var accessToken = context.Request.Query["access_token"];
@@ -101,11 +109,24 @@ builder.Services.AddCors(options =>
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
+{
     app.MapOpenApi();
+    app.Use(async (ctx, next) =>
+    {
+        var auth = ctx.Request.Headers.Authorization.ToString();
+        var logger = ctx.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("AuthDiag");
+        logger.LogWarning("REQ {Method} {Path} AuthorizationLen={Len}",
+            ctx.Request.Method, ctx.Request.Path, auth.Length);
+        await next();
+        logger.LogWarning("RES {Path} Authenticated={Auth} Status={Status}",
+            ctx.Request.Path, ctx.User.Identity?.IsAuthenticated, ctx.Response.StatusCode);
+    });
+}
 
-app.UseHttpsRedirection();
 app.UseRequestLocalization();
 app.UseCors();
+if (!app.Environment.IsDevelopment())
+    app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseMiddleware<TenantResolutionMiddleware>();
 app.UseAuthorization();

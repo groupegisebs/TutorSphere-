@@ -4,6 +4,7 @@
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
 @inject LessonService LessonSvc
+@inject NavigationManager Navigation
 
 <PageTitle>@L["PageTitle_Calendar"]</PageTitle>
 
@@ -221,7 +222,7 @@
                 <span class="cal-stat-label">@L["Calendar_StudentsToday"]</span>
                 <strong class="cal-stat-value">@StudentsToday</strong>
             </div>
-            <button type="button" class="btn btn-sm btn-link ms-auto cal-export-btn">
+            <button type="button" class="btn btn-sm btn-link ms-auto cal-export-btn" @onclick='() => Navigation.NavigateTo("tutor/settings")'>
                 <i class="bi bi-box-arrow-up me-1" aria-hidden="true"></i>@L["Calendar_Export"]
             </button>
         </div>
@@ -526,13 +527,14 @@
         var start = Uri.EscapeDataString(WeekStart.AddDays(-7).ToString("O"));
         var end   = Uri.EscapeDataString(WeekStart.AddDays(35).ToString("O"));
 
-        var view = await Api.GetAsync<CalendarViewDto>($"api/calendar/view?start={start}&end={end}");
-        if (view is null)
+        var result = await Api.GetWithErrorAsync<CalendarViewDto>($"api/calendar/view?start={start}&end={end}");
+        if (!result.IsSuccess || result.Value is null)
         {
-            _bannerError = "Impossible de charger le calendrier. Vérifiez votre connexion.";
+            _bannerError = result.Error ?? "Impossible de charger le calendrier. Vérifiez votre connexion.";
             return;
         }
 
+        var view = result.Value;
         _apiEvents.Clear();
 
         foreach (var lesson in view.Lessons ?? [])
