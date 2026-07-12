@@ -25,7 +25,11 @@ public interface IApplicationDbContext
     IQueryable<Holiday> Holidays { get; }
     IQueryable<Vacation> Vacations { get; }
     IQueryable<LessonReport> LessonReports { get; }
+    /// <summary>Lesson reports without tenant filter (student/parent portal).</summary>
+    IQueryable<LessonReport> LessonReportsForAnyTenant { get; }
     IQueryable<Homework> Homeworks { get; }
+    /// <summary>Homework without tenant filter (student portal).</summary>
+    IQueryable<Homework> HomeworksForAnyTenant { get; }
     IQueryable<Invoice> Invoices { get; }
     /// <summary>Invoices without tenant filter (parent portal).</summary>
     IQueryable<Invoice> InvoicesForAnyTenant { get; }
@@ -33,6 +37,8 @@ public interface IApplicationDbContext
     /// <summary>Payments without tenant filter (parent portal).</summary>
     IQueryable<Payment> PaymentsForAnyTenant { get; }
     IQueryable<Document> Documents { get; }
+    /// <summary>Documents without tenant filter (student portal).</summary>
+    IQueryable<Document> DocumentsForAnyTenant { get; }
     IQueryable<Message> Messages { get; }
     IQueryable<LessonAttendance> LessonAttendances { get; }
     /// <summary>Attendances without tenant filter (parent portal across schools).</summary>

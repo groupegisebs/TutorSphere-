@@ -3,26 +3,27 @@
 @rendermode InteractiveServer
 @using TutorSphere.Application.DTOs.Lessons
 @inject IStringLocalizer<SharedResources> L
-@inject LessonService LessonSvc
+@inject ApiClient Api
+@inject AuthService Auth
 
-<PageTitle>Mes Cours – TutorSphere</PageTitle>
+<PageTitle>@L["Nav_Courses"] – TutorSphere</PageTitle>
 
 <div class="ts-page-header">
     <div>
-        <h1><i class="bi bi-book me-2"></i>Mes Cours</h1>
-        <p class="ts-page-subtitle">Vos séances passées et à venir</p>
+        <h1><i class="bi bi-book me-2"></i>@L["Nav_Courses"]</h1>
+        <p class="ts-page-subtitle">@L["StudentCourses_Subtitle"]</p>
     </div>
 </div>
 
 <div class="ts-toolbar">
     <div class="ts-search-box">
         <i class="bi bi-search ts-search-icon"></i>
-        <input class="form-control" placeholder="Chercher…" @bind="_search" @bind:event="oninput" />
+        <input class="form-control" placeholder="@L["Common_Search"]" @bind="_search" @bind:event="oninput" />
     </div>
     <select class="form-select w-auto" @bind="_filter">
-        <option value="">Tous</option>
-        <option>À venir</option>
-        <option>Terminé</option>
+        <option value="">@L["Common_All"]</option>
+        <option value="upcoming">@L["StudentCourses_Upcoming"]</option>
+        <option value="done">@L["StudentCourses_Done"]</option>
     </select>
 </div>
 
@@ -30,40 +31,50 @@
 {
     <div class="d-flex align-items-center justify-content-center py-5">
         <span class="spinner-border text-primary me-3" role="status"></span>
-        <span class="text-muted">Chargement des cours…</span>
+        <span class="text-muted">@L["Common_Loading"]</span>
     </div>
 }
 else
 {
     <div class="ts-table-card">
         <table class="table ts-table">
-            <thead><tr><th>Date</th><th>Titre</th><th>Matière</th><th>Durée</th><th>Mode</th><th>Statut</th><th></th></tr></thead>
+            <thead>
+                <tr>
+                    <th>@L["Common_Date"]</th>
+                    <th>@L["Common_Title"]</th>
+                    <th>@L["Common_Subject"]</th>
+                    <th>@L["Common_Duration"]</th>
+                    <th>@L["Common_Mode"]</th>
+                    <th>@L["Common_Status"]</th>
+                    <th></th>
+                </tr>
+            </thead>
             <tbody>
                 @foreach (var c in FilteredCourses)
                 {
-                    var status = LessonService.DeriveStatus(c.StartTime, c.EndTime);
-                    var badge  = status switch { "Terminé" => "ts-badge-success", "Planifié" => "ts-badge-primary", _ => "ts-badge-warning" };
+                    var status = DeriveStatus(c.StartTime, c.EndTime);
+                    var badge = status switch { "done" => "ts-badge-success", "upcoming" => "ts-badge-primary", _ => "ts-badge-warning" };
                     <tr>
                         <td>
-                            <strong>@c.StartTime.ToLocalTime().ToString("dd/MM/yyyy")</strong><br />
-                            <small class="text-muted">@c.StartTime.ToLocalTime().ToString("HH:mm")</small>
+                            <strong>@ToLocal(c.StartTime).ToString("dd/MM/yyyy")</strong><br />
+                            <small class="text-muted">@ToLocal(c.StartTime).ToString("HH:mm")</small>
                         </td>
                         <td>@c.Title</td>
                         <td>@(c.Subject ?? "—")</td>
                         <td>@((c.EndTime - c.StartTime).TotalHours.ToString("N1")) h</td>
-                        <td><span class="ts-badge ts-badge-neutral">@LessonService.ModeToDisplay(c.Mode)</span></td>
-                        <td><span class="ts-badge @badge">@status</span></td>
+                        <td><span class="ts-badge ts-badge-neutral">@ModeLabel(c.Mode)</span></td>
+                        <td><span class="ts-badge @badge">@StatusLabel(status)</span></td>
                         <td>
-                            @if (status == "Planifié" && c.Mode == "Online" && !string.IsNullOrEmpty(c.MeetingUrl))
+                            @if (status == "upcoming" && c.Mode == "Online" && !string.IsNullOrEmpty(c.MeetingUrl))
                             {
-                                <a class="btn btn-sm btn-primary" href="@c.MeetingUrl" target="_blank">Rejoindre</a>
+                                <a class="btn btn-sm btn-primary" href="@c.MeetingUrl" target="_blank">@L["StudentCourses_Join"]</a>
                             }
                         </td>
                     </tr>
                 }
                 @if (!FilteredCourses.Any())
                 {
-                    <tr><td colspan="7" class="text-center text-muted py-4">Aucun cours trouvé.</td></tr>
+                    <tr><td colspan="7" class="text-center text-muted py-4">@L["StudentCourses_Empty"]</td></tr>
                 }
             </tbody>
         </table>
@@ -73,25 +84,61 @@ else
 @code {
     private string _search = "", _filter = "";
     private bool _loading = true;
-    private List<TutorSphere.Application.DTOs.Lessons.LessonDto> _courses = [];
+    private bool _loaded;
+    private List<LessonDto> _courses = [];
 
-    private IEnumerable<TutorSphere.Application.DTOs.Lessons.LessonDto> FilteredCourses => _courses
+    private IEnumerable<LessonDto> FilteredCourses => _courses
         .Where(c => string.IsNullOrEmpty(_search) ||
             c.Title.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
             (c.Subject ?? "").Contains(_search, StringComparison.OrdinalIgnoreCase))
         .Where(c =>
         {
             if (string.IsNullOrEmpty(_filter)) return true;
-            var status = LessonService.DeriveStatus(c.StartTime, c.EndTime);
-            return _filter == "À venir" ? status == "Planifié" : status == "Terminé";
+            return DeriveStatus(c.StartTime, c.EndTime) == _filter;
         })
         .OrderByDescending(c => c.StartTime);
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        try { _courses = await LessonSvc.GetLessonsAsync(); }
-        catch { }
-        finally { _loading = false; }
+        if (!firstRender || _loaded) return;
+        _loaded = true;
+        await Auth.EnsureSessionRestoredAsync(forceJs: true);
+        try
+        {
+            _courses = await Api.GetAsync<List<LessonDto>>("api/students/me/lessons") ?? [];
+        }
+        catch { _courses = []; }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
     }
 
+    private static DateTime ToLocal(DateTime dt) =>
+        dt.Kind == DateTimeKind.Utc ? dt.ToLocalTime() : DateTime.SpecifyKind(dt, DateTimeKind.Local);
+
+    private static string DeriveStatus(DateTime start, DateTime end)
+    {
+        var now = DateTime.UtcNow;
+        var s = start.Kind == DateTimeKind.Utc ? start : start.ToUniversalTime();
+        var e = end.Kind == DateTimeKind.Utc ? end : end.ToUniversalTime();
+        if (e < now) return "done";
+        if (s > now) return "upcoming";
+        return "live";
+    }
+
+    private string StatusLabel(string s) => s switch
+    {
+        "done" => L["StudentCourses_Done"],
+        "upcoming" => L["StudentCourses_Upcoming"],
+        _ => L["StudentCourses_InProgress"]
+    };
+
+    private string ModeLabel(string mode) => mode switch
+    {
+        "Online" => L["Common_Online"],
+        "InPerson" => L["Common_InPerson"],
+        _ => mode
+    };
 }

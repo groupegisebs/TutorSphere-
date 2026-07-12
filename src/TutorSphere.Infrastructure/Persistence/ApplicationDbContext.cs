@@ -51,12 +51,18 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     IQueryable<Holiday> IApplicationDbContext.Holidays => HolidaysSet;
     IQueryable<Vacation> IApplicationDbContext.Vacations => VacationsSet;
     IQueryable<LessonReport> IApplicationDbContext.LessonReports => LessonReportsSet;
+    IQueryable<LessonReport> IApplicationDbContext.LessonReportsForAnyTenant =>
+        LessonReportsSet.IgnoreQueryFilters();
     IQueryable<Homework> IApplicationDbContext.Homeworks => HomeworksSet;
+    IQueryable<Homework> IApplicationDbContext.HomeworksForAnyTenant =>
+        HomeworksSet.IgnoreQueryFilters();
     IQueryable<Invoice> IApplicationDbContext.Invoices => InvoicesSet;
     IQueryable<Invoice> IApplicationDbContext.InvoicesForAnyTenant => InvoicesSet.IgnoreQueryFilters();
     IQueryable<Payment> IApplicationDbContext.Payments => PaymentsSet;
     IQueryable<Payment> IApplicationDbContext.PaymentsForAnyTenant => PaymentsSet.IgnoreQueryFilters();
     IQueryable<Document> IApplicationDbContext.Documents => DocumentsSet;
+    IQueryable<Document> IApplicationDbContext.DocumentsForAnyTenant =>
+        DocumentsSet.IgnoreQueryFilters();
     IQueryable<Message> IApplicationDbContext.Messages => MessagesSet;
     IQueryable<LessonAttendance> IApplicationDbContext.LessonAttendances => LessonAttendancesSet;
     IQueryable<LessonAttendance> IApplicationDbContext.LessonAttendancesForAnyTenant =>
