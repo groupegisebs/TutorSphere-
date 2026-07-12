@@ -47,6 +47,16 @@ public class StudentSubscriptionService : IStudentSubscriptionService
             throw new InvalidOperationException(
                 $"Cette offre est complète ({offering.MaxCapacity} place(s) maximum).");
 
+        var now = DateTime.UtcNow;
+        var endDate = now.AddDays(Math.Max(1, offering.DurationDays));
+        StudentScheduleConflictChecker.EnsureNoOfferingConflict(
+            _db,
+            student.Id,
+            offering.Id,
+            offering.Conditions,
+            now,
+            endDate);
+
         // Ensure the child is linked to the tutor school for subsequent lessons.
         if (student.TenantId != offering.TenantId)
         {
@@ -54,7 +64,6 @@ public class StudentSubscriptionService : IStudentSubscriptionService
             student.UpdatedAt = DateTime.UtcNow;
         }
 
-        var now = DateTime.UtcNow;
         var subscription = new Domain.Entities.StudentSubscription
         {
             TenantId = offering.TenantId,
@@ -62,7 +71,7 @@ public class StudentSubscriptionService : IStudentSubscriptionService
             OfferingId = offering.Id,
             Status = SubscriptionStatus.Pending,
             StartDate = now,
-            EndDate = now.AddDays(Math.Max(1, offering.DurationDays)),
+            EndDate = endDate,
             SessionsRemaining = Math.Max(0, offering.SessionCount)
         };
 

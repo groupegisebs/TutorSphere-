@@ -113,6 +113,18 @@ public sealed class SubscriptionLessonScheduler : ISubscriptionLessonScheduler
             var startUtc = DateTime.SpecifyKind(startLocal, DateTimeKind.Local).ToUniversalTime();
             var endUtc = DateTime.SpecifyKind(endLocal, DateTimeKind.Local).ToUniversalTime();
 
+            try
+            {
+                StudentScheduleConflictChecker.EnsureNoLessonConflict(
+                    _db, student.Id, startUtc, endUtc);
+            }
+            catch (InvalidOperationException ex)
+            {
+                throw new InvalidOperationException(
+                    "Impossible de planifier cet abonnement : des créneaux se chevauchent avec d'autres cours de l'élève. " +
+                    ex.Message);
+            }
+
             var lesson = new Lesson
             {
                 TenantId = subscription.TenantId,

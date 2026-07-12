@@ -59,8 +59,16 @@ public class LessonService : ILessonService
             throw new InvalidOperationException(
                 $"Cette séance est limitée à {maxStudents} élève(s). Vous en avez sélectionné {studentIds.Count}.");
 
-        var tenantId = RequireTenantId();
         var slots = BuildRecurrenceSlots(request.StartTime, request.EndTime, request);
+
+        // Un élève ne peut pas être dans deux salles au même moment.
+        foreach (var studentId in studentIds)
+        {
+            foreach (var (start, end) in slots)
+                StudentScheduleConflictChecker.EnsureNoLessonConflict(_db, studentId, start, end);
+        }
+
+        var tenantId = RequireTenantId();
         var created = new List<Lesson>();
 
         foreach (var (start, end) in slots)
@@ -270,6 +278,17 @@ public class LessonService : ILessonService
             if (oldStart - now < TimeSpan.FromHours(CancelFreeHours))
                 throw new InvalidOperationException(
                     $"Impossible de modifier la date/heure à moins de {CancelFreeHours} h avant le début du cours.");
+
+            var attendees = _db.LessonAttendances
+                .Where(a => a.LessonId == lesson.Id)
+                .Select(a => a.StudentId)
+                .Distinct()
+                .ToList();
+            foreach (var studentId in attendees)
+            {
+                StudentScheduleConflictChecker.EnsureNoLessonConflict(
+                    _db, studentId, request.StartTime, request.EndTime, excludeLessonId: lesson.Id);
+            }
         }
 
         var maxStudents = Math.Clamp(request.MaxStudents, 1, 100);
