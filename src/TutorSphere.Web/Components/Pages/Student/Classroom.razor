@@ -13,7 +13,7 @@
 
 <PageTitle>@L["Classroom_Title"] – TutorSphere</PageTitle>
 
-<div class="cr-page">
+<div class="cr-page @(_wbForeground ? "cr-page--wb-front" : null)">
 
     <!-- ── Lesson header (light) ── -->
     <div class="cr-lesson-header">
@@ -179,8 +179,10 @@
                 <button class="cr-wb-foot-btn" @onclick="ZoomOut" title="Zoom arrière">−</button>
                 <span class="cr-wb-zoom-label">@_wbZoom%</span>
                 <button class="cr-wb-foot-btn" @onclick="ZoomIn" title="Zoom avant">+</button>
-                <button class="cr-wb-foot-btn ms-2" title="Plein écran">
-                    <i class="bi bi-fullscreen"></i>
+                <button class="cr-wb-foot-btn ms-2 @(_wbForeground ? "active" : "")"
+                        @onclick="ToggleWhiteboardForeground"
+                        title="@L["Classroom_WbForeground"]">
+                    <i class="bi @(_wbForeground ? "bi-fullscreen-exit" : "bi-fullscreen")"></i>
                 </button>
             </div>
         </div>
@@ -310,10 +312,43 @@
         </div>
         <div class="cr-tool-item">
             <button class="cr-tool-btn @(_camOn ? "" : "cr-tool-btn--muted")" @onclick="ToggleCam"
-                    title="@L["Classroom_Camera"]">
+                    title="@(_cameraAvailable ? L["Classroom_Camera"].Value : L["Classroom_NoCamera"].Value)">
                 <i class="bi @(_camOn ? "bi-camera-video-fill" : "bi-camera-video-off-fill")"></i>
             </button>
             <span class="cr-tool-lbl">@L["Classroom_Camera"]</span>
+        </div>
+        <div class="cr-tool-item cr-tool-item--menu">
+            <button class="cr-tool-btn @(_bgMode != "none" ? "cr-tool-btn--active" : "")"
+                    @onclick="() => _showBgMenu = !_showBgMenu"
+                    title="@L["Classroom_Background"]">
+                <i class="bi bi-person-bounding-box"></i>
+            </button>
+            <span class="cr-tool-lbl">@L["Classroom_Background"]</span>
+            @if (_showBgMenu)
+            {
+                <div class="cr-bg-menu" @onclick:stopPropagation="true">
+                    <div class="cr-bg-menu-title">@L["Classroom_Background"]</div>
+                    <button type="button" class="cr-bg-opt @(_bgMode == "none" ? "active" : "")" @onclick='() => SetBackgroundAsync("none")'>
+                        <i class="bi bi-slash-circle"></i> @L["Classroom_BgNone"]
+                    </button>
+                    <button type="button" class="cr-bg-opt @(_bgMode == "blur" ? "active" : "")" @onclick='() => SetBackgroundAsync("blur")'>
+                        <i class="bi bi-droplet-half"></i> @L["Classroom_BgBlur"]
+                    </button>
+                    <button type="button" class="cr-bg-opt @(_bgPreset == "office" ? "active" : "")" @onclick='() => SetBackgroundAsync("image", "office")'>
+                        <i class="bi bi-building"></i> @L["Classroom_BgOffice"]
+                    </button>
+                    <button type="button" class="cr-bg-opt @(_bgPreset == "library" ? "active" : "")" @onclick='() => SetBackgroundAsync("image", "library")'>
+                        <i class="bi bi-book"></i> @L["Classroom_BgLibrary"]
+                    </button>
+                    <button type="button" class="cr-bg-opt @(_bgPreset == "classroom" ? "active" : "")" @onclick='() => SetBackgroundAsync("image", "classroom")'>
+                        <i class="bi bi-easel2"></i> @L["Classroom_BgClassroom"]
+                    </button>
+                    <label class="cr-bg-opt cr-bg-upload">
+                        <i class="bi bi-image"></i> @L["Classroom_BgCustom"]
+                        <InputFile OnChange="OnBackgroundFileAsync" accept="image/*" />
+                    </label>
+                </div>
+            }
         </div>
         <div class="cr-tool-item">
             <button class="cr-tool-btn @(_sharing ? "cr-tool-btn--active" : "")" @onclick="ToggleShare" title="@L["Classroom_ShareScreen"]">
@@ -322,10 +357,12 @@
             <span class="cr-tool-lbl">@L["Classroom_Share"]</span>
         </div>
         <div class="cr-tool-item">
-            <button class="cr-tool-btn" title="@L["Classroom_Whiteboard"]">
+            <button class="cr-tool-btn @(_wbForeground ? "cr-tool-btn--active" : "")"
+                    @onclick="ToggleWhiteboardForeground"
+                    title="@L["Classroom_WbForeground"]">
                 <i class="bi bi-easel"></i>
             </button>
-            <span class="cr-tool-lbl">@L["Classroom_Whiteboard"]</span>
+            <span class="cr-tool-lbl">@L["Classroom_WbForegroundShort"]</span>
         </div>
         <div class="cr-tool-item">
             <button class="cr-tool-btn" @onclick='() => _activeTab = "Participants"' title="@L["Classroom_Participants"]">
@@ -369,11 +406,18 @@
 
     private bool _micOn      = true;
     private bool _camOn      = true;
+    private bool _cameraAvailable = true;
+    private int _cameraCount;
     private bool _sharing    = false;
     private bool _recording  = false;
     private bool _mediaReady = false;
     private bool _mediaStarted;
     private string? _mediaError;
+    private DotNetObjectReference<Classroom>? _jsRef;
+    private bool _showBgMenu;
+    private string _bgMode = "none";
+    private string? _bgPreset;
+    private bool _wbForeground;
 
     private ElementReference _localVideo;
     private bool _showLocalVideo => _sharing || (_camOn && _mediaReady);
@@ -509,6 +553,8 @@
         if (firstRender && !_mediaStarted)
         {
             _mediaStarted = true;
+            _jsRef = DotNetObjectReference.Create(this);
+            try { await JS.InvokeVoidAsync("classroomMedia.setEndedCallback", _jsRef); } catch { }
             await StartLocalMediaAsync();
         }
     }
@@ -516,7 +562,37 @@
     public void Dispose()
     {
         _timer?.Dispose();
+        _jsRef?.Dispose();
         _ = StopLocalMediaAsync();
+    }
+
+    [JSInvokable]
+    public Task OnScreenShareEnded(string kind)
+    {
+        _sharing = false;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task OnMediaDevicesChanged(MediaDevicesInfo info)
+    {
+        _cameraCount = info.Cameras;
+        var wasAvailable = _cameraAvailable;
+        _cameraAvailable = info.Cameras > 0;
+
+        if (!_cameraAvailable)
+        {
+            _camOn = false;
+            if (string.IsNullOrEmpty(_mediaError))
+                _mediaError = L["Classroom_NoCamera"].Value;
+        }
+        else if (!wasAvailable && !_camOn)
+        {
+            _mediaError = L["Classroom_CameraDetected"].Value;
+        }
+
+        SyncTutorMediaFlags();
+        await InvokeAsync(StateHasChanged);
     }
 
     private static string FormatElapsed(int s)
@@ -552,7 +628,10 @@
                 _mediaReady = false;
                 _camOn = false;
                 _micOn = false;
-                _mediaError = result?.Error ?? "Impossible d'activer la caméra.";
+                _cameraAvailable = (result?.Cameras ?? 0) > 0;
+                _cameraCount = result?.Cameras ?? 0;
+                _mediaError = result?.Error
+                    ?? (_cameraAvailable ? "Impossible d'activer la caméra." : L["Classroom_NoCamera"].Value);
                 SyncTutorMediaFlags();
                 StateHasChanged();
                 return;
@@ -561,6 +640,10 @@
             _mediaReady = true;
             _camOn = result.Video;
             _micOn = result.Audio;
+            _cameraCount = result.Cameras;
+            _cameraAvailable = result.Cameras > 0 || result.Video;
+            if (!string.IsNullOrWhiteSpace(result.Warning))
+                _mediaError = result.Warning;
             SyncTutorMediaFlags();
             StateHasChanged();
         }
@@ -569,6 +652,7 @@
             _mediaReady = false;
             _camOn = false;
             _micOn = false;
+            _cameraAvailable = false;
             _mediaError = ex.Message;
             SyncTutorMediaFlags();
             StateHasChanged();
@@ -616,11 +700,119 @@
             return;
         }
 
+        if (!_camOn)
+        {
+            var hasTrack = false;
+            try { hasTrack = await JS.InvokeAsync<bool>("classroomMedia.hasVideoTrack"); }
+            catch { }
+
+            if (!hasTrack)
+            {
+                try
+                {
+                    var result = await JS.InvokeAsync<MediaStartResult>("classroomMedia.enableCamera", _localVideo);
+                    _cameraCount = result?.Cameras ?? _cameraCount;
+                    _cameraAvailable = (result?.Cameras ?? 0) > 0 || (result?.Video ?? false);
+                    if (result is null || !result.Ok)
+                    {
+                        _camOn = false;
+                        _mediaError = result?.Error ?? L["Classroom_NoCamera"].Value;
+                        SyncTutorMediaFlags();
+                        return;
+                    }
+                    _camOn = result.Video;
+                    _mediaError = _camOn ? null : L["Classroom_NoCamera"].Value;
+                    SyncTutorMediaFlags();
+                    return;
+                }
+                catch (JSException ex)
+                {
+                    _camOn = false;
+                    _mediaError = ex.Message;
+                    SyncTutorMediaFlags();
+                    return;
+                }
+            }
+        }
+
+        if (!_cameraAvailable && !_camOn)
+        {
+            _mediaError = L["Classroom_NoCamera"].Value;
+            return;
+        }
+
         _camOn = !_camOn;
-        try { await JS.InvokeVoidAsync("classroomMedia.setVideoEnabled", _camOn); }
+        try
+        {
+            var ok = await JS.InvokeAsync<bool>("classroomMedia.setVideoEnabled", _camOn);
+            if (_camOn && !ok)
+            {
+                _camOn = false;
+                _mediaError = L["Classroom_NoCamera"].Value;
+            }
+            else if (_camOn)
+                _mediaError = null;
+        }
         catch { }
-        if (_camOn) _mediaError = null;
         SyncTutorMediaFlags();
+    }
+
+    private void ToggleWhiteboardForeground()
+    {
+        _wbForeground = !_wbForeground;
+        _showBgMenu = false;
+    }
+
+    private async Task SetBackgroundAsync(string mode, string? preset = null, string? imageUrl = null)
+    {
+        _showBgMenu = false;
+        if (!_mediaReady || !_camOn)
+        {
+            _mediaError = L["Classroom_BgNeedCamera"].Value;
+            return;
+        }
+
+        try
+        {
+            var result = await JS.InvokeAsync<MediaStartResult>(
+                "classroomMedia.setBackgroundEffect",
+                _localVideo,
+                new { mode, preset, imageUrl });
+
+            if (result is null || !result.Ok)
+            {
+                _mediaError = result?.Error ?? L["Classroom_BgFailed"].Value;
+                return;
+            }
+
+            _bgMode = mode;
+            _bgPreset = mode == "image" ? preset : null;
+            _mediaError = null;
+        }
+        catch (JSException ex)
+        {
+            _mediaError = ex.Message;
+        }
+    }
+
+    private async Task OnBackgroundFileAsync(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null) return;
+        try
+        {
+            await using var stream = file.OpenReadStream(maxAllowedSize: 4 * 1024 * 1024);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            var b64 = Convert.ToBase64String(ms.ToArray());
+            var mime = string.IsNullOrWhiteSpace(file.ContentType) ? "image/jpeg" : file.ContentType;
+            await SetBackgroundAsync("image", null, $"data:{mime};base64,{b64}");
+            _bgPreset = "custom";
+        }
+        catch (Exception ex)
+        {
+            _mediaError = ex.Message;
+        }
     }
 
     private async Task ToggleShare()
@@ -778,6 +970,15 @@
         public bool Ok { get; set; }
         public bool Video { get; set; }
         public bool Audio { get; set; }
+        public int Cameras { get; set; }
+        public int Mics { get; set; }
         public string? Error { get; set; }
+        public string? Warning { get; set; }
+    }
+
+    public sealed class MediaDevicesInfo
+    {
+        public int Cameras { get; set; }
+        public int Mics { get; set; }
     }
 }

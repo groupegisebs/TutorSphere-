@@ -3,6 +3,7 @@ window.classroomMedia = (function () {
     let screenStream = null;
     let canvasStream = null;
     let endedCallback = null;
+    let deviceChangeBound = false;
 
     function stopTracks(mediaStream) {
         if (!mediaStream) return;
@@ -41,37 +42,126 @@ window.classroomMedia = (function () {
         }
     }
 
-    function restoreCamera(videoEl) {
-        if (stream) attach(videoEl, stream, true);
-        else if (videoEl) videoEl.srcObject = null;
+    function notifyDevicesChanged(info) {
+        if (endedCallback && typeof endedCallback.invokeMethodAsync === "function") {
+            endedCallback.invokeMethodAsync("OnMediaDevicesChanged", info).catch(function () { });
+        }
     }
 
-    async function getHdCameraStream(wantVideo, wantAudio) {
-        var attempts = [
-            {
-                video: wantVideo ? {
+    function restoreCamera(videoEl) {
+        if (!videoEl) return;
+        if (stream && window.classroomVirtualBg && classroomVirtualBg.isRunning()) {
+            classroomVirtualBg.reattach(videoEl);
+            return;
+        }
+        if (stream) attach(videoEl, stream, true);
+        else videoEl.srcObject = null;
+    }
+
+    async function applyBackground(videoEl) {
+        if (!videoEl || !stream || stream.getVideoTracks().length === 0) return { ok: true };
+        if (!window.classroomVirtualBg) return { ok: false, error: "Module arrière-plan indisponible." };
+        if (bgMode === "none") {
+            classroomVirtualBg.stop();
+            if (!screenStream && !canvasStream)
+                attach(videoEl, stream, true);
+            return { ok: true, mode: "none" };
+        }
+        if (screenStream || canvasStream)
+            return { ok: true, mode: bgMode, deferred: true };
+        return await classroomVirtualBg.start(videoEl, stream, {
+            mode: bgMode,
+            imageUrl: bgImageUrl
+        });
+    }
+
+    let bgMode = "none";
+    let bgImageUrl = null;
+
+    function mapMediaError(ex) {
+        var msg = "Impossible d'accéder à la caméra ou au micro.";
+        if (!ex) return msg;
+        if (ex.name === "NotAllowedError" || ex.name === "PermissionDeniedError")
+            return "Permission refusée. Autorisez la caméra et le micro dans le navigateur.";
+        if (ex.name === "NotFoundError" || ex.name === "DevicesNotFoundError")
+            return "Aucune caméra ou micro détecté sur cet appareil.";
+        if (ex.name === "NotReadableError")
+            return "La caméra est déjà utilisée par une autre application.";
+        if (ex.message) return ex.message;
+        return msg;
+    }
+
+    async function listDevices() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) {
+            return { cameras: 0, mics: 0, cameraLabels: [], micLabels: [] };
+        }
+        try {
+            var devices = await navigator.mediaDevices.enumerateDevices();
+            var cams = devices.filter(function (d) { return d.kind === "videoinput"; });
+            var mics = devices.filter(function (d) { return d.kind === "audioinput"; });
+            return {
+                cameras: cams.length,
+                mics: mics.length,
+                cameraLabels: cams.map(function (c) { return c.label || "Caméra"; }),
+                micLabels: mics.map(function (m) { return m.label || "Micro"; })
+            };
+        } catch (_) {
+            return { cameras: 0, mics: 0, cameraLabels: [], micLabels: [] };
+        }
+    }
+
+    function bindDeviceChange() {
+        if (deviceChangeBound || !navigator.mediaDevices || !navigator.mediaDevices.addEventListener)
+            return;
+        deviceChangeBound = true;
+        navigator.mediaDevices.addEventListener("devicechange", function () {
+            listDevices().then(function (info) {
+                notifyDevicesChanged(info);
+            });
+        });
+    }
+
+    async function getUserMediaWithFallback(wantVideo, wantAudio) {
+        var attempts = [];
+
+        if (wantVideo && wantAudio) {
+            attempts.push({
+                video: {
                     facingMode: "user",
                     width: { min: 1280, ideal: 1920, max: 1920 },
                     height: { min: 720, ideal: 1080, max: 1080 },
                     frameRate: { ideal: 30, max: 30 },
                     aspectRatio: { ideal: 16 / 9 }
-                } : false,
-                audio: wantAudio ? { echoCancellation: true, noiseSuppression: true } : false
-            },
-            {
-                video: wantVideo ? {
+                },
+                audio: { echoCancellation: true, noiseSuppression: true }
+            });
+            attempts.push({
+                video: {
                     facingMode: "user",
                     width: { ideal: 1280 },
                     height: { ideal: 720 },
                     frameRate: { ideal: 30 }
-                } : false,
-                audio: wantAudio ? { echoCancellation: true, noiseSuppression: true } : false
-            },
-            {
-                video: wantVideo,
-                audio: wantAudio
-            }
-        ];
+                },
+                audio: { echoCancellation: true, noiseSuppression: true }
+            });
+            attempts.push({ video: true, audio: true });
+        }
+
+        if (wantVideo && !wantAudio) {
+            attempts.push({ video: true, audio: false });
+        }
+
+        if (wantAudio) {
+            attempts.push({
+                video: false,
+                audio: { echoCancellation: true, noiseSuppression: true }
+            });
+            attempts.push({ video: false, audio: true });
+        }
+
+        if (wantVideo) {
+            attempts.push({ video: true, audio: false });
+        }
 
         var lastErr = null;
         for (var i = 0; i < attempts.length; i++) {
@@ -97,12 +187,15 @@ window.classroomMedia = (function () {
                 lastErr = ex;
             }
         }
-        throw lastErr || new Error("Caméra indisponible");
+        throw lastErr || new Error("Périphériques média indisponibles");
     }
 
     return {
+        listDevices: listDevices,
+
         setEndedCallback: function (dotNetRef) {
             endedCallback = dotNetRef;
+            bindDeviceChange();
         },
 
         start: async function (videoEl, opts) {
@@ -111,38 +204,125 @@ window.classroomMedia = (function () {
             var wantAudio = opts.audio !== false;
 
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                return { ok: false, error: "Ce navigateur ne prend pas en charge la caméra / le micro." };
+                return {
+                    ok: false,
+                    video: false,
+                    audio: false,
+                    cameras: 0,
+                    mics: 0,
+                    error: "Ce navigateur ne prend pas en charge la caméra / le micro."
+                };
             }
 
+            bindDeviceChange();
+
             try {
+                var before = await listDevices();
+                // Si on sait déjà qu'il n'y a aucune caméra, démarrer en audio uniquement.
+                if (wantVideo && before.cameras === 0)
+                    wantVideo = false;
+
                 if (stream) {
                     stopTracks(stream);
                     stream = null;
                 }
 
-                stream = await getHdCameraStream(wantVideo, wantAudio);
+                stream = await getUserMediaWithFallback(wantVideo, wantAudio);
+
+                if (!screenStream && !canvasStream) {
+                    if (bgMode !== "none" && stream.getVideoTracks().length > 0)
+                        await applyBackground(videoEl);
+                    else
+                        attach(videoEl, stream, true);
+                }
+
+                var after = await listDevices();
+                var st = trackStates(stream);
+                var warning = null;
+                if (!st.video && opts.video !== false) {
+                    warning = after.cameras === 0
+                        ? "Aucune caméra détectée. Session en audio uniquement."
+                        : "Caméra indisponible. Session en audio uniquement.";
+                }
+
+                return {
+                    ok: true,
+                    video: st.video,
+                    audio: st.audio,
+                    cameras: after.cameras,
+                    mics: after.mics,
+                    warning: warning,
+                    error: null
+                };
+            } catch (ex) {
+                var devices = await listDevices();
+                return {
+                    ok: false,
+                    video: false,
+                    audio: false,
+                    cameras: devices.cameras,
+                    mics: devices.mics,
+                    error: mapMediaError(ex)
+                };
+            }
+        },
+
+        /** Active la caméra si elle vient d'être branchée (ajoute une piste vidéo au flux). */
+        enableCamera: async function (videoEl) {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                return { ok: false, error: "Caméra non supportée." };
+            }
+
+            var info = await listDevices();
+            if (info.cameras === 0) {
+                return {
+                    ok: false,
+                    cameras: 0,
+                    error: "Aucune caméra détectée. Branchez une webcam puis réessayez."
+                };
+            }
+
+            try {
+                var camStream = await getUserMediaWithFallback(true, false);
+                var videoTrack = camStream.getVideoTracks()[0];
+                if (!videoTrack)
+                    return { ok: false, cameras: info.cameras, error: "Aucune piste vidéo disponible." };
+
+                if (stream) {
+                    stream.getVideoTracks().forEach(function (t) {
+                        stream.removeTrack(t);
+                        try { t.stop(); } catch (_) { }
+                    });
+                    stream.addTrack(videoTrack);
+                    // Stop leftover audio from camStream if any
+                    camStream.getAudioTracks().forEach(function (t) { try { t.stop(); } catch (_) { } });
+                } else {
+                    stream = camStream;
+                }
 
                 if (!screenStream && !canvasStream)
                     attach(videoEl, stream, true);
+
                 var st = trackStates(stream);
-                return { ok: true, video: st.video, audio: st.audio };
+                var after = await listDevices();
+                return {
+                    ok: true,
+                    video: st.video,
+                    audio: st.audio,
+                    cameras: after.cameras,
+                    mics: after.mics,
+                    error: null
+                };
             } catch (ex) {
-                var msg = "Impossible d'accéder à la caméra ou au micro.";
-                if (ex && (ex.name === "NotAllowedError" || ex.name === "PermissionDeniedError"))
-                    msg = "Permission refusée. Autorisez la caméra et le micro dans le navigateur.";
-                else if (ex && (ex.name === "NotFoundError" || ex.name === "DevicesNotFoundError"))
-                    msg = "Aucune caméra ou micro détecté sur cet appareil.";
-                else if (ex && ex.name === "NotReadableError")
-                    msg = "La caméra est déjà utilisée par une autre application.";
-                else if (ex && ex.message)
-                    msg = ex.message;
-                return { ok: false, error: msg };
+                return { ok: false, cameras: info.cameras, error: mapMediaError(ex) };
             }
         },
 
         setVideoEnabled: function (enabled) {
             if (!stream) return false;
-            stream.getVideoTracks().forEach(function (t) { t.enabled = !!enabled; });
+            var tracks = stream.getVideoTracks();
+            if (tracks.length === 0) return false;
+            tracks.forEach(function (t) { t.enabled = !!enabled; });
             return true;
         },
 
@@ -156,7 +336,14 @@ window.classroomMedia = (function () {
             return !!stream;
         },
 
+        hasVideoTrack: function () {
+            return !!(stream && stream.getVideoTracks().length > 0);
+        },
+
         stop: function (videoEl) {
+            if (window.classroomVirtualBg) classroomVirtualBg.stop();
+            bgMode = "none";
+            bgImageUrl = null;
             stopTracks(stream);
             stream = null;
             stopTracks(screenStream);
@@ -164,6 +351,24 @@ window.classroomMedia = (function () {
             stopTracks(canvasStream);
             canvasStream = null;
             if (videoEl) videoEl.srcObject = null;
+        },
+
+        setBackgroundEffect: async function (videoEl, opts) {
+            opts = opts || {};
+            bgMode = opts.mode || "none";
+            if (opts.imageUrl !== undefined)
+                bgImageUrl = opts.imageUrl;
+            if (bgMode === "image" && !bgImageUrl && opts.preset && window.classroomVirtualBg) {
+                bgImageUrl = classroomVirtualBg.presetDataUrl(opts.preset);
+            }
+            if (!stream || stream.getVideoTracks().length === 0) {
+                return { ok: false, error: "Activez d'abord la caméra." };
+            }
+            return await applyBackground(videoEl);
+        },
+
+        getBackgroundEffect: function () {
+            return { mode: bgMode, imageUrl: bgImageUrl };
         },
 
         startScreenShare: async function (videoEl) {
@@ -184,10 +389,14 @@ window.classroomMedia = (function () {
                 });
                 attach(videoEl, screenStream, false);
                 videoEl.classList.add("cr-tile-video--contain");
+                if (window.classroomVirtualBg) classroomVirtualBg.stop();
                 screenStream.getVideoTracks()[0].addEventListener("ended", function () {
                     screenStream = null;
                     videoEl.classList.remove("cr-tile-video--contain");
-                    restoreCamera(videoEl);
+                    if (bgMode !== "none")
+                        applyBackground(videoEl);
+                    else
+                        restoreCamera(videoEl);
                     notifyEnded("screen");
                 });
                 return { ok: true, kind: "screen" };
@@ -196,7 +405,6 @@ window.classroomMedia = (function () {
             }
         },
 
-        /** Affiche le tableau blanc dans la vignette vidéo (captureStream). */
         startWhiteboardShare: async function (videoEl, canvasEl) {
             if (!canvasEl || typeof canvasEl.captureStream !== "function") {
                 return { ok: false, error: "Impossible de partager le tableau blanc sur cet appareil." };
@@ -208,6 +416,7 @@ window.classroomMedia = (function () {
                 canvasStream = canvasEl.captureStream(30);
                 attach(videoEl, canvasStream, false);
                 videoEl.classList.add("cr-tile-video--contain");
+                if (window.classroomVirtualBg) classroomVirtualBg.stop();
                 return { ok: true, kind: "whiteboard" };
             } catch (ex) {
                 return { ok: false, error: ex && ex.message ? ex.message : "Partage du tableau impossible." };
@@ -220,7 +429,10 @@ window.classroomMedia = (function () {
             stopTracks(canvasStream);
             canvasStream = null;
             if (videoEl) videoEl.classList.remove("cr-tile-video--contain");
-            restoreCamera(videoEl);
+            if (bgMode !== "none")
+                applyBackground(videoEl);
+            else
+                restoreCamera(videoEl);
             return true;
         },
 
