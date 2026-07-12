@@ -223,6 +223,12 @@ public static class DependencyInjection
             ];
 
             string[] demoSlugs = ["marie-maths", "sarah-english", "physique-pro"];
+            string[] demoNames =
+            [
+                "Cours Marie Tremblay",
+                "English with Sarah",
+                "Physique Pro"
+            ];
 
             var removedUsers = 0;
             foreach (var email in demoEmails)
@@ -249,13 +255,59 @@ public static class DependencyInjection
                 removedUsers++;
             }
 
-            var demoTenants = db.TenantsSet.Where(t => demoSlugs.Contains(t.Slug)).ToList();
+            var demoTenants = db.TenantsSet
+                .Where(t => demoSlugs.Contains(t.Slug) || demoNames.Contains(t.Name))
+                .ToList();
+
             if (demoTenants.Count > 0)
             {
                 var tenantIds = demoTenants.Select(t => t.Id).ToList();
-                var offerings = db.SubscriptionOfferingsSet.Where(o => tenantIds.Contains(o.TenantId)).ToList();
+
+                // Delete in FK-safe order for demo public tutors.
+                var subscriptions = db.StudentSubscriptionsSet
+                    .Where(s => tenantIds.Contains(s.TenantId)).ToList();
+                if (subscriptions.Count > 0)
+                    db.StudentSubscriptionsSet.RemoveRange(subscriptions);
+
+                var offerings = db.SubscriptionOfferingsSet
+                    .Where(o => tenantIds.Contains(o.TenantId)).ToList();
                 if (offerings.Count > 0)
                     db.SubscriptionOfferingsSet.RemoveRange(offerings);
+
+                var brandings = db.TenantBrandingsSet
+                    .Where(b => tenantIds.Contains(b.TenantId)).ToList();
+                if (brandings.Count > 0)
+                    db.TenantBrandingsSet.RemoveRange(brandings);
+
+                var parentByTenant = db.ParentProfilesSet
+                    .Where(p => tenantIds.Contains(p.TenantId)).ToList();
+                if (parentByTenant.Count > 0)
+                {
+                    var parentIds = parentByTenant.Select(p => p.Id).ToList();
+                    var linkedStudents = db.StudentsSet
+                        .Where(s => s.ParentProfileId.HasValue && parentIds.Contains(s.ParentProfileId.Value))
+                        .ToList();
+                    if (linkedStudents.Count > 0)
+                        db.StudentsSet.RemoveRange(linkedStudents);
+                    db.ParentProfilesSet.RemoveRange(parentByTenant);
+                }
+
+                var studentsByTenant = db.StudentsSet
+                    .Where(s => tenantIds.Contains(s.TenantId)).ToList();
+                if (studentsByTenant.Count > 0)
+                    db.StudentsSet.RemoveRange(studentsByTenant);
+
+                var lessons = db.LessonsSet.Where(l => tenantIds.Contains(l.TenantId)).ToList();
+                if (lessons.Count > 0)
+                    db.LessonsSet.RemoveRange(lessons);
+
+                var messages = db.MessagesSet.Where(m => tenantIds.Contains(m.TenantId)).ToList();
+                if (messages.Count > 0)
+                    db.MessagesSet.RemoveRange(messages);
+
+                var documents = db.DocumentsSet.Where(d => tenantIds.Contains(d.TenantId)).ToList();
+                if (documents.Count > 0)
+                    db.DocumentsSet.RemoveRange(documents);
 
                 db.TenantsSet.RemoveRange(demoTenants);
             }
@@ -501,9 +553,8 @@ public static class DependencyInjection
     /// <summary>Rattache un profil parent aux comptes Parent déjà inscrits sans profil.</summary>
     private static async Task EnsureExistingParentProfilesAsync(ApplicationDbContext db, UserManager<ApplicationUser> userManager)
     {
-        var tenant = db.TenantsSet.FirstOrDefault(t => t.Slug == "marie-maths")
-            ?? db.TenantsSet.FirstOrDefault();
-        if (tenant is null)
+        var fallbackTenant = db.TenantsSet.FirstOrDefault();
+        if (fallbackTenant is null)
             return;
 
         var parentUserIds = new HashSet<string>();
@@ -523,9 +574,12 @@ public static class DependencyInjection
             if (user is null)
                 continue;
 
+            var tenantId = user.TenantId
+                ?? fallbackTenant.Id;
+
             db.ParentProfilesSet.Add(new ParentProfile
             {
-                TenantId = tenant.Id,
+                TenantId = tenantId,
                 UserId = user.Id,
                 FirstName = user.FirstName,
                 LastName = user.LastName,
