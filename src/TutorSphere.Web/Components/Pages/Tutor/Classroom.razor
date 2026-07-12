@@ -23,7 +23,7 @@
             </div>
             <span class="cr-badge-live">
                 <i class="bi bi-circle-fill" style="font-size:0.45rem;vertical-align:middle;"></i>
-                @L["Common_Active"]
+                @L["Classroom_Live"]
             </span>
         </div>
         <div class="cr-lesson-actions">
@@ -111,13 +111,13 @@
             <!-- Toolbar -->
             <div class="cr-wb-toolbar">
                 <div class="cr-wb-tools">
-                    <button class="cr-wb-tool @(_wbTool == "select" ? "active" : "")" @onclick='() => SetWbTool("select")' title="Sélection">
+                    <button class="cr-wb-tool @(_wbTool == "select" ? "active" : "")" @onclick='() => SetWbTool("select")' title="@L["Classroom_Select"]">
                         <i class="bi bi-cursor-fill"></i>
                     </button>
-                    <button class="cr-wb-tool @(_wbTool == "pen" ? "active" : "")" @onclick='() => SetWbTool("pen")' title="Crayon">
+                    <button class="cr-wb-tool @(_wbTool == "pen" ? "active" : "")" @onclick='() => SetWbTool("pen")' title="@L["Classroom_Pen"]">
                         <i class="bi bi-pencil-fill"></i>
                     </button>
-                    <button class="cr-wb-tool @(_wbTool == "eraser" ? "active" : "")" @onclick='() => SetWbTool("eraser")' title="Gomme">
+                    <button class="cr-wb-tool @(_wbTool == "eraser" ? "active" : "")" @onclick='() => SetWbTool("eraser")' title="@L["Classroom_Eraser"]">
                         <i class="bi bi-eraser-fill"></i>
                     </button>
                     <button class="cr-wb-tool @(_wbTool == "rect" ? "active" : "")" @onclick='() => SetWbTool("rect")' title="Rectangle">
@@ -154,7 +154,7 @@
                     <span class="cr-size-dot" style="width:12px;height:12px;"></span>
                 </button>
                 <div class="cr-wb-sep"></div>
-                <button class="cr-wb-tool" @onclick="ClearWhiteboard" title="Effacer tout">
+                <button class="cr-wb-tool" @onclick="ClearWhiteboard" title="@L["Classroom_ClearAll"]">
                     <i class="bi bi-trash3"></i>
                 </button>
             </div>
@@ -187,13 +187,13 @@
         <div class="cr-panel">
             <div class="cr-panel-tabs">
                 <button class="cr-panel-tab @(_activeTab == "Chat" ? "active" : "")" @onclick='() => _activeTab = "Chat"'>
-                    Chat
+                    @L["Classroom_Chat"]
                 </button>
                 <button class="cr-panel-tab @(_activeTab == "Participants" ? "active" : "")" @onclick='() => _activeTab = "Participants"'>
-                    Participants <span class="cr-tab-count">@_participants.Count</span>
+                    @L["Classroom_Participants"] <span class="cr-tab-count">@_participants.Count</span>
                 </button>
                 <button class="cr-panel-tab @(_activeTab == "Documents" ? "active" : "")" @onclick='() => _activeTab = "Documents"'>
-                    Documents
+                    @L["Classroom_Documents"]
                 </button>
             </div>
 
@@ -233,7 +233,7 @@
                             <i class="bi bi-emoji-smile"></i>
                         </button>
                         <input class="cr-chat-input"
-                               placeholder="Tapez un message…"
+                               placeholder="@L["Classroom_TypeMessage"]"
                                @bind="_newMessage"
                                @bind:event="oninput"
                                @onkeydown="OnChatKeyDown" />
@@ -272,7 +272,7 @@
                 {
                     <div class="cr-docs-list">
                         <button class="cr-upload-btn">
-                            <i class="bi bi-upload me-1"></i>Partager un fichier
+                            <i class="bi bi-upload me-1"></i>@L["Classroom_Share"]
                         </button>
                         @foreach (var doc in _documents)
                         {
@@ -282,7 +282,7 @@
                                     <div class="cr-doc-name">@doc.Name</div>
                                     <div class="cr-doc-size">@doc.Size</div>
                                 </div>
-                                <button class="cr-doc-dl-btn" title="Télécharger">
+                                <button class="cr-doc-dl-btn" title="@L["Common_Download"]">
                                     <i class="bi bi-download"></i>
                                 </button>
                             </div>
@@ -297,55 +297,55 @@
     <div class="cr-toolbar">
         <div class="cr-tool-item">
             <button class="cr-tool-btn @(_micOn ? "" : "cr-tool-btn--muted")" @onclick="ToggleMic"
-                    title="@(_micOn ? "Couper le micro" : "Activer le micro")">
+                    title="@L["Classroom_Mic"]">
                 <i class="bi @(_micOn ? "bi-mic-fill" : "bi-mic-mute-fill")"></i>
             </button>
-            <span class="cr-tool-lbl">Micro</span>
+            <span class="cr-tool-lbl">@L["Classroom_Mic"]</span>
         </div>
         <div class="cr-tool-item">
             <button class="cr-tool-btn @(_camOn ? "" : "cr-tool-btn--muted")" @onclick="ToggleCam"
-                    title="@(_camOn ? "Couper la caméra" : "Activer la caméra")">
+                    title="@L["Classroom_Camera"]">
                 <i class="bi @(_camOn ? "bi-camera-video-fill" : "bi-camera-video-off-fill")"></i>
             </button>
-            <span class="cr-tool-lbl">Caméra</span>
+            <span class="cr-tool-lbl">@L["Classroom_Camera"]</span>
         </div>
         <div class="cr-tool-item">
-            <button class="cr-tool-btn @(_sharing ? "cr-tool-btn--active" : "")" @onclick="ToggleShare" title="Partager l'écran">
+            <button class="cr-tool-btn @(_sharing ? "cr-tool-btn--active" : "")" @onclick="ToggleShare" title="@L["Classroom_ShareScreen"]">
                 <i class="bi bi-display"></i>
             </button>
-            <span class="cr-tool-lbl">Partager</span>
+            <span class="cr-tool-lbl">@L["Classroom_Share"]</span>
         </div>
         <div class="cr-tool-item">
-            <button class="cr-tool-btn" title="Tableau blanc">
+            <button class="cr-tool-btn" title="@L["Classroom_Whiteboard"]">
                 <i class="bi bi-easel"></i>
             </button>
-            <span class="cr-tool-lbl">Tableau blanc</span>
+            <span class="cr-tool-lbl">@L["Classroom_Whiteboard"]</span>
         </div>
         <div class="cr-tool-item">
-            <button class="cr-tool-btn" @onclick='() => _activeTab = "Participants"' title="Participants">
+            <button class="cr-tool-btn" @onclick='() => _activeTab = "Participants"' title="@L["Classroom_Participants"]">
                 <i class="bi bi-people-fill"></i>
             </button>
-            <span class="cr-tool-lbl">Participants</span>
+            <span class="cr-tool-lbl">@L["Classroom_Participants"]</span>
         </div>
         <div class="cr-tool-item">
-            <button class="cr-tool-btn" title="Sondage">
+            <button class="cr-tool-btn" title="@L["Classroom_Poll"]">
                 <i class="bi bi-bar-chart-fill"></i>
             </button>
-            <span class="cr-tool-lbl">Sondage</span>
+            <span class="cr-tool-lbl">@L["Classroom_Poll"]</span>
         </div>
         <div class="cr-tool-item">
             <button class="cr-tool-btn @(_recording ? "cr-tool-btn--danger" : "")" @onclick="ToggleRecording"
-                    title="@(_recording ? "Arrêter l'enregistrement" : "Démarrer l'enregistrement")">
+                    title="@L["Classroom_Record"]">
                 <i class="bi @(_recording ? "bi-stop-circle-fill" : "bi-record-circle")"></i>
             </button>
-            <span class="cr-tool-lbl">Enregistrer</span>
+            <span class="cr-tool-lbl">@L["Classroom_Record"]</span>
         </div>
         <div class="cr-tool-sep"></div>
         <div class="cr-tool-item">
-            <button class="cr-tool-btn cr-tool-btn--quit" @onclick="GoBack" title="Quitter">
+            <button class="cr-tool-btn cr-tool-btn--quit" @onclick="GoBack" title="@L["Classroom_Leave"]">
                 <i class="bi bi-box-arrow-right"></i>
             </button>
-            <span class="cr-tool-lbl">Quitter</span>
+            <span class="cr-tool-lbl">@L["Classroom_Leave"]</span>
         </div>
     </div>
 </div>
