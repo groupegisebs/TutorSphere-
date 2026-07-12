@@ -21,6 +21,8 @@ umask 077
   printf 'PAYGATEWAY__BASEURL=%s\n' "${PAYGATEWAY_BASE_URL}"
   printf 'PAYGATEWAY__APPCODE=%s\n' "${PAYGATEWAY_APP_CODE:-TUTORSPHERE}"
   printf 'PAYGATEWAY__APIKEY=%s\n' "${PAYGATEWAY_API_KEY}"
+  # true = Stripe Test (X-Stripe-Env: DEV) ; false = Stripe Live (pas de header)
+  printf 'PAYGATEWAY__USESANDBOX=%s\n' "${PAYGATEWAY_USE_SANDBOX:-false}"
   printf 'EMAIL__BASEURL=%s\n' "${EMAIL_BASE_URL:-https://gisemailsender.gisebs.com}"
   printf 'EMAIL__APIKEY=%s\n' "${EMAIL_API_KEY:-}"
   printf 'EMAIL__CLIENTCODE=%s\n' "${EMAIL_CLIENT_CODE:-TUTORSPHERE}"

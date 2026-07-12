@@ -85,12 +85,14 @@ TutorSphere ne communique plus directement avec Stripe. Les paiements passent pa
 
 **Mode Stripe (prod vs test) :**
 
-| Environnement TutorSphere | Header envoyé | Secrets Pay Gateway |
-|---------------------------|---------------|---------------------|
-| Development / Staging | `X-Stripe-Env: DEV` | Stripe Test |
-| Production | *(aucun)* | Stripe Live |
+| Source | Valeur | Effet |
+|--------|--------|--------|
+| `PAYGATEWAY__USESANDBOX=true` (env / user-secrets / GitHub var) | force | `X-Stripe-Env: DEV` → Stripe Test |
+| `PAYGATEWAY__USESANDBOX=false` | force | Stripe Live |
+| Non défini | auto | Development / Staging → Test ; sinon Live |
 
-- Override optionnel : `PayGateway:UseSandbox` (`true` / `false`) — **ne jamais mettre `true` en production utilisateurs**.
+En déploiement, le workflow écrit `PAYGATEWAY__USESANDBOX` depuis la variable GitHub `TUTORSPHERE_PAYGATEWAY_USE_SANDBOX`.
+
 - La réponse checkout peut inclure `stripeMode` (`PROD` ou `DEV`).
 - Cartes de test : [docs.stripe.com/testing](https://docs.stripe.com/testing) (ex. `4242 4242 4242 4242`).
 - Les objets Stripe (customers, prices, subscriptions) sont séparés entre test et live.
@@ -113,7 +115,6 @@ cd src/TutorSphere.Api
 dotnet user-secrets set "PayGateway:BaseUrl" "https://gisebsapipaygateway.gisebs.com"
 dotnet user-secrets set "PayGateway:AppCode" "TUTORSPHERE"
 dotnet user-secrets set "PayGateway:ApiKey" "gbsk_..."
-# Optionnel : forcer le bac à sable (déjà true en Development via appsettings)
 dotnet user-secrets set "PayGateway:UseSandbox" "true"
 ```
 

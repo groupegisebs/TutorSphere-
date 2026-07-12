@@ -17,9 +17,40 @@ Le workflow **Deploy Production** échoue tant que les secrets ci-dessous ne son
 | `TUTORSPHERE_PAYGATEWAY_BASE_URL` | URL publique du Pay Gateway (nginx HTTPS) | `https://gisebsapipaygateway.gisebs.com` |
 | `TUTORSPHERE_PAYGATEWAY_API_KEY` | Clé API app `TUTORSPHERE` | `gbsk_...` |
 
-> **Stripe :** en production (`ASPNETCORE_ENVIRONMENT=Production`), TutorSphere **n'envoie pas** `X-Stripe-Env: DEV` → Stripe Live. Le bac à sable est réservé à Development / Staging (ou override `PAYGATEWAY__USESANDBOX` en QA uniquement).
-
 > **Ne pas utiliser** `giseboutique.gisebs.com` (boutique) ni le port interne `http://51.79.53.197:7843` — l'API est exposée via **[GISEBS Pay Gateway](https://gisebsapipaygateway.gisebs.com/)**.
+
+## Variable Pay Gateway — Stripe sandbox / live
+
+Contrôle le header `X-Stripe-Env: DEV` écrit dans `/opt/apps/tutorsphere/app/.env` comme `PAYGATEWAY__USESANDBOX`.
+
+| Variable GitHub Actions | Écrit dans `.env` | Effet |
+|-------------------------|-------------------|--------|
+| `TUTORSPHERE_PAYGATEWAY_USE_SANDBOX` | `PAYGATEWAY__USESANDBOX` | `true` = Stripe Test ; `false` = Stripe Live |
+
+| Valeur | Header envoyé à Pay Gateway | Secrets Stripe |
+|--------|-----------------------------|----------------|
+| `true` | `X-Stripe-Env: DEV` | Test (`pk_test_` / `sk_test_`) |
+| `false` (défaut si absent) | *(aucun)* | Live |
+
+```bash
+# Bac à sable (tests / QA sur le serveur déployé)
+gh variable set TUTORSPHERE_PAYGATEWAY_USE_SANDBOX --body "true"
+
+# Stripe Live (production utilisateurs)
+gh variable set TUTORSPHERE_PAYGATEWAY_USE_SANDBOX --body "false"
+```
+
+Lien UI : `Settings` → `Secrets and variables` → `Actions` → onglet **Variables** (pas Secrets).
+
+Les autres valeurs Pay Gateway restent des **secrets** :
+
+| Secret | → `.env` |
+|--------|----------|
+| `TUTORSPHERE_PAYGATEWAY_BASE_URL` | `PAYGATEWAY__BASEURL` |
+| `TUTORSPHERE_PAYGATEWAY_API_KEY` | `PAYGATEWAY__APIKEY` |
+| `TUTORSPHERE_PAYGATEWAY_APP_CODE` (opt.) | `PAYGATEWAY__APPCODE` (défaut `TUTORSPHERE`) |
+
+> Les clés Stripe elles-mêmes ne sont **pas** dans TutorSphere — elles sont configurées dans l’admin Pay Gateway (`Stripe:Test` / `Stripe:Live`).
 
 ## Secret SSH (un seul suffit)
 
@@ -41,6 +72,7 @@ Le workflow **Deploy Production** échoue tant que les secrets ci-dessous ne son
 | Port API (`TUTORSPHERE_API_PORT`) | `55099` |
 | Port Web (`TUTORSPHERE_WEB_PORT`) | `55010` |
 | `TUTORSPHERE_PAYGATEWAY_APP_CODE` | `TUTORSPHERE` |
+| `TUTORSPHERE_PAYGATEWAY_USE_SANDBOX` | `false` (Stripe Live) — mettre `true` pour le bac à sable |
 | `TUTORSPHERE_API_BASE_URL` | `https://api.tutorsphere.gisebs.com` (URL publique API pour le navigateur Blazor) |
 
 Host/User/Port SSH : secret org, variable org, ou défaut workflow (`51.79.53.197` / `ubuntu` / `22`).
@@ -54,6 +86,8 @@ gh secret set TUTORSPHERE_CONNECTION_STRING --body "Host=51.79.53.197;Port=5432;
 gh secret set TUTORSPHERE_JWT_KEY --body "VOTRE_CLE_JWT_MIN_32_CARACTERES"
 gh secret set TUTORSPHERE_PAYGATEWAY_BASE_URL --body "https://gisebsapipaygateway.gisebs.com"
 gh secret set TUTORSPHERE_PAYGATEWAY_API_KEY --body "gbsk_votre_cle"
+# Variable (pas secret) — Stripe Test ou Live
+gh variable set TUTORSPHERE_PAYGATEWAY_USE_SANDBOX --body "true"
 ```
 
 La clé PayGateway se génère dans l'admin **[GISEBS Pay Gateway](https://gisebsapipaygateway.gisebs.com/)** → Applications → **TUTORSPHERE**.
@@ -143,6 +177,7 @@ Réponse attendue sur `/api/auth/token` : **200** (token) ou **401** (mauvaise c
 - [ ] `TUTORSPHERE_JWT_KEY` (min. 32 caractères)
 - [ ] `TUTORSPHERE_PAYGATEWAY_BASE_URL` = `https://gisebsapipaygateway.gisebs.com`
 - [ ] `TUTORSPHERE_PAYGATEWAY_API_KEY`
+- [ ] Variable `TUTORSPHERE_PAYGATEWAY_USE_SANDBOX` (`true` = bac à sable, `false` = Live)
 - [ ] App `TUTORSPHERE` dans PayGateway
 - [ ] Répertoire `/opt/apps/tutorsphere` (créé automatiquement par le workflow si absent)
 - [ ] Base PostgreSQL `TutorSphere` (créée automatiquement au premier déploiement)

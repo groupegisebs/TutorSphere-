@@ -66,6 +66,7 @@ jobs:
           echo "PayGateway (obligatoires pour les paiements) :"
           echo "  TUTORSPHERE_PAYGATEWAY_BASE_URL → ${{ secrets.TUTORSPHERE_PAYGATEWAY_BASE_URL != '' && 'OK' || 'manquant' }}"
           echo "  TUTORSPHERE_PAYGATEWAY_API_KEY  → ${{ secrets.TUTORSPHERE_PAYGATEWAY_API_KEY != '' && 'OK' || 'manquant' }}"
+          echo "  TUTORSPHERE_PAYGATEWAY_USE_SANDBOX (var) → ${{ vars.TUTORSPHERE_PAYGATEWAY_USE_SANDBOX != '' && vars.TUTORSPHERE_PAYGATEWAY_USE_SANDBOX || 'false (défaut Live)' }}"
           echo ""
           echo "Guide : https://github.com/${{ github.repository }}/blob/main/deploy/GITHUB-SECRETS.md"
 
@@ -94,6 +95,7 @@ jobs:
           PG_API_KEY: ${{ secrets.TUTORSPHERE_PAYGATEWAY_API_KEY }}
           PG_APP_CODE_VAR: ${{ vars.TUTORSPHERE_PAYGATEWAY_APP_CODE }}
           PG_APP_CODE_SECRET: ${{ secrets.TUTORSPHERE_PAYGATEWAY_APP_CODE }}
+          PG_USE_SANDBOX_VAR: ${{ vars.TUTORSPHERE_PAYGATEWAY_USE_SANDBOX }}
           EMAIL_API_KEY: ${{ secrets.TUTORSPHERE_EMAIL_API_KEY }}
           EMAIL_CLIENT_CODE_VAR: ${{ vars.TUTORSPHERE_EMAIL_CLIENT_CODE }}
           API_BASE_URL_VAR: ${{ vars.TUTORSPHERE_API_BASE_URL }}
@@ -112,6 +114,17 @@ jobs:
             return 1
           }
 
+          normalize_bool() {
+            case "$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')" in
+              true|1|yes|on) printf 'true' ;;
+              false|0|no|off|'') printf 'false' ;;
+              *)
+                echo "::error::TUTORSPHERE_PAYGATEWAY_USE_SANDBOX invalide : '$1' (attendu true ou false)"
+                exit 1
+                ;;
+            esac
+          }
+
           SSH_PRIVATE_KEY=$(pick_first "$KEY_TUTOR" "$KEY_UBUNTU1" "$KEY_LEGACY") || true
           SSH_HOST_RAW=$(pick_first "$HOST_VAR" "$HOST_SECRET" "$DEFAULT_SSH_HOST") || true
           SSH_USER_RAW=$(pick_first "$USER_VAR" "$USER_SECRET" "$DEFAULT_SSH_USER") || true
@@ -124,6 +137,7 @@ jobs:
           PAYGATEWAY_BASE_URL_RAW=$(pick_first "$PG_BASE_URL") || true
           PAYGATEWAY_API_KEY_RAW=$(pick_first "$PG_API_KEY") || true
           PAYGATEWAY_APP_CODE_RAW=$(pick_first "$PG_APP_CODE_VAR" "$PG_APP_CODE_SECRET" "$DEFAULT_PAYGATEWAY_APP_CODE") || true
+          PAYGATEWAY_USE_SANDBOX_RAW=$(normalize_bool "${PG_USE_SANDBOX_VAR:-false}")
           EMAIL_API_KEY_RAW=$(pick_first "$EMAIL_API_KEY") || true
           EMAIL_CLIENT_CODE_RAW=$(pick_first "$EMAIL_CLIENT_CODE_VAR" "TUTORSPHERE") || true
           API_BASE_URL_RAW=$(pick_first "$API_BASE_URL_VAR" "$API_BASE_URL_SECRET") || true
@@ -188,6 +202,7 @@ jobs:
           gha_write_env PAYGATEWAY_BASE_URL "$(gha_sanitize "$PAYGATEWAY_BASE_URL_RAW")"
           gha_write_env PAYGATEWAY_API_KEY "$(gha_sanitize "$PAYGATEWAY_API_KEY_RAW")"
           gha_write_env PAYGATEWAY_APP_CODE "$(gha_sanitize "$PAYGATEWAY_APP_CODE_RAW")"
+          gha_write_env PAYGATEWAY_USE_SANDBOX "$PAYGATEWAY_USE_SANDBOX_RAW"
           [ -n "$EMAIL_API_KEY_RAW" ] && gha_write_env EMAIL_API_KEY "$(gha_sanitize "$EMAIL_API_KEY_RAW")" || true
           gha_write_env EMAIL_CLIENT_CODE "$(gha_sanitize "$EMAIL_CLIENT_CODE_RAW")"
           if [ -n "$API_BASE_URL_RAW" ]; then
@@ -195,7 +210,7 @@ jobs:
           else
             gha_write_env API_BASE_URL "${DEFAULT_API_BASE_URL}"
           fi
-          echo "OK → ${SSH_USER}@${SSH_HOST}:${SSH_PORT} app=${APP_ROOT} api=${API_PORT} web=${WEB_PORT}"
+          echo "OK → ${SSH_USER}@${SSH_HOST}:${SSH_PORT} app=${APP_ROOT} api=${API_PORT} web=${WEB_PORT} paygateway.sandbox=${PAYGATEWAY_USE_SANDBOX_RAW}"
 
       - name: Setup SSH key
         id: ssh
@@ -224,6 +239,7 @@ jobs:
           PAYGATEWAY_BASE_URL: ${{ env.PAYGATEWAY_BASE_URL }}
           PAYGATEWAY_API_KEY: ${{ env.PAYGATEWAY_API_KEY }}
           PAYGATEWAY_APP_CODE: ${{ env.PAYGATEWAY_APP_CODE }}
+          PAYGATEWAY_USE_SANDBOX: ${{ env.PAYGATEWAY_USE_SANDBOX }}
           EMAIL_API_KEY: ${{ env.EMAIL_API_KEY }}
           EMAIL_CLIENT_CODE: ${{ env.EMAIL_CLIENT_CODE }}
           API_BASE_URL: ${{ env.API_BASE_URL }}
