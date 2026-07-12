@@ -1,0 +1,160 @@
+@inject IStringLocalizer<SharedResources> L
+
+<section class="lp-pricing lp-reveal" id="pricing">
+    <div class="lp-container">
+        <div class="lp-section-header lp-pricing-header">
+            <span class="lp-section-label">@L["LandingPricing_Label"]</span>
+            <h2>@L["LandingPricing_Title"]</h2>
+            <p>@L["LandingPricing_Subtitle"]</p>
+        </div>
+
+        <div class="lp-billing-toggle" role="group" aria-label="@L["LandingPricing_BillingToggle"]">
+            <button type="button"
+                    class="lp-billing-btn @(!_annual ? "is-active" : null)"
+                    @onclick="() => _annual = false">
+                @L["LandingPricing_Monthly"]
+            </button>
+            <button type="button"
+                    class="lp-billing-btn @(_annual ? "is-active" : null)"
+                    @onclick="() => _annual = true">
+                @L["LandingPricing_Annual"]
+                <span class="lp-billing-save">@L["LandingPricing_Save20"]</span>
+            </button>
+        </div>
+
+        <div class="lp-plan-cards">
+            @foreach (var plan in _plans)
+            {
+                <article class="lp-plan-card @(plan.Featured ? "lp-plan-card--featured" : null)">
+                    @if (plan.Featured)
+                    {
+                        <span class="lp-plan-card-badge">@L["LandingPricing_Popular"]</span>
+                    }
+                    <h3 class="lp-plan-card-name">@L[plan.NameKey]</h3>
+                    <p class="lp-plan-card-desc">@L[plan.DescKey]</p>
+                    <div class="lp-plan-card-price">
+                        @if (plan.ContactUs)
+                        {
+                            <strong>@L["Plan_ContactUs"]</strong>
+                        }
+                        else
+                        {
+                            <strong>@FormatPrice(plan.Monthly)</strong>
+                            <small>/@L["Plan_PerMonth"]</small>
+                        }
+                    </div>
+                    <ul class="lp-plan-card-features">
+                        @foreach (var f in plan.Features)
+                        {
+                            <li><i class="bi bi-check2" aria-hidden="true"></i>@L[f]</li>
+                        }
+                    </ul>
+                    @if (plan.ContactUs)
+                    {
+                        <a href="mailto:support@tutorsphere.com" class="btn btn-outline-primary w-100">
+                            @L["Plan_ContactSales"]
+                        </a>
+                    }
+                    else
+                    {
+                        <a href="/register/tuteur" class="btn @(plan.Featured ? "btn-primary" : "btn-outline-primary") w-100">
+                            @L[plan.CtaKey]
+                        </a>
+                    }
+                </article>
+            }
+        </div>
+
+        <div class="lp-pricing-compare-block">
+            <h3 class="lp-pricing-compare-title">@L["LandingPricing_CompareTitle"]</h3>
+            <div class="lp-pricing-compare-wrap">
+                <table class="lp-pricing-compare lp-pricing-compare--landing">
+                    <thead>
+                        <tr>
+                            <th>@L["Pricing_Features"]</th>
+                            @foreach (var plan in _plans)
+                            {
+                                <th class="@(plan.Featured ? "featured" : null)">@L[plan.NameKey]</th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in _compareRows)
+                        {
+                            <tr>
+                                <td>@L[row.LabelKey]</td>
+                                @foreach (var val in row.Values)
+                                {
+                                    <td>
+                                        @if (val == "yes")
+                                        {
+                                            <i class="bi bi-check-circle-fill text-success" aria-hidden="true"></i>
+                                        }
+                                        else if (val == "no")
+                                        {
+                                            <i class="bi bi-dash text-muted" aria-hidden="true"></i>
+                                        }
+                                        else
+                                        {
+                                            @L[val]
+                                        }
+                                    </td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <p class="lp-pricing-footnote">
+            <i class="bi bi-shield-lock me-1" aria-hidden="true"></i>@L["LandingPricing_Footnote"]
+        </p>
+    </div>
+</section>
+
+@code {
+    private bool _annual;
+
+    private sealed record PlanDef(
+        string NameKey,
+        string DescKey,
+        decimal Monthly,
+        bool Featured,
+        bool ContactUs,
+        string CtaKey,
+        string[] Features);
+
+    private sealed record CompareRow(string LabelKey, string[] Values);
+
+    private readonly PlanDef[] _plans =
+    [
+        new("Plan_Free", "LandingPricing_Free_Desc", 0m, false, false, "LandingPricing_CtaFree",
+            ["LandingPricing_Free_F1", "LandingPricing_Free_F2", "LandingPricing_Free_F3", "LandingPricing_Free_F4"]),
+        new("Plan_Starter", "LandingPricing_Starter_Desc", 24.99m, false, false, "Tutor_PricingCta",
+            ["LandingPricing_Starter_F1", "LandingPricing_Starter_F2", "LandingPricing_Starter_F3", "LandingPricing_Starter_F4"]),
+        new("Plan_Professional", "LandingPricing_Pro_Desc", 49.99m, true, false, "Tutor_PricingCta",
+            ["LandingPricing_Pro_F1", "LandingPricing_Pro_F2", "LandingPricing_Pro_F3", "LandingPricing_Pro_F4", "LandingPricing_Pro_F5"]),
+        new("Plan_Business", "LandingPricing_Biz_Desc", 99.99m, false, false, "Tutor_PricingCta",
+            ["LandingPricing_Biz_F1", "LandingPricing_Biz_F2", "LandingPricing_Biz_F3", "LandingPricing_Biz_F4"]),
+        new("Plan_Enterprise", "LandingPricing_Ent_Desc", 0m, false, true, "Plan_ContactSales",
+            ["LandingPricing_Ent_F1", "LandingPricing_Ent_F2", "LandingPricing_Ent_F3", "LandingPricing_Ent_F4"]),
+    ];
+
+    private readonly CompareRow[] _compareRows =
+    [
+        new("Pricing_Students", ["LandingPricing_Val_5", "LandingPricing_Val_25", "LandingPricing_Val_100", "LandingPricing_Val_500", "LandingPricing_Val_Unlimited"]),
+        new("Pricing_Storage", ["LandingPricing_Val_2Gb", "LandingPricing_Val_10Gb", "LandingPricing_Val_100Gb", "LandingPricing_Val_500Gb", "LandingPricing_Val_Unlimited"]),
+        new("Pricing_Video", ["no", "LandingPricing_Val_10h", "Pricing_Val_Unlimited", "Pricing_Val_Unlimited", "Pricing_Val_Unlimited"]),
+        new("LandingPricing_Row_OnlinePay", ["no", "no", "yes", "yes", "yes"]),
+        new("LandingPricing_Row_Recurring", ["no", "no", "yes", "yes", "yes"]),
+        new("LandingPricing_Row_AutoInvoice", ["no", "no", "yes", "yes", "yes"]),
+        new("Pricing_Support", ["Pricing_Val_Email", "Pricing_Val_Email", "Pricing_Val_Priority", "Pricing_Val_Priority", "Pricing_Val_Dedicated"]),
+    ];
+
+    private string FormatPrice(decimal monthly)
+    {
+        var amount = _annual ? Math.Round(monthly * 0.8m, 2) : monthly;
+        return $"{amount.ToString("0.##")} $";
+    }
+}
