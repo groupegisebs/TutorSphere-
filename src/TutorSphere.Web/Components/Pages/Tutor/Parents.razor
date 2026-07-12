@@ -4,15 +4,15 @@
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
 
-<PageTitle>Parents – TutorSphere</PageTitle>
+<PageTitle>@L["Parents_Title"] – TutorSphere</PageTitle>
 
 <div class="ts-page-header">
     <div>
-        <h1><i class="bi bi-person-hearts me-2"></i>Parents</h1>
-        <p class="ts-page-subtitle">@_parents.Count contact(s) parent</p>
+        <h1><i class="bi bi-person-hearts me-2"></i>@L["Parents_Title"]</h1>
+        <p class="ts-page-subtitle">@string.Format(L["Parents_Count"].Value, _parents.Count)</p>
     </div>
     <button class="btn btn-primary" @onclick="OpenAdd">
-        <i class="bi bi-plus-lg me-1"></i>Ajouter
+        <i class="bi bi-plus-lg me-1"></i>@L["Common_Add"]
     </button>
 </div>
 
@@ -24,7 +24,7 @@
 <div class="ts-toolbar">
     <div class="ts-search-box">
         <i class="bi bi-search ts-search-icon"></i>
-        <input class="form-control" placeholder="Rechercher un parent…"
+        <input class="form-control" placeholder="@L["Parents_Search"]"
                @bind="_search" @bind:event="oninput" />
     </div>
 </div>
@@ -33,14 +33,14 @@
 {
     <div class="ts-loading-state" style="padding:2rem;">
         <div class="spinner-border text-primary" role="status"></div>
-        <span class="ms-2 text-muted">Chargement des parents…</span>
+        <span class="ms-2 text-muted">@L["Parents_Loading"]</span>
     </div>
 }
 else if (!FilteredParents.Any())
 {
     <div class="ts-empty-card">
         <i class="bi bi-person-plus ts-empty-icon"></i>
-        <p>Aucun parent enregistré. Ajoutez votre premier contact parent.</p>
+        <p>@L["Parents_Empty"]</p>
     </div>
 }
 else
@@ -49,8 +49,11 @@ else
         <table class="table ts-table">
             <thead>
                 <tr>
-                    <th>Parent</th><th>Enfants</th><th>Téléphone</th>
-                    <th>Courriel</th><th>Actions</th>
+                    <th>@L["Parents_Title"]</th>
+                    <th>@L["Parents_Children"]</th>
+                    <th>@L["Common_Phone"]</th>
+                    <th>@L["Common_Email"]</th>
+                    <th>@L["Common_Actions"]</th>
                 </tr>
             </thead>
             <tbody>
@@ -66,7 +69,7 @@ else
                         <td>
                             @if (p.Children.Count == 0)
                             {
-                                <span class="text-muted">@p.ChildrenCount enfant(s)</span>
+                                <span class="text-muted">@p.ChildrenCount @L["Parents_ChildrenCount"]</span>
                             }
                             else
                             {
@@ -80,7 +83,7 @@ else
                         <td>@p.Email</td>
                         <td>
                             <div class="ts-action-group">
-                                <button class="ts-icon-btn" title="Voir" @onclick="() => OpenDetail(p)"><i class="bi bi-eye"></i></button>
+                                <button class="ts-icon-btn" title="@L["Common_View"]" @onclick="() => OpenDetail(p)"><i class="bi bi-eye"></i></button>
                             </div>
                         </td>
                     </tr>
@@ -102,29 +105,27 @@ else
                 <button class="ts-modal-close" @onclick="() => _selected = null"><i class="bi bi-x-lg"></i></button>
             </div>
             <div class="ts-modal-tabs">
-                @foreach (var t in new[] { "Infos", "Enfants" })
-                {
-                    <button class="ts-tab @(_pTab == t ? "active" : "")" @onclick="() => _pTab = t">@t</button>
-                }
+                <button class="ts-tab @(_pTab == "info" ? "active" : "")" @onclick='() => _pTab = "info"'>@L["Parents_Info"]</button>
+                <button class="ts-tab @(_pTab == "children" ? "active" : "")" @onclick='() => _pTab = "children"'>@L["Parents_Children"]</button>
             </div>
             <div class="ts-modal-body">
-                @if (_pTab == "Infos")
+                @if (_pTab == "info")
                 {
                     <div class="ts-form-grid">
-                        <div class="ts-form-row"><label>Nom complet</label><span>@_selected.FullName</span></div>
-                        <div class="ts-form-row"><label>Téléphone</label><span>@(_selected.Phone ?? "—")</span></div>
-                        <div class="ts-form-row"><label>Courriel</label><span>@_selected.Email</span></div>
+                        <div class="ts-form-row"><label>@L["Parents_FullName"]</label><span>@_selected.FullName</span></div>
+                        <div class="ts-form-row"><label>@L["Common_Phone"]</label><span>@(_selected.Phone ?? "—")</span></div>
+                        <div class="ts-form-row"><label>@L["Common_Email"]</label><span>@_selected.Email</span></div>
                     </div>
                 }
-                else if (_pTab == "Enfants")
+                else if (_pTab == "children")
                 {
                     @if (_childrenLoading)
                     {
-                        <div class="text-muted">Chargement…</div>
+                        <div class="text-muted">@L["Common_Loading"]</div>
                     }
                     else if (_selected.Children.Count == 0)
                     {
-                        <p class="ts-empty-inline">Aucun enfant lié.</p>
+                        <p class="ts-empty-inline">@L["Parents_NoChildren"]</p>
                     }
                     else
                     {
@@ -144,18 +145,18 @@ else
     <div class="ts-modal-backdrop" @onclick="() => _showAdd = false">
         <div class="ts-modal" @onclick:stopPropagation="true">
             <div class="ts-modal-header">
-                <h2>Ajouter un parent</h2>
+                <h2>@L["Parents_Add"]</h2>
                 <button class="ts-modal-close" @onclick="() => _showAdd = false"><i class="bi bi-x-lg"></i></button>
             </div>
             <div class="ts-modal-body">
                 <div class="row g-3">
-                    <div class="col-6"><label class="form-label">Prénom *</label>
+                    <div class="col-6"><label class="form-label">@L["Common_FirstName"] *</label>
                         <input class="form-control" @bind="_pForm.First" /></div>
-                    <div class="col-6"><label class="form-label">Nom *</label>
+                    <div class="col-6"><label class="form-label">@L["Common_LastName"] *</label>
                         <input class="form-control" @bind="_pForm.Last" /></div>
-                    <div class="col-6"><label class="form-label">Téléphone</label>
+                    <div class="col-6"><label class="form-label">@L["Common_Phone"]</label>
                         <input class="form-control" @bind="_pForm.Phone" /></div>
-                    <div class="col-6"><label class="form-label">Courriel *</label>
+                    <div class="col-6"><label class="form-label">@L["Common_Email"] *</label>
                         <input type="email" class="form-control" @bind="_pForm.Email" /></div>
                 </div>
                 @if (!string.IsNullOrEmpty(_addError))
@@ -164,9 +165,9 @@ else
                 }
             </div>
             <div class="ts-modal-footer">
-                <button class="btn btn-outline-secondary" @onclick="() => _showAdd = false" disabled="@_saving">Annuler</button>
+                <button class="btn btn-outline-secondary" @onclick="() => _showAdd = false" disabled="@_saving">@L["Common_Cancel"]</button>
                 <button class="btn btn-primary" @onclick="SaveParent" disabled="@_saving">
-                    @(_saving ? "Enregistrement…" : "Enregistrer")
+                    @(_saving ? L["Common_Saving"] : L["Common_Save"])
                 </button>
             </div>
         </div>
@@ -176,7 +177,7 @@ else
 @code {
     private string _search = "";
     private ParentVM? _selected;
-    private string _pTab = "Infos";
+    private string _pTab = "info";
     private bool _showAdd;
     private bool _loading = true;
     private bool _saving;
@@ -223,7 +224,7 @@ else
     private async Task OpenDetail(ParentVM p)
     {
         _selected = p;
-        _pTab = "Infos";
+        _pTab = "info";
         _childrenLoading = true;
         try
         {
@@ -240,12 +241,12 @@ else
     {
         if (string.IsNullOrWhiteSpace(_pForm.First) || string.IsNullOrWhiteSpace(_pForm.Last))
         {
-            _addError = "Prénom et nom sont obligatoires.";
+            _addError = L["Parents_RequiredName"];
             return;
         }
         if (string.IsNullOrWhiteSpace(_pForm.Email))
         {
-            _addError = "Le courriel est obligatoire.";
+            _addError = L["Parents_RequiredEmail"];
             return;
         }
 
@@ -264,7 +265,7 @@ else
             var result = await Api.PostWithErrorAsync<ApiParentDto>("api/parents", req);
             if (result.Error is not null || result.Value is null)
             {
-                _addError = result.Error ?? "Création impossible.";
+                _addError = result.Error ?? L["Parents_CreateFailed"].Value;
                 return;
             }
 

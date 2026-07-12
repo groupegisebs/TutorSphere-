@@ -5,14 +5,14 @@
 @inject MessageService MessageSvc
 @inject AuthService Auth
 
-<PageTitle>Messagerie – TutorSphere</PageTitle>
+<PageTitle>@L["Messages_Title"] – TutorSphere</PageTitle>
 
 <div class="ts-page-header">
     <div>
-        <h1><i class="bi bi-chat-dots me-2"></i>Messagerie</h1>
+        <h1><i class="bi bi-chat-dots me-2"></i>@L["Messages_Title"]</h1>
     </div>
     <button class="btn btn-primary btn-sm" @onclick="NewConversation">
-        <i class="bi bi-plus-lg me-1"></i>Nouveau message
+        <i class="bi bi-plus-lg me-1"></i>@L["Messages_New"]
     </button>
 </div>
 
@@ -21,7 +21,7 @@
     <aside class="messages-sidebar">
         <div class="messages-search">
             <i class="bi bi-search"></i>
-            <input class="form-control form-control-sm" placeholder="Rechercher…"
+            <input class="form-control form-control-sm" placeholder="@L["Messages_Search"]"
                    @bind="_msgSearch" @bind:event="oninput" />
         </div>
         <div class="conversation-list">
@@ -29,7 +29,7 @@
             {
                 <div class="ts-loading-state" style="padding: 1.5rem;">
                     <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
-                    <span class="ms-2 text-muted small">Chargement…</span>
+                    <span class="ms-2 text-muted small">@L["Common_Loading"]</span>
                 </div>
             }
             @foreach (var c in FilteredConversations)
@@ -64,8 +64,8 @@
                     <span class="chat-role text-muted">@_active.Role</span>
                 </div>
                 <div class="ms-auto d-flex gap-2">
-                    <button class="ts-icon-btn" title="Appel vidéo"><i class="bi bi-camera-video"></i></button>
-                    <button class="ts-icon-btn" title="Appel"><i class="bi bi-telephone"></i></button>
+                    <button class="ts-icon-btn" title="@L["Messages_VideoCall"]"><i class="bi bi-camera-video"></i></button>
+                    <button class="ts-icon-btn" title="@L["Messages_Call"]"><i class="bi bi-telephone"></i></button>
                 </div>
             </div>
 
@@ -80,8 +80,8 @@
             </div>
 
             <div class="chat-input-area">
-                <button class="ts-icon-btn" title="Pièce jointe"><i class="bi bi-paperclip"></i></button>
-                <input class="form-control" placeholder="Écrire un message…"
+                <button class="ts-icon-btn" title="@L["Messages_Attachment"]"><i class="bi bi-paperclip"></i></button>
+                <input class="form-control" placeholder="@L["Messages_Write"]"
                        @bind="_newMsg" @onkeydown="HandleKey" />
                 <button class="btn btn-primary btn-sm" @onclick="async () => await SendMessage()"
                         disabled="@string.IsNullOrWhiteSpace(_newMsg)">
@@ -94,7 +94,7 @@
     {
         <section class="messages-empty">
             <i class="bi bi-chat-dots messages-empty-icon"></i>
-            <p>Sélectionnez une conversation</p>
+            <p>@L["Messages_SelectConversation"]</p>
         </section>
     }
 </div>

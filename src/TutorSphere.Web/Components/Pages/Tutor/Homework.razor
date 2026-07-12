@@ -4,15 +4,15 @@
 @inject IStringLocalizer<SharedResources> L
 @inject HomeworkService HomeworkSvc
 
-<PageTitle>Devoirs – TutorSphere</PageTitle>
+<PageTitle>@L["Homework_Title"] – TutorSphere</PageTitle>
 
 <div class="ts-page-header">
     <div>
-        <h1><i class="bi bi-journal-text me-2"></i>Devoirs</h1>
-        <p class="ts-page-subtitle">Créez, gérez et corrigez les devoirs de vos élèves</p>
+        <h1><i class="bi bi-journal-text me-2"></i>@L["Homework_Title"]</h1>
+        <p class="ts-page-subtitle">@L["Homework_Subtitle"]</p>
     </div>
     <button class="btn btn-primary" @onclick="OpenAdd">
-        <i class="bi bi-plus-lg me-1"></i>Nouveau devoir
+        <i class="bi bi-plus-lg me-1"></i>@L["Homework_New"]
     </button>
 </div>
 
@@ -20,15 +20,18 @@
 <div class="ts-toolbar">
     <div class="ts-search-box">
         <i class="bi bi-search ts-search-icon"></i>
-        <input class="form-control" placeholder="Chercher un devoir…"
+        <input class="form-control" placeholder="@L["Homework_Search"]"
                @bind="_search" @bind:event="oninput" />
     </div>
     <select class="form-select w-auto" @bind="_filterStatus">
-        <option value="">Tous</option>
-        <option>À rendre</option><option>Rendu</option><option>Corrigé</option><option>En retard</option>
+        <option value="">@L["Common_All"]</option>
+        <option value="À rendre">@L["Homework_Due"]</option>
+        <option value="Rendu">@L["Homework_Submitted"]</option>
+        <option value="Corrigé">@L["Homework_Graded"]</option>
+        <option value="En retard">@L["Homework_Late"]</option>
     </select>
     <select class="form-select w-auto" @bind="_filterSubject">
-        <option value="">Toutes matières</option>
+        <option value="">@L["Homework_AllSubjects"]</option>
         <option>Mathématiques</option><option>Physique</option><option>Chimie</option><option>Français</option>
     </select>
 </div>
@@ -38,7 +41,7 @@
 {
     <div class="ts-loading-state">
         <div class="spinner-border text-primary" role="status"></div>
-        <span class="ms-3 text-muted">Chargement…</span>
+        <span class="ms-3 text-muted">@L["Homework_Loading"]</span>
     </div>
 }
 else if (!string.IsNullOrEmpty(_error))
@@ -54,7 +57,7 @@ else
     {
         <div class="hw-card">
             <div class="hw-card-head">
-                <span class="ts-badge @HwBadge(hw.Status)">@hw.Status</span>
+                <span class="ts-badge @HwBadge(hw.Status)">@StatusLabel(hw.Status)</span>
                 <span class="hw-due @(hw.IsOverdue ? "text-danger" : "text-muted")">
                     <i class="bi bi-calendar3 me-1"></i>@hw.DueDate.ToString("dd/MM")
                 </span>
@@ -81,14 +84,14 @@ else
                 </div>
             }
             <div class="hw-card-footer">
-                <button class="ts-icon-btn" title="Modifier" @onclick="()=>OpenEdit(hw)"><i class="bi bi-pencil"></i></button>
+                <button class="ts-icon-btn" title="@L["Common_Edit"]" @onclick="()=>OpenEdit(hw)"><i class="bi bi-pencil"></i></button>
                 @if (hw.Status == "Rendu")
                 {
-                    <button class="ts-icon-btn" title="Corriger" @onclick="()=>OpenGrade(hw)">
+                    <button class="ts-icon-btn" title="@L["Homework_Grade"]" @onclick="()=>OpenGrade(hw)">
                         <i class="bi bi-check2-square text-success"></i>
                     </button>
                 }
-                <button class="ts-icon-btn ts-icon-btn--danger" title="Supprimer"
+                <button class="ts-icon-btn ts-icon-btn--danger" title="@L["Common_Delete"]"
                         @onclick="async () => await DeleteHomework(hw)">
                     <i class="bi bi-trash"></i>
                 </button>
@@ -104,22 +107,22 @@ else
     <div class="ts-modal-backdrop" @onclick="CloseModal">
         <div class="ts-modal" @onclick:stopPropagation="true">
             <div class="ts-modal-header">
-                <h2>@(_editing == null ? "Nouveau devoir" : "Modifier le devoir")</h2>
+                <h2>@(_editing == null ? L["Homework_New"] : L["Homework_Edit"])</h2>
                 <button class="ts-modal-close" @onclick="CloseModal"><i class="bi bi-x-lg"></i></button>
             </div>
             <div class="ts-modal-body">
                 <div class="row g-3">
-                    <div class="col-12"><label class="form-label">Titre *</label>
-                        <input class="form-control" @bind="_hf.Title" placeholder="Exercices chapitre 4" /></div>
-                    <div class="col-6"><label class="form-label">Matière</label>
+                    <div class="col-12"><label class="form-label">@L["Common_Title"] *</label>
+                        <input class="form-control" @bind="_hf.Title" placeholder="@L["Homework_TitlePlaceholder"]" /></div>
+                    <div class="col-6"><label class="form-label">@L["Common_Subject"]</label>
                         <input class="form-control" @bind="_hf.Subject" /></div>
-                    <div class="col-6"><label class="form-label">Date limite *</label>
+                    <div class="col-6"><label class="form-label">@L["Homework_DueDate"] *</label>
                         <input type="date" class="form-control" @bind="_hf.DueDate" /></div>
-                    <div class="col-12"><label class="form-label">Description</label>
+                    <div class="col-12"><label class="form-label">@L["Common_Description"]</label>
                         <textarea class="form-control" rows="3" @bind="_hf.Description"
-                            placeholder="Décrivez le travail à faire…"></textarea></div>
+                            placeholder="@L["Homework_DescPlaceholder"]"></textarea></div>
                     <div class="col-12">
-                        <label class="form-label">Élèves concernés</label>
+                        <label class="form-label">@L["Homework_Students"]</label>
                         <div class="d-flex flex-wrap gap-2">
                             @foreach (var s in _studentChoices)
                             {
@@ -135,8 +138,8 @@ else
                 </div>
             </div>
             <div class="ts-modal-footer">
-                <button class="btn btn-outline-secondary" @onclick="CloseModal">Annuler</button>
-                <button class="btn btn-primary" @onclick="async () => await SaveHomework()">Enregistrer</button>
+                <button class="btn btn-outline-secondary" @onclick="CloseModal">@L["Common_Cancel"]</button>
+                <button class="btn btn-primary" @onclick="async () => await SaveHomework()">@L["Common_Save"]</button>
             </div>
         </div>
     </div>
@@ -148,7 +151,7 @@ else
     <div class="ts-modal-backdrop" @onclick="()=>_grading=null">
         <div class="ts-modal" @onclick:stopPropagation="true">
             <div class="ts-modal-header">
-                <h2>Corriger : @_grading.Title</h2>
+                <h2>@string.Format(L["Homework_GradeTitle"].Value, _grading.Title)</h2>
                 <button class="ts-modal-close" @onclick="()=>_grading=null"><i class="bi bi-x-lg"></i></button>
             </div>
             <div class="ts-modal-body">
@@ -170,8 +173,8 @@ else
                 }
             </div>
             <div class="ts-modal-footer">
-                <button class="btn btn-outline-secondary" @onclick="()=>_grading=null">Annuler</button>
-                <button class="btn btn-primary" @onclick="MarkCorrected">Valider corrections</button>
+                <button class="btn btn-outline-secondary" @onclick="()=>_grading=null">@L["Common_Cancel"]</button>
+                <button class="btn btn-primary" @onclick="MarkCorrected">@L["Homework_ValidateGrades"]</button>
             </div>
         </div>
     </div>
@@ -188,6 +191,14 @@ else
     private static string HwBadge(string s) => s switch {
         "Corrigé" => "ts-badge-success", "Rendu" => "ts-badge-primary",
         "En retard" => "ts-badge-danger", _ => "ts-badge-muted"
+    };
+
+    private string StatusLabel(string s) => s switch {
+        "À rendre" => L["Homework_Due"],
+        "Rendu" => L["Homework_Submitted"],
+        "Corrigé" => L["Homework_Graded"],
+        "En retard" => L["Homework_Late"],
+        _ => s
     };
 
     private IEnumerable<HomeworkVM> FilteredHomework => _homeworks

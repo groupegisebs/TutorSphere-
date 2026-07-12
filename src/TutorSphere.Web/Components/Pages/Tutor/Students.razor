@@ -4,15 +4,15 @@
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
 
-<PageTitle>Mes Élèves – TutorSphere</PageTitle>
+<PageTitle>@L["Students_Title"] – TutorSphere</PageTitle>
 
 <div class="ts-page-header">
     <div>
-        <h1><i class="bi bi-people me-2" aria-hidden="true"></i>Mes Élèves</h1>
-        <p class="ts-page-subtitle">@_students.Count élève(s) dans votre école</p>
+        <h1><i class="bi bi-people me-2" aria-hidden="true"></i>@L["Students_Title"]</h1>
+        <p class="ts-page-subtitle">@string.Format(L["Students_CountInSchool"].Value, _students.Count)</p>
     </div>
     <button class="btn btn-primary" @onclick="OpenAddModal">
-        <i class="bi bi-plus-lg me-1"></i>Ajouter un élève
+        <i class="bi bi-plus-lg me-1"></i>@L["Students_Add"]
     </button>
 </div>
 
@@ -24,16 +24,20 @@
 <div class="ts-toolbar">
     <div class="ts-search-box">
         <i class="bi bi-search ts-search-icon"></i>
-        <input type="text" class="form-control" placeholder="Rechercher un élève…"
+        <input type="text" class="form-control" placeholder="@L["Students_Search"]"
                @bind="_search" @bind:event="oninput" />
     </div>
     <select class="form-select w-auto" @bind="_filterLevel">
-        <option value="">Tous les niveaux</option>
-        <option>Primaire</option><option>Collège</option><option>Lycée</option><option>Université</option>
+        <option value="">@L["Students_AllLevels"]</option>
+        <option value="Primaire">@L["Level_Primary"]</option>
+        <option value="Collège">@L["Level_Middle"]</option>
+        <option value="Lycée">@L["Level_High"]</option>
+        <option value="Université">@L["Level_University"]</option>
     </select>
     <select class="form-select w-auto" @bind="_filterStatus">
-        <option value="">Tous les statuts</option>
-        <option value="active">Actif</option><option value="inactive">Inactif</option>
+        <option value="">@L["Common_AllStatuses"]</option>
+        <option value="active">@L["Common_Active"]</option>
+        <option value="inactive">@L["Common_Inactive"]</option>
     </select>
 </div>
 
@@ -41,14 +45,14 @@
 {
     <div class="ts-loading-state" style="padding:2rem;">
         <div class="spinner-border text-primary" role="status"></div>
-        <span class="ms-2 text-muted">Chargement des élèves…</span>
+        <span class="ms-2 text-muted">@L["Students_Loading"]</span>
     </div>
 }
 else if (!Filtered.Any())
 {
     <div class="ts-empty-card">
         <i class="bi bi-person-plus ts-empty-icon"></i>
-        <p>Aucun élève trouvé. Ajoutez votre premier élève.</p>
+        <p>@L["Students_Empty"]</p>
     </div>
 }
 else
@@ -62,15 +66,15 @@ else
                     <strong>@s.FirstName @s.LastName</strong>
                     <span class="student-card-level">@(s.Level ?? "—") · @(s.School ?? "—")</span>
                     <span class="student-card-sub @(s.IsActive ? "sub-active" : "sub-inactive")">
-                        @(s.IsActive ? "Actif" : "Inactif")
+                        @(s.IsActive ? L["Common_Active"] : L["Common_Inactive"])
                     </span>
                 </div>
                 <div class="student-card-meta">
                     <span class="ts-badge ts-badge-neutral">@(string.IsNullOrEmpty(s.Subject) ? "—" : s.Subject)</span>
-                    <span class="student-card-date">Depuis @s.SinceDate</span>
+                    <span class="student-card-date">@string.Format(L["Students_Since"].Value, s.SinceDate)</span>
                 </div>
                 <div class="student-card-actions" @onclick:stopPropagation="true">
-                    <button class="ts-icon-btn" title="Voir le profil" @onclick="() => OpenProfile(s)">
+                    <button class="ts-icon-btn" title="@L["Students_ViewProfile"]" @onclick="() => OpenProfile(s)">
                         <i class="bi bi-eye"></i>
                     </button>
                 </div>
@@ -88,36 +92,36 @@ else
                 <div>
                     <h2>@_profileStudent.FirstName @_profileStudent.LastName</h2>
                     <span class="ts-badge @(_profileStudent.IsActive ? "ts-badge-success" : "ts-badge-muted")">
-                        @(_profileStudent.IsActive ? "Actif" : "Inactif")
+                        @(_profileStudent.IsActive ? L["Common_Active"] : L["Common_Inactive"])
                     </span>
                 </div>
                 <button class="ts-modal-close" @onclick="CloseProfile"><i class="bi bi-x-lg"></i></button>
             </div>
             <div class="ts-modal-body">
                 <div class="ts-form-grid">
-                    <div class="ts-form-row"><label>Prénom</label><span>@_profileStudent.FirstName</span></div>
-                    <div class="ts-form-row"><label>Nom</label><span>@_profileStudent.LastName</span></div>
+                    <div class="ts-form-row"><label>@L["Common_FirstName"]</label><span>@_profileStudent.FirstName</span></div>
+                    <div class="ts-form-row"><label>@L["Common_LastName"]</label><span>@_profileStudent.LastName</span></div>
                     <div class="ts-form-row">
-                        <label>Date de naissance</label>
+                        <label>@L["Students_BirthDate"]</label>
                         <span>
                             @_profileStudent.BirthDate
                             @if (_profileStudent.Age.HasValue)
                             {
-                                <span class="ms-2 text-muted">(@_profileStudent.Age ans)</span>
+                                <span class="ms-2 text-muted">(@string.Format(L["Students_AgeYears"].Value, _profileStudent.Age))</span>
                                 if (_profileStudent.IsAutonomous)
                                 {
-                                    <span class="ts-badge ts-badge-neutral ms-2">Autonome</span>
+                                    <span class="ts-badge ts-badge-neutral ms-2">@L["Students_Autonomous"]</span>
                                 }
                             }
                         </span>
                     </div>
-                    <div class="ts-form-row"><label>École</label><span>@(_profileStudent.School ?? "—")</span></div>
-                    <div class="ts-form-row"><label>Niveau</label><span>@(_profileStudent.Level ?? "—")</span></div>
-                    <div class="ts-form-row"><label>Téléphone</label><span>@(_profileStudent.Phone ?? "—")</span></div>
-                    <div class="ts-form-row"><label>Courriel</label><span>@(_profileStudent.Email ?? "—")</span></div>
-                    <div class="ts-form-row"><label>Parent</label><span>@(_profileStudent.ParentName ?? "—")</span></div>
-                    <div class="ts-form-row"><label>Matière</label><span>@(_profileStudent.Subject ?? "—")</span></div>
-                    <div class="ts-form-row"><label>Observations</label><span>@(_profileStudent.Observations ?? "—")</span></div>
+                    <div class="ts-form-row"><label>@L["Students_School"]</label><span>@(_profileStudent.School ?? "—")</span></div>
+                    <div class="ts-form-row"><label>@L["Students_Level"]</label><span>@(_profileStudent.Level ?? "—")</span></div>
+                    <div class="ts-form-row"><label>@L["Common_Phone"]</label><span>@(_profileStudent.Phone ?? "—")</span></div>
+                    <div class="ts-form-row"><label>@L["Common_Email"]</label><span>@(_profileStudent.Email ?? "—")</span></div>
+                    <div class="ts-form-row"><label>@L["Common_Parent"]</label><span>@(_profileStudent.ParentName ?? "—")</span></div>
+                    <div class="ts-form-row"><label>@L["Common_Subject"]</label><span>@(_profileStudent.Subject ?? "—")</span></div>
+                    <div class="ts-form-row"><label>@L["Students_Notes"]</label><span>@(_profileStudent.Observations ?? "—")</span></div>
                 </div>
             </div>
         </div>
@@ -129,41 +133,44 @@ else
     <div class="ts-modal-backdrop" @onclick="CloseAddModal">
         <div class="ts-modal" @onclick:stopPropagation="true">
             <div class="ts-modal-header">
-                <h2>Ajouter un élève</h2>
+                <h2>@L["Students_Add"]</h2>
                 <button class="ts-modal-close" @onclick="CloseAddModal"><i class="bi bi-x-lg"></i></button>
             </div>
             <div class="ts-modal-body">
                 <div class="row g-3">
-                    <div class="col-6"><label class="form-label">Prénom *</label>
+                    <div class="col-6"><label class="form-label">@L["Common_FirstName"] *</label>
                         <input class="form-control" @bind="_form.FirstName" /></div>
-                    <div class="col-6"><label class="form-label">Nom *</label>
+                    <div class="col-6"><label class="form-label">@L["Common_LastName"] *</label>
                         <input class="form-control" @bind="_form.LastName" /></div>
-                    <div class="col-6"><label class="form-label">Date de naissance</label>
+                    <div class="col-6"><label class="form-label">@L["Students_BirthDate"]</label>
                         <input type="date" class="form-control" @bind="_form.BirthDate" /></div>
-                    <div class="col-6"><label class="form-label">Parent</label>
+                    <div class="col-6"><label class="form-label">@L["Common_Parent"]</label>
                         <select class="form-select" @bind="_form.ParentProfileId">
-                            <option value="">— Aucun —</option>
+                            <option value="">@L["Students_NoneParent"]</option>
                             @foreach (var p in _parents)
                             {
                                 <option value="@p.Id">@p.FirstName @p.LastName</option>
                             }
                         </select>
                     </div>
-                    <div class="col-6"><label class="form-label">École</label>
+                    <div class="col-6"><label class="form-label">@L["Students_School"]</label>
                         <input class="form-control" @bind="_form.School" /></div>
-                    <div class="col-6"><label class="form-label">Niveau</label>
+                    <div class="col-6"><label class="form-label">@L["Students_Level"]</label>
                         <select class="form-select" @bind="_form.Level">
                             <option value="">—</option>
-                            <option>Primaire</option><option>Collège</option><option>Lycée</option><option>Université</option>
+                            <option value="Primaire">@L["Level_Primary"]</option>
+                            <option value="Collège">@L["Level_Middle"]</option>
+                            <option value="Lycée">@L["Level_High"]</option>
+                            <option value="Université">@L["Level_University"]</option>
                         </select>
                     </div>
-                    <div class="col-6"><label class="form-label">Matière principale</label>
+                    <div class="col-6"><label class="form-label">@L["Students_MainSubject"]</label>
                         <input class="form-control" @bind="_form.Subject" /></div>
-                    <div class="col-6"><label class="form-label">Courriel</label>
+                    <div class="col-6"><label class="form-label">@L["Common_Email"]</label>
                         <input type="email" class="form-control" @bind="_form.Email" /></div>
-                    <div class="col-12"><label class="form-label">Téléphone</label>
+                    <div class="col-12"><label class="form-label">@L["Common_Phone"]</label>
                         <input class="form-control" @bind="_form.Phone" /></div>
-                    <div class="col-12"><label class="form-label">Observations</label>
+                    <div class="col-12"><label class="form-label">@L["Students_Notes"]</label>
                         <textarea class="form-control" rows="2" @bind="_form.Observations"></textarea></div>
                 </div>
                 @if (!string.IsNullOrEmpty(_addError))
@@ -172,9 +179,9 @@ else
                 }
             </div>
             <div class="ts-modal-footer">
-                <button class="btn btn-outline-secondary" @onclick="CloseAddModal" disabled="@_saving">Annuler</button>
+                <button class="btn btn-outline-secondary" @onclick="CloseAddModal" disabled="@_saving">@L["Common_Cancel"]</button>
                 <button class="btn btn-primary" @onclick="SaveStudent" disabled="@_saving">
-                    @(_saving ? "Enregistrement…" : "Enregistrer")
+                    @(_saving ? L["Common_Saving"] : L["Common_Save"])
                 </button>
             </div>
         </div>
@@ -198,53 +205,44 @@ else
 
     private IEnumerable<StudentViewModel> Filtered => _students
         .Where(s => string.IsNullOrEmpty(_search) ||
-            ($"{s.FirstName} {s.LastName}").Contains(_search, StringComparison.OrdinalIgnoreCase))
+            $"{s.FirstName} {s.LastName}".Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+            (s.Subject?.Contains(_search, StringComparison.OrdinalIgnoreCase) ?? false))
         .Where(s => string.IsNullOrEmpty(_filterLevel) || s.Level == _filterLevel)
         .Where(s => string.IsNullOrEmpty(_filterStatus) ||
             (_filterStatus == "active" && s.IsActive) ||
             (_filterStatus == "inactive" && !s.IsActive));
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
-
-    private async Task LoadAsync()
+    protected override async Task OnInitializedAsync()
     {
-        _loading = true;
-        _loadError = "";
         try
         {
-            var result = await Api.GetWithErrorAsync<List<ApiStudentDto>>("api/students");
-            if (result.Error is not null)
-            {
-                _loadError = result.Error;
-                _students.Clear();
-                return;
-            }
-
+            var students = await Api.GetAsync<List<StudentDto>>("api/students") ?? [];
             _students.Clear();
-            var list = result.Value ?? [];
-            for (var i = 0; i < list.Count; i++)
-                _students.Add(MapStudent(list[i], i));
+            var i = 0;
+            foreach (var d in students)
+                _students.Add(MapStudent(d, i++));
 
-            var parents = await Api.GetAsync<List<ApiParentDto>>("api/parents") ?? [];
+            var parents = await Api.GetAsync<List<ParentDto>>("api/parents") ?? [];
             _parents.Clear();
             _parents.AddRange(parents.Select(p => new ParentOption(p.Id, p.FirstName, p.LastName)));
         }
-        finally
+        catch
         {
-            _loading = false;
+            _loadError = L["Search_Error_Load"];
         }
+        finally { _loading = false; }
     }
 
     private void OpenProfile(StudentViewModel s) => _profileStudent = s;
     private void CloseProfile() => _profileStudent = null;
     private void OpenAddModal() { _form = new(); _addError = ""; _showAddModal = true; }
-    private void CloseAddModal() => _showAddModal = false;
+    private void CloseAddModal() { _showAddModal = false; _addError = ""; }
 
     private async Task SaveStudent()
     {
         if (string.IsNullOrWhiteSpace(_form.FirstName) || string.IsNullOrWhiteSpace(_form.LastName))
         {
-            _addError = "Prénom et nom sont obligatoires.";
+            _addError = $"{L["Common_FirstName"]} / {L["Common_LastName"]}";
             return;
         }
 
@@ -253,72 +251,75 @@ else
         try
         {
             Guid? parentId = Guid.TryParse(_form.ParentProfileId, out var pid) ? pid : null;
-            var req = new
+            var created = await Api.PostAsync<StudentDto>("api/students", new
             {
                 firstName = _form.FirstName.Trim(),
                 lastName = _form.LastName.Trim(),
                 email = string.IsNullOrWhiteSpace(_form.Email) ? null : _form.Email.Trim(),
                 phone = string.IsNullOrWhiteSpace(_form.Phone) ? null : _form.Phone.Trim(),
-                dateOfBirth = _form.BirthDate,
+                dateOfBirth = _form.BirthDate == default ? (DateTime?)null : _form.BirthDate,
                 parentProfileId = parentId,
                 schoolLevel = string.IsNullOrWhiteSpace(_form.Level) ? null : _form.Level,
                 schoolName = string.IsNullOrWhiteSpace(_form.School) ? null : _form.School.Trim(),
                 subjects = string.IsNullOrWhiteSpace(_form.Subject) ? null : _form.Subject.Trim(),
                 notes = string.IsNullOrWhiteSpace(_form.Observations) ? null : _form.Observations.Trim()
-            };
+            });
 
-            var result = await Api.PostWithErrorAsync<ApiStudentDto>("api/students", req);
-            if (result.Error is not null || result.Value is null)
+            if (created is null)
             {
-                _addError = result.Error ?? "Création impossible.";
+                _addError = L["Search_Error_Load"];
                 return;
             }
 
-            _students.Add(MapStudent(result.Value, _students.Count));
+            _students.Insert(0, MapStudent(created, _students.Count));
             _showAddModal = false;
         }
-        finally
+        catch (Exception ex)
         {
-            _saving = false;
+            _addError = ex.Message;
         }
+        finally { _saving = false; }
     }
 
-    private static StudentViewModel MapStudent(ApiStudentDto d, int index) => new()
+    private StudentViewModel MapStudent(StudentDto d, int index) => new()
     {
         Id = d.Id,
         FirstName = d.FirstName,
         LastName = d.LastName,
-        BirthDate = d.DateOfBirth?.ToLocalTime().ToString("dd/MM/yyyy") ?? "—",
-        BirthDateParsed = d.DateOfBirth?.Date,
+        Email = d.Email,
+        Phone = d.Phone,
+        BirthDate = d.DateOfBirth?.ToString("dd/MM/yyyy") ?? "—",
+        Age = d.Age,
+        IsAutonomous = d.IsAutonomous,
+        ParentName = d.ParentName,
         School = d.SchoolName,
         Level = d.SchoolLevel,
         Subject = d.Subjects is { Count: > 0 } ? string.Join(", ", d.Subjects) : null,
-        Email = d.Email,
-        Phone = d.Phone,
         Observations = d.Notes,
-        ParentName = d.ParentName,
         IsActive = d.IsActive,
-        SinceDate = d.CreatedAt.ToLocalTime().ToString("MM/yyyy"),
-        AvatarColor = AvatarColors[index % AvatarColors.Length],
-        Age = d.Age,
-        IsAutonomous = d.IsAutonomous
+        SinceDate = d.CreatedAt.ToLocalTime().ToString("MMM yyyy"),
+        Initials = $"{Initial(d.FirstName)}{Initial(d.LastName)}",
+        AvatarColor = AvatarColors[index % AvatarColors.Length]
     };
 
-    private record ApiStudentDto(
+    private static char Initial(string? s) =>
+        string.IsNullOrWhiteSpace(s) ? '?' : char.ToUpperInvariant(s.Trim()[0]);
+
+    private record StudentDto(
         Guid Id, string FirstName, string LastName, string? Email, string? Phone,
         DateTime? DateOfBirth, int? Age, bool IsMinor, bool IsAutonomous,
         Guid? ParentProfileId, string? ParentName, string? PhotoUrl,
         string? SchoolLevel, string? SchoolName, List<string>? Subjects,
         string? Notes, bool IsActive, DateTime CreatedAt);
 
-    private record ApiParentDto(Guid Id, string FirstName, string LastName, string Email, string? Phone, int ChildrenCount);
+    private record ParentDto(Guid Id, string FirstName, string LastName);
     private record ParentOption(Guid Id, string FirstName, string LastName);
 
     private class StudentForm
     {
         public string FirstName { get; set; } = "";
         public string LastName { get; set; } = "";
-        public DateTime? BirthDate { get; set; }
+        public DateTime BirthDate { get; set; }
         public string ParentProfileId { get; set; } = "";
         public string School { get; set; } = "";
         public string Level { get; set; } = "";
@@ -333,20 +334,19 @@ else
         public Guid Id { get; set; }
         public string FirstName { get; set; } = "";
         public string LastName { get; set; } = "";
-        public string BirthDate { get; set; } = "";
-        public DateTime? BirthDateParsed { get; set; }
+        public string? Email { get; set; }
+        public string? Phone { get; set; }
+        public string BirthDate { get; set; } = "—";
+        public int? Age { get; set; }
+        public bool IsAutonomous { get; set; }
+        public string? ParentName { get; set; }
         public string? School { get; set; }
         public string? Level { get; set; }
         public string? Subject { get; set; }
-        public string? Email { get; set; }
-        public string? Phone { get; set; }
         public string? Observations { get; set; }
-        public string? ParentName { get; set; }
         public bool IsActive { get; set; }
         public string SinceDate { get; set; } = "";
+        public string Initials { get; set; } = "?";
         public string AvatarColor { get; set; } = "#7c3aed";
-        public int? Age { get; set; }
-        public bool IsAutonomous { get; set; }
-        public string Initials => $"{FirstName.FirstOrDefault()}{LastName.FirstOrDefault()}";
     }
 }
