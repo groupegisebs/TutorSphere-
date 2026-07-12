@@ -3,7 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using TutorSphere.Application.DTOs.Auth;
-using TutorSphere.Application.Common.Interfaces;
+using TutorSphere.Infrastructure.Identity;
 using TutorSphere.Infrastructure.Persistence;
 
 namespace TutorSphere.Api.Controllers;

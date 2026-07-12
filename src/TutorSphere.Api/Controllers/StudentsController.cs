@@ -39,6 +39,10 @@ public class StudentsController : ControllerBase
         {
             return BadRequest(new { error = ex.Message });
         }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = "Impossible de créer l'élève. " + ex.Message });
+        }
     }
 
     [HttpPut("{id:guid}")]

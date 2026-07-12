@@ -106,7 +106,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             e.HasOne(s => s.Tenant).WithMany(t => t.Students).HasForeignKey(s => s.TenantId)
                 .OnDelete(DeleteBehavior.Restrict);
             e.HasOne(s => s.Parent).WithMany(p => p.Children).HasForeignKey(s => s.ParentProfileId)
-                .OnDelete(DeleteBehavior.Cascade);
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         foreach (var entityType in builder.Model.GetEntityTypes())

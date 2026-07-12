@@ -234,7 +234,9 @@ public static class DependencyInjection
                 if (parentProfiles.Count > 0)
                 {
                     var parentIds = parentProfiles.Select(p => p.Id).ToList();
-                    var students = db.StudentsSet.Where(s => parentIds.Contains(s.ParentProfileId)).ToList();
+                    var students = db.StudentsSet
+                        .Where(s => s.ParentProfileId.HasValue && parentIds.Contains(s.ParentProfileId.Value))
+                        .ToList();
                     db.StudentsSet.RemoveRange(students);
                     db.ParentProfilesSet.RemoveRange(parentProfiles);
                 }

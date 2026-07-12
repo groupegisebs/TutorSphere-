@@ -33,7 +33,7 @@ public class StudentService : IStudentService
         var students = _db.Students
             .OrderBy(s => s.LastName).ThenBy(s => s.FirstName)
             .ToList()
-            .Select(s => MapToDto(s, parents.GetValueOrDefault(s.ParentProfileId)))
+            .Select(s => MapToDto(s, s.ParentProfileId is Guid pid ? parents.GetValueOrDefault(pid) : null))
             .ToList();
         return Task.FromResult<IReadOnlyList<StudentDto>>(students);
     }
@@ -53,6 +53,19 @@ public class StudentService : IStudentService
     public async Task<StudentDto> CreateAsync(CreateStudentRequest request, CancellationToken ct = default)
     {
         var tenantId = RequireTenantId();
+
+        Guid? parentId = request.ParentProfileId;
+        if (parentId is Guid pid && pid != Guid.Empty)
+        {
+            var parentExists = _db.ParentProfiles.Any(p => p.Id == pid);
+            if (!parentExists)
+                throw new InvalidOperationException("Parent introuvable dans votre école.");
+        }
+        else
+        {
+            parentId = null;
+        }
+
         var student = new Student
         {
             TenantId = tenantId,
@@ -61,7 +74,7 @@ public class StudentService : IStudentService
             Email = request.Email?.Trim(),
             Phone = request.Phone?.Trim(),
             DateOfBirth = request.DateOfBirth,
-            ParentProfileId = request.ParentProfileId ?? Guid.Empty,
+            ParentProfileId = parentId,
             SchoolLevel = request.SchoolLevel?.Trim(),
             SchoolName = request.SchoolName?.Trim(),
             Subjects = request.Subjects?.Trim(),
@@ -85,7 +98,19 @@ public class StudentService : IStudentService
         student.Phone = request.Phone?.Trim();
         student.DateOfBirth = request.DateOfBirth;
         if (request.ParentProfileId.HasValue)
-            student.ParentProfileId = request.ParentProfileId.Value;
+        {
+            var pid = request.ParentProfileId.Value;
+            if (pid == Guid.Empty)
+            {
+                student.ParentProfileId = null;
+            }
+            else
+            {
+                if (!_db.ParentProfiles.Any(p => p.Id == pid))
+                    throw new InvalidOperationException("Parent introuvable dans votre école.");
+                student.ParentProfileId = pid;
+            }
+        }
         student.SchoolLevel = request.SchoolLevel?.Trim();
         student.SchoolName = request.SchoolName?.Trim();
         student.Subjects = request.Subjects?.Trim();
@@ -131,10 +156,10 @@ public class StudentService : IStudentService
         return _tenantContext.TenantId.Value;
     }
 
-    private string? ResolveParentName(Guid parentProfileId)
+    private string? ResolveParentName(Guid? parentProfileId)
     {
-        if (parentProfileId == Guid.Empty) return null;
-        var parent = _db.ParentProfiles.FirstOrDefault(p => p.Id == parentProfileId);
+        if (parentProfileId is null || parentProfileId == Guid.Empty) return null;
+        var parent = _db.ParentProfiles.FirstOrDefault(p => p.Id == parentProfileId.Value);
         return parent is null ? null : $"{parent.FirstName} {parent.LastName}".Trim();
     }
 

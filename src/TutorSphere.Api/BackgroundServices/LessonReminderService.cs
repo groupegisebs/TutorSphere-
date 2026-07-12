@@ -104,10 +104,10 @@ public class LessonReminderService : BackgroundService
                             ct);
                     }
 
-                    if (student.IsMinor)
+                    if (student.IsMinor && student.ParentProfileId is Guid parentId)
                     {
                         var parent = await db.ParentProfilesSet
-                            .FirstOrDefaultAsync(p => p.Id == student.ParentProfileId, ct);
+                            .FirstOrDefaultAsync(p => p.Id == parentId, ct);
                         if (parent is not null
                             && !string.IsNullOrWhiteSpace(parent.Email)
                             && await ShouldSendToUserEmailAsync(userManager, parent.UserId, parent.Email))

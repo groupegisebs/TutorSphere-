@@ -10,7 +10,7 @@ public record StudentDto(
     int? Age,
     bool IsMinor,
     bool IsAutonomous,
-    Guid ParentProfileId,
+    Guid? ParentProfileId,
     string? ParentName,
     string? PhotoUrl,
     string? SchoolLevel,
