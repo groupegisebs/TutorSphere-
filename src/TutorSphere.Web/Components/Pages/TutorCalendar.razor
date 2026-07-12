@@ -177,8 +177,11 @@
                             }
                             @foreach (var evt in GetEventsForDay(date))
                             {
-                                <div class="cal-event cal-event--@evt.Type"
-                                     style="top:@(evt.TopPx)px;height:@(Math.Max(evt.HeightPx, 26))px;left:4px;right:4px;">
+                                <div class="cal-event cal-event--@evt.Type @(evt.Id.HasValue ? "cal-event--editable" : "")"
+                                     style="top:@(evt.TopPx)px;height:@(Math.Max(evt.HeightPx, 26))px;left:4px;right:4px;"
+                                     title="@(evt.Id.HasValue ? "Modifier" : null)"
+                                     @onclick="() => OpenEditLesson(evt)"
+                                     @onclick:stopPropagation="true">
                                     <span class="cal-event-time">@evt.TimeLabel</span>
                                     <strong class="cal-event-title">@evt.Title</strong>
                                     @if (!string.IsNullOrEmpty(evt.Subtitle))
@@ -234,7 +237,7 @@
     <div class="ts-modal-backdrop" @onclick="CloseLessonModal">
         <div class="ts-modal" @onclick:stopPropagation="true">
             <div class="ts-modal-header">
-                <h2>Nouveau cours</h2>
+                <h2>@(_editingLessonId.HasValue ? "Modifier le cours" : "Nouveau cours")</h2>
                 <button type="button" class="ts-modal-close" @onclick="CloseLessonModal"><i class="bi bi-x-lg"></i></button>
             </div>
             <div class="ts-modal-body">
@@ -305,10 +308,16 @@
                 </div>
             </div>
             <div class="ts-modal-footer">
+                @if (_editingLessonId.HasValue)
+                {
+                    <button type="button" class="btn btn-outline-danger me-auto" @onclick="DeleteLessonAsync" disabled="@_saving">
+                        <i class="bi bi-trash me-1"></i>Supprimer
+                    </button>
+                }
                 <button type="button" class="btn btn-outline-secondary" @onclick="CloseLessonModal" disabled="@_saving">Annuler</button>
                 <button type="button" class="btn btn-primary" @onclick="SaveLessonAsync" disabled="@_saving">
                     @if (_saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
-                    Enregistrer
+                    @(_editingLessonId.HasValue ? "Enregistrer" : "Créer")
                 </button>
             </div>
         </div>
@@ -381,6 +390,7 @@
 
     private LessonFormModel _lessonForm = new();
     private UnavailFormModel _unavailForm = new();
+    private Guid? _editingLessonId;
     private readonly List<StudentOption> _students = [];
 
     private record StudentOption(Guid Id, string Name);
@@ -392,17 +402,28 @@
     // ── Event model ────────────────────────────────────────────────────────────
     private sealed class CalEvent
     {
+        public Guid? Id;
         public string Title = "";
         public string Subtitle = "";
         public string Type = "";
+        public string ModeApi = "Online";
+        public string? Description;
+        public string? Location;
+        public string? MeetingUrl;
         private readonly int _startH, _startM, _durMin;
+        public DateTime Date { get; }
 
-        public CalEvent(string title, string sub, string type, int h, int m, int dur)
+        public CalEvent(Guid? id, DateTime date, string title, string sub, string type, int h, int m, int dur,
+            string modeApi = "Online", string? description = null, string? location = null, string? meetingUrl = null)
         {
-            Title = title; Subtitle = sub; Type = type;
+            Id = id; Date = date.Date; Title = title; Subtitle = sub; Type = type;
+            ModeApi = modeApi; Description = description; Location = location; MeetingUrl = meetingUrl;
             _startH = h; _startM = m; _durMin = dur;
         }
 
+        public int StartH => _startH;
+        public int StartM => _startM;
+        public int DurMin => _durMin;
         public int TopPx => (_startH - CalStartH) * HourPx + (int)(_startM / 60.0 * HourPx);
         public int HeightPx => (int)(_durMin / 60.0 * HourPx);
 
@@ -417,7 +438,7 @@
     }
 
     // ── API events (loaded from CalendarController) ─────────────────────────────
-    private readonly List<(DateTime Date, int H, int M, int Dur, string Title, string Sub, string Type)> _apiEvents = [];
+    private readonly List<CalEvent> _apiEvents = [];
 
     private static string MapMode(string mode) => mode switch
     {
@@ -426,13 +447,16 @@
         _          => "online"
     };
 
+    private static string ModeToForm(string modeApi) => modeApi switch
+    {
+        "InPerson" => "Présentiel",
+        "Hybrid" => "Hybride",
+        _ => "En ligne"
+    };
+
     // ── Derived ────────────────────────────────────────────────────────────────
     private IEnumerable<CalEvent> GetEventsForDay(DateTime date)
-    {
-        return _apiEvents
-            .Where(e => e.Date.Date == date.Date)
-            .Select(e => new CalEvent(e.Title, e.Sub, e.Type, e.H, e.M, e.Dur));
-    }
+        => _apiEvents.Where(e => e.Date.Date == date.Date);
 
     private int? NowTopPx
     {
@@ -453,7 +477,7 @@
         {
             var minutes = _apiEvents
                 .Where(e => e.Type != "unavailable")
-                .Sum(e => Math.Max(0, e.Dur));
+                .Sum(e => Math.Max(0, e.DurMin));
             if (minutes <= 0) return "0h";
             var h = minutes / 60;
             var m = minutes % 60;
@@ -487,7 +511,9 @@
         List<ApiUnavailabilityDto> Unavailabilities);
 
     private record ApiLessonDto(
-        Guid Id, string Title, string? Subject, DateTime StartTime, DateTime EndTime, string Mode);
+        Guid Id, string Title, string? Description, string? Subject,
+        DateTime StartTime, DateTime EndTime, string Mode,
+        string? Location, string? MeetingUrl);
 
     private record ApiUnavailabilityDto(
         Guid Id, string? Reason, DateTime StartTime, DateTime EndTime);
@@ -560,8 +586,9 @@
                 ? lesson.EndTime.ToLocalTime()
                 : DateTime.SpecifyKind(lesson.EndTime, DateTimeKind.Local);
             var dur = Math.Max(15, (int)(endLocal - local).TotalMinutes);
-            _apiEvents.Add((local.Date, local.Hour, local.Minute, dur,
-                lesson.Title, lesson.Subject ?? "", MapMode(lesson.Mode)));
+            _apiEvents.Add(new CalEvent(
+                lesson.Id, local.Date, lesson.Title, lesson.Subject ?? "", MapMode(lesson.Mode),
+                local.Hour, local.Minute, dur, lesson.Mode, lesson.Description, lesson.Location, lesson.MeetingUrl));
         }
 
         foreach (var unavail in view.Unavailabilities ?? [])
@@ -573,8 +600,9 @@
                 ? unavail.EndTime.ToLocalTime()
                 : DateTime.SpecifyKind(unavail.EndTime, DateTimeKind.Local);
             var dur = Math.Max(15, (int)(endLocal - local).TotalMinutes);
-            _apiEvents.Add((local.Date, local.Hour, local.Minute, dur,
-                unavail.Reason ?? "Indisponible", "", "unavailable"));
+            _apiEvents.Add(new CalEvent(
+                unavail.Id, local.Date, unavail.Reason ?? "Indisponible", "", "unavailable",
+                local.Hour, local.Minute, dur));
         }
     }
 
@@ -587,6 +615,7 @@
         CloseNewMenu();
         _formError = null;
         _bannerSuccess = null;
+        _editingLessonId = null;
         _lessonForm = new LessonFormModel
         {
             Date = (date ?? WeekStart.AddDays(Math.Max(0, (DateTime.Today - WeekStart).Days))).Date,
@@ -597,9 +626,34 @@
         _showLessonModal = true;
     }
 
+    private void OpenEditLesson(CalEvent evt)
+    {
+        if (evt.Type == "unavailable" || !evt.Id.HasValue)
+            return;
+
+        CloseNewMenu();
+        _formError = null;
+        _bannerSuccess = null;
+        _editingLessonId = evt.Id;
+        var locOrUrl = string.IsNullOrWhiteSpace(evt.MeetingUrl) ? (evt.Location ?? "") : evt.MeetingUrl;
+        _lessonForm = new LessonFormModel
+        {
+            Title = evt.Title,
+            Subject = evt.Subtitle,
+            Description = evt.Description ?? "",
+            Mode = ModeToForm(evt.ModeApi),
+            LocationOrUrl = locOrUrl,
+            Date = evt.Date,
+            StartTime = new TimeOnly(evt.StartH, evt.StartM),
+            Duration = Math.Max(0.5, Math.Round(evt.DurMin / 60.0, 1))
+        };
+        _showLessonModal = true;
+    }
+
     private void CloseLessonModal()
     {
         _showLessonModal = false;
+        _editingLessonId = null;
         _formError = null;
     }
 
@@ -663,35 +717,83 @@
                 _ => Domain.Enums.LessonMode.Online
             };
 
-            var req = new Application.DTOs.Lessons.CreateLessonRequest(
-                _lessonForm.Title.Trim(),
-                string.IsNullOrWhiteSpace(_lessonForm.Description) ? null : _lessonForm.Description.Trim(),
-                string.IsNullOrWhiteSpace(_lessonForm.Subject) ? null : _lessonForm.Subject.Trim(),
-                start.ToUniversalTime(),
-                end.ToUniversalTime(),
-                mode,
-                location,
-                meetingUrl,
-                null,
-                _lessonForm.StudentIds.Count > 0 ? _lessonForm.StudentIds.ToList() : null);
-
-            var result = await Api.PostWithErrorAsync<List<Application.DTOs.Lessons.LessonDto>>("api/lessons", req);
-
-            if (!result.IsSuccess || result.Value is null || result.Value.Count == 0)
+            if (_editingLessonId.HasValue)
             {
-                _formError = result.Error ?? "Échec de la création. Vérifiez que vous êtes connecté en tant que tuteur.";
-                return;
+                var updateReq = new Application.DTOs.Lessons.UpdateLessonRequest(
+                    _lessonForm.Title.Trim(),
+                    string.IsNullOrWhiteSpace(_lessonForm.Description) ? null : _lessonForm.Description.Trim(),
+                    string.IsNullOrWhiteSpace(_lessonForm.Subject) ? null : _lessonForm.Subject.Trim(),
+                    start.ToUniversalTime(),
+                    end.ToUniversalTime(),
+                    mode,
+                    location,
+                    meetingUrl,
+                    null);
+
+                var updated = await Api.PutWithErrorAsync<Application.DTOs.Lessons.LessonDto>(
+                    $"api/lessons/{_editingLessonId}", updateReq);
+                if (updated.Error is not null || updated.Value is null)
+                {
+                    _formError = updated.Error ?? "Échec de la mise à jour du cours.";
+                    return;
+                }
+
+                _showLessonModal = false;
+                _editingLessonId = null;
+                _bannerSuccess = "Cours mis à jour.";
+            }
+            else
+            {
+                var req = new Application.DTOs.Lessons.CreateLessonRequest(
+                    _lessonForm.Title.Trim(),
+                    string.IsNullOrWhiteSpace(_lessonForm.Description) ? null : _lessonForm.Description.Trim(),
+                    string.IsNullOrWhiteSpace(_lessonForm.Subject) ? null : _lessonForm.Subject.Trim(),
+                    start.ToUniversalTime(),
+                    end.ToUniversalTime(),
+                    mode,
+                    location,
+                    meetingUrl,
+                    null,
+                    _lessonForm.StudentIds.Count > 0 ? _lessonForm.StudentIds.ToList() : null);
+
+                var result = await Api.PostWithErrorAsync<List<Application.DTOs.Lessons.LessonDto>>("api/lessons", req);
+
+                if (result.Error is not null || result.Value is null || result.Value.Count == 0)
+                {
+                    _formError = result.Error ?? "Échec de la création du cours.";
+                    return;
+                }
+
+                _showLessonModal = false;
+                _bannerSuccess = "Cours créé.";
             }
 
-            var dto = result.Value[0];
-            var count = result.Value.Count;
-
-            _showLessonModal = false;
-            _bannerSuccess = count > 1
-                ? $"{count} cours « {dto.Title} » ajoutés au calendrier."
-                : $"Cours « {dto.Title} » ajouté au calendrier.";
             await LoadCalendarDataAsync();
             GoToWeek(start);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task DeleteLessonAsync()
+    {
+        if (!_editingLessonId.HasValue) return;
+        _saving = true;
+        _formError = null;
+        try
+        {
+            var ok = await Api.DeleteAsync($"api/lessons/{_editingLessonId}");
+            if (!ok)
+            {
+                _formError = "Échec de la suppression du cours.";
+                return;
+            }
+            _showLessonModal = false;
+            _editingLessonId = null;
+            _bannerSuccess = "Cours supprimé.";
+            await LoadCalendarDataAsync();
         }
         finally
         {
