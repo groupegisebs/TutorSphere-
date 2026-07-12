@@ -270,7 +270,15 @@ public sealed class AuthService
         try
         {
             var json = JsonSerializer.Serialize(auth, JsonOpts);
-            await _js.InvokeVoidAsync("tsAuth.persist", json);
+            try
+            {
+                await _js.InvokeVoidAsync("tsAuth.persist", json);
+            }
+            catch (JSException)
+            {
+                // persist (async + BFF) unavailable — at least keep sessionStorage
+                await _js.InvokeVoidAsync("tsAuth.save", json);
+            }
         }
         catch (InvalidOperationException)
         {
@@ -278,7 +286,7 @@ public sealed class AuthService
         }
         catch (JSException ex)
         {
-            _logger.LogDebug(ex, "Could not persist auth to sessionStorage/cookie via JS.");
+            _logger.LogWarning(ex, "Could not persist auth to sessionStorage/cookie via JS.");
         }
     }
 
@@ -320,8 +328,10 @@ public sealed class AuthService
                 Convert.FromBase64String(payload.Replace('-', '+').Replace('_', '/')));
             using var doc = JsonDocument.Parse(json);
 
-            var email = GetClaim(doc, ClaimTypes.Email, "email") ?? "";
-            var name = GetClaim(doc, ClaimTypes.Name, "name", "unique_name") ?? email;
+            var email = GetClaim(doc, ClaimTypes.Email, "email", "emailaddress") ?? "";
+            var name = GetClaim(doc, ClaimTypes.Name, "name", "unique_name") ?? "";
+            if (string.IsNullOrWhiteSpace(name))
+                name = email;
             var role = GetClaim(doc, ClaimTypes.Role, "role") ?? "";
             var tenantRaw = GetClaim(doc, "tenant_id");
             Guid? tenantId = tenantRaw is not null && Guid.TryParse(tenantRaw, out var g) ? g : null;
@@ -342,6 +352,21 @@ public sealed class AuthService
         {
             if (doc.RootElement.TryGetProperty(key, out var prop) && prop.ValueKind == JsonValueKind.String)
                 return prop.GetString();
+        }
+
+        // JWT may use long URI claim types as property names
+        foreach (var prop in doc.RootElement.EnumerateObject())
+        {
+            if (prop.Value.ValueKind != JsonValueKind.String)
+                continue;
+
+            foreach (var key in keys)
+            {
+                if (prop.Name.Equals(key, StringComparison.OrdinalIgnoreCase)
+                    || prop.Name.EndsWith("/" + key, StringComparison.OrdinalIgnoreCase)
+                    || prop.Name.EndsWith("#" + key, StringComparison.OrdinalIgnoreCase))
+                    return prop.Value.GetString();
+            }
         }
 
         return null;

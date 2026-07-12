@@ -68,7 +68,8 @@ builder.Services.AddAuthentication(options =>
             ValidAudience = jwtSection["Audience"],
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSection["Key"]!)),
             NameClaimType = ClaimTypes.NameIdentifier,
-            RoleClaimType = ClaimTypes.Role
+            RoleClaimType = ClaimTypes.Role,
+            ClockSkew = TimeSpan.FromMinutes(2)
         };
 
         options.Events = new JwtBearerEvents
@@ -83,6 +84,13 @@ builder.Services.AddAuthentication(options =>
             }
         };
     });
+
+// Guarantee JWT remains the default even if Identity registers cookie schemes later.
+builder.Services.PostConfigure<Microsoft.AspNetCore.Authentication.AuthenticationOptions>(options =>
+{
+    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+});
 
 builder.Services.AddAuthorization();
 builder.Services.AddHealthChecks();

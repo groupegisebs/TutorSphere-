@@ -55,7 +55,12 @@ public sealed class ApiClient
 
     private void HandleUnauthorizedResponse()
     {
-        if (!string.IsNullOrEmpty(_auth.Token))
+        // Only wipe the session when the JWT itself is expired.
+        // A 401 from API misconfiguration (e.g. auth scheme) must not log the user out.
+        if (string.IsNullOrEmpty(_auth.Token))
+            return;
+
+        if (AuthService.IsJwtExpired(_auth.Token))
             _auth.MarkSessionExpired();
     }
 
