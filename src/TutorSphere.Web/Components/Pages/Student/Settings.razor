@@ -10,7 +10,7 @@
 <div class="ts-page-header">
     <div>
         <h1><i class="bi bi-sliders me-2"></i>@L["Nav_Settings"]</h1>
-        <p class="ts-page-subtitle">Préférences de votre compte</p>
+        <p class="ts-page-subtitle">Profil et préférences de votre compte</p>
     </div>
     <button class="btn btn-primary" @onclick="SaveAsync" disabled="@_saving">
         @if (_saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
@@ -24,17 +24,30 @@
 }
 @if (_saved)
 {
-    <div class="alert alert-success">Préférences enregistrées.</div>
+    <div class="alert alert-success">Profil et préférences enregistrés.</div>
 }
 
 <div class="card ts-card mb-4">
     <div class="card-body">
-        <dl class="row mb-0">
-            <dt class="col-sm-3">Courriel</dt>
-            <dd class="col-sm-9">@(Auth.UserEmail ?? "—")</dd>
-            <dt class="col-sm-3">Nom</dt>
-            <dd class="col-sm-9">@(Auth.UserName ?? "—")</dd>
-        </dl>
+        <h2 class="h5 mb-3">Profil</h2>
+        <div class="row g-3">
+            <div class="col-md-6">
+                <label class="form-label">Prénom *</label>
+                <input class="form-control" @bind="_firstName" />
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Nom *</label>
+                <input class="form-control" @bind="_lastName" />
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Courriel</label>
+                <input class="form-control" value="@(_email)" disabled />
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Téléphone</label>
+                <input class="form-control" @bind="_phone" />
+            </div>
+        </div>
     </div>
 </div>
 
@@ -53,31 +66,77 @@
     private bool _emailLessonReminders = true;
     private bool _saving, _saved;
     private string? _error;
+    private string _firstName = "";
+    private string _lastName = "";
+    private string _email = "";
+    private string _phone = "";
 
     private record NotificationPreferencesDto(bool EmailLessonReminders);
+    private record UserProfileDto(
+        string Email, string FirstName, string LastName, string FullName,
+        string? Phone, string? Bio, string PreferredLanguage, string TimeZone, string Role);
 
     protected override async Task OnInitializedAsync()
     {
+        await Auth.EnsureSessionRestoredAsync();
         var prefs = await Api.GetAsync<NotificationPreferencesDto>("api/me/notification-preferences");
         if (prefs is not null)
             _emailLessonReminders = prefs.EmailLessonReminders;
+
+        var me = await Api.GetAsync<UserProfileDto>("api/me/profile");
+        if (me is not null)
+        {
+            _firstName = me.FirstName;
+            _lastName = me.LastName;
+            _email = me.Email;
+            _phone = me.Phone ?? "";
+        }
+        else
+        {
+            _email = Auth.UserEmail ?? "";
+            var parts = (Auth.UserName ?? "").Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+            _firstName = parts.Length > 0 ? parts[0] : "";
+            _lastName = parts.Length > 1 ? parts[1] : "";
+        }
     }
 
     private async Task SaveAsync()
     {
+        if (string.IsNullOrWhiteSpace(_firstName) || string.IsNullOrWhiteSpace(_lastName))
+        {
+            _error = "Prénom et nom sont obligatoires.";
+            _saved = false;
+            return;
+        }
+
         _saving = true;
         _saved = false;
         _error = null;
         try
         {
-            var result = await Api.PutWithErrorAsync<NotificationPreferencesDto>(
-                "api/me/notification-preferences",
-                new { emailLessonReminders = _emailLessonReminders });
-            if (result.Error is not null)
+            var profileResult = await Api.PutWithErrorAsync<UserProfileDto>("api/me/profile", new
             {
-                _error = result.Error;
+                firstName = _firstName.Trim(),
+                lastName = _lastName.Trim(),
+                phone = string.IsNullOrWhiteSpace(_phone) ? null : _phone.Trim()
+            });
+            if (profileResult.Error is not null)
+            {
+                _error = profileResult.Error;
                 return;
             }
+
+            var prefsResult = await Api.PutWithErrorAsync<NotificationPreferencesDto>(
+                "api/me/notification-preferences",
+                new { emailLessonReminders = _emailLessonReminders });
+            if (prefsResult.Error is not null)
+            {
+                _error = prefsResult.Error;
+                return;
+            }
+
+            var fullName = profileResult.Value?.FullName ?? $"{_firstName} {_lastName}".Trim();
+            await Auth.UpdateLocalDisplayNameAsync(fullName);
             _saved = true;
         }
         finally

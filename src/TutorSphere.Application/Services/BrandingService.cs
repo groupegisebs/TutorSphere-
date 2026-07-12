@@ -28,15 +28,29 @@ public class BrandingService : IBrandingService
         UpdateTenantBrandingRequest request,
         CancellationToken ct = default)
     {
-        var branding = _db.TenantBrandings.FirstOrDefault(b => b.TenantId == tenantId)
-            ?? throw new InvalidOperationException("Personnalisation introuvable pour cette école.");
+        var tenantExists = _db.Tenants.Any(t => t.Id == tenantId);
+        if (!tenantExists)
+            throw new InvalidOperationException("École introuvable.");
 
-        branding.LogoUrl = string.IsNullOrWhiteSpace(request.LogoUrl) ? null : request.LogoUrl.Trim();
-        branding.BannerUrl = string.IsNullOrWhiteSpace(request.BannerUrl) ? null : request.BannerUrl.Trim();
-        branding.PrimaryColor = NormalizeColor(request.PrimaryColor, "#2563eb");
-        branding.SecondaryColor = NormalizeColor(request.SecondaryColor, "#1e40af");
-        branding.Presentation = string.IsNullOrWhiteSpace(request.Presentation) ? null : request.Presentation.Trim();
-        branding.Portfolio = string.IsNullOrWhiteSpace(request.Portfolio) ? null : request.Portfolio.Trim();
+        var branding = _db.TenantBrandings.FirstOrDefault(b => b.TenantId == tenantId);
+        if (branding is null)
+        {
+            branding = new TenantBranding { TenantId = tenantId };
+            _db.Add(branding);
+        }
+
+        if (request.LogoUrl is not null)
+            branding.LogoUrl = string.IsNullOrWhiteSpace(request.LogoUrl) ? null : request.LogoUrl.Trim();
+        if (request.BannerUrl is not null)
+            branding.BannerUrl = string.IsNullOrWhiteSpace(request.BannerUrl) ? null : request.BannerUrl.Trim();
+        if (!string.IsNullOrWhiteSpace(request.PrimaryColor))
+            branding.PrimaryColor = NormalizeColor(request.PrimaryColor, branding.PrimaryColor);
+        if (!string.IsNullOrWhiteSpace(request.SecondaryColor))
+            branding.SecondaryColor = NormalizeColor(request.SecondaryColor, branding.SecondaryColor);
+        if (request.Presentation is not null)
+            branding.Presentation = string.IsNullOrWhiteSpace(request.Presentation) ? null : request.Presentation.Trim();
+        if (request.Portfolio is not null)
+            branding.Portfolio = string.IsNullOrWhiteSpace(request.Portfolio) ? null : request.Portfolio.Trim();
         branding.UpdatedAt = DateTime.UtcNow;
 
         await _db.SaveChangesAsync(ct);

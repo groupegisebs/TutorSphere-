@@ -11,12 +11,12 @@ public record TenantBrandingDto(
     string? Portfolio);
 
 public record UpdateTenantBrandingRequest(
-    string? LogoUrl,
-    string? BannerUrl,
-    string PrimaryColor,
-    string SecondaryColor,
-    string? Presentation,
-    string? Portfolio);
+    string? LogoUrl = null,
+    string? BannerUrl = null,
+    string? PrimaryColor = null,
+    string? SecondaryColor = null,
+    string? Presentation = null,
+    string? Portfolio = null);
 
 public record PublicOfferingDto(
     Guid Id,

@@ -23,18 +23,23 @@ public class BrandingController : ControllerBase
     }
 
     [HttpGet("tenant/{tenantId:guid}")]
-    [Authorize(Roles = UserRoles.Tutor)]
+    [Authorize(Roles = $"{UserRoles.Tutor},{UserRoles.TeachingAssistant},{UserRoles.SuperAdmin}")]
     public async Task<ActionResult<TenantBrandingDto>> GetBranding(Guid tenantId, CancellationToken ct)
     {
         if (!CanAccessTenant(tenantId))
             return Forbid();
 
         var branding = await _brandingService.GetBrandingAsync(tenantId, ct);
-        return branding is null ? NotFound() : Ok(branding);
+        if (branding is not null)
+            return Ok(branding);
+
+        // Empty branding so the UI can load before the first save.
+        return Ok(new TenantBrandingDto(
+            Guid.Empty, tenantId, null, null, "#2563eb", "#1e40af", null, null));
     }
 
     [HttpPut("tenant/{tenantId:guid}")]
-    [Authorize(Roles = UserRoles.Tutor)]
+    [Authorize(Roles = $"{UserRoles.Tutor},{UserRoles.TeachingAssistant},{UserRoles.SuperAdmin}")]
     public async Task<ActionResult<TenantBrandingDto>> UpdateBranding(
         Guid tenantId,
         [FromBody] UpdateTenantBrandingRequest request,

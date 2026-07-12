@@ -4,14 +4,19 @@
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
 @inject AuthService Auth
+@inject ParentProfileState ParentProfile
 
-<PageTitle>@L["PageTitle_TutorProfile"]</PageTitle>
+<PageTitle>@L["Nav_MyProfile"]</PageTitle>
 
 <div class="ts-page-header">
     <div>
         <h1><i class="bi bi-person me-2"></i>@L["Nav_MyProfile"]</h1>
         <p class="ts-page-subtitle">Informations de votre compte parent</p>
     </div>
+    <button class="btn btn-primary" @onclick="SaveAsync" disabled="@(_saving || _loading)">
+        @if (_saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+        Enregistrer
+    </button>
 </div>
 
 @if (_loading)
@@ -20,46 +25,89 @@
         <div class="spinner-border text-primary" role="status"></div>
     </div>
 }
-else if (!string.IsNullOrEmpty(_error))
-{
-    <div class="alert alert-warning">
-        <i class="bi bi-exclamation-triangle me-2"></i>@_error
-    </div>
-}
 else
 {
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="alert alert-danger">
+            <i class="bi bi-exclamation-triangle me-2"></i>@_error
+        </div>
+    }
+    @if (_saved)
+    {
+        <div class="alert alert-success">Profil mis à jour avec succès.</div>
+    }
+
     <div class="card ts-card">
         <div class="card-body">
-            <dl class="row mb-0">
-                <dt class="col-sm-3">Nom</dt>
-                <dd class="col-sm-9">@(_profile is null ? (Auth.UserName ?? "—") : $"{_profile.FirstName} {_profile.LastName}")</dd>
-
-                <dt class="col-sm-3">Courriel</dt>
-                <dd class="col-sm-9">@(_profile?.Email ?? Auth.UserEmail ?? "—")</dd>
-
-                @if (_profile is not null)
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">Prénom *</label>
+                    <input class="form-control" @bind="_firstName" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Nom *</label>
+                    <input class="form-control" @bind="_lastName" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Courriel</label>
+                    <input class="form-control" value="@(_email)" disabled />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Téléphone</label>
+                    <input class="form-control" @bind="_phone" />
+                </div>
+                @if (_childrenCount is int count)
                 {
-                    <dt class="col-sm-3">Téléphone</dt>
-                    <dd class="col-sm-9">@(_profile.Phone ?? "—")</dd>
-
-                    <dt class="col-sm-3">Enfants</dt>
-                    <dd class="col-sm-9">@_profile.ChildrenCount</dd>
+                    <div class="col-12">
+                        <span class="text-muted">Enfants liés : @count</span>
+                    </div>
                 }
-            </dl>
+            </div>
         </div>
     </div>
 }
 
 @code {
-    private ParentProfileDto? _profile;
     private bool _loading = true;
+    private bool _saving, _saved;
     private string? _error;
+    private string _firstName = "";
+    private string _lastName = "";
+    private string _email = "";
+    private string _phone = "";
+    private int? _childrenCount;
+
+    private record UserProfileDto(
+        string Email, string FirstName, string LastName, string FullName,
+        string? Phone, string? Bio, string PreferredLanguage, string TimeZone, string Role);
+
+    private record ParentProfileDto(
+        Guid Id, string FirstName, string LastName, string Email, string? Phone, int ChildrenCount);
 
     protected override async Task OnInitializedAsync()
     {
+        await Auth.EnsureSessionRestoredAsync(forceJs: true);
         try
         {
-            _profile = await Api.GetAsync<ParentProfileDto>("api/parent/me");
+            var me = await Api.GetAsync<UserProfileDto>("api/me/profile");
+            if (me is not null)
+            {
+                _firstName = me.FirstName;
+                _lastName = me.LastName;
+                _email = me.Email;
+                _phone = me.Phone ?? "";
+            }
+
+            var parent = await Api.GetAsync<ParentProfileDto>("api/parent/me");
+            if (parent is not null)
+            {
+                if (string.IsNullOrWhiteSpace(_firstName)) _firstName = parent.FirstName;
+                if (string.IsNullOrWhiteSpace(_lastName)) _lastName = parent.LastName;
+                if (string.IsNullOrWhiteSpace(_email)) _email = parent.Email;
+                if (string.IsNullOrWhiteSpace(_phone)) _phone = parent.Phone ?? "";
+                _childrenCount = parent.ChildrenCount;
+            }
         }
         catch
         {
@@ -71,11 +119,41 @@ else
         }
     }
 
-    private sealed record ParentProfileDto(
-        Guid Id,
-        string FirstName,
-        string LastName,
-        string Email,
-        string? Phone,
-        int ChildrenCount);
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_firstName) || string.IsNullOrWhiteSpace(_lastName))
+        {
+            _error = "Prénom et nom sont obligatoires.";
+            _saved = false;
+            return;
+        }
+
+        _saving = true;
+        _saved = false;
+        _error = null;
+        try
+        {
+            var result = await Api.PutWithErrorAsync<UserProfileDto>("api/me/profile", new
+            {
+                firstName = _firstName.Trim(),
+                lastName = _lastName.Trim(),
+                phone = string.IsNullOrWhiteSpace(_phone) ? null : _phone.Trim()
+            });
+
+            if (result.Error is not null)
+            {
+                _error = result.Error;
+                return;
+            }
+
+            var fullName = result.Value?.FullName ?? $"{_firstName} {_lastName}".Trim();
+            await Auth.UpdateLocalDisplayNameAsync(fullName);
+            await ParentProfile.EnsureLoadedAsync(forceReload: true);
+            _saved = true;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
 }

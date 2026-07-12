@@ -20,8 +20,11 @@ public sealed class ParentProfileState
         _auth = auth;
     }
 
-    public Task EnsureLoadedAsync()
+    public Task EnsureLoadedAsync(bool forceReload = false)
     {
+        if (forceReload)
+            _loadTask = null;
+
         _loadTask ??= LoadCoreAsync();
         return _loadTask;
     }
@@ -57,6 +60,10 @@ public sealed class ParentProfileState
 
             PhotoUrl = profile.PhotoUrl;
             UnreadMessagesCount = profile.UnreadMessagesCount;
+        }
+        else if (!string.IsNullOrWhiteSpace(_auth.UserName))
+        {
+            DisplayName = _auth.UserName!;
         }
 
         if (string.IsNullOrWhiteSpace(DisplayName))

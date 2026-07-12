@@ -49,6 +49,30 @@ public sealed class AuthService
     public Guid? TenantId => _authProvider.TenantId;
     public string? SchoolName => _authProvider.SchoolName;
 
+    /// <summary>Updates the in-memory display name after a successful profile save (JWT claims stay until re-login).</summary>
+    public async Task UpdateLocalDisplayNameAsync(string fullName)
+    {
+        if (string.IsNullOrWhiteSpace(fullName) || string.IsNullOrEmpty(Token))
+            return;
+
+        _authProvider.UpdateDisplayName(fullName.Trim());
+        try
+        {
+            var json = await _js.InvokeAsync<string?>("tsAuth.load");
+            if (string.IsNullOrWhiteSpace(json))
+                return;
+
+            var auth = JsonSerializer.Deserialize<AuthResponse>(json, JsonOpts);
+            if (auth is null || string.IsNullOrWhiteSpace(auth.Token))
+                return;
+
+            var updated = auth with { FullName = fullName.Trim() };
+            await PersistSessionAsync(updated);
+        }
+        catch (InvalidOperationException) { }
+        catch (JSException) { }
+    }
+
     /// <summary>Calls the API login endpoint and caches the result.</summary>
     public async Task<LoginResult> LoginAsync(string email, string password)
     {
@@ -489,6 +513,19 @@ public sealed class CustomAuthenticationStateProvider : AuthenticationStateProvi
                 claims.Add(new Claim(ClaimTypes.Role, value));
         }
 
+        _user = new ClaimsPrincipal(new ClaimsIdentity(claims, "TutorSphereJwt"));
+        NotifyAuthenticationStateChanged(GetAuthenticationStateAsync());
+    }
+
+    internal void UpdateDisplayName(string fullName)
+    {
+        if (!IsAuthenticated || string.IsNullOrWhiteSpace(fullName))
+            return;
+
+        var claims = _user.Claims
+            .Where(c => c.Type != ClaimTypes.Name)
+            .ToList();
+        claims.Add(new Claim(ClaimTypes.Name, fullName.Trim()));
         _user = new ClaimsPrincipal(new ClaimsIdentity(claims, "TutorSphereJwt"));
         NotifyAuthenticationStateChanged(GetAuthenticationStateAsync());
     }

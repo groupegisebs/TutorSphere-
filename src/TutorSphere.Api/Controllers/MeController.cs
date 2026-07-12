@@ -37,6 +37,72 @@ public class MeController : ControllerBase
         _configuration = configuration;
     }
 
+    [HttpGet("profile")]
+    public async Task<ActionResult<UserProfileDto>> GetProfile()
+    {
+        var user = await GetCurrentUserAsync();
+        if (user is null) return Unauthorized();
+        return Ok(await BuildProfileDtoAsync(user));
+    }
+
+    [HttpPut("profile")]
+    public async Task<ActionResult<UserProfileDto>> UpdateProfile([FromBody] UpdateUserProfileRequest request)
+    {
+        var user = await GetCurrentUserAsync();
+        if (user is null) return Unauthorized();
+
+        if (string.IsNullOrWhiteSpace(request.FirstName) || string.IsNullOrWhiteSpace(request.LastName))
+            return BadRequest(new { error = "Prénom et nom sont obligatoires." });
+
+        user.FirstName = request.FirstName.Trim();
+        user.LastName = request.LastName.Trim();
+        if (!string.IsNullOrWhiteSpace(request.PreferredLanguage))
+            user.PreferredLanguage = request.PreferredLanguage.Trim();
+        if (!string.IsNullOrWhiteSpace(request.TimeZone))
+            user.TimeZone = request.TimeZone.Trim();
+
+        var result = await _userManager.UpdateAsync(user);
+        if (!result.Succeeded)
+            return BadRequest(new { error = string.Join("; ", result.Errors.Select(e => e.Description)) });
+
+        // Keep linked role profiles in sync with the account name.
+        var parent = await _db.ParentProfilesSet.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(p => p.UserId == user.Id);
+        if (parent is not null)
+        {
+            parent.FirstName = user.FirstName;
+            parent.LastName = user.LastName;
+            if (request.Phone is not null)
+                parent.Phone = string.IsNullOrWhiteSpace(request.Phone) ? null : request.Phone.Trim();
+            parent.UpdatedAt = DateTime.UtcNow;
+        }
+
+        var student = await _db.StudentsSet.IgnoreQueryFilters()
+            .FirstOrDefaultAsync(s => s.UserId == user.Id);
+        if (student is not null)
+        {
+            student.FirstName = user.FirstName;
+            student.LastName = user.LastName;
+            if (request.Phone is not null)
+                student.Phone = string.IsNullOrWhiteSpace(request.Phone) ? null : request.Phone.Trim();
+            student.UpdatedAt = DateTime.UtcNow;
+        }
+
+        // Tutor bio lives on the school description — never overwrite the school display name here.
+        if (request.Bio is not null && user.TenantId is Guid tenantId)
+        {
+            var tenant = await _db.TenantsSet.FirstOrDefaultAsync(t => t.Id == tenantId);
+            if (tenant is not null)
+            {
+                tenant.Description = request.Bio.Trim();
+                tenant.UpdatedAt = DateTime.UtcNow;
+            }
+        }
+
+        await _db.SaveChangesAsync();
+        return Ok(await BuildProfileDtoAsync(user));
+    }
+
     [HttpGet("notification-preferences")]
     public async Task<ActionResult<NotificationPreferencesDto>> GetNotificationPreferences()
     {
@@ -145,6 +211,47 @@ public class MeController : ControllerBase
             feedUrl,
             webcalUrl,
             "Ajoutez cette URL dans Google Agenda (Autres agendas → À partir d’une URL), Outlook (Ajouter un calendrier → À partir d’Internet) ou Apple Calendar (Fichier → Nouvel abonnement).");
+    }
+
+    private async Task<UserProfileDto> BuildProfileDtoAsync(ApplicationUser user)
+    {
+        var roles = await _userManager.GetRolesAsync(user);
+        var role = roles.FirstOrDefault() ?? "";
+
+        string? phone = null;
+        var parent = await _db.ParentProfilesSet.IgnoreQueryFilters()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.UserId == user.Id);
+        if (parent is not null)
+            phone = parent.Phone;
+
+        if (phone is null)
+        {
+            var student = await _db.StudentsSet.IgnoreQueryFilters()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.UserId == user.Id);
+            phone = student?.Phone;
+        }
+
+        string? bio = null;
+        if (user.TenantId is Guid tenantId)
+        {
+            bio = await _db.TenantsSet.AsNoTracking()
+                .Where(t => t.Id == tenantId)
+                .Select(t => t.Description)
+                .FirstOrDefaultAsync();
+        }
+
+        return new UserProfileDto(
+            user.Email ?? "",
+            user.FirstName,
+            user.LastName,
+            user.FullName,
+            phone,
+            bio,
+            user.PreferredLanguage,
+            user.TimeZone,
+            role);
     }
 
     private async Task<ApplicationUser?> GetCurrentUserAsync()
