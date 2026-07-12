@@ -162,22 +162,78 @@ else
     {
         var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
         var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
-        if (query.ContainsKey("paid") || query.ContainsKey("created"))
-            _banner = L["ParentSubs_BannerSaved"];
+        var paidReturn = query.ContainsKey("paid");
+        var createdReturn = query.ContainsKey("created");
         if (query.ContainsKey("canceled"))
             _banner = L["ParentSubs_BannerCanceled"];
 
+        Guid? paymentId = null;
+        Guid? subscriptionId = null;
+        if (query.TryGetValue("payment", out var paymentRaw) && Guid.TryParse(paymentRaw, out var pid))
+            paymentId = pid;
+        if (query.TryGetValue("sub", out var subRaw) && Guid.TryParse(subRaw, out var sid))
+            subscriptionId = sid;
+        else if (query.TryGetValue("created", out var createdRaw) && Guid.TryParse(createdRaw, out var cid))
+            subscriptionId = cid;
+
         try
         {
+            if (paidReturn || createdReturn)
+                await ConfirmPaymentAfterCheckoutAsync(paymentId, subscriptionId);
+
             var result = await Api.GetAsync<List<SubVm>>("api/parent/subscriptions");
             _subs = result ?? [];
             _tab = PickDefaultTab();
+
+            if (paidReturn || createdReturn)
+            {
+                var activated = subscriptionId.HasValue
+                    && _subs.Any(s => s.Id == subscriptionId && s.Status == "Active");
+                _banner = activated
+                    ? L["ParentSubs_BannerPaid"]
+                    : L["ParentSubs_BannerSaved"];
+            }
         }
         catch (Exception ex)
         {
             _error = string.Format(L["ParentSubs_LoadError"], ex.Message);
         }
         finally { _loading = false; }
+    }
+
+    /// <summary>Comme Boutique/AGENTIA : poll Pay Gateway jusqu'à confirmation du webhook.</summary>
+    private async Task ConfirmPaymentAfterCheckoutAsync(Guid? paymentId, Guid? subscriptionId)
+    {
+        try
+        {
+            // Prefer subscription confirm (server retries 5× / 2s) — success URLs use ?paid=1&sub=…
+            if (subscriptionId.HasValue)
+            {
+                await Api.PostWithErrorAsync<PaymentStatusVm>(
+                    $"api/payments/subscriptions/{subscriptionId}/confirm",
+                    new { });
+                return;
+            }
+
+            if (!paymentId.HasValue)
+                return;
+
+            for (var attempt = 1; attempt <= 5; attempt++)
+            {
+                var status = await Api.GetAsync<PaymentStatusVm>($"api/payments/{paymentId}/status");
+                if (status is not null
+                    && (string.Equals(status.GatewayStatus, "Succeeded", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(status.LocalStatus, "Completed", StringComparison.OrdinalIgnoreCase)))
+                    return;
+
+                if (attempt < 5)
+                    await Task.Delay(2000);
+            }
+        }
+        catch
+        {
+            // La liste sera quand même chargée ; le parent pourra réessayer via Payer / refresh.
+        }
     }
 
     private string PickDefaultTab()
@@ -254,7 +310,7 @@ else
                 $"api/payments/subscriptions/{sub.Id}/checkout",
                 new
                 {
-                    successUrl = $"{baseUri}/parent/subscriptions?paid=1",
+                    successUrl = $"{baseUri}/parent/subscriptions?paid=1&sub={sub.Id}",
                     cancelUrl = $"{baseUri}/parent/subscriptions?canceled=1"
                 });
 
@@ -289,5 +345,11 @@ else
         DateTime EndDate,
         int SessionsRemaining);
 
-    private sealed record CheckoutResult(string CheckoutUrl);
+    private sealed record CheckoutResult(Guid PaymentId, string CheckoutUrl);
+    private sealed record PaymentStatusVm(
+        Guid PaymentId,
+        string PaymentCode,
+        string GatewayStatus,
+        string LocalStatus,
+        DateTime? PaidAt);
 }

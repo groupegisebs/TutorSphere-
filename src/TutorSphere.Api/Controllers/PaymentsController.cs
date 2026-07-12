@@ -113,6 +113,23 @@ public class PaymentsController : ControllerBase
         }
     }
 
+    /// <summary>Après retour Stripe Checkout : sync Pay Gateway → active l'abonnement (retries).</summary>
+    [HttpPost("subscriptions/{subscriptionId:guid}/confirm")]
+    [Authorize(Roles = $"{UserRoles.Parent},{UserRoles.Tutor},{UserRoles.SuperAdmin}")]
+    public async Task<ActionResult<PaymentStatusResponse>> ConfirmSubscriptionPayment(
+        Guid subscriptionId,
+        CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _paymentGateway.ConfirmSubscriptionPaymentAsync(subscriptionId, ct: ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     [HttpGet("customers/parents/{parentProfileId:guid}/subscriptions")]
     [Authorize(Roles = $"{UserRoles.Parent},{UserRoles.Tutor},{UserRoles.SuperAdmin}")]
     public async Task<ActionResult<IReadOnlyList<GatewaySubscriptionResponse>>> GetParentSubscriptions(

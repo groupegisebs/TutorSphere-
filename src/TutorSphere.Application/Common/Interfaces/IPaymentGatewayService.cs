@@ -19,6 +19,16 @@ public interface IPaymentGatewayService
         Guid paymentId,
         CancellationToken ct = default);
 
+    /// <summary>
+    /// Après retour Checkout : interroge Pay Gateway (avec retries) pour le dernier paiement
+    /// de l'abonnement et active l'abonnement local si Succeeded — même modèle que Boutique/AGENTIA.
+    /// </summary>
+    Task<PaymentStatusResponse> ConfirmSubscriptionPaymentAsync(
+        Guid subscriptionId,
+        int maxAttempts = 5,
+        int retryDelayMs = 2000,
+        CancellationToken ct = default);
+
     Task<IReadOnlyList<GatewaySubscriptionResponse>> GetParentSubscriptionsAsync(
         Guid parentProfileId,
         CancellationToken ct = default);

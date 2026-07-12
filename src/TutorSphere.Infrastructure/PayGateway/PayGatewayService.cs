@@ -174,6 +174,58 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             payment.CompletedAt);
     }
 
+    public async Task<PaymentStatusResponse> ConfirmSubscriptionPaymentAsync(
+        Guid subscriptionId,
+        int maxAttempts = 5,
+        int retryDelayMs = 2000,
+        CancellationToken ct = default)
+    {
+        var payment = await _db.Payments
+            .Where(p => p.SubscriptionId == subscriptionId)
+            .OrderByDescending(p => p.CreatedAt)
+            .FirstOrDefaultAsync(ct)
+            ?? throw new InvalidOperationException("Aucun paiement trouvé pour cet abonnement.");
+
+        if (string.IsNullOrEmpty(payment.StripePaymentIntentId))
+            throw new InvalidOperationException("Aucun code de paiement passerelle associé.");
+
+        maxAttempts = Math.Max(1, maxAttempts);
+        PaymentStatusResponse? last = null;
+        Exception? lastError = null;
+
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            try
+            {
+                last = await SyncPaymentStatusAsync(payment.Id, ct);
+                if (string.Equals(last.GatewayStatus, "Succeeded", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(last.LocalStatus, nameof(PaymentStatus.Completed), StringComparison.OrdinalIgnoreCase))
+                {
+                    return last;
+                }
+            }
+            catch (Exception ex) when (attempt < maxAttempts)
+            {
+                lastError = ex;
+                _logger.LogInformation(
+                    ex,
+                    "Confirm paiement abonnement {SubscriptionId} tentative {Attempt}/{Max} — en attente webhook",
+                    subscriptionId,
+                    attempt,
+                    maxAttempts);
+            }
+
+            if (attempt < maxAttempts)
+                await Task.Delay(retryDelayMs, ct);
+        }
+
+        if (last is not null)
+            return last;
+
+        throw lastError
+            ?? new InvalidOperationException("Paiement encore en attente de confirmation côté passerelle.");
+    }
+
     public async Task<IReadOnlyList<GatewaySubscriptionResponse>> GetParentSubscriptionsAsync(
         Guid parentProfileId,
         CancellationToken ct = default)
