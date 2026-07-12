@@ -11,11 +11,15 @@ window.classroomMedia = (function () {
         });
     }
 
-    function attach(videoEl, mediaStream) {
+    function attach(videoEl, mediaStream, mirror) {
         if (!videoEl) return;
         videoEl.srcObject = mediaStream;
         videoEl.muted = true;
         videoEl.playsInline = true;
+        if (mirror === false)
+            videoEl.classList.add("cr-tile-video--no-mirror");
+        else
+            videoEl.classList.remove("cr-tile-video--no-mirror");
         var play = videoEl.play();
         if (play && typeof play.catch === "function")
             play.catch(function () { });
@@ -38,8 +42,62 @@ window.classroomMedia = (function () {
     }
 
     function restoreCamera(videoEl) {
-        if (stream) attach(videoEl, stream);
+        if (stream) attach(videoEl, stream, true);
         else if (videoEl) videoEl.srcObject = null;
+    }
+
+    async function getHdCameraStream(wantVideo, wantAudio) {
+        var attempts = [
+            {
+                video: wantVideo ? {
+                    facingMode: "user",
+                    width: { min: 1280, ideal: 1920, max: 1920 },
+                    height: { min: 720, ideal: 1080, max: 1080 },
+                    frameRate: { ideal: 30, max: 30 },
+                    aspectRatio: { ideal: 16 / 9 }
+                } : false,
+                audio: wantAudio ? { echoCancellation: true, noiseSuppression: true } : false
+            },
+            {
+                video: wantVideo ? {
+                    facingMode: "user",
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                    frameRate: { ideal: 30 }
+                } : false,
+                audio: wantAudio ? { echoCancellation: true, noiseSuppression: true } : false
+            },
+            {
+                video: wantVideo,
+                audio: wantAudio
+            }
+        ];
+
+        var lastErr = null;
+        for (var i = 0; i < attempts.length; i++) {
+            try {
+                var s = await navigator.mediaDevices.getUserMedia(attempts[i]);
+                var track = s.getVideoTracks()[0];
+                if (track && track.getCapabilities) {
+                    try {
+                        var caps = track.getCapabilities();
+                        var advanced = {};
+                        if (caps.width && caps.height) {
+                            advanced.width = Math.min(1920, caps.width.max || 1920);
+                            advanced.height = Math.min(1080, caps.height.max || 1080);
+                        }
+                        if (caps.frameRate)
+                            advanced.frameRate = Math.min(30, caps.frameRate.max || 30);
+                        if (Object.keys(advanced).length)
+                            await track.applyConstraints(advanced);
+                    } catch (_) { /* keep stream as-is */ }
+                }
+                return s;
+            } catch (ex) {
+                lastErr = ex;
+            }
+        }
+        throw lastErr || new Error("Caméra indisponible");
     }
 
     return {
@@ -62,13 +120,10 @@ window.classroomMedia = (function () {
                     stream = null;
                 }
 
-                stream = await navigator.mediaDevices.getUserMedia({
-                    video: wantVideo ? { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } } : false,
-                    audio: wantAudio ? { echoCancellation: true, noiseSuppression: true } : false
-                });
+                stream = await getHdCameraStream(wantVideo, wantAudio);
 
                 if (!screenStream && !canvasStream)
-                    attach(videoEl, stream);
+                    attach(videoEl, stream, true);
                 var st = trackStates(stream);
                 return { ok: true, video: st.video, audio: st.audio };
             } catch (ex) {
@@ -119,10 +174,19 @@ window.classroomMedia = (function () {
                 stopTracks(canvasStream);
                 canvasStream = null;
                 stopTracks(screenStream);
-                screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
-                attach(videoEl, screenStream);
+                screenStream = await navigator.mediaDevices.getDisplayMedia({
+                    video: {
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 },
+                        frameRate: { ideal: 30 }
+                    },
+                    audio: false
+                });
+                attach(videoEl, screenStream, false);
+                videoEl.classList.add("cr-tile-video--contain");
                 screenStream.getVideoTracks()[0].addEventListener("ended", function () {
                     screenStream = null;
+                    videoEl.classList.remove("cr-tile-video--contain");
                     restoreCamera(videoEl);
                     notifyEnded("screen");
                 });
@@ -141,8 +205,9 @@ window.classroomMedia = (function () {
                 stopTracks(screenStream);
                 screenStream = null;
                 stopTracks(canvasStream);
-                canvasStream = canvasEl.captureStream(15);
-                attach(videoEl, canvasStream);
+                canvasStream = canvasEl.captureStream(30);
+                attach(videoEl, canvasStream, false);
+                videoEl.classList.add("cr-tile-video--contain");
                 return { ok: true, kind: "whiteboard" };
             } catch (ex) {
                 return { ok: false, error: ex && ex.message ? ex.message : "Partage du tableau impossible." };
@@ -154,6 +219,7 @@ window.classroomMedia = (function () {
             screenStream = null;
             stopTracks(canvasStream);
             canvasStream = null;
+            if (videoEl) videoEl.classList.remove("cr-tile-video--contain");
             restoreCamera(videoEl);
             return true;
         },

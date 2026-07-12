@@ -54,78 +54,49 @@
             </button>
         </div>
         <div class="cr-gallery">
-            <!-- Stage (Teams-style): remote participant in large frame -->
+            <!-- Grand cadre HD : caméra / partage local (en attendant le flux distant WebRTC) -->
             <div class="cr-tile-main">
-                @{
-                    var stage = _focusedPeer ?? _participants.FirstOrDefault(x => x.Role != "Tuteur");
-                }
-                @if (stage is not null)
-                {
-                    <div class="cr-tile-bg cr-tile-bg--student">
+                <div class="cr-tile-bg cr-tile-bg--tutor">
+                    <video @ref="_localVideo"
+                           class="cr-tile-video @(_showLocalVideo ? "" : "is-hidden")"
+                           autoplay
+                           playsinline
+                           muted></video>
+                    @if (!_showLocalVideo)
+                    {
                         <i class="bi bi-person-fill cr-tile-placeholder-icon"></i>
-                    </div>
-                    <div class="cr-tile-label">
-                        <div class="cr-tile-av" style="background:@stage.Color;">@stage.Initials</div>
-                        <span class="cr-tile-name">@stage.Name</span>
-                        <span class="cr-tile-role">@stage.Role</span>
-                        <span class="cr-tile-media-icons">
-                            <i class="bi @(stage.MicOn ? "bi-mic-fill" : "bi-mic-mute-fill") @(stage.MicOn ? "" : "cr-icon-off")"></i>
-                            <i class="bi @(stage.CamOn ? "bi-camera-video-fill" : "bi-camera-video-off-fill") @(stage.CamOn ? "" : "cr-icon-off")"></i>
+                    }
+                    @if (_sharing)
+                    {
+                        <span class="cr-share-badge">
+                            <i class="bi @(_sharingWhiteboard ? "bi-easel" : "bi-display")"></i>
+                            @(_sharingWhiteboard ? "Tableau" : "Écran")
                         </span>
-                    </div>
-                }
-                else
-                {
-                    <div class="cr-tile-bg cr-tile-bg--student">
-                        <div class="cr-tile-waiting">
-                            <i class="bi bi-person-plus" aria-hidden="true"></i>
-                            <span>En attente des participants…</span>
+                    }
+                    @if (!string.IsNullOrEmpty(_mediaError))
+                    {
+                        <div class="cr-media-error" role="alert">
+                            <i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i>
+                            <span>@_mediaError</span>
                         </div>
-                    </div>
-                }
-            </div>
-            <!-- Self + other remotes in the side strip (self always small, like Teams) -->
-            <div class="cr-tiles-col">
-                <div class="cr-tile-student cr-tile-self">
-                    <div class="cr-tile-bg cr-tile-bg--tutor">
-                        <video @ref="_localVideo"
-                               class="cr-tile-video @(_showLocalVideo ? "" : "is-hidden")"
-                               autoplay
-                               playsinline
-                               muted></video>
-                        @if (!_showLocalVideo)
-                        {
-                            <i class="bi bi-person-fill" style="font-size:1.25rem;color:rgba(255,255,255,0.15);"></i>
-                        }
-                        @if (_sharing)
-                        {
-                            <span class="cr-share-badge">
-                                <i class="bi @(_sharingWhiteboard ? "bi-easel" : "bi-display")"></i>
-                                @(_sharingWhiteboard ? "Tableau" : "Écran")
-                            </span>
-                        }
-                        @if (!string.IsNullOrEmpty(_mediaError))
-                        {
-                            <div class="cr-media-error cr-media-error--sm" role="alert">
-                                <i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i>
-                            </div>
-                        }
-                    </div>
-                    <div class="cr-tile-label cr-tile-label-sm">
-                        <div class="cr-tile-av cr-tile-av-sm" style="background:#5831E0;">@TutorInitials</div>
-                        <span class="cr-tile-name">@TutorDisplayName</span>
-                        <span class="cr-tile-you">Vous</span>
-                        <span class="cr-tile-media-icons">
-                            <i class="bi @(_micOn ? "bi-mic-fill" : "bi-mic-mute-fill") @(_micOn ? "" : "cr-icon-off")"></i>
-                            <i class="bi @(_camOn ? "bi-camera-video-fill" : "bi-camera-video-off-fill") @(_camOn ? "" : "cr-icon-off")"></i>
-                        </span>
-                    </div>
+                    }
                 </div>
-                @foreach (var p in _participants.Where(x => x.Role != "Tuteur" && (stage is null || x.Name != stage.Name)))
+                <div class="cr-tile-label">
+                    <div class="cr-tile-av" style="background:#5831E0;">@TutorInitials</div>
+                    <span class="cr-tile-name">@TutorDisplayName</span>
+                    <span class="cr-tile-you">Vous</span>
+                    <span class="cr-tile-media-icons">
+                        <i class="bi @(_micOn ? "bi-mic-fill" : "bi-mic-mute-fill") @(_micOn ? "" : "cr-icon-off")"></i>
+                        <i class="bi @(_camOn || _sharing ? "bi-camera-video-fill" : "bi-camera-video-off-fill") @(_camOn || _sharing ? "" : "cr-icon-off")"></i>
+                    </span>
+                </div>
+            </div>
+            <div class="cr-tiles-col">
+                @foreach (var p in _participants.Where(x => x.Role != "Tuteur"))
                 {
-                    <div class="cr-tile-student" @onclick="() => FocusPeer(p)" title="Mettre en avant">
+                    <div class="cr-tile-student" @onclick="() => FocusPeer(p)" title="@p.Name">
                         <div class="cr-tile-bg cr-tile-bg--student">
-                            <i class="bi bi-person-fill" style="font-size:1.25rem;color:rgba(255,255,255,0.15);"></i>
+                            <i class="bi bi-person-fill" style="font-size:1.5rem;color:rgba(255,255,255,0.2);"></i>
                         </div>
                         <div class="cr-tile-label cr-tile-label-sm">
                             <div class="cr-tile-av cr-tile-av-sm" style="background:@p.Color;">@p.Initials</div>
