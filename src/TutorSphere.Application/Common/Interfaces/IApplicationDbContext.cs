@@ -43,6 +43,7 @@ public interface IApplicationDbContext
     IQueryable<LessonAttendance> LessonAttendances { get; }
     /// <summary>Attendances without tenant filter (parent portal across schools).</summary>
     IQueryable<LessonAttendance> LessonAttendancesForAnyTenant { get; }
+    IQueryable<TutorPayout> TutorPayouts { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     void Add<T>(T entity) where T : class;

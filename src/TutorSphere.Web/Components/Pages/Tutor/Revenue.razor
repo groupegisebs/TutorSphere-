@@ -25,7 +25,79 @@
     </div>
 </div>
 
-<!-- KPI row -->
+@if (!string.IsNullOrEmpty(_payoutError))
+{
+    <div class="alert alert-danger py-2">@_payoutError</div>
+}
+@if (!string.IsNullOrEmpty(_payoutSuccess))
+{
+    <div class="alert alert-success py-2">@_payoutSuccess</div>
+}
+
+<!-- Gains : disponible vs retenu -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-lg-3">
+        <div class="ts-kpi-card ts-kpi-card--success">
+            @if (_earningsLoading)
+            {
+                <span class="ts-kpi-val"><span class="spinner-border spinner-border-sm"></span></span>
+            }
+            else
+            {
+                <span class="ts-kpi-val">@_available.ToString("N2") @_currency</span>
+            }
+            <span class="ts-kpi-label">@L["Revenue_AvailableToCash"]</span>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="ts-kpi-card ts-kpi-card--warning">
+            <span class="ts-kpi-val">@_held.ToString("N2") @_currency</span>
+            <span class="ts-kpi-label">@L["Revenue_HeldUnfinished"]</span>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="ts-kpi-card">
+            <span class="ts-kpi-val">@_collected.ToString("N2") @_currency</span>
+            <span class="ts-kpi-label">@L["Revenue_TotalCollected"]</span>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="ts-kpi-card">
+            <span class="ts-kpi-val">@_withdrawn.ToString("N2") @_currency</span>
+            <span class="ts-kpi-label">@L["Revenue_AlreadyCashed"]</span>
+        </div>
+    </div>
+</div>
+
+<div class="section-card mb-4">
+    <div class="section-card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <div>
+            <h2 class="mb-1">@L["Revenue_CashOutTitle"]</h2>
+            <p class="text-muted small mb-0">@L["Revenue_CashOutHint"]</p>
+        </div>
+        <button class="btn btn-primary"
+                disabled="@(_payoutBusy || _available <= 0)"
+                @onclick="CashOutAsync">
+            @if (_payoutBusy)
+            {
+                <span class="spinner-border spinner-border-sm me-1"></span>
+            }
+            else
+            {
+                <i class="bi bi-wallet2 me-1"></i>
+            }
+            @L["Revenue_CashOut"]
+        </button>
+    </div>
+    @if (_sessionsHeld > 0)
+    {
+        <p class="small text-muted mb-0 mt-2">
+            @string.Format(L["Revenue_SessionsHeldFmt"].Value, _sessionsHeld)
+        </p>
+    }
+</div>
+
+<!-- KPI row activité -->
 <div class="row g-3 mb-4">
     <div class="col-6 col-lg-3">
         <div class="ts-kpi-card ts-kpi-card--success">
@@ -140,24 +212,29 @@
         </div>
     </div>
 
-    <!-- Recent transactions -->
+    <!-- Recent payouts -->
     <div class="col-md-6">
         <div class="section-card">
-            <div class="section-card-header"><h2>@L["Revenue_RecentTransactions"]</h2></div>
-            @foreach (var t in _recentTransactions)
+            <div class="section-card-header"><h2>@L["Revenue_RecentCashOuts"]</h2></div>
+            @if (_recentPayouts.Count == 0)
             {
-                <div class="transaction-item">
-                    <div class="transaction-icon @(t.Amount > 0 ? "transaction-icon--in" : "transaction-icon--out")">
-                        <i class="bi @(t.Amount > 0 ? "bi-arrow-down-left" : "bi-arrow-up-right")"></i>
+                <p class="text-muted small mb-0">@L["Revenue_NoCashOuts"]</p>
+            }
+            else
+            {
+                @foreach (var t in _recentPayouts)
+                {
+                    <div class="transaction-item">
+                        <div class="transaction-icon transaction-icon--out">
+                            <i class="bi bi-arrow-up-right"></i>
+                        </div>
+                        <div class="transaction-info">
+                            <strong>@L["Revenue_CashOut"]</strong>
+                            <span class="text-muted small">@t.RequestedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</span>
+                        </div>
+                        <span class="text-danger fw-semibold">-@t.Amount.ToString("N2") @t.Currency</span>
                     </div>
-                    <div class="transaction-info">
-                        <strong>@t.Description</strong>
-                        <span class="text-muted small">@t.Date</span>
-                    </div>
-                    <span class="@(t.Amount > 0 ? "text-success" : "text-danger") fw-semibold">
-                        @(t.Amount > 0 ? "+" : "")@t.Amount $
-                    </span>
-                </div>
+                }
             }
         </div>
     </div>
@@ -175,15 +252,37 @@
     };
 
     private bool _statsLoading = true;
+    private bool _earningsLoading = true;
+    private bool _payoutBusy;
+    private string? _payoutError;
+    private string? _payoutSuccess;
+
     private decimal _monthlyRevenue;
     private int _activeStudents;
     private int _activeSubscriptions;
     private int _upcomingLessons;
     private int _pendingPayments;
 
+    private decimal _available;
+    private decimal _held;
+    private decimal _collected;
+    private decimal _withdrawn;
+    private string _currency = "CAD";
+    private int _sessionsHeld;
+    private List<PayoutDto> _recentPayouts = [];
+
     private record DashboardDto(
         decimal MonthlyRevenue, int ActiveStudents,
         int ActiveSubscriptions, int UpcomingLessons, int PendingPayments);
+
+    private record PayoutDto(
+        Guid Id, decimal Amount, string Currency, string Status,
+        string? Note, DateTime RequestedAt, DateTime? CompletedAt);
+
+    private record EarningsSummaryDto(
+        decimal Collected, decimal Held, decimal Released, decimal Withdrawn,
+        decimal Available, string Currency, int SessionsHeld,
+        List<PayoutDto>? RecentPayouts);
 
     protected override async Task OnInitializedAsync()
     {
@@ -201,6 +300,50 @@
             }
         }
         _statsLoading = false;
+        await LoadEarningsAsync();
+    }
+
+    private async Task LoadEarningsAsync()
+    {
+        _earningsLoading = true;
+        var summary = await Api.GetAsync<EarningsSummaryDto>("api/tutor-earnings");
+        if (summary is not null)
+        {
+            _collected = summary.Collected;
+            _held = summary.Held;
+            _withdrawn = summary.Withdrawn;
+            _available = summary.Available;
+            _currency = string.IsNullOrWhiteSpace(summary.Currency) ? "CAD" : summary.Currency;
+            _sessionsHeld = summary.SessionsHeld;
+            _recentPayouts = summary.RecentPayouts ?? [];
+        }
+        _earningsLoading = false;
+    }
+
+    private async Task CashOutAsync()
+    {
+        _payoutError = null;
+        _payoutSuccess = null;
+        _payoutBusy = true;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<PayoutDto>(
+                "api/tutor-earnings/payouts",
+                new { amount = (decimal?)null, note = (string?)null });
+
+            if (!result.IsSuccess && result.Error is not null)
+            {
+                _payoutError = result.Error;
+                return;
+            }
+
+            _payoutSuccess = L["Revenue_CashOutSuccess"];
+            await LoadEarningsAsync();
+        }
+        finally
+        {
+            _payoutBusy = false;
+        }
     }
 
     private static readonly (double X, double Y)[] _chartPoints =
@@ -229,7 +372,4 @@
 
     private record StudentRevenue(string Name, string Initials, string Color, int Sessions, decimal Total);
     private static readonly StudentRevenue[] _byStudent = [];
-
-    private record Transaction(string Description, string Date, decimal Amount);
-    private static readonly Transaction[] _recentTransactions = [];
 }

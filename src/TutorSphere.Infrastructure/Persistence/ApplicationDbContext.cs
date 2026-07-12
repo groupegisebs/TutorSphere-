@@ -32,6 +32,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     public DbSet<Message> MessagesSet => Set<Message>();
     public DbSet<TenantBranding> TenantBrandingsSet => Set<TenantBranding>();
     public DbSet<LessonAttendance> LessonAttendancesSet => Set<LessonAttendance>();
+    public DbSet<TutorPayout> TutorPayoutsSet => Set<TutorPayout>();
 
     IQueryable<Tenant> IApplicationDbContext.Tenants => TenantsSet;
     IQueryable<TenantBranding> IApplicationDbContext.TenantBrandings => TenantBrandingsSet;
@@ -67,6 +68,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     IQueryable<LessonAttendance> IApplicationDbContext.LessonAttendances => LessonAttendancesSet;
     IQueryable<LessonAttendance> IApplicationDbContext.LessonAttendancesForAnyTenant =>
         LessonAttendancesSet.IgnoreQueryFilters();
+    IQueryable<TutorPayout> IApplicationDbContext.TutorPayouts => TutorPayoutsSet;
 
     public new void Add<T>(T entity) where T : class => Set<T>().Add(entity);
     public new void Remove<T>(T entity) where T : class => Set<T>().Remove(entity);
@@ -99,6 +101,13 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             e.Property(p => p.Amount).HasPrecision(18, 2);
             e.Property(p => p.PlatformFee).HasPrecision(18, 2);
             e.Property(p => p.TutorAmount).HasPrecision(18, 2);
+        });
+
+        builder.Entity<TutorPayout>(e =>
+        {
+            e.Property(p => p.Amount).HasPrecision(18, 2);
+            e.HasIndex(p => p.TenantId);
+            e.HasIndex(p => p.RequestedAt);
         });
 
         builder.Entity<Homework>(e =>
