@@ -255,6 +255,9 @@ else if (_activeTab == "Médias")
             };
             await Api.PutAsync<object>($"api/tenants/{tenantId}/profile", profileReq);
 
+            if (!string.IsNullOrWhiteSpace(_school.Name))
+                await AuthSvc.UpdateLocalSchoolNameAsync(_school.Name);
+
             _saved = true;
         }
         finally

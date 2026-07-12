@@ -1,3 +1,4 @@
+@rendermode InteractiveServer
 @implements IDisposable
 @inject IStringLocalizer<SharedResources> L
 @inject NavigationManager Navigation
@@ -105,23 +106,26 @@
 
     private async Task LoadSchoolNameAsync()
     {
+        if (AuthSvc.TenantId is Guid tenantId)
+        {
+            try
+            {
+                var profile = await Api.GetAsync<SchoolProfileDto>($"api/tenants/{tenantId}/profile");
+                if (!string.IsNullOrWhiteSpace(profile?.Name))
+                {
+                    _schoolName = profile.Name;
+                    if (!string.Equals(AuthSvc.SchoolName, profile.Name, StringComparison.Ordinal))
+                        await AuthSvc.UpdateLocalSchoolNameAsync(profile.Name);
+                    return;
+                }
+            }
+            catch
+            {
+                /* fall back */
+            }
+        }
+
         _schoolName = AuthSvc.SchoolName;
-        if (!string.IsNullOrWhiteSpace(_schoolName))
-            return;
-
-        if (AuthSvc.TenantId is not Guid tenantId)
-            return;
-
-        try
-        {
-            var profile = await Api.GetAsync<SchoolProfileDto>($"api/tenants/{tenantId}/profile");
-            if (!string.IsNullOrWhiteSpace(profile?.Name))
-                _schoolName = profile.Name;
-        }
-        catch
-        {
-            /* keep empty */
-        }
     }
 
     private async void OnAuthStateChanged(Task<AuthenticationState> _)

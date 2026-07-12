@@ -73,6 +73,30 @@ public sealed class AuthService
         catch (JSException) { }
     }
 
+    /// <summary>Updates the in-memory school name after a successful school profile save (JWT claims stay until re-login).</summary>
+    public async Task UpdateLocalSchoolNameAsync(string schoolName)
+    {
+        if (string.IsNullOrWhiteSpace(schoolName) || string.IsNullOrEmpty(Token))
+            return;
+
+        _authProvider.UpdateSchoolName(schoolName.Trim());
+        try
+        {
+            var json = await _js.InvokeAsync<string?>("tsAuth.load");
+            if (string.IsNullOrWhiteSpace(json))
+                return;
+
+            var auth = JsonSerializer.Deserialize<AuthResponse>(json, JsonOpts);
+            if (auth is null || string.IsNullOrWhiteSpace(auth.Token))
+                return;
+
+            var updated = auth with { TenantName = schoolName.Trim() };
+            await PersistSessionAsync(updated);
+        }
+        catch (InvalidOperationException) { }
+        catch (JSException) { }
+    }
+
     /// <summary>Calls the API login endpoint and caches the result.</summary>
     public async Task<LoginResult> LoginAsync(string email, string password)
     {
@@ -526,6 +550,19 @@ public sealed class CustomAuthenticationStateProvider : AuthenticationStateProvi
             .Where(c => c.Type != ClaimTypes.Name)
             .ToList();
         claims.Add(new Claim(ClaimTypes.Name, fullName.Trim()));
+        _user = new ClaimsPrincipal(new ClaimsIdentity(claims, "TutorSphereJwt"));
+        NotifyAuthenticationStateChanged(GetAuthenticationStateAsync());
+    }
+
+    internal void UpdateSchoolName(string schoolName)
+    {
+        if (!IsAuthenticated || string.IsNullOrWhiteSpace(schoolName))
+            return;
+
+        var claims = _user.Claims
+            .Where(c => c.Type != "tenant_name")
+            .ToList();
+        claims.Add(new Claim("tenant_name", schoolName.Trim()));
         _user = new ClaimsPrincipal(new ClaimsIdentity(claims, "TutorSphereJwt"));
         NotifyAuthenticationStateChanged(GetAuthenticationStateAsync());
     }

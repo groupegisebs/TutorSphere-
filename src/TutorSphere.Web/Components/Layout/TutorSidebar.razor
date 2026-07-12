@@ -1,3 +1,4 @@
+@rendermode InteractiveServer
 @implements IDisposable
 @inject IStringLocalizer<SharedResources> L
 @inject NavigationManager Navigation
@@ -267,20 +268,25 @@
 
     private async Task LoadSchoolNameAsync()
     {
-        _schoolName = AuthSvc.SchoolName;
-        if (!string.IsNullOrWhiteSpace(_schoolName))
-            return;
-
-        if (AuthSvc.TenantId is not Guid tenantId)
-            return;
-
-        try
+        // Always prefer the live school profile — JWT tenant_name can be stale
+        // (e.g. previously overwritten with the person's name).
+        if (AuthSvc.TenantId is Guid tenantId)
         {
-            var profile = await Api.GetAsync<SchoolProfileDto>($"api/tenants/{tenantId}/profile");
-            if (!string.IsNullOrWhiteSpace(profile?.Name))
-                _schoolName = profile.Name;
+            try
+            {
+                var profile = await Api.GetAsync<SchoolProfileDto>($"api/tenants/{tenantId}/profile");
+                if (!string.IsNullOrWhiteSpace(profile?.Name))
+                {
+                    _schoolName = profile.Name;
+                    if (!string.Equals(AuthSvc.SchoolName, profile.Name, StringComparison.Ordinal))
+                        await AuthSvc.UpdateLocalSchoolNameAsync(profile.Name);
+                    return;
+                }
+            }
+            catch { /* fall back */ }
         }
-        catch { /* keep fallback */ }
+
+        _schoolName = AuthSvc.SchoolName;
     }
 
     private async Task LoadAvatarAsync()
