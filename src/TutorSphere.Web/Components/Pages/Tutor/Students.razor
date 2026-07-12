@@ -2,6 +2,7 @@
 @layout TutorLayout
 @rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
+@inject ApiClient Api
 
 <PageTitle>Mes Élèves – TutorSphere</PageTitle>
 
@@ -15,7 +16,11 @@
     </button>
 </div>
 
-<!-- Search + filter bar -->
+@if (!string.IsNullOrEmpty(_loadError))
+{
+    <div class="alert alert-danger">@_loadError</div>
+}
+
 <div class="ts-toolbar">
     <div class="ts-search-box">
         <i class="bi bi-search ts-search-icon"></i>
@@ -32,8 +37,14 @@
     </select>
 </div>
 
-<!-- Students grid -->
-@if (!Filtered.Any())
+@if (_loading)
+{
+    <div class="ts-loading-state" style="padding:2rem;">
+        <div class="spinner-border text-primary" role="status"></div>
+        <span class="ms-2 text-muted">Chargement des élèves…</span>
+    </div>
+}
+else if (!Filtered.Any())
 {
     <div class="ts-empty-card">
         <i class="bi bi-person-plus ts-empty-icon"></i>
@@ -49,24 +60,18 @@ else
                 <div class="student-card-avatar" style="background:@s.AvatarColor">@s.Initials</div>
                 <div class="student-card-info">
                     <strong>@s.FirstName @s.LastName</strong>
-                    <span class="student-card-level">@s.Level · @s.School</span>
+                    <span class="student-card-level">@(s.Level ?? "—") · @(s.School ?? "—")</span>
                     <span class="student-card-sub @(s.IsActive ? "sub-active" : "sub-inactive")">
                         @(s.IsActive ? "Actif" : "Inactif")
                     </span>
                 </div>
                 <div class="student-card-meta">
-                    <span class="ts-badge ts-badge-neutral">@s.Subject</span>
+                    <span class="ts-badge ts-badge-neutral">@(string.IsNullOrEmpty(s.Subject) ? "—" : s.Subject)</span>
                     <span class="student-card-date">Depuis @s.SinceDate</span>
                 </div>
                 <div class="student-card-actions" @onclick:stopPropagation="true">
                     <button class="ts-icon-btn" title="Voir le profil" @onclick="() => OpenProfile(s)">
                         <i class="bi bi-eye"></i>
-                    </button>
-                    <button class="ts-icon-btn" title="Message" @onclick="() => {}">
-                        <i class="bi bi-chat"></i>
-                    </button>
-                    <button class="ts-icon-btn" title="Rapport" @onclick="() => {}">
-                        <i class="bi bi-file-earmark-text"></i>
                     </button>
                 </div>
             </div>
@@ -74,7 +79,6 @@ else
     </div>
 }
 
-<!-- ── Student Profile Modal ── -->
 @if (_profileStudent != null)
 {
     <div class="ts-modal-backdrop" @onclick="CloseProfile">
@@ -89,19 +93,11 @@ else
                 </div>
                 <button class="ts-modal-close" @onclick="CloseProfile"><i class="bi bi-x-lg"></i></button>
             </div>
-            <div class="ts-modal-tabs">
-                @foreach (var tab in new[] { "Informations", "Abonnements", "Présence", "Rapports", "Objectifs" })
-                {
-                    <button class="ts-tab @(_profileTab == tab ? "active" : "")" @onclick="() => _profileTab = tab">@tab</button>
-                }
-            </div>
             <div class="ts-modal-body">
-                @if (_profileTab == "Informations")
-                {
-                    <div class="ts-form-grid">
-                        <div class="ts-form-row"><label>Prénom</label><span>@_profileStudent.FirstName</span></div>
-                        <div class="ts-form-row"><label>Nom</label><span>@_profileStudent.LastName</span></div>
-                        <div class="ts-form-row">
+                <div class="ts-form-grid">
+                    <div class="ts-form-row"><label>Prénom</label><span>@_profileStudent.FirstName</span></div>
+                    <div class="ts-form-row"><label>Nom</label><span>@_profileStudent.LastName</span></div>
+                    <div class="ts-form-row">
                         <label>Date de naissance</label>
                         <span>
                             @_profileStudent.BirthDate
@@ -110,41 +106,24 @@ else
                                 <span class="ms-2 text-muted">(@_profileStudent.Age ans)</span>
                                 if (_profileStudent.IsAutonomous)
                                 {
-                                    <span class="ts-badge ts-badge-neutral ms-2" title="Élève autonome — accès parental restreint">Autonome</span>
+                                    <span class="ts-badge ts-badge-neutral ms-2">Autonome</span>
                                 }
                             }
                         </span>
                     </div>
-                        <div class="ts-form-row"><label>Sexe</label><span>@_profileStudent.Gender</span></div>
-                        <div class="ts-form-row"><label>École</label><span>@_profileStudent.School</span></div>
-                        <div class="ts-form-row"><label>Classe</label><span>@_profileStudent.Class</span></div>
-                        <div class="ts-form-row"><label>Niveau</label><span>@_profileStudent.Level</span></div>
-                        <div class="ts-form-row"><label>Téléphone</label><span>@_profileStudent.Phone</span></div>
-                        <div class="ts-form-row"><label>Courriel</label><span>@_profileStudent.Email</span></div>
-                        <div class="ts-form-row"><label>Parent</label><span>@_profileStudent.ParentName</span></div>
-                        <div class="ts-form-row"><label>Matière</label><span>@_profileStudent.Subject</span></div>
-                        <div class="ts-form-row"><label>Observations</label><span>@_profileStudent.Observations</span></div>
-                    </div>
-                }
-                else if (_profileTab == "Présence")
-                {
-                    <div class="presence-stats">
-                        <div class="presence-stat"><span class="presence-num text-success">@_profileStudent.Present</span><span>Présent</span></div>
-                        <div class="presence-stat"><span class="presence-num text-danger">@_profileStudent.Absent</span><span>Absent</span></div>
-                        <div class="presence-stat"><span class="presence-num text-warning">@_profileStudent.Late</span><span>Retard</span></div>
-                        <div class="presence-stat"><span class="presence-num" style="color:var(--ts-primary)">@_profileStudent.AttendanceRate%</span><span>Taux</span></div>
-                    </div>
-                }
-                else
-                {
-                    <p class="ts-empty-inline">Aucune donnée pour cet onglet.</p>
-                }
+                    <div class="ts-form-row"><label>École</label><span>@(_profileStudent.School ?? "—")</span></div>
+                    <div class="ts-form-row"><label>Niveau</label><span>@(_profileStudent.Level ?? "—")</span></div>
+                    <div class="ts-form-row"><label>Téléphone</label><span>@(_profileStudent.Phone ?? "—")</span></div>
+                    <div class="ts-form-row"><label>Courriel</label><span>@(_profileStudent.Email ?? "—")</span></div>
+                    <div class="ts-form-row"><label>Parent</label><span>@(_profileStudent.ParentName ?? "—")</span></div>
+                    <div class="ts-form-row"><label>Matière</label><span>@(_profileStudent.Subject ?? "—")</span></div>
+                    <div class="ts-form-row"><label>Observations</label><span>@(_profileStudent.Observations ?? "—")</span></div>
+                </div>
             </div>
         </div>
     </div>
 }
 
-<!-- ── Add Student Modal ── -->
 @if (_showAddModal)
 {
     <div class="ts-modal-backdrop" @onclick="CloseAddModal">
@@ -156,21 +135,30 @@ else
             <div class="ts-modal-body">
                 <div class="row g-3">
                     <div class="col-6"><label class="form-label">Prénom *</label>
-                        <input class="form-control" @bind="_form.FirstName" placeholder="Emma" /></div>
+                        <input class="form-control" @bind="_form.FirstName" /></div>
                     <div class="col-6"><label class="form-label">Nom *</label>
-                        <input class="form-control" @bind="_form.LastName" placeholder="Johnson" /></div>
+                        <input class="form-control" @bind="_form.LastName" /></div>
                     <div class="col-6"><label class="form-label">Date de naissance</label>
                         <input type="date" class="form-control" @bind="_form.BirthDate" /></div>
-                    <div class="col-6"><label class="form-label">Sexe</label>
-                        <select class="form-select" @bind="_form.Gender">
-                            <option value="">—</option><option>Féminin</option><option>Masculin</option>
-                        </select></div>
+                    <div class="col-6"><label class="form-label">Parent</label>
+                        <select class="form-select" @bind="_form.ParentProfileId">
+                            <option value="">— Aucun —</option>
+                            @foreach (var p in _parents)
+                            {
+                                <option value="@p.Id">@p.FirstName @p.LastName</option>
+                            }
+                        </select>
+                    </div>
                     <div class="col-6"><label class="form-label">École</label>
-                        <input class="form-control" @bind="_form.School" placeholder="Collège Victor Hugo" /></div>
-                    <div class="col-6"><label class="form-label">Classe / Niveau</label>
-                        <input class="form-control" @bind="_form.Class" placeholder="3ème" /></div>
+                        <input class="form-control" @bind="_form.School" /></div>
+                    <div class="col-6"><label class="form-label">Niveau</label>
+                        <select class="form-select" @bind="_form.Level">
+                            <option value="">—</option>
+                            <option>Primaire</option><option>Collège</option><option>Lycée</option><option>Université</option>
+                        </select>
+                    </div>
                     <div class="col-6"><label class="form-label">Matière principale</label>
-                        <input class="form-control" @bind="_form.Subject" placeholder="Mathématiques" /></div>
+                        <input class="form-control" @bind="_form.Subject" /></div>
                     <div class="col-6"><label class="form-label">Courriel</label>
                         <input type="email" class="form-control" @bind="_form.Email" /></div>
                     <div class="col-12"><label class="form-label">Téléphone</label>
@@ -184,8 +172,10 @@ else
                 }
             </div>
             <div class="ts-modal-footer">
-                <button class="btn btn-outline-secondary" @onclick="CloseAddModal">Annuler</button>
-                <button class="btn btn-primary" @onclick="SaveStudent">Enregistrer</button>
+                <button class="btn btn-outline-secondary" @onclick="CloseAddModal" disabled="@_saving">Annuler</button>
+                <button class="btn btn-primary" @onclick="SaveStudent" disabled="@_saving">
+                    @(_saving ? "Enregistrement…" : "Enregistrer")
+                </button>
             </div>
         </div>
     </div>
@@ -196,10 +186,15 @@ else
     private string _filterLevel = "";
     private string _filterStatus = "";
     private StudentViewModel? _profileStudent;
-    private string _profileTab = "Informations";
     private bool _showAddModal;
     private string _addError = "";
+    private string _loadError = "";
+    private bool _loading = true;
+    private bool _saving;
     private StudentForm _form = new();
+    private readonly List<StudentViewModel> _students = [];
+    private readonly List<ParentOption> _parents = [];
+    private static readonly string[] AvatarColors = ["#7c3aed", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444", "#ec4899"];
 
     private IEnumerable<StudentViewModel> Filtered => _students
         .Where(s => string.IsNullOrEmpty(_search) ||
@@ -209,40 +204,124 @@ else
             (_filterStatus == "active" && s.IsActive) ||
             (_filterStatus == "inactive" && !s.IsActive));
 
-    private void OpenProfile(StudentViewModel s) { _profileStudent = s; _profileTab = "Informations"; }
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _loadError = "";
+        try
+        {
+            var result = await Api.GetWithErrorAsync<List<ApiStudentDto>>("api/students");
+            if (result.Error is not null)
+            {
+                _loadError = result.Error;
+                _students.Clear();
+                return;
+            }
+
+            _students.Clear();
+            var list = result.Value ?? [];
+            for (var i = 0; i < list.Count; i++)
+                _students.Add(MapStudent(list[i], i));
+
+            var parents = await Api.GetAsync<List<ApiParentDto>>("api/parents") ?? [];
+            _parents.Clear();
+            _parents.AddRange(parents.Select(p => new ParentOption(p.Id, p.FirstName, p.LastName)));
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void OpenProfile(StudentViewModel s) => _profileStudent = s;
     private void CloseProfile() => _profileStudent = null;
     private void OpenAddModal() { _form = new(); _addError = ""; _showAddModal = true; }
     private void CloseAddModal() => _showAddModal = false;
 
-    private void SaveStudent()
+    private async Task SaveStudent()
     {
         if (string.IsNullOrWhiteSpace(_form.FirstName) || string.IsNullOrWhiteSpace(_form.LastName))
-        { _addError = "Prénom et nom sont obligatoires."; return; }
-        var colors = new[] { "#7c3aed","#0ea5e9","#10b981","#f59e0b","#ef4444","#ec4899" };
-        var s = new StudentViewModel
         {
-            FirstName = _form.FirstName, LastName = _form.LastName,
-            BirthDate = _form.BirthDate?.ToString("dd/MM/yyyy") ?? "—",
-            BirthDateParsed = _form.BirthDate,
-            Gender = _form.Gender, School = _form.School, Class = _form.Class,
-            Level = _form.Class, Subject = _form.Subject, Email = _form.Email,
-            Phone = _form.Phone, Observations = _form.Observations,
-            IsActive = true, SinceDate = DateTime.Now.ToString("MM/yyyy"),
-            ParentName = "—", Present = 0, Absent = 0, Late = 0, AttendanceRate = 100,
-            AvatarColor = colors[_students.Count % colors.Length]
-        };
-        _students.Add(s);
-        _showAddModal = false;
+            _addError = "Prénom et nom sont obligatoires.";
+            return;
+        }
+
+        _saving = true;
+        _addError = "";
+        try
+        {
+            Guid? parentId = Guid.TryParse(_form.ParentProfileId, out var pid) ? pid : null;
+            var req = new
+            {
+                firstName = _form.FirstName.Trim(),
+                lastName = _form.LastName.Trim(),
+                email = string.IsNullOrWhiteSpace(_form.Email) ? null : _form.Email.Trim(),
+                phone = string.IsNullOrWhiteSpace(_form.Phone) ? null : _form.Phone.Trim(),
+                dateOfBirth = _form.BirthDate,
+                parentProfileId = parentId,
+                schoolLevel = string.IsNullOrWhiteSpace(_form.Level) ? null : _form.Level,
+                schoolName = string.IsNullOrWhiteSpace(_form.School) ? null : _form.School.Trim(),
+                subjects = string.IsNullOrWhiteSpace(_form.Subject) ? null : _form.Subject.Trim(),
+                notes = string.IsNullOrWhiteSpace(_form.Observations) ? null : _form.Observations.Trim()
+            };
+
+            var result = await Api.PostWithErrorAsync<ApiStudentDto>("api/students", req);
+            if (result.Error is not null || result.Value is null)
+            {
+                _addError = result.Error ?? "Création impossible.";
+                return;
+            }
+
+            _students.Add(MapStudent(result.Value, _students.Count));
+            _showAddModal = false;
+        }
+        finally
+        {
+            _saving = false;
+        }
     }
 
-    private record StudentForm
+    private static StudentViewModel MapStudent(ApiStudentDto d, int index) => new()
+    {
+        Id = d.Id,
+        FirstName = d.FirstName,
+        LastName = d.LastName,
+        BirthDate = d.DateOfBirth?.ToLocalTime().ToString("dd/MM/yyyy") ?? "—",
+        BirthDateParsed = d.DateOfBirth?.Date,
+        School = d.SchoolName,
+        Level = d.SchoolLevel,
+        Subject = d.Subjects is { Count: > 0 } ? string.Join(", ", d.Subjects) : null,
+        Email = d.Email,
+        Phone = d.Phone,
+        Observations = d.Notes,
+        ParentName = d.ParentName,
+        IsActive = d.IsActive,
+        SinceDate = d.CreatedAt.ToLocalTime().ToString("MM/yyyy"),
+        AvatarColor = AvatarColors[index % AvatarColors.Length],
+        Age = d.Age,
+        IsAutonomous = d.IsAutonomous
+    };
+
+    private record ApiStudentDto(
+        Guid Id, string FirstName, string LastName, string? Email, string? Phone,
+        DateTime? DateOfBirth, int? Age, bool IsMinor, bool IsAutonomous,
+        Guid ParentProfileId, string? ParentName, string? PhotoUrl,
+        string? SchoolLevel, string? SchoolName, List<string>? Subjects,
+        string? Notes, bool IsActive, DateTime CreatedAt);
+
+    private record ApiParentDto(Guid Id, string FirstName, string LastName, string Email, string? Phone, int ChildrenCount);
+    private record ParentOption(Guid Id, string FirstName, string LastName);
+
+    private class StudentForm
     {
         public string FirstName { get; set; } = "";
         public string LastName { get; set; } = "";
         public DateTime? BirthDate { get; set; }
-        public string Gender { get; set; } = "";
+        public string ParentProfileId { get; set; } = "";
         public string School { get; set; } = "";
-        public string Class { get; set; } = "";
+        public string Level { get; set; } = "";
         public string Subject { get; set; } = "";
         public string Email { get; set; } = "";
         public string Phone { get; set; } = "";
@@ -251,59 +330,23 @@ else
 
     private class StudentViewModel
     {
+        public Guid Id { get; set; }
         public string FirstName { get; set; } = "";
         public string LastName { get; set; } = "";
         public string BirthDate { get; set; } = "";
         public DateTime? BirthDateParsed { get; set; }
-        public string Gender { get; set; } = "";
-        public string School { get; set; } = "";
-        public string Class { get; set; } = "";
-        public string Level { get; set; } = "";
-        public string Subject { get; set; } = "";
-        public string Email { get; set; } = "";
-        public string Phone { get; set; } = "";
-        public string Observations { get; set; } = "";
-        public string ParentName { get; set; } = "";
+        public string? School { get; set; }
+        public string? Level { get; set; }
+        public string? Subject { get; set; }
+        public string? Email { get; set; }
+        public string? Phone { get; set; }
+        public string? Observations { get; set; }
+        public string? ParentName { get; set; }
         public bool IsActive { get; set; }
         public string SinceDate { get; set; } = "";
         public string AvatarColor { get; set; } = "#7c3aed";
-        public int Present { get; set; }
-        public int Absent { get; set; }
-        public int Late { get; set; }
-        public int AttendanceRate { get; set; }
+        public int? Age { get; set; }
+        public bool IsAutonomous { get; set; }
         public string Initials => $"{FirstName.FirstOrDefault()}{LastName.FirstOrDefault()}";
-        public int? Age => BirthDateParsed.HasValue
-            ? (int)((DateTime.Today - BirthDateParsed.Value).TotalDays / 365.25)
-            : null;
-        public bool IsAutonomous => Age.HasValue && Age >= 14;
     }
-
-    private readonly List<StudentViewModel> _students =
-    [
-        new(){ FirstName="Emma", LastName="Johnson", BirthDate="12/03/2009", BirthDateParsed=new DateTime(2009,3,12), Gender="Féminin",
-            School="Collège Victor Hugo", Class="4ème", Level="Collège", Subject="Mathématiques",
-            Email="emma.j@email.com", Phone="06 12 34 56 78", ParentName="Marie Johnson",
-            IsActive=true, SinceDate="09/2024", AvatarColor="#7c3aed",
-            Present=18, Absent=2, Late=1, AttendanceRate=90, Observations="Bonne progression" },
-        new(){ FirstName="Liam", LastName="Brown", BirthDate="05/07/2010", BirthDateParsed=new DateTime(2010,7,5), Gender="Masculin",
-            School="Collège Jules Ferry", Class="5ème", Level="Collège", Subject="Physique",
-            Email="liam.b@email.com", Phone="06 98 76 54 32", ParentName="David Brown",
-            IsActive=true, SinceDate="10/2024", AvatarColor="#0ea5e9",
-            Present=15, Absent=3, Late=2, AttendanceRate=83, Observations="Difficultés en électricité" },
-        new(){ FirstName="Sophia", LastName="Davis", BirthDate="22/11/2007", BirthDateParsed=new DateTime(2007,11,22), Gender="Féminin",
-            School="Lycée Pasteur", Class="Terminale", Level="Lycée", Subject="Chimie",
-            Email="sophia.d@email.com", Phone="07 11 22 33 44", ParentName="Laura Davis",
-            IsActive=true, SinceDate="01/2025", AvatarColor="#10b981",
-            Present=12, Absent=0, Late=1, AttendanceRate=97, Observations="Très motivée" },
-        new(){ FirstName="Noah", LastName="Wilson", BirthDate="14/06/2008", BirthDateParsed=new DateTime(2008,6,14), Gender="Masculin",
-            School="Lycée Molière", Class="1ère", Level="Lycée", Subject="Mathématiques",
-            Email="noah.w@email.com", Phone="06 55 44 33 22", ParentName="James Wilson",
-            IsActive=false, SinceDate="06/2024", AvatarColor="#f59e0b",
-            Present=8, Absent=5, Late=3, AttendanceRate=62, Observations="Départ famille" },
-        new(){ FirstName="Olivia", LastName="Martinez", BirthDate="30/09/2011", BirthDateParsed=new DateTime(2011,9,30), Gender="Féminin",
-            School="École Primaire Voltaire", Class="CM2", Level="Primaire", Subject="Français",
-            Email="olivia.m@email.com", Phone="06 77 88 99 00", ParentName="Ana Martinez",
-            IsActive=true, SinceDate="02/2025", AvatarColor="#ec4899",
-            Present=20, Absent=1, Late=0, AttendanceRate=99, Observations="Excellent niveau" },
-    ];
 }

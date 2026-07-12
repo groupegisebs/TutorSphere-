@@ -248,6 +248,43 @@ public sealed class ApiClient
         return result.Error is null;
     }
 
+    public async Task<ApiResult<T>> PostMultipartAsync<T>(string url, MultipartFormDataContent content) where T : class
+    {
+        var authFailure = await FailIfUnauthenticatedAsync<T>();
+        if (authFailure is not null)
+            return authFailure;
+
+        try
+        {
+            var req = await BuildRequestAsync(HttpMethod.Post, url);
+            req.Content = content;
+            using var resp = await _http.SendAsync(req);
+            var responseBody = await resp.Content.ReadAsStringAsync();
+
+            if (resp.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                HandleUnauthorizedResponse();
+                return UnauthorizedResult<T>();
+            }
+
+            if (!resp.IsSuccessStatusCode)
+                return FailFromResponse<T>(resp, responseBody);
+
+            if (string.IsNullOrWhiteSpace(responseBody))
+                return new ApiResult<T>(null, "Réponse vide du serveur.");
+
+            var value = JsonSerializer.Deserialize<T>(responseBody, JsonOpts);
+            if (value is null)
+                return new ApiResult<T>(null, "Réponse inattendue du serveur.");
+
+            return new ApiResult<T>(value, null);
+        }
+        catch (Exception ex)
+        {
+            return new ApiResult<T>(null, $"Erreur de connexion à l'API : {ex.Message}");
+        }
+    }
+
     internal static string? ExtractError(string body)
     {
         if (string.IsNullOrWhiteSpace(body)) return null;

@@ -2,6 +2,7 @@
 @inject IStringLocalizer<SharedResources> L
 @inject NavigationManager Navigation
 @inject AuthService AuthSvc
+@inject MessageService MessageSvc
 
 <div class="sidebar-brand sidebar-brand--navy">
     <a class="sidebar-brand-link" href="tutor/dashboard">
@@ -14,7 +15,7 @@
 </div>
 
 <div class="sidebar-profile sidebar-profile--navy">
-    <div class="sidebar-profile-avatar">JS</div>
+    <div class="sidebar-profile-avatar">@AvatarInitials</div>
     <div class="sidebar-profile-info">
         <span class="sidebar-user-name">@(AuthSvc.UserName ?? AuthSvc.UserEmail ?? "Tuteur")</span>
         <span class="sidebar-user-role">@L["Nav_Role_Tutor"]</span>
@@ -163,7 +164,32 @@
 </div>
 
 @code {
-    private int UnreadMessages => 3;
+    private int UnreadMessages;
+
+    private string AvatarInitials
+    {
+        get
+        {
+            var name = AuthSvc.UserName ?? AuthSvc.UserEmail ?? "";
+            var parts = name.Split([' ', '@'], StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length >= 2)
+                return $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[1][0])}";
+            return name.Length > 0 ? char.ToUpperInvariant(name[0]).ToString() : "?";
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var conversations = await MessageSvc.GetConversationsAsync();
+            UnreadMessages = conversations.Sum(c => c.UnreadCount);
+        }
+        catch
+        {
+            UnreadMessages = 0;
+        }
+    }
 
     private Task LogoutAsync()
     {

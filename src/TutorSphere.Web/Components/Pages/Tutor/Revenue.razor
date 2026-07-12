@@ -168,7 +168,7 @@
     private string PeriodLabel => _period switch { "week"=>"cette semaine","month"=>"ce mois","quarter"=>"ce trimestre","year"=>"cette année",_=>"" };
 
     private bool _statsLoading = true;
-    private decimal _monthlyRevenue = 2450m;
+    private decimal _monthlyRevenue;
     private int _activeStudents;
     private int _activeSubscriptions;
     private int _upcomingLessons;
@@ -206,7 +206,7 @@
 
     private record SubjectRevenue(string Subject, decimal Amount, string Color)
     {
-        public double Pct => Math.Min(100, (double)(Amount / 2450m * 100));
+        public double Pct => Amount <= 0 ? 0 : 100;
     }
     private static readonly SubjectRevenue[] _bySubject = [];
 

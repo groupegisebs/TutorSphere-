@@ -2,6 +2,7 @@
 @layout TutorLayout
 @rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
+@inject ApiClient Api
 
 <PageTitle>Parents – TutorSphere</PageTitle>
 
@@ -15,6 +16,11 @@
     </button>
 </div>
 
+@if (!string.IsNullOrEmpty(_loadError))
+{
+    <div class="alert alert-danger">@_loadError</div>
+}
+
 <div class="ts-toolbar">
     <div class="ts-search-box">
         <i class="bi bi-search ts-search-icon"></i>
@@ -23,49 +29,66 @@
     </div>
 </div>
 
-<div class="ts-table-card">
-    <table class="table ts-table">
-        <thead>
-            <tr>
-                <th>Parent</th><th>Enfants</th><th>Téléphone</th>
-                <th>Courriel</th><th>Solde</th><th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var p in FilteredParents)
-            {
+@if (_loading)
+{
+    <div class="ts-loading-state" style="padding:2rem;">
+        <div class="spinner-border text-primary" role="status"></div>
+        <span class="ms-2 text-muted">Chargement des parents…</span>
+    </div>
+}
+else if (!FilteredParents.Any())
+{
+    <div class="ts-empty-card">
+        <i class="bi bi-person-plus ts-empty-icon"></i>
+        <p>Aucun parent enregistré. Ajoutez votre premier contact parent.</p>
+    </div>
+}
+else
+{
+    <div class="ts-table-card">
+        <table class="table ts-table">
+            <thead>
                 <tr>
-                    <td>
-                        <div class="ts-cell-user">
-                            <div class="ts-avatar" style="background:@p.Color">@p.Initials</div>
-                            <div><strong>@p.FullName</strong><br/><small class="text-muted">@p.Address</small></div>
-                        </div>
-                    </td>
-                    <td>
-                        @foreach (var c in p.Children)
-                        {
-                            <span class="ts-badge ts-badge-neutral me-1">@c</span>
-                        }
-                    </td>
-                    <td>@p.Phone</td>
-                    <td>@p.Email</td>
-                    <td>
-                        <span class="@(p.Balance >= 0 ? "text-success" : "text-danger") fw-semibold">
-                            @p.Balance.ToString("+#;-#;0") $
-                        </span>
-                    </td>
-                    <td>
-                        <div class="ts-action-group">
-                            <button class="ts-icon-btn" title="Voir" @onclick="() => _selected = p"><i class="bi bi-eye"></i></button>
-                            <button class="ts-icon-btn" title="Message"><i class="bi bi-chat"></i></button>
-                            <button class="ts-icon-btn" title="Facture"><i class="bi bi-receipt"></i></button>
-                        </div>
-                    </td>
+                    <th>Parent</th><th>Enfants</th><th>Téléphone</th>
+                    <th>Courriel</th><th>Actions</th>
                 </tr>
-            }
-        </tbody>
-    </table>
-</div>
+            </thead>
+            <tbody>
+                @foreach (var p in FilteredParents)
+                {
+                    <tr>
+                        <td>
+                            <div class="ts-cell-user">
+                                <div class="ts-avatar" style="background:@p.Color">@p.Initials</div>
+                                <div><strong>@p.FullName</strong></div>
+                            </div>
+                        </td>
+                        <td>
+                            @if (p.Children.Count == 0)
+                            {
+                                <span class="text-muted">@p.ChildrenCount enfant(s)</span>
+                            }
+                            else
+                            {
+                                @foreach (var c in p.Children)
+                                {
+                                    <span class="ts-badge ts-badge-neutral me-1">@c</span>
+                                }
+                            }
+                        </td>
+                        <td>@(p.Phone ?? "—")</td>
+                        <td>@p.Email</td>
+                        <td>
+                            <div class="ts-action-group">
+                                <button class="ts-icon-btn" title="Voir" @onclick="() => OpenDetail(p)"><i class="bi bi-eye"></i></button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
 
 @if (_selected != null)
 {
@@ -75,14 +98,13 @@
                 <div class="ts-avatar ts-avatar-lg" style="background:@_selected.Color">@_selected.Initials</div>
                 <div>
                     <h2>@_selected.FullName</h2>
-                    <small class="text-muted">@_selected.Address</small>
                 </div>
                 <button class="ts-modal-close" @onclick="() => _selected = null"><i class="bi bi-x-lg"></i></button>
             </div>
             <div class="ts-modal-tabs">
-                @foreach (var t in new[]{"Infos","Enfants","Historique","Factures","Messages"})
+                @foreach (var t in new[] { "Infos", "Enfants" })
                 {
-                    <button class="ts-tab @(_pTab==t?"active":"")" @onclick="()=>_pTab=t">@t</button>
+                    <button class="ts-tab @(_pTab == t ? "active" : "")" @onclick="() => _pTab = t">@t</button>
                 }
             </div>
             <div class="ts-modal-body">
@@ -90,27 +112,27 @@
                 {
                     <div class="ts-form-grid">
                         <div class="ts-form-row"><label>Nom complet</label><span>@_selected.FullName</span></div>
-                        <div class="ts-form-row"><label>Téléphone</label><span>@_selected.Phone</span></div>
+                        <div class="ts-form-row"><label>Téléphone</label><span>@(_selected.Phone ?? "—")</span></div>
                         <div class="ts-form-row"><label>Courriel</label><span>@_selected.Email</span></div>
-                        <div class="ts-form-row"><label>Adresse</label><span>@_selected.Address</span></div>
-                        <div class="ts-form-row"><label>Mode de paiement</label><span>Carte Visa **** 4242</span></div>
-                        <div class="ts-form-row"><label>Solde</label>
-                            <span class="@(_selected.Balance>=0?"text-success":"text-danger") fw-bold">
-                                @_selected.Balance.ToString("+#;-#;0") $
-                            </span>
-                        </div>
                     </div>
                 }
                 else if (_pTab == "Enfants")
                 {
-                    @foreach (var c in _selected.Children)
+                    @if (_childrenLoading)
                     {
-                        <div class="ts-list-item"><i class="bi bi-person me-2 text-primary"></i>@c</div>
+                        <div class="text-muted">Chargement…</div>
                     }
-                }
-                else
-                {
-                    <p class="ts-empty-inline">Aucune donnée pour cet onglet.</p>
+                    else if (_selected.Children.Count == 0)
+                    {
+                        <p class="ts-empty-inline">Aucun enfant lié.</p>
+                    }
+                    else
+                    {
+                        @foreach (var c in _selected.Children)
+                        {
+                            <div class="ts-list-item"><i class="bi bi-person me-2 text-primary"></i>@c</div>
+                        }
+                    }
                 }
             </div>
         </div>
@@ -119,11 +141,11 @@
 
 @if (_showAdd)
 {
-    <div class="ts-modal-backdrop" @onclick="() => _showAdd=false">
+    <div class="ts-modal-backdrop" @onclick="() => _showAdd = false">
         <div class="ts-modal" @onclick:stopPropagation="true">
             <div class="ts-modal-header">
                 <h2>Ajouter un parent</h2>
-                <button class="ts-modal-close" @onclick="()=>_showAdd=false"><i class="bi bi-x-lg"></i></button>
+                <button class="ts-modal-close" @onclick="() => _showAdd = false"><i class="bi bi-x-lg"></i></button>
             </div>
             <div class="ts-modal-body">
                 <div class="row g-3">
@@ -133,15 +155,19 @@
                         <input class="form-control" @bind="_pForm.Last" /></div>
                     <div class="col-6"><label class="form-label">Téléphone</label>
                         <input class="form-control" @bind="_pForm.Phone" /></div>
-                    <div class="col-6"><label class="form-label">Courriel</label>
+                    <div class="col-6"><label class="form-label">Courriel *</label>
                         <input type="email" class="form-control" @bind="_pForm.Email" /></div>
-                    <div class="col-12"><label class="form-label">Adresse</label>
-                        <input class="form-control" @bind="_pForm.Address" /></div>
                 </div>
+                @if (!string.IsNullOrEmpty(_addError))
+                {
+                    <div class="alert alert-danger mt-3">@_addError</div>
+                }
             </div>
             <div class="ts-modal-footer">
-                <button class="btn btn-outline-secondary" @onclick="()=>_showAdd=false">Annuler</button>
-                <button class="btn btn-primary" @onclick="SaveParent">Enregistrer</button>
+                <button class="btn btn-outline-secondary" @onclick="() => _showAdd = false" disabled="@_saving">Annuler</button>
+                <button class="btn btn-primary" @onclick="SaveParent" disabled="@_saving">
+                    @(_saving ? "Enregistrement…" : "Enregistrer")
+                </button>
             </div>
         </div>
     </div>
@@ -152,38 +178,144 @@
     private ParentVM? _selected;
     private string _pTab = "Infos";
     private bool _showAdd;
-    private (string First, string Last, string Phone, string Email, string Address) _pForm;
+    private bool _loading = true;
+    private bool _saving;
+    private bool _childrenLoading;
+    private string _loadError = "";
+    private string _addError = "";
+    private ParentForm _pForm = new();
+    private readonly List<ParentVM> _parents = [];
+    private static readonly string[] Colors = ["#7c3aed", "#0ea5e9", "#10b981", "#f59e0b"];
 
-    private void OpenAdd() { _pForm = ("","","","",""); _showAdd = true; }
-
-    private void SaveParent()
-    {
-        if (string.IsNullOrWhiteSpace(_pForm.First)) return;
-        var colors = new[]{"#7c3aed","#0ea5e9","#10b981","#f59e0b"};
-        _parents.Add(new ParentVM {
-            FullName = $"{_pForm.First} {_pForm.Last}",
-            Phone = _pForm.Phone, Email = _pForm.Email, Address = _pForm.Address,
-            Children = [], Balance = 0,
-            Color = colors[_parents.Count % colors.Length]
-        });
-        _showAdd = false;
-    }
+    private void OpenAdd() { _pForm = new(); _addError = ""; _showAdd = true; }
 
     private IEnumerable<ParentVM> FilteredParents => _parents
         .Where(p => string.IsNullOrEmpty(_search) ||
             p.FullName.Contains(_search, StringComparison.OrdinalIgnoreCase));
 
-    private class ParentVM
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
     {
-        public string FullName { get; set; } = "";
-        public string Phone { get; set; } = "";
-        public string Email { get; set; } = "";
-        public string Address { get; set; } = "";
-        public List<string> Children { get; set; } = [];
-        public decimal Balance { get; set; }
-        public string Color { get; set; } = "#7c3aed";
-        public string Initials => FullName.Split(' ') is [var a, var b, ..] ? $"{a[0]}{b[0]}" : FullName[..1].ToUpper();
+        _loading = true;
+        _loadError = "";
+        try
+        {
+            var result = await Api.GetWithErrorAsync<List<ApiParentDto>>("api/parents");
+            if (result.Error is not null)
+            {
+                _loadError = result.Error;
+                _parents.Clear();
+                return;
+            }
+
+            _parents.Clear();
+            var list = result.Value ?? [];
+            for (var i = 0; i < list.Count; i++)
+                _parents.Add(MapParent(list[i], i));
+        }
+        finally
+        {
+            _loading = false;
+        }
     }
 
-    private readonly List<ParentVM> _parents = [];
+    private async Task OpenDetail(ParentVM p)
+    {
+        _selected = p;
+        _pTab = "Infos";
+        _childrenLoading = true;
+        try
+        {
+            var children = await Api.GetAsync<List<ApiChildDto>>($"api/parents/{p.Id}/children") ?? [];
+            p.Children = children.Select(c => $"{c.FirstName} {c.LastName}").ToList();
+        }
+        finally
+        {
+            _childrenLoading = false;
+        }
+    }
+
+    private async Task SaveParent()
+    {
+        if (string.IsNullOrWhiteSpace(_pForm.First) || string.IsNullOrWhiteSpace(_pForm.Last))
+        {
+            _addError = "Prénom et nom sont obligatoires.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_pForm.Email))
+        {
+            _addError = "Le courriel est obligatoire.";
+            return;
+        }
+
+        _saving = true;
+        _addError = "";
+        try
+        {
+            var req = new
+            {
+                firstName = _pForm.First.Trim(),
+                lastName = _pForm.Last.Trim(),
+                email = _pForm.Email.Trim(),
+                phone = string.IsNullOrWhiteSpace(_pForm.Phone) ? null : _pForm.Phone.Trim()
+            };
+
+            var result = await Api.PostWithErrorAsync<ApiParentDto>("api/parents", req);
+            if (result.Error is not null || result.Value is null)
+            {
+                _addError = result.Error ?? "Création impossible.";
+                return;
+            }
+
+            _parents.Add(MapParent(result.Value, _parents.Count));
+            _showAdd = false;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private static ParentVM MapParent(ApiParentDto d, int index) => new()
+    {
+        Id = d.Id,
+        FullName = $"{d.FirstName} {d.LastName}".Trim(),
+        Phone = d.Phone,
+        Email = d.Email,
+        ChildrenCount = d.ChildrenCount,
+        Children = [],
+        Color = Colors[index % Colors.Length]
+    };
+
+    private record ApiParentDto(Guid Id, string FirstName, string LastName, string Email, string? Phone, int ChildrenCount);
+    private record ApiChildDto(Guid Id, string FirstName, string LastName);
+
+    private class ParentForm
+    {
+        public string First { get; set; } = "";
+        public string Last { get; set; } = "";
+        public string Phone { get; set; } = "";
+        public string Email { get; set; } = "";
+    }
+
+    private class ParentVM
+    {
+        public Guid Id { get; set; }
+        public string FullName { get; set; } = "";
+        public string? Phone { get; set; }
+        public string Email { get; set; } = "";
+        public int ChildrenCount { get; set; }
+        public List<string> Children { get; set; } = [];
+        public string Color { get; set; } = "#7c3aed";
+        public string Initials
+        {
+            get
+            {
+                var parts = FullName.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length >= 2) return $"{parts[0][0]}{parts[1][0]}".ToUpperInvariant();
+                return FullName.Length > 0 ? FullName[..1].ToUpperInvariant() : "?";
+            }
+        }
+    }
 }

@@ -429,6 +429,7 @@ public class ParentService : IParentService
         s.FirstName,
         s.LastName,
         s.Email,
+        s.Phone,
         s.DateOfBirth,
         s.Age,
         s.IsMinor,
@@ -438,7 +439,10 @@ public class ParentService : IParentService
         s.PhotoUrl,
         s.SchoolLevel,
         s.SchoolName,
-        ParseSubjects(s.Subjects));
+        ParseSubjects(s.Subjects),
+        s.Notes,
+        s.IsActive,
+        s.CreatedAt);
 
     private static ParentDashboardChildDto MapDashboardChild(
         Student student,

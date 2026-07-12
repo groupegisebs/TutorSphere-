@@ -29,10 +29,11 @@ public class StudentService : IStudentService
 
     public Task<IReadOnlyList<StudentDto>> GetAllAsync(CancellationToken ct = default)
     {
+        var parents = _db.ParentProfiles.ToDictionary(p => p.Id, p => $"{p.FirstName} {p.LastName}".Trim());
         var students = _db.Students
             .OrderBy(s => s.LastName).ThenBy(s => s.FirstName)
             .ToList()
-            .Select(MapToDto)
+            .Select(s => MapToDto(s, parents.GetValueOrDefault(s.ParentProfileId)))
             .ToList();
         return Task.FromResult<IReadOnlyList<StudentDto>>(students);
     }
@@ -40,13 +41,13 @@ public class StudentService : IStudentService
     public Task<StudentDto?> GetByIdAsync(Guid id, CancellationToken ct = default)
     {
         var student = _db.Students.FirstOrDefault(s => s.Id == id);
-        return Task.FromResult(student is null ? null : MapToDto(student));
+        return Task.FromResult(student is null ? null : MapToDto(student, ResolveParentName(student.ParentProfileId)));
     }
 
     public Task<StudentDto?> GetByUserIdAsync(string userId, CancellationToken ct = default)
     {
         var student = _db.Students.FirstOrDefault(s => s.UserId == userId);
-        return Task.FromResult(student is null ? null : MapToDto(student));
+        return Task.FromResult(student is null ? null : MapToDto(student, ResolveParentName(student.ParentProfileId)));
     }
 
     public async Task<StudentDto> CreateAsync(CreateStudentRequest request, CancellationToken ct = default)
@@ -58,13 +59,19 @@ public class StudentService : IStudentService
             FirstName = request.FirstName.Trim(),
             LastName = request.LastName.Trim(),
             Email = request.Email?.Trim(),
+            Phone = request.Phone?.Trim(),
             DateOfBirth = request.DateOfBirth,
-            ParentProfileId = request.ParentProfileId ?? Guid.Empty
+            ParentProfileId = request.ParentProfileId ?? Guid.Empty,
+            SchoolLevel = request.SchoolLevel?.Trim(),
+            SchoolName = request.SchoolName?.Trim(),
+            Subjects = request.Subjects?.Trim(),
+            Notes = request.Notes?.Trim(),
+            IsActive = true
         };
 
         _db.Add(student);
         await _db.SaveChangesAsync(ct);
-        return MapToDto(student);
+        return MapToDto(student, ResolveParentName(student.ParentProfileId));
     }
 
     public async Task<StudentDto> UpdateAsync(Guid id, UpdateStudentRequest request, CancellationToken ct = default)
@@ -75,13 +82,20 @@ public class StudentService : IStudentService
         student.FirstName = request.FirstName.Trim();
         student.LastName = request.LastName.Trim();
         student.Email = request.Email?.Trim();
+        student.Phone = request.Phone?.Trim();
         student.DateOfBirth = request.DateOfBirth;
         if (request.ParentProfileId.HasValue)
             student.ParentProfileId = request.ParentProfileId.Value;
+        student.SchoolLevel = request.SchoolLevel?.Trim();
+        student.SchoolName = request.SchoolName?.Trim();
+        student.Subjects = request.Subjects?.Trim();
+        student.Notes = request.Notes?.Trim();
+        if (request.IsActive.HasValue)
+            student.IsActive = request.IsActive.Value;
         student.UpdatedAt = DateTime.UtcNow;
 
         await _db.SaveChangesAsync(ct);
-        return MapToDto(student);
+        return MapToDto(student, ResolveParentName(student.ParentProfileId));
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
@@ -117,21 +131,32 @@ public class StudentService : IStudentService
         return _tenantContext.TenantId.Value;
     }
 
-    private static StudentDto MapToDto(Student s) => new(
+    private string? ResolveParentName(Guid parentProfileId)
+    {
+        if (parentProfileId == Guid.Empty) return null;
+        var parent = _db.ParentProfiles.FirstOrDefault(p => p.Id == parentProfileId);
+        return parent is null ? null : $"{parent.FirstName} {parent.LastName}".Trim();
+    }
+
+    private static StudentDto MapToDto(Student s, string? parentName = null) => new(
         s.Id,
         s.FirstName,
         s.LastName,
         s.Email,
+        s.Phone,
         s.DateOfBirth,
         s.Age,
         s.IsMinor,
         s.IsAutonomous,
         s.ParentProfileId,
-        null,
+        parentName,
         s.PhotoUrl,
         s.SchoolLevel,
         s.SchoolName,
-        ParseSubjects(s.Subjects));
+        ParseSubjects(s.Subjects),
+        s.Notes,
+        s.IsActive,
+        s.CreatedAt);
 
     private static LessonDto MapLessonToDto(Lesson l) => new(
         l.Id,

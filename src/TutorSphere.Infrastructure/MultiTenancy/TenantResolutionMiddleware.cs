@@ -1,7 +1,5 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
-using TutorSphere.Application.Common.Interfaces;
-using TutorSphere.Infrastructure.MultiTenancy;
 using TutorSphere.Infrastructure.Persistence;
 
 namespace TutorSphere.Infrastructure.MultiTenancy;
@@ -22,10 +20,32 @@ public class TenantResolutionMiddleware
                 .FirstOrDefaultAsync(t => t.Slug == slug || t.Subdomain == slug);
 
             if (tenant is not null)
+            {
+                if (TenantClaimConflicts(context, tenant.Id))
+                {
+                    context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                    await context.Response.WriteAsJsonAsync(new { error = "Le locataire ne correspond pas au jeton d'authentification." });
+                    return;
+                }
+
                 tenantContext.SetTenant(tenant.Id, tenant.Slug);
+                await _next(context);
+                return;
+            }
         }
 
+        // Blazor / API clients authenticate with JWT but do not send X-Tenant-Slug.
+        var tenantIdClaim = context.User?.FindFirst("tenant_id")?.Value;
+        if (Guid.TryParse(tenantIdClaim, out var tenantId))
+            tenantContext.SetTenant(tenantId);
+
         await _next(context);
+    }
+
+    private static bool TenantClaimConflicts(HttpContext context, Guid resolvedTenantId)
+    {
+        var tenantIdClaim = context.User?.FindFirst("tenant_id")?.Value;
+        return Guid.TryParse(tenantIdClaim, out var claimTenantId) && claimTenantId != resolvedTenantId;
     }
 
     private static string? ResolveTenantSlug(HttpContext context)

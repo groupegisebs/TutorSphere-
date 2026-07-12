@@ -196,6 +196,14 @@ else if (_tab == "Disponibilités")
 
     protected override async Task OnInitializedAsync()
     {
+        var authName = Auth.UserName;
+        if (!string.IsNullOrWhiteSpace(authName))
+        {
+            var authParts = authName.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+            _p.FirstName = authParts.Length > 0 ? authParts[0] : "";
+            _p.LastName = authParts.Length > 1 ? authParts[1] : "";
+        }
+
         var tenantId = Auth.TenantId;
         if (tenantId is null) return;
 
@@ -203,10 +211,10 @@ else if (_tab == "Disponibilités")
         if (profile is not null)
         {
             var parts = (profile.Name ?? "").Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
-            _p.FirstName = parts.Length > 0 ? parts[0] : "";
-            _p.LastName  = parts.Length > 1 ? parts[1] : "";
+            if (parts.Length > 0) _p.FirstName = parts[0];
+            if (parts.Length > 1) _p.LastName = parts[1];
             if (!string.IsNullOrEmpty(profile.Description)) _p.Bio = profile.Description;
-            if (!string.IsNullOrEmpty(profile.City))        _p.Languages = profile.Language ?? _p.Languages;
+            if (!string.IsNullOrEmpty(profile.Language)) _p.Languages = profile.Language;
         }
     }
 
@@ -247,16 +255,16 @@ else if (_tab == "Disponibilités")
     private class Credential { public string Title{get;set;}=""; public string Institution{get;set;}=""; public string Year{get;set;}=""; }
     private class ProfileVM
     {
-        public string FirstName{get;set;}="John"; public string LastName{get;set;}="Smith";
-        public string Bio{get;set;}="Professeur de mathématiques passionné, spécialisé dans la préparation aux examens.";
-        public string FullBio{get;set;}="Diplômé de l'École Polytechnique, j'accompagne les élèves du collège à l'université depuis 8 ans.";
-        public int YearsExperience{get;set;}=8; public decimal HourlyRate{get;set;}=75;
-        public string Languages{get;set;}="Français, Anglais"; public string Status{get;set;}="Disponible";
-        public bool IsVerified{get;set;}=true;
-        public List<Credential> Diplomas{get;set;}=[new(){Title="Master Mathématiques",Institution="École Polytechnique",Year="2016"},new(){Title="Licence Sciences",Institution="Université Paris VI",Year="2014"}];
-        public List<Credential> Certifications{get;set;}=[new(){Title="Certification Google Workspace",Institution="Google",Year="2022"}];
-        public List<string> Subjects{get;set;}=["Mathématiques","Physique"];
-        public HashSet<string> Availability{get;set;}=["Lundi-Après-midi","Mardi-Soir","Mercredi-Matin","Jeudi-Après-midi","Samedi-Matin"];
+        public string FirstName{get;set;}=""; public string LastName{get;set;}="";
+        public string Bio{get;set;}="";
+        public string FullBio{get;set;}="";
+        public int YearsExperience{get;set;}=0; public decimal HourlyRate{get;set;}=0;
+        public string Languages{get;set;}="Français"; public string Status{get;set;}="Disponible";
+        public bool IsVerified{get;set;}=false;
+        public List<Credential> Diplomas{get;set;}=[];
+        public List<Credential> Certifications{get;set;}=[];
+        public List<string> Subjects{get;set;}=[];
+        public HashSet<string> Availability{get;set;}=[];
     }
     private ProfileVM _p = new();
 }

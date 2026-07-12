@@ -3,32 +3,34 @@
 @rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
 @inject LessonService LessonSvc
+@inject MessageService MessageSvc
 @inject AuthService Auth
+@inject ApiClient Api
 
 <PageTitle>@L["PageTitle_TutorDashboard"]</PageTitle>
 
 <div class="dashboard-header">
     <div>
         <h1 class="dashboard-greeting">@L["TutorDashboard_Title"]</h1>
-        <p class="dashboard-date">@L["TutorDashboard_Subtitle_Welcome", "John"]</p>
+        <p class="dashboard-date">@L["TutorDashboard_Subtitle_Welcome", DisplayName]</p>
     </div>
 </div>
 
 <div class="row g-3 mb-4">
     <div class="col-sm-6 col-xl">
-        <StatCard Label="@L["Stat_MonthlyRevenue"]" Value="2 450 $" Icon="bi-currency-dollar" Variant="revenue" Change="@L["Stat_MonthlyRevenue_Change"]" />
+        <StatCard Label="@L["Stat_MonthlyRevenue"]" Value="@FormatMoney(_monthlyRevenue)" Icon="bi-currency-dollar" Variant="revenue" />
     </div>
     <div class="col-sm-6 col-xl">
-        <StatCard Label="@L["Stat_ActiveSubscriptions"]" Value="28" Icon="bi-arrow-repeat" Variant="subscriptions" Change="@L["Stat_Change_Positive", "+4"]" />
+        <StatCard Label="@L["Stat_ActiveSubscriptions"]" Value="@_activeSubscriptions.ToString()" Icon="bi-arrow-repeat" Variant="subscriptions" />
     </div>
     <div class="col-sm-6 col-xl">
-        <StatCard Label="@L["Stat_UpcomingLessons"]" Value="6" Icon="bi-calendar-check" Variant="lessons" Change="@L["Stat_Today"]" ChangeVariant="neutral" />
+        <StatCard Label="@L["Stat_UpcomingLessons"]" Value="@_upcomingLessonsCount.ToString()" Icon="bi-calendar-check" Variant="lessons" Change="@L["Stat_Today"]" ChangeVariant="neutral" />
     </div>
     <div class="col-sm-6 col-xl">
-        <StatCard Label="@L["Stat_ActiveStudents"]" Value="32" Icon="bi-people" Variant="students" Change="@L["Stat_Change_Positive", "+3"]" />
+        <StatCard Label="@L["Stat_ActiveStudents"]" Value="@_activeStudents.ToString()" Icon="bi-people" Variant="students" />
     </div>
     <div class="col-sm-6 col-xl">
-        <StatCard Label="@L["Stat_PendingPayments"]" Value="320 $" Icon="bi-hourglass-split" Variant="payments" Change="@L["Stat_PendingPayments_Change"]" ChangeVariant="negative" />
+        <StatCard Label="@L["Stat_PendingPayments"]" Value="@FormatMoney(_pendingPayments)" Icon="bi-hourglass-split" Variant="payments" ChangeVariant="negative" />
     </div>
 </div>
 
@@ -38,34 +40,11 @@
             <div class="section-card-header">
                 <div>
                     <h2>@L["TutorDashboard_RevenueChart"]</h2>
-                    <p class="dashboard-amount">2 450 $</p>
+                    <p class="dashboard-amount">@FormatMoney(_monthlyRevenue)</p>
                 </div>
-                <select class="form-select form-select-sm w-auto">
-                    <option>@L["Filter_ThisMonth"]</option>
-                    <option>@L["Filter_Last6Months"]</option>
-                </select>
             </div>
             <div class="chart-placeholder chart-placeholder--line" aria-hidden="true">
-                <svg viewBox="0 0 400 140" preserveAspectRatio="none" style="height:160px">
-                    <defs>
-                        <linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stop-color="var(--ts-primary)" stop-opacity="0.18"/>
-                            <stop offset="100%" stop-color="var(--ts-primary)" stop-opacity="0"/>
-                        </linearGradient>
-                    </defs>
-                    <path d="M0,120 C20,110 30,95 50,90 C70,85 80,60 100,62 C120,64 130,50 150,45 C170,40 180,55 200,52 C220,49 230,30 250,28 C270,26 280,38 300,35 C320,32 340,18 360,16 C380,14 390,20 400,22 L400,140 L0,140 Z" fill="url(#chartFill)" stroke="none"/>
-                    <path d="M0,120 C20,110 30,95 50,90 C70,85 80,60 100,62 C120,64 130,50 150,45 C170,40 180,55 200,52 C220,49 230,30 250,28 C270,26 280,38 300,35 C320,32 340,18 360,16 C380,14 390,20 400,22" fill="none" stroke="var(--ts-primary)" stroke-width="2.5" stroke-linejoin="round"/>
-                    @foreach (var pt in ChartPoints)
-                    {
-                        <circle cx="@pt.X" cy="@pt.Y" r="4" fill="white" stroke="var(--ts-primary)" stroke-width="2"/>
-                    }
-                </svg>
-                <div class="chart-x-labels">
-                    @foreach (var lbl in new[] { "1 Mai", "5 Mai", "10 Mai", "15 Mai", "20 Mai", "25 Mai", "30 Mai" })
-                    {
-                        <span>@lbl</span>
-                    }
-                </div>
+                <p class="text-muted px-3 py-4 mb-0">Les revenus du mois s’affichent ci-dessus à partir des données de votre école.</p>
             </div>
         </div>
     </div>
@@ -81,6 +60,10 @@
                     <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
                     <span class="ms-2 text-muted">Chargement…</span>
                 </div>
+            }
+            else if (UpcomingLessons.Count == 0)
+            {
+                <p class="ts-empty-inline px-3 py-3">Aucun cours à venir.</p>
             }
             else
             {
@@ -105,38 +88,15 @@
 
 <div class="row g-4">
     <div class="col-lg-4">
-        <div class="row g-4">
-            <div class="col-12">
-                <div class="section-card">
-                    <div class="section-card-header">
-                        <h2>@L["TutorDashboard_UnreadMessages"]</h2>
-                        <a href="tutor/messages" class="btn btn-sm btn-link">@L["Button_ViewAll"]</a>
-                    </div>
-                    <p class="dashboard-big-stat">5</p>
-                    <p class="dashboard-big-stat-label">
-                        <span class="dot dot--primary"></span> @L["TutorDashboard_NewMessages"]
-                    </p>
-                </div>
+        <div class="section-card">
+            <div class="section-card-header">
+                <h2>@L["TutorDashboard_UnreadMessages"]</h2>
+                <a href="tutor/messages" class="btn btn-sm btn-link">@L["Button_ViewAll"]</a>
             </div>
-            <div class="col-12">
-                <div class="section-card">
-                    <div class="section-card-header">
-                        <h2>@L["TutorDashboard_RecentReviews"]</h2>
-                        <a href="tutor/profile" class="btn btn-sm btn-link">@L["Button_ViewAll"]</a>
-                    </div>
-                    <p class="dashboard-big-stat">4,9 <span class="dashboard-big-stat-unit">/ 5</span>
-                        <span class="star-rating--readonly ms-2">
-                            @for (var i = 0; i < 5; i++)
-                            {
-                                <i class="bi bi-star-fill"></i>
-                            }
-                        </span>
-                    </p>
-                    <p class="dashboard-big-stat-label">
-                        <span class="dot dot--success"></span> @L["TutorDashboard_BasedOnReviews", 28]
-                    </p>
-                </div>
-            </div>
+            <p class="dashboard-big-stat">@_unreadMessages</p>
+            <p class="dashboard-big-stat-label">
+                <span class="dot dot--primary"></span> @L["TutorDashboard_NewMessages"]
+            </p>
         </div>
     </div>
     <div class="col-lg-8">
@@ -145,21 +105,28 @@
                 <h2>@L["TutorDashboard_RecentActivity"]</h2>
                 <a href="tutor/students" class="btn btn-sm btn-link">@L["Button_ViewAll"]</a>
             </div>
-            <ul class="activity-feed">
-                @foreach (var item in RecentActivity)
-                {
-                    <li class="activity-item">
-                        <div class="activity-icon activity-icon--@item.IconVariant">
-                            <i class="bi @item.Icon" aria-hidden="true"></i>
-                        </div>
-                        <div class="activity-content">
-                            <strong class="activity-title">@item.Title</strong>
-                            <span class="activity-description">@item.Description</span>
-                        </div>
-                        <span class="activity-time">@item.Time</span>
-                    </li>
-                }
-            </ul>
+            @if (RecentActivity.Count == 0)
+            {
+                <p class="ts-empty-inline px-3 py-3">Aucune activité récente.</p>
+            }
+            else
+            {
+                <ul class="activity-feed">
+                    @foreach (var item in RecentActivity)
+                    {
+                        <li class="activity-item">
+                            <div class="activity-icon activity-icon--@item.IconVariant">
+                                <i class="bi @item.Icon" aria-hidden="true"></i>
+                            </div>
+                            <div class="activity-content">
+                                <strong class="activity-title">@item.Title</strong>
+                                <span class="activity-description">@item.Description</span>
+                            </div>
+                            <span class="activity-time">@item.Time</span>
+                        </li>
+                    }
+                </ul>
+            }
         </div>
     </div>
 </div>
@@ -167,20 +134,55 @@
 @code {
     private record LessonItem(string Student, string Subject, string Time, string Initials, string Mode, string ModeClass);
     private record ActivityItem(string Title, string Description, string Time, string Icon, string IconVariant);
+    private record DashboardDto(decimal MonthlyRevenue, int ActiveStudents, int ActiveSubscriptions, int UpcomingLessons, int PendingPayments);
 
     private bool _lessonsLoading = true;
-
-    private static readonly (double X, double Y)[] ChartPoints =
-    [
-        (50, 90), (100, 62), (150, 45), (200, 52), (250, 28), (300, 35), (360, 16)
-    ];
-
+    private decimal _monthlyRevenue;
+    private int _activeStudents;
+    private int _activeSubscriptions;
+    private int _upcomingLessonsCount;
+    private decimal _pendingPayments;
+    private int _unreadMessages;
     private List<LessonItem> UpcomingLessons = [];
+    private List<ActivityItem> RecentActivity = [];
 
-    private readonly List<ActivityItem> RecentActivity = [];
+    private string DisplayName
+    {
+        get
+        {
+            var name = Auth.UserName;
+            if (string.IsNullOrWhiteSpace(name)) return "Tuteur";
+            var first = name.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+            return first ?? name;
+        }
+    }
+
+    private static string FormatMoney(decimal amount) =>
+        amount.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("fr-CA")) + " $";
 
     protected override async Task OnInitializedAsync()
     {
+        var tenantId = Auth.TenantId;
+        if (tenantId is not null)
+        {
+            var stats = await Api.GetAsync<DashboardDto>($"api/tenants/{tenantId}/dashboard");
+            if (stats is not null)
+            {
+                _monthlyRevenue = stats.MonthlyRevenue;
+                _activeStudents = stats.ActiveStudents;
+                _activeSubscriptions = stats.ActiveSubscriptions;
+                _upcomingLessonsCount = stats.UpcomingLessons;
+                _pendingPayments = stats.PendingPayments;
+            }
+        }
+
+        try
+        {
+            var conversations = await MessageSvc.GetConversationsAsync();
+            _unreadMessages = conversations.Sum(c => c.UnreadCount);
+        }
+        catch { /* keep 0 */ }
+
         try
         {
             var dtos = await LessonSvc.GetLessonsAsync();
@@ -190,10 +192,13 @@
                 .Take(5)
                 .ToList();
 
+            if (tenantId is null)
+                _upcomingLessonsCount = upcoming.Count;
+
             UpcomingLessons = upcoming.Select(d =>
             {
-                var local    = d.StartTime.ToLocalTime();
-                var mode     = LessonService.ModeToDisplay(d.Mode);
+                var local = d.StartTime.ToLocalTime();
+                var mode = LessonService.ModeToDisplay(d.Mode);
                 var modeClass = d.Mode == "InPerson" ? "inperson" : "online";
                 return new LessonItem(
                     d.Title,
@@ -203,6 +208,17 @@
                     mode,
                     modeClass);
             }).ToList();
+
+            RecentActivity = dtos
+                .OrderByDescending(d => d.UpdatedAt ?? d.CreatedAt)
+                .Take(5)
+                .Select(d => new ActivityItem(
+                    d.Title,
+                    d.Subject ?? LessonService.ModeToDisplay(d.Mode),
+                    (d.UpdatedAt ?? d.CreatedAt).ToLocalTime().ToString("dd/MM HH:mm"),
+                    "bi-calendar-event",
+                    "primary"))
+                .ToList();
         }
         catch { /* empty until API available */ }
         finally { _lessonsLoading = false; }

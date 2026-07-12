@@ -284,40 +284,38 @@
 
     private async Task UploadFiles()
     {
+        if (_pendingBrowserFiles.Count == 0) return;
+
         _uploading = true;
         try
         {
-            if (_pendingBrowserFiles.Count > 0)
+            foreach (var browserFile in _pendingBrowserFiles)
             {
-                foreach (var browserFile in _pendingBrowserFiles)
-                {
-                    using var content = new MultipartFormDataContent();
-                    var maxSize = 50L * 1024 * 1024;
-                    using var stream = browserFile.OpenReadStream(maxSize);
-                    var fileContent = new StreamContent(stream);
-                    fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
-                        string.IsNullOrEmpty(browserFile.ContentType) ? "application/octet-stream" : browserFile.ContentType);
-                    content.Add(fileContent, "file", browserFile.Name);
-                    content.Add(new StringContent(_uploadFolder), "folder");
+                using var content = new MultipartFormDataContent();
+                var maxSize = 50L * 1024 * 1024;
+                await using var stream = browserFile.OpenReadStream(maxSize);
+                using var ms = new MemoryStream();
+                await stream.CopyToAsync(ms);
+                var bytes = ms.ToArray();
+                var fileContent = new ByteArrayContent(bytes);
+                fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
+                    string.IsNullOrEmpty(browserFile.ContentType) ? "application/octet-stream" : browserFile.ContentType);
+                content.Add(fileContent, "file", browserFile.Name);
+                content.Add(new StringContent(_uploadFolder), "folder");
 
-                    var ext = System.IO.Path.GetExtension(browserFile.Name).TrimStart('.').ToLower();
-                    _files.Insert(0, new DocFile
-                    {
-                        Name = browserFile.Name,
-                        Type = string.IsNullOrEmpty(ext) ? "bin" : ext,
-                        Size = FormatSize(browserFile.Size),
-                        Folder = _uploadFolder,
-                        Modified = DateTime.Today.ToString("dd/MM/yyyy"),
-                        SharedWith = [.. _shareWith]
-                    });
-                }
-            }
-            else
-            {
+                var result = await Api.PostMultipartAsync<ApiDocumentDto>("api/documents", content);
+                if (result.Value is null) continue;
+
+                var d = result.Value;
+                var ext = System.IO.Path.GetExtension(d.FileName).TrimStart('.').ToLower();
                 _files.Insert(0, new DocFile
                 {
-                    Name = "Nouveau fichier.pdf", Type = "pdf", Size = "—",
-                    Folder = _uploadFolder, Modified = DateTime.Today.ToString("dd/MM/yyyy"),
+                    ApiId = d.Id,
+                    Name = d.FileName,
+                    Type = string.IsNullOrEmpty(ext) ? "bin" : ext,
+                    Size = FormatSize(d.FileSize),
+                    Folder = _uploadFolder,
+                    Modified = d.UploadedAt.ToLocalTime().ToString("dd/MM/yyyy"),
                     SharedWith = [.. _shareWith]
                 });
             }

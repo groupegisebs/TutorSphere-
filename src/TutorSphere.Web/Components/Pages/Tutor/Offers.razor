@@ -2,6 +2,7 @@
 @layout TutorLayout
 @rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
+@inject ApiClient Api
 
 <PageTitle>Mes Offres – TutorSphere</PageTitle>
 
@@ -74,11 +75,11 @@
                 <div class="ts-action-group">
                     <button class="ts-icon-btn" title="Modifier" @onclick="() => OpenEdit(offer)"><i class="bi bi-pencil"></i></button>
                     <button class="ts-icon-btn" title="@(offer.IsPublished?"Dépublier":"Publier")"
-                            @onclick="() => offer.IsPublished = !offer.IsPublished">
+                            @onclick="async () => await TogglePublish(offer)">
                         <i class="bi @(offer.IsPublished?"bi-eye-slash":"bi-eye")"></i>
                     </button>
                     <button class="ts-icon-btn ts-icon-btn--danger" title="Supprimer"
-                            @onclick="() => _offers.Remove(offer)">
+                            @onclick="async () => await DeleteOffer(offer)">
                         <i class="bi bi-trash"></i>
                     </button>
                 </div>
@@ -148,43 +149,135 @@
 
 @code {
     private bool _showModal;
+    private bool _loading = true;
     private OfferVM? _editing;
     private string _modalError = "";
     private OfferForm _mf = new();
+    private readonly List<OfferVM> _offers = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var offerings = await Api.GetAsync<List<ApiOfferingDto>>("api/subscription-offerings") ?? [];
+        _offers.Clear();
+        _offers.AddRange(offerings.Select(MapOffer));
+        _loading = false;
+    }
 
     private void OpenAdd() { _editing = null; _mf = new(); _modalError = ""; _showModal = true; }
     private void OpenEdit(OfferVM o)
     {
         _editing = o;
-        _mf = new OfferForm { Name=o.Name, Description=o.Description, Price=o.Price,
-            Currency=o.Currency, Period=o.Period, SessionsPerMonth=o.SessionsPerMonth,
-            SessionDuration=o.SessionDuration, Mode=o.Mode, Subject=o.Subject,
-            Level=o.Level, CancellationPolicy=o.CancellationPolicy };
-        _modalError = ""; _showModal = true;
+        _mf = new OfferForm
+        {
+            Name = o.Name, Description = o.Description, Price = o.Price,
+            Currency = o.Currency, Period = o.Period, SessionsPerMonth = o.SessionsPerMonth,
+            Subject = o.Subject
+        };
+        _modalError = "";
+        _showModal = true;
     }
     private void CloseModal() => _showModal = false;
 
-    private void SaveOffer()
+    private async Task SaveOffer()
     {
         if (string.IsNullOrWhiteSpace(_mf.Name)) { _modalError = "Le nom est obligatoire."; return; }
-        if (_editing == null)
+
+        var durationDays = _mf.Period switch
         {
-            _offers.Add(new OfferVM { Name=_mf.Name, Description=_mf.Description, Price=_mf.Price,
-                Currency=_mf.Currency, Period=_mf.Period, SessionsPerMonth=_mf.SessionsPerMonth,
-                SessionDuration=_mf.SessionDuration, Mode=_mf.Mode, Subject=_mf.Subject,
-                Level=_mf.Level, CancellationPolicy=_mf.CancellationPolicy,
-                IsPublished=false, Subscribers=0, MonthlyRevenue=0, Variants=[] });
-        }
-        else
+            "trimestre" => 90,
+            "semestre" => 180,
+            "an" => 365,
+            _ => 30
+        };
+
+        if (_editing is null)
         {
-            _editing.Name = _mf.Name; _editing.Description = _mf.Description;
-            _editing.Price = _mf.Price; _editing.Currency = _mf.Currency;
-            _editing.Period = _mf.Period; _editing.SessionsPerMonth = _mf.SessionsPerMonth;
-            _editing.SessionDuration = _mf.SessionDuration; _editing.Mode = _mf.Mode;
-            _editing.Subject = _mf.Subject; _editing.Level = _mf.Level;
+            var req = new
+            {
+                title = _mf.Name.Trim(),
+                description = _mf.Description,
+                subject = string.IsNullOrWhiteSpace(_mf.Subject) ? null : _mf.Subject.Trim(),
+                price = _mf.Price,
+                currency = _mf.Currency,
+                durationDays,
+                sessionCount = _mf.SessionsPerMonth,
+                frequency = _mf.Period
+            };
+            var created = await Api.PostWithErrorAsync<ApiOfferingDto>("api/subscription-offerings", req);
+            if (created.Error is not null || created.Value is null)
+            {
+                _modalError = created.Error ?? "Création impossible.";
+                return;
+            }
+            _offers.Add(MapOffer(created.Value));
         }
+        else if (_editing.Id.HasValue)
+        {
+            var req = new
+            {
+                title = _mf.Name.Trim(),
+                description = _mf.Description,
+                subject = string.IsNullOrWhiteSpace(_mf.Subject) ? null : _mf.Subject.Trim(),
+                price = _mf.Price,
+                currency = _mf.Currency,
+                durationDays,
+                sessionCount = _mf.SessionsPerMonth,
+                frequency = _mf.Period
+            };
+            var updated = await Api.PutWithErrorAsync<ApiOfferingDto>($"api/subscription-offerings/{_editing.Id}", req);
+            if (updated.Error is not null || updated.Value is null)
+            {
+                _modalError = updated.Error ?? "Mise à jour impossible.";
+                return;
+            }
+            var mapped = MapOffer(updated.Value);
+            var idx = _offers.FindIndex(o => o.Id == mapped.Id);
+            if (idx >= 0) _offers[idx] = mapped;
+        }
+
         _showModal = false;
     }
+
+    private async Task TogglePublish(OfferVM offer)
+    {
+        if (offer.Id is null) return;
+        var endpoint = offer.IsPublished
+            ? $"api/subscription-offerings/{offer.Id}/deactivate"
+            : $"api/subscription-offerings/{offer.Id}/activate";
+        var result = await Api.PostAsync<ApiOfferingDto>(endpoint, new { });
+        if (result is not null) offer.IsPublished = result.IsActive;
+    }
+
+    private async Task DeleteOffer(OfferVM offer)
+    {
+        if (offer.Id is not null)
+            await Api.DeleteAsync($"api/subscription-offerings/{offer.Id}");
+        _offers.Remove(offer);
+    }
+
+    private static OfferVM MapOffer(ApiOfferingDto o) => new()
+    {
+        Id = o.Id,
+        Name = o.Title,
+        Description = o.Description ?? "",
+        Price = o.Price,
+        Currency = o.Currency,
+        Period = o.Frequency ?? "mois",
+        SessionsPerMonth = o.SessionCount,
+        SessionDuration = 60,
+        Mode = "En ligne",
+        Subject = o.Subject ?? "",
+        Level = "",
+        IsPublished = o.IsActive,
+        Subscribers = 0,
+        MonthlyRevenue = 0,
+        Variants = []
+    };
+
+    private record ApiOfferingDto(
+        Guid Id, string Title, string? Description, string? Subject,
+        decimal Price, string Currency, int DurationDays, int SessionCount,
+        string? Frequency, bool IsActive);
 
     private class OfferForm
     {
@@ -203,6 +296,7 @@
 
     private class OfferVM
     {
+        public Guid? Id { get; set; }
         public string Name { get; set; } = "";
         public string Description { get; set; } = "";
         public decimal Price { get; set; }
@@ -219,21 +313,4 @@
         public decimal MonthlyRevenue { get; set; }
         public List<(string Label, decimal Price)> Variants { get; set; } = [];
     }
-
-    private readonly List<OfferVM> _offers =
-    [
-        new(){ Name="Cours de Maths Intensif", Description="Préparation brevet & bac. Méthode éprouvée.",
-            Price=150, Currency="CAD", Period="mois", SessionsPerMonth=8, SessionDuration=60,
-            Mode="Hybride", Subject="Mathématiques", Level="Lycée", IsPublished=true,
-            Subscribers=12, MonthlyRevenue=1800,
-            Variants=[("Collège 4×/mois",120),("Lycée 8×/mois",150),("Terminale 12×/mois",220)] },
-        new(){ Name="Physique-Chimie Lycée", Description="Cours particuliers de physique-chimie.",
-            Price=140, Currency="CAD", Period="mois", SessionsPerMonth=4, SessionDuration=90,
-            Mode="En ligne", Subject="Physique-Chimie", Level="Lycée", IsPublished=true,
-            Subscribers=6, MonthlyRevenue=840, Variants=[] },
-        new(){ Name="Stage Vacances Maths", Description="Stage intensif pendant les vacances scolaires.",
-            Price=350, Currency="CAD", Period="semaine", SessionsPerMonth=5, SessionDuration=120,
-            Mode="Présentiel", Subject="Mathématiques", Level="Collège", IsPublished=false,
-            Subscribers=0, MonthlyRevenue=0, Variants=[] },
-    ];
 }
