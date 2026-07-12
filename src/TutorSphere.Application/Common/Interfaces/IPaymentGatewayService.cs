@@ -27,4 +27,9 @@ public interface IPaymentGatewayService
         Guid subscriptionId,
         bool cancelImmediately,
         CancellationToken ct = default);
+
+    /// <summary>
+    /// Crée / met à jour le produit+plan dans Pay Gateway et Stripe (SyncToStripe).
+    /// </summary>
+    Task SyncOfferingCatalogAsync(Guid offeringId, CancellationToken ct = default);
 }

@@ -218,47 +218,41 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             result.CancelledAt);
     }
 
+    public async Task SyncOfferingCatalogAsync(Guid offeringId, CancellationToken ct = default)
+    {
+        var offering = await _db.SubscriptionOfferingsForAnyTenant
+            .FirstOrDefaultAsync(o => o.Id == offeringId, ct)
+            ?? throw new InvalidOperationException("Offre d'abonnement introuvable.");
+
+        var productCode = ToProductCode(offering.Id);
+        var planCode = ResolvePlanCode(offering.DurationDays);
+        await EnsureCatalogItemAsync(offering, productCode, planCode, ct);
+    }
+
     private async Task EnsureCatalogItemAsync(
         SubscriptionOffering offering,
         string productCode,
         string planCode,
         CancellationToken ct)
     {
-        var existing = await _gateway.GetProductAsync(productCode, ct);
-        if (existing?.Plans?.Any(p =>
-                p.PlanCode.Equals(planCode, StringComparison.OrdinalIgnoreCase)
-                && p.Amount == offering.Price
-                && p.Currency.Equals(offering.Currency, StringComparison.OrdinalIgnoreCase)) == true)
-        {
-            return;
-        }
+        await _gateway.CreateCatalogItemAsync(new GatewayCreateCatalogItemRequest(
+            productCode,
+            offering.Title,
+            offering.Description,
+            planCode,
+            offering.Title,
+            offering.Price,
+            offering.Currency.ToLowerInvariant(),
+            ResolveBillingInterval(offering.DurationDays),
+            SyncToStripe: true), ct);
 
-        if (existing is not null)
-        {
-            _logger.LogWarning(
-                "Le produit {ProductCode} existe dans la passerelle mais le plan {PlanCode} ne correspond pas.",
-                productCode,
-                planCode);
-            return;
-        }
-
-        try
-        {
-            await _gateway.CreateCatalogItemAsync(new GatewayCreateCatalogItemRequest(
-                productCode,
-                offering.Title,
-                offering.Description,
-                planCode,
-                offering.Title,
-                offering.Price,
-                offering.Currency.ToLowerInvariant(),
-                ResolveBillingInterval(offering.DurationDays),
-                SyncToStripe: true), ct);
-        }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("existe déjà", StringComparison.OrdinalIgnoreCase))
-        {
-            _logger.LogDebug("Catalogue déjà présent pour {ProductCode}/{PlanCode}", productCode, planCode);
-        }
+        _logger.LogInformation(
+            "Offre {OfferingId} synchronisée vers Pay Gateway/Stripe ({ProductCode}/{PlanCode}, {Amount} {Currency})",
+            offering.Id,
+            productCode,
+            planCode,
+            offering.Price,
+            offering.Currency);
     }
 
     private async Task ApplyGatewayPaymentStatusAsync(

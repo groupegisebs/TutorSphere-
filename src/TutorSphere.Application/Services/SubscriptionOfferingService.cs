@@ -28,11 +28,16 @@ public class SubscriptionOfferingService : ISubscriptionOfferingService
 
     private readonly IApplicationDbContext _db;
     private readonly ITenantContext _tenantContext;
+    private readonly IPaymentGatewayService _payments;
 
-    public SubscriptionOfferingService(IApplicationDbContext db, ITenantContext tenantContext)
+    public SubscriptionOfferingService(
+        IApplicationDbContext db,
+        ITenantContext tenantContext,
+        IPaymentGatewayService payments)
     {
         _db = db;
         _tenantContext = tenantContext;
+        _payments = payments;
     }
 
     public Task<IReadOnlyList<SubscriptionOfferingDto>> GetAllAsync(CancellationToken ct = default)
@@ -75,6 +80,7 @@ public class SubscriptionOfferingService : ISubscriptionOfferingService
         _db.Add(offering);
         PublishTenantProfile(tenantId);
         await _db.SaveChangesAsync(ct);
+        await _payments.SyncOfferingCatalogAsync(offering.Id, ct);
         return MapToDto(offering);
     }
 
@@ -98,6 +104,7 @@ public class SubscriptionOfferingService : ISubscriptionOfferingService
         offering.UpdatedAt = DateTime.UtcNow;
 
         await _db.SaveChangesAsync(ct);
+        await _payments.SyncOfferingCatalogAsync(offering.Id, ct);
         return MapToDto(offering);
     }
 
@@ -119,6 +126,7 @@ public class SubscriptionOfferingService : ISubscriptionOfferingService
         offering.UpdatedAt = DateTime.UtcNow;
         PublishTenantProfile(offering.TenantId);
         await _db.SaveChangesAsync(ct);
+        await _payments.SyncOfferingCatalogAsync(offering.Id, ct);
         return MapToDto(offering);
     }
 
