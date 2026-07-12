@@ -6,15 +6,15 @@
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
 @inject AuthService Auth
-<PageTitle>Mes Enfants – TutorSphere</PageTitle>
+<PageTitle>@L["Children_Title"] – TutorSphere</PageTitle>
 
 <div class="ts-page-header">
     <div>
-        <h1><i class="bi bi-people-fill me-2"></i>Mes Enfants</h1>
-        <p class="ts-page-subtitle">Suivez la progression de vos enfants</p>
+        <h1><i class="bi bi-people-fill me-2"></i>@L["Children_Title"]</h1>
+        <p class="ts-page-subtitle">@L["Nav_Parent_Children"]</p>
     </div>
     <button type="button" class="btn btn-primary" @onclick="OpenAddModal">
-        <i class="bi bi-plus-lg me-1"></i>Ajouter un enfant
+        <i class="bi bi-plus-lg me-1"></i>@L["Children_Add"]
     </button>
 </div>
 
@@ -25,7 +25,7 @@
         <span class="flex-grow-1">@_loadError</span>
         @if (_sessionExpired)
         {
-            <a class="btn btn-sm btn-outline-dark" href="/login/parent">Se reconnecter</a>
+            <a class="btn btn-sm btn-outline-dark" href="/login/parent">@L["Common_Login"]</a>
         }
     </div>
 }
@@ -34,7 +34,7 @@
 {
     <div class="d-flex align-items-center justify-content-center py-5">
         <span class="spinner-border text-primary me-3" role="status"></span>
-        <span class="text-muted">Chargement…</span>
+        <span class="text-muted">@L["Common_Loading"]</span>
     </div>
 }
 else
@@ -64,7 +64,7 @@ else
                         <span class="text-muted">@(child.Level ?? "—") · @(child.School ?? "—")</span>
                     </div>
                     <span class="ts-badge @(child.IsActive ? "ts-badge-success" : "ts-badge-muted") ms-auto">
-                        @(child.IsActive ? "Actif" : "Inactif")
+                        @(child.IsActive ? L["Common_Active"] : L["Common_Inactive"])
                     </span>
                 </div>
                 @if (child.IsAutonomous)

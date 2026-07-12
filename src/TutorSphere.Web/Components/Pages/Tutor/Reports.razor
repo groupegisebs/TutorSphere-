@@ -78,19 +78,19 @@
                     placeholder="Ce que l'élève maîtrise bien…"></textarea>
             </div>
             <div class="col-md-6">
-                <label class="form-label">Points à améliorer</label>
+                <label class="form-label">@L["Reports_Improvements"]</label>
                 <textarea class="form-control" rows="2" @bind="_rf.Improvements"
                     disabled="@(_viewReport!=null)"
                     placeholder="Difficultés rencontrées…"></textarea>
             </div>
             <div class="col-12">
-                <label class="form-label">Recommandations & objectifs</label>
+                <label class="form-label">@L["Reports_Recommendations"]</label>
                 <textarea class="form-control" rows="2" @bind="_rf.Recommendations"
                     disabled="@(_viewReport!=null)"
                     placeholder="Conseils pour la prochaine séance, travail à faire…"></textarea>
             </div>
             <div class="col-12">
-                <label class="form-label">Devoir à rendre</label>
+                <label class="form-label">@L["Reports_Homework"]</label>
                 <input class="form-control" @bind="_rf.Homework"
                     disabled="@(_viewReport!=null)"
                     placeholder="Ex: Exercices 5 à 10 page 42" />
@@ -130,8 +130,8 @@ else
         </div>
         <select class="form-select w-auto" @bind="_filterSent">
             <option value="">@L["Common_All"]</option>
-            <option value="sent">Envoyés</option>
-            <option value="draft">Brouillons</option>
+            <option value="sent">@L["Reports_SentPlural"]</option>
+            <option value="draft">@L["Reports_Drafts"]</option>
         </select>
     </div>
 
@@ -174,18 +174,18 @@ else
                             </td>
                             <td>@r.Subject</td>
                             <td><span class="ts-badge @(r.Sent ? "ts-badge-success" : "ts-badge-muted")">
-                                @(r.Sent ? "Envoyé" : "Brouillon")</span></td>
+                                @(r.Sent ? L["Reports_Sent"] : L["Reports_Draft"])</span></td>
                             <td>
                                 <div class="ts-action-group">
-                                    <button class="ts-icon-btn" title="Voir" @onclick="()=>ViewReport(r)"><i class="bi bi-eye"></i></button>
+                                    <button class="ts-icon-btn" title="@L["Common_View"]" @onclick="()=>ViewReport(r)"><i class="bi bi-eye"></i></button>
                                     @if (!r.Sent)
                                     {
-                                        <button class="ts-icon-btn" title="Envoyer"
+                                        <button class="ts-icon-btn" title="@L["Reports_Send"]"
                                                 @onclick="async () => await SendToParent(r)">
                                             <i class="bi bi-send text-primary"></i>
                                         </button>
                                     }
-                                    <button class="ts-icon-btn" title="PDF"><i class="bi bi-download"></i></button>
+                                    <button class="ts-icon-btn" title="@L["Reports_Pdf"]"><i class="bi bi-download"></i></button>
                                 </div>
                             </td>
                         </tr>

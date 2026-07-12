@@ -82,17 +82,26 @@
 <!-- Subscribers table -->
 <div class="section-card">
     <div class="section-card-header">
-        <h2>Abonnés</h2>
+        <h2>@L["TutorSubs_SubscribersTitle"]</h2>
         <div class="d-flex gap-2">
             <select class="form-select form-select-sm w-auto" @bind="_filterSubStatus">
-                <option value="">Tous</option><option>Actif</option><option>Suspendu</option><option>Résilié</option>
+                <option value="">@L["Common_All"]</option>
+                <option value="Actif">@L["TutorSubs_StatusActive"]</option>
+                <option value="Suspendu">@L["TutorSubs_StatusSuspended"]</option>
+                <option value="Résilié">@L["TutorSubs_StatusCancelled"]</option>
             </select>
         </div>
     </div>
     <table class="table ts-table">
         <thead>
-            <tr><th>Élève / Parent</th><th>Plan</th><th>Montant</th>
-                <th>Renouvellement</th><th>Statut</th><th>Actions</th></tr>
+            <tr>
+                <th>@L["TutorSubs_StudentParent"]</th>
+                <th>@L["TutorSubs_Plan"]</th>
+                <th>@L["TutorSubs_Amount"]</th>
+                <th>@L["TutorSubs_Renewal"]</th>
+                <th>@L["Common_Status"]</th>
+                <th>@L["Common_Actions"]</th>
+            </tr>
         </thead>
         <tbody>
             @foreach (var s in FilteredSubs)
@@ -110,22 +119,22 @@
                             <span class="text-warning ms-1"><i class="bi bi-exclamation-circle"></i></span>
                         }
                     </td>
-                    <td><span class="ts-badge @SubBadge(s.Status)">@s.Status</span></td>
+                    <td><span class="ts-badge @SubBadge(s.Status)">@SubStatusLabel(s.Status)</span></td>
                     <td>
                         <div class="ts-action-group">
                             @if (s.Status == "Actif")
                             {
-                                <button class="ts-icon-btn" title="Suspendre" @onclick='() => s.Status = "Suspendu"'>
+                                <button class="ts-icon-btn" title="@L["TutorSubs_Suspend"]" @onclick='() => s.Status = "Suspendu"'>
                                     <i class="bi bi-pause-circle text-warning"></i>
                                 </button>
                             }
                             else if (s.Status == "Suspendu")
                             {
-                                <button class="ts-icon-btn" title="Réactiver" @onclick='() => s.Status = "Actif"'>
+                                <button class="ts-icon-btn" title="@L["TutorSubs_Reactivate"]" @onclick='() => s.Status = "Actif"'>
                                     <i class="bi bi-play-circle text-success"></i>
                                 </button>
                             }
-                            <button class="ts-icon-btn" title="Facture"><i class="bi bi-receipt"></i></button>
+                            <button class="ts-icon-btn" title="@L["TutorSubs_Invoice"]"><i class="bi bi-receipt"></i></button>
                         </div>
                     </td>
                 </tr>
@@ -139,33 +148,35 @@
     <div class="ts-modal-backdrop" @onclick="()=>_showPlanModal=false">
         <div class="ts-modal" @onclick:stopPropagation="true">
             <div class="ts-modal-header">
-                <h2>Créer un plan d'abonnement</h2>
+                <h2>@L["TutorSubs_CreatePlanTitle"]</h2>
                 <button class="ts-modal-close" @onclick="()=>_showPlanModal=false"><i class="bi bi-x-lg"></i></button>
             </div>
             <div class="ts-modal-body">
                 <div class="row g-3">
-                    <div class="col-12"><label class="form-label">Nom du plan *</label>
-                        <input class="form-control" @bind="_pf.Name" placeholder="Ex: Mensuel Maths" /></div>
-                    <div class="col-6"><label class="form-label">Prix ($) *</label>
+                    <div class="col-12"><label class="form-label">@L["TutorSubs_PlanName"] *</label>
+                        <input class="form-control" @bind="_pf.Name" /></div>
+                    <div class="col-6"><label class="form-label">@L["TutorSubs_Price"] *</label>
                         <input type="number" class="form-control" @bind="_pf.Price" /></div>
-                    <div class="col-6"><label class="form-label">Période</label>
+                    <div class="col-6"><label class="form-label">@L["TutorSubs_Period"]</label>
                         <select class="form-select" @bind="_pf.Period">
-                            <option>mois</option><option>trimestre</option><option>semestre</option><option>an</option>
+                            <option value="mois">@L["TutorSubs_PeriodMonth"]</option>
+                            <option value="trimestre">@L["TutorSubs_PeriodQuarter"]</option>
+                            <option value="semestre">@L["TutorSubs_PeriodSemester"]</option>
+                            <option value="an">@L["TutorSubs_PeriodYear"]</option>
                         </select></div>
-                    <div class="col-12"><label class="form-label">Fonctionnalités incluses (une par ligne)</label>
-                        <textarea class="form-control" rows="4" @bind="_pf.Features"
-                            placeholder="4 séances par mois&#10;Accès aux rapports&#10;Support WhatsApp"></textarea></div>
+                    <div class="col-12"><label class="form-label">@L["TutorSubs_Features"]</label>
+                        <textarea class="form-control" rows="4" @bind="_pf.Features"></textarea></div>
                     <div class="col-12">
                         <div class="form-check form-switch">
                             <input class="form-check-input" type="checkbox" @bind="_pf.Popular" id="plan-popular" />
-                            <label class="form-check-label" for="plan-popular">Marquer comme "Populaire"</label>
+                            <label class="form-check-label" for="plan-popular">@L["TutorSubs_MarkPopular"]</label>
                         </div>
                     </div>
                 </div>
             </div>
             <div class="ts-modal-footer">
-                <button class="btn btn-outline-secondary" @onclick="()=>_showPlanModal=false">Annuler</button>
-                <button class="btn btn-primary" @onclick="async () => await SavePlan()">Créer</button>
+                <button class="btn btn-outline-secondary" @onclick="()=>_showPlanModal=false">@L["Common_Cancel"]</button>
+                <button class="btn btn-primary" @onclick="async () => await SavePlan()">@L["TutorSubs_Create"]</button>
             </div>
         </div>
     </div>
@@ -179,6 +190,13 @@
     private static string SubBadge(string s) => s switch {
         "Actif" => "ts-badge-success", "Suspendu" => "ts-badge-warning",
         "Résilié" => "ts-badge-danger", _ => "ts-badge-neutral"
+    };
+
+    private string SubStatusLabel(string s) => s switch {
+        "Actif" => L["TutorSubs_StatusActive"],
+        "Suspendu" => L["TutorSubs_StatusSuspended"],
+        "Résilié" => L["TutorSubs_StatusCancelled"],
+        _ => s
     };
 
     private IEnumerable<SubVM> FilteredSubs => _subs

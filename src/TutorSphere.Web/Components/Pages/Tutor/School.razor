@@ -33,13 +33,13 @@
 
 <!-- Tab navigation -->
 <div class="ts-tabs-bar mb-4">
-    @foreach (var tab in _tabs)
-    {
-        <button class="ts-tab @(_activeTab==tab?"active":"")" @onclick="()=>_activeTab=tab">@tab</button>
-    }
+    <button class="ts-tab @(_activeTab=="identity"?"active":"")" @onclick='()=>_activeTab="identity"'>@L["School_TabIdentity"]</button>
+    <button class="ts-tab @(_activeTab=="contact"?"active":"")" @onclick='()=>_activeTab="contact"'>@L["School_TabContact"]</button>
+    <button class="ts-tab @(_activeTab=="web"?"active":"")" @onclick='()=>_activeTab="web"'>@L["School_TabWeb"]</button>
+    <button class="ts-tab @(_activeTab=="media"?"active":"")" @onclick='()=>_activeTab="media"'>@L["School_TabMedia"]</button>
 </div>
 
-@if (_activeTab == "Identité")
+@if (_activeTab == "identity")
 {
     <div class="school-form-grid">
         <!-- Logo & banner -->
@@ -78,68 +78,68 @@
                     <input class="form-control" @bind="_school.Name" />
                 </div>
                 <div class="col-12">
-                    <label class="form-label">Slogan</label>
-                    <input class="form-control" @bind="_school.Tagline" placeholder="Votre réussite, notre mission." />
+                    <label class="form-label">@L["School_Tagline"]</label>
+                    <input class="form-control" @bind="_school.Tagline" placeholder="@L["School_TaglinePlaceholder"]" />
                 </div>
                 <div class="col-12">
-                    <label class="form-label">Description</label>
+                    <label class="form-label">@L["School_Description"]</label>
                     <textarea class="form-control" rows="3" @bind="_school.Description"></textarea>
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label">Mission</label>
+                    <label class="form-label">@L["School_Mission"]</label>
                     <textarea class="form-control" rows="2" @bind="_school.Mission"></textarea>
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label">Vision</label>
+                    <label class="form-label">@L["School_Vision"]</label>
                     <textarea class="form-control" rows="2" @bind="_school.Vision"></textarea>
                 </div>
             </div>
         </div>
     </div>
 }
-else if (_activeTab == "Coordonnées")
+else if (_activeTab == "contact")
 {
     <div class="section-card p-4">
         <div class="row g-3">
-            <div class="col-md-6"><label class="form-label">Pays</label>
+            <div class="col-md-6"><label class="form-label">@L["School_Country"]</label>
                 <select class="form-select" @bind="_school.Country">
                     <option>Canada</option><option>France</option><option>Belgique</option><option>Suisse</option><option>Maroc</option>
                 </select></div>
-            <div class="col-md-6"><label class="form-label">Province / État</label>
+            <div class="col-md-6"><label class="form-label">@L["School_Province"]</label>
                 <input class="form-control" @bind="_school.Province" /></div>
-            <div class="col-md-6"><label class="form-label">Ville</label>
+            <div class="col-md-6"><label class="form-label">@L["School_City"]</label>
                 <input class="form-control" @bind="_school.City" /></div>
-            <div class="col-md-6"><label class="form-label">Code postal</label>
+            <div class="col-md-6"><label class="form-label">@L["School_PostalCode"]</label>
                 <input class="form-control" @bind="_school.PostalCode" /></div>
-            <div class="col-12"><label class="form-label">Adresse complète</label>
+            <div class="col-12"><label class="form-label">@L["School_Address"]</label>
                 <input class="form-control" @bind="_school.Address" /></div>
-            <div class="col-md-6"><label class="form-label">Téléphone</label>
+            <div class="col-md-6"><label class="form-label">@L["Common_Phone"]</label>
                 <input class="form-control" @bind="_school.Phone" /></div>
-            <div class="col-md-6"><label class="form-label">Courriel de contact</label>
+            <div class="col-md-6"><label class="form-label">@L["School_ContactEmail"]</label>
                 <input type="email" class="form-control" @bind="_school.Email" /></div>
         </div>
     </div>
 }
-else if (_activeTab == "Présence web")
+else if (_activeTab == "web")
 {
     <div class="section-card p-4">
         <div class="row g-3">
             <div class="col-12">
-                <label class="form-label">Sous-domaine TutorSphere</label>
+                <label class="form-label">@L["School_Subdomain"]</label>
                 <div class="input-group">
                     <input class="form-control" @bind="_school.Slug" placeholder="votre-ecole" />
                     <span class="input-group-text">.tutorsphere.com</span>
                 </div>
-                <small class="text-muted mt-1 d-block">Votre URL publique : <strong>https://@(_school.Slug).tutorsphere.com</strong></small>
+                <small class="text-muted mt-1 d-block">@L["School_PublicUrl"] <strong>https://@(_school.Slug).tutorsphere.com</strong></small>
             </div>
             <div class="col-12">
-                <label class="form-label">Domaine personnalisé</label>
+                <label class="form-label">@L["School_CustomDomain"]</label>
                 <input class="form-control" @bind="_school.CustomDomain" placeholder="www.votre-ecole.com" />
-                <small class="text-muted">Configurez un CNAME vers tutorsphere.com dans votre registraire DNS.</small>
+                <small class="text-muted">@L["School_DnsHint"]</small>
             </div>
         </div>
         <hr />
-        <h5 class="mb-3">Réseaux sociaux</h5>
+        <h5 class="mb-3">@L["School_Social"]</h5>
         <div class="row g-3">
             @foreach (var sn in _school.SocialLinks)
             {
@@ -151,23 +151,22 @@ else if (_activeTab == "Présence web")
         </div>
     </div>
 }
-else if (_activeTab == "Médias")
+else if (_activeTab == "media")
 {
     <div class="section-card p-4">
-        <p class="text-muted mb-3">Gérez la galerie photos, vidéos et certificats de votre école.</p>
+        <p class="text-muted mb-3">@L["School_MediaHint"]</p>
         <div class="school-media-grid">
             <div class="school-media-upload">
                 <i class="bi bi-cloud-upload"></i>
-                <p>Glissez des fichiers ici ou cliquez pour téléverser</p>
-                <small class="text-muted">JPG, PNG, PDF · Max 10 Mo</small>
+                <p>@L["School_DropFiles"]</p>
+                <small class="text-muted">@L["School_MediaFormats"]</small>
             </div>
         </div>
     </div>
 }
 
 @code {
-    private readonly string[] _tabs = ["Identité","Coordonnées","Présence web","Médias"];
-    private string _activeTab = "Identité";
+    private string _activeTab = "identity";
     private bool _saving, _saved;
     private string? _logoDataUrl;
     private string? _bannerDataUrl;

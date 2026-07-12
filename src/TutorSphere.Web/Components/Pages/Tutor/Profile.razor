@@ -39,13 +39,13 @@
 }
 
 <div class="ts-tabs-bar mb-4">
-    @foreach (var t in _tabs)
-    {
-        <button class="ts-tab @(_tab==t?"active":"")" @onclick="()=>_tab=t">@t</button>
-    }
+    <button class="ts-tab @(_tab=="presentation"?"active":"")" @onclick='()=>_tab="presentation"'>@L["Profile_TabPresentation"]</button>
+    <button class="ts-tab @(_tab=="credentials"?"active":"")" @onclick='()=>_tab="credentials"'>@L["Profile_TabCredentials"]</button>
+    <button class="ts-tab @(_tab=="subjects"?"active":"")" @onclick='()=>_tab="subjects"'>@L["Profile_TabSubjects"]</button>
+    <button class="ts-tab @(_tab=="availability"?"active":"")" @onclick='()=>_tab="availability"'>@L["Profile_TabAvailability"]</button>
 </div>
 
-@if (_tab == "Présentation")
+@if (_tab == "presentation")
 {
     <div class="profile-card-layout">
         <div class="profile-avatar-card">
@@ -59,7 +59,9 @@
             <div class="profile-status mt-3">
                 <label class="form-label">@L["Profile_Status"]</label>
                 <select class="form-select form-select-sm" @bind="_p.Status">
-                    <option>Disponible</option><option>Complet</option><option>Inactif</option>
+                    <option value="Disponible">@L["Profile_StatusAvailable"]</option>
+                    <option value="Complet">@L["Profile_StatusFull"]</option>
+                    <option value="Inactif">@L["Profile_StatusInactive"]</option>
                 </select>
             </div>
         </div>
@@ -78,22 +80,22 @@
                     <input type="number" class="form-control" @bind="_p.HourlyRate" /></div>
                 <div class="col-md-4"><label class="form-label">@L["Profile_Languages"]</label>
                     <input class="form-control" @bind="_p.Languages" placeholder="Français, Anglais" /></div>
-                <div class="col-12"><label class="form-label">Présentation complète (CV)</label>
+                <div class="col-12"><label class="form-label">@L["Profile_FullCv"]</label>
                     <textarea class="form-control" rows="5" @bind="_p.FullBio"
-                        placeholder="Parcours, méthode pédagogique, spécialités…"></textarea></div>
+                        placeholder="@L["Profile_FullCvPlaceholder"]"></textarea></div>
             </div>
         </div>
     </div>
 }
-else if (_tab == "Diplômes & Certifications")
+else if (_tab == "credentials")
 {
     <div class="section-card p-4">
         <div class="d-flex justify-content-between align-items-center mb-3">
-            <h5 class="mb-0">Diplômes</h5>
+            <h5 class="mb-0">@L["Profile_Diplomas"]</h5>
             @if (!_showDiplomaForm)
             {
                 <button type="button" class="btn btn-sm btn-outline-primary" @onclick="OpenDiplomaForm">
-                    <i class="bi bi-plus me-1"></i>Ajouter
+                    <i class="bi bi-plus me-1"></i>@L["Common_Add"]
                 </button>
             }
         </div>
@@ -103,15 +105,15 @@ else if (_tab == "Diplômes & Certifications")
             <div class="credential-form mb-3">
                 <div class="row g-2">
                     <div class="col-md-5">
-                        <label class="form-label">Intitulé *</label>
-                        <input class="form-control" @bind="_diplomaDraft.Title" placeholder="Ex. Baccalauréat en mathématiques" />
+                        <label class="form-label">@L["Profile_TitleLabel"] *</label>
+                        <input class="form-control" @bind="_diplomaDraft.Title" />
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label">Établissement *</label>
-                        <input class="form-control" @bind="_diplomaDraft.Institution" placeholder="Ex. Université de Montréal" />
+                        <label class="form-label">@L["Profile_Institution"] *</label>
+                        <input class="form-control" @bind="_diplomaDraft.Institution" />
                     </div>
                     <div class="col-md-3">
-                        <label class="form-label">Année</label>
+                        <label class="form-label">@L["Profile_Year"]</label>
                         <input class="form-control" @bind="_diplomaDraft.Year" placeholder="2020" />
                     </div>
                 </div>
@@ -120,28 +122,28 @@ else if (_tab == "Diplômes & Certifications")
                     <div class="text-danger small mt-2">@_credentialFormError</div>
                 }
                 <div class="d-flex gap-2 mt-3">
-                    <button type="button" class="btn btn-primary btn-sm" @onclick="ConfirmAddDiploma">Ajouter le diplôme</button>
-                    <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="CancelDiplomaForm">Annuler</button>
+                    <button type="button" class="btn btn-primary btn-sm" @onclick="ConfirmAddDiploma">@L["Profile_AddDiploma"]</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="CancelDiplomaForm">@L["Common_Cancel"]</button>
                 </div>
             </div>
         }
 
         @if (_p.Diplomas.Count == 0 && !_showDiplomaForm)
         {
-            <p class="text-muted small mb-0">Aucun diplôme. Cliquez sur « Ajouter » pour en créer un.</p>
+            <p class="text-muted small mb-0">@L["Profile_NoDiplomas"]</p>
         }
         @foreach (var d in _p.Diplomas)
         {
             <div class="credential-item credential-item--editable">
                 <i class="bi bi-mortarboard credential-icon"></i>
                 <div class="credential-fields flex-grow-1">
-                    <input class="form-control form-control-sm mb-1" @bind="d.Title" placeholder="Intitulé" />
+                    <input class="form-control form-control-sm mb-1" @bind="d.Title" placeholder="@L["Profile_TitleLabel"]" />
                     <div class="d-flex gap-2">
-                        <input class="form-control form-control-sm" @bind="d.Institution" placeholder="Établissement" />
-                        <input class="form-control form-control-sm" style="max-width:6rem" @bind="d.Year" placeholder="Année" />
+                        <input class="form-control form-control-sm" @bind="d.Institution" placeholder="@L["Profile_Institution"]" />
+                        <input class="form-control form-control-sm" style="max-width:6rem" @bind="d.Year" placeholder="@L["Profile_Year"]" />
                     </div>
                 </div>
-                <button type="button" class="ts-icon-btn ts-icon-btn--danger" title="Supprimer" @onclick="() => RemoveDiploma(d)">
+                <button type="button" class="ts-icon-btn ts-icon-btn--danger" title="@L["Common_Delete"]" @onclick="() => RemoveDiploma(d)">
                     <i class="bi bi-trash"></i>
                 </button>
             </div>
@@ -150,11 +152,11 @@ else if (_tab == "Diplômes & Certifications")
         <hr />
 
         <div class="d-flex justify-content-between align-items-center mb-3">
-            <h5 class="mb-0">Certifications</h5>
+            <h5 class="mb-0">@L["Profile_Certifications"]</h5>
             @if (!_showCertForm)
             {
                 <button type="button" class="btn btn-sm btn-outline-primary" @onclick="OpenCertForm">
-                    <i class="bi bi-plus me-1"></i>Ajouter
+                    <i class="bi bi-plus me-1"></i>@L["Common_Add"]
                 </button>
             }
         </div>
@@ -164,15 +166,15 @@ else if (_tab == "Diplômes & Certifications")
             <div class="credential-form mb-3">
                 <div class="row g-2">
                     <div class="col-md-5">
-                        <label class="form-label">Intitulé *</label>
-                        <input class="form-control" @bind="_certDraft.Title" placeholder="Ex. TEF Canada" />
+                        <label class="form-label">@L["Profile_TitleLabel"] *</label>
+                        <input class="form-control" @bind="_certDraft.Title" />
                     </div>
                     <div class="col-md-4">
-                        <label class="form-label">Organisme *</label>
-                        <input class="form-control" @bind="_certDraft.Institution" placeholder="Ex. Chambre de commerce" />
+                        <label class="form-label">@L["Profile_Organization"] *</label>
+                        <input class="form-control" @bind="_certDraft.Institution" />
                     </div>
                     <div class="col-md-3">
-                        <label class="form-label">Année</label>
+                        <label class="form-label">@L["Profile_Year"]</label>
                         <input class="form-control" @bind="_certDraft.Year" placeholder="2023" />
                     </div>
                 </div>
@@ -181,38 +183,38 @@ else if (_tab == "Diplômes & Certifications")
                     <div class="text-danger small mt-2">@_credentialFormError</div>
                 }
                 <div class="d-flex gap-2 mt-3">
-                    <button type="button" class="btn btn-primary btn-sm" @onclick="ConfirmAddCert">Ajouter la certification</button>
-                    <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="CancelCertForm">Annuler</button>
+                    <button type="button" class="btn btn-primary btn-sm" @onclick="ConfirmAddCert">@L["Profile_AddCert"]</button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="CancelCertForm">@L["Common_Cancel"]</button>
                 </div>
             </div>
         }
 
         @if (_p.Certifications.Count == 0 && !_showCertForm)
         {
-            <p class="text-muted small mb-0">Aucune certification. Cliquez sur « Ajouter » pour en créer une.</p>
+            <p class="text-muted small mb-0">@L["Profile_NoCerts"]</p>
         }
         @foreach (var c in _p.Certifications)
         {
             <div class="credential-item credential-item--editable">
                 <i class="bi bi-award credential-icon text-warning"></i>
                 <div class="credential-fields flex-grow-1">
-                    <input class="form-control form-control-sm mb-1" @bind="c.Title" placeholder="Intitulé" />
+                    <input class="form-control form-control-sm mb-1" @bind="c.Title" placeholder="@L["Profile_TitleLabel"]" />
                     <div class="d-flex gap-2">
-                        <input class="form-control form-control-sm" @bind="c.Institution" placeholder="Organisme" />
-                        <input class="form-control form-control-sm" style="max-width:6rem" @bind="c.Year" placeholder="Année" />
+                        <input class="form-control form-control-sm" @bind="c.Institution" placeholder="@L["Profile_Organization"]" />
+                        <input class="form-control form-control-sm" style="max-width:6rem" @bind="c.Year" placeholder="@L["Profile_Year"]" />
                     </div>
                 </div>
-                <button type="button" class="ts-icon-btn ts-icon-btn--danger" title="Supprimer" @onclick="() => RemoveCert(c)">
+                <button type="button" class="ts-icon-btn ts-icon-btn--danger" title="@L["Common_Delete"]" @onclick="() => RemoveCert(c)">
                     <i class="bi bi-trash"></i>
                 </button>
             </div>
         }
     </div>
 }
-else if (_tab == "Matières")
+else if (_tab == "subjects")
 {
     <div class="section-card p-4">
-        <p class="text-muted mb-3">Sélectionnez les matières que vous enseignez.</p>
+        <p class="text-muted mb-3">@L["Profile_SubjectsHint"]</p>
         <div class="subject-chips">
             @foreach (var s in _allSubjects)
             {
@@ -225,10 +227,10 @@ else if (_tab == "Matières")
         </div>
     </div>
 }
-else if (_tab == "Disponibilités")
+else if (_tab == "availability")
 {
     <div class="section-card p-4">
-        <p class="text-muted mb-3">Indiquez vos plages horaires disponibles.</p>
+        <p class="text-muted mb-3">@L["Profile_AvailabilityHint"]</p>
         <div class="availability-grid">
             @foreach (var day in _days)
             {
@@ -252,8 +254,7 @@ else if (_tab == "Disponibilités")
 }
 
 @code {
-    private readonly string[] _tabs = ["Présentation","Diplômes & Certifications","Matières","Disponibilités"];
-    private string _tab = "Présentation";
+    private string _tab = "presentation";
     private bool _saving, _saved;
     private string? _error;
     private string? _photoDataUrl;
@@ -469,7 +470,7 @@ else if (_tab == "Disponibilités")
     {
         if (string.IsNullOrWhiteSpace(_diplomaDraft.Title) || string.IsNullOrWhiteSpace(_diplomaDraft.Institution))
         {
-            _credentialFormError = "Intitulé et établissement sont obligatoires.";
+            _credentialFormError = L["Profile_CredentialRequired"];
             return;
         }
 
@@ -503,7 +504,7 @@ else if (_tab == "Disponibilités")
     {
         if (string.IsNullOrWhiteSpace(_certDraft.Title) || string.IsNullOrWhiteSpace(_certDraft.Institution))
         {
-            _credentialFormError = "Intitulé et organisme sont obligatoires.";
+            _credentialFormError = L["Profile_CredentialRequired"];
             return;
         }
 

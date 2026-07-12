@@ -46,7 +46,7 @@
                     <p class="offer-card-desc">@offer.Description</p>
                 </div>
                 <span class="ts-badge @(offer.IsPublished ? "ts-badge-success" : "ts-badge-muted")">
-                    @(offer.IsPublished ? "Publié" : "Brouillon")
+                    @(offer.IsPublished ? L["Offers_Published"] : L["Offers_Draft"])
                 </span>
             </div>
             <div class="offer-card-meta">
@@ -55,10 +55,10 @@
                 {
                     <div class="offer-meta-item"><i class="bi bi-cash-coin"></i>@offer.HourlyRate.Value.ToString("0.##") $/h</div>
                 }
-                <div class="offer-meta-item"><i class="bi bi-calendar3"></i>@offer.SessionsPerMonth séances</div>
+                <div class="offer-meta-item"><i class="bi bi-calendar3"></i>@offer.SessionsPerMonth @L["Offers_Sessions"]</div>
                 <div class="offer-meta-item"><i class="bi bi-clock"></i>@offer.SessionDuration min</div>
                 <div class="offer-meta-item"><i class="bi bi-book"></i>@offer.Subject@(string.IsNullOrWhiteSpace(offer.Level) ? "" : $" · {offer.Level}")</div>
-                <div class="offer-meta-item"><i class="bi @(offer.Mode=="En ligne"?"bi-camera-video":"bi-geo-alt")"></i>@offer.Mode</div>
+                <div class="offer-meta-item"><i class="bi @(offer.Mode=="En ligne"?"bi-camera-video":"bi-geo-alt")"></i>@ModeLabel(offer.Mode)</div>
             </div>
             @if (!string.IsNullOrWhiteSpace(offer.ScheduleSummary))
             {
@@ -68,16 +68,16 @@
             }
             <div class="offer-card-footer">
                 <div class="offer-card-stats">
-                    <span><i class="bi bi-people me-1"></i>@offer.Subscribers abonné(s)</span>
+                    <span><i class="bi bi-people me-1"></i>@offer.Subscribers @L["Offers_Subscribers"]</span>
                     <span><i class="bi bi-graph-up me-1"></i>@offer.MonthlyRevenue $ / mois</span>
                 </div>
                 <div class="ts-action-group">
-                    <button class="ts-icon-btn" title="Modifier" @onclick="() => OpenEdit(offer)"><i class="bi bi-pencil"></i></button>
-                    <button class="ts-icon-btn" title="@(offer.IsPublished?"Dépublier":"Publier")"
+                    <button class="ts-icon-btn" title="@L["Common_Edit"]" @onclick="() => OpenEdit(offer)"><i class="bi bi-pencil"></i></button>
+                    <button class="ts-icon-btn" title="@(offer.IsPublished ? L["Offers_Unpublish"] : L["Offers_Publish"])"
                             @onclick="async () => await TogglePublish(offer)">
                         <i class="bi @(offer.IsPublished?"bi-eye-slash":"bi-eye")"></i>
                     </button>
-                    <button class="ts-icon-btn ts-icon-btn--danger" title="Supprimer"
+                    <button class="ts-icon-btn ts-icon-btn--danger" title="@L["Common_Delete"]"
                             @onclick="async () => await DeleteOffer(offer)">
                         <i class="bi bi-trash"></i>
                     </button>
@@ -92,29 +92,29 @@
     <div class="ts-modal-backdrop" @onclick="CloseModal">
         <div class="ts-modal ts-modal-lg" @onclick:stopPropagation="true">
             <div class="ts-modal-header">
-                <h2>@(_editing == null ? "Nouvelle offre" : "Modifier l'offre")</h2>
+                <h2>@(_editing == null ? L["Offers_New"] : L["Offers_EditTitle"])</h2>
                 <button class="ts-modal-close" @onclick="CloseModal"><i class="bi bi-x-lg"></i></button>
             </div>
             <div class="ts-modal-body">
                 <div class="row g-3">
-                    <div class="col-12"><label class="form-label">Nom de l'offre *</label>
-                        <input class="form-control" @bind="_mf.Name" placeholder="Ex: Cours de maths intensif" /></div>
-                    <div class="col-12"><label class="form-label">Description</label>
+                    <div class="col-12"><label class="form-label">@L["Offers_NameRequired"]</label>
+                        <input class="form-control" @bind="_mf.Name" /></div>
+                    <div class="col-12"><label class="form-label">@L["Common_Description"]</label>
                         <textarea class="form-control" rows="2" @bind="_mf.Description"></textarea></div>
 
-                    <div class="col-3"><label class="form-label">Prix forfait *</label>
+                    <div class="col-3"><label class="form-label">@L["Offers_PackagePrice"] *</label>
                         <input type="number" class="form-control" @bind="_mf.Price" /></div>
-                    <div class="col-3"><label class="form-label">Taux horaire ($/h)</label>
+                    <div class="col-3"><label class="form-label">@L["Offers_HourlyRate"]</label>
                         <input type="number" step="0.01" min="0" class="form-control" @bind="_mf.HourlyRate"
                                @bind:after="SuggestPackagePrice" /></div>
-                    <div class="col-3"><label class="form-label">Devise</label>
+                    <div class="col-3"><label class="form-label">@L["Offers_Currency"]</label>
                         <select class="form-select" @bind="_mf.Currency">
                             <option>CAD</option><option>EUR</option><option>USD</option>
                         </select></div>
-                    <div class="col-3"><label class="form-label">Période de facturation</label>
+                    <div class="col-3"><label class="form-label">@L["Offers_BillingPeriod"]</label>
                         <select class="form-select" @bind="_mf.Period" @bind:after="RecalcSessions">
-                            <option value="semaine">Semaine</option>
-                            <option value="mois">Mois</option>
+                            <option value="semaine">@L["Offers_Week"]</option>
+                            <option value="mois">@L["Offers_Month"]</option>
                             <option value="trimestre">Trimestre</option>
                             <option value="semestre">Semestre</option>
                             <option value="an">Année</option>
@@ -156,18 +156,22 @@
 
                     <div class="col-4"><label class="form-label">Mode</label>
                         <select class="form-select" @bind="_mf.Mode">
-                            <option>En ligne</option><option>Présentiel</option><option>Hybride</option>
+                            <option value="En ligne">@L["Offers_Online"]</option>
+                            <option value="Présentiel">@L["Offers_InPerson"]</option>
+                            <option value="Hybride">Hybride</option>
                         </select></div>
-                    <div class="col-4"><label class="form-label">Matière</label>
-                        <input class="form-control" @bind="_mf.Subject" placeholder="Mathématiques" /></div>
-                    <div class="col-4"><label class="form-label">Niveau</label>
+                    <div class="col-4"><label class="form-label">@L["Common_Subject"]</label>
+                        <input class="form-control" @bind="_mf.Subject" /></div>
+                    <div class="col-4"><label class="form-label">@L["Students_Level"]</label>
                         <select class="form-select" @bind="_mf.Level">
-                            <option>Tous niveaux</option><option>Primaire</option>
-                            <option>Collège</option><option>Lycée</option><option>Université</option>
+                            <option>Tous niveaux</option>
+                            <option value="Primaire">@L["Level_Primary"]</option>
+                            <option value="Collège">@L["Level_Middle"]</option>
+                            <option value="Lycée">@L["Level_High"]</option>
+                            <option value="Université">@L["Level_University"]</option>
                         </select></div>
                     <div class="col-12"><label class="form-label">Politique d'annulation</label>
-                        <textarea class="form-control" rows="2" @bind="_mf.CancellationPolicy"
-                            placeholder="Ex: Annulation gratuite 24h avant la séance"></textarea></div>
+                        <textarea class="form-control" rows="2" @bind="_mf.CancellationPolicy"></textarea></div>
                 </div>
                 @if (!string.IsNullOrEmpty(_modalError))
                 {
@@ -175,9 +179,9 @@
                 }
             </div>
             <div class="ts-modal-footer">
-                <button class="btn btn-outline-secondary" @onclick="CloseModal">Annuler</button>
+                <button class="btn btn-outline-secondary" @onclick="CloseModal">@L["Common_Cancel"]</button>
                 <button class="btn btn-primary" @onclick="SaveOffer">
-                    @(_editing == null ? "Créer l'offre" : "Enregistrer")
+                    @(_editing == null ? L["Offers_CreateOffer"] : L["Common_Save"])
                 </button>
             </div>
         </div>
@@ -187,6 +191,12 @@
 @code {
     private static readonly string[] _days =
         ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
+
+    private string ModeLabel(string? mode) => mode switch {
+        "En ligne" => L["Offers_Online"],
+        "Présentiel" => L["Offers_InPerson"],
+        _ => mode ?? ""
+    };
 
     private bool _showModal;
     private OfferVM? _editing;
