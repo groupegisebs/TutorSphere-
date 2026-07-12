@@ -52,7 +52,22 @@
             <!-- Tutor tile (large) -->
             <div class="cr-tile-main">
                 <div class="cr-tile-bg cr-tile-bg--tutor">
-                    <i class="bi bi-person-fill cr-tile-placeholder-icon"></i>
+                    <video @ref="_localVideo"
+                           class="cr-tile-video @(_showLocalVideo ? "" : "is-hidden")"
+                           autoplay
+                           playsinline
+                           muted></video>
+                    @if (!_showLocalVideo)
+                    {
+                        <i class="bi bi-person-fill cr-tile-placeholder-icon"></i>
+                    }
+                    @if (!string.IsNullOrEmpty(_mediaError))
+                    {
+                        <div class="cr-media-error" role="alert">
+                            <i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i>
+                            <span>@_mediaError</span>
+                        </div>
+                    }
                 </div>
                 <div class="cr-tile-label">
                     <div class="cr-tile-av" style="background:#5831E0;">JS</div>
@@ -348,6 +363,12 @@
     private bool _camOn      = true;
     private bool _sharing    = false;
     private bool _recording  = false;
+    private bool _mediaReady = false;
+    private bool _mediaStarted;
+    private string? _mediaError;
+
+    private ElementReference _localVideo;
+    private bool _showLocalVideo => _sharing || (_camOn && _mediaReady);
 
     private string _activeTab  = "Chat";
     private string _newMessage = "";
@@ -404,9 +425,19 @@
             }
             catch { /* prerender phase — JS not yet available */ }
         }
+
+        if (firstRender && !_mediaStarted)
+        {
+            _mediaStarted = true;
+            await StartLocalMediaAsync();
+        }
     }
 
-    public void Dispose() => _timer?.Dispose();
+    public void Dispose()
+    {
+        _timer?.Dispose();
+        _ = StopLocalMediaAsync();
+    }
 
     private static string FormatElapsed(int s)
     {
@@ -416,23 +447,131 @@
         return h > 0 ? $"{h}:{m:D2}:{sec:D2}" : $"{m:D2}:{sec:D2}";
     }
 
-    private void GoBack()     => Navigation.NavigateTo("/tutor/lessons");
-    private void EndSession() => Navigation.NavigateTo("/tutor/lessons");
-
-    private void ToggleMic()
+    private async Task GoBack()
     {
+        await StopLocalMediaAsync();
+        Navigation.NavigateTo("/tutor/lessons");
+    }
+
+    private async Task EndSession()
+    {
+        await StopLocalMediaAsync();
+        Navigation.NavigateTo("/tutor/lessons");
+    }
+
+    private async Task StartLocalMediaAsync()
+    {
+        _mediaError = null;
+        try
+        {
+            var result = await JS.InvokeAsync<MediaStartResult>(
+                "classroomMedia.start", _localVideo, new { video = true, audio = true });
+
+            if (result is null || !result.Ok)
+            {
+                _mediaReady = false;
+                _camOn = false;
+                _micOn = false;
+                _mediaError = result?.Error ?? "Impossible d'activer la caméra.";
+                SyncTutorMediaFlags();
+                StateHasChanged();
+                return;
+            }
+
+            _mediaReady = true;
+            _camOn = result.Video;
+            _micOn = result.Audio;
+            SyncTutorMediaFlags();
+            StateHasChanged();
+        }
+        catch (JSException ex)
+        {
+            _mediaReady = false;
+            _camOn = false;
+            _micOn = false;
+            _mediaError = ex.Message;
+            SyncTutorMediaFlags();
+            StateHasChanged();
+        }
+        catch (InvalidOperationException)
+        {
+            // Prerender — retry not needed; button will start media.
+        }
+    }
+
+    private async Task StopLocalMediaAsync()
+    {
+        try { await JS.InvokeVoidAsync("classroomMedia.stop", _localVideo); }
+        catch { }
+        _mediaReady = false;
+    }
+
+    private void SyncTutorMediaFlags()
+    {
+        if (_participants.Count > 0)
+        {
+            _participants[0].MicOn = _micOn;
+            _participants[0].CamOn = _camOn;
+        }
+    }
+
+    private async Task ToggleMic()
+    {
+        if (!_mediaReady)
+        {
+            await StartLocalMediaAsync();
+            return;
+        }
+
         _micOn = !_micOn;
-        if (_participants.Count > 0) _participants[0].MicOn = _micOn;
+        try { await JS.InvokeVoidAsync("classroomMedia.setAudioEnabled", _micOn); }
+        catch { }
+        SyncTutorMediaFlags();
     }
 
-    private void ToggleCam()
+    private async Task ToggleCam()
     {
+        if (!_mediaReady)
+        {
+            await StartLocalMediaAsync();
+            return;
+        }
+
         _camOn = !_camOn;
-        if (_participants.Count > 0) _participants[0].CamOn = _camOn;
+        try { await JS.InvokeVoidAsync("classroomMedia.setVideoEnabled", _camOn); }
+        catch { }
+        if (_camOn) _mediaError = null;
+        SyncTutorMediaFlags();
     }
 
-    private void ToggleShare()     => _sharing    = !_sharing;
-    private void ToggleRecording() => _recording  = !_recording;
+    private async Task ToggleShare()
+    {
+        if (_sharing)
+        {
+            try { await JS.InvokeVoidAsync("classroomMedia.stopScreenShare", _localVideo); }
+            catch { }
+            _sharing = false;
+            return;
+        }
+
+        try
+        {
+            var result = await JS.InvokeAsync<MediaStartResult>("classroomMedia.startScreenShare", _localVideo);
+            if (result is null || !result.Ok)
+            {
+                _mediaError = result?.Error ?? "Partage d'écran impossible.";
+                return;
+            }
+            _sharing = true;
+            _mediaError = null;
+        }
+        catch (JSException ex)
+        {
+            _mediaError = ex.Message;
+        }
+    }
+
+    private void ToggleRecording() => _recording = !_recording;
 
     private void OnChatKeyDown(KeyboardEventArgs e)
     {
@@ -540,5 +679,13 @@
     {
         public string Name { get; set; } = "";
         public string Size { get; set; } = "";
+    }
+
+    private sealed class MediaStartResult
+    {
+        public bool Ok { get; set; }
+        public bool Video { get; set; }
+        public bool Audio { get; set; }
+        public string? Error { get; set; }
     }
 }
