@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TutorSphere.Application.DTOs.TutorEarnings;
+using TutorSphere.Application.DTOs.TutorPayouts;
 using TutorSphere.Application.Services;
 using TutorSphere.Domain.Enums;
 
@@ -19,12 +20,16 @@ public class TutorEarningsController : ControllerBase
     public async Task<ActionResult<TutorEarningsSummaryDto>> GetSummary(CancellationToken ct)
         => Ok(await _earnings.GetSummaryAsync(ct));
 
+    [HttpGet("eligibility")]
+    public async Task<ActionResult<PayoutEligibilityDto>> GetEligibility(CancellationToken ct)
+        => Ok(await _earnings.GetEligibilityAsync(ct));
+
     [HttpGet("payouts")]
     public async Task<ActionResult<IReadOnlyList<TutorPayoutDto>>> ListPayouts(CancellationToken ct)
         => Ok(await _earnings.ListPayoutsAsync(ct));
 
     /// <summary>
-    /// Encaisser les gains disponibles (cours déjà donnés et terminés uniquement).
+    /// Encaisser les gains (cours terminés). ≥ 100 $ CAD immédiat ; &lt; 100 $ délai 30 j ; &lt; 10 $ refusé.
     /// </summary>
     [HttpPost("payouts")]
     public async Task<ActionResult<TutorPayoutDto>> RequestPayout(

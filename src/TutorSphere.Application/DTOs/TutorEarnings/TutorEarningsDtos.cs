@@ -1,3 +1,4 @@
+using TutorSphere.Application.DTOs.TutorPayouts;
 using TutorSphere.Domain.Enums;
 
 namespace TutorSphere.Application.DTOs.TutorEarnings;
@@ -10,7 +11,8 @@ public record TutorEarningsSummaryDto(
     decimal Available,
     string Currency,
     int SessionsHeld,
-    IReadOnlyList<TutorPayoutDto> RecentPayouts);
+    IReadOnlyList<TutorPayoutDto> RecentPayouts,
+    PayoutEligibilityDto? Eligibility);
 
 public record TutorPayoutDto(
     Guid Id,
@@ -19,7 +21,9 @@ public record TutorPayoutDto(
     string Status,
     string? Note,
     DateTime RequestedAt,
-    DateTime? CompletedAt);
+    DateTime? CompletedAt,
+    string? ProviderKind,
+    Guid? PayoutAccountId);
 
 public record RequestTutorPayoutRequest(
     decimal? Amount,

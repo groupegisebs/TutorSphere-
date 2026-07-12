@@ -2,6 +2,7 @@ using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.Tenants;
 using TutorSphere.Domain.Entities;
 using TutorSphere.Domain.Enums;
+using TutorSphere.Domain.Payouts;
 using Microsoft.Extensions.Logging;
 
 namespace TutorSphere.Application.Services;
@@ -37,19 +38,77 @@ public class TenantService : ITenantService
         if (_db.Tenants.Any(t => t.Slug == slug))
             throw new InvalidOperationException("Ce slug est déjà utilisé.");
 
+        var country = TutorPayoutPolicy.NormalizeCountry(request.Country ?? "CA");
+        var region = TutorPayoutPolicy.ResolveRegion(country);
+
+        if (TutorPayoutPolicy.RequiresPayPalAtSignup(country))
+        {
+            if (string.IsNullOrWhiteSpace(request.PayPalEmail) || !request.PayPalEmail.Contains('@'))
+                throw new InvalidOperationException(
+                    "Un compte PayPal (adresse e-mail) est obligatoire à la création du compte enseignant.");
+        }
+
+        if (TutorPayoutPolicy.RequiresStripeAtSignup(country)
+            && string.IsNullOrWhiteSpace(request.StripeAccountId))
+        {
+            // Stripe Connect peut être complété juste après via l'interface d'onboarding,
+            // mais on enregistre le champ s'il est fourni.
+        }
+
         var tenant = new Tenant
         {
             Name = request.Name.Trim(),
             Slug = slug,
             Subdomain = slug,
             City = request.City,
-            Country = request.Country ?? "CA",
+            Country = country,
             Status = TenantStatus.PendingValidation,
             Plan = TenantPlan.Starter,
+            PayPalEmail = string.IsNullOrWhiteSpace(request.PayPalEmail)
+                ? null
+                : request.PayPalEmail.Trim().ToLowerInvariant(),
+            StripeAccountId = string.IsNullOrWhiteSpace(request.StripeAccountId)
+                ? null
+                : request.StripeAccountId.Trim(),
             Branding = new TenantBranding()
         };
 
         _db.Add(tenant);
+        await _db.SaveChangesAsync(ct);
+
+        // Comptes de versement initiaux
+        if (!string.IsNullOrWhiteSpace(tenant.PayPalEmail))
+        {
+            _db.Add(new TutorPayoutAccount
+            {
+                TenantId = tenant.Id,
+                Label = "PayPal",
+                ProviderKind = PayoutProviderKind.PayPal,
+                CountryCode = country,
+                Currency = TutorPayoutPolicy.PolicyCurrency,
+                AccountHolderName = $"{request.OwnerFirstName} {request.OwnerLastName}".Trim(),
+                EmailOrAccountId = tenant.PayPalEmail,
+                IsPrimary = region != PayoutRegionKind.StripeConnectZone || string.IsNullOrWhiteSpace(tenant.StripeAccountId),
+                IsActive = true
+            });
+        }
+
+        if (!string.IsNullOrWhiteSpace(tenant.StripeAccountId))
+        {
+            _db.Add(new TutorPayoutAccount
+            {
+                TenantId = tenant.Id,
+                Label = "Stripe Connect",
+                ProviderKind = PayoutProviderKind.StripeConnect,
+                CountryCode = country,
+                Currency = TutorPayoutPolicy.PolicyCurrency,
+                AccountHolderName = $"{request.OwnerFirstName} {request.OwnerLastName}".Trim(),
+                EmailOrAccountId = tenant.StripeAccountId,
+                IsPrimary = true,
+                IsActive = true
+            });
+        }
+
         await _db.SaveChangesAsync(ct);
 
         if (!string.IsNullOrWhiteSpace(request.OwnerEmail))

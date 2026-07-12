@@ -44,6 +44,7 @@ public interface IApplicationDbContext
     /// <summary>Attendances without tenant filter (parent portal across schools).</summary>
     IQueryable<LessonAttendance> LessonAttendancesForAnyTenant { get; }
     IQueryable<TutorPayout> TutorPayouts { get; }
+    IQueryable<TutorPayoutAccount> TutorPayoutAccounts { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     void Add<T>(T entity) where T : class;

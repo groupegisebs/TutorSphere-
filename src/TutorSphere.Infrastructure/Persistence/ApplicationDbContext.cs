@@ -33,6 +33,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     public DbSet<TenantBranding> TenantBrandingsSet => Set<TenantBranding>();
     public DbSet<LessonAttendance> LessonAttendancesSet => Set<LessonAttendance>();
     public DbSet<TutorPayout> TutorPayoutsSet => Set<TutorPayout>();
+    public DbSet<TutorPayoutAccount> TutorPayoutAccountsSet => Set<TutorPayoutAccount>();
 
     IQueryable<Tenant> IApplicationDbContext.Tenants => TenantsSet;
     IQueryable<TenantBranding> IApplicationDbContext.TenantBrandings => TenantBrandingsSet;
@@ -69,6 +70,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     IQueryable<LessonAttendance> IApplicationDbContext.LessonAttendancesForAnyTenant =>
         LessonAttendancesSet.IgnoreQueryFilters();
     IQueryable<TutorPayout> IApplicationDbContext.TutorPayouts => TutorPayoutsSet;
+    IQueryable<TutorPayoutAccount> IApplicationDbContext.TutorPayoutAccounts => TutorPayoutAccountsSet;
 
     public new void Add<T>(T entity) where T : class => Set<T>().Add(entity);
     public new void Remove<T>(T entity) where T : class => Set<T>().Remove(entity);
@@ -108,6 +110,16 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             e.Property(p => p.Amount).HasPrecision(18, 2);
             e.HasIndex(p => p.TenantId);
             e.HasIndex(p => p.RequestedAt);
+            e.HasOne(p => p.PayoutAccount).WithMany().HasForeignKey(p => p.PayoutAccountId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        builder.Entity<TutorPayoutAccount>(e =>
+        {
+            e.HasIndex(a => a.TenantId);
+            e.HasIndex(a => new { a.TenantId, a.IsPrimary });
+            e.HasOne(a => a.Tenant).WithMany().HasForeignKey(a => a.TenantId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         builder.Entity<Homework>(e =>

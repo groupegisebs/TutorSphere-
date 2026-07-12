@@ -8,7 +8,11 @@ public record CreateTenantRequest(
     string OwnerFirstName,
     string OwnerLastName,
     string? City,
-    string? Country);
+    string? Country,
+    /// <summary>E-mail PayPal obligatoire pour CA/US/UK/EEA/CH.</summary>
+    string? PayPalEmail = null,
+    /// <summary>Identifiant Stripe Connect (acct_…) pour les zones concernées.</summary>
+    string? StripeAccountId = null);
 
 public record TenantDto(
     Guid Id,

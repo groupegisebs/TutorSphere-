@@ -1,0 +1,316 @@
+@page "/tutor/payout-settings"
+@layout TutorLayout
+@rendermode InteractiveServer
+@inject IStringLocalizer<SharedResources> L
+@inject ApiClient Api
+
+<PageTitle>@L["Payout_Title"] – TutorSphere</PageTitle>
+
+<div class="ts-page-header">
+    <div>
+        <h1><i class="bi bi-wallet2 me-2"></i>@L["Payout_Title"]</h1>
+        <p class="ts-page-subtitle">@L["Payout_Subtitle"]</p>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-danger">@_error</div>
+}
+@if (!string.IsNullOrEmpty(_success))
+{
+    <div class="alert alert-success">@_success</div>
+}
+
+@if (_loading)
+{
+    <div class="text-muted"><span class="spinner-border spinner-border-sm me-2"></span>@L["Common_Loading"]</div>
+}
+else if (_setup is not null)
+{
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="ts-kpi-card @(_setup.SetupComplete ? "ts-kpi-card--success" : "ts-kpi-card--warning")">
+                <span class="ts-kpi-val">@(_setup.SetupComplete ? L["Payout_SetupOk"] : L["Payout_SetupIncomplete"])</span>
+                <span class="ts-kpi-label">@L["Payout_SetupStatus"]</span>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="ts-kpi-card">
+                <span class="ts-kpi-val">@_setup.Region</span>
+                <span class="ts-kpi-label">@L["Payout_Region"] (@_setup.CountryCode)</span>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="ts-kpi-card">
+                <span class="ts-kpi-val">@_setup.Currency</span>
+                <span class="ts-kpi-label">@L["Payout_Currency"]</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="section-card mb-4">
+        <div class="section-card-header"><h2>@L["Payout_RulesTitle"]</h2></div>
+        <ul class="mb-0">
+            <li>@L["Payout_Rule100"]</li>
+            <li>@L["Payout_Rule30"]</li>
+            <li>@L["Payout_Rule10"]</li>
+        </ul>
+    </div>
+
+    <div class="section-card mb-4">
+        <div class="section-card-header"><h2>@L["Payout_ProfileTitle"]</h2></div>
+        <p class="text-muted small">@L["Payout_ProfileHint"]</p>
+        <div class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">@L["School_Country"]</label>
+                <select class="form-select" @bind="_country">
+                    <option value="CA">Canada (CA)</option>
+                    <option value="US">United States (US)</option>
+                    <option value="GB">United Kingdom (GB)</option>
+                    <option value="FR">France (FR)</option>
+                    <option value="DE">Germany (DE)</option>
+                    <option value="CH">Switzerland (CH)</option>
+                    <option value="BE">Belgium (BE)</option>
+                    <option value="CM">Cameroun (CM)</option>
+                    <option value="CI">Côte d'Ivoire (CI)</option>
+                    <option value="SN">Sénégal (SN)</option>
+                    <option value="GH">Ghana (GH)</option>
+                    <option value="NG">Nigeria (NG)</option>
+                    <option value="KE">Kenya (KE)</option>
+                    <option value="MA">Maroc (MA)</option>
+                </select>
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">@L["Payout_PayPalEmail"]</label>
+                <input class="form-control" @bind="_paypalEmail" placeholder="email@paypal.com" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">@L["Payout_StripeAccountId"]</label>
+                <input class="form-control" @bind="_stripeAccountId" placeholder="acct_…" />
+            </div>
+        </div>
+        <button class="btn btn-primary mt-3" disabled="@_busy" @onclick="SaveProfileAsync">
+            @L["Common_Save"]
+        </button>
+    </div>
+
+    <div class="section-card mb-4">
+        <div class="section-card-header d-flex justify-content-between align-items-center">
+            <h2 class="mb-0">@L["Payout_AccountsTitle"]</h2>
+            <button class="btn btn-outline-primary btn-sm" @onclick="() => _showAdd = !_showAdd">
+                <i class="bi bi-plus-lg me-1"></i>@L["Payout_AddAccount"]
+            </button>
+        </div>
+
+        @if (_showAdd)
+        {
+            <div class="border rounded p-3 mb-3 bg-light">
+                <div class="row g-2">
+                    <div class="col-md-3">
+                        <label class="form-label">@L["Payout_Provider"]</label>
+                        <select class="form-select" @bind="_form.ProviderKind">
+                            @foreach (var c in _setup.Catalog)
+                            {
+                                <option value="@c.ProviderKind">@c.DisplayName @(c.Required ? "*" : "")</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">@L["Payout_Label"]</label>
+                        <input class="form-control" @bind="_form.Label" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">@L["Payout_Holder"]</label>
+                        <input class="form-control" @bind="_form.AccountHolderName" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">@L["Payout_EmailOrId"]</label>
+                        <input class="form-control" @bind="_form.EmailOrAccountId" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">@L["Payout_Phone"]</label>
+                        <input class="form-control" @bind="_form.PhoneNumber" placeholder="+237…" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">@L["Payout_Details"]</label>
+                        <input class="form-control" @bind="_form.PaymentDetails" />
+                    </div>
+                    <div class="col-md-3 d-flex align-items-end">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" @bind="_form.IsPrimary" id="prim" />
+                            <label class="form-check-label" for="prim">@L["Payout_Primary"]</label>
+                        </div>
+                    </div>
+                </div>
+                <button class="btn btn-primary btn-sm mt-3" disabled="@_busy" @onclick="AddAccountAsync">
+                    @L["Common_Save"]
+                </button>
+            </div>
+        }
+
+        @if (_setup.Accounts.Count == 0)
+        {
+            <p class="text-muted mb-0">@L["Payout_NoAccounts"]</p>
+        }
+        else
+        {
+            <table class="table ts-table mb-0">
+                <thead>
+                    <tr>
+                        <th>@L["Payout_Label"]</th>
+                        <th>@L["Payout_Provider"]</th>
+                        <th>@L["Payout_Holder"]</th>
+                        <th>@L["Payout_EmailOrId"]</th>
+                        <th>@L["Payout_Phone"]</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var a in _setup.Accounts)
+                    {
+                        <tr>
+                            <td>
+                                <strong>@a.Label</strong>
+                                @if (a.IsPrimary)
+                                {
+                                    <span class="ts-badge ts-badge-success ms-1">@L["Payout_Primary"]</span>
+                                }
+                            </td>
+                            <td>@a.ProviderKind</td>
+                            <td>@a.AccountHolderName</td>
+                            <td>@(a.EmailOrAccountId ?? "—")</td>
+                            <td>@(a.PhoneNumber ?? "—")</td>
+                            <td class="text-end">
+                                @if (!a.IsPrimary)
+                                {
+                                    <button class="btn btn-link btn-sm" @onclick="() => SetPrimaryAsync(a.Id)">@L["Payout_MakePrimary"]</button>
+                                }
+                                <button class="btn btn-link btn-sm text-danger" @onclick="() => DeactivateAsync(a.Id)">@L["Common_Delete"]</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+
+    <div class="alert alert-info mb-0">
+        <i class="bi bi-shield-lock me-1"></i>@L["Payout_SecurityNote"]
+    </div>
+}
+
+@code {
+    private bool _loading = true, _busy, _showAdd;
+    private string? _error, _success;
+    private SetupDto? _setup;
+    private string _country = "CA";
+    private string? _paypalEmail, _stripeAccountId;
+    private AccountForm _form = new();
+
+    private record CatalogItem(string ProviderKind, string DisplayName, bool Required, string Region);
+    private record AccountDto(
+        Guid Id, string Label, string ProviderKind, string CountryCode, string Currency,
+        bool IsPrimary, bool IsActive, string AccountHolderName, string? EmailOrAccountId,
+        string? PhoneNumber, string? PaymentDetails, bool IsVerified, DateTime? VerifiedAt);
+    private record SetupDto(
+        string Region, string CountryCode, string Currency, List<string> RequiredProviders,
+        bool StripeConfigured, bool PayPalConfigured, bool SetupComplete,
+        string? StripeAccountId, string? PayPalEmail, List<AccountDto> Accounts, List<CatalogItem> Catalog);
+
+    private class AccountForm
+    {
+        public string Label { get; set; } = "";
+        public string ProviderKind { get; set; } = "PayPal";
+        public string AccountHolderName { get; set; } = "";
+        public string? EmailOrAccountId { get; set; }
+        public string? PhoneNumber { get; set; }
+        public string? PaymentDetails { get; set; }
+        public bool IsPrimary { get; set; } = true;
+    }
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _setup = await Api.GetAsync<SetupDto>("api/tutor-payout-accounts/setup");
+            if (_setup is not null)
+            {
+                _country = _setup.CountryCode;
+                _paypalEmail = _setup.PayPalEmail;
+                _stripeAccountId = _setup.StripeAccountId;
+                if (_setup.Catalog.Count > 0)
+                    _form.ProviderKind = _setup.Catalog.FirstOrDefault(c => c.Required)?.ProviderKind
+                        ?? _setup.Catalog[0].ProviderKind;
+            }
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task SaveProfileAsync()
+    {
+        _busy = true; _error = null; _success = null;
+        try
+        {
+            var result = await Api.PutWithErrorAsync<SetupDto>("api/tutor-payout-accounts/profile", new
+            {
+                country = _country,
+                payPalEmail = _paypalEmail,
+                stripeAccountId = _stripeAccountId
+            });
+            if (result.Error is not null) { _error = result.Error; return; }
+            _setup = result.Value;
+            _success = L["Payout_Saved"];
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task AddAccountAsync()
+    {
+        _busy = true; _error = null; _success = null;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<AccountDto>("api/tutor-payout-accounts", new
+            {
+                label = _form.Label,
+                providerKind = _form.ProviderKind,
+                countryCode = _country,
+                currency = "CAD",
+                isPrimary = _form.IsPrimary,
+                accountHolderName = _form.AccountHolderName,
+                emailOrAccountId = _form.EmailOrAccountId,
+                phoneNumber = _form.PhoneNumber,
+                paymentDetails = _form.PaymentDetails
+            });
+            if (result.Error is not null) { _error = result.Error; return; }
+            _showAdd = false;
+            _form = new AccountForm();
+            _success = L["Payout_Saved"];
+            await ReloadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task SetPrimaryAsync(Guid id)
+    {
+        _error = null;
+        var result = await Api.PostWithErrorAsync<object>($"api/tutor-payout-accounts/{id}/primary", new { });
+        if (result.Error is not null) { _error = result.Error; return; }
+        await ReloadAsync();
+    }
+
+    private async Task DeactivateAsync(Guid id)
+    {
+        _error = null;
+        var result = await Api.DeleteWithErrorAsync($"api/tutor-payout-accounts/{id}");
+        if (result.Error is not null) { _error = result.Error; return; }
+        await ReloadAsync();
+    }
+}

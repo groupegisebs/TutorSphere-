@@ -24,6 +24,16 @@ public class Tenant : BaseEntity
     public decimal PlatformCommissionPercent { get; set; } = 10m;
     public string? StripeAccountId { get; set; }
     public string? StripeCustomerId { get; set; }
+
+    /// <summary>E-mail PayPal exigé pour les zones Stripe Connect (et recommandé ailleurs).</summary>
+    public string? PayPalEmail { get; set; }
+
+    /// <summary>
+    /// Date UTC à partir de laquelle le solde disponible &lt; 100 $ CAD a commencé à être détenu
+    /// (délai de 30 jours avant retrait sous le seuil).
+    /// </summary>
+    public DateTime? PayoutHoldingStartedAt { get; set; }
+
     public string OwnerUserId { get; set; } = string.Empty;
 
     public TenantBranding? Branding { get; set; }

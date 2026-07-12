@@ -75,26 +75,42 @@
             <h2 class="mb-1">@L["Revenue_CashOutTitle"]</h2>
             <p class="text-muted small mb-0">@L["Revenue_CashOutHint"]</p>
         </div>
-        <button class="btn btn-primary"
-                disabled="@(_payoutBusy || _available <= 0)"
-                @onclick="CashOutAsync">
-            @if (_payoutBusy)
-            {
-                <span class="spinner-border spinner-border-sm me-1"></span>
-            }
-            else
-            {
-                <i class="bi bi-wallet2 me-1"></i>
-            }
-            @L["Revenue_CashOut"]
-        </button>
+        <div class="d-flex gap-2">
+            <a class="btn btn-outline-secondary" href="tutor/payout-settings">
+                <i class="bi bi-gear me-1"></i>@L["Nav_PayoutSettings"]
+            </a>
+            <button class="btn btn-primary"
+                    disabled="@(_payoutBusy || !_canWithdraw)"
+                    @onclick="CashOutAsync">
+                @if (_payoutBusy)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                else
+                {
+                    <i class="bi bi-wallet2 me-1"></i>
+                }
+                @L["Revenue_CashOut"]
+            </button>
+        </div>
     </div>
+    @if (!string.IsNullOrEmpty(_eligibilityBlock))
+    {
+        <div class="alert alert-warning mt-3 mb-0 py-2">@_eligibilityBlock</div>
+    }
+    else if (_claimableNow > 0)
+    {
+        <p class="small text-success mb-0 mt-2">
+            @string.Format(L["Revenue_ClaimableNowFmt"].Value, _claimableNow.ToString("N2"), _currency)
+        </p>
+    }
     @if (_sessionsHeld > 0)
     {
         <p class="small text-muted mb-0 mt-2">
             @string.Format(L["Revenue_SessionsHeldFmt"].Value, _sessionsHeld)
         </p>
     }
+    <p class="small text-muted mb-0 mt-2">@L["Payout_Rule100"] · @L["Payout_Rule30"] · @L["Payout_Rule10"]</p>
 </div>
 
 <!-- KPI row activité -->
@@ -269,6 +285,9 @@
     private decimal _withdrawn;
     private string _currency = "CAD";
     private int _sessionsHeld;
+    private bool _canWithdraw;
+    private decimal _claimableNow;
+    private string? _eligibilityBlock;
     private List<PayoutDto> _recentPayouts = [];
 
     private record DashboardDto(
@@ -277,12 +296,20 @@
 
     private record PayoutDto(
         Guid Id, decimal Amount, string Currency, string Status,
-        string? Note, DateTime RequestedAt, DateTime? CompletedAt);
+        string? Note, DateTime RequestedAt, DateTime? CompletedAt,
+        string? ProviderKind, Guid? PayoutAccountId);
+
+    private record EligibilityDto(
+        bool CanWithdraw, decimal Available, decimal ClaimableNow,
+        decimal MinimumTransfer, decimal InstantThreshold, int HoldingDaysRequired,
+        int? HoldingDaysElapsed, int? HoldingDaysRemaining,
+        DateTime? HoldingStartedAt, DateTime? EligibleAt,
+        bool SetupComplete, string? BlockReason, string Currency);
 
     private record EarningsSummaryDto(
         decimal Collected, decimal Held, decimal Released, decimal Withdrawn,
         decimal Available, string Currency, int SessionsHeld,
-        List<PayoutDto>? RecentPayouts);
+        List<PayoutDto>? RecentPayouts, EligibilityDto? Eligibility);
 
     protected override async Task OnInitializedAsync()
     {
@@ -316,6 +343,18 @@
             _currency = string.IsNullOrWhiteSpace(summary.Currency) ? "CAD" : summary.Currency;
             _sessionsHeld = summary.SessionsHeld;
             _recentPayouts = summary.RecentPayouts ?? [];
+            if (summary.Eligibility is not null)
+            {
+                _canWithdraw = summary.Eligibility.CanWithdraw;
+                _claimableNow = summary.Eligibility.ClaimableNow;
+                _eligibilityBlock = summary.Eligibility.BlockReason;
+            }
+            else
+            {
+                _canWithdraw = _available >= 10;
+                _claimableNow = _available;
+                _eligibilityBlock = null;
+            }
         }
         _earningsLoading = false;
     }

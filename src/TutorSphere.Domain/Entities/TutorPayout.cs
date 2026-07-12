@@ -10,6 +10,8 @@ namespace TutorSphere.Domain.Entities;
 public class TutorPayout : BaseEntity, ITenantEntity
 {
     public Guid TenantId { get; set; }
+    public Guid? PayoutAccountId { get; set; }
+    public PayoutProviderKind? ProviderKind { get; set; }
     public decimal Amount { get; set; }
     public string Currency { get; set; } = "CAD";
     public TutorPayoutStatus Status { get; set; } = TutorPayoutStatus.Pending;
@@ -18,4 +20,5 @@ public class TutorPayout : BaseEntity, ITenantEntity
     public DateTime? CompletedAt { get; set; }
 
     public Tenant Tenant { get; set; } = null!;
+    public TutorPayoutAccount? PayoutAccount { get; set; }
 }
