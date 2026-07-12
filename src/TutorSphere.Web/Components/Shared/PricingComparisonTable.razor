@@ -104,7 +104,7 @@
 
     private RenderFragment RenderCell(string planId, string rowId) => builder =>
     {
-        var (check, text) = GetValue(planId, rowId);
+        var (check, textOrKey) = GetValue(planId, rowId);
         if (check == true)
         {
             builder.OpenElement(0, "i");
@@ -120,7 +120,11 @@
         else
         {
             builder.OpenElement(0, "span");
-            builder.AddContent(1, text);
+            // Keys start with Pricing_Val_; plain numbers/∞ stay as-is
+            var display = textOrKey.StartsWith("Pricing_", StringComparison.Ordinal)
+                ? L[textOrKey].Value
+                : textOrKey;
+            builder.AddContent(1, display);
             builder.CloseElement();
         }
     };
@@ -132,10 +136,10 @@
         ("business", "students") => (null, "200"),
         ("enterprise", "students") => (null, "∞"),
 
-        ("starter", "storage") => (null, "5 Go"),
-        ("pro", "storage") => (null, "25 Go"),
-        ("business", "storage") => (null, "100 Go"),
-        ("enterprise", "storage") => (null, "∞"),
+        ("starter", "storage") => (null, "Pricing_Val_5Gb"),
+        ("pro", "storage") => (null, "Pricing_Val_25Gb"),
+        ("business", "storage") => (null, "Pricing_Val_100Gb"),
+        ("enterprise", "storage") => (null, "Pricing_Val_Unlimited"),
 
         ("starter", "domain") => (false, ""),
         ("pro", "domain") => (true, ""),
@@ -147,35 +151,35 @@
         ("business", "teachers") => (null, "10"),
         ("enterprise", "teachers") => (null, "∞"),
 
-        ("starter", "reports") => (null, "Basique"),
-        ("pro", "reports") => (null, "Complet"),
-        ("business", "reports") => (null, "Complet"),
-        ("enterprise", "reports") => (null, "Complet"),
+        ("starter", "reports") => (null, "Pricing_Val_Basic"),
+        ("pro", "reports") => (null, "Pricing_Val_Full"),
+        ("business", "reports") => (null, "Pricing_Val_Full"),
+        ("enterprise", "reports") => (null, "Pricing_Val_Full"),
 
-        ("starter", "video") => (null, "5 h/mois"),
-        ("pro", "video") => (null, "Illimité"),
-        ("business", "video") => (null, "Illimité"),
-        ("enterprise", "video") => (null, "Illimité"),
+        ("starter", "video") => (null, "Pricing_Val_5hMonth"),
+        ("pro", "video") => (null, "Pricing_Val_Unlimited"),
+        ("business", "video") => (null, "Pricing_Val_Unlimited"),
+        ("enterprise", "video") => (null, "Pricing_Val_Unlimited"),
 
-        ("starter", "support") => (null, "Courriel"),
-        ("pro", "support") => (null, "Prioritaire"),
-        ("business", "support") => (null, "Prioritaire"),
-        ("enterprise", "support") => (null, "Dédié"),
+        ("starter", "support") => (null, "Pricing_Val_Email"),
+        ("pro", "support") => (null, "Pricing_Val_Priority"),
+        ("business", "support") => (null, "Pricing_Val_Priority"),
+        ("enterprise", "support") => (null, "Pricing_Val_Dedicated"),
 
-        ("starter", "stats") => (null, "Basique"),
-        ("pro", "stats") => (null, "Avancé"),
-        ("business", "stats") => (null, "Avancé"),
-        ("enterprise", "stats") => (null, "Avancé"),
+        ("starter", "stats") => (null, "Pricing_Val_Basic"),
+        ("pro", "stats") => (null, "Pricing_Val_Advanced"),
+        ("business", "stats") => (null, "Pricing_Val_Advanced"),
+        ("enterprise", "stats") => (null, "Pricing_Val_Advanced"),
 
         ("starter", "crm") => (false, ""),
         ("pro", "crm") => (true, ""),
         ("business", "crm") => (true, ""),
         ("enterprise", "crm") => (true, ""),
 
-        ("starter", "billing") => (null, "Basique"),
-        ("pro", "billing") => (null, "Complet"),
-        ("business", "billing") => (null, "Complet"),
-        ("enterprise", "billing") => (null, "Complet"),
+        ("starter", "billing") => (null, "Pricing_Val_Basic"),
+        ("pro", "billing") => (null, "Pricing_Val_Full"),
+        ("business", "billing") => (null, "Pricing_Val_Full"),
+        ("enterprise", "billing") => (null, "Pricing_Val_Full"),
 
         _ => (false, "")
     };

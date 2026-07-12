@@ -17,7 +17,7 @@
     {
         <span class="ts-badge @(_plan == "Active" ? "ts-badge-success" : "ts-badge-muted")" style="font-size:1rem;padding:.5rem 1rem">
             <i class="bi bi-patch-check-fill me-1"></i>
-            @(_plan == "Active" ? "Plan Actif" : "Essai gratuit")
+            @(_plan == "Active" ? L["Pricing_PlanActive"] : L["Pricing_FreeTrialBadge"])
         </span>
     }
 </div>
@@ -40,18 +40,18 @@
 <div class="row justify-content-center">
     <div class="col-lg-8">
         <div class="section-card p-4">
-            <h3 class="mb-4 text-center" style="color:var(--ts-primary)">Questions fréquentes</h3>
-            @foreach (var faq in _faqs)
+            <h3 class="mb-4 text-center" style="color:var(--ts-primary)">@L["Pricing_Faq_Title"]</h3>
+            @foreach (var faq in Faqs)
             {
                 <div class="premium-faq-item">
                     <button class="premium-faq-question"
                             @onclick="() => faq.Open = !faq.Open">
-                        <span>@faq.Question</span>
+                        <span>@L[faq.QuestionKey]</span>
                         <i class="bi @(faq.Open ? "bi-chevron-up" : "bi-chevron-down")"></i>
                     </button>
                     @if (faq.Open)
                     {
-                        <div class="premium-faq-answer">@faq.Answer</div>
+                        <div class="premium-faq-answer">@L[faq.AnswerKey]</div>
                     }
                 </div>
             }
@@ -91,30 +91,19 @@
     private string? _subscribingPlanId;
     private string? _error;
 
-    private class FaqItem { public string Question { get; set; } = ""; public string Answer { get; set; } = ""; public bool Open { get; set; } }
+    private class FaqItem
+    {
+        public string QuestionKey { get; set; } = "";
+        public string AnswerKey { get; set; } = "";
+        public bool Open { get; set; }
+    }
 
-    private readonly List<FaqItem> _faqs =
+    private List<FaqItem> Faqs { get; } =
     [
-        new()
-        {
-            Question = "Puis-je annuler mon abonnement à tout moment ?",
-            Answer = "Oui. Vous pouvez annuler votre abonnement depuis les paramètres de votre compte. L'accès reste actif jusqu'à la fin de la période déjà payée."
-        },
-        new()
-        {
-            Question = "Qu'est-ce qui se passe après l'essai gratuit ?",
-            Answer = "Après 14 jours d'essai, votre carte sera débitée automatiquement selon le forfait choisi. Aucun frais pendant l'essai."
-        },
-        new()
-        {
-            Question = "Quel forfait choisir ?",
-            Answer = "Le forfait Professional convient à la plupart des enseignants indépendants. Passez au Business si vous gérez plusieurs enseignants, ou contactez-nous pour Enterprise."
-        },
-        new()
-        {
-            Question = "La facturation est-elle sécurisée ?",
-            Answer = "Oui. Tous les paiements sont traités par Stripe, leader mondial du paiement en ligne. Nous ne stockons jamais vos informations bancaires."
-        },
+        new() { QuestionKey = "Pricing_Faq1_Q", AnswerKey = "Pricing_Faq1_A" },
+        new() { QuestionKey = "Pricing_Faq2_Q", AnswerKey = "Pricing_Faq2_A" },
+        new() { QuestionKey = "Pricing_Faq3_Q", AnswerKey = "Pricing_Faq3_A" },
+        new() { QuestionKey = "Pricing_Faq4_Q", AnswerKey = "Pricing_Faq4_A" },
     ];
 
     protected override void OnInitialized()
@@ -130,7 +119,7 @@
         try
         {
             await Task.Delay(500);
-            _error = "Pour vous abonner, veuillez contacter le support ou créer un abonnement élève dans l'onglet Abonnements, puis accéder au paiement.";
+            _error = L["Pricing_SubscribeError"];
         }
         finally
         {

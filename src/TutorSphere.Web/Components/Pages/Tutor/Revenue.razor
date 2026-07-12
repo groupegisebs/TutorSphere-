@@ -84,7 +84,7 @@
                     }
                 </svg>
                 <div class="chart-x-labels">
-                    @foreach (var l in _chartLabels)
+                    @foreach (var l in ChartLabels)
                     {
                         <span>@l</span>
                     }
@@ -120,7 +120,7 @@
         <div class="section-card">
             <div class="section-card-header"><h2>@L["Revenue_ByStudent"]</h2></div>
             <table class="table ts-table">
-                <thead><tr><th>Élève</th><th>Séances</th><th>Total</th></tr></thead>
+                <thead><tr><th>@L["Common_Student"]</th><th>@L["Revenue_Sessions"]</th><th>@L["Revenue_Total"]</th></tr></thead>
                 <tbody>
                     @foreach (var s in _byStudent)
                     {
@@ -165,7 +165,14 @@
 
 @code {
     private string _period = "month";
-    private string PeriodLabel => _period switch { "week"=>"cette semaine","month"=>"ce mois","quarter"=>"ce trimestre","year"=>"cette année",_=>"" };
+    private string PeriodLabel => _period switch
+    {
+        "week" => L["Revenue_ThisWeek"],
+        "month" => L["Revenue_ThisMonthShort"],
+        "quarter" => L["Revenue_ThisQuarterShort"],
+        "year" => L["Revenue_ThisYearShort"],
+        _ => ""
+    };
 
     private bool _statsLoading = true;
     private decimal _monthlyRevenue;
@@ -202,7 +209,17 @@
     private string LinePath => $"M{string.Join(" L", _chartPoints.Select(p=>$"{p.X},{p.Y}"))}";
     private string AreaPath => $"M{string.Join(" L", _chartPoints.Select(p=>$"{p.X},{p.Y}"))} L{_chartPoints.Last().X},160 L{_chartPoints.First().X},160 Z";
 
-    private static readonly string[] _chartLabels = ["1 Juin","5","10","15","20","25","30 Juin"];
+    private string[] ChartLabels
+    {
+        get
+        {
+            var culture = System.Globalization.CultureInfo.CurrentUICulture;
+            var now = DateTime.Today;
+            var lastDay = DateTime.DaysInMonth(now.Year, now.Month);
+            var month = culture.DateTimeFormat.GetAbbreviatedMonthName(now.Month);
+            return [$"1 {month}", "5", "10", "15", "20", "25", $"{lastDay} {month}"];
+        }
+    }
 
     private record SubjectRevenue(string Subject, decimal Amount, string Color)
     {

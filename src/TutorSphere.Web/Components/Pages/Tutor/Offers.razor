@@ -50,26 +50,29 @@
                 </span>
             </div>
             <div class="offer-card-meta">
-                <div class="offer-meta-item"><i class="bi bi-currency-dollar"></i><strong>@offer.Price @offer.Currency</strong> / @offer.Period</div>
+                <div class="offer-meta-item"><i class="bi bi-currency-dollar"></i><strong>@offer.Price @offer.Currency</strong> @string.Format(L["Offers_PerPeriod"].Value, PeriodLabel(offer.Period))</div>
                 @if (offer.HourlyRate is > 0)
                 {
                     <div class="offer-meta-item"><i class="bi bi-cash-coin"></i>@offer.HourlyRate.Value.ToString("0.##") $/h</div>
                 }
                 <div class="offer-meta-item"><i class="bi bi-calendar3"></i>@offer.SessionsPerMonth @L["Offers_Sessions"]</div>
                 <div class="offer-meta-item"><i class="bi bi-clock"></i>@offer.SessionDuration min</div>
-                <div class="offer-meta-item"><i class="bi bi-book"></i>@offer.Subject@(string.IsNullOrWhiteSpace(offer.Level) ? "" : $" · {offer.Level}")</div>
+                <div class="offer-meta-item"><i class="bi bi-book"></i>@offer.Subject@(string.IsNullOrWhiteSpace(offer.Level) ? "" : $" · {LevelLabel(offer.Level)}")</div>
                 <div class="offer-meta-item"><i class="bi @(offer.Mode=="En ligne"?"bi-camera-video":"bi-geo-alt")"></i>@ModeLabel(offer.Mode)</div>
             </div>
-            @if (!string.IsNullOrWhiteSpace(offer.ScheduleSummary))
+            @{
+                var scheduleText = FormatScheduleSummary(offer);
+            }
+            @if (!string.IsNullOrWhiteSpace(scheduleText))
             {
                 <div class="offer-schedule-summary">
-                    <i class="bi bi-calendar-week me-1"></i>@offer.ScheduleSummary
+                    <i class="bi bi-calendar-week me-1"></i>@scheduleText
                 </div>
             }
             <div class="offer-card-footer">
                 <div class="offer-card-stats">
                     <span><i class="bi bi-people me-1"></i>@offer.Subscribers @L["Offers_Subscribers"]</span>
-                    <span><i class="bi bi-graph-up me-1"></i>@offer.MonthlyRevenue $ / mois</span>
+                    <span><i class="bi bi-graph-up me-1"></i>@offer.MonthlyRevenue $ @string.Format(L["Offers_PerPeriod"].Value, PeriodLabel("mois"))</span>
                 </div>
                 <div class="ts-action-group">
                     <button class="ts-icon-btn" title="@L["Common_Edit"]" @onclick="() => OpenEdit(offer)"><i class="bi bi-pencil"></i></button>
@@ -115,26 +118,26 @@
                         <select class="form-select" @bind="_mf.Period" @bind:after="RecalcSessions">
                             <option value="semaine">@L["Offers_Week"]</option>
                             <option value="mois">@L["Offers_Month"]</option>
-                            <option value="trimestre">Trimestre</option>
-                            <option value="semestre">Semestre</option>
-                            <option value="an">Année</option>
+                            <option value="trimestre">@L["Offers_PeriodQuarter"]</option>
+                            <option value="semestre">@L["Offers_PeriodSemester"]</option>
+                            <option value="an">@L["Offers_PeriodYear"]</option>
                         </select></div>
 
-                    <div class="col-6"><label class="form-label">Fréquence des cours</label>
+                    <div class="col-6"><label class="form-label">@L["Offers_Cadence"]</label>
                         <select class="form-select" @bind="_mf.Cadence" @bind:after="RecalcSessions">
-                            <option value="weekly">Chaque semaine</option>
-                            <option value="biweekly">Toutes les 2 semaines</option>
+                            <option value="weekly">@L["Lessons_Weekly"]</option>
+                            <option value="biweekly">@L["Lessons_Biweekly"]</option>
                         </select></div>
-                    <div class="col-3"><label class="form-label">Durée (min)</label>
+                    <div class="col-3"><label class="form-label">@L["Offers_DurationMin"]</label>
                         <input type="number" class="form-control" min="15" step="15"
                                @bind="_mf.SessionDuration" @bind:after="SuggestPackagePrice" /></div>
-                    <div class="col-3"><label class="form-label">Séances / période</label>
+                    <div class="col-3"><label class="form-label">@L["Offers_SessionsPerPeriod"]</label>
                         <input type="number" class="form-control" min="1" @bind="_mf.SessionsPerMonth" />
-                        <small class="text-muted">Calculé selon jours × période</small></div>
+                        <small class="text-muted">@L["Offers_SessionsHint"]</small></div>
 
                     <div class="col-12">
-                        <label class="form-label">Jours et heures du cours *</label>
-                        <p class="text-muted small mb-2">Cochez les jours et précisez l’heure de début pour chaque créneau.</p>
+                        <label class="form-label">@L["Offers_DaysTimes"]</label>
+                        <p class="text-muted small mb-2">@L["Offers_DaysHint"]</p>
                         <div class="offer-day-grid">
                             @foreach (var day in _days)
                             {
@@ -143,7 +146,7 @@
                                     <label class="offer-day-check">
                                         <input type="checkbox" checked="@slot.Enabled"
                                                @onchange="e => OnDayToggle(day, e)" />
-                                        <span>@day</span>
+                                        <span>@DayFullLabel(day)</span>
                                     </label>
                                     <input type="time" class="form-control form-control-sm offer-day-time"
                                            disabled="@(!slot.Enabled)"
@@ -154,23 +157,23 @@
                         </div>
                     </div>
 
-                    <div class="col-4"><label class="form-label">Mode</label>
+                    <div class="col-4"><label class="form-label">@L["Offers_Mode"]</label>
                         <select class="form-select" @bind="_mf.Mode">
                             <option value="En ligne">@L["Offers_Online"]</option>
                             <option value="Présentiel">@L["Offers_InPerson"]</option>
-                            <option value="Hybride">Hybride</option>
+                            <option value="Hybride">@L["Offers_Hybrid"]</option>
                         </select></div>
                     <div class="col-4"><label class="form-label">@L["Common_Subject"]</label>
                         <input class="form-control" @bind="_mf.Subject" /></div>
                     <div class="col-4"><label class="form-label">@L["Students_Level"]</label>
                         <select class="form-select" @bind="_mf.Level">
-                            <option>Tous niveaux</option>
+                            <option value="Tous niveaux">@L["Offers_AllLevels"]</option>
                             <option value="Primaire">@L["Level_Primary"]</option>
                             <option value="Collège">@L["Level_Middle"]</option>
                             <option value="Lycée">@L["Level_High"]</option>
                             <option value="Université">@L["Level_University"]</option>
                         </select></div>
-                    <div class="col-12"><label class="form-label">Politique d'annulation</label>
+                    <div class="col-12"><label class="form-label">@L["Offers_CancellationPolicy"]</label>
                         <textarea class="form-control" rows="2" @bind="_mf.CancellationPolicy"></textarea></div>
                 </div>
                 @if (!string.IsNullOrEmpty(_modalError))
@@ -192,11 +195,80 @@
     private static readonly string[] _days =
         ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
 
+    private string DayFullLabel(string day) => day switch {
+        "Lundi" => L["Day_Monday"],
+        "Mardi" => L["Day_Tuesday"],
+        "Mercredi" => L["Day_Wednesday"],
+        "Jeudi" => L["Day_Thursday"],
+        "Vendredi" => L["Day_Friday"],
+        "Samedi" => L["Day_Saturday"],
+        "Dimanche" => L["Day_Sunday"],
+        _ => day
+    };
+
     private string ModeLabel(string? mode) => mode switch {
         "En ligne" => L["Offers_Online"],
         "Présentiel" => L["Offers_InPerson"],
         _ => mode ?? ""
     };
+
+    private string PeriodLabel(string? period) => NormalizePeriod(period) switch {
+        "semaine" => L["Offers_Week"],
+        "trimestre" => L["Offers_PeriodQuarter"],
+        "semestre" => L["Offers_PeriodSemester"],
+        "an" => L["Offers_PeriodYear"],
+        _ => L["Offers_Month"]
+    };
+
+    private string LevelLabel(string? level) => level switch {
+        "Tous niveaux" => L["Offers_AllLevels"],
+        "Primaire" => L["Level_Primary"],
+        "Collège" => L["Level_Middle"],
+        "Lycée" => L["Level_High"],
+        "Université" => L["Level_University"],
+        _ => level ?? ""
+    };
+
+    private string DayAbbrev(string day) => day.Trim().ToLowerInvariant() switch {
+        "lundi" or "lun" or "monday" or "mon" => L["Day_Mon_Short"],
+        "mardi" or "mar" or "tuesday" or "tue" => L["Day_Tue_Short"],
+        "mercredi" or "mer" or "wednesday" or "wed" => L["Day_Wed_Short"],
+        "jeudi" or "jeu" or "thursday" or "thu" => L["Day_Thu_Short"],
+        "vendredi" or "ven" or "friday" or "fri" => L["Day_Fri_Short"],
+        "samedi" or "sam" or "saturday" or "sat" => L["Day_Sat_Short"],
+        "dimanche" or "dim" or "sunday" or "sun" => L["Day_Sun_Short"],
+        _ => day.Length <= 3 ? day : day[..3]
+    };
+
+    private static string FormatTime(string time)
+    {
+        if (TimeSpan.TryParse(time, out var ts))
+            return ts.ToString(@"hh\:mm");
+        if (time.Length >= 5 && time.Contains(':'))
+            return time[..5];
+        return time;
+    }
+
+    private string FormatScheduleSummary(OfferVM offer)
+    {
+        if (offer.Slots.Count > 0)
+        {
+            var cadence = offer.Cadence is "biweekly" or "fortnightly"
+                ? L["Lessons_Biweekly"]
+                : L["Lessons_Weekly"];
+            var days = string.Join(", ", offer.Slots.Select(s => $"{DayAbbrev(s.Day)} {FormatTime(s.Time)}"));
+            return $"{PeriodLabel(offer.Period)} · {cadence} · {days}";
+        }
+
+        // Fallback: translate known FR tokens in stored Frequency string
+        var raw = offer.ScheduleSummary;
+        if (string.IsNullOrWhiteSpace(raw)) return "";
+        return raw
+            .Replace("Chaque semaine", L["Lessons_Weekly"], StringComparison.OrdinalIgnoreCase)
+            .Replace("Toutes les 2 semaines", L["Lessons_Biweekly"], StringComparison.OrdinalIgnoreCase)
+            .Replace("mois", PeriodLabel("mois"), StringComparison.OrdinalIgnoreCase)
+            .Replace("semaine", PeriodLabel("semaine"), StringComparison.OrdinalIgnoreCase);
+    }
 
     private bool _showModal;
     private OfferVM? _editing;
@@ -313,7 +385,7 @@
     {
         if (string.IsNullOrWhiteSpace(_mf.Name))
         {
-            _modalError = "Le nom est obligatoire.";
+            _modalError = L["Offers_NameRequiredError"];
             return;
         }
 
@@ -324,7 +396,7 @@
 
         if (slots.Count == 0)
         {
-            _modalError = "Sélectionnez au moins un jour et une heure de cours.";
+            _modalError = L["Offers_DaysRequiredError"];
             return;
         }
 
@@ -367,7 +439,7 @@
             var created = await Api.PostWithErrorAsync<ApiOfferingDto>("api/subscription-offerings", req);
             if (created.Error is not null || created.Value is null)
             {
-                _modalError = created.Error ?? "Création impossible.";
+                _modalError = created.Error ?? L["Offers_CreateFailed"].Value;
                 return;
             }
             _offers.Add(MapOffer(created.Value));
@@ -377,7 +449,7 @@
             var updated = await Api.PutWithErrorAsync<ApiOfferingDto>($"api/subscription-offerings/{_editing.Id}", req);
             if (updated.Error is not null || updated.Value is null)
             {
-                _modalError = updated.Error ?? "Mise à jour impossible.";
+                _modalError = updated.Error ?? L["Offers_UpdateFailed"].Value;
                 return;
             }
             var mapped = MapOffer(updated.Value);
