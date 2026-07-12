@@ -6,31 +6,31 @@
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
 
-<PageTitle>Cours – TutorSphere</PageTitle>
+<PageTitle>@L["Lessons_Title"] – TutorSphere</PageTitle>
 
 <div class="ts-page-header">
     <div>
-        <h1><i class="bi bi-journal-bookmark me-2"></i>Cours & Séances</h1>
-        <p class="ts-page-subtitle">Historique et planification de vos séances</p>
+        <h1><i class="bi bi-journal-bookmark me-2"></i>@L["Lessons_Title"]</h1>
+        <p class="ts-page-subtitle">@L["Lessons_Subtitle"]</p>
     </div>
     <button class="btn btn-primary" @onclick="OpenAdd">
-        <i class="bi bi-plus-lg me-1"></i>Nouvelle séance
+        <i class="bi bi-plus-lg me-1"></i>@L["Lessons_New"]
     </button>
 </div>
 
 <!-- Quick stats -->
 <div class="row g-3 mb-4">
     <div class="col-6 col-lg-3">
-        <div class="ts-kpi-card"><span class="ts-kpi-val">@_lessons.Count(l=>l.Date.Date == DateTime.Today)</span><span class="ts-kpi-label">Aujourd'hui</span></div>
+        <div class="ts-kpi-card"><span class="ts-kpi-val">@_lessons.Count(l=>l.Date.Date == DateTime.Today)</span><span class="ts-kpi-label">@L["Common_Today"]</span></div>
     </div>
     <div class="col-6 col-lg-3">
-        <div class="ts-kpi-card"><span class="ts-kpi-val">@_lessons.Count(l=>l.Date >= DateTime.Today.AddDays(-(int)DateTime.Today.DayOfWeek))</span><span class="ts-kpi-label">Cette semaine</span></div>
+        <div class="ts-kpi-card"><span class="ts-kpi-val">@_lessons.Count(l=>l.Date >= DateTime.Today.AddDays(-(int)DateTime.Today.DayOfWeek))</span><span class="ts-kpi-label">@L["Common_ThisWeek"]</span></div>
     </div>
     <div class="col-6 col-lg-3">
-        <div class="ts-kpi-card"><span class="ts-kpi-val">@_lessons.Count(l=>l.Status=="Terminé")</span><span class="ts-kpi-label">Terminées</span></div>
+        <div class="ts-kpi-card"><span class="ts-kpi-val">@_lessons.Count(l=>l.Status=="Terminé")</span><span class="ts-kpi-label">@L["Lessons_CompletedCount"]</span></div>
     </div>
     <div class="col-6 col-lg-3">
-        <div class="ts-kpi-card"><span class="ts-kpi-val">@_lessons.Sum(l=>l.Duration) h</span><span class="ts-kpi-label">Heures enseignées</span></div>
+        <div class="ts-kpi-card"><span class="ts-kpi-val">@_lessons.Sum(l=>l.Duration) h</span><span class="ts-kpi-label">@L["Lessons_HoursTaught"]</span></div>
     </div>
 </div>
 
@@ -38,16 +38,20 @@
 <div class="ts-toolbar">
     <div class="ts-search-box">
         <i class="bi bi-search ts-search-icon"></i>
-        <input class="form-control" placeholder="Élève, matière…"
+        <input class="form-control" placeholder="@L["Lessons_SearchPlaceholder"]"
                @bind="_search" @bind:event="oninput" />
     </div>
     <select class="form-select w-auto" @bind="_filterStatus">
-        <option value="">Tous les statuts</option>
-        <option>Planifié</option><option>En cours</option><option>Terminé</option><option>Annulé</option>
+        <option value="">@L["Common_AllStatuses"]</option>
+        <option value="Planifié">@L["Common_Planned"]</option>
+        <option value="En cours">@L["Common_InProgress"]</option>
+        <option value="Terminé">@L["Common_Completed"]</option>
+        <option value="Annulé">@L["Common_Cancelled"]</option>
     </select>
     <select class="form-select w-auto" @bind="_filterMode">
-        <option value="">Tous les modes</option>
-        <option>En ligne</option><option>Présentiel</option>
+        <option value="">@L["Common_AllModes"]</option>
+        <option value="En ligne">@L["Common_Online"]</option>
+        <option value="Présentiel">@L["Common_InPerson"]</option>
     </select>
 </div>
 
@@ -57,7 +61,7 @@
     {
         <div class="ts-loading-state">
             <div class="spinner-border text-primary" role="status"></div>
-            <span class="ms-3 text-muted">Chargement…</span>
+            <span class="ms-3 text-muted">@L["Common_Loading"]</span>
         </div>
     }
     else if (!string.IsNullOrEmpty(_error))
@@ -71,8 +75,8 @@
         <table class="table ts-table">
             <thead>
                 <tr>
-                    <th>Date / Heure</th><th>Élève</th><th>Matière</th>
-                    <th>Durée</th><th>Mode</th><th>Statut</th><th>Actions</th>
+                    <th>@L["Lessons_Col_DateTime"]</th><th>@L["Common_Student"]</th><th>@L["Common_Subject"]</th>
+                    <th>@L["Common_Duration"]</th><th>@L["Common_Mode"]</th><th>@L["Common_Status"]</th><th>@L["Common_Actions"]</th>
                 </tr>
             </thead>
             <tbody>
@@ -97,17 +101,17 @@
                             <div class="ts-action-group">
                                 @if (l.Status == "Planifié")
                                 {
-                                    <button class="ts-icon-btn" title="Démarrer" @onclick="() => StartLesson(l)">
+                                    <button class="ts-icon-btn" title="@L["Lessons_Start"]" @onclick="() => StartLesson(l)">
                                         <i class="bi bi-play-fill text-success"></i>
                                     </button>
                                 }
                                 @if (l.Status is "Terminé" or "En cours")
                                 {
-                                    <button class="ts-icon-btn" title="Rapport"><i class="bi bi-file-earmark-text"></i></button>
+                                    <button class="ts-icon-btn" title="@L["Lessons_Report"]"><i class="bi bi-file-earmark-text"></i></button>
                                 }
-                                <button class="ts-icon-btn" title="Présences"><i class="bi bi-person-check"></i></button>
-                                <button class="ts-icon-btn" title="Modifier" @onclick="()=>OpenEdit(l)"><i class="bi bi-pencil"></i></button>
-                                <button class="ts-icon-btn ts-icon-btn--danger" title="Supprimer"
+                                <button class="ts-icon-btn" title="@L["Lessons_Attendance"]"><i class="bi bi-person-check"></i></button>
+                                <button class="ts-icon-btn" title="@L["Common_Edit"]" @onclick="()=>OpenEdit(l)"><i class="bi bi-pencil"></i></button>
+                                <button class="ts-icon-btn ts-icon-btn--danger" title="@L["Lessons_Delete"]"
                                         @onclick="async () => await DeleteLesson(l)">
                                     <i class="bi bi-trash"></i>
                                 </button>
@@ -126,60 +130,61 @@
     <div class="ts-modal-backdrop" @onclick="CloseModal">
         <div class="ts-modal" @onclick:stopPropagation="true">
             <div class="ts-modal-header">
-                <h2>@(_editingLesson == null ? "Nouvelle séance" : "Modifier la séance")</h2>
+                <h2>@(_editingLesson == null ? L["Lessons_New"] : L["Lessons_Edit"])</h2>
                 <button class="ts-modal-close" @onclick="CloseModal"><i class="bi bi-x-lg"></i></button>
             </div>
             <div class="ts-modal-body">
                 <div class="row g-3">
-                    <div class="col-12"><label class="form-label">Titre</label>
-                        <input class="form-control" @bind="_lf.Title" placeholder="Cours de Mathématiques" /></div>
-                    <div class="col-6"><label class="form-label">Élève</label>
-                        <input class="form-control" @bind="_lf.Student" placeholder="Nom de l'élève" /></div>
-                    <div class="col-6"><label class="form-label">Matière *</label>
+                    <div class="col-12"><label class="form-label">@L["Common_Title"]</label>
+                        <input class="form-control" @bind="_lf.Title" /></div>
+                    <div class="col-6"><label class="form-label">@L["Common_Student"]</label>
+                        <input class="form-control" @bind="_lf.Student" /></div>
+                    <div class="col-6"><label class="form-label">@L["Lessons_SubjectRequired"]</label>
                         <input class="form-control" @bind="_lf.Subject" /></div>
-                    <div class="col-6"><label class="form-label">Date *</label>
+                    <div class="col-6"><label class="form-label">@L["Lessons_DateRequired"]</label>
                         <input type="date" class="form-control" @bind="_lf.Date" /></div>
-                    <div class="col-3"><label class="form-label">Début</label>
+                    <div class="col-3"><label class="form-label">@L["Lessons_StartTime"]</label>
                         <input type="time" class="form-control" @bind="_lf.StartTime" /></div>
-                    <div class="col-3"><label class="form-label">Durée (h)</label>
+                    <div class="col-3"><label class="form-label">@L["Lessons_DurationHours"]</label>
                         <input type="number" step="0.5" class="form-control" @bind="_lf.Duration" /></div>
-                    <div class="col-6"><label class="form-label">Mode</label>
+                    <div class="col-6"><label class="form-label">@L["Common_Mode"]</label>
                         <select class="form-select" @bind="_lf.Mode">
-                            <option>En ligne</option><option>Présentiel</option>
+                            <option value="En ligne">@L["Common_Online"]</option>
+                            <option value="Présentiel">@L["Common_InPerson"]</option>
                         </select></div>
-                    <div class="col-6"><label class="form-label">Type</label>
+                    <div class="col-6"><label class="form-label">@L["Lessons_Type"]</label>
                         <select class="form-select" @bind="_lf.Type">
-                            <option>Individuel</option><option>Collectif</option><option>Intensif</option>
+                            <option value="Individuel">@L["Lessons_Individual"]</option>
+                            <option value="Collectif">@L["Lessons_Group"]</option>
+                            <option value="Intensif">@L["Lessons_Intensive"]</option>
                         </select></div>
                     <div class="col-12">
-                        <label class="form-label">Récurrence</label>
+                        <label class="form-label">@L["Lessons_Recurrence"]</label>
                         <select class="form-select" @bind="_lf.Recurrence">
-                            <option value="none">Une seule fois</option>
-                            <option value="weekly">Chaque semaine</option>
-                            <option value="biweekly">Toutes les 2 semaines</option>
-                            <option value="monthly">Chaque mois</option>
+                            <option value="none">@L["Lessons_Once"]</option>
+                            <option value="weekly">@L["Lessons_Weekly"]</option>
+                            <option value="biweekly">@L["Lessons_Biweekly"]</option>
+                            <option value="monthly">@L["Lessons_Monthly"]</option>
                         </select>
                     </div>
                     @if (_lf.Recurrence != "none" && _editingLesson is null)
                     {
                         <div class="col-6">
-                            <label class="form-label">Nombre de séances</label>
+                            <label class="form-label">@L["Lessons_Occurrences"]</label>
                             <input type="number" class="form-control" min="2" max="52" @bind="_lf.Occurrences" />
-                            <small class="text-muted">Inclut la première (2 à 52)</small>
                         </div>
                         <div class="col-6">
-                            <label class="form-label">Ou jusqu’au</label>
+                            <label class="form-label">@L["Lessons_Until"]</label>
                             <input type="date" class="form-control" @bind="_lf.UntilDate" />
-                            <small class="text-muted">Prioritaire si renseigné</small>
                         </div>
                     }
-                    <div class="col-12"><label class="form-label">Description / Objectifs</label>
+                    <div class="col-12"><label class="form-label">@L["Lessons_Description"]</label>
                         <textarea class="form-control" rows="2" @bind="_lf.Description"></textarea></div>
                 </div>
             </div>
             <div class="ts-modal-footer">
-                <button class="btn btn-outline-secondary" @onclick="CloseModal">Annuler</button>
-                <button class="btn btn-primary" @onclick="async () => await SaveLesson()">Enregistrer</button>
+                <button class="btn btn-outline-secondary" @onclick="CloseModal">@L["Common_Cancel"]</button>
+                <button class="btn btn-primary" @onclick="async () => await SaveLesson()">@L["Common_Save"]</button>
             </div>
         </div>
     </div>

@@ -4,74 +4,83 @@
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
 
-<PageTitle>Paiements – TutorSphere</PageTitle>
+<PageTitle>@L["Payments_Title"] – TutorSphere</PageTitle>
 
 <div class="ts-page-header">
     <div>
-        <h1><i class="bi bi-credit-card me-2"></i>Paiements</h1>
-        <p class="ts-page-subtitle">Historique et suivi de vos encaissements</p>
+        <h1><i class="bi bi-credit-card me-2"></i>@L["Payments_Title"]</h1>
+        <p class="ts-page-subtitle">@L["Payments_Subtitle"]</p>
     </div>
     <div class="d-flex gap-2">
         <button class="btn btn-outline-secondary" @onclick="() => {}">
-            <i class="bi bi-download me-1"></i>Exporter
+            <i class="bi bi-download me-1"></i>@L["Common_Export"]
         </button>
         <button class="btn btn-primary" @onclick="() => _showInvoiceModal = true">
-            <i class="bi bi-receipt me-1"></i>Créer une facture
+            <i class="bi bi-receipt me-1"></i>@L["Payments_CreateInvoice"]
         </button>
     </div>
 </div>
 
-<!-- KPI cards -->
 <div class="row g-3 mb-4">
     <div class="col-6 col-lg-3">
         <div class="ts-kpi-card ts-kpi-card--success">
-            <span class="ts-kpi-val">@_payments.Where(p=>p.Status=="Payé").Sum(p=>p.Amount).ToString("N0") $</span>
-            <span class="ts-kpi-label">Encaissé ce mois</span>
+            <span class="ts-kpi-val">@_payments.Where(p => IsPaid(p.Status)).Sum(p => p.Amount).ToString("N0") $</span>
+            <span class="ts-kpi-label">@L["Payments_CollectedThisMonth"]</span>
         </div>
     </div>
     <div class="col-6 col-lg-3">
         <div class="ts-kpi-card ts-kpi-card--warning">
-            <span class="ts-kpi-val">@_payments.Where(p=>p.Status=="En attente").Sum(p=>p.Amount).ToString("N0") $</span>
-            <span class="ts-kpi-label">En attente</span>
+            <span class="ts-kpi-val">@_payments.Where(p => IsPending(p.Status)).Sum(p => p.Amount).ToString("N0") $</span>
+            <span class="ts-kpi-label">@L["Payments_Pending"]</span>
         </div>
     </div>
     <div class="col-6 col-lg-3">
         <div class="ts-kpi-card ts-kpi-card--danger">
-            <span class="ts-kpi-val">@_payments.Where(p=>p.Status=="Échoué").Sum(p=>p.Amount).ToString("N0") $</span>
-            <span class="ts-kpi-label">Échec / Retard</span>
+            <span class="ts-kpi-val">@_payments.Where(p => IsFailed(p.Status)).Sum(p => p.Amount).ToString("N0") $</span>
+            <span class="ts-kpi-label">@L["Payments_FailedLate"]</span>
         </div>
     </div>
     <div class="col-6 col-lg-3">
         <div class="ts-kpi-card">
             <span class="ts-kpi-val">@_payments.Count</span>
-            <span class="ts-kpi-label">Transactions totales</span>
+            <span class="ts-kpi-label">@L["Payments_TotalTransactions"]</span>
         </div>
     </div>
 </div>
 
-<!-- Filters -->
 <div class="ts-toolbar">
     <div class="ts-search-box">
         <i class="bi bi-search ts-search-icon"></i>
-        <input class="form-control" placeholder="Chercher par parent, élève…"
+        <input class="form-control" placeholder="@L["Payments_SearchPlaceholder"]"
                @bind="_search" @bind:event="oninput" />
     </div>
     <select class="form-select w-auto" @bind="_filterStatus">
-        <option value="">Tous les statuts</option>
-        <option>Payé</option><option>En attente</option><option>Échoué</option><option>Remboursé</option>
+        <option value="">@L["Common_AllStatuses"]</option>
+        <option value="paid">@L["Common_Paid"]</option>
+        <option value="pending">@L["Common_Pending"]</option>
+        <option value="failed">@L["Common_Failed"]</option>
+        <option value="refunded">@L["Common_Refunded"]</option>
     </select>
     <select class="form-select w-auto" @bind="_filterMethod">
-        <option value="">Tous les modes</option>
-        <option>Carte</option><option>Virement</option><option>Espèces</option>
+        <option value="">@L["Common_AllModes"]</option>
+        <option value="card">@L["Common_Card"]</option>
+        <option value="transfer">@L["Common_Transfer"]</option>
+        <option value="cash">@L["Common_Cash"]</option>
     </select>
 </div>
 
-<!-- Payments table -->
 <div class="ts-table-card">
     <table class="table ts-table">
         <thead>
-            <tr><th>Date</th><th>Parent / Élève</th><th>Offre</th>
-                <th>Montant</th><th>Mode</th><th>Statut</th><th>Actions</th></tr>
+            <tr>
+                <th>@L["Common_Date"]</th>
+                <th>@L["Payments_Col_ParentStudent"]</th>
+                <th>@L["Common_Offer"]</th>
+                <th>@L["Common_Amount"]</th>
+                <th>@L["Common_Mode"]</th>
+                <th>@L["Common_Status"]</th>
+                <th>@L["Common_Actions"]</th>
+            </tr>
         </thead>
         <tbody>
             @foreach (var p in FilteredPayments)
@@ -83,16 +92,16 @@
                         <small class="text-muted">@p.Student</small>
                     </td>
                     <td>@p.OfferName</td>
-                    <td class="fw-semibold @(p.Status == "Remboursé" ? "text-danger" : "")">@p.Amount.ToString("N0") $</td>
-                    <td><span class="ts-badge ts-badge-neutral">@p.Method</span></td>
-                    <td><span class="ts-badge @PaymentBadge(p.Status)">@p.Status</span></td>
+                    <td class="fw-semibold @(IsRefunded(p.Status) ? "text-danger" : "")">@p.Amount.ToString("N0") $</td>
+                    <td><span class="ts-badge ts-badge-neutral">@DisplayMethod(p.Method)</span></td>
+                    <td><span class="ts-badge @PaymentBadge(p.Status)">@DisplayStatus(p.Status)</span></td>
                     <td>
                         <div class="ts-action-group">
-                            <button class="ts-icon-btn" title="Facture PDF"><i class="bi bi-file-pdf"></i></button>
-                            <button class="ts-icon-btn" title="Reçu"><i class="bi bi-receipt"></i></button>
-                            @if (p.Status == "En attente")
+                            <button class="ts-icon-btn" title="@L["Payments_PdfInvoice"]"><i class="bi bi-file-pdf"></i></button>
+                            <button class="ts-icon-btn" title="@L["Payments_Receipt"]"><i class="bi bi-receipt"></i></button>
+                            @if (IsPending(p.Status))
                             {
-                                <button class="ts-icon-btn ts-icon-btn--success" title="Marquer payé"
+                                <button class="ts-icon-btn ts-icon-btn--success" title="@L["Payments_MarkPaid"]"
                                         @onclick="async () => await MarkPaid(p)">
                                     <i class="bi bi-check-lg"></i>
                                 </button>
@@ -107,35 +116,37 @@
 
 @if (_showInvoiceModal)
 {
-    <div class="ts-modal-backdrop" @onclick="()=>_showInvoiceModal=false">
+    <div class="ts-modal-backdrop" @onclick="() => _showInvoiceModal = false">
         <div class="ts-modal" @onclick:stopPropagation="true">
             <div class="ts-modal-header">
-                <h2>Créer une facture manuelle</h2>
-                <button class="ts-modal-close" @onclick="()=>_showInvoiceModal=false"><i class="bi bi-x-lg"></i></button>
+                <h2>@L["Payments_CreateInvoiceManual"]</h2>
+                <button class="ts-modal-close" @onclick="() => _showInvoiceModal = false"><i class="bi bi-x-lg"></i></button>
             </div>
             <div class="ts-modal-body">
                 <div class="row g-3">
-                    <div class="col-6"><label class="form-label">Parent *</label>
+                    <div class="col-6"><label class="form-label">@L["Payments_ParentRequired"]</label>
                         <select class="form-select" @bind="_invParent">
                             <option value="">—</option>
                             <option>Marie Johnson</option><option>David Brown</option>
                             <option>Laura Davis</option><option>Ana Martinez</option>
                         </select></div>
-                    <div class="col-6"><label class="form-label">Offre / Description *</label>
+                    <div class="col-6"><label class="form-label">@L["Payments_OfferDesc"]</label>
                         <input class="form-control" @bind="_invOffer" /></div>
-                    <div class="col-6"><label class="form-label">Montant ($) *</label>
+                    <div class="col-6"><label class="form-label">@L["Payments_AmountLabel"]</label>
                         <input type="number" class="form-control" @bind="_invAmount" /></div>
-                    <div class="col-6"><label class="form-label">Mode de paiement</label>
+                    <div class="col-6"><label class="form-label">@L["Payments_PaymentMethod"]</label>
                         <select class="form-select" @bind="_invMethod">
-                            <option>Carte</option><option>Virement</option><option>Espèces</option>
+                            <option value="card">@L["Common_Card"]</option>
+                            <option value="transfer">@L["Common_Transfer"]</option>
+                            <option value="cash">@L["Common_Cash"]</option>
                         </select></div>
-                    <div class="col-12"><label class="form-label">Date</label>
+                    <div class="col-12"><label class="form-label">@L["Common_Date"]</label>
                         <input type="date" class="form-control" @bind="_invDate" /></div>
                 </div>
             </div>
             <div class="ts-modal-footer">
-                <button class="btn btn-outline-secondary" @onclick="()=>_showInvoiceModal=false">Annuler</button>
-                <button class="btn btn-primary" @onclick="async () => await CreateInvoice()">Créer</button>
+                <button class="btn btn-outline-secondary" @onclick="() => _showInvoiceModal = false">@L["Common_Cancel"]</button>
+                <button class="btn btn-primary" @onclick="async () => await CreateInvoice()">@L["Common_Create"]</button>
             </div>
         </div>
     </div>
@@ -144,34 +155,73 @@
 @code {
     private string _search = "", _filterStatus = "", _filterMethod = "";
     private bool _showInvoiceModal;
-    private string _invParent = "", _invOffer = "", _invMethod = "Carte";
+    private string _invParent = "", _invOffer = "", _invMethod = "card";
     private decimal _invAmount = 150;
     private DateTime _invDate = DateTime.Today;
 
-    private static string PaymentBadge(string s) => s switch {
-        "Payé" or "Paid" => "ts-badge-success",
-        "En attente" or "Sent" or "Draft" => "ts-badge-warning",
-        "Échoué" or "Cancelled" => "ts-badge-danger",
-        "Remboursé" => "ts-badge-neutral",
+    private static bool IsPaid(string s) => s is "paid" or "Payé" or "Paid";
+    private static bool IsPending(string s) => s is "pending" or "En attente" or "Sent" or "Draft";
+    private static bool IsFailed(string s) => s is "failed" or "Échoué" or "Cancelled";
+    private static bool IsRefunded(string s) => s is "refunded" or "Remboursé";
+
+    private string DisplayStatus(string s) => s switch
+    {
+        "paid" or "Payé" or "Paid" => L["Common_Paid"],
+        "pending" or "En attente" or "Sent" or "Draft" => L["Common_Pending"],
+        "failed" or "Échoué" or "Cancelled" => L["Common_Failed"],
+        "refunded" or "Remboursé" => L["Common_Refunded"],
+        _ => s
+    };
+
+    private string DisplayMethod(string m) => m switch
+    {
+        "card" or "Carte" => L["Common_Card"],
+        "transfer" or "Virement" => L["Common_Transfer"],
+        "cash" or "Espèces" => L["Common_Cash"],
+        "—" => "—",
+        _ => m
+    };
+
+    private static string PaymentBadge(string s) => s switch
+    {
+        "paid" or "Payé" or "Paid" => "ts-badge-success",
+        "pending" or "En attente" or "Sent" or "Draft" => "ts-badge-warning",
+        "failed" or "Échoué" or "Cancelled" => "ts-badge-danger",
         _ => "ts-badge-neutral"
     };
 
     private static string MapStatus(string apiStatus) => apiStatus switch
     {
-        "Paid"      => "Payé",
-        "Sent"      => "En attente",
-        "Draft"     => "En attente",
-        "Cancelled" => "Échoué",
-        _           => apiStatus
+        "Paid" => "paid",
+        "Sent" or "Draft" => "pending",
+        "Cancelled" => "failed",
+        _ => apiStatus.ToLowerInvariant()
     };
 
     private IEnumerable<PaymentVM> FilteredPayments => _payments
         .Where(p => string.IsNullOrEmpty(_search) ||
             p.Parent.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
             p.Student.Contains(_search, StringComparison.OrdinalIgnoreCase))
-        .Where(p => string.IsNullOrEmpty(_filterStatus) || p.Status == _filterStatus)
-        .Where(p => string.IsNullOrEmpty(_filterMethod) || p.Method == _filterMethod)
+        .Where(p => string.IsNullOrEmpty(_filterStatus) || NormalizeStatus(p.Status) == _filterStatus)
+        .Where(p => string.IsNullOrEmpty(_filterMethod) || NormalizeMethod(p.Method) == _filterMethod)
         .OrderByDescending(p => p.Date);
+
+    private static string NormalizeStatus(string s) => s switch
+    {
+        "Payé" or "Paid" or "paid" => "paid",
+        "En attente" or "Sent" or "Draft" or "pending" => "pending",
+        "Échoué" or "Cancelled" or "failed" => "failed",
+        "Remboursé" or "refunded" => "refunded",
+        _ => s
+    };
+
+    private static string NormalizeMethod(string m) => m switch
+    {
+        "Carte" or "card" => "card",
+        "Virement" or "transfer" => "transfer",
+        "Espèces" or "cash" => "cash",
+        _ => m
+    };
 
     protected override async Task OnInitializedAsync()
     {
@@ -183,14 +233,14 @@
             {
                 _payments.Add(new PaymentVM
                 {
-                    ApiId     = inv.Id,
-                    Date      = inv.IssuedAt.ToLocalTime(),
-                    Parent    = inv.ParentProfileId.ToString()[..8] + "…",
-                    Student   = "—",
-                    OfferName = $"Facture #{inv.InvoiceNumber}",
-                    Amount    = inv.Amount,
-                    Method    = "—",
-                    Status    = MapStatus(inv.Status)
+                    ApiId = inv.Id,
+                    Date = inv.IssuedAt.ToLocalTime(),
+                    Parent = inv.ParentProfileId.ToString()[..8] + "…",
+                    Student = "—",
+                    OfferName = string.Format(L["Payments_InvoiceNumber"].Value, inv.InvoiceNumber),
+                    Amount = inv.Amount,
+                    Method = "—",
+                    Status = MapStatus(inv.Status)
                 });
             }
         }
@@ -202,26 +252,31 @@
         {
             var result = await Api.PostAsync<ApiInvoiceDto>($"api/invoices/{p.ApiId}/mark-paid", new { });
             if (result is not null) p.Status = MapStatus(result.Status);
-            else p.Status = "Payé";
+            else p.Status = "paid";
         }
         else
         {
-            p.Status = "Payé";
+            p.Status = "paid";
         }
     }
 
-    private async Task CreateInvoice()
+    private Task CreateInvoice()
     {
-        if (string.IsNullOrWhiteSpace(_invParent) || _invAmount <= 0) return;
+        if (string.IsNullOrWhiteSpace(_invParent) || _invAmount <= 0)
+            return Task.CompletedTask;
 
-        // API requires a ParentProfileId (Guid) — we can't resolve it from a name in this UI.
-        // Create locally and attempt API if possible.
-        _payments.Insert(0, new PaymentVM {
-            Date = _invDate, Parent = _invParent, Student = "—",
-            OfferName = _invOffer, Amount = _invAmount,
-            Method = _invMethod, Status = "En attente"
+        _payments.Insert(0, new PaymentVM
+        {
+            Date = _invDate,
+            Parent = _invParent,
+            Student = "—",
+            OfferName = _invOffer,
+            Amount = _invAmount,
+            Method = _invMethod,
+            Status = "pending"
         });
         _showInvoiceModal = false;
+        return Task.CompletedTask;
     }
 
     private record ApiInvoiceDto(

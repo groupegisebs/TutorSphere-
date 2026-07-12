@@ -6,16 +6,16 @@
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
-<PageTitle>Paramètres – TutorSphere</PageTitle>
+<PageTitle>@L["Settings_Title"] – TutorSphere</PageTitle>
 
 <div class="ts-page-header">
     <div>
-        <h1><i class="bi bi-sliders me-2"></i>Paramètres</h1>
-        <p class="ts-page-subtitle">Notifications, agenda et préférences</p>
+        <h1><i class="bi bi-sliders me-2"></i>@L["Settings_Title"]</h1>
+        <p class="ts-page-subtitle">@L["Settings_Subtitle"]</p>
     </div>
     <button class="btn btn-primary" @onclick="SaveSettings" disabled="@_saving">
         @if (_saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
-        Enregistrer
+        @L["Common_Save"]
     </button>
 </div>
 
@@ -26,7 +26,7 @@
 @if (_saved)
 {
     <div class="alert alert-success mb-4">
-        <i class="bi bi-check-circle me-2"></i>Paramètres sauvegardés.
+        <i class="bi bi-check-circle me-2"></i>@L["Settings_Saved"]
     </div>
 }
 
@@ -46,15 +46,15 @@
         @if (_section == "notifications")
         {
             <div class="settings-section">
-                <h2 class="settings-section-title">Notifications par e-mail</h2>
+                <h2 class="settings-section-title">@L["Settings_EmailNotifications"]</h2>
                 <p class="text-muted small mb-3">
                     Les rappels de cours sont envoyés via Mail Sender environ 24&nbsp;h avant la séance
                     (enseignant, élève et parent selon les inscriptions).
                 </p>
                 <div class="settings-toggle-row">
                     <div>
-                        <strong>Rappel de cours</strong>
-                        <p class="text-muted mb-0 small">Recevoir un e-mail avant chaque séance planifiée.</p>
+                        <strong>@L["Settings_LessonReminder"]</strong>
+                        <p class="text-muted mb-0 small">@L["Settings_LessonReminderDesc"]</p>
                     </div>
                     <div class="form-check form-switch mb-0">
                         <input class="form-check-input" type="checkbox" @bind="_emailLessonReminders" id="notif-lesson" />
@@ -66,7 +66,7 @@
         else if (_section == "calendar")
         {
             <div class="settings-section">
-                <h2 class="settings-section-title">Synchroniser mon agenda</h2>
+                <h2 class="settings-section-title">@L["Settings_SyncCalendar"]</h2>
                 <p class="text-muted small mb-3">
                     Abonnez-vous à votre calendrier TutorSphere depuis Google Agenda, Outlook, Apple Calendar
                     ou toute application compatible ICS / webcal.
@@ -74,11 +74,11 @@
 
                 @if (_feedLoading)
                 {
-                    <div class="text-muted">Chargement…</div>
+                    <div class="text-muted">@L["Common_Loading"]</div>
                 }
                 else if (_feed is null || !_feed.IsEnabled || string.IsNullOrEmpty(_feed.FeedUrl))
                 {
-                    <p class="mb-3">Aucun abonnement actif.</p>
+                    <p class="mb-3">@L["Settings_NoActiveSub"]</p>
                     <button class="btn btn-primary" @onclick="EnableFeedAsync" disabled="@_feedBusy">
                         Activer la synchronisation
                     </button>
@@ -86,17 +86,17 @@
                 else
                 {
                     <div class="mb-3">
-                        <label class="form-label">URL HTTPS (Google, Outlook…)</label>
+                        <label class="form-label">@L["Settings_HttpsUrl"]</label>
                         <div class="input-group">
                             <input class="form-control" readonly value="@_feed.FeedUrl" />
-                            <button class="btn btn-outline-secondary" type="button" @onclick="() => Copy(_feed.FeedUrl!)">Copier</button>
+                            <button class="btn btn-outline-secondary" type="button" @onclick="() => Copy(_feed.FeedUrl!)">@L["Common_Copy"]</button>
                         </div>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">URL webcal (Apple Calendar…)</label>
+                        <label class="form-label">@L["Settings_WebcalUrl"]</label>
                         <div class="input-group">
                             <input class="form-control" readonly value="@_feed.WebcalUrl" />
-                            <button class="btn btn-outline-secondary" type="button" @onclick="() => Copy(_feed.WebcalUrl!)">Copier</button>
+                            <button class="btn btn-outline-secondary" type="button" @onclick="() => Copy(_feed.WebcalUrl!)">@L["Common_Copy"]</button>
                         </div>
                     </div>
                     <p class="text-muted small">@_feed.Instructions</p>
@@ -118,9 +118,9 @@
         else if (_section == "general")
         {
             <div class="settings-section">
-                <h2 class="settings-section-title">Général</h2>
+                <h2 class="settings-section-title">@L["Common_General"]</h2>
                 <div class="row g-3">
-                    <div class="col-md-6"><label class="form-label">Langue</label>
+                    <div class="col-md-6"><label class="form-label">@L["Common_Language"]</label>
                         <select class="form-select" @bind="_s.Language">
                             <option value="fr">Français</option>
                             <option value="en">English</option>
@@ -130,7 +130,7 @@
                             <option value="zh-Hans">中文</option>
                             <option value="ar">العربية</option>
                         </select></div>
-                    <div class="col-md-6"><label class="form-label">Fuseau horaire</label>
+                    <div class="col-md-6"><label class="form-label">@L["Common_Timezone"]</label>
                         <select class="form-select" @bind="_s.Timezone">
                             <option>America/Montreal</option><option>Europe/Paris</option>
                             <option>Europe/Brussels</option><option>Africa/Casablanca</option>
@@ -149,11 +149,11 @@
     private string? _copyMsg;
     private CalendarFeedDto? _feed;
 
-    private static readonly (string Key, string Label, string Icon)[] _sections =
+    private (string Key, string Label, string Icon)[] _sections =>
     [
-        ("notifications", "Notifications", "bi-bell"),
-        ("calendar", "Agenda", "bi-calendar2-check"),
-        ("general", "Général", "bi-gear"),
+        ("notifications", L["Common_Notifications"], "bi-bell"),
+        ("calendar", L["Common_Calendar"], "bi-calendar2-check"),
+        ("general", L["Common_General"], "bi-gear"),
     ];
 
     private class SettingsVM
