@@ -4,6 +4,7 @@
 @implements IDisposable
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
+@inject AuthService Auth
 
 <PageTitle>Salle de classe – TutorSphere</PageTitle>
 
@@ -71,7 +72,7 @@
                 </div>
                 <div class="cr-tile-label">
                     <div class="cr-tile-av" style="background:#5831E0;">JS</div>
-                    <span class="cr-tile-name">John Smith</span>
+                    <span class="cr-tile-name">@TutorDisplayName</span>
                     <span class="cr-tile-role">Tuteur</span>
                     <span class="cr-tile-media-icons">
                         <i class="bi @(_micOn ? "bi-mic-fill" : "bi-mic-mute-fill") @(_micOn ? "" : "cr-icon-off")"></i>
@@ -388,6 +389,20 @@
     private readonly string[] _wbColors =
         ["#ef4444", "#b91c1c", "#22c55e", "#3b82f6", "#000000", "#f97316", "#a855f7", "#eab308"];
 
+    private string TutorDisplayName =>
+        string.IsNullOrWhiteSpace(Auth.UserName) ? "Tuteur" : Auth.UserName!;
+
+    private string TutorInitials
+    {
+        get
+        {
+            var parts = TutorDisplayName.Split([' ', '@'], StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length >= 2)
+                return $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[1][0])}";
+            return TutorDisplayName.Length > 0 ? char.ToUpperInvariant(TutorDisplayName[0]).ToString() : "T";
+        }
+    }
+
     protected override void OnInitialized()
     {
         _lesson = new ClassroomLesson
@@ -401,11 +416,13 @@
 
         _participants =
         [
-            new() { Name = "John Smith", Initials = "JS", Color = "#5831E0", Role = "Tuteur",
+            new() { Name = TutorDisplayName, Initials = TutorInitials, Color = "#5831E0", Role = "Tuteur",
                     MicOn = _micOn, CamOn = _camOn },
             new() { Name = _lesson.StudentName, Initials = _lesson.StudentInitials,
                     Color = _lesson.AvatarColor, Role = "Élève", MicOn = true, CamOn = false },
         ];
+
+        InitChatMessages();
 
         _timer = new System.Threading.Timer(_ =>
         {
@@ -586,7 +603,7 @@
         {
             Text   = text,
             IsMe   = true,
-            Sender = "John Smith",
+            Sender = TutorDisplayName,
             Time   = DateTime.Now.ToString("HH:mm"),
         });
         _newMessage = "";
@@ -629,18 +646,23 @@
 
     private List<ParticipantVM> _participants = [];
 
-    private readonly List<ChatMsg> _chatMessages =
-    [
-        new() { Text = "Bonjour ! Je suis prêt(e).",
-                IsMe = false, Sender = "Élève",
-                Time = DateTime.Now.AddMinutes(-5).ToString("HH:mm") },
-        new() { Text = "Parfait, on commence par les exercices du chapitre 3.",
-                IsMe = true,  Sender = "John Smith",
-                Time = DateTime.Now.AddMinutes(-4).ToString("HH:mm") },
-        new() { Text = "D'accord, j'ai mon cahier ouvert.",
-                IsMe = false, Sender = "Élève",
-                Time = DateTime.Now.AddMinutes(-2).ToString("HH:mm") },
-    ];
+    private List<ChatMsg> _chatMessages = [];
+
+    private void InitChatMessages()
+    {
+        _chatMessages =
+        [
+            new() { Text = "Bonjour ! Je suis prêt(e).",
+                    IsMe = false, Sender = "Élève",
+                    Time = DateTime.Now.AddMinutes(-5).ToString("HH:mm") },
+            new() { Text = "Parfait, on commence par les exercices du chapitre 3.",
+                    IsMe = true,  Sender = TutorDisplayName,
+                    Time = DateTime.Now.AddMinutes(-4).ToString("HH:mm") },
+            new() { Text = "D'accord, j'ai mon cahier ouvert.",
+                    IsMe = false, Sender = "Élève",
+                    Time = DateTime.Now.AddMinutes(-2).ToString("HH:mm") },
+        ];
+    }
 
     private readonly List<DocumentVM> _documents =
     [

@@ -149,7 +149,6 @@
 
 @code {
     private bool _showModal;
-    private bool _loading = true;
     private OfferVM? _editing;
     private string _modalError = "";
     private OfferForm _mf = new();
@@ -160,7 +159,6 @@
         var offerings = await Api.GetAsync<List<ApiOfferingDto>>("api/subscription-offerings") ?? [];
         _offers.Clear();
         _offers.AddRange(offerings.Select(MapOffer));
-        _loading = false;
     }
 
     private void OpenAdd() { _editing = null; _mf = new(); _modalError = ""; _showModal = true; }
