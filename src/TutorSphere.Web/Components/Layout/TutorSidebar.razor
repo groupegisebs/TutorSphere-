@@ -236,17 +236,7 @@
         SyncActiveSection();
 
         await AuthSvc.EnsureSessionRestoredAsync();
-        _schoolName = AuthSvc.SchoolName;
-        if (string.IsNullOrWhiteSpace(_schoolName) && AuthSvc.TenantId is Guid tenantId)
-        {
-            try
-            {
-                var profile = await Api.GetAsync<SchoolProfileDto>($"api/tenants/{tenantId}/profile");
-                if (!string.IsNullOrWhiteSpace(profile?.Name))
-                    _schoolName = profile.Name;
-            }
-            catch { /* keep fallback */ }
-        }
+        await LoadSchoolNameAsync();
 
         try
         {
@@ -257,6 +247,24 @@
         {
             UnreadMessages = 0;
         }
+    }
+
+    private async Task LoadSchoolNameAsync()
+    {
+        _schoolName = AuthSvc.SchoolName;
+        if (!string.IsNullOrWhiteSpace(_schoolName))
+            return;
+
+        if (AuthSvc.TenantId is not Guid tenantId)
+            return;
+
+        try
+        {
+            var profile = await Api.GetAsync<SchoolProfileDto>($"api/tenants/{tenantId}/profile");
+            if (!string.IsNullOrWhiteSpace(profile?.Name))
+                _schoolName = profile.Name;
+        }
+        catch { /* keep fallback */ }
     }
 
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
@@ -298,6 +306,7 @@
 
     private async void OnAuthStateChanged(Task<AuthenticationState> _)
     {
+        await LoadSchoolNameAsync();
         await InvokeAsync(StateHasChanged);
     }
 

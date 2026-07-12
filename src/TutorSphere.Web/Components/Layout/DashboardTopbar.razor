@@ -4,8 +4,13 @@
 @inject NavigationManager Navigation
 @inject AuthService AuthSvc
 @inject AuthenticationStateProvider AuthState
+@inject ApiClient Api
 
 <div class="top-row px-4 @(_showUserMenu ? "top-row--menu-open" : null)">
+    @if (!string.IsNullOrWhiteSpace(_schoolName))
+    {
+        <a href="tutor/school" class="topbar-school-title" title="@_schoolName">@_schoolName</a>
+    }
     <div class="top-row-actions ms-auto">
         @if (_showSchoolLink)
         {
@@ -55,6 +60,7 @@
 
 @code {
     private bool _showUserMenu;
+    private string? _schoolName;
 
     private string _displayName
     {
@@ -94,11 +100,34 @@
             return;
 
         await AuthSvc.EnsureSessionRestoredAsync(forceJs: true);
+        await LoadSchoolNameAsync();
         await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadSchoolNameAsync()
+    {
+        _schoolName = AuthSvc.SchoolName;
+        if (!string.IsNullOrWhiteSpace(_schoolName))
+            return;
+
+        if (AuthSvc.TenantId is not Guid tenantId)
+            return;
+
+        try
+        {
+            var profile = await Api.GetAsync<SchoolProfileDto>($"api/tenants/{tenantId}/profile");
+            if (!string.IsNullOrWhiteSpace(profile?.Name))
+                _schoolName = profile.Name;
+        }
+        catch
+        {
+            /* keep empty */
+        }
     }
 
     private async void OnAuthStateChanged(Task<AuthenticationState> _)
     {
+        await LoadSchoolNameAsync();
         await InvokeAsync(StateHasChanged);
     }
 
@@ -126,4 +155,6 @@
     {
         AuthState.AuthenticationStateChanged -= OnAuthStateChanged;
     }
+
+    private record SchoolProfileDto(Guid Id, string Name);
 }
