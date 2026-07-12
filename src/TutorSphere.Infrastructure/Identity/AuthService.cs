@@ -138,6 +138,7 @@ public class AuthService : IAuthService
             Country = request.Country ?? "CA",
             Status = TenantStatus.PendingValidation,
             Plan = TenantPlan.Starter,
+            OwnerUserId = user.Id,
             Branding = new TenantBranding()
         };
 

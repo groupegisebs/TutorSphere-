@@ -13,6 +13,8 @@ public interface IApplicationDbContext
     /// <summary>Parent profiles without tenant query filter (parent portal).</summary>
     IQueryable<ParentProfile> ParentProfilesForAnyTenant { get; }
     IQueryable<SubscriptionOffering> SubscriptionOfferings { get; }
+    /// <summary>Offerings without tenant query filter (parent search / public directory).</summary>
+    IQueryable<SubscriptionOffering> SubscriptionOfferingsForAnyTenant { get; }
     IQueryable<StudentSubscription> StudentSubscriptions { get; }
     IQueryable<Lesson> Lessons { get; }
     IQueryable<Unavailability> Unavailabilities { get; }

@@ -73,6 +73,7 @@ public class SubscriptionOfferingService : ISubscriptionOfferingService
         };
 
         _db.Add(offering);
+        PublishTenantProfile(tenantId);
         await _db.SaveChangesAsync(ct);
         return MapToDto(offering);
     }
@@ -116,6 +117,7 @@ public class SubscriptionOfferingService : ISubscriptionOfferingService
 
         offering.IsActive = true;
         offering.UpdatedAt = DateTime.UtcNow;
+        PublishTenantProfile(offering.TenantId);
         await _db.SaveChangesAsync(ct);
         return MapToDto(offering);
     }
@@ -136,6 +138,34 @@ public class SubscriptionOfferingService : ISubscriptionOfferingService
         if (!_tenantContext.HasTenant || _tenantContext.TenantId is null)
             throw new InvalidOperationException("Contexte locataire requis.");
         return _tenantContext.TenantId.Value;
+    }
+
+    /// <summary>
+    /// Publishing an offer makes the school discoverable in parent search
+    /// (search requires Active + IsPublicProfile + at least one active offering).
+    /// </summary>
+    private void PublishTenantProfile(Guid tenantId)
+    {
+        var tenant = _db.Tenants.FirstOrDefault(t => t.Id == tenantId);
+        if (tenant is null)
+            return;
+
+        var changed = false;
+        if (!tenant.IsPublicProfile)
+        {
+            tenant.IsPublicProfile = true;
+            changed = true;
+        }
+
+        // Tutor already published an offer — make them searchable without waiting on admin.
+        if (tenant.Status != TenantStatus.Active)
+        {
+            tenant.Status = TenantStatus.Active;
+            changed = true;
+        }
+
+        if (changed)
+            tenant.UpdatedAt = DateTime.UtcNow;
     }
 
     private static (string? Frequency, string? Conditions, LessonMode Mode, int SessionCount) NormalizeSchedule(

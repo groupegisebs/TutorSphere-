@@ -113,6 +113,7 @@ public static class DependencyInjection
         }
 
         await EnsureExistingParentProfilesAsync(db, userManager);
+        await PublishActiveTenantsWithOffersAsync(db, logger);
 
         var userCount = await db.Users.CountAsync();
         logger.LogInformation("Seed complete — {UserCount} user(s) in database (real data only).", userCount);
@@ -590,5 +591,53 @@ public static class DependencyInjection
 
         if (added)
             await db.SaveChangesAsync();
+    }
+
+    /// <summary>
+    /// Schools with published offers were invisible in parent search:
+    /// Status stayed PendingValidation and/or IsPublicProfile stayed false.
+    /// </summary>
+    private static async Task PublishActiveTenantsWithOffersAsync(ApplicationDbContext db, ILogger logger)
+    {
+        var tenantIdsWithOffers = await db.SubscriptionOfferingsSet
+            .IgnoreQueryFilters()
+            .Where(o => o.IsActive)
+            .Select(o => o.TenantId)
+            .Distinct()
+            .ToListAsync();
+
+        if (tenantIdsWithOffers.Count == 0)
+            return;
+
+        var toPublish = await db.TenantsSet
+            .Where(t => tenantIdsWithOffers.Contains(t.Id)
+                        && (t.Status != TenantStatus.Active || !t.IsPublicProfile))
+            .ToListAsync();
+
+        if (toPublish.Count == 0)
+            return;
+
+        foreach (var tenant in toPublish)
+        {
+            tenant.Status = TenantStatus.Active;
+            tenant.IsPublicProfile = true;
+            tenant.UpdatedAt = DateTime.UtcNow;
+        }
+
+        // Repair missing OwnerUserId so admin approve/email works later.
+        var users = await db.Users
+            .Where(u => u.TenantId != null && tenantIdsWithOffers.Contains(u.TenantId.Value))
+            .ToListAsync();
+        foreach (var tenant in toPublish.Where(t => string.IsNullOrWhiteSpace(t.OwnerUserId)))
+        {
+            var owner = users.FirstOrDefault(u => u.TenantId == tenant.Id);
+            if (owner is not null)
+                tenant.OwnerUserId = owner.Id;
+        }
+
+        await db.SaveChangesAsync();
+        logger.LogInformation(
+            "Published {Count} school(s) with active offers for parent search.",
+            toPublish.Count);
     }
 }

@@ -89,22 +89,44 @@ public class AdminController : ControllerBase
         return Ok(new { message = "Compte désactivé." });
     }
 
-    /// <summary>Approves a pending school/tenant and notifies the owner.</summary>
+    /// <summary>Approves a pending school/tenant and notifies the owner.
+    /// Accepts either the tenant Guid or the tutor user id (admin UI sends user id).</summary>
     [HttpPost("tenants/{tenantId:guid}/approve")]
     public async Task<IActionResult> ApproveTenant(Guid tenantId, CancellationToken ct)
     {
         var tenant = _db.Tenants.FirstOrDefault(t => t.Id == tenantId);
+
+        if (tenant is null)
+        {
+            var user = await _userManager.FindByIdAsync(tenantId.ToString());
+            if (user?.TenantId is Guid userTenantId)
+                tenant = _db.Tenants.FirstOrDefault(t => t.Id == userTenantId);
+        }
+
+        if (tenant is null)
+            tenant = _db.Tenants.FirstOrDefault(t => t.OwnerUserId == tenantId.ToString());
+
         if (tenant is null) return NotFound(new { error = "Tenant introuvable." });
 
+        if (string.IsNullOrWhiteSpace(tenant.OwnerUserId))
+        {
+            var owner = _userManager.Users.FirstOrDefault(u => u.TenantId == tenant.Id);
+            if (owner is not null)
+                tenant.OwnerUserId = owner.Id;
+        }
+
         tenant.Status = TutorSphere.Domain.Enums.TenantStatus.Active;
+        tenant.IsPublicProfile = true;
         await _db.SaveChangesAsync(ct);
 
-        var owner = await _userManager.FindByIdAsync(tenant.OwnerUserId);
-        if (owner is not null)
+        var ownerUser = string.IsNullOrWhiteSpace(tenant.OwnerUserId)
+            ? null
+            : await _userManager.FindByIdAsync(tenant.OwnerUserId);
+        if (ownerUser is not null)
         {
             var webBase = (_configuration["WebBaseUrl"] ?? "https://app.tutorsphere.gisebs.com").TrimEnd('/');
             var loginUrl = $"{webBase}/login";
-            await _email.SendSchoolApprovedAsync(owner.Email ?? string.Empty, owner.FirstName, tenant.Name, loginUrl, ct);
+            await _email.SendSchoolApprovedAsync(ownerUser.Email ?? string.Empty, ownerUser.FirstName, tenant.Name, loginUrl, ct);
         }
 
         return Ok(new { message = "Tenant approuvé." });

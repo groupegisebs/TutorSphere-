@@ -80,7 +80,7 @@ public class BrandingService : IBrandingService
             return Task.FromResult<PublicTenantSiteDto?>(null);
 
         var branding = _db.TenantBrandings.FirstOrDefault(b => b.TenantId == tenant.Id);
-        var offerings = _db.SubscriptionOfferings
+        var offerings = _db.SubscriptionOfferingsForAnyTenant
             .Where(o => o.TenantId == tenant.Id && o.IsActive)
             .OrderBy(o => o.Title)
             .ToList();
@@ -134,7 +134,7 @@ public class BrandingService : IBrandingService
             return Task.FromResult<PublicTutorDetailDto?>(null);
 
         var branding = _db.TenantBrandings.FirstOrDefault(b => b.TenantId == tenant.Id);
-        var offerings = _db.SubscriptionOfferings
+        var offerings = _db.SubscriptionOfferingsForAnyTenant
             .Where(o => o.TenantId == tenant.Id && o.IsActive)
             .OrderBy(o => o.Title)
             .ToList();

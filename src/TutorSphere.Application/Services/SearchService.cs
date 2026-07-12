@@ -21,26 +21,9 @@ public class SearchService : ISearchService
         TutorSearchFilters filters,
         CancellationToken ct = default)
     {
-        var query = _db.Tenants
-            .Where(t => t.Status == TenantStatus.Active && t.IsPublicProfile);
-
-        if (!string.IsNullOrWhiteSpace(filters.City))
-        {
-            var city = filters.City.Trim();
-            query = query.Where(t => t.City != null && t.City.Contains(city));
-        }
-
-        if (!string.IsNullOrWhiteSpace(filters.Language))
-        {
-            var language = filters.Language.Trim().ToLowerInvariant();
-            query = query.Where(t => t.Language.ToLower() == language);
-        }
-
-        var tenants = query.ToList();
-        var tenantIds = tenants.Select(t => t.Id).ToList();
-
-        var offeringsQuery = _db.SubscriptionOfferings
-            .Where(o => o.IsActive && tenantIds.Contains(o.TenantId));
+        // Directory is cross-tenant: ignore JWT tenant scoping on offerings.
+        var offeringsQuery = _db.SubscriptionOfferingsForAnyTenant
+            .Where(o => o.IsActive);
 
         if (!string.IsNullOrWhiteSpace(filters.Subject))
         {
@@ -68,6 +51,28 @@ public class SearchService : ISearchService
         }
 
         var offerings = offeringsQuery.ToList();
+        var tenantIdsWithOffers = offerings.Select(o => o.TenantId).Distinct().ToList();
+        if (tenantIdsWithOffers.Count == 0)
+            return Task.FromResult<IReadOnlyList<TutorSearchResultDto>>([]);
+
+        var query = _db.Tenants
+            .Where(t => t.Status == TenantStatus.Active
+                        && t.IsPublicProfile
+                        && tenantIdsWithOffers.Contains(t.Id));
+
+        if (!string.IsNullOrWhiteSpace(filters.City))
+        {
+            var city = filters.City.Trim();
+            query = query.Where(t => t.City != null && t.City.Contains(city));
+        }
+
+        if (!string.IsNullOrWhiteSpace(filters.Language))
+        {
+            var language = filters.Language.Trim().ToLowerInvariant();
+            query = query.Where(t => t.Language.ToLower() == language);
+        }
+
+        var tenants = query.ToList();
         var offeringsByTenant = offerings
             .GroupBy(o => o.TenantId)
             .ToDictionary(g => g.Key, g => g.ToList());

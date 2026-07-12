@@ -40,6 +40,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     IQueryable<ParentProfile> IApplicationDbContext.ParentProfiles => ParentProfilesSet;
     IQueryable<ParentProfile> IApplicationDbContext.ParentProfilesForAnyTenant => ParentProfilesSet.IgnoreQueryFilters();
     IQueryable<SubscriptionOffering> IApplicationDbContext.SubscriptionOfferings => SubscriptionOfferingsSet;
+    IQueryable<SubscriptionOffering> IApplicationDbContext.SubscriptionOfferingsForAnyTenant =>
+        SubscriptionOfferingsSet.IgnoreQueryFilters();
     IQueryable<StudentSubscription> IApplicationDbContext.StudentSubscriptions => StudentSubscriptionsSet;
     IQueryable<Lesson> IApplicationDbContext.Lessons => LessonsSet;
     IQueryable<Unavailability> IApplicationDbContext.Unavailabilities => UnavailabilitiesSet;
