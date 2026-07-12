@@ -201,22 +201,37 @@ public sealed class AuthService
     internal void SetAuthCookie(string token, DateTime expiresAtUtc)
     {
         var ctx = _httpContextAccessor.HttpContext;
-        if (ctx is null || string.IsNullOrWhiteSpace(token))
+        // Blazor Server interactive circuit: response already started — cookie must go via /bff/auth/establish (JS).
+        if (ctx is null || ctx.Response.HasStarted || string.IsNullOrWhiteSpace(token))
             return;
 
-        ctx.Response.Cookies.Append(
-            AuthCookieConstants.CookieName,
-            token,
-            BuildCookieOptions(expiresAtUtc, ctx.Request.IsHttps));
+        try
+        {
+            ctx.Response.Cookies.Append(
+                AuthCookieConstants.CookieName,
+                token,
+                BuildCookieOptions(expiresAtUtc, ctx.Request.IsHttps));
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogDebug(ex, "Skipping auth cookie set; response already started.");
+        }
     }
 
     internal void ClearAuthCookie()
     {
         var ctx = _httpContextAccessor.HttpContext;
-        if (ctx is null)
+        if (ctx is null || ctx.Response.HasStarted)
             return;
 
-        ctx.Response.Cookies.Delete(AuthCookieConstants.CookieName, new CookieOptions { Path = "/" });
+        try
+        {
+            ctx.Response.Cookies.Delete(AuthCookieConstants.CookieName, new CookieOptions { Path = "/" });
+        }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogDebug(ex, "Skipping auth cookie clear; response already started.");
+        }
     }
 
     private void ApplyAuthenticatedSession(AuthResponse auth)
@@ -248,6 +263,7 @@ public sealed class AuthService
 
     private async Task PersistSessionAsync(AuthResponse auth)
     {
+        // Prefer BFF cookie via JS during interactive circuits; fall back to direct cookie on HTTP requests.
         SetAuthCookie(auth.Token, auth.ExpiresAt);
 
         try
@@ -255,7 +271,10 @@ public sealed class AuthService
             var json = JsonSerializer.Serialize(auth, JsonOpts);
             await _js.InvokeVoidAsync("tsAuth.persist", json);
         }
-        catch (InvalidOperationException) { }
+        catch (InvalidOperationException)
+        {
+            // Prerender / no JS — cookie already set above when response allows it.
+        }
         catch (JSException ex)
         {
             _logger.LogDebug(ex, "Could not persist auth to sessionStorage/cookie via JS.");
