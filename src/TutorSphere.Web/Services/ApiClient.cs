@@ -149,8 +149,9 @@ public sealed class ApiClient
             if (!resp.IsSuccessStatusCode)
                 return FailFromResponse<T>(resp, responseBody);
 
-            if (string.IsNullOrWhiteSpace(responseBody))
-                return new ApiResult<T>(null, "Réponse vide du serveur.");
+            // 204 / empty body is a valid success for some actions (cancel, etc.).
+            if (string.IsNullOrWhiteSpace(responseBody) || resp.StatusCode == HttpStatusCode.NoContent)
+                return new ApiResult<T>(null, null);
 
             var value = JsonSerializer.Deserialize<T>(responseBody, JsonOpts);
             if (value is null)

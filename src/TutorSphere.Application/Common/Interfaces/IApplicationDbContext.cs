@@ -16,6 +16,8 @@ public interface IApplicationDbContext
     /// <summary>Offerings without tenant query filter (parent search / public directory).</summary>
     IQueryable<SubscriptionOffering> SubscriptionOfferingsForAnyTenant { get; }
     IQueryable<StudentSubscription> StudentSubscriptions { get; }
+    /// <summary>Subscriptions without tenant query filter (parent portal across schools).</summary>
+    IQueryable<StudentSubscription> StudentSubscriptionsForAnyTenant { get; }
     IQueryable<Lesson> Lessons { get; }
     IQueryable<Unavailability> Unavailabilities { get; }
     IQueryable<Holiday> Holidays { get; }

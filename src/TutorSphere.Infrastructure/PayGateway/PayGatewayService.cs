@@ -38,7 +38,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
         Guid parentProfileId,
         CancellationToken ct = default)
     {
-        var parent = await _db.ParentProfiles.FirstOrDefaultAsync(p => p.Id == parentProfileId, ct)
+        var parent = await _db.ParentProfilesForAnyTenant.FirstOrDefaultAsync(p => p.Id == parentProfileId, ct)
             ?? throw new InvalidOperationException("Profil parent introuvable.");
 
         var customerCode = parent.StripeCustomerId ?? parent.Id.ToString("N").ToUpperInvariant();
@@ -56,22 +56,22 @@ internal sealed class PayGatewayService : IPaymentGatewayService
         CreateSubscriptionCheckoutRequest request,
         CancellationToken ct = default)
     {
-        var subscription = await _db.StudentSubscriptions
+        var subscription = await _db.StudentSubscriptionsForAnyTenant
             .FirstOrDefaultAsync(s => s.Id == subscriptionId, ct)
             ?? throw new InvalidOperationException("Abonnement introuvable.");
 
-        var offering = await _db.SubscriptionOfferings
+        var offering = await _db.SubscriptionOfferingsForAnyTenant
             .FirstOrDefaultAsync(o => o.Id == subscription.OfferingId, ct)
             ?? throw new InvalidOperationException("Offre d'abonnement introuvable.");
 
-        var student = await _db.Students
+        var student = await _db.StudentsForAnyTenant
             .FirstOrDefaultAsync(s => s.Id == subscription.StudentId, ct)
             ?? throw new InvalidOperationException("Étudiant introuvable.");
 
         var tenant = await _db.Tenants.FirstOrDefaultAsync(t => t.Id == subscription.TenantId, ct)
             ?? throw new InvalidOperationException("Tuteur introuvable.");
 
-        var parent = await _db.ParentProfiles.FirstOrDefaultAsync(p => p.Id == student.ParentProfileId, ct)
+        var parent = await _db.ParentProfilesForAnyTenant.FirstOrDefaultAsync(p => p.Id == student.ParentProfileId, ct)
             ?? throw new InvalidOperationException("Profil parent introuvable.");
 
         var customer = await CreateOrGetParentCustomerAsync(parent.Id, ct);

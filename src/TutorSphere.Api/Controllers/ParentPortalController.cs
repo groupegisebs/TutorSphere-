@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TutorSphere.Application.Common;
 using TutorSphere.Application.DTOs.Parents;
+using TutorSphere.Application.DTOs.StudentSubscriptions;
 using TutorSphere.Application.DTOs.Students;
 using TutorSphere.Application.Services;
 using TutorSphere.Domain.Enums;
@@ -17,11 +18,16 @@ public class ParentPortalController : ControllerBase
 {
     private readonly IParentService _parentService;
     private readonly IAuthService _authService;
+    private readonly IStudentSubscriptionService _subscriptions;
 
-    public ParentPortalController(IParentService parentService, IAuthService authService)
+    public ParentPortalController(
+        IParentService parentService,
+        IAuthService authService,
+        IStudentSubscriptionService subscriptions)
     {
         _parentService = parentService;
         _authService = authService;
+        _subscriptions = subscriptions;
     }
 
     [HttpGet("me")]
@@ -130,6 +136,52 @@ public class ParentPortalController : ControllerBase
         catch (DbUpdateException)
         {
             return BadRequest(new { error = "Impossible de supprimer l'enfant." });
+        }
+    }
+
+    [HttpGet("subscriptions")]
+    public async Task<ActionResult<IReadOnlyList<StudentSubscriptionDto>>> ListSubscriptions(CancellationToken ct)
+    {
+        var userId = await ResolveParentUserIdAsync(ct);
+        if (userId is null)
+            return Unauthorized();
+
+        return Ok(await _subscriptions.GetForParentUserAsync(userId, ct));
+    }
+
+    [HttpPost("subscriptions/enroll")]
+    public async Task<ActionResult<StudentSubscriptionDto>> Enroll([FromBody] EnrollStudentRequest request, CancellationToken ct)
+    {
+        var userId = await ResolveParentUserIdAsync(ct);
+        if (userId is null)
+            return Unauthorized();
+
+        try
+        {
+            var sub = await _subscriptions.EnrollAsync(userId, request, ct);
+            return Ok(sub);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("subscriptions/{id:guid}/cancel")]
+    public async Task<IActionResult> CancelSubscription(Guid id, CancellationToken ct)
+    {
+        var userId = await ResolveParentUserIdAsync(ct);
+        if (userId is null)
+            return Unauthorized();
+
+        try
+        {
+            await _subscriptions.CancelAsync(userId, id, ct);
+            return Ok(new { message = "Abonnement annulé." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
         }
     }
 

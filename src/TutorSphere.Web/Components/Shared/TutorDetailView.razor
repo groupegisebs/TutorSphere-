@@ -1,4 +1,8 @@
 @using TutorSphere.Application.DTOs.Branding
+@using Microsoft.JSInterop
+@inject NavigationManager Navigation
+@inject ApiClient Api
+@inject IJSRuntime JS
 
 @if (Profile is null)
 {
@@ -37,10 +41,25 @@
                 {
                     <span class="tutor-detail-status">@Profile.Status</span>
                 }
+                @if (Profile.Subjects.Count > 0)
+                {
+                    <div class="tutor-tags mt-2">
+                        @foreach (var subject in Profile.Subjects.Take(6))
+                        {
+                            <span class="badge">@subject</span>
+                        }
+                    </div>
+                }
             </div>
 
             <div class="tutor-detail-actions">
-                @if (!string.IsNullOrWhiteSpace(SubscribeHref))
+                @if (AllowSubscribe && Profile.Offerings.Count > 0)
+                {
+                    <button type="button" class="btn btn-primary" @onclick="() => OpenSubscribe(Profile.Offerings[0])">
+                        <i class="bi bi-plus-lg me-1"></i>@L["PublicProfile_Subscribe"]
+                    </button>
+                }
+                else if (!string.IsNullOrWhiteSpace(SubscribeHref))
                 {
                     <a class="btn btn-primary" href="@SubscribeHref">
                         <i class="bi bi-plus-lg me-1"></i>@L["PublicProfile_Subscribe"]
@@ -78,6 +97,13 @@
                     <span>@L["PublicProfile_Tab_Offers"]</span>
                 </div>
             }
+            @if (Profile.Availability.Count > 0)
+            {
+                <div class="tutor-detail-stat">
+                    <strong>@GroupAvailability(Profile.Availability).Count()</strong>
+                    <span>Jours dispo.</span>
+                </div>
+            }
         </div>
 
         <ul class="nav nav-tabs tutor-detail-tabs">
@@ -97,7 +123,7 @@
             @if (_activeTab == "about")
             {
                 <section class="section-card">
-                    <h2>@L["PublicProfile_AboutMe"]</h2>
+                    <h2>Présentation</h2>
                     @if (!string.IsNullOrWhiteSpace(Profile.FullBio))
                     {
                         <p class="tutor-detail-bio">@Profile.FullBio</p>
@@ -116,8 +142,53 @@
                      && !string.Equals(Profile.ShortBio.Trim(), Profile.FullBio.Trim(), StringComparison.Ordinal))
                 {
                     <section class="section-card mt-3">
-                        <h2>Résumé</h2>
+                        <h2>Approche pédagogique</h2>
                         <p class="tutor-detail-bio mb-0">@Profile.ShortBio</p>
+                    </section>
+                }
+
+                @if (Profile.Diplomas.Count > 0 || Profile.Certifications.Count > 0)
+                {
+                    <section class="section-card mt-3">
+                        <h2>Parcours (CV)</h2>
+                        <div class="row g-3">
+                            @if (Profile.Diplomas.Count > 0)
+                            {
+                                <div class="col-md-6">
+                                    <h3 class="h6">Diplômes</h3>
+                                    <ul class="tutor-detail-list">
+                                        @foreach (var d in Profile.Diplomas)
+                                        {
+                                            <li>
+                                                <strong>@d.Title</strong>
+                                                @if (!string.IsNullOrWhiteSpace(d.Institution) || !string.IsNullOrWhiteSpace(d.Year))
+                                                {
+                                                    <span>@FormatCredentialMeta(d.Institution, d.Year)</span>
+                                                }
+                                            </li>
+                                        }
+                                    </ul>
+                                </div>
+                            }
+                            @if (Profile.Certifications.Count > 0)
+                            {
+                                <div class="col-md-6">
+                                    <h3 class="h6">Certifications</h3>
+                                    <ul class="tutor-detail-list">
+                                        @foreach (var c in Profile.Certifications)
+                                        {
+                                            <li>
+                                                <strong>@c.Title</strong>
+                                                @if (!string.IsNullOrWhiteSpace(c.Institution) || !string.IsNullOrWhiteSpace(c.Year))
+                                                {
+                                                    <span>@FormatCredentialMeta(c.Institution, c.Year)</span>
+                                                }
+                                            </li>
+                                        }
+                                    </ul>
+                                </div>
+                            }
+                        </div>
                     </section>
                 }
             }
@@ -180,7 +251,7 @@
                     <h2>@L["PublicProfile_SubjectsTaught"]</h2>
                     @if (Profile.Subjects.Count == 0)
                     {
-                        <p class="text-muted mb-0">Aucune matière indiquée.</p>
+                        <p class="text-muted mb-0">Aucune matière indiquée. Vérifiez l’onglet Offres.</p>
                     }
                     else
                     {
@@ -227,6 +298,22 @@
                                         }
                                         <li>@offer.Mode</li>
                                     </ul>
+                                    @if (offer.AvailabilitySlots is { Count: > 0 })
+                                    {
+                                        <div class="tutor-tags mt-2">
+                                            @foreach (var slot in offer.AvailabilitySlots.Take(4))
+                                            {
+                                                <span class="badge">@FormatSlot(slot)</span>
+                                            }
+                                        </div>
+                                    }
+                                    @if (AllowSubscribe)
+                                    {
+                                        <button type="button" class="btn btn-primary btn-sm w-100 mt-3"
+                                                @onclick="() => OpenSubscribe(offer)">
+                                            <i class="bi bi-cart-plus me-1"></i>S’abonner
+                                        </button>
+                                    }
                                 </div>
                             </div>
                         }
@@ -239,7 +326,10 @@
                     <h2>Disponibilités</h2>
                     @if (Profile.Availability.Count == 0)
                     {
-                        <p class="text-muted mb-0">Aucune disponibilité publiée.</p>
+                        <p class="text-muted mb-0">
+                            Aucune disponibilité publiée. L’enseignant peut les définir dans son profil
+                            ou via les créneaux de ses offres.
+                        </p>
                     }
                     else
                     {
@@ -264,16 +354,86 @@
     </div>
 </div>
 
+@if (_showSubscribeModal && _selectedOffer is not null)
+{
+    <div class="ts-modal-backdrop" @onclick="CloseSubscribe">
+        <div class="ts-modal" @onclick:stopPropagation="true" style="max-width:480px">
+            <div class="ts-modal-header">
+                <h2>S’abonner — @_selectedOffer.Title</h2>
+                <button type="button" class="btn-close" @onclick="CloseSubscribe"></button>
+            </div>
+            <div class="ts-modal-body">
+                @if (!string.IsNullOrWhiteSpace(_subscribeError))
+                {
+                    <div class="alert alert-danger">@_subscribeError</div>
+                }
+                <p class="text-muted">
+                    @_selectedOffer.Price.ToString("N2") @_selectedOffer.Currency
+                    · @_selectedOffer.SessionCount séance(s)
+                    @if (!string.IsNullOrWhiteSpace(_selectedOffer.Subject))
+                    {
+                        <span>· @_selectedOffer.Subject</span>
+                    }
+                </p>
+
+                @if (_loadingChildren)
+                {
+                    <div class="text-muted">Chargement des enfants…</div>
+                }
+                else if (_children.Count == 0)
+                {
+                    <div class="alert alert-warning mb-0">
+                        Ajoutez d’abord un enfant dans
+                        <a href="/parent/children">Mes enfants</a>
+                        pour pouvoir vous abonner.
+                    </div>
+                }
+                else
+                {
+                    <label class="form-label">Choisir l’enfant</label>
+                    <select class="form-select" @bind="_selectedChildId">
+                        <option value="">— Sélectionner —</option>
+                        @foreach (var child in _children)
+                        {
+                            <option value="@child.Id">@child.FirstName @child.LastName</option>
+                        }
+                    </select>
+                }
+            </div>
+            <div class="ts-modal-footer">
+                <button type="button" class="btn btn-outline-secondary" @onclick="CloseSubscribe">Annuler</button>
+                <button type="button" class="btn btn-primary"
+                        disabled="@(_subscribing || string.IsNullOrEmpty(_selectedChildId) || _children.Count == 0)"
+                        @onclick="ConfirmSubscribeAsync">
+                    @if (_subscribing)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                    }
+                    Continuer vers le paiement
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     [Parameter] public PublicTutorDetailDto Profile { get; set; } = default!;
     [Parameter] public string? SubscribeHref { get; set; }
+    [Parameter] public bool AllowSubscribe { get; set; }
     [Inject] private IStringLocalizer<SharedResources> L { get; set; } = default!;
 
     private string _activeTab = "about";
+    private bool _showSubscribeModal;
+    private bool _loadingChildren;
+    private bool _subscribing;
+    private string? _subscribeError;
+    private string _selectedChildId = "";
+    private PublicOfferingDto? _selectedOffer;
+    private List<ChildOption> _children = [];
 
     private (string Key, string Label)[] _tabs =>
     [
-        ("about", L["PublicProfile_Tab_About"]),
+        ("about", "Présentation"),
         ("credentials", "Diplômes"),
         ("subjects", L["PublicProfile_Tab_Subjects"]),
         ("offers", L["PublicProfile_Tab_Offers"]),
@@ -309,6 +469,90 @@
         }
     }
 
+    private async Task OpenSubscribe(PublicOfferingDto offer)
+    {
+        _selectedOffer = offer;
+        _subscribeError = null;
+        _selectedChildId = "";
+        _showSubscribeModal = true;
+        _loadingChildren = true;
+
+        try
+        {
+            var children = await Api.GetAsync<List<ChildOption>>("api/parent/children") ?? [];
+            _children = children;
+            if (_children.Count == 1)
+                _selectedChildId = _children[0].Id.ToString();
+        }
+        catch
+        {
+            _subscribeError = "Impossible de charger la liste des enfants.";
+            _children = [];
+        }
+        finally
+        {
+            _loadingChildren = false;
+        }
+    }
+
+    private void CloseSubscribe()
+    {
+        _showSubscribeModal = false;
+        _selectedOffer = null;
+        _subscribeError = null;
+    }
+
+    private async Task ConfirmSubscribeAsync()
+    {
+        if (_selectedOffer is null || !Guid.TryParse(_selectedChildId, out var childId))
+            return;
+
+        _subscribing = true;
+        _subscribeError = null;
+        try
+        {
+            var enroll = await Api.PostWithErrorAsync<EnrollResult>("api/parent/subscriptions/enroll", new
+            {
+                studentId = childId,
+                offeringId = _selectedOffer.Id
+            });
+
+            if (enroll.Error is not null || enroll.Value is null)
+            {
+                _subscribeError = enroll.Error ?? "Impossible de créer l’abonnement.";
+                return;
+            }
+
+            var baseUri = Navigation.BaseUri.TrimEnd('/');
+            var checkout = await Api.PostWithErrorAsync<CheckoutResult>(
+                $"api/payments/subscriptions/{enroll.Value.Id}/checkout",
+                new
+                {
+                    successUrl = $"{baseUri}/parent/subscriptions?paid=1&sub={enroll.Value.Id}",
+                    cancelUrl = $"{baseUri}/parent/tutors/{Profile.Slug}?canceled=1"
+                });
+
+            if (checkout.Error is not null || string.IsNullOrWhiteSpace(checkout.Value?.CheckoutUrl))
+            {
+                // Abonnement créé même si la passerelle paiement est indisponible.
+                _subscribeError = null;
+                CloseSubscribe();
+                Navigation.NavigateTo($"/parent/subscriptions?created={enroll.Value.Id}");
+                return;
+            }
+
+            await JS.InvokeVoidAsync("open", checkout.Value.CheckoutUrl, "_self");
+        }
+        catch (Exception ex)
+        {
+            _subscribeError = ex.Message;
+        }
+        finally
+        {
+            _subscribing = false;
+        }
+    }
+
     private static string FormatCredentialMeta(string? institution, string? year)
     {
         if (!string.IsNullOrWhiteSpace(institution) && !string.IsNullOrWhiteSpace(year))
@@ -316,7 +560,14 @@
         return institution ?? year ?? "";
     }
 
-    private static IEnumerable<(string Day, List<string>Slots)> GroupAvailability(IReadOnlyList<string> keys)
+    private static string FormatSlot(string key)
+    {
+        var idx = key.IndexOf('-');
+        if (idx <= 0) return key;
+        return $"{key[..idx]} {key[(idx + 1)..]}";
+    }
+
+    private static IEnumerable<(string Day, List<string> Slots)> GroupAvailability(IReadOnlyList<string> keys)
     {
         return keys
             .Select(k =>
@@ -329,4 +580,8 @@
             .GroupBy(x => x.Day)
             .Select(g => (g.Key, g.Select(x => x.Slot).Where(s => !string.IsNullOrWhiteSpace(s)).Distinct().ToList()));
     }
+
+    private sealed record ChildOption(Guid Id, string FirstName, string LastName);
+    private sealed record EnrollResult(Guid Id);
+    private sealed record CheckoutResult(string CheckoutUrl);
 }

@@ -43,6 +43,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     IQueryable<SubscriptionOffering> IApplicationDbContext.SubscriptionOfferingsForAnyTenant =>
         SubscriptionOfferingsSet.IgnoreQueryFilters();
     IQueryable<StudentSubscription> IApplicationDbContext.StudentSubscriptions => StudentSubscriptionsSet;
+    IQueryable<StudentSubscription> IApplicationDbContext.StudentSubscriptionsForAnyTenant =>
+        StudentSubscriptionsSet.IgnoreQueryFilters();
     IQueryable<Lesson> IApplicationDbContext.Lessons => LessonsSet;
     IQueryable<Unavailability> IApplicationDbContext.Unavailabilities => UnavailabilitiesSet;
     IQueryable<Holiday> IApplicationDbContext.Holidays => HolidaysSet;

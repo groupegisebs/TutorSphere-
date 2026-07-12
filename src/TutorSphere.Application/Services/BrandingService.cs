@@ -140,19 +140,57 @@ public class BrandingService : IBrandingService
             .ToList();
 
         var portfolio = ParsePortfolio(branding?.Portfolio);
-        var subjects = portfolio.Subjects.Count > 0
-            ? portfolio.Subjects
-            : offerings
-                .Where(o => !string.IsNullOrWhiteSpace(o.Subject))
-                .Select(o => o.Subject!)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
+
+        var offeringSubjects = offerings
+            .SelectMany(o => ExtractSubjects(o.Subject, o.Title))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var subjects = portfolio.Subjects
+            .Concat(offeringSubjects)
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var offeringAvailability = offerings
+            .SelectMany(o => ExtractAvailabilityFromConditions(o.Conditions))
+            .ToList();
+
+        var availability = portfolio.Availability
+            .Concat(offeringAvailability)
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        // Presentation = approche / CV narratif; Description école = résumé court.
+        var fullBio = FirstNonEmpty(branding?.Presentation, tenant.Description);
+        var shortBio = FirstNonEmpty(tenant.Description, branding?.Presentation);
+
+        var publicOfferings = offerings.Select(o =>
+        {
+            var slots = ExtractAvailabilityFromConditions(o.Conditions);
+            return new PublicOfferingDto(
+                o.Id,
+                o.Title,
+                o.Description,
+                string.IsNullOrWhiteSpace(o.Subject)
+                    ? ExtractSubjects(o.Subject, o.Title).FirstOrDefault()
+                    : o.Subject,
+                o.Price,
+                o.Currency,
+                o.DurationDays,
+                o.SessionCount,
+                o.Frequency,
+                FormatMode(o.Mode),
+                string.IsNullOrWhiteSpace(o.Frequency) ? null : o.Frequency,
+                slots);
+        }).ToList();
 
         var detail = new PublicTutorDetailDto(
             tenant.Id,
             tenant.Name,
             tenant.Slug,
-            tenant.Description,
+            shortBio,
             tenant.City,
             tenant.Country,
             tenant.Language,
@@ -166,28 +204,80 @@ public class BrandingService : IBrandingService
             branding?.BannerUrl,
             branding?.PrimaryColor ?? "#2563eb",
             branding?.SecondaryColor ?? "#1e40af",
-            branding?.Presentation,
+            fullBio,
             portfolio.YearsExperience,
             portfolio.HourlyRate,
             portfolio.Status,
             portfolio.Diplomas,
             portfolio.Certifications,
             subjects,
-            portfolio.Availability,
-            offerings.Select(o => new PublicOfferingDto(
-                o.Id,
-                o.Title,
-                o.Description,
-                o.Subject,
-                o.Price,
-                o.Currency,
-                o.DurationDays,
-                o.SessionCount,
-                o.Frequency,
-                FormatMode(o.Mode))).ToList());
+            availability,
+            publicOfferings);
 
         return Task.FromResult<PublicTutorDetailDto?>(detail);
     }
+
+    private static string? FirstNonEmpty(params string?[] values) =>
+        values.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v))?.Trim();
+
+    private static IEnumerable<string> ExtractSubjects(string? subject, string? title)
+    {
+        if (!string.IsNullOrWhiteSpace(subject))
+            yield return subject.Trim();
+
+        if (string.IsNullOrWhiteSpace(title))
+            yield break;
+
+        // Common pattern: "Pack Mathématiques — Collège"
+        var separators = new[] { "—", "-", ":", "|" };
+        foreach (var sep in separators)
+        {
+            var idx = title.IndexOf(sep, StringComparison.Ordinal);
+            if (idx > 0)
+            {
+                var left = title[..idx].Trim();
+                if (left.Length is > 2 and < 40)
+                    yield return left.StartsWith("Pack ", StringComparison.OrdinalIgnoreCase)
+                        ? left["Pack ".Length..].Trim()
+                        : left;
+                yield break;
+            }
+        }
+    }
+
+    private static List<string> ExtractAvailabilityFromConditions(string? conditions)
+    {
+        if (string.IsNullOrWhiteSpace(conditions))
+            return [];
+
+        try
+        {
+            using var doc = JsonDocument.Parse(conditions);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object)
+                return [];
+            if (!doc.RootElement.TryGetProperty("slots", out var slots) || slots.ValueKind != JsonValueKind.Array)
+                return [];
+
+            var list = new List<string>();
+            foreach (var slot in slots.EnumerateArray())
+            {
+                if (slot.ValueKind != JsonValueKind.Object)
+                    continue;
+                var day = slot.TryGetProperty("day", out var d) ? d.GetString() : null;
+                var time = slot.TryGetProperty("time", out var t) ? t.GetString() : null;
+                if (string.IsNullOrWhiteSpace(day) || string.IsNullOrWhiteSpace(time))
+                    continue;
+                list.Add($"{day.Trim()}-{time.Trim()}");
+            }
+
+            return list;
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
     private static PortfolioParsed ParsePortfolio(string? json)
     {
         if (string.IsNullOrWhiteSpace(json))
@@ -198,13 +288,13 @@ public class BrandingService : IBrandingService
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
             return new PortfolioParsed(
-                ReadInt(root, "yearsExperience"),
-                ReadDecimal(root, "hourlyRate"),
-                ReadString(root, "status"),
-                ReadCredentials(root, "diplomas"),
-                ReadCredentials(root, "certifications"),
-                ReadStringList(root, "subjects"),
-                ReadStringList(root, "availability"));
+                ReadInt(root, "yearsExperience", "YearsExperience"),
+                ReadDecimal(root, "hourlyRate", "HourlyRate"),
+                ReadString(root, "status", "Status"),
+                ReadCredentials(root, "diplomas", "Diplomas"),
+                ReadCredentials(root, "certifications", "Certifications"),
+                ReadStringList(root, "subjects", "Subjects"),
+                ReadStringList(root, "availability", "Availability"));
         }
         catch (JsonException)
         {
@@ -212,48 +302,79 @@ public class BrandingService : IBrandingService
         }
     }
 
-    private static int ReadInt(JsonElement root, string name) =>
-        root.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.Number && p.TryGetInt32(out var v) ? v : 0;
-
-    private static decimal ReadDecimal(JsonElement root, string name) =>
-        root.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.Number && p.TryGetDecimal(out var v) ? v : 0m;
-
-    private static string? ReadString(JsonElement root, string name) =>
-        root.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() : null;
-
-    private static List<string> ReadStringList(JsonElement root, string name)
+    private static int ReadInt(JsonElement root, params string[] names)
     {
-        if (!root.TryGetProperty(name, out var p) || p.ValueKind != JsonValueKind.Array)
-            return [];
-
-        return p.EnumerateArray()
-            .Select(x => x.ValueKind == JsonValueKind.String ? x.GetString() : null)
-            .Where(s => !string.IsNullOrWhiteSpace(s))
-            .Cast<string>()
-            .ToList();
+        foreach (var name in names)
+        {
+            if (root.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.Number && p.TryGetInt32(out var v))
+                return v;
+        }
+        return 0;
     }
 
-    private static List<PublicCredentialDto> ReadCredentials(JsonElement root, string name)
+    private static decimal ReadDecimal(JsonElement root, params string[] names)
     {
-        if (!root.TryGetProperty(name, out var p) || p.ValueKind != JsonValueKind.Array)
-            return [];
-
-        var list = new List<PublicCredentialDto>();
-        foreach (var item in p.EnumerateArray())
+        foreach (var name in names)
         {
-            if (item.ValueKind != JsonValueKind.Object)
+            if (root.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.Number && p.TryGetDecimal(out var v))
+                return v;
+        }
+        return 0m;
+    }
+
+    private static string? ReadString(JsonElement root, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (root.TryGetProperty(name, out var p) && p.ValueKind == JsonValueKind.String)
+                return p.GetString();
+        }
+        return null;
+    }
+
+    private static List<string> ReadStringList(JsonElement root, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (!root.TryGetProperty(name, out var p) || p.ValueKind != JsonValueKind.Array)
                 continue;
 
-            var title = item.TryGetProperty("title", out var t) ? t.GetString() : null;
-            if (string.IsNullOrWhiteSpace(title))
-                continue;
-
-            var institution = item.TryGetProperty("institution", out var i) ? i.GetString() : null;
-            var year = item.TryGetProperty("year", out var y) ? y.GetString() : null;
-            list.Add(new PublicCredentialDto(title.Trim(), institution, year));
+            return p.EnumerateArray()
+                .Select(x => x.ValueKind == JsonValueKind.String ? x.GetString() : null)
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Cast<string>()
+                .ToList();
         }
 
-        return list;
+        return [];
+    }
+
+    private static List<PublicCredentialDto> ReadCredentials(JsonElement root, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (!root.TryGetProperty(name, out var p) || p.ValueKind != JsonValueKind.Array)
+                continue;
+
+            var list = new List<PublicCredentialDto>();
+            foreach (var item in p.EnumerateArray())
+            {
+                if (item.ValueKind != JsonValueKind.Object)
+                    continue;
+
+                var title = ReadString(item, "title", "Title");
+                if (string.IsNullOrWhiteSpace(title))
+                    continue;
+
+                var institution = ReadString(item, "institution", "Institution");
+                var year = ReadString(item, "year", "Year");
+                list.Add(new PublicCredentialDto(title.Trim(), institution, year));
+            }
+
+            return list;
+        }
+
+        return [];
     }
 
     private static string FormatMode(LessonMode mode) => mode switch

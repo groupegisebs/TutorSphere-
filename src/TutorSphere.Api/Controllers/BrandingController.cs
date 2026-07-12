@@ -38,10 +38,12 @@ public class BrandingController : ControllerBase
         if (detail is null)
             return NotFound();
 
-        if (string.IsNullOrWhiteSpace(detail.OwnerUserId))
-            return Ok(detail with { TutorFullName = detail.SchoolName });
+        ApplicationUser? owner = null;
+        if (!string.IsNullOrWhiteSpace(detail.OwnerUserId))
+            owner = await _userManager.FindByIdAsync(detail.OwnerUserId);
 
-        var owner = await _userManager.FindByIdAsync(detail.OwnerUserId);
+        owner ??= _userManager.Users.FirstOrDefault(u => u.TenantId == detail.TenantId);
+
         if (owner is null)
             return Ok(detail with { TutorFullName = detail.SchoolName });
 

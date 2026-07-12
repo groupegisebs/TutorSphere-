@@ -28,7 +28,9 @@ public record PublicOfferingDto(
     int DurationDays,
     int SessionCount,
     string? Frequency,
-    string Mode);
+    string Mode,
+    string? ScheduleSummary = null,
+    IReadOnlyList<string>? AvailabilitySlots = null);
 
 public record PublicTenantSiteDto(
     Guid Id,

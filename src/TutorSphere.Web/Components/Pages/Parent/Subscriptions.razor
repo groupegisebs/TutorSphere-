@@ -3,6 +3,7 @@
 @rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
+@inject NavigationManager Navigation
 
 <PageTitle>Mes Abonnements – TutorSphere</PageTitle>
 
@@ -11,7 +12,15 @@
         <h1><i class="bi bi-arrow-repeat me-2"></i>Mes Abonnements</h1>
         <p class="ts-page-subtitle">Gérez les abonnements de vos enfants</p>
     </div>
+    <a class="btn btn-primary" href="/parent/search">
+        <i class="bi bi-binoculars me-1"></i>Trouver un enseignant
+    </a>
 </div>
+
+@if (!string.IsNullOrEmpty(_banner))
+{
+    <div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>@_banner</div>
+}
 
 @if (_loading)
 {
@@ -28,58 +37,78 @@ else if (_subs.Count == 0)
 {
     <div class="text-center py-5 text-muted">
         <i class="bi bi-arrow-repeat fs-1 d-block mb-3 opacity-50"></i>
-        <p>Aucun abonnement actif trouvé.</p>
+        <p>Aucun abonnement pour le moment.</p>
+        <a class="btn btn-outline-primary mt-2" href="/parent/search">Rechercher un enseignant</a>
     </div>
 }
 else
 {
     @foreach (var sub in _subs)
     {
-        var statusBadge = sub.Status switch {
-            "active" => "ts-badge-success",
-            "past_due" => "ts-badge-warning",
+        var statusBadge = sub.Status switch
+        {
+            "Active" => "ts-badge-success",
+            "Pending" => "ts-badge-warning",
+            "Paused" => "ts-badge-warning",
             _ => "ts-badge-danger"
         };
-        var statusLabel = sub.Status switch {
-            "active" => "Actif",
-            "past_due" => "En retard",
-            "canceled" => "Annulé",
+        var statusLabel = sub.Status switch
+        {
+            "Active" => "Actif",
+            "Pending" => "En attente de paiement",
+            "Paused" => "En pause",
+            "Cancelled" => "Annulé",
+            "Expired" => "Expiré",
             _ => sub.Status
         };
 
         <div class="section-card mb-3">
             <div class="d-flex align-items-center gap-3 p-3" style="border-bottom:1px solid var(--ts-border)">
-                <div class="ts-avatar" style="background:#7c3aed">AB</div>
+                <div class="ts-avatar" style="background:#7c3aed">@Initials(sub.StudentName)</div>
                 <div>
-                    <strong>@sub.PlanCode</strong>
-                    <span class="text-muted d-block small">@sub.ProductCode</span>
+                    <strong>@sub.OfferingTitle</strong>
+                    <span class="text-muted d-block small">
+                        @sub.StudentName
+                        @if (!string.IsNullOrWhiteSpace(sub.Subject))
+                        {
+                            <text> · @sub.Subject</text>
+                        }
+                    </span>
                 </div>
                 <span class="ms-auto ts-badge @statusBadge">@statusLabel</span>
             </div>
             <div class="row g-0">
                 <div class="col-6 col-md-3 p-3" style="border-right:1px solid var(--ts-border)">
-                    <div class="ts-kpi-label">Période en cours</div>
-                    <strong>@(sub.CurrentPeriodStart?.ToString("dd/MM") ?? "—") – @(sub.CurrentPeriodEnd?.ToString("dd/MM/yyyy") ?? "—")</strong>
+                    <div class="ts-kpi-label">Période</div>
+                    <strong>@sub.StartDate.ToString("dd/MM") – @sub.EndDate.ToString("dd/MM/yyyy")</strong>
                 </div>
                 <div class="col-6 col-md-3 p-3" style="border-right:1px solid var(--ts-border)">
-                    <div class="ts-kpi-label">Annulation à la fin</div>
-                    <strong>@(sub.CancelAtPeriodEnd ? "Oui" : "Non")</strong>
+                    <div class="ts-kpi-label">Séances restantes</div>
+                    <strong>@sub.SessionsRemaining</strong>
                 </div>
                 <div class="col-6 col-md-3 p-3" style="border-right:1px solid var(--ts-border)">
-                    <div class="ts-kpi-label">Code</div>
-                    <strong class="small">@sub.SubscriptionCode[..Math.Min(12, sub.SubscriptionCode.Length)]…</strong>
+                    <div class="ts-kpi-label">Prix</div>
+                    <strong>@sub.Price.ToString("N2") @sub.Currency</strong>
                 </div>
                 <div class="col-6 col-md-3 p-3 d-flex align-items-center justify-content-end gap-2">
-                    @if (sub.Status == "active" && !sub.CancelAtPeriodEnd)
+                    @if (sub.Status is "Active" or "Pending")
                     {
                         <button class="btn btn-outline-danger btn-sm"
-                                disabled="@(_cancelling == sub.SubscriptionCode)"
-                                @onclick="async () => await CancelAsync(sub.SubscriptionCode)">
-                            @if (_cancelling == sub.SubscriptionCode)
+                                disabled="@(_cancelling == sub.Id)"
+                                @onclick="async () => await CancelAsync(sub.Id)">
+                            @if (_cancelling == sub.Id)
                             {
                                 <span class="spinner-border spinner-border-sm me-1"></span>
                             }
                             Résilier
+                        </button>
+                    }
+                    @if (sub.Status == "Pending")
+                    {
+                        <button class="btn btn-primary btn-sm"
+                                disabled="@(_paying == sub.Id)"
+                                @onclick="async () => await PayAsync(sub)">
+                            Payer
                         </button>
                     }
                 </div>
@@ -89,22 +118,26 @@ else
 }
 
 @code {
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+
     private bool _loading = true;
     private string? _error;
-    private string? _cancelling;
-    private List<GatewaySubscriptionResponse> _subs = [];
+    private string? _banner;
+    private Guid? _cancelling;
+    private Guid? _paying;
+    private List<SubVm> _subs = [];
 
     protected override async Task OnInitializedAsync()
     {
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
+        if (query.ContainsKey("paid") || query.ContainsKey("created"))
+            _banner = "Abonnement enregistré. Vous pouvez suivre son statut ci-dessous.";
+
         try
         {
-            var profile = await Api.GetAsync<ParentProfileDto>("api/auth/me/parent-profile");
-            if (profile != null)
-            {
-                var result = await Api.GetAsync<List<GatewaySubscriptionResponse>>(
-                    $"api/payments/customers/parents/{profile.Id}/subscriptions");
-                _subs = result ?? [];
-            }
+            var result = await Api.GetAsync<List<SubVm>>("api/parent/subscriptions");
+            _subs = result ?? [];
         }
         catch (Exception ex)
         {
@@ -113,25 +146,64 @@ else
         finally { _loading = false; }
     }
 
-    private async Task CancelAsync(string code)
+    private async Task CancelAsync(Guid id)
     {
-        _cancelling = code;
+        _cancelling = id;
         try
         {
-            var sub = _subs.FirstOrDefault(s => s.SubscriptionCode == code);
-            if (sub != null)
-            {
-                await Api.PostAsync<object>($"api/payments/subscriptions/{code}/cancel", new { });
-                _subs = _subs.Select(s => s.SubscriptionCode == code
-                    ? s with { CancelAtPeriodEnd = true }
-                    : s).ToList();
-            }
+            var result = await Api.PostWithErrorAsync<object>($"api/parent/subscriptions/{id}/cancel", new { });
+            if (result.Error is null)
+                _subs = _subs.Select(s => s.Id == id ? s with { Status = "Cancelled" } : s).ToList();
+            else
+                _error = result.Error;
         }
         finally { _cancelling = null; }
     }
 
-    private record ParentProfileDto(Guid Id);
-    private record GatewaySubscriptionResponse(
-        string SubscriptionCode, string Status, string ProductCode, string PlanCode,
-        DateTime? CurrentPeriodStart, DateTime? CurrentPeriodEnd, bool CancelAtPeriodEnd);
+    private async Task PayAsync(SubVm sub)
+    {
+        _paying = sub.Id;
+        try
+        {
+            var baseUri = Navigation.BaseUri.TrimEnd('/');
+            var checkout = await Api.PostWithErrorAsync<CheckoutResult>(
+                $"api/payments/subscriptions/{sub.Id}/checkout",
+                new
+                {
+                    successUrl = $"{baseUri}/parent/subscriptions?paid=1",
+                    cancelUrl = $"{baseUri}/parent/subscriptions?canceled=1"
+                });
+
+            if (!string.IsNullOrWhiteSpace(checkout.Value?.CheckoutUrl))
+                await JS.InvokeVoidAsync("open", checkout.Value.CheckoutUrl, "_self");
+            else
+                _error = checkout.Error ?? "Paiement indisponible pour le moment.";
+        }
+        finally { _paying = null; }
+    }
+
+    private static string Initials(string name)
+    {
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2
+            ? $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[^1][0])}"
+            : name.Length > 0 ? char.ToUpperInvariant(name[0]).ToString() : "?";
+    }
+
+    private sealed record SubVm(
+        Guid Id,
+        Guid TenantId,
+        Guid StudentId,
+        string StudentName,
+        Guid OfferingId,
+        string OfferingTitle,
+        string? Subject,
+        decimal Price,
+        string Currency,
+        string Status,
+        DateTime StartDate,
+        DateTime EndDate,
+        int SessionsRemaining);
+
+    private sealed record CheckoutResult(string CheckoutUrl);
 }
