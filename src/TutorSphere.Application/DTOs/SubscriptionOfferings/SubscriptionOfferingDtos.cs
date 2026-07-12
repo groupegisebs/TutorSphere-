@@ -26,7 +26,9 @@ public record SubscriptionOfferingDto(
     bool IsActive,
     string Mode,
     string? Conditions,
-    OfferingScheduleDto? Schedule);
+    OfferingScheduleDto? Schedule,
+    int ActiveSubscribers = 0,
+    decimal MonthlyRevenue = 0);
 
 public record CreateSubscriptionOfferingRequest(
     string Title,

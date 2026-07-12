@@ -85,6 +85,7 @@
                 <li><span class="cal-legend-dot cal-legend-dot--online"></span>@L["Calendar_Type_Online"]</li>
                 <li><span class="cal-legend-dot cal-legend-dot--inperson"></span>@L["Calendar_Type_InPerson"]</li>
                 <li><span class="cal-legend-dot cal-legend-dot--group"></span>@L["Calendar_Type_Group"]</li>
+                <li><span class="cal-legend-dot cal-legend-dot--offer"></span>@L["Calendar_Type_Offer"]</li>
                 <li><span class="cal-legend-dot cal-legend-dot--unavailable"></span>@L["Calendar_Type_Unavailable"]</li>
                 <li><span class="cal-legend-dot cal-legend-dot--other"></span>@L["Calendar_Type_Other"]</li>
             </ul>
@@ -177,10 +178,10 @@
                             }
                             @foreach (var evt in GetEventsForDay(date))
                             {
-                                <div class="cal-event cal-event--@evt.Type @(evt.Id.HasValue ? "cal-event--editable" : "")"
+                                <div class="cal-event cal-event--@evt.Type @(evt.Id.HasValue ? "cal-event--editable" : "") @(evt.Type == "offer" ? "cal-event--offer-click" : "")"
                                      style="top:@(evt.TopPx)px;height:@(Math.Max(evt.HeightPx, 26))px;left:4px;right:4px;"
-                                     title="@(evt.Id.HasValue ? "Modifier" : null)"
-                                     @onclick="() => OpenEditLesson(evt)"
+                                     title="@(evt.Type == "offer" ? L["Calendar_Type_Offer"].Value : (evt.Id.HasValue ? "Modifier" : null))"
+                                     @onclick="() => OnEventClick(evt)"
                                      @onclick:stopPropagation="true">
                                     <span class="cal-event-time">@evt.TimeLabel</span>
                                     <strong class="cal-event-title">@evt.Title</strong>
@@ -373,7 +374,7 @@
     private const int CalStartH = 8;
     private const int HourPx = 60;
 
-    private static readonly int[] Hours = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19];
+    private static readonly int[] Hours = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21];
 
     // ── State ──────────────────────────────────────────────────────────────────
     private string ViewMode { get; set; } = "week";
@@ -403,6 +404,7 @@
     private sealed class CalEvent
     {
         public Guid? Id;
+        public Guid? OfferingId;
         public string Title = "";
         public string Subtitle = "";
         public string Type = "";
@@ -414,10 +416,12 @@
         public DateTime Date { get; }
 
         public CalEvent(Guid? id, DateTime date, string title, string sub, string type, int h, int m, int dur,
-            string modeApi = "Online", string? description = null, string? location = null, string? meetingUrl = null)
+            string modeApi = "Online", string? description = null, string? location = null, string? meetingUrl = null,
+            Guid? offeringId = null)
         {
             Id = id; Date = date.Date; Title = title; Subtitle = sub; Type = type;
             ModeApi = modeApi; Description = description; Location = location; MeetingUrl = meetingUrl;
+            OfferingId = offeringId;
             _startH = h; _startM = m; _durMin = dur;
         }
 
@@ -464,19 +468,19 @@
         {
             var now = DateTime.Now;
             var mins = (now.Hour - CalStartH) * 60 + now.Minute;
-            if (mins < 0 || now.Hour >= 20) return null;
+            if (mins < 0 || now.Hour >= 22) return null;
             return (int)(mins / 60.0 * HourPx);
         }
     }
 
-    private int TotalLessons => _apiEvents.Count(e => e.Type != "unavailable");
+    private int TotalLessons => _apiEvents.Count(e => e.Type is not ("unavailable" or "offer"));
 
     private string HoursTaughtLabel
     {
         get
         {
             var minutes = _apiEvents
-                .Where(e => e.Type != "unavailable")
+                .Where(e => e.Type is not ("unavailable" or "offer"))
                 .Sum(e => Math.Max(0, e.DurMin));
             if (minutes <= 0) return "0h";
             var h = minutes / 60;
@@ -486,7 +490,7 @@
     }
 
     private int StudentsToday =>
-        _apiEvents.Count(e => e.Date.Date == DateTime.Today && e.Type != "unavailable");
+        _apiEvents.Count(e => e.Date.Date == DateTime.Today && e.Type is not ("unavailable" or "offer"));
 
     // ── Mini calendar ──────────────────────────────────────────────────────────
     private IEnumerable<(DateTime Date, bool InMonth)> MiniCalDays
@@ -508,7 +512,8 @@
     private record CalendarViewDto(
         DateTime RangeStart, DateTime RangeEnd,
         List<ApiLessonDto> Lessons,
-        List<ApiUnavailabilityDto> Unavailabilities);
+        List<ApiUnavailabilityDto> Unavailabilities,
+        List<ApiOfferAvailabilityDto>? OfferAvailabilities = null);
 
     private record ApiLessonDto(
         Guid Id, string Title, string? Description, string? Subject,
@@ -517,6 +522,10 @@
 
     private record ApiUnavailabilityDto(
         Guid Id, string? Reason, DateTime StartTime, DateTime EndTime);
+
+    private record ApiOfferAvailabilityDto(
+        Guid OfferingId, string Title, string? Subject,
+        DateTime StartTime, DateTime EndTime, string Mode, string Cadence);
 
     private sealed class LessonFormModel
     {
@@ -604,6 +613,31 @@
                 unavail.Id, local.Date, unavail.Reason ?? "Indisponible", "", "unavailable",
                 local.Hour, local.Minute, dur));
         }
+
+        foreach (var offer in view.OfferAvailabilities ?? [])
+        {
+            var local = offer.StartTime.Kind == DateTimeKind.Utc
+                ? offer.StartTime.ToLocalTime()
+                : DateTime.SpecifyKind(offer.StartTime, DateTimeKind.Local);
+            var endLocal = offer.EndTime.Kind == DateTimeKind.Utc
+                ? offer.EndTime.ToLocalTime()
+                : DateTime.SpecifyKind(offer.EndTime, DateTimeKind.Local);
+            var dur = Math.Max(15, (int)(endLocal - local).TotalMinutes);
+            _apiEvents.Add(new CalEvent(
+                null, local.Date, offer.Title, offer.Subject ?? L["Calendar_Type_Offer"].Value, "offer",
+                local.Hour, local.Minute, dur, offer.Mode, offeringId: offer.OfferingId));
+        }
+    }
+
+    private void OnEventClick(CalEvent evt)
+    {
+        if (evt.Type == "offer")
+        {
+            Navigation.NavigateTo("/tutor/offers");
+            return;
+        }
+
+        OpenEditLesson(evt);
     }
 
     // ── Create UI ──────────────────────────────────────────────────────────────
@@ -628,7 +662,7 @@
 
     private void OpenEditLesson(CalEvent evt)
     {
-        if (evt.Type == "unavailable" || !evt.Id.HasValue)
+        if (evt.Type is "unavailable" or "offer" || !evt.Id.HasValue)
             return;
 
         CloseNewMenu();

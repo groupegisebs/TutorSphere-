@@ -19,6 +19,8 @@ public interface IApplicationDbContext
     /// <summary>Subscriptions without tenant query filter (parent portal across schools).</summary>
     IQueryable<StudentSubscription> StudentSubscriptionsForAnyTenant { get; }
     IQueryable<Lesson> Lessons { get; }
+    /// <summary>Lessons without tenant filter (parent portal across schools).</summary>
+    IQueryable<Lesson> LessonsForAnyTenant { get; }
     IQueryable<Unavailability> Unavailabilities { get; }
     IQueryable<Holiday> Holidays { get; }
     IQueryable<Vacation> Vacations { get; }
@@ -29,6 +31,8 @@ public interface IApplicationDbContext
     IQueryable<Document> Documents { get; }
     IQueryable<Message> Messages { get; }
     IQueryable<LessonAttendance> LessonAttendances { get; }
+    /// <summary>Attendances without tenant filter (parent portal across schools).</summary>
+    IQueryable<LessonAttendance> LessonAttendancesForAnyTenant { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     void Add<T>(T entity) where T : class;

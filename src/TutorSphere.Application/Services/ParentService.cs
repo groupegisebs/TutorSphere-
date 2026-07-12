@@ -1,4 +1,5 @@
 using TutorSphere.Application.Common.Interfaces;
+using TutorSphere.Application.DTOs.Lessons;
 using TutorSphere.Application.DTOs.Parents;
 using TutorSphere.Application.DTOs.Students;
 using TutorSphere.Domain.Entities;
@@ -20,6 +21,11 @@ public interface IParentService
     Task<StudentDto> UpdateChildForUserAsync(string userId, Guid childId, ParentUpdateChildRequest request, CancellationToken ct = default);
     Task DeleteChildForUserAsync(string userId, Guid childId, CancellationToken ct = default);
     Task<ParentDashboardDto?> GetDashboardForUserAsync(string userId, CancellationToken ct = default);
+    Task<IReadOnlyList<LessonDto>> GetLessonsForUserAsync(
+        string userId,
+        DateTime start,
+        DateTime end,
+        CancellationToken ct = default);
 }
 
 public class ParentService : IParentService
@@ -406,6 +412,54 @@ public class ParentService : IParentService
             recentPayment,
             recentDocuments,
             weekCalendar));
+    }
+
+    public Task<IReadOnlyList<LessonDto>> GetLessonsForUserAsync(
+        string userId,
+        DateTime start,
+        DateTime end,
+        CancellationToken ct = default)
+    {
+        if (end <= start)
+            throw new InvalidOperationException("La date de fin doit être postérieure à la date de début.");
+
+        var parent = _db.ParentProfilesForAnyTenant.FirstOrDefault(p => p.UserId == userId);
+        if (parent is null)
+            return Task.FromResult<IReadOnlyList<LessonDto>>([]);
+
+        var childIds = _db.StudentsForAnyTenant
+            .Where(s => s.ParentProfileId == parent.Id)
+            .Select(s => s.Id)
+            .ToList();
+        if (childIds.Count == 0)
+            return Task.FromResult<IReadOnlyList<LessonDto>>([]);
+
+        var lessonIds = _db.LessonAttendancesForAnyTenant
+            .Where(a => childIds.Contains(a.StudentId))
+            .Select(a => a.LessonId)
+            .Distinct()
+            .ToList();
+
+        var lessons = _db.LessonsForAnyTenant
+            .Where(l => lessonIds.Contains(l.Id) && l.StartTime < end && l.EndTime > start)
+            .OrderBy(l => l.StartTime)
+            .ToList()
+            .Select(l => new LessonDto(
+                l.Id,
+                l.Title,
+                l.Description,
+                l.Subject,
+                l.StartTime,
+                l.EndTime,
+                l.Mode.ToString(),
+                l.Location,
+                l.MeetingUrl,
+                l.SessionNotes,
+                l.CreatedAt,
+                l.UpdatedAt))
+            .ToList();
+
+        return Task.FromResult<IReadOnlyList<LessonDto>>(lessons);
     }
 
     private Guid RequireTenantId()

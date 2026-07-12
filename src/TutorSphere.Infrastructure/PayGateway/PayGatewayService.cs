@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.Payments;
+using TutorSphere.Application.Services;
 using TutorSphere.Domain.Entities;
 using TutorSphere.Domain.Enums;
 
@@ -17,6 +18,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
     private readonly IApplicationDbContext _db;
     private readonly PayGatewayClient _gateway;
     private readonly PayGatewaySettings _settings;
+    private readonly ISubscriptionLessonScheduler _lessonScheduler;
     private readonly ILogger<PayGatewayService> _logger;
     private string? _cachedPublishableKey;
 
@@ -24,11 +26,13 @@ internal sealed class PayGatewayService : IPaymentGatewayService
         IApplicationDbContext db,
         PayGatewayClient gateway,
         IOptions<PayGatewaySettings> settings,
+        ISubscriptionLessonScheduler lessonScheduler,
         ILogger<PayGatewayService> logger)
     {
         _db = db;
         _gateway = gateway;
         _settings = settings.Value;
+        _lessonScheduler = lessonScheduler;
         _logger = logger;
     }
 
@@ -336,10 +340,19 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             {
                 var subscription = await _db.StudentSubscriptions
                     .FirstOrDefaultAsync(s => s.Id == payment.SubscriptionId, ct);
+                if (subscription is null)
+                {
+                    subscription = await _db.StudentSubscriptionsForAnyTenant
+                        .FirstOrDefaultAsync(s => s.Id == payment.SubscriptionId, ct);
+                }
+
                 if (subscription is not null)
                 {
                     subscription.Status = SubscriptionStatus.Active;
                     await TryLinkGatewaySubscriptionAsync(subscription, gatewayPayment.CustomerCode, ct);
+                    await _db.SaveChangesAsync(ct);
+                    await _lessonScheduler.EnsureScheduledAsync(subscription.Id, ct);
+                    return;
                 }
             }
         }

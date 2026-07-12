@@ -46,8 +46,18 @@ public class CalendarService : ICalendarService
         var unavailabilities = await GetUnavailabilitiesAsync(start, end, ct);
         var holidays = await GetHolidaysAsync(start, end, ct);
         var vacations = await GetVacationsAsync(start, end, ct);
+        var offerAvailabilities = GetOfferAvailabilities(start, end);
 
-        return new CalendarViewDto(start, end, lessons, unavailabilities, holidays, vacations);
+        return new CalendarViewDto(start, end, lessons, unavailabilities, holidays, vacations, offerAvailabilities);
+    }
+
+    private IReadOnlyList<OfferAvailabilityDto> GetOfferAvailabilities(DateTime start, DateTime end)
+    {
+        var offerings = _db.SubscriptionOfferings
+            .Where(o => o.IsActive)
+            .ToList();
+
+        return OfferScheduleCalendarExpander.Expand(offerings, start, end);
     }
 
     public Task<CalendarViewDto> GetViewByCalendarViewAsync(CalendarView view, DateTime date, CancellationToken ct = default)

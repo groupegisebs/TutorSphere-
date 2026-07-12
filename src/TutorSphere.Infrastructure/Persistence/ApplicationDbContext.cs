@@ -46,6 +46,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     IQueryable<StudentSubscription> IApplicationDbContext.StudentSubscriptionsForAnyTenant =>
         StudentSubscriptionsSet.IgnoreQueryFilters();
     IQueryable<Lesson> IApplicationDbContext.Lessons => LessonsSet;
+    IQueryable<Lesson> IApplicationDbContext.LessonsForAnyTenant => LessonsSet.IgnoreQueryFilters();
     IQueryable<Unavailability> IApplicationDbContext.Unavailabilities => UnavailabilitiesSet;
     IQueryable<Holiday> IApplicationDbContext.Holidays => HolidaysSet;
     IQueryable<Vacation> IApplicationDbContext.Vacations => VacationsSet;
@@ -56,6 +57,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     IQueryable<Document> IApplicationDbContext.Documents => DocumentsSet;
     IQueryable<Message> IApplicationDbContext.Messages => MessagesSet;
     IQueryable<LessonAttendance> IApplicationDbContext.LessonAttendances => LessonAttendancesSet;
+    IQueryable<LessonAttendance> IApplicationDbContext.LessonAttendancesForAnyTenant =>
+        LessonAttendancesSet.IgnoreQueryFilters();
 
     public new void Add<T>(T entity) where T : class => Set<T>().Add(entity);
     public new void Remove<T>(T entity) where T : class => Set<T>().Remove(entity);

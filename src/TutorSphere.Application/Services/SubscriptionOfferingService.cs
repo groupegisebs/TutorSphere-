@@ -44,16 +44,31 @@ public class SubscriptionOfferingService : ISubscriptionOfferingService
     {
         var offerings = _db.SubscriptionOfferings
             .OrderBy(o => o.Title)
-            .ToList()
-            .Select(MapToDto)
             .ToList();
-        return Task.FromResult<IReadOnlyList<SubscriptionOfferingDto>>(offerings);
+
+        var counts = _db.StudentSubscriptions
+            .Where(s => s.Status == SubscriptionStatus.Active || s.Status == SubscriptionStatus.Paused)
+            .GroupBy(s => s.OfferingId)
+            .Select(g => new { OfferingId = g.Key, Count = g.Count() })
+            .ToList()
+            .ToDictionary(x => x.OfferingId, x => x.Count);
+
+        var result = offerings
+            .Select(o => MapToDto(o, counts.GetValueOrDefault(o.Id)))
+            .ToList();
+        return Task.FromResult<IReadOnlyList<SubscriptionOfferingDto>>(result);
     }
 
     public Task<SubscriptionOfferingDto?> GetByIdAsync(Guid id, CancellationToken ct = default)
     {
         var offering = _db.SubscriptionOfferings.FirstOrDefault(o => o.Id == id);
-        return Task.FromResult(offering is null ? null : MapToDto(offering));
+        if (offering is null)
+            return Task.FromResult<SubscriptionOfferingDto?>(null);
+
+        var subscribers = _db.StudentSubscriptions.Count(s =>
+            s.OfferingId == id
+            && (s.Status == SubscriptionStatus.Active || s.Status == SubscriptionStatus.Paused));
+        return Task.FromResult<SubscriptionOfferingDto?>(MapToDto(offering, subscribers));
     }
 
     public async Task<SubscriptionOfferingDto> CreateAsync(CreateSubscriptionOfferingRequest request, CancellationToken ct = default)
@@ -303,18 +318,48 @@ public class SubscriptionOfferingService : ISubscriptionOfferingService
         }
     }
 
-    private static SubscriptionOfferingDto MapToDto(SubscriptionOffering o) => new(
-        o.Id,
-        o.Title,
-        o.Description,
-        o.Subject,
-        o.Price,
-        o.Currency,
-        o.DurationDays,
-        o.SessionCount,
-        o.Frequency,
-        o.IsActive,
-        FormatMode(o.Mode),
-        o.Conditions,
-        TryParseSchedule(o.Conditions));
+    private static SubscriptionOfferingDto MapToDto(SubscriptionOffering o, int activeSubscribers = 0)
+    {
+        var monthlyUnit = ToMonthlyAmount(o.Price, o.DurationDays, o.Frequency, o.Conditions);
+        return new(
+            o.Id,
+            o.Title,
+            o.Description,
+            o.Subject,
+            o.Price,
+            o.Currency,
+            o.DurationDays,
+            o.SessionCount,
+            o.Frequency,
+            o.IsActive,
+            FormatMode(o.Mode),
+            o.Conditions,
+            TryParseSchedule(o.Conditions),
+            activeSubscribers,
+            Math.Round(monthlyUnit * activeSubscribers, 2));
+    }
+
+    /// <summary>Normalise le prix de l'offre en revenu mensuel récurrent (MRR unitaire).</summary>
+    private static decimal ToMonthlyAmount(
+        decimal price,
+        int durationDays,
+        string? frequency,
+        string? conditions)
+    {
+        var period = TryParseSchedule(conditions)?.BillingPeriod
+            ?? frequency
+            ?? "";
+        period = period.Trim().ToLowerInvariant();
+
+        if (period.Contains("semaine") || period is "week" or "weekly" || durationDays is > 0 and <= 8)
+            return price * 52m / 12m;
+        if (period.Contains("trimestre") || period is "quarter" || durationDays is > 60 and <= 100)
+            return price / 3m;
+        if (period.Contains("semestre") || period is "semester" || durationDays is > 100 and <= 200)
+            return price / 6m;
+        if (period.Contains("an") || period is "year" or "yearly" or "annual" || durationDays > 200)
+            return price / 12m;
+
+        return price;
+    }
 }

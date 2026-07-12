@@ -70,4 +70,15 @@ public record CalendarViewDto(
     IReadOnlyList<Lessons.LessonDto> Lessons,
     IReadOnlyList<UnavailabilityDto> Unavailabilities,
     IReadOnlyList<HolidayDto> Holidays,
-    IReadOnlyList<VacationDto> Vacations);
+    IReadOnlyList<VacationDto> Vacations,
+    IReadOnlyList<OfferAvailabilityDto> OfferAvailabilities);
+
+/// <summary>Créneau récurrent d'une offre active, projeté sur la plage du calendrier.</summary>
+public record OfferAvailabilityDto(
+    Guid OfferingId,
+    string Title,
+    string? Subject,
+    DateTime StartTime,
+    DateTime EndTime,
+    string Mode,
+    string Cadence);

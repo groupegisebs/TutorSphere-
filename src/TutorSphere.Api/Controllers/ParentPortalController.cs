@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using TutorSphere.Application.Common;
+using TutorSphere.Application.DTOs.Lessons;
 using TutorSphere.Application.DTOs.Parents;
 using TutorSphere.Application.DTOs.StudentSubscriptions;
 using TutorSphere.Application.DTOs.Students;
@@ -136,6 +137,29 @@ public class ParentPortalController : ControllerBase
         catch (DbUpdateException)
         {
             return BadRequest(new { error = "Impossible de supprimer l'enfant." });
+        }
+    }
+
+    [HttpGet("lessons")]
+    public async Task<ActionResult<IReadOnlyList<LessonDto>>> Lessons(
+        [FromQuery] DateTime? start,
+        [FromQuery] DateTime? end,
+        CancellationToken ct)
+    {
+        var userId = await ResolveParentUserIdAsync(ct);
+        if (userId is null)
+            return Unauthorized();
+
+        if (!start.HasValue || !end.HasValue)
+            return BadRequest(new { error = "Spécifiez start et end." });
+
+        try
+        {
+            return Ok(await _parentService.GetLessonsForUserAsync(userId, start.Value, end.Value, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
         }
     }
 
