@@ -135,6 +135,7 @@ app.UseMiddleware<TenantResolutionMiddleware>();
 app.UseAuthorization();
 app.MapControllers();
 app.MapHub<MessagesHub>("/hubs/messages");
+app.MapHub<ClassroomHub>("/hubs/classroom");
 app.MapHealthChecks("/health");
 
 try

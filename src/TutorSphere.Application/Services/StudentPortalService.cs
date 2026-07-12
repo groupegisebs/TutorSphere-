@@ -25,6 +25,7 @@ public interface IStudentPortalService
         SubmitHomeworkRequest request,
         CancellationToken ct = default);
     Task<IReadOnlyList<DocumentDto>> GetDocumentsAsync(string userId, CancellationToken ct = default);
+    Task<DocumentDto?> GetDocumentForStudentAsync(string userId, Guid documentId, CancellationToken ct = default);
     Task<IReadOnlyList<LessonReportDto>> GetReportsAsync(string userId, CancellationToken ct = default);
     Task<IReadOnlyList<ConversationDto>> GetTeacherContactsAsync(string userId, CancellationToken ct = default);
 }
@@ -119,14 +120,27 @@ public class StudentPortalService : IStudentPortalService
         if (student is null)
             return Task.FromResult<IReadOnlyList<DocumentDto>>([]);
 
+        var lessonIds = _db.LessonAttendancesForAnyTenant
+            .Where(a => a.StudentId == student.Id)
+            .Select(a => a.LessonId)
+            .Distinct()
+            .ToList();
+
         var docs = _db.DocumentsForAnyTenant
-            .Where(d => d.StudentId == student.Id)
+            .Where(d => d.StudentId == student.Id
+                        || (d.LessonId != null && lessonIds.Contains(d.LessonId.Value)))
             .OrderByDescending(d => d.CreatedAt)
             .ToList()
             .Select(MapDocument)
             .ToList();
 
         return Task.FromResult<IReadOnlyList<DocumentDto>>(docs);
+    }
+
+    public async Task<DocumentDto?> GetDocumentForStudentAsync(string userId, Guid documentId, CancellationToken ct = default)
+    {
+        var docs = await GetDocumentsAsync(userId, ct);
+        return docs.FirstOrDefault(d => d.Id == documentId);
     }
 
     public Task<IReadOnlyList<LessonReportDto>> GetReportsAsync(string userId, CancellationToken ct = default)

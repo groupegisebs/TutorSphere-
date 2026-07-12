@@ -10,6 +10,7 @@
 @using TutorSphere.Application.DTOs.Messages
 @inject AuthService Auth
 @inject ApiClient Api
+@inject RealtimeClassroomClient ClassroomRt
 
 <PageTitle>@L["Classroom_Title"] – TutorSphere</PageTitle>
 
@@ -163,6 +164,13 @@
 
             <!-- Canvas -->
             <div class="cr-canvas-wrapper">
+                @if (!string.IsNullOrEmpty(_boardDocName))
+                {
+                    <div class="cr-board-doc-badge">
+                        <i class="bi bi-image me-1"></i>@_boardDocName
+                        <span class="text-muted"> — @L["Classroom_AnnotateHint"]</span>
+                    </div>
+                }
                 <canvas @ref="_canvasRef" class="cr-canvas"></canvas>
             </div>
 
@@ -282,11 +290,18 @@
                         @foreach (var doc in _documents)
                         {
                             <div class="cr-doc-row">
-                                <i class="bi bi-file-earmark-text cr-doc-icon"></i>
+                                <i class="bi @(doc.IsImage ? "bi-file-earmark-image" : "bi-file-earmark-text") cr-doc-icon"></i>
                                 <div class="cr-doc-meta">
                                     <div class="cr-doc-name">@doc.Name</div>
                                     <div class="cr-doc-size">@doc.Size</div>
                                 </div>
+                                @if (doc.IsImage && doc.Id.HasValue)
+                                {
+                                    <button type="button" class="cr-doc-dl-btn" title="@L["Classroom_AnnotateDoc"]"
+                                            @onclick="() => OpenDocumentOnBoardAsync(doc)">
+                                        <i class="bi bi-pencil-square"></i>
+                                    </button>
+                                }
                                 @if (!string.IsNullOrEmpty(doc.Url))
                                 {
                                     <a class="cr-doc-dl-btn" href="@doc.Url" target="_blank" rel="noopener" title="@L["Common_Download"]">
@@ -523,7 +538,14 @@
                 var docs = await Api.GetAsync<List<DocumentDto>>("api/students/me/documents") ?? [];
                 _documents = docs
                     .Where(d => d.LessonId == lid || d.LessonId is null)
-                    .Select(d => new DocumentVM { Name = d.FileName, Size = FormatSize(d.FileSize), Url = d.Url })
+                    .Select(d => new DocumentVM
+                    {
+                        Id = d.Id,
+                        Name = d.FileName,
+                        Size = FormatSize(d.FileSize),
+                        Url = d.Url,
+                        ContentType = d.ContentType
+                    })
                     .ToList();
             }
             catch { _documents = []; }
@@ -555,6 +577,8 @@
             _mediaStarted = true;
             _jsRef = DotNetObjectReference.Create(this);
             try { await JS.InvokeVoidAsync("classroomMedia.setEndedCallback", _jsRef); } catch { }
+            try { await JS.InvokeVoidAsync("whiteboard.setStrokeDotNetRef", _jsRef); } catch { }
+            await ConnectCollaborativeBoardAsync();
             await StartLocalMediaAsync();
         }
     }
@@ -562,8 +586,69 @@
     public void Dispose()
     {
         _timer?.Dispose();
+        ClassroomRt.StrokeReceived -= OnRemoteStroke;
+        ClassroomRt.BoardCleared -= OnRemoteBoardCleared;
+        ClassroomRt.BackgroundChanged -= OnRemoteBackground;
+        _ = ClassroomRt.LeaveAsync();
         _jsRef?.Dispose();
         _ = StopLocalMediaAsync();
+    }
+
+    private Guid? _lessonGuid;
+    private string? _boardDocName;
+
+    private async Task ConnectCollaborativeBoardAsync()
+    {
+        if (!Guid.TryParse(LessonId, out var lid)) return;
+        _lessonGuid = lid;
+        ClassroomRt.StrokeReceived += OnRemoteStroke;
+        ClassroomRt.BoardCleared += OnRemoteBoardCleared;
+        ClassroomRt.BackgroundChanged += OnRemoteBackground;
+        await ClassroomRt.JoinLessonAsync(lid);
+    }
+
+    private void OnRemoteStroke(BoardStrokeDto stroke) =>
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("whiteboard.applyRemoteStroke", new
+                {
+                    phase = stroke.Phase,
+                    x = stroke.X,
+                    y = stroke.Y,
+                    tool = stroke.Tool,
+                    color = stroke.Color,
+                    width = stroke.Width,
+                    senderId = stroke.SenderId
+                });
+            }
+            catch { }
+        });
+
+    private void OnRemoteBoardCleared() =>
+        _ = InvokeAsync(async () =>
+        {
+            try { await JS.InvokeVoidAsync("whiteboard.clear", false); } catch { }
+            _boardDocName = null;
+            StateHasChanged();
+        });
+
+    private void OnRemoteBackground(BoardBackgroundDto bg) =>
+        _ = InvokeAsync(async () =>
+        {
+            if (string.IsNullOrEmpty(bg.DocumentId) || !Guid.TryParse(bg.DocumentId, out var docId))
+                return;
+            await ApplyDocumentBackgroundLocalAsync(docId, bg.ContentType, broadcast: false);
+        });
+
+    [JSInvokable]
+    public async Task OnLocalBoardStroke(LocalStrokeDto stroke)
+    {
+        if (_lessonGuid is null || stroke is null) return;
+        await ClassroomRt.SendStrokeAsync(_lessonGuid.Value, new BoardStrokeDto(
+            stroke.Phase, stroke.X, stroke.Y, stroke.Tool, stroke.Color, stroke.Width,
+            Auth.UserName));
     }
 
     [JSInvokable]
@@ -884,7 +969,65 @@
 
     private async Task ClearWhiteboard()
     {
-        try { await JS.InvokeVoidAsync("whiteboard.clear"); } catch { }
+        try { await JS.InvokeVoidAsync("whiteboard.clear", false); } catch { }
+        _boardDocName = null;
+        if (_lessonGuid is Guid lid)
+            await ClassroomRt.ClearBoardAsync(lid);
+    }
+
+    private async Task OpenDocumentOnBoardAsync(DocumentVM doc)
+    {
+        if (doc.Id is null || !doc.IsImage) return;
+        await ApplyDocumentBackgroundLocalAsync(doc.Id.Value, doc.ContentType, broadcast: true);
+        _boardDocName = doc.Name;
+        _wbForeground = true;
+        StateHasChanged();
+    }
+
+    private async Task ApplyDocumentBackgroundLocalAsync(Guid documentId, string? contentType, bool broadcast)
+    {
+        var result = await Api.GetBytesWithErrorAsync($"api/students/me/documents/{documentId}/file");
+        if (result.Value is null || result.Value.Length == 0)
+        {
+            // Fallback: tutor-uploaded lesson docs may only be on the tutor API for the teacher;
+            // students use the portal route. If that fails, try the shared documents route.
+            result = await Api.GetBytesWithErrorAsync($"api/documents/{documentId}/file");
+        }
+
+        if (result.Value is null || result.Value.Length == 0)
+        {
+            _mediaError = result.Error ?? L["Classroom_BgFailed"].Value;
+            return;
+        }
+
+        var mime = string.IsNullOrWhiteSpace(contentType) ? "image/png" : contentType;
+        if (!mime.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+        {
+            _mediaError = L["Classroom_AnnotateImagesOnly"].Value;
+            return;
+        }
+
+        var dataUrl = $"data:{mime};base64,{Convert.ToBase64String(result.Value)}";
+        try
+        {
+            var ok = await JS.InvokeAsync<bool>("whiteboard.setBackground", dataUrl);
+            if (!ok)
+            {
+                _mediaError = L["Classroom_BgFailed"].Value;
+                return;
+            }
+        }
+        catch (JSException ex)
+        {
+            _mediaError = ex.Message;
+            return;
+        }
+
+        var local = _documents.FirstOrDefault(d => d.Id == documentId);
+        _boardDocName = local?.Name ?? L["Classroom_SharedDoc"].Value;
+
+        if (broadcast && _lessonGuid is Guid lid)
+            await ClassroomRt.SetBackgroundAsync(lid, documentId.ToString("D"), mime);
     }
 
     private void PrevPage() { if (_wbPage > 1)             _wbPage--; }
@@ -960,9 +1103,28 @@
 
     private class DocumentVM
     {
+        public Guid? Id { get; set; }
         public string Name { get; set; } = "";
         public string Size { get; set; } = "";
         public string? Url { get; set; }
+        public string? ContentType { get; set; }
+        public bool IsImage =>
+            ContentType?.StartsWith("image/", StringComparison.OrdinalIgnoreCase) == true
+            || Name.EndsWith(".png", StringComparison.OrdinalIgnoreCase)
+            || Name.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase)
+            || Name.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase)
+            || Name.EndsWith(".webp", StringComparison.OrdinalIgnoreCase)
+            || Name.EndsWith(".gif", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public sealed class LocalStrokeDto
+    {
+        public string Phase { get; set; } = "move";
+        public double X { get; set; }
+        public double Y { get; set; }
+        public string Tool { get; set; } = "pen";
+        public string Color { get; set; } = "#000000";
+        public double Width { get; set; } = 5;
     }
 
     private sealed class MediaStartResult

@@ -80,6 +80,27 @@ public class DocumentsController : ControllerBase
         }
     }
 
+    [HttpGet("{id:guid}/file")]
+    public async Task<IActionResult> DownloadFile(Guid id, CancellationToken ct)
+    {
+        var doc = await _documentService.GetByIdAsync(id, ct);
+        if (doc is null) return NotFound();
+
+        var uploadsRoot = Path.Combine(_env.WebRootPath ?? _env.ContentRootPath, "uploads");
+        var fileName = Path.GetFileName(doc.Url.Replace('\\', '/'));
+        if (string.IsNullOrWhiteSpace(fileName))
+            return NotFound();
+
+        var filePath = Path.Combine(uploadsRoot, fileName);
+        if (!System.IO.File.Exists(filePath))
+            return NotFound();
+
+        var contentType = string.IsNullOrWhiteSpace(doc.ContentType)
+            ? "application/octet-stream"
+            : doc.ContentType;
+        return PhysicalFile(filePath, contentType, doc.FileName);
+    }
+
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {

@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
 using TutorSphere.Application.Common;
 using TutorSphere.Application.DTOs.Documents;
@@ -18,8 +19,13 @@ namespace TutorSphere.Api.Controllers;
 public class StudentPortalController : ControllerBase
 {
     private readonly IStudentPortalService _portal;
+    private readonly IWebHostEnvironment _env;
 
-    public StudentPortalController(IStudentPortalService portal) => _portal = portal;
+    public StudentPortalController(IStudentPortalService portal, IWebHostEnvironment env)
+    {
+        _portal = portal;
+        _env = env;
+    }
 
     [HttpGet("me")]
     public async Task<ActionResult<StudentDto>> Me(CancellationToken ct)
@@ -83,6 +89,31 @@ public class StudentPortalController : ControllerBase
             return Unauthorized();
 
         return Ok(await _portal.GetDocumentsAsync(userId, ct));
+    }
+
+    [HttpGet("me/documents/{id:guid}/file")]
+    public async Task<IActionResult> DownloadDocument(Guid id, CancellationToken ct)
+    {
+        var userId = User.GetUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        var doc = await _portal.GetDocumentForStudentAsync(userId, id, ct);
+        if (doc is null) return NotFound();
+
+        var uploadsRoot = Path.Combine(_env.WebRootPath ?? _env.ContentRootPath, "uploads");
+        var fileName = Path.GetFileName(doc.Url.Replace('\\', '/'));
+        if (string.IsNullOrWhiteSpace(fileName))
+            return NotFound();
+
+        var filePath = Path.Combine(uploadsRoot, fileName);
+        if (!System.IO.File.Exists(filePath))
+            return NotFound();
+
+        var contentType = string.IsNullOrWhiteSpace(doc.ContentType)
+            ? "application/octet-stream"
+            : doc.ContentType;
+        return PhysicalFile(filePath, contentType, doc.FileName);
     }
 
     [HttpGet("me/reports")]
