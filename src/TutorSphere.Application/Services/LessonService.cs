@@ -252,6 +252,18 @@ public class LessonService : ILessonService
 
         await SendLessonCancelledEmailsAsync(lesson, ct);
 
+        foreach (var attendance in _db.LessonAttendances.Where(a => a.LessonId == id).ToList())
+            _db.Remove(attendance);
+
+        foreach (var report in _db.LessonReports.Where(r => r.LessonId == id).ToList())
+            _db.Remove(report);
+
+        foreach (var homework in _db.Homeworks.Where(h => h.LessonId == id).ToList())
+            homework.LessonId = null;
+
+        foreach (var document in _db.Documents.Where(d => d.LessonId == id).ToList())
+            document.LessonId = null;
+
         _db.Remove(lesson);
         await _db.SaveChangesAsync(ct);
     }

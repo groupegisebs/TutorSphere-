@@ -5,7 +5,6 @@
 @inject AuthService AuthSvc
 @inject AuthenticationStateProvider AuthState
 @inject MessageService MessageSvc
-@inject ApiClient Api
 
 <div class="sidebar-brand sidebar-brand--navy">
     <a class="sidebar-brand-link" href="tutor/dashboard">
@@ -15,31 +14,6 @@
             <span class="sidebar-brand-tagline">@L["AppTagline"]</span>
         </div>
     </a>
-</div>
-
-<div class="sidebar-profile sidebar-profile--navy @(!string.IsNullOrWhiteSpace(_bannerUrl) ? "sidebar-profile--banner" : null)">
-    @if (!string.IsNullOrWhiteSpace(_bannerUrl))
-    {
-        <div class="sidebar-profile-banner" style="background-image:url('@_bannerUrl.Replace("'", "%27")')" aria-hidden="true"></div>
-        <div class="sidebar-profile-banner-overlay" aria-hidden="true"></div>
-    }
-    <div class="sidebar-profile-content">
-        @if (!string.IsNullOrWhiteSpace(_avatarUrl))
-        {
-            <div class="sidebar-profile-avatar sidebar-profile-avatar--photo" style="background-image:url('@_avatarUrl.Replace("'", "%27")')"></div>
-        }
-        else
-        {
-            <div class="sidebar-profile-avatar">@AvatarInitials</div>
-        }
-        <div class="sidebar-profile-info">
-            <span class="sidebar-user-name">@DisplayUserName</span>
-            <span class="sidebar-user-role">@L["Nav_Role_Tutor"]</span>
-            <span class="sidebar-school-badge">
-                <i class="bi bi-check-circle-fill"></i> @DisplaySchoolName
-            </span>
-        </div>
-    </div>
 </div>
 
 <input type="checkbox" title="@L["Nav_MenuToggle"]" class="navbar-toggler navbar-toggler--light" aria-label="@L["Nav_MenuToggle"]" />
@@ -210,19 +184,8 @@
 
 @code {
     private int UnreadMessages;
-    private string? _schoolName;
-    private string? _avatarUrl;
-    private string? _bannerUrl;
     private readonly HashSet<string> _openSections = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _userToggled = new(StringComparer.OrdinalIgnoreCase);
-
-    private string DisplaySchoolName =>
-        _schoolName ?? AuthSvc.SchoolName ?? L["Sidebar_SchoolActive"];
-
-    private string DisplayUserName =>
-        !string.IsNullOrWhiteSpace(AuthSvc.UserName) ? AuthSvc.UserName!
-        : !string.IsNullOrWhiteSpace(AuthSvc.UserEmail) ? AuthSvc.UserEmail!
-        : "Tuteur";
 
     private static readonly Dictionary<string, string[]> SectionRoutes = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -233,18 +196,6 @@
         ["account"] = ["tutor/profile", "tutor/school", "tutor/settings"],
     };
 
-    private string AvatarInitials
-    {
-        get
-        {
-            var name = DisplayUserName;
-            var parts = name.Split([' ', '@'], StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length >= 2)
-                return $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[^1][0])}";
-            return name.Length > 0 ? char.ToUpperInvariant(name[0]).ToString() : "?";
-        }
-    }
-
     protected override async Task OnInitializedAsync()
     {
         Navigation.LocationChanged += OnLocationChanged;
@@ -252,8 +203,6 @@
         SyncActiveSection();
 
         await AuthSvc.EnsureSessionRestoredAsync();
-        await LoadSchoolNameAsync();
-        await LoadAvatarAsync();
 
         try
         {
@@ -266,54 +215,10 @@
         }
     }
 
-    private async Task LoadSchoolNameAsync()
-    {
-        // Always prefer the live school profile — JWT tenant_name can be stale
-        // (e.g. previously overwritten with the person's name).
-        if (AuthSvc.TenantId is Guid tenantId)
-        {
-            try
-            {
-                var profile = await Api.GetAsync<SchoolProfileDto>($"api/tenants/{tenantId}/profile");
-                if (!string.IsNullOrWhiteSpace(profile?.Name))
-                {
-                    _schoolName = profile.Name;
-                    if (!string.Equals(AuthSvc.SchoolName, profile.Name, StringComparison.Ordinal))
-                        await AuthSvc.UpdateLocalSchoolNameAsync(profile.Name);
-                    return;
-                }
-            }
-            catch { /* fall back */ }
-        }
-
-        _schoolName = AuthSvc.SchoolName;
-    }
-
-    private async Task LoadAvatarAsync()
-    {
-        if (AuthSvc.TenantId is not Guid tenantId)
-            return;
-
-        try
-        {
-            var branding = await Api.GetAsync<BrandingLogoDto>($"api/branding/tenant/{tenantId}");
-            _avatarUrl = string.IsNullOrWhiteSpace(branding?.LogoUrl) ? null : branding.LogoUrl;
-            _bannerUrl = string.IsNullOrWhiteSpace(branding?.BannerUrl) ? null : branding.BannerUrl;
-        }
-        catch { /* keep initials / solid background */ }
-    }
-
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
     {
         SyncActiveSection();
-        _ = RefreshBrandingOnNavigateAsync();
         InvokeAsync(StateHasChanged);
-    }
-
-    private async Task RefreshBrandingOnNavigateAsync()
-    {
-        await LoadAvatarAsync();
-        await InvokeAsync(StateHasChanged);
     }
 
     private void SyncActiveSection()
@@ -349,8 +254,6 @@
 
     private async void OnAuthStateChanged(Task<AuthenticationState> _)
     {
-        await LoadSchoolNameAsync();
-        await LoadAvatarAsync();
         await InvokeAsync(StateHasChanged);
     }
 
@@ -359,7 +262,4 @@
         Navigation.LocationChanged -= OnLocationChanged;
         AuthState.AuthenticationStateChanged -= OnAuthStateChanged;
     }
-
-    private record SchoolProfileDto(Guid Id, string Name);
-    private record BrandingLogoDto(Guid Id, Guid TenantId, string? LogoUrl, string? BannerUrl);
 }

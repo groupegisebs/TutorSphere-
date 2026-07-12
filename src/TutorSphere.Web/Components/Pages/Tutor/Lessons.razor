@@ -4,6 +4,7 @@
 @inject IStringLocalizer<SharedResources> L
 @inject LessonService LessonSvc
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 
 <PageTitle>Cours – TutorSphere</PageTitle>
 
@@ -106,6 +107,10 @@
                                 }
                                 <button class="ts-icon-btn" title="Présences"><i class="bi bi-person-check"></i></button>
                                 <button class="ts-icon-btn" title="Modifier" @onclick="()=>OpenEdit(l)"><i class="bi bi-pencil"></i></button>
+                                <button class="ts-icon-btn ts-icon-btn--danger" title="Supprimer"
+                                        @onclick="async () => await DeleteLesson(l)">
+                                    <i class="bi bi-trash"></i>
+                                </button>
                             </div>
                         </td>
                     </tr>
@@ -238,6 +243,29 @@
         _showModal = true;
     }
     private void CloseModal() => _showModal = false;
+
+    private async Task DeleteLesson(LessonVM lesson)
+    {
+        var label = string.IsNullOrEmpty(lesson.StudentName) ? lesson.Title : lesson.StudentName;
+        var confirmed = await JS.InvokeAsync<bool>(
+            "confirm",
+            $"Supprimer la séance « {label} » du {lesson.Date:dd/MM/yyyy} ?");
+        if (!confirmed)
+            return;
+
+        if (lesson.ApiId is Guid id)
+        {
+            var ok = await LessonSvc.DeleteLessonAsync(id);
+            if (!ok)
+            {
+                _error = "Impossible de supprimer cette séance.";
+                return;
+            }
+        }
+
+        _lessons.Remove(lesson);
+        _error = "";
+    }
 
     private async Task SaveLesson()
     {
