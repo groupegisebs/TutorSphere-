@@ -3,6 +3,7 @@
 @rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
+@inject AuthService Auth
 
 <PageTitle>@L["TutorSubs_Title"] – TutorSphere</PageTitle>
 
@@ -16,29 +17,34 @@
     </button>
 </div>
 
+@if (!string.IsNullOrEmpty(_loadError))
+{
+    <div class="alert alert-warning mb-3" role="alert">@_loadError</div>
+}
+
 <!-- KPIs -->
 <div class="row g-3 mb-4">
     <div class="col-6 col-lg-3">
         <div class="ts-kpi-card ts-kpi-card--success">
-            <span class="ts-kpi-val">@_subs.Count(s=>s.Status=="Actif")</span>
+            <span class="ts-kpi-val">@_subs.Count(s => IsActiveStatus(s.Status))</span>
             <span class="ts-kpi-label">@L["TutorSubs_Active"]</span>
         </div>
     </div>
     <div class="col-6 col-lg-3">
         <div class="ts-kpi-card ts-kpi-card--warning">
-            <span class="ts-kpi-val">@_subs.Count(s=>s.ExpiresAt <= DateTime.Today.AddDays(14) && s.Status=="Actif")</span>
+            <span class="ts-kpi-val">@_subs.Count(s => IsActiveStatus(s.Status) && s.ExpiresAt <= DateTime.Today.AddDays(14))</span>
             <span class="ts-kpi-label">@L["TutorSubs_ExpiringSoon"]</span>
         </div>
     </div>
     <div class="col-6 col-lg-3">
         <div class="ts-kpi-card">
-            <span class="ts-kpi-val">@_subs.Where(s=>s.Status=="Actif").Sum(s=>s.Amount).ToString("N0") $</span>
+            <span class="ts-kpi-val">@_subs.Where(s => IsActiveStatus(s.Status)).Sum(s => s.Amount).ToString("N0") $</span>
             <span class="ts-kpi-label">@L["TutorSubs_MRR"]</span>
         </div>
     </div>
     <div class="col-6 col-lg-3">
         <div class="ts-kpi-card">
-            <span class="ts-kpi-val">@((_subs.Count(s=>s.Status=="Actif") > 0 ? Math.Round(_subs.Where(s=>s.Status=="Actif").Average(s=>s.Amount),0) : 0).ToString("N0")) $</span>
+            <span class="ts-kpi-val">@AvgActiveAmount().ToString("N0") $</span>
             <span class="ts-kpi-label">@L["TutorSubs_AvgAmount"]</span>
         </div>
     </div>
@@ -66,7 +72,7 @@
                     }
                 </ul>
                 <div class="sub-plan-footer">
-                    <span class="text-muted small">@string.Format(L["TutorSubs_Subscribers"].Value, _subs.Count(s=>s.PlanName==plan.Name&&s.Status=="Actif"))</span>
+                    <span class="text-muted small">@string.Format(L["TutorSubs_Subscribers"].Value, _subs.Count(s => s.PlanName == plan.Name && IsActiveStatus(s.Status)))</span>
                     <div class="d-flex gap-1">
                         <button class="ts-icon-btn" title="@(plan.IsActive ? L["TutorSubs_Deactivate"] : L["TutorSubs_Activate"])"
                                 @onclick="async () => await TogglePlan(plan)">
@@ -86,61 +92,79 @@
         <div class="d-flex gap-2">
             <select class="form-select form-select-sm w-auto" @bind="_filterSubStatus">
                 <option value="">@L["Common_All"]</option>
-                <option value="Actif">@L["TutorSubs_StatusActive"]</option>
-                <option value="Suspendu">@L["TutorSubs_StatusSuspended"]</option>
-                <option value="Résilié">@L["TutorSubs_StatusCancelled"]</option>
+                <option value="Active">@L["TutorSubs_StatusActive"]</option>
+                <option value="Paused">@L["TutorSubs_StatusSuspended"]</option>
+                <option value="Cancelled">@L["TutorSubs_StatusCancelled"]</option>
+                <option value="Pending">@L["TutorSubs_StatusPending"]</option>
             </select>
         </div>
     </div>
-    <table class="table ts-table">
-        <thead>
-            <tr>
-                <th>@L["TutorSubs_StudentParent"]</th>
-                <th>@L["TutorSubs_Plan"]</th>
-                <th>@L["TutorSubs_Amount"]</th>
-                <th>@L["TutorSubs_Renewal"]</th>
-                <th>@L["Common_Status"]</th>
-                <th>@L["Common_Actions"]</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var s in FilteredSubs)
-            {
-                <tr class="@(s.ExpiresAt <= DateTime.Today.AddDays(7) && s.Status=="Actif" ? "ts-row-warning" : "")">
-                    <td>
-                        <div><strong>@s.StudentName</strong></div>
-                        <small class="text-muted">@s.ParentName</small>
-                    </td>
-                    <td><span class="ts-badge ts-badge-neutral">@s.PlanName</span></td>
-                    <td class="fw-semibold">@s.Amount $</td>
-                    <td>@s.ExpiresAt.ToString("dd/MM/yyyy")
-                        @if (s.ExpiresAt <= DateTime.Today.AddDays(14) && s.Status == "Actif")
-                        {
-                            <span class="text-warning ms-1"><i class="bi bi-exclamation-circle"></i></span>
-                        }
-                    </td>
-                    <td><span class="ts-badge @SubBadge(s.Status)">@SubStatusLabel(s.Status)</span></td>
-                    <td>
-                        <div class="ts-action-group">
-                            @if (s.Status == "Actif")
-                            {
-                                <button class="ts-icon-btn" title="@L["TutorSubs_Suspend"]" @onclick='() => s.Status = "Suspendu"'>
-                                    <i class="bi bi-pause-circle text-warning"></i>
-                                </button>
-                            }
-                            else if (s.Status == "Suspendu")
-                            {
-                                <button class="ts-icon-btn" title="@L["TutorSubs_Reactivate"]" @onclick='() => s.Status = "Actif"'>
-                                    <i class="bi bi-play-circle text-success"></i>
-                                </button>
-                            }
-                            <button class="ts-icon-btn" title="@L["TutorSubs_Invoice"]"><i class="bi bi-receipt"></i></button>
-                        </div>
-                    </td>
+    @if (_loading)
+    {
+        <div class="d-flex align-items-center justify-content-center py-4">
+            <span class="spinner-border text-primary me-2" role="status"></span>
+            <span class="text-muted">@L["Common_Loading"]</span>
+        </div>
+    }
+    else if (!FilteredSubs.Any())
+    {
+        <div class="text-center text-muted py-5">
+            <i class="bi bi-people fs-1 d-block mb-2 opacity-50"></i>
+            <p class="mb-0">@L["TutorSubs_NoSubscribers"]</p>
+        </div>
+    }
+    else
+    {
+        <table class="table ts-table">
+            <thead>
+                <tr>
+                    <th>@L["TutorSubs_StudentParent"]</th>
+                    <th>@L["TutorSubs_Plan"]</th>
+                    <th>@L["TutorSubs_Amount"]</th>
+                    <th>@L["TutorSubs_Renewal"]</th>
+                    <th>@L["Common_Status"]</th>
+                    <th>@L["Common_Actions"]</th>
                 </tr>
-            }
-        </tbody>
-    </table>
+            </thead>
+            <tbody>
+                @foreach (var s in FilteredSubs)
+                {
+                    <tr class="@(s.ExpiresAt <= DateTime.Today.AddDays(7) && IsActiveStatus(s.Status) ? "ts-row-warning" : "")">
+                        <td>
+                            <div><strong>@s.StudentName</strong></div>
+                            <small class="text-muted">@(string.IsNullOrWhiteSpace(s.ParentName) ? "—" : s.ParentName)</small>
+                        </td>
+                        <td><span class="ts-badge ts-badge-neutral">@s.PlanName</span></td>
+                        <td class="fw-semibold">@s.Amount.ToString("N2") $</td>
+                        <td>@s.ExpiresAt.ToString("dd/MM/yyyy")
+                            @if (s.ExpiresAt <= DateTime.Today.AddDays(14) && IsActiveStatus(s.Status))
+                            {
+                                <span class="text-warning ms-1"><i class="bi bi-exclamation-circle"></i></span>
+                            }
+                        </td>
+                        <td><span class="ts-badge @SubBadge(s.Status)">@SubStatusLabel(s.Status)</span></td>
+                        <td>
+                            <div class="ts-action-group">
+                                @if (s.Status == "Active")
+                                {
+                                    <button class="ts-icon-btn" title="@L["TutorSubs_Suspend"]" @onclick='() => s.Status = "Paused"'>
+                                        <i class="bi bi-pause-circle text-warning"></i>
+                                    </button>
+                                }
+                                else if (s.Status == "Paused")
+                                {
+                                    <button class="ts-icon-btn" title="@L["TutorSubs_Reactivate"]" @onclick='() => s.Status = "Active"'>
+                                        <i class="bi bi-play-circle text-success"></i>
+                                    </button>
+                                }
+                                <button class="ts-icon-btn" title="@L["TutorSubs_Invoice"]"><i class="bi bi-receipt"></i></button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
 </div>
 
 @if (_showPlanModal)
@@ -185,17 +209,34 @@
 @code {
     private string _filterSubStatus = "";
     private bool _showPlanModal;
+    private bool _loading = true;
+    private bool _initialLoadDone;
+    private string? _loadError;
     private PlanForm _pf = new();
 
+    private static bool IsActiveStatus(string status) =>
+        status is "Active" or "Actif";
+
+    private decimal AvgActiveAmount()
+    {
+        var active = _subs.Where(s => IsActiveStatus(s.Status)).ToList();
+        return active.Count > 0 ? Math.Round(active.Average(s => s.Amount), 0) : 0;
+    }
+
     private static string SubBadge(string s) => s switch {
-        "Actif" => "ts-badge-success", "Suspendu" => "ts-badge-warning",
-        "Résilié" => "ts-badge-danger", _ => "ts-badge-neutral"
+        "Active" or "Actif" => "ts-badge-success",
+        "Paused" or "Suspendu" => "ts-badge-warning",
+        "Cancelled" or "Résilié" => "ts-badge-danger",
+        "Pending" => "ts-badge-neutral",
+        _ => "ts-badge-neutral"
     };
 
     private string SubStatusLabel(string s) => s switch {
-        "Actif" => L["TutorSubs_StatusActive"],
-        "Suspendu" => L["TutorSubs_StatusSuspended"],
-        "Résilié" => L["TutorSubs_StatusCancelled"],
+        "Active" or "Actif" => L["TutorSubs_StatusActive"],
+        "Paused" or "Suspendu" => L["TutorSubs_StatusSuspended"],
+        "Cancelled" or "Résilié" => L["TutorSubs_StatusCancelled"],
+        "Pending" => L["TutorSubs_StatusPending"],
+        "Expired" => L["TutorSubs_StatusExpired"],
         _ => s
     };
 
@@ -203,20 +244,37 @@
         .Where(s => string.IsNullOrEmpty(_filterSubStatus) || s.Status == _filterSubStatus)
         .OrderBy(s => s.ExpiresAt);
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        var offerings = await Api.GetAsync<List<ApiOfferingDto>>("api/subscription-offerings");
-        if (offerings is not null && offerings.Count > 0)
+        if (!firstRender || _initialLoadDone)
+            return;
+
+        _initialLoadDone = true;
+        await Auth.EnsureSessionRestoredAsync(forceJs: true);
+        await LoadAsync();
+        StateHasChanged();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _loadError = null;
+        try
         {
+            var offeringsTask = Api.GetAsync<List<ApiOfferingDto>>("api/subscription-offerings");
+            var subscribersTask = Api.GetAsync<List<ApiSubscriberDto>>("api/subscription-offerings/subscribers");
+            await Task.WhenAll(offeringsTask, subscribersTask);
+
+            var offerings = await offeringsTask ?? [];
             _plans.Clear();
             foreach (var o in offerings)
             {
                 _plans.Add(new PlanVM
                 {
-                    ApiId   = o.Id,
-                    Name    = o.Title,
-                    Price   = o.Price,
-                    Period  = "mois",
+                    ApiId = o.Id,
+                    Name = o.Title,
+                    Price = o.Price,
+                    Period = "mois",
                     Popular = false,
                     IsActive = o.IsActive,
                     Features = string.IsNullOrEmpty(o.Description)
@@ -224,7 +282,24 @@
                         : o.Description.Split('\n').Where(f => !string.IsNullOrWhiteSpace(f)).ToList()
                 });
             }
+
+            var subscribers = await subscribersTask ?? [];
+            _subs.Clear();
+            _subs.AddRange(subscribers.Select(s => new SubVM
+            {
+                StudentName = s.StudentName,
+                ParentName = s.ParentName ?? "",
+                PlanName = s.OfferingTitle,
+                Amount = s.Price,
+                ExpiresAt = s.EndDate.Kind == DateTimeKind.Utc ? s.EndDate.ToLocalTime().Date : s.EndDate.Date,
+                Status = s.Status
+            }));
         }
+        catch (Exception ex)
+        {
+            _loadError = string.Format(L["TutorSubs_LoadError"].Value, ex.Message);
+        }
+        finally { _loading = false; }
     }
 
     private async Task SavePlan()
@@ -233,28 +308,29 @@
 
         var req = new
         {
-            title       = _pf.Name,
+            title = _pf.Name,
             description = _pf.Features,
-            subject     = (string?)null,
-            price       = _pf.Price,
-            currency    = "CAD",
+            subject = (string?)null,
+            price = _pf.Price,
+            currency = "CAD",
             durationDays = 30,
             sessionCount = 4,
-            frequency   = _pf.Period
+            frequency = _pf.Period
         };
         var created = await Api.PostAsync<ApiOfferingDto>("api/subscription-offerings", req);
 
         _plans.Add(new PlanVM
         {
-            ApiId   = created?.Id,
-            Name    = _pf.Name,
-            Price   = _pf.Price,
-            Period  = _pf.Period,
+            ApiId = created?.Id,
+            Name = _pf.Name,
+            Price = _pf.Price,
+            Period = _pf.Period,
             Popular = _pf.Popular,
             IsActive = true,
             Features = _pf.Features.Split('\n').Where(f => !string.IsNullOrWhiteSpace(f)).ToList()
         });
         _showPlanModal = false;
+        _pf = new();
     }
 
     private async Task TogglePlan(PlanVM plan)
@@ -272,6 +348,15 @@
         Guid Id, string Title, string? Description, string? Subject,
         decimal Price, string Currency, int DurationDays, int SessionCount,
         string? Frequency, bool IsActive);
+
+    private record ApiSubscriberDto(
+        Guid Id,
+        string StudentName,
+        string? ParentName,
+        string OfferingTitle,
+        decimal Price,
+        string Status,
+        DateTime EndDate);
 
     private class PlanForm
     {
@@ -298,7 +383,7 @@
         public string PlanName { get; set; } = "";
         public decimal Amount { get; set; }
         public DateTime ExpiresAt { get; set; }
-        public string Status { get; set; } = "Actif";
+        public string Status { get; set; } = "Active";
     }
 
     private readonly List<PlanVM> _plans = [];

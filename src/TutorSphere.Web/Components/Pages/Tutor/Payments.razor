@@ -24,7 +24,7 @@
 <div class="row g-3 mb-4">
     <div class="col-6 col-lg-3">
         <div class="ts-kpi-card ts-kpi-card--success">
-            <span class="ts-kpi-val">@_payments.Where(p => IsPaid(p.Status)).Sum(p => p.Amount).ToString("N0") $</span>
+            <span class="ts-kpi-val">@CollectedThisMonth.ToString("N0") $</span>
             <span class="ts-kpi-label">@L["Payments_CollectedThisMonth"]</span>
         </div>
     </div>
@@ -159,17 +159,28 @@
     private decimal _invAmount = 150;
     private DateTime _invDate = DateTime.Today;
 
-    private static bool IsPaid(string s) => s is "paid" or "Payé" or "Paid";
-    private static bool IsPending(string s) => s is "pending" or "En attente" or "Sent" or "Draft";
-    private static bool IsFailed(string s) => s is "failed" or "Échoué" or "Cancelled";
-    private static bool IsRefunded(string s) => s is "refunded" or "Remboursé";
+    private static bool IsPaid(string s) =>
+        s is "paid" or "Payé" or "Paid" or "completed" or "Completed";
+    private static bool IsPending(string s) =>
+        s is "pending" or "En attente" or "Sent" or "Draft" or "Pending";
+    private static bool IsFailed(string s) =>
+        s is "failed" or "Échoué" or "Cancelled" or "Failed";
+    private static bool IsRefunded(string s) =>
+        s is "refunded" or "Remboursé" or "Refunded";
+
+    private decimal CollectedThisMonth => _payments
+        .Where(p => IsPaid(p.Status) && IsSameMonth(p.Date, DateTime.Today))
+        .Sum(p => p.Amount);
+
+    private static bool IsSameMonth(DateTime date, DateTime reference) =>
+        date.Year == reference.Year && date.Month == reference.Month;
 
     private string DisplayStatus(string s) => s switch
     {
-        "paid" or "Payé" or "Paid" => L["Common_Paid"],
-        "pending" or "En attente" or "Sent" or "Draft" => L["Common_Pending"],
-        "failed" or "Échoué" or "Cancelled" => L["Common_Failed"],
-        "refunded" or "Remboursé" => L["Common_Refunded"],
+        "paid" or "Payé" or "Paid" or "completed" or "Completed" => L["Common_Paid"],
+        "pending" or "En attente" or "Sent" or "Draft" or "Pending" => L["Common_Pending"],
+        "failed" or "Échoué" or "Cancelled" or "Failed" => L["Common_Failed"],
+        "refunded" or "Remboursé" or "Refunded" => L["Common_Refunded"],
         _ => s
     };
 
@@ -184,17 +195,20 @@
 
     private static string PaymentBadge(string s) => s switch
     {
-        "paid" or "Payé" or "Paid" => "ts-badge-success",
-        "pending" or "En attente" or "Sent" or "Draft" => "ts-badge-warning",
-        "failed" or "Échoué" or "Cancelled" => "ts-badge-danger",
+        "paid" or "Payé" or "Paid" or "completed" or "Completed" => "ts-badge-success",
+        "pending" or "En attente" or "Sent" or "Draft" or "Pending" => "ts-badge-warning",
+        "failed" or "Échoué" or "Cancelled" or "Failed" => "ts-badge-danger",
+        "refunded" or "Remboursé" or "Refunded" => "ts-badge-neutral",
         _ => "ts-badge-neutral"
     };
 
+    /// <summary>Normalise Invoice/PaymentStatus API → clés UI (paid/pending/failed/refunded).</summary>
     private static string MapStatus(string apiStatus) => apiStatus switch
     {
-        "Paid" => "paid",
-        "Sent" or "Draft" => "pending",
-        "Cancelled" => "failed",
+        "Paid" or "paid" or "Payé" or "Completed" or "completed" => "paid",
+        "Pending" or "pending" or "Sent" or "Draft" or "En attente" => "pending",
+        "Failed" or "failed" or "Cancelled" or "Échoué" => "failed",
+        "Refunded" or "refunded" or "Remboursé" => "refunded",
         _ => apiStatus.ToLowerInvariant()
     };
 
@@ -208,10 +222,10 @@
 
     private static string NormalizeStatus(string s) => s switch
     {
-        "Payé" or "Paid" or "paid" => "paid",
-        "En attente" or "Sent" or "Draft" or "pending" => "pending",
-        "Échoué" or "Cancelled" or "failed" => "failed",
-        "Remboursé" or "refunded" => "refunded",
+        "Payé" or "Paid" or "paid" or "Completed" or "completed" => "paid",
+        "En attente" or "Sent" or "Draft" or "pending" or "Pending" => "pending",
+        "Échoué" or "Cancelled" or "failed" or "Failed" => "failed",
+        "Remboursé" or "refunded" or "Refunded" => "refunded",
         _ => s
     };
 

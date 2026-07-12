@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using TutorSphere.Application.DTOs.StudentSubscriptions;
 using TutorSphere.Application.DTOs.SubscriptionOfferings;
 using TutorSphere.Application.Services;
 using TutorSphere.Domain.Enums;
@@ -12,13 +13,24 @@ namespace TutorSphere.Api.Controllers;
 public class SubscriptionOfferingsController : ControllerBase
 {
     private readonly ISubscriptionOfferingService _offeringService;
+    private readonly IStudentSubscriptionService _subscriptions;
 
-    public SubscriptionOfferingsController(ISubscriptionOfferingService offeringService)
-        => _offeringService = offeringService;
+    public SubscriptionOfferingsController(
+        ISubscriptionOfferingService offeringService,
+        IStudentSubscriptionService subscriptions)
+    {
+        _offeringService = offeringService;
+        _subscriptions = subscriptions;
+    }
 
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<SubscriptionOfferingDto>>> List(CancellationToken ct)
         => Ok(await _offeringService.GetAllAsync(ct));
+
+    /// <summary>Abonnés aux offres du tuteur (locataire courant).</summary>
+    [HttpGet("subscribers")]
+    public async Task<ActionResult<IReadOnlyList<StudentSubscriptionDto>>> Subscribers(CancellationToken ct)
+        => Ok(await _subscriptions.GetForCurrentTenantAsync(ct));
 
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<SubscriptionOfferingDto>> GetById(Guid id, CancellationToken ct)

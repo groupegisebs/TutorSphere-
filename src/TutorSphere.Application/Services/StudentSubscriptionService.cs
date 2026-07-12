@@ -7,6 +7,7 @@ public interface IStudentSubscriptionService
 {
     Task<StudentSubscriptionDto> EnrollAsync(string parentUserId, EnrollStudentRequest request, CancellationToken ct = default);
     Task<IReadOnlyList<StudentSubscriptionDto>> GetForParentUserAsync(string parentUserId, CancellationToken ct = default);
+    Task<IReadOnlyList<StudentSubscriptionDto>> GetForCurrentTenantAsync(CancellationToken ct = default);
     Task CancelAsync(string parentUserId, Guid subscriptionId, CancellationToken ct = default);
 }
 
@@ -62,7 +63,8 @@ public class StudentSubscriptionService : IStudentSubscriptionService
         await _db.SaveChangesAsync(ct);
 
         return Map(subscription, offering.Title, offering.Subject, offering.Price, offering.Currency,
-            $"{student.FirstName} {student.LastName}".Trim());
+            $"{student.FirstName} {student.LastName}".Trim(),
+            $"{parent.FirstName} {parent.LastName}".Trim());
     }
 
     public Task<IReadOnlyList<StudentSubscriptionDto>> GetForParentUserAsync(
@@ -78,6 +80,7 @@ public class StudentSubscriptionService : IStudentSubscriptionService
             .Select(s => s.Id)
             .ToList();
 
+        var parentName = $"{parent.FirstName} {parent.LastName}".Trim();
         var subs = _db.StudentSubscriptionsForAnyTenant
             .Where(s => childIds.Contains(s.StudentId))
             .OrderByDescending(s => s.CreatedAt)
@@ -102,7 +105,62 @@ public class StudentSubscriptionService : IStudentSubscriptionService
                 offering?.Subject,
                 offering?.Price ?? 0,
                 offering?.Currency ?? "CAD",
-                student is null ? "" : $"{student.FirstName} {student.LastName}".Trim());
+                student is null ? "" : $"{student.FirstName} {student.LastName}".Trim(),
+                parentName);
+        }).ToList();
+
+        return Task.FromResult<IReadOnlyList<StudentSubscriptionDto>>(result);
+    }
+
+    public Task<IReadOnlyList<StudentSubscriptionDto>> GetForCurrentTenantAsync(CancellationToken ct = default)
+    {
+        var subs = _db.StudentSubscriptions
+            .OrderByDescending(s => s.CreatedAt)
+            .ToList();
+
+        if (subs.Count == 0)
+            return Task.FromResult<IReadOnlyList<StudentSubscriptionDto>>([]);
+
+        var offeringIds = subs.Select(s => s.OfferingId).Distinct().ToList();
+        var studentIds = subs.Select(s => s.StudentId).Distinct().ToList();
+
+        var offerings = _db.SubscriptionOfferings
+            .Where(o => offeringIds.Contains(o.Id))
+            .ToDictionary(o => o.Id);
+
+        // Élèves peuvent appartenir à un autre tenant avant rattachement — IgnoreQueryFilters.
+        var students = _db.StudentsForAnyTenant
+            .Where(s => studentIds.Contains(s.Id))
+            .ToList();
+
+        var parentIds = students
+            .Where(s => s.ParentProfileId.HasValue)
+            .Select(s => s.ParentProfileId!.Value)
+            .Distinct()
+            .ToList();
+
+        var parents = _db.ParentProfilesForAnyTenant
+            .Where(p => parentIds.Contains(p.Id))
+            .ToDictionary(p => p.Id);
+
+        var studentsById = students.ToDictionary(s => s.Id);
+
+        var result = subs.Select(s =>
+        {
+            offerings.TryGetValue(s.OfferingId, out var offering);
+            studentsById.TryGetValue(s.StudentId, out var student);
+            string? parentName = null;
+            if (student?.ParentProfileId is Guid pid && parents.TryGetValue(pid, out var parent))
+                parentName = $"{parent.FirstName} {parent.LastName}".Trim();
+
+            return Map(
+                s,
+                offering?.Title ?? "Offre",
+                offering?.Subject,
+                offering?.Price ?? 0,
+                offering?.Currency ?? "CAD",
+                student is null ? "" : $"{student.FirstName} {student.LastName}".Trim(),
+                parentName);
         }).ToList();
 
         return Task.FromResult<IReadOnlyList<StudentSubscriptionDto>>(result);
@@ -135,7 +193,8 @@ public class StudentSubscriptionService : IStudentSubscriptionService
         string? subject,
         decimal price,
         string currency,
-        string studentName) => new(
+        string studentName,
+        string? parentName = null) => new(
         s.Id,
         s.TenantId,
         s.StudentId,
@@ -148,5 +207,6 @@ public class StudentSubscriptionService : IStudentSubscriptionService
         s.Status.ToString(),
         s.StartDate,
         s.EndDate,
-        s.SessionsRemaining);
+        s.SessionsRemaining,
+        parentName);
 }

@@ -15,4 +15,5 @@ public record StudentSubscriptionDto(
     string Status,
     DateTime StartDate,
     DateTime EndDate,
-    int SessionsRemaining);
+    int SessionsRemaining,
+    string? ParentName = null);
