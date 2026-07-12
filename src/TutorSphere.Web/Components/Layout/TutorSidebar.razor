@@ -4,6 +4,7 @@
 @inject NavigationManager Navigation
 @inject AuthService AuthSvc
 @inject MessageService MessageSvc
+@inject ApiClient Api
 
 <div class="sidebar-brand sidebar-brand--navy">
     <a class="sidebar-brand-link" href="tutor/dashboard">
@@ -21,7 +22,7 @@
         <span class="sidebar-user-name">@(AuthSvc.UserName ?? AuthSvc.UserEmail ?? "Tuteur")</span>
         <span class="sidebar-user-role">@L["Nav_Role_Tutor"]</span>
         <span class="sidebar-school-badge">
-            <i class="bi bi-check-circle-fill"></i> @(AuthSvc.SchoolName ?? L["Sidebar_SchoolActive"])
+            <i class="bi bi-check-circle-fill"></i> @DisplaySchoolName
         </span>
     </div>
 </div>
@@ -39,7 +40,7 @@
         </div>
 
         <div class="nav-group @(IsOpen("people") ? "is-open" : "")">
-            <button type="button" class="nav-group-toggle" @onclick="() => Toggle("people")" @onclick:stopPropagation="true">
+            <button type="button" class="nav-group-toggle" @onclick="@(() => Toggle("people"))" @onclick:stopPropagation="true">
                 <span>@L["Nav_Section_People"]</span>
                 <i class="bi bi-chevron-down nav-group-chevron" aria-hidden="true"></i>
             </button>
@@ -60,7 +61,7 @@
         </div>
 
         <div class="nav-group @(IsOpen("teaching") ? "is-open" : "")">
-            <button type="button" class="nav-group-toggle" @onclick="() => Toggle("teaching")" @onclick:stopPropagation="true">
+            <button type="button" class="nav-group-toggle" @onclick="@(() => Toggle("teaching"))" @onclick:stopPropagation="true">
                 <span>@L["Nav_Section_Teaching"]</span>
                 <i class="bi bi-chevron-down nav-group-chevron" aria-hidden="true"></i>
             </button>
@@ -99,7 +100,7 @@
         </div>
 
         <div class="nav-group @(IsOpen("communication") ? "is-open" : "")">
-            <button type="button" class="nav-group-toggle" @onclick="() => Toggle("communication")" @onclick:stopPropagation="true">
+            <button type="button" class="nav-group-toggle" @onclick="@(() => Toggle("communication"))" @onclick:stopPropagation="true">
                 <span>@L["Nav_Section_Communication"]</span>
                 <i class="bi bi-chevron-down nav-group-chevron" aria-hidden="true"></i>
             </button>
@@ -118,7 +119,7 @@
         </div>
 
         <div class="nav-group @(IsOpen("business") ? "is-open" : "")">
-            <button type="button" class="nav-group-toggle" @onclick="() => Toggle("business")" @onclick:stopPropagation="true">
+            <button type="button" class="nav-group-toggle" @onclick="@(() => Toggle("business"))" @onclick:stopPropagation="true">
                 <span>@L["Nav_Section_Business"]</span>
                 <i class="bi bi-chevron-down nav-group-chevron" aria-hidden="true"></i>
             </button>
@@ -157,7 +158,7 @@
         </div>
 
         <div class="nav-group @(IsOpen("account") ? "is-open" : "")">
-            <button type="button" class="nav-group-toggle" @onclick="() => Toggle("account")" @onclick:stopPropagation="true">
+            <button type="button" class="nav-group-toggle" @onclick="@(() => Toggle("account"))" @onclick:stopPropagation="true">
                 <span>@L["Nav_Section_Account"]</span>
                 <i class="bi bi-chevron-down nav-group-chevron" aria-hidden="true"></i>
             </button>
@@ -201,8 +202,12 @@
 
 @code {
     private int UnreadMessages;
+    private string? _schoolName;
     private readonly HashSet<string> _openSections = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _userToggled = new(StringComparer.OrdinalIgnoreCase);
+
+    private string DisplaySchoolName =>
+        _schoolName ?? AuthSvc.SchoolName ?? L["Sidebar_SchoolActive"];
 
     private static readonly Dictionary<string, string[]> SectionRoutes = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -229,6 +234,18 @@
     {
         Navigation.LocationChanged += OnLocationChanged;
         SyncActiveSection();
+
+        _schoolName = AuthSvc.SchoolName;
+        if (string.IsNullOrWhiteSpace(_schoolName) && AuthSvc.TenantId is Guid tenantId)
+        {
+            try
+            {
+                var profile = await Api.GetAsync<SchoolProfileDto>($"api/tenants/{tenantId}/profile");
+                if (!string.IsNullOrWhiteSpace(profile?.Name))
+                    _schoolName = profile.Name;
+            }
+            catch { /* keep fallback */ }
+        }
 
         try
         {
@@ -279,4 +296,6 @@
     }
 
     public void Dispose() => Navigation.LocationChanged -= OnLocationChanged;
+
+    private record SchoolProfileDto(Guid Id, string Name);
 }
