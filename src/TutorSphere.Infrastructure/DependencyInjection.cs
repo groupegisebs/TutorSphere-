@@ -80,9 +80,12 @@ public static class DependencyInjection
             userManager, logger, resetKnownPasswords,
             "admin@tutorsphere.com", "Admin123!", "Super", "Admin", UserRoles.SuperAdmin);
 
-        await EnsureSeedAdminUserAsync(
-            userManager, logger, resetKnownPasswords,
-            "bediga.jean@gisebs.com", "Mcd!35578", "Jean", "Bediga", UserRoles.SuperAdmin);
+        // Compte enseignant de bootstrap (espace tuteur + tenant).
+        await EnsureSeedTutorUserAsync(
+            userManager, db, logger, resetKnownPasswords,
+            "bediga.jean@gisebs.com", "Mcd!35578", "Jean", "Bediga",
+            tenantName: "École Jean Bediga",
+            tenantSlug: "jean-bediga");
 
         if (includeDemoData)
         {
@@ -177,6 +180,138 @@ public static class DependencyInjection
         }
 
         logger.LogInformation("Seed reset password for {Email}.", email);
+    }
+
+    /// <summary>
+    /// Ensures a Tutor account exists with an owned tenant (for calendar, students, etc.).
+    /// If the email was previously seeded as SuperAdmin, converts it to Tutor.
+    /// </summary>
+    private static async Task EnsureSeedTutorUserAsync(
+        UserManager<ApplicationUser> userManager,
+        ApplicationDbContext db,
+        ILogger logger,
+        bool resetPassword,
+        string email,
+        string password,
+        string firstName,
+        string lastName,
+        string tenantName,
+        string tenantSlug)
+    {
+        var tenant = db.TenantsSet.FirstOrDefault(t => t.Slug == tenantSlug);
+        if (tenant is null)
+        {
+            tenant = new Tenant
+            {
+                Name = tenantName,
+                Slug = tenantSlug,
+                Subdomain = tenantSlug,
+                Description = "Espace enseignant TutorSphere",
+                Language = "fr",
+                Status = TenantStatus.Active,
+                IsPublicProfile = false,
+                Branding = new TenantBranding()
+            };
+            db.TenantsSet.Add(tenant);
+            await db.SaveChangesAsync();
+            logger.LogInformation("Seed created tenant {Slug}.", tenantSlug);
+        }
+
+        var user = await userManager.FindByEmailAsync(email);
+        if (user is null)
+        {
+            user = new ApplicationUser
+            {
+                UserName = email,
+                Email = email,
+                FirstName = firstName,
+                LastName = lastName,
+                EmailConfirmed = true,
+                TenantId = tenant.Id
+            };
+
+            var createResult = await userManager.CreateAsync(user, password);
+            if (!createResult.Succeeded)
+            {
+                logger.LogError(
+                    "Seed failed to create tutor {Email}: {Errors}",
+                    email,
+                    string.Join("; ", createResult.Errors.Select(e => e.Description)));
+                return;
+            }
+
+            await userManager.AddToRoleAsync(user, UserRoles.Tutor);
+            tenant.OwnerUserId = user.Id;
+            await db.SaveChangesAsync();
+            logger.LogInformation("Seed created tutor {Email}.", email);
+            return;
+        }
+
+        var changed = false;
+        if (string.IsNullOrWhiteSpace(user.FirstName))
+        {
+            user.FirstName = firstName;
+            changed = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(user.LastName))
+        {
+            user.LastName = lastName;
+            changed = true;
+        }
+
+        if (!user.EmailConfirmed)
+        {
+            user.EmailConfirmed = true;
+            changed = true;
+        }
+
+        if (user.TenantId != tenant.Id)
+        {
+            user.TenantId = tenant.Id;
+            changed = true;
+        }
+
+        if (changed)
+            await userManager.UpdateAsync(user);
+
+        if (tenant.OwnerUserId != user.Id)
+        {
+            tenant.OwnerUserId = user.Id;
+            await db.SaveChangesAsync();
+        }
+
+        // Prefer Tutor over leftover SuperAdmin from older seeds.
+        if (await userManager.IsInRoleAsync(user, UserRoles.SuperAdmin))
+        {
+            await userManager.RemoveFromRoleAsync(user, UserRoles.SuperAdmin);
+            logger.LogInformation("Seed removed SuperAdmin from {Email} (now Tutor).", email);
+        }
+
+        if (!await userManager.IsInRoleAsync(user, UserRoles.Tutor))
+        {
+            await userManager.AddToRoleAsync(user, UserRoles.Tutor);
+            logger.LogInformation("Seed assigned Tutor to {Email}.", email);
+        }
+
+        if (user.LockoutEnd is not null && user.LockoutEnd > DateTimeOffset.UtcNow)
+            await userManager.SetLockoutEndDateAsync(user, null);
+
+        if (!resetPassword)
+            return;
+
+        var token = await userManager.GeneratePasswordResetTokenAsync(user);
+        var resetResult = await userManager.ResetPasswordAsync(user, token, password);
+        if (!resetResult.Succeeded)
+        {
+            logger.LogError(
+                "Seed failed to reset password for tutor {Email}: {Errors}",
+                email,
+                string.Join("; ", resetResult.Errors.Select(e => e.Description)));
+            return;
+        }
+
+        logger.LogInformation("Seed reset password for tutor {Email}.", email);
     }
 
     private static async Task RemoveDemoDataAsync(

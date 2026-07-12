@@ -215,7 +215,7 @@
             <div class="cal-stat">
                 <i class="bi bi-clock cal-stat-icon" aria-hidden="true"></i>
                 <span class="cal-stat-label">@L["Calendar_HoursTaught"]</span>
-                <strong class="cal-stat-value">18h 30min</strong>
+                <strong class="cal-stat-value">@HoursTaughtLabel</strong>
             </div>
             <div class="cal-stat">
                 <i class="bi bi-people cal-stat-icon" aria-hidden="true"></i>
@@ -446,6 +446,20 @@
     }
 
     private int TotalLessons => _apiEvents.Count(e => e.Type != "unavailable");
+
+    private string HoursTaughtLabel
+    {
+        get
+        {
+            var minutes = _apiEvents
+                .Where(e => e.Type != "unavailable")
+                .Sum(e => Math.Max(0, e.Dur));
+            if (minutes <= 0) return "0h";
+            var h = minutes / 60;
+            var m = minutes % 60;
+            return m == 0 ? $"{h}h" : $"{h}h {m}min";
+        }
+    }
 
     private int StudentsToday =>
         _apiEvents.Count(e => e.Date.Date == DateTime.Today && e.Type != "unavailable");

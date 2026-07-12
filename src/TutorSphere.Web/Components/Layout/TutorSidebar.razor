@@ -3,6 +3,7 @@
 @inject IStringLocalizer<SharedResources> L
 @inject NavigationManager Navigation
 @inject AuthService AuthSvc
+@inject AuthenticationStateProvider AuthState
 @inject MessageService MessageSvc
 @inject ApiClient Api
 
@@ -19,7 +20,7 @@
 <div class="sidebar-profile sidebar-profile--navy">
     <div class="sidebar-profile-avatar">@AvatarInitials</div>
     <div class="sidebar-profile-info">
-        <span class="sidebar-user-name">@(AuthSvc.UserName ?? AuthSvc.UserEmail ?? "Tuteur")</span>
+        <span class="sidebar-user-name">@DisplayUserName</span>
         <span class="sidebar-user-role">@L["Nav_Role_Tutor"]</span>
         <span class="sidebar-school-badge">
             <i class="bi bi-check-circle-fill"></i> @DisplaySchoolName
@@ -202,6 +203,11 @@
     private string DisplaySchoolName =>
         _schoolName ?? AuthSvc.SchoolName ?? L["Sidebar_SchoolActive"];
 
+    private string DisplayUserName =>
+        !string.IsNullOrWhiteSpace(AuthSvc.UserName) ? AuthSvc.UserName!
+        : !string.IsNullOrWhiteSpace(AuthSvc.UserEmail) ? AuthSvc.UserEmail!
+        : "Tuteur";
+
     private static readonly Dictionary<string, string[]> SectionRoutes = new(StringComparer.OrdinalIgnoreCase)
     {
         ["people"] = ["tutor/students", "tutor/parents"],
@@ -215,7 +221,7 @@
     {
         get
         {
-            var name = AuthSvc.UserName ?? AuthSvc.UserEmail ?? "";
+            var name = DisplayUserName;
             var parts = name.Split([' ', '@'], StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length >= 2)
                 return $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[1][0])}";
@@ -226,8 +232,10 @@
     protected override async Task OnInitializedAsync()
     {
         Navigation.LocationChanged += OnLocationChanged;
+        AuthState.AuthenticationStateChanged += OnAuthStateChanged;
         SyncActiveSection();
 
+        await AuthSvc.EnsureSessionRestoredAsync();
         _schoolName = AuthSvc.SchoolName;
         if (string.IsNullOrWhiteSpace(_schoolName) && AuthSvc.TenantId is Guid tenantId)
         {
@@ -288,7 +296,16 @@
         return Task.CompletedTask;
     }
 
-    public void Dispose() => Navigation.LocationChanged -= OnLocationChanged;
+    private async void OnAuthStateChanged(Task<AuthenticationState> _)
+    {
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= OnLocationChanged;
+        AuthState.AuthenticationStateChanged -= OnAuthStateChanged;
+    }
 
     private record SchoolProfileDto(Guid Id, string Name);
 }

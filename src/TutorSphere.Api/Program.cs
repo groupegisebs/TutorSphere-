@@ -46,7 +46,13 @@ if (jwtKey.Length < 32)
         "Définissez JWT__KEY dans .env / secrets de déploiement.");
 }
 
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+// AddIdentity (Infrastructure) registers cookie schemes as defaults first.
+// AddAuthentication("Bearer") uses ??= and would NOT override them — JWT never ran.
+builder.Services.AddAuthentication(options =>
+    {
+        options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+    })
     .AddJwtBearer(options =>
     {
         // .NET 8+ defaults MapInboundClaims to false, leaving JWT claims as short names
@@ -67,21 +73,12 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
         options.Events = new JwtBearerEvents
         {
-            OnAuthenticationFailed = context =>
-            {
-                var logger = context.HttpContext.RequestServices
-                    .GetRequiredService<ILoggerFactory>()
-                    .CreateLogger("TutorSphere.Jwt");
-                logger.LogWarning(context.Exception, "JWT authentication failed for {Path}", context.Request.Path);
-                return Task.CompletedTask;
-            },
             OnMessageReceived = context =>
             {
                 var accessToken = context.Request.Query["access_token"];
                 var path = context.HttpContext.Request.Path;
                 if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs/messages"))
                     context.Token = accessToken;
-
                 return Task.CompletedTask;
             }
         };
@@ -109,19 +106,7 @@ builder.Services.AddCors(options =>
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
-{
     app.MapOpenApi();
-    app.Use(async (ctx, next) =>
-    {
-        var auth = ctx.Request.Headers.Authorization.ToString();
-        var logger = ctx.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("AuthDiag");
-        logger.LogWarning("REQ {Method} {Path} AuthorizationLen={Len}",
-            ctx.Request.Method, ctx.Request.Path, auth.Length);
-        await next();
-        logger.LogWarning("RES {Path} Authenticated={Auth} Status={Status}",
-            ctx.Request.Path, ctx.User.Identity?.IsAuthenticated, ctx.Response.StatusCode);
-    });
-}
 
 app.UseRequestLocalization();
 app.UseCors();

@@ -1,7 +1,9 @@
 @rendermode InteractiveServer
+@implements IDisposable
 @inject IStringLocalizer<SharedResources> L
 @inject NavigationManager Navigation
 @inject AuthService AuthSvc
+@inject AuthenticationStateProvider AuthState
 
 <div class="top-row px-4 @(_showUserMenu ? "top-row--menu-open" : null)">
     <div class="top-row-actions ms-auto">
@@ -29,10 +31,10 @@
                         <span class="topbar-dropdown-email">@AuthSvc.UserEmail</span>
                     </div>
                     <div class="topbar-dropdown-divider"></div>
-                    <a class="topbar-dropdown-item" href="tutor/profile">
+                    <a class="topbar-dropdown-item" href="@_profileHref">
                         <i class="bi bi-person me-2" aria-hidden="true"></i>@L["Nav_MyProfile"]
                     </a>
-                    <a class="topbar-dropdown-item" href="tutor/settings">
+                    <a class="topbar-dropdown-item" href="@_settingsHref">
                         <i class="bi bi-sliders me-2" aria-hidden="true"></i>@L["Nav_Settings"]
                     </a>
                     <div class="topbar-dropdown-divider"></div>
@@ -54,7 +56,18 @@
 @code {
     private bool _showUserMenu;
 
-    private string _displayName => AuthSvc.UserName ?? AuthSvc.UserEmail ?? "User";
+    private string _displayName
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(AuthSvc.UserName))
+                return AuthSvc.UserName!;
+            if (!string.IsNullOrWhiteSpace(AuthSvc.UserEmail))
+                return AuthSvc.UserEmail!;
+            return "Tuteur";
+        }
+    }
+
     private string _initials => GetInitials(_displayName);
     private bool _showSchoolLink => AuthSvc.PrimaryRole is "Tutor" or "TeachingAssistant";
     private string _profileHref => AuthSvc.PrimaryRole switch
@@ -70,6 +83,25 @@
         _ => "tutor/settings"
     };
 
+    protected override void OnInitialized()
+    {
+        AuthState.AuthenticationStateChanged += OnAuthStateChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        await AuthSvc.EnsureSessionRestoredAsync(forceJs: true);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async void OnAuthStateChanged(Task<AuthenticationState> _)
+    {
+        await InvokeAsync(StateHasChanged);
+    }
+
     private void ToggleUserMenu() => _showUserMenu = !_showUserMenu;
     private void CloseUserMenu() => _showUserMenu = false;
 
@@ -84,9 +116,14 @@
     private static string GetInitials(string name)
     {
         if (string.IsNullOrWhiteSpace(name)) return "?";
-        var parts = name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var parts = name.Trim().Split([' ', '@'], StringSplitOptions.RemoveEmptyEntries);
         return parts.Length >= 2
-            ? $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant()
+            ? $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[^1][0])}"
             : name[..Math.Min(2, name.Length)].ToUpperInvariant();
+    }
+
+    public void Dispose()
+    {
+        AuthState.AuthenticationStateChanged -= OnAuthStateChanged;
     }
 }
