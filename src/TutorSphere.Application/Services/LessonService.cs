@@ -2,6 +2,7 @@ using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.Calendar;
 using TutorSphere.Application.DTOs.Lessons;
 using TutorSphere.Domain.Entities;
+using TutorSphere.Domain.Enums;
 using Microsoft.Extensions.Logging;
 
 namespace TutorSphere.Application.Services;
@@ -14,10 +15,18 @@ public interface ILessonService
     Task<IReadOnlyList<LessonDto>> GetByViewAsync(CalendarView view, DateTime date, CancellationToken ct = default);
     Task<LessonDto> UpdateAsync(Guid id, UpdateLessonRequest request, CancellationToken ct = default);
     Task DeleteAsync(Guid id, CancellationToken ct = default);
+    Task<LessonDto> CancelAsync(Guid id, CancelLessonRequest request, CancellationToken ct = default);
+    Task<LessonDto> MarkTutorNoShowAsync(Guid id, MarkTutorNoShowRequest request, CancellationToken ct = default);
+    Task<LessonDto> ResolveTutorLiabilityAsync(Guid id, ResolveTutorLiabilityRequest request, CancellationToken ct = default);
+    Task<IReadOnlyList<LessonAttendanceDto>> GetAttendancesAsync(Guid lessonId, CancellationToken ct = default);
+    Task<LessonAttendanceDto> SetAttendanceAsync(Guid lessonId, SetAttendanceRequest request, CancellationToken ct = default);
+    Task SettleDueLessonsAsync(CancellationToken ct = default);
 }
 
 public class LessonService : ILessonService
 {
+    public const int CancelFreeHours = 24;
+
     private readonly IApplicationDbContext _db;
     private readonly ITenantContext _tenantContext;
     private readonly IEmailService _email;
@@ -202,9 +211,10 @@ public class LessonService : ILessonService
         return Task.FromResult(lesson is null ? null : MapToDto(lesson));
     }
 
-    public Task<IReadOnlyList<LessonDto>> GetByDateRangeAsync(DateTime start, DateTime end, CancellationToken ct = default)
+    public async Task<IReadOnlyList<LessonDto>> GetByDateRangeAsync(DateTime start, DateTime end, CancellationToken ct = default)
     {
         ValidateDateRange(start, end);
+        await SettleDueLessonsAsync(ct);
 
         var lessons = _db.Lessons
             .Where(l => l.StartTime < end && l.EndTime > start)
@@ -213,13 +223,13 @@ public class LessonService : ILessonService
             .Select(MapToDto)
             .ToList();
 
-        return Task.FromResult<IReadOnlyList<LessonDto>>(lessons);
+        return lessons;
     }
 
-    public Task<IReadOnlyList<LessonDto>> GetByViewAsync(CalendarView view, DateTime date, CancellationToken ct = default)
+    public async Task<IReadOnlyList<LessonDto>> GetByViewAsync(CalendarView view, DateTime date, CancellationToken ct = default)
     {
         var (start, end) = CalendarRangeHelper.GetViewRange(view, date);
-        return GetByDateRangeAsync(start, end, ct);
+        return await GetByDateRangeAsync(start, end, ct);
     }
 
     public async Task<LessonDto> UpdateAsync(Guid id, UpdateLessonRequest request, CancellationToken ct = default)
@@ -228,6 +238,25 @@ public class LessonService : ILessonService
 
         var lesson = _db.Lessons.FirstOrDefault(l => l.Id == id)
             ?? throw new InvalidOperationException("Cours introuvable.");
+
+        if (lesson.SettlementStatus is LessonSettlementStatus.CancelledFree
+            or LessonSettlementStatus.TutorNoShow
+            or LessonSettlementStatus.LiabilityResolved)
+            throw new InvalidOperationException("Ce cours est clôturé et ne peut plus être modifié.");
+
+        var oldStart = ToUtc(lesson.StartTime);
+        var oldEnd = ToUtc(lesson.EndTime);
+        var newStart = ToUtc(request.StartTime);
+        var newEnd = ToUtc(request.EndTime);
+        var scheduleChanged = oldStart != newStart || oldEnd != newEnd;
+
+        if (scheduleChanged)
+        {
+            var now = DateTime.UtcNow;
+            if (oldStart - now < TimeSpan.FromHours(CancelFreeHours))
+                throw new InvalidOperationException(
+                    $"Impossible de modifier la date/heure à moins de {CancelFreeHours} h avant le début du cours.");
+        }
 
         lesson.Title = request.Title.Trim();
         lesson.Description = request.Description?.Trim();
@@ -242,31 +271,254 @@ public class LessonService : ILessonService
 
         await _db.SaveChangesAsync(ct);
 
+        if (scheduleChanged)
+        {
+            var studentIds = _db.LessonAttendances
+                .Where(a => a.LessonId == lesson.Id)
+                .Select(a => a.StudentId)
+                .Distinct()
+                .ToList();
+            if (studentIds.Count > 0)
+                await SendLessonScheduledEmailsAsync(lesson, studentIds, ct);
+        }
+
         return MapToDto(lesson);
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
     {
+        // Soft-cancel selon la règle 24 h (au lieu d'une suppression pure).
+        await CancelAsync(id, new CancelLessonRequest("Suppression / annulation"), ct);
+    }
+
+    public async Task<LessonDto> CancelAsync(Guid id, CancelLessonRequest request, CancellationToken ct = default)
+    {
         var lesson = _db.Lessons.FirstOrDefault(l => l.Id == id)
             ?? throw new InvalidOperationException("Cours introuvable.");
 
+        if (lesson.SettlementStatus is LessonSettlementStatus.CancelledFree
+            or LessonSettlementStatus.TutorNoShow
+            or LessonSettlementStatus.LiabilityResolved)
+            throw new InvalidOperationException("Ce cours est déjà clôturé et ne peut plus être annulé.");
+
+        var now = DateTime.UtcNow;
+        var startUtc = ToUtc(lesson.StartTime);
+        lesson.CancelledAt = now;
+        lesson.CancellationReason = string.IsNullOrWhiteSpace(request.Reason)
+            ? null
+            : request.Reason.Trim();
+        lesson.UpdatedAt = now;
+
+        if (startUtc - now >= TimeSpan.FromHours(CancelFreeHours))
+        {
+            // Annulation ≥ 24 h : non comptabilisée
+            if (lesson.SessionCounted)
+                RestoreSessionCredits(lesson);
+
+            lesson.SettlementStatus = LessonSettlementStatus.CancelledFree;
+            lesson.SessionCounted = false;
+            lesson.TutorLiable = false;
+        }
+        else
+        {
+            // Annulation tardive ou après début : validée (comptée)
+            ApplyValidation(lesson);
+        }
+
         await SendLessonCancelledEmailsAsync(lesson, ct);
+        await _db.SaveChangesAsync(ct);
+        return MapToDto(lesson);
+    }
 
-        foreach (var attendance in _db.LessonAttendances.Where(a => a.LessonId == id).ToList())
-            _db.Remove(attendance);
+    public async Task<LessonDto> MarkTutorNoShowAsync(Guid id, MarkTutorNoShowRequest request, CancellationToken ct = default)
+    {
+        var lesson = _db.Lessons.FirstOrDefault(l => l.Id == id)
+            ?? throw new InvalidOperationException("Cours introuvable.");
 
-        foreach (var report in _db.LessonReports.Where(r => r.LessonId == id).ToList())
-            _db.Remove(report);
+        if (lesson.SettlementStatus == LessonSettlementStatus.CancelledFree)
+            throw new InvalidOperationException("Cours déjà annulé à temps — rien à comptabiliser.");
 
-        foreach (var homework in _db.Homeworks.Where(h => h.LessonId == id).ToList())
-            homework.LessonId = null;
+        if (lesson.SessionCounted)
+            RestoreSessionCredits(lesson);
 
-        foreach (var document in _db.Documents.Where(d => d.LessonId == id).ToList())
-            document.LessonId = null;
+        lesson.SettlementStatus = LessonSettlementStatus.TutorNoShow;
+        lesson.SessionCounted = false;
+        lesson.TutorLiable = true;
+        lesson.TutorLiabilityResolution = null;
+        lesson.TutorLiabilityResolvedAt = null;
+        if (!string.IsNullOrWhiteSpace(request.Notes))
+            lesson.SessionNotes = string.IsNullOrWhiteSpace(lesson.SessionNotes)
+                ? request.Notes.Trim()
+                : $"{lesson.SessionNotes}\n[Moniteur absent] {request.Notes.Trim()}";
+        lesson.UpdatedAt = DateTime.UtcNow;
 
-        _db.Remove(lesson);
+        await _db.SaveChangesAsync(ct);
+        return MapToDto(lesson);
+    }
+
+    public async Task<LessonDto> ResolveTutorLiabilityAsync(
+        Guid id,
+        ResolveTutorLiabilityRequest request,
+        CancellationToken ct = default)
+    {
+        var lesson = _db.Lessons.FirstOrDefault(l => l.Id == id)
+            ?? throw new InvalidOperationException("Cours introuvable.");
+
+        if (!lesson.TutorLiable && lesson.SettlementStatus != LessonSettlementStatus.TutorNoShow)
+            throw new InvalidOperationException("Aucune imputation moniteur à résoudre pour ce cours.");
+
+        var resolution = (request.Resolution ?? "").Trim().ToLowerInvariant();
+        if (resolution is not ("reschedule" or "refund"))
+            throw new InvalidOperationException("Indiquez 'reschedule' (replanifier) ou 'refund' (rembourser).");
+
+        lesson.TutorLiable = false;
+        lesson.SettlementStatus = LessonSettlementStatus.LiabilityResolved;
+        lesson.TutorLiabilityResolution = resolution;
+        lesson.TutorLiabilityResolvedAt = DateTime.UtcNow;
+        lesson.UpdatedAt = DateTime.UtcNow;
+
+        await _db.SaveChangesAsync(ct);
+        return MapToDto(lesson);
+    }
+
+    public Task<IReadOnlyList<LessonAttendanceDto>> GetAttendancesAsync(Guid lessonId, CancellationToken ct = default)
+    {
+        if (!_db.Lessons.Any(l => l.Id == lessonId))
+            throw new InvalidOperationException("Cours introuvable.");
+
+        var rows = _db.LessonAttendances.Where(a => a.LessonId == lessonId).ToList();
+        var studentIds = rows.Select(r => r.StudentId).ToList();
+        var students = _db.Students.Where(s => studentIds.Contains(s.Id)).ToDictionary(s => s.Id);
+
+        var result = rows.Select(a =>
+        {
+            students.TryGetValue(a.StudentId, out var student);
+            var name = student is null ? "" : $"{student.FirstName} {student.LastName}".Trim();
+            return new LessonAttendanceDto(a.StudentId, name, a.IsPresent, a.Notes);
+        }).ToList();
+
+        return Task.FromResult<IReadOnlyList<LessonAttendanceDto>>(result);
+    }
+
+    public async Task<LessonAttendanceDto> SetAttendanceAsync(
+        Guid lessonId,
+        SetAttendanceRequest request,
+        CancellationToken ct = default)
+    {
+        var lesson = _db.Lessons.FirstOrDefault(l => l.Id == lessonId)
+            ?? throw new InvalidOperationException("Cours introuvable.");
+
+        var attendance = _db.LessonAttendances
+            .FirstOrDefault(a => a.LessonId == lessonId && a.StudentId == request.StudentId)
+            ?? throw new InvalidOperationException("Élève non inscrit à ce cours.");
+
+        attendance.IsPresent = request.IsPresent;
+        attendance.Notes = request.Notes?.Trim();
+        attendance.UpdatedAt = DateTime.UtcNow;
+
+        // Élève absent mais cours non annulé à temps → la séance reste / devient validée (comptée).
+        if (!request.IsPresent
+            && lesson.SettlementStatus == LessonSettlementStatus.Scheduled
+            && ToUtc(lesson.EndTime) <= DateTime.UtcNow)
+        {
+            ApplyValidation(lesson);
+        }
+
+        await _db.SaveChangesAsync(ct);
+
+        var student = _db.Students.FirstOrDefault(s => s.Id == request.StudentId);
+        var name = student is null ? "" : $"{student.FirstName} {student.LastName}".Trim();
+        return new LessonAttendanceDto(attendance.StudentId, name, attendance.IsPresent, attendance.Notes);
+    }
+
+    public async Task SettleDueLessonsAsync(CancellationToken ct = default)
+    {
+        var now = DateTime.UtcNow;
+        var due = _db.Lessons
+            .Where(l => l.SettlementStatus == LessonSettlementStatus.Scheduled && l.EndTime <= now)
+            .ToList();
+
+        if (due.Count == 0)
+            return;
+
+        foreach (var lesson in due)
+            ApplyValidation(lesson);
+
         await _db.SaveChangesAsync(ct);
     }
+
+    /// <summary>Cours tenu ou annulé trop tard → validé et séance déduite du forfait.</summary>
+    private void ApplyValidation(Lesson lesson)
+    {
+        if (lesson.SettlementStatus is LessonSettlementStatus.TutorNoShow
+            or LessonSettlementStatus.CancelledFree
+            or LessonSettlementStatus.LiabilityResolved)
+            return;
+
+        lesson.SettlementStatus = LessonSettlementStatus.Validated;
+        lesson.TutorLiable = false;
+
+        if (lesson.SessionCounted)
+            return;
+
+        var studentIds = _db.LessonAttendances
+            .Where(a => a.LessonId == lesson.Id)
+            .Select(a => a.StudentId)
+            .Distinct()
+            .ToList();
+
+        foreach (var studentId in studentIds)
+            ConsumeSessionCredit(studentId, lesson.TenantId);
+
+        lesson.SessionCounted = true;
+        lesson.UpdatedAt = DateTime.UtcNow;
+    }
+
+    private void RestoreSessionCredits(Lesson lesson)
+    {
+        var studentIds = _db.LessonAttendances
+            .Where(a => a.LessonId == lesson.Id)
+            .Select(a => a.StudentId)
+            .Distinct()
+            .ToList();
+
+        foreach (var studentId in studentIds)
+        {
+            var sub = _db.StudentSubscriptions
+                .Where(s => s.StudentId == studentId
+                            && s.TenantId == lesson.TenantId
+                            && (s.Status == SubscriptionStatus.Active || s.Status == SubscriptionStatus.Paused))
+                .OrderByDescending(s => s.CreatedAt)
+                .FirstOrDefault();
+            if (sub is null) continue;
+            sub.SessionsRemaining += 1;
+            sub.UpdatedAt = DateTime.UtcNow;
+        }
+
+        lesson.SessionCounted = false;
+    }
+
+    private void ConsumeSessionCredit(Guid studentId, Guid tenantId)
+    {
+        var sub = _db.StudentSubscriptions
+            .Where(s => s.StudentId == studentId
+                        && s.TenantId == tenantId
+                        && s.Status == SubscriptionStatus.Active
+                        && s.SessionsRemaining > 0)
+            .OrderBy(s => s.EndDate)
+            .FirstOrDefault();
+        if (sub is null) return;
+        sub.SessionsRemaining -= 1;
+        sub.UpdatedAt = DateTime.UtcNow;
+    }
+
+    private static DateTime ToUtc(DateTime dt) =>
+        dt.Kind switch
+        {
+            DateTimeKind.Utc => dt,
+            DateTimeKind.Local => dt.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(dt, DateTimeKind.Utc)
+        };
 
     private Guid RequireTenantId()
     {
@@ -300,5 +552,10 @@ public class LessonService : ILessonService
         lesson.MeetingUrl,
         lesson.SessionNotes,
         lesson.CreatedAt,
-        lesson.UpdatedAt);
+        lesson.UpdatedAt,
+        lesson.SettlementStatus.ToString(),
+        lesson.CancelledAt,
+        lesson.SessionCounted,
+        lesson.TutorLiable,
+        lesson.TutorLiabilityResolution);
 }

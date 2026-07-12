@@ -196,7 +196,12 @@ public class StudentService : IStudentService
         l.MeetingUrl,
         l.SessionNotes,
         l.CreatedAt,
-        l.UpdatedAt);
+        l.UpdatedAt,
+        l.SettlementStatus.ToString(),
+        l.CancelledAt,
+        l.SessionCounted,
+        l.TutorLiable,
+        l.TutorLiabilityResolution);
 
     private static IReadOnlyList<string> ParseSubjects(string? subjects) =>
         string.IsNullOrWhiteSpace(subjects)

@@ -445,7 +445,9 @@ public class ParentService : IParentService
             .ToList();
 
         var lessons = _db.LessonsForAnyTenant
-            .Where(l => lessonIds.Contains(l.Id) && l.StartTime < end && l.EndTime > start)
+            .Where(l => lessonIds.Contains(l.Id)
+                        && l.SettlementStatus != LessonSettlementStatus.CancelledFree
+                        && l.StartTime < end && l.EndTime > start)
             .OrderBy(l => l.StartTime)
             .ToList()
             .Select(l => new LessonDto(
@@ -460,7 +462,12 @@ public class ParentService : IParentService
                 l.MeetingUrl,
                 l.SessionNotes,
                 l.CreatedAt,
-                l.UpdatedAt))
+                l.UpdatedAt,
+                l.SettlementStatus.ToString(),
+                l.CancelledAt,
+                l.SessionCounted,
+                l.TutorLiable,
+                l.TutorLiabilityResolution))
             .ToList();
 
         return Task.FromResult<IReadOnlyList<LessonDto>>(lessons);

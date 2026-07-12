@@ -65,9 +65,16 @@ else
                         <td><span class="ts-badge ts-badge-neutral">@ModeLabel(c.Mode)</span></td>
                         <td><span class="ts-badge @badge">@StatusLabel(status)</span></td>
                         <td>
-                            @if (status == "upcoming" && c.Mode == "Online" && !string.IsNullOrEmpty(c.MeetingUrl))
+                            @if (c.SettlementStatus is not "CancelledFree")
                             {
-                                <a class="btn btn-sm btn-primary" href="@c.MeetingUrl" target="_blank">@L["StudentCourses_Join"]</a>
+                                @if (!string.IsNullOrWhiteSpace(c.MeetingUrl))
+                                {
+                                    <a class="btn btn-sm btn-primary" href="@c.MeetingUrl" target="_blank" rel="noopener">@L["StudentCourses_Join"]</a>
+                                }
+                                else
+                                {
+                                    <a class="btn btn-sm btn-primary" href="@ClassroomHref(c)">@L["StudentCourses_Join"]</a>
+                                }
                             }
                         </td>
                     </tr>
@@ -141,4 +148,7 @@ else
         "InPerson" => L["Common_InPerson"],
         _ => mode
     };
+
+    private static string ClassroomHref(LessonDto c) =>
+        $"/student/classroom/{c.Id}?title={Uri.EscapeDataString(c.Title)}&subject={Uri.EscapeDataString(c.Subject ?? "")}";
 }

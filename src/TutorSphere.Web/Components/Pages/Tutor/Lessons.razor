@@ -47,6 +47,8 @@
         <option value="En cours">@L["Common_InProgress"]</option>
         <option value="Terminé">@L["Common_Completed"]</option>
         <option value="Annulé">@L["Common_Cancelled"]</option>
+        <option value="Validé">@L["Lessons_StatusValidated"]</option>
+        <option value="Moniteur absent">@L["Lessons_StatusTutorNoShow"]</option>
     </select>
     <select class="form-select w-auto" @bind="_filterMode">
         <option value="">@L["Common_AllModes"]</option>
@@ -105,11 +107,34 @@
                                         <i class="bi bi-play-fill text-success"></i>
                                     </button>
                                 }
-                                @if (l.Status is "Terminé" or "En cours")
+                                @if (l.Status is "Terminé" or "En cours" or "Validé")
                                 {
                                     <button class="ts-icon-btn" title="@L["Lessons_Report"]"><i class="bi bi-file-earmark-text"></i></button>
                                 }
-                                <button class="ts-icon-btn" title="@L["Lessons_Attendance"]"><i class="bi bi-person-check"></i></button>
+                                <button class="ts-icon-btn" title="@L["Lessons_Attendance"]" @onclick="() => OpenAttendance(l)">
+                                    <i class="bi bi-person-check"></i>
+                                </button>
+                                @if (l.SettlementStatus is "Scheduled" or null or "")
+                                {
+                                    <button class="ts-icon-btn" title="@L["Lessons_Cancel24h"]" @onclick="async () => await CancelLesson(l)">
+                                        <i class="bi bi-calendar-x text-warning"></i>
+                                    </button>
+                                }
+                                @if (l.Status is "Terminé" or "Validé" or "En cours")
+                                {
+                                    <button class="ts-icon-btn" title="@L["Lessons_TutorNoShow"]" @onclick="async () => await MarkTutorNoShow(l)">
+                                        <i class="bi bi-person-x text-danger"></i>
+                                    </button>
+                                }
+                                @if (l.TutorLiable)
+                                {
+                                    <button class="ts-icon-btn" title="@L["Lessons_ResolveReschedule"]" @onclick="async () => await ResolveLiability(l, RescheduleResolution)">
+                                        <i class="bi bi-arrow-repeat text-primary"></i>
+                                    </button>
+                                    <button class="ts-icon-btn" title="@L["Lessons_ResolveRefund"]" @onclick="async () => await ResolveLiability(l, RefundResolution)">
+                                        <i class="bi bi-cash-coin text-success"></i>
+                                    </button>
+                                }
                                 <button class="ts-icon-btn" title="@L["Common_Edit"]" @onclick="()=>OpenEdit(l)"><i class="bi bi-pencil"></i></button>
                                 <button class="ts-icon-btn ts-icon-btn--danger" title="@L["Lessons_Delete"]"
                                         @onclick="async () => await DeleteLesson(l)">
@@ -142,11 +167,17 @@
                     <div class="col-6"><label class="form-label">@L["Lessons_SubjectRequired"]</label>
                         <input class="form-control" @bind="_lf.Subject" /></div>
                     <div class="col-6"><label class="form-label">@L["Lessons_DateRequired"]</label>
-                        <input type="date" class="form-control" @bind="_lf.Date" /></div>
+                        <input type="date" class="form-control" @bind="_lf.Date" disabled="@_dateLocked" /></div>
                     <div class="col-3"><label class="form-label">@L["Lessons_StartTime"]</label>
-                        <input type="time" class="form-control" @bind="_lf.StartTime" /></div>
+                        <input type="time" class="form-control" @bind="_lf.StartTime" disabled="@_dateLocked" /></div>
                     <div class="col-3"><label class="form-label">@L["Lessons_DurationHours"]</label>
-                        <input type="number" step="0.5" class="form-control" @bind="_lf.Duration" /></div>
+                        <input type="number" step="0.5" class="form-control" @bind="_lf.Duration" disabled="@_dateLocked" /></div>
+                    @if (_dateLocked)
+                    {
+                        <div class="col-12">
+                            <div class="alert alert-warning py-2 mb-0">@L["Lessons_DateLocked24h"]</div>
+                        </div>
+                    }
                     <div class="col-6"><label class="form-label">@L["Common_Mode"]</label>
                         <select class="form-select" @bind="_lf.Mode">
                             <option value="En ligne">@L["Common_Online"]</option>
@@ -190,18 +221,70 @@
     </div>
 }
 
+@if (_showAttendance && _attendanceLesson is not null)
+{
+    <div class="ts-modal-backdrop" @onclick="CloseAttendance">
+        <div class="ts-modal" @onclick:stopPropagation="true">
+            <div class="ts-modal-header">
+                <h2>@L["Lessons_Attendance"] — @_attendanceLesson.Title</h2>
+                <button class="ts-modal-close" @onclick="CloseAttendance"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <div class="ts-modal-body">
+                <p class="text-muted small mb-3">@L["Lessons_AttendanceHelp"]</p>
+                @if (_attendanceLoading)
+                {
+                    <div class="text-center py-3"><span class="spinner-border spinner-border-sm"></span></div>
+                }
+                else if (_attendances.Count == 0)
+                {
+                    <p class="text-muted">@L["Lessons_NoStudents"]</p>
+                }
+                else
+                {
+                    <ul class="list-unstyled mb-0">
+                        @foreach (var a in _attendances)
+                        {
+                            <li class="d-flex align-items-center justify-content-between py-2 border-bottom">
+                                <span>@a.StudentName</span>
+                                <div class="form-check form-switch m-0">
+                                    <input class="form-check-input" type="checkbox" checked="@a.IsPresent"
+                                           @onchange="async e => await ToggleAttendance(a, (bool)(e.Value ?? false))" />
+                                    <label class="form-check-label">@(a.IsPresent ? L["Lessons_Present"] : L["Lessons_Absent"])</label>
+                                </div>
+                            </li>
+                        }
+                    </ul>
+                }
+            </div>
+            <div class="ts-modal-footer">
+                <button class="btn btn-primary" @onclick="CloseAttendance">@L["Common_Close"]</button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
+    private const string RescheduleResolution = "reschedule";
+    private const string RefundResolution = "refund";
+
     private string _search = "", _filterStatus = "", _filterMode = "";
     private bool _showModal;
     private bool _loading = true;
     private string _error = "";
     private LessonVM? _editingLesson;
     private LessonForm _lf = new();
+    private bool _dateLocked;
+    private bool _showAttendance;
+    private bool _attendanceLoading;
+    private LessonVM? _attendanceLesson;
+    private List<LessonAttendanceDto> _attendances = [];
 
     private static string StatusBadge(string s) => s switch {
-        "Terminé" => "ts-badge-success",
+        "Terminé" or "Validé" => "ts-badge-success",
         "En cours" => "ts-badge-primary",
         "Annulé" => "ts-badge-danger",
+        "Moniteur absent" => "ts-badge-warning",
+        "Imputation réglée" => "ts-badge-neutral",
         _ => "ts-badge-neutral"
     };
 
@@ -222,53 +305,129 @@
             if (dtos.Count > 0)
                 _lessons = dtos.Select(MapFromDto).ToList();
         }
-        catch { /* keep mock fallback */ }
+        catch { /* keep empty */ }
         finally { _loading = false; }
     }
 
     private static LessonVM MapFromDto(LessonDto d) => new()
     {
-        ApiId      = d.Id,
-        Title      = d.Title,
-        Subject    = d.Subject ?? "",
-        Date       = d.StartTime.ToLocalTime(),
-        EndTime    = d.EndTime.ToLocalTime().ToString("HH:mm"),
-        Duration   = Math.Round((d.EndTime - d.StartTime).TotalHours, 1),
-        Mode       = LessonService.ModeToDisplay(d.Mode),
-        Status     = LessonService.DeriveStatus(d.StartTime, d.EndTime),
+        ApiId = d.Id,
+        Title = d.Title,
+        Subject = d.Subject ?? "",
+        Date = d.StartTime.ToLocalTime(),
+        EndTime = d.EndTime.ToLocalTime().ToString("HH:mm"),
+        Duration = Math.Round((d.EndTime - d.StartTime).TotalHours, 1),
+        Mode = LessonService.ModeToDisplay(d.Mode),
+        Status = LessonService.DeriveStatus(d.StartTime, d.EndTime, d.SettlementStatus),
+        SettlementStatus = d.SettlementStatus,
+        SessionCounted = d.SessionCounted,
+        TutorLiable = d.TutorLiable,
         AvatarColor = "#7c3aed"
     };
 
-    private void OpenAdd() { _editingLesson = null; _lf = new(); _showModal = true; }
+    private void OpenAdd() { _editingLesson = null; _lf = new(); _dateLocked = false; _showModal = true; }
     private void OpenEdit(LessonVM l)
     {
         _editingLesson = l;
         _lf = new LessonForm { Title=l.Title, Student=l.StudentName, Subject=l.Subject,
-            Date=l.Date, Duration=l.Duration, Mode=l.Mode };
+            Date=l.Date, StartTime=TimeOnly.FromDateTime(l.Date), Duration=l.Duration, Mode=l.Mode };
+        var hoursLeft = l.Date.ToUniversalTime() - DateTime.UtcNow;
+        _dateLocked = hoursLeft < TimeSpan.FromHours(24)
+                      || l.SettlementStatus is "CancelledFree" or "TutorNoShow" or "LiabilityResolved";
         _showModal = true;
     }
     private void CloseModal() => _showModal = false;
+
+    private async Task OpenAttendance(LessonVM lesson)
+    {
+        if (lesson.ApiId is null) return;
+        _attendanceLesson = lesson;
+        _showAttendance = true;
+        _attendanceLoading = true;
+        try
+        {
+            _attendances = await LessonSvc.GetAttendancesAsync(lesson.ApiId.Value);
+        }
+        catch { _attendances = []; }
+        finally { _attendanceLoading = false; }
+    }
+
+    private void CloseAttendance()
+    {
+        _showAttendance = false;
+        _attendanceLesson = null;
+        _attendances = [];
+    }
+
+    private async Task ToggleAttendance(LessonAttendanceDto row, bool present)
+    {
+        if (_attendanceLesson?.ApiId is not Guid id) return;
+        var updated = await LessonSvc.SetAttendanceAsync(id, row.StudentId, present);
+        if (updated is null) return;
+        var idx = _attendances.FindIndex(a => a.StudentId == row.StudentId);
+        if (idx >= 0) _attendances[idx] = updated;
+    }
+
+    private async Task CancelLesson(LessonVM lesson)
+    {
+        if (lesson.ApiId is not Guid id) return;
+        var confirmed = await JS.InvokeAsync<bool>("confirm", L["Lessons_CancelConfirm"].Value);
+        if (!confirmed) return;
+        var dto = await LessonSvc.CancelLessonAsync(id);
+        if (dto is null) { _error = L["Lessons_CancelError"]; return; }
+        ReplaceLesson(lesson, MapFromDto(dto));
+        _error = "";
+    }
+
+    private async Task MarkTutorNoShow(LessonVM lesson)
+    {
+        if (lesson.ApiId is not Guid id) return;
+        var confirmed = await JS.InvokeAsync<bool>("confirm", L["Lessons_TutorNoShowConfirm"].Value);
+        if (!confirmed) return;
+        var dto = await LessonSvc.MarkTutorNoShowAsync(id);
+        if (dto is null) { _error = L["Lessons_TutorNoShowError"]; return; }
+        ReplaceLesson(lesson, MapFromDto(dto));
+        _error = "";
+    }
+
+    private async Task ResolveLiability(LessonVM lesson, string resolution)
+    {
+        if (lesson.ApiId is not Guid id) return;
+        var dto = await LessonSvc.ResolveLiabilityAsync(id, resolution);
+        if (dto is null) { _error = L["Lessons_ResolveError"]; return; }
+        ReplaceLesson(lesson, MapFromDto(dto));
+        _error = "";
+    }
+
+    private void ReplaceLesson(LessonVM old, LessonVM updated)
+    {
+        var idx = _lessons.IndexOf(old);
+        if (idx >= 0) _lessons[idx] = updated;
+    }
 
     private async Task DeleteLesson(LessonVM lesson)
     {
         var label = string.IsNullOrEmpty(lesson.StudentName) ? lesson.Title : lesson.StudentName;
         var confirmed = await JS.InvokeAsync<bool>(
             "confirm",
-            $"Supprimer la séance « {label} » du {lesson.Date:dd/MM/yyyy} ?");
+            string.Format(L["Lessons_CancelConfirmDetail"].Value, label, lesson.Date.ToString("dd/MM/yyyy")));
         if (!confirmed)
             return;
 
         if (lesson.ApiId is Guid id)
         {
-            var ok = await LessonSvc.DeleteLessonAsync(id);
-            if (!ok)
+            var dto = await LessonSvc.CancelLessonAsync(id, "Annulation");
+            if (dto is null)
             {
-                _error = "Impossible de supprimer cette séance.";
+                _error = L["Lessons_CancelError"];
                 return;
             }
+            ReplaceLesson(lesson, MapFromDto(dto));
         }
-
-        _lessons.Remove(lesson);
+        else
+        {
+            _lessons.Remove(lesson);
+        }
         _error = "";
     }
 
@@ -325,12 +484,22 @@
         }
         else if (_editingLesson.ApiId.HasValue)
         {
-            var dto = await LessonSvc.UpdateLessonAsync(
+            var editStart = _dateLocked ? _editingLesson.Date : start;
+            var editEnd = _dateLocked
+                ? _editingLesson.Date.AddHours(_editingLesson.Duration)
+                : end;
+            var result = await LessonSvc.UpdateLessonWithErrorAsync(
                 _editingLesson.ApiId.Value,
-                _lf.Title, _lf.Description, _lf.Subject, start, end, _lf.Mode);
-            if (dto != null)
+                _lf.Title, _lf.Description, _lf.Subject,
+                editStart.ToUniversalTime(), editEnd.ToUniversalTime(), _lf.Mode);
+            if (result.Error is not null)
             {
-                var updated = MapFromDto(dto);
+                _error = result.Error;
+                return;
+            }
+            if (result.Value != null)
+            {
+                var updated = MapFromDto(result.Value);
                 var idx = _lessons.IndexOf(_editingLesson);
                 if (idx >= 0) _lessons[idx] = updated;
             }
@@ -338,12 +507,16 @@
             {
                 _editingLesson.Title   = _lf.Title;
                 _editingLesson.Subject = _lf.Subject;
-                _editingLesson.Date    = start;
-                _editingLesson.EndTime = end.ToString("HH:mm");
-                _editingLesson.Duration = _lf.Duration;
+                if (!_dateLocked)
+                {
+                    _editingLesson.Date    = start;
+                    _editingLesson.EndTime = end.ToString("HH:mm");
+                    _editingLesson.Duration = _lf.Duration;
+                }
                 _editingLesson.Mode    = _lf.Mode;
             }
         }
+        _error = "";
         _showModal = false;
     }
 
@@ -382,6 +555,9 @@
         public double Duration { get; set; }
         public string Mode { get; set; } = "";
         public string Status { get; set; } = "";
+        public string? SettlementStatus { get; set; }
+        public bool SessionCounted { get; set; }
+        public bool TutorLiable { get; set; }
         public string AvatarColor { get; set; } = "#7c3aed";
     }
 

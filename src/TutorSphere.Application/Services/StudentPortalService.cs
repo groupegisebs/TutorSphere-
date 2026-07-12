@@ -6,6 +6,7 @@ using TutorSphere.Application.DTOs.Lessons;
 using TutorSphere.Application.DTOs.Messages;
 using TutorSphere.Application.DTOs.Students;
 using TutorSphere.Domain.Entities;
+using TutorSphere.Domain.Enums;
 
 namespace TutorSphere.Application.Services;
 
@@ -56,7 +57,10 @@ public class StudentPortalService : IStudentPortalService
             .Distinct()
             .ToList();
 
-        var query = _db.LessonsForAnyTenant.Where(l => lessonIds.Contains(l.Id));
+        // Agenda actif : exclure les annulations libres (les dates affichées suivent StartTime/EndTime à jour).
+        var query = _db.LessonsForAnyTenant.Where(l =>
+            lessonIds.Contains(l.Id)
+            && l.SettlementStatus != LessonSettlementStatus.CancelledFree);
         if (start.HasValue)
             query = query.Where(l => l.EndTime > start.Value);
         if (end.HasValue)
@@ -280,7 +284,8 @@ public class StudentPortalService : IStudentPortalService
 
     private static LessonDto MapLesson(Lesson l) => new(
         l.Id, l.Title, l.Description, l.Subject, l.StartTime, l.EndTime,
-        l.Mode.ToString(), l.Location, l.MeetingUrl, l.SessionNotes, l.CreatedAt, l.UpdatedAt);
+        l.Mode.ToString(), l.Location, l.MeetingUrl, l.SessionNotes, l.CreatedAt, l.UpdatedAt,
+        l.SettlementStatus.ToString(), l.CancelledAt, l.SessionCounted, l.TutorLiable, l.TutorLiabilityResolution);
 
     private static HomeworkDto MapHomework(Homework h) => new(
         h.Id, h.TenantId, h.StudentId, h.LessonId, h.Title, h.Description, h.DueDate,

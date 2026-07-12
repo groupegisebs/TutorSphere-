@@ -43,4 +43,23 @@ public record LessonDto(
     string? MeetingUrl,
     string? SessionNotes,
     DateTime CreatedAt,
-    DateTime? UpdatedAt);
+    DateTime? UpdatedAt,
+    string SettlementStatus = "Scheduled",
+    DateTime? CancelledAt = null,
+    bool SessionCounted = false,
+    bool TutorLiable = false,
+    string? TutorLiabilityResolution = null);
+
+public record CancelLessonRequest(string? Reason = null);
+
+public record MarkTutorNoShowRequest(string? Notes = null);
+
+public record ResolveTutorLiabilityRequest(string Resolution); // reschedule | refund
+
+public record SetAttendanceRequest(Guid StudentId, bool IsPresent, string? Notes = null);
+
+public record LessonAttendanceDto(
+    Guid StudentId,
+    string StudentName,
+    bool IsPresent,
+    string? Notes);

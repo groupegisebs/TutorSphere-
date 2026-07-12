@@ -1,6 +1,7 @@
 @page "/student/calendar"
 @layout StudentLayout
 @rendermode InteractiveServer
+@implements IDisposable
 @using TutorSphere.Application.DTOs.Lessons
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
@@ -104,15 +105,16 @@
                             }
                             @foreach (var evt in GetEventsForDay(date))
                             {
-                                <div class="cal-event cal-event--online"
-                                     style="top:@(evt.TopPx)px;height:@(Math.Max(evt.HeightPx, 26))px;left:4px;right:4px;">
+                                <a class="cal-event cal-event--online"
+                                   href="@evt.Href"
+                                   style="top:@(evt.TopPx)px;height:@(Math.Max(evt.HeightPx, 26))px;left:4px;right:4px;text-decoration:none;color:inherit;">
                                     <span class="cal-event-time">@evt.TimeLabel</span>
                                     <strong class="cal-event-title">@evt.Title</strong>
                                     @if (!string.IsNullOrEmpty(evt.Subject))
                                     {
                                         <span class="cal-event-sub">@evt.Subject</span>
                                     }
-                                </div>
+                                </a>
                             }
                             @if (isToday && NowTopPx is { } nowTop)
                             {
@@ -152,9 +154,10 @@
     {
         public string Title   = "";
         public string Subject = "";
+        public string Href    = "#";
         private readonly int _h, _m, _dur;
-        public CalEvent(string title, string subject, int h, int m, int dur)
-        { Title = title; Subject = subject; _h = h; _m = m; _dur = dur; }
+        public CalEvent(string title, string subject, int h, int m, int dur, string href)
+        { Title = title; Subject = subject; _h = h; _m = m; _dur = dur; Href = href; }
         public int TopPx    => (_h - CalStartH) * HourPx + (int)(_m / 60.0 * HourPx);
         public int HeightPx => (int)(_dur / 60.0 * HourPx);
         public string TimeLabel
@@ -185,7 +188,10 @@
                     ? l.EndTime.ToLocalTime()
                     : DateTime.SpecifyKind(l.EndTime, DateTimeKind.Local);
                 var dur = Math.Max(15, (int)(endLocal - local).TotalMinutes);
-                return new CalEvent(l.Title, l.Subject ?? "", local.Hour, local.Minute, dur);
+                var href = !string.IsNullOrWhiteSpace(l.MeetingUrl)
+                    ? l.MeetingUrl!
+                    : $"/student/classroom/{l.Id}?title={Uri.EscapeDataString(l.Title)}&subject={Uri.EscapeDataString(l.Subject ?? "")}";
+                return new CalEvent(l.Title, l.Subject ?? "", local.Hour, local.Minute, dur, href);
             });
 
     private IEnumerable<CalEvent> GetWeekEvents()
@@ -222,6 +228,7 @@
     }
 
     private bool _initialLoadDone;
+    private System.Threading.Timer? _refreshTimer;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -232,8 +239,18 @@
         GoToToday();
         await Auth.EnsureSessionRestoredAsync(forceJs: true);
         await LoadLessonsAsync();
+        _refreshTimer = new System.Threading.Timer(async _ =>
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadLessonsAsync();
+                StateHasChanged();
+            });
+        }, null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
         StateHasChanged();
     }
+
+    public void Dispose() => _refreshTimer?.Dispose();
 
     private async Task LoadLessonsAsync()
     {

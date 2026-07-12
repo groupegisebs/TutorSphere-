@@ -90,4 +90,77 @@ public class LessonsController : ControllerBase
             return BadRequest(new { error = ex.Message });
         }
     }
+
+    /// <summary>Annulation : ≥24h = non comptée ; sinon validée (comptée).</summary>
+    [HttpPost("{id:guid}/cancel")]
+    public async Task<ActionResult<LessonDto>> Cancel(Guid id, [FromBody] CancelLessonRequest? request, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _lessonService.CancelAsync(id, request ?? new CancelLessonRequest(), ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>Moniteur absent → séance non comptée, moniteur imputable (replanifier / rembourser).</summary>
+    [HttpPost("{id:guid}/tutor-no-show")]
+    public async Task<ActionResult<LessonDto>> TutorNoShow(Guid id, [FromBody] MarkTutorNoShowRequest? request, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _lessonService.MarkTutorNoShowAsync(id, request ?? new MarkTutorNoShowRequest(), ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("{id:guid}/resolve-liability")]
+    public async Task<ActionResult<LessonDto>> ResolveLiability(
+        Guid id,
+        [FromBody] ResolveTutorLiabilityRequest request,
+        CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _lessonService.ResolveTutorLiabilityAsync(id, request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpGet("{id:guid}/attendances")]
+    public async Task<ActionResult<IReadOnlyList<LessonAttendanceDto>>> Attendances(Guid id, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _lessonService.GetAttendancesAsync(id, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPut("{id:guid}/attendances")]
+    public async Task<ActionResult<LessonAttendanceDto>> SetAttendance(
+        Guid id,
+        [FromBody] SetAttendanceRequest request,
+        CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _lessonService.SetAttendanceAsync(id, request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
 }
