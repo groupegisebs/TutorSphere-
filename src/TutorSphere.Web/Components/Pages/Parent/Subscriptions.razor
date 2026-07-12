@@ -1,19 +1,20 @@
 @page "/parent/subscriptions"
 @layout ParentLayout
 @rendermode InteractiveServer
+@using System.Globalization
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
 @inject NavigationManager Navigation
 
-<PageTitle>Mes Abonnements – TutorSphere</PageTitle>
+<PageTitle>@L["ParentSubs_PageTitle"]</PageTitle>
 
 <div class="ts-page-header">
     <div>
-        <h1><i class="bi bi-arrow-repeat me-2"></i>Mes Abonnements</h1>
-        <p class="ts-page-subtitle">Gérez les abonnements de vos enfants</p>
+        <h1><i class="bi bi-arrow-repeat me-2"></i>@L["Parent_Subscriptions_Title"]</h1>
+        <p class="ts-page-subtitle">@L["ParentSubs_Subtitle"]</p>
     </div>
     <a class="btn btn-primary" href="/parent/search">
-        <i class="bi bi-binoculars me-1"></i>Trouver un enseignant
+        <i class="bi bi-binoculars me-1"></i>@L["Nav_FindTutor"]
     </a>
 </div>
 
@@ -26,95 +27,114 @@
 {
     <div class="d-flex align-items-center justify-content-center py-5">
         <span class="spinner-border text-primary me-3" role="status"></span>
-        <span class="text-muted">Chargement des abonnements…</span>
+        <span class="text-muted">@L["ParentSubs_Loading"]</span>
     </div>
 }
 else if (!string.IsNullOrEmpty(_error))
 {
     <div class="alert alert-danger"><i class="bi bi-exclamation-circle me-2"></i>@_error</div>
 }
-else if (_subs.Count == 0)
-{
-    <div class="text-center py-5 text-muted">
-        <i class="bi bi-arrow-repeat fs-1 d-block mb-3 opacity-50"></i>
-        <p>Aucun abonnement pour le moment.</p>
-        <a class="btn btn-outline-primary mt-2" href="/parent/search">Rechercher un enseignant</a>
-    </div>
-}
 else
 {
-    @foreach (var sub in _subs)
-    {
-        var statusBadge = sub.Status switch
-        {
-            "Active" => "ts-badge-success",
-            "Pending" => "ts-badge-warning",
-            "Paused" => "ts-badge-warning",
-            _ => "ts-badge-danger"
-        };
-        var statusLabel = sub.Status switch
-        {
-            "Active" => "Actif",
-            "Pending" => "En attente de paiement",
-            "Paused" => "En pause",
-            "Cancelled" => "Annulé",
-            "Expired" => "Expiré",
-            _ => sub.Status
-        };
+    <div class="ts-tabs-bar mb-3">
+        <button type="button" class="ts-tab @(_tab == "pending" ? "active" : "")" @onclick='() => _tab = "pending"'>
+            @L["ParentSubs_TabPending"]
+            <span class="ts-tab-count">@CountFor("pending")</span>
+        </button>
+        <button type="button" class="ts-tab @(_tab == "active" ? "active" : "")" @onclick='() => _tab = "active"'>
+            @L["ParentSubs_TabActive"]
+            <span class="ts-tab-count">@CountFor("active")</span>
+        </button>
+        <button type="button" class="ts-tab @(_tab == "cancelled" ? "active" : "")" @onclick='() => _tab = "cancelled"'>
+            @L["ParentSubs_TabCancelled"]
+            <span class="ts-tab-count">@CountFor("cancelled")</span>
+        </button>
+        <button type="button" class="ts-tab @(_tab == "history" ? "active" : "")" @onclick='() => _tab = "history"'>
+            @L["ParentSubs_TabHistory"]
+            <span class="ts-tab-count">@CountFor("history")</span>
+        </button>
+    </div>
 
-        <div class="section-card mb-3">
-            <div class="d-flex align-items-center gap-3 p-3" style="border-bottom:1px solid var(--ts-border)">
-                <div class="ts-avatar" style="background:#7c3aed">@Initials(sub.StudentName)</div>
-                <div>
-                    <strong>@sub.OfferingTitle</strong>
-                    <span class="text-muted d-block small">
-                        @sub.StudentName
-                        @if (!string.IsNullOrWhiteSpace(sub.Subject))
-                        {
-                            <text> · @sub.Subject</text>
-                        }
-                    </span>
-                </div>
-                <span class="ms-auto ts-badge @statusBadge">@statusLabel</span>
-            </div>
-            <div class="row g-0">
-                <div class="col-6 col-md-3 p-3" style="border-right:1px solid var(--ts-border)">
-                    <div class="ts-kpi-label">Période</div>
-                    <strong>@sub.StartDate.ToString("dd/MM") – @sub.EndDate.ToString("dd/MM/yyyy")</strong>
-                </div>
-                <div class="col-6 col-md-3 p-3" style="border-right:1px solid var(--ts-border)">
-                    <div class="ts-kpi-label">Séances restantes</div>
-                    <strong>@sub.SessionsRemaining</strong>
-                </div>
-                <div class="col-6 col-md-3 p-3" style="border-right:1px solid var(--ts-border)">
-                    <div class="ts-kpi-label">Prix</div>
-                    <strong>@sub.Price.ToString("N2") @sub.Currency</strong>
-                </div>
-                <div class="col-6 col-md-3 p-3 d-flex align-items-center justify-content-end gap-2">
-                    @if (sub.Status is "Active" or "Pending")
-                    {
-                        <button class="btn btn-outline-danger btn-sm"
-                                disabled="@(_cancelling == sub.Id)"
-                                @onclick="async () => await CancelAsync(sub.Id)">
-                            @if (_cancelling == sub.Id)
+    <div class="ts-table-card parent-subs-table-wrap">
+        <table class="table ts-table parent-subs-table">
+            <thead>
+                <tr>
+                    <th>@L["ParentSubs_ColOffer"]</th>
+                    <th>@L["Common_Student"]</th>
+                    <th>@L["Common_Subject"]</th>
+                    <th>@L["ParentSubs_ColPeriod"]</th>
+                    <th>@L["ParentSubs_ColSessions"]</th>
+                    <th>@L["Common_Amount"]</th>
+                    <th>@L["Common_Status"]</th>
+                    <th class="text-end">@L["Common_Actions"]</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var sub in FilteredSubs)
+                {
+                    <tr>
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="ts-avatar ts-avatar-sm" style="background:#7c3aed">@Initials(sub.StudentName)</div>
+                                <strong>@sub.OfferingTitle</strong>
+                            </div>
+                        </td>
+                        <td>@sub.StudentName</td>
+                        <td>@(string.IsNullOrWhiteSpace(sub.Subject) ? "—" : sub.Subject)</td>
+                        <td class="text-nowrap">@FormatPeriod(sub.StartDate, sub.EndDate)</td>
+                        <td>@sub.SessionsRemaining</td>
+                        <td class="fw-semibold text-nowrap">@sub.Price.ToString("N2", CultureInfo.CurrentCulture) @sub.Currency</td>
+                        <td><span class="ts-badge @StatusBadge(sub.Status)">@StatusLabel(sub.Status)</span></td>
+                        <td class="text-end">
+                            <div class="d-inline-flex align-items-center justify-content-end gap-2 flex-wrap">
+                                @if (sub.Status is "Active" or "Pending" or "Paused")
+                                {
+                                    <button type="button"
+                                            class="btn btn-outline-danger btn-sm"
+                                            disabled="@(_cancelling == sub.Id)"
+                                            @onclick="async () => await CancelAsync(sub.Id)">
+                                        @if (_cancelling == sub.Id)
+                                        {
+                                            <span class="spinner-border spinner-border-sm me-1"></span>
+                                        }
+                                        @L["ParentSubs_Cancel"]
+                                    </button>
+                                }
+                                @if (sub.Status == "Pending")
+                                {
+                                    <button type="button"
+                                            class="btn btn-primary btn-sm"
+                                            disabled="@(_paying == sub.Id)"
+                                            @onclick="async () => await PayAsync(sub)">
+                                        @if (_paying == sub.Id)
+                                        {
+                                            <span class="spinner-border spinner-border-sm me-1"></span>
+                                        }
+                                        @L["ParentSubs_Pay"]
+                                    </button>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+                @if (!FilteredSubs.Any())
+                {
+                    <tr>
+                        <td colspan="8" class="text-center py-5">
+                            <div class="text-muted mb-3">
+                                <i class="bi bi-inbox fs-2 d-block mb-2 opacity-50"></i>
+                                @EmptyMessage
+                            </div>
+                            @if (_tab is "pending" or "active")
                             {
-                                <span class="spinner-border spinner-border-sm me-1"></span>
+                                <a class="btn btn-outline-primary btn-sm" href="/parent/search">@L["Nav_FindTutor"]</a>
                             }
-                            Résilier
-                        </button>
-                    }
-                    @if (sub.Status == "Pending")
-                    {
-                        <button class="btn btn-primary btn-sm"
-                                disabled="@(_paying == sub.Id)"
-                                @onclick="async () => await PayAsync(sub)">
-                            Payer
-                        </button>
-                    }
-                </div>
-            </div>
-        </div>
-    }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
 }
 
 @code {
@@ -125,35 +145,98 @@ else
     private string? _banner;
     private Guid? _cancelling;
     private Guid? _paying;
+    private string _tab = "pending";
     private List<SubVm> _subs = [];
+
+    private IEnumerable<SubVm> FilteredSubs => _subs.Where(s => MatchesTab(s.Status, _tab));
+
+    private string EmptyMessage => _tab switch
+    {
+        "pending" => L["ParentSubs_EmptyPending"],
+        "active" => L["ParentSubs_EmptyActive"],
+        "cancelled" => L["ParentSubs_EmptyCancelled"],
+        _ => L["ParentSubs_EmptyHistory"]
+    };
 
     protected override async Task OnInitializedAsync()
     {
         var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
         var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
         if (query.ContainsKey("paid") || query.ContainsKey("created"))
-            _banner = "Abonnement enregistré. Vous pouvez suivre son statut ci-dessous.";
+            _banner = L["ParentSubs_BannerSaved"];
+        if (query.ContainsKey("canceled"))
+            _banner = L["ParentSubs_BannerCanceled"];
 
         try
         {
             var result = await Api.GetAsync<List<SubVm>>("api/parent/subscriptions");
             _subs = result ?? [];
+            _tab = PickDefaultTab();
         }
         catch (Exception ex)
         {
-            _error = $"Impossible de charger les abonnements : {ex.Message}";
+            _error = string.Format(L["ParentSubs_LoadError"], ex.Message);
         }
         finally { _loading = false; }
+    }
+
+    private string PickDefaultTab()
+    {
+        if (CountFor("pending") > 0) return "pending";
+        if (CountFor("active") > 0) return "active";
+        if (CountFor("cancelled") > 0) return "cancelled";
+        return "history";
+    }
+
+    private static bool MatchesTab(string status, string tab) => tab switch
+    {
+        "pending" => status is "Pending",
+        "active" => status is "Active" or "Paused",
+        "cancelled" => status is "Cancelled",
+        "history" => status is "Expired" or "Completed",
+        _ => false
+    };
+
+    private int CountFor(string tab) => _subs.Count(s => MatchesTab(s.Status, tab));
+
+    private string StatusLabel(string status) => status switch
+    {
+        "Active" => L["Common_Active"],
+        "Pending" => L["ParentSubs_StatusPendingPayment"],
+        "Paused" => L["ParentSubs_StatusPaused"],
+        "Cancelled" => L["Common_Cancelled"],
+        "Expired" => L["ParentSubs_StatusExpired"],
+        "Completed" => L["Common_Completed"],
+        _ => status
+    };
+
+    private static string StatusBadge(string status) => status switch
+    {
+        "Active" => "ts-badge-success",
+        "Pending" or "Paused" => "ts-badge-warning",
+        "Completed" => "ts-badge-success",
+        _ => "ts-badge-danger"
+    };
+
+    private static string FormatPeriod(DateTime start, DateTime end)
+    {
+        var culture = CultureInfo.CurrentCulture;
+        return $"{start.ToString("d", culture)} – {end.ToString("d", culture)}";
     }
 
     private async Task CancelAsync(Guid id)
     {
         _cancelling = id;
+        _error = null;
         try
         {
             var result = await Api.PostWithErrorAsync<object>($"api/parent/subscriptions/{id}/cancel", new { });
             if (result.Error is null)
+            {
                 _subs = _subs.Select(s => s.Id == id ? s with { Status = "Cancelled" } : s).ToList();
+                if (!FilteredSubs.Any() && CountFor("cancelled") > 0)
+                    _tab = "cancelled";
+            }
             else
                 _error = result.Error;
         }
@@ -163,6 +246,7 @@ else
     private async Task PayAsync(SubVm sub)
     {
         _paying = sub.Id;
+        _error = null;
         try
         {
             var baseUri = Navigation.BaseUri.TrimEnd('/');
@@ -177,7 +261,7 @@ else
             if (!string.IsNullOrWhiteSpace(checkout.Value?.CheckoutUrl))
                 await JS.InvokeVoidAsync("open", checkout.Value.CheckoutUrl, "_self");
             else
-                _error = checkout.Error ?? "Paiement indisponible pour le moment.";
+                _error = checkout.Error ?? L["ParentSubs_PayUnavailable"];
         }
         finally { _paying = null; }
     }

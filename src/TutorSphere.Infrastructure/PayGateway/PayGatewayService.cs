@@ -41,15 +41,29 @@ internal sealed class PayGatewayService : IPaymentGatewayService
         var parent = await _db.ParentProfilesForAnyTenant.FirstOrDefaultAsync(p => p.Id == parentProfileId, ct)
             ?? throw new InvalidOperationException("Profil parent introuvable.");
 
-        var customerCode = parent.StripeCustomerId ?? parent.Id.ToString("N").ToUpperInvariant();
-        if (string.IsNullOrEmpty(parent.StripeCustomerId))
+        // Code stable (Live). En sandbox, préfixe SBX- pour éviter de réutiliser un cus_… Live
+        // stocké côté Pay Gateway (objets Stripe séparés entre test et live).
+        var stableCode = parent.StripeCustomerId is { Length: > 0 } existing
+            && !existing.StartsWith("SBX-", StringComparison.OrdinalIgnoreCase)
+            ? existing
+            : parent.Id.ToString("N").ToUpperInvariant();
+
+        if (string.IsNullOrEmpty(parent.StripeCustomerId)
+            || parent.StripeCustomerId.StartsWith("SBX-", StringComparison.OrdinalIgnoreCase))
         {
-            parent.StripeCustomerId = customerCode;
+            parent.StripeCustomerId = stableCode;
             await _db.SaveChangesAsync(ct);
         }
 
+        var customerCode = _gateway.UsesSandbox
+            ? TruncateCustomerCode($"SBX-{stableCode}")
+            : stableCode;
+
         return new ParentCustomerResponse(parent.Id, customerCode);
     }
+
+    private static string TruncateCustomerCode(string code) =>
+        code.Length <= 50 ? code : code[..50];
 
     public async Task<SubscriptionCheckoutResponse> CreateSubscriptionCheckoutAsync(
         Guid subscriptionId,

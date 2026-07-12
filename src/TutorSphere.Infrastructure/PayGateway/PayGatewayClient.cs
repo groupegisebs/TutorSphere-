@@ -118,6 +118,9 @@ internal sealed class PayGatewayClient
         return await _http.SendAsync(request, ct);
     }
 
+    /// <summary>True si les requêtes utilisent le bac à sable Stripe (X-Stripe-Env: DEV).</summary>
+    public bool UsesSandbox => ShouldUseSandbox();
+
     /// <summary>
     /// Development / Staging → sandbox ; Production → Live.
     /// Override explicite via <see cref="PayGatewaySettings.UseSandbox"/>.
