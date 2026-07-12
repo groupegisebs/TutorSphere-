@@ -7,20 +7,20 @@
 @inject ApiClient Api
 @inject AuthService Auth
 
-<PageTitle>Mon Profil – TutorSphere</PageTitle>
+<PageTitle>@L["Profile_Title"] – TutorSphere</PageTitle>
 
 <div class="ts-page-header">
     <div>
-        <h1><i class="bi bi-person-badge me-2"></i>Mon Profil</h1>
-        <p class="ts-page-subtitle">Vos informations personnelles (distinctes du nom de l’école)</p>
+        <h1><i class="bi bi-person-badge me-2"></i>@L["Profile_Title"]</h1>
+        <p class="ts-page-subtitle">@L["Profile_Subtitle"]</p>
     </div>
     <div class="d-flex gap-2">
         <a href="/tutor/school" class="btn btn-outline-secondary btn-sm">
-            <i class="bi bi-building me-1"></i>Mon école
+            <i class="bi bi-building me-1"></i>@L["Profile_MySchool"]
         </a>
         <button class="btn btn-primary" @onclick="SaveProfile" disabled="@_saving">
             @if (_saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
-            Enregistrer
+            @L["Common_Save"]
         </button>
     </div>
 </div>
@@ -34,7 +34,7 @@
 @if (_saved)
 {
     <div class="alert alert-success mb-4">
-        <i class="bi bi-check-circle me-2"></i>Profil mis à jour avec succès.
+        <i class="bi bi-check-circle me-2"></i>@L["Profile_Updated"]
     </div>
 }
 
@@ -53,11 +53,11 @@
                 @if (_photoDataUrl == null) { <text>@(_p.FirstName.Length > 0 ? _p.FirstName[0].ToString() : "")@(_p.LastName.Length > 0 ? _p.LastName[0].ToString() : "")</text> }
             </div>
             <label class="btn btn-outline-secondary btn-sm w-100 mt-2" style="cursor:pointer;margin:0">
-                <i class="bi bi-camera me-1"></i>Changer la photo
+                <i class="bi bi-camera me-1"></i>@L["Profile_ChangePhoto"]
                 <InputFile OnChange="HandlePhotoChange" accept="image/*" style="display:none" />
             </label>
             <div class="profile-status mt-3">
-                <label class="form-label">Statut</label>
+                <label class="form-label">@L["Profile_Status"]</label>
                 <select class="form-select form-select-sm" @bind="_p.Status">
                     <option>Disponible</option><option>Complet</option><option>Inactif</option>
                 </select>
@@ -65,18 +65,18 @@
         </div>
         <div class="profile-info-card">
             <div class="row g-3">
-                <div class="col-6"><label class="form-label">Prénom *</label>
+                <div class="col-6"><label class="form-label">@L["Common_FirstName"] *</label>
                     <input class="form-control" @bind="_p.FirstName" /></div>
-                <div class="col-6"><label class="form-label">Nom *</label>
+                <div class="col-6"><label class="form-label">@L["Common_LastName"] *</label>
                     <input class="form-control" @bind="_p.LastName" /></div>
-                <div class="col-12"><label class="form-label">Biographie courte</label>
+                <div class="col-12"><label class="form-label">@L["Profile_Bio"]</label>
                     <textarea class="form-control" rows="3" @bind="_p.Bio"
-                        placeholder="Décrivez votre approche pédagogique…"></textarea></div>
-                <div class="col-md-4"><label class="form-label">Années d'expérience</label>
+                        placeholder="@L["Profile_BioPlaceholder"]"></textarea></div>
+                <div class="col-md-4"><label class="form-label">@L["Profile_YearsExp"]</label>
                     <input type="number" class="form-control" @bind="_p.YearsExperience" /></div>
-                <div class="col-md-4"><label class="form-label">Tarif horaire ($/h)</label>
+                <div class="col-md-4"><label class="form-label">@L["Profile_HourlyRate"]</label>
                     <input type="number" class="form-control" @bind="_p.HourlyRate" /></div>
-                <div class="col-md-4"><label class="form-label">Langues</label>
+                <div class="col-md-4"><label class="form-label">@L["Profile_Languages"]</label>
                     <input class="form-control" @bind="_p.Languages" placeholder="Français, Anglais" /></div>
                 <div class="col-12"><label class="form-label">Présentation complète (CV)</label>
                     <textarea class="form-control" rows="5" @bind="_p.FullBio"

@@ -5,19 +5,19 @@
 @inject ApiClient Api
 @inject AuthService Auth
 
-<PageTitle>Documents – TutorSphere</PageTitle>
+<PageTitle>@L["Documents_Title"] – TutorSphere</PageTitle>
 
 <div class="ts-page-header">
     <div>
-        <h1><i class="bi bi-folder2-open me-2"></i>Documents</h1>
-        <p class="ts-page-subtitle">Gérez et partagez vos fichiers pédagogiques</p>
+        <h1><i class="bi bi-folder2-open me-2"></i>@L["Documents_Title"]</h1>
+        <p class="ts-page-subtitle">@L["Documents_Subtitle"]</p>
     </div>
     <div class="d-flex gap-2">
         <button class="btn btn-outline-secondary" @onclick="NewFolder">
-            <i class="bi bi-folder-plus me-1"></i>Nouveau dossier
+            <i class="bi bi-folder-plus me-1"></i>@L["Documents_NewFolder"]
         </button>
         <button class="btn btn-primary" @onclick="() => _showUpload = true">
-            <i class="bi bi-cloud-upload me-1"></i>Téléverser
+            <i class="bi bi-cloud-upload me-1"></i>@L["Documents_Upload"]
         </button>
     </div>
 </div>
@@ -25,7 +25,7 @@
 <div class="docs-layout">
     <!-- Folder tree -->
     <aside class="docs-tree">
-        <div class="docs-tree-header">Mes dossiers</div>
+        <div class="docs-tree-header">@L["Documents_MyFolders"]</div>
         @foreach (var folder in _folders)
         {
             <div class="docs-tree-item @(_selectedFolder == folder ? "active" : "")"
@@ -37,11 +37,11 @@
         }
         <div class="docs-tree-item mt-2" style="opacity:0.6">
             <i class="bi bi-cloud me-2 text-primary"></i><span>Google Drive</span>
-            <span class="ms-auto ts-badge ts-badge-neutral" style="font-size:0.65rem">Bientôt</span>
+            <span class="ms-auto ts-badge ts-badge-neutral" style="font-size:0.65rem">@L["Documents_ComingSoon"]</span>
         </div>
         <div class="docs-tree-item" style="opacity:0.6">
             <i class="bi bi-dropbox me-2 text-primary"></i><span>Dropbox</span>
-            <span class="ms-auto ts-badge ts-badge-neutral" style="font-size:0.65rem">Bientôt</span>
+            <span class="ms-auto ts-badge ts-badge-neutral" style="font-size:0.65rem">@L["Documents_ComingSoon"]</span>
         </div>
     </aside>
 
@@ -50,7 +50,7 @@
         <!-- Breadcrumb & search -->
         <div class="docs-main-header">
             <span class="docs-breadcrumb">
-                <i class="bi bi-house me-1"></i>Mes Documents
+                <i class="bi bi-house me-1"></i>@L["Documents_MyDocs"]
                 @if (_selectedFolder != null)
                 {
                     <span class="mx-1 text-muted">/</span>
@@ -59,14 +59,14 @@
             </span>
             <div class="ts-search-box" style="max-width:260px">
                 <i class="bi bi-search ts-search-icon"></i>
-                <input class="form-control form-control-sm" placeholder="Rechercher…"
+                <input class="form-control form-control-sm" placeholder="@L["Documents_Search"]"
                        @bind="_search" @bind:event="oninput" />
             </div>
         </div>
 
         <!-- View toggle -->
         <div class="docs-view-bar">
-            <span class="text-muted small">@FilteredFiles.Count() fichier(s)</span>
+            <span class="text-muted small">@string.Format(L["Documents_FilesCount"].Value, FilteredFiles.Count())</span>
             <div class="ms-auto d-flex gap-1">
                 <button class="ts-icon-btn @(_viewGrid ? "active" : "")" @onclick='() => _viewGrid = true'>
                     <i class="bi bi-grid-3x3-gap"></i>
@@ -89,9 +89,9 @@
                         <div class="doc-card-name" title="@f.Name">@f.Name</div>
                         <div class="doc-card-meta">@f.Size · @f.Modified</div>
                         <div class="doc-card-actions">
-                            <button class="ts-icon-btn" title="Télécharger"><i class="bi bi-download"></i></button>
-                            <button class="ts-icon-btn" title="Partager"><i class="bi bi-share"></i></button>
-                            <button class="ts-icon-btn ts-icon-btn--danger" title="Supprimer"
+                            <button class="ts-icon-btn" title="@L["Common_Download"]"><i class="bi bi-download"></i></button>
+                            <button class="ts-icon-btn" title="@L["Common_Share"]"><i class="bi bi-share"></i></button>
+                            <button class="ts-icon-btn ts-icon-btn--danger" title="@L["Common_Delete"]"
                                     @onclick:stopPropagation="true"
                                     @onclick="async () => await DeleteFile(f)">
                                 <i class="bi bi-trash"></i>
@@ -106,7 +106,14 @@
             <div class="ts-table-card">
                 <table class="table ts-table">
                     <thead>
-                        <tr><th>Nom</th><th>Type</th><th>Taille</th><th>Modifié</th><th>Partagé avec</th><th></th></tr>
+                        <tr>
+                            <th>@L["Documents_Name"]</th>
+                            <th>@L["Documents_Type"]</th>
+                            <th>@L["Documents_Size"]</th>
+                            <th>@L["Documents_Modified"]</th>
+                            <th>@L["Documents_SharedWith"]</th>
+                            <th></th>
+                        </tr>
                     </thead>
                     <tbody>
                         @foreach (var f in FilteredFiles)
@@ -129,9 +136,9 @@
                                 </td>
                                 <td>
                                     <div class="ts-action-group">
-                                        <button class="ts-icon-btn" title="Télécharger"><i class="bi bi-download"></i></button>
-                                        <button class="ts-icon-btn" title="Partager"><i class="bi bi-share"></i></button>
-                                        <button class="ts-icon-btn ts-icon-btn--danger" title="Supprimer"
+                                        <button class="ts-icon-btn" title="@L["Common_Download"]"><i class="bi bi-download"></i></button>
+                                        <button class="ts-icon-btn" title="@L["Common_Share"]"><i class="bi bi-share"></i></button>
+                                        <button class="ts-icon-btn ts-icon-btn--danger" title="@L["Common_Delete"]"
                                                 @onclick="async () => await DeleteFile(f)">
                                             <i class="bi bi-trash"></i>
                                         </button>
@@ -152,16 +159,16 @@
     <div class="ts-modal-backdrop" @onclick="() => _showUpload = false">
         <div class="ts-modal" @onclick:stopPropagation="true">
             <div class="ts-modal-header">
-                <h2>Téléverser des fichiers</h2>
+                <h2>@L["Documents_UploadFiles"]</h2>
                 <button class="ts-modal-close" @onclick="() => _showUpload = false"><i class="bi bi-x-lg"></i></button>
             </div>
             <div class="ts-modal-body">
                 <div class="doc-upload-zone">
                     <i class="bi bi-cloud-arrow-up doc-upload-icon"></i>
-                    <p>Glissez vos fichiers ici</p>
-                    <small class="text-muted">PDF, Word, Excel, PowerPoint, Images — max 50 Mo</small>
+                    <p>@L["Documents_DropHere"]</p>
+                    <small class="text-muted">@L["Documents_Formats"]</small>
                     <label class="btn btn-outline-primary btn-sm mt-2" style="cursor:pointer;margin:0">
-                        Parcourir
+                        @L["Documents_Browse"]
                         <InputFile OnChange="HandleUploadFileSelection" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png" style="display:none" />
                     </label>
                     @if (_pendingUploadFiles.Count > 0)
@@ -176,7 +183,7 @@
                 </div>
                 <div class="row g-3 mt-3">
                     <div class="col-12">
-                        <label class="form-label">Dossier destination</label>
+                        <label class="form-label">@L["Documents_DestFolder"]</label>
                         <select class="form-select" @bind="_uploadFolder">
                             @foreach (var folder in _folders)
                             {
@@ -185,7 +192,7 @@
                         </select>
                     </div>
                     <div class="col-12">
-                        <label class="form-label">Partager avec (optionnel)</label>
+                        <label class="form-label">@L["Documents_ShareOptional"]</label>
                         <div class="d-flex flex-wrap gap-2">
                             @foreach (var s in _shareChoices)
                             {
@@ -200,10 +207,10 @@
                 </div>
             </div>
             <div class="ts-modal-footer">
-                <button class="btn btn-outline-secondary" @onclick="() => _showUpload = false">Annuler</button>
+                <button class="btn btn-outline-secondary" @onclick="() => _showUpload = false">@L["Common_Cancel"]</button>
                 <button class="btn btn-primary" @onclick="UploadFiles" disabled="@_uploading">
                     @if (_uploading) { <span class="spinner-border spinner-border-sm me-1"></span> }
-                    Téléverser
+                    @L["Documents_Upload"]
                 </button>
             </div>
         </div>
@@ -278,7 +285,7 @@
 
     private void NewFolder()
     {
-        var n = $"Nouveau dossier {_folders.Count + 1}";
+        var n = $"{L["Documents_NewFolder"]} {_folders.Count + 1}";
         _folders.Add(new DocFolder { Name = n, FileCount = 0 });
     }
 

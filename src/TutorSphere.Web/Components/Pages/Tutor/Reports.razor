@@ -11,37 +11,37 @@
     <!-- ── Write/View Report form ── -->
     <div class="ts-page-header">
         <div>
-            <h1><i class="bi bi-file-earmark-text me-2"></i>@(_viewReport != null ? "Rapport de séance" : "Nouveau rapport")</h1>
+            <h1><i class="bi bi-file-earmark-text me-2"></i>@(_viewReport != null ? L["Reports_SessionReport"] : L["Reports_NewReport"])</h1>
         </div>
         <button class="btn btn-outline-secondary" @onclick="() => { _showForm=false; _viewReport=null; }">
-            <i class="bi bi-arrow-left me-1"></i>Retour
+            <i class="bi bi-arrow-left me-1"></i>@L["Reports_Back"]
         </button>
     </div>
     <div class="report-form-card">
         <div class="row g-4">
             <div class="col-md-6">
-                <label class="form-label">Élève *</label>
+                <label class="form-label">@L["Common_Student"] *</label>
                 <select class="form-select" @bind="_rf.Student" disabled="@(_viewReport!=null)">
-                    <option value="">— Choisir —</option>
-                    <option value="">Tous les élèves</option>
+                    <option value="">@L["Common_Choose"]</option>
+                    <option value="">@L["Common_All"]</option>
                     <option>Sophia Davis</option><option>Olivia Martinez</option>
                 </select>
             </div>
             <div class="col-md-6">
-                <label class="form-label">Matière</label>
+                <label class="form-label">@L["Common_Subject"]</label>
                 <input class="form-control" @bind="_rf.Subject" disabled="@(_viewReport!=null)" />
             </div>
             <div class="col-md-6">
-                <label class="form-label">Date de la séance</label>
+                <label class="form-label">@L["Reports_SessionDate"]</label>
                 <input type="date" class="form-control" @bind="_rf.SessionDate" disabled="@(_viewReport!=null)" />
             </div>
             <div class="col-md-6">
-                <label class="form-label">Durée (h)</label>
+                <label class="form-label">@L["Reports_Duration"]</label>
                 <input type="number" step="0.5" class="form-control" @bind="_rf.Duration" disabled="@(_viewReport!=null)" />
             </div>
         </div>
 
-        <div class="report-section-title mt-4">Évaluation de la séance</div>
+        <div class="report-section-title mt-4">@L["Reports_Evaluation"]</div>
         <div class="report-rating-grid">
             @foreach (var item in _rf.Ratings)
             {
@@ -63,16 +63,16 @@
             }
         </div>
 
-        <div class="report-section-title mt-4">Contenu de la séance</div>
+        <div class="report-section-title mt-4">@L["Reports_Content"]</div>
         <div class="row g-3">
             <div class="col-12">
-                <label class="form-label">Travail effectué *</label>
+                <label class="form-label">@L["Reports_WorkDone"] *</label>
                 <textarea class="form-control" rows="3" @bind="_rf.WorkDone"
                     disabled="@(_viewReport!=null)"
                     placeholder="Décrivez les exercices, chapitres, notions abordées…"></textarea>
             </div>
             <div class="col-md-6">
-                <label class="form-label">Points forts</label>
+                <label class="form-label">@L["Reports_Strengths"]</label>
                 <textarea class="form-control" rows="2" @bind="_rf.Strengths"
                     disabled="@(_viewReport!=null)"
                     placeholder="Ce que l'élève maîtrise bien…"></textarea>
@@ -100,10 +100,10 @@
         @if (_viewReport == null)
         {
             <div class="d-flex gap-2 mt-4">
-                <button class="btn btn-outline-secondary" @onclick="()=>_showForm=false">Annuler</button>
-                <button class="btn btn-outline-primary" @onclick="async () => await SaveDraft()">Sauvegarder brouillon</button>
+                <button class="btn btn-outline-secondary" @onclick="()=>_showForm=false">@L["Common_Cancel"]</button>
+                <button class="btn btn-outline-primary" @onclick="async () => await SaveDraft()">@L["Reports_SaveDraft"]</button>
                 <button class="btn btn-primary ms-auto" @onclick="async () => await SendReport()">
-                    <i class="bi bi-send me-1"></i>Envoyer aux parents
+                    <i class="bi bi-send me-1"></i>@L["Reports_SendToParents"]
                 </button>
             </div>
         }
@@ -114,22 +114,22 @@ else
     <!-- ── Reports list ── -->
     <div class="ts-page-header">
         <div>
-            <h1><i class="bi bi-file-earmark-bar-graph me-2"></i>Rapports de séance</h1>
-            <p class="ts-page-subtitle">@_reports.Count rapport(s) au total</p>
+            <h1><i class="bi bi-file-earmark-bar-graph me-2"></i>@L["Reports_Title"]</h1>
+            <p class="ts-page-subtitle">@L["Reports_Subtitle"]</p>
         </div>
         <button class="btn btn-primary" @onclick="NewReport">
-            <i class="bi bi-plus-lg me-1"></i>Rédiger un rapport
+            <i class="bi bi-plus-lg me-1"></i>@L["Reports_Write"]
         </button>
     </div>
 
     <div class="ts-toolbar">
         <div class="ts-search-box">
             <i class="bi bi-search ts-search-icon"></i>
-            <input class="form-control" placeholder="Chercher un rapport…"
+            <input class="form-control" placeholder="@L["Reports_Search"]"
                    @bind="_search" @bind:event="oninput" />
         </div>
         <select class="form-select w-auto" @bind="_filterSent">
-            <option value="">Tous</option>
+            <option value="">@L["Common_All"]</option>
             <option value="sent">Envoyés</option>
             <option value="draft">Brouillons</option>
         </select>
@@ -140,7 +140,7 @@ else
         {
             <div class="ts-loading-state">
                 <div class="spinner-border text-primary" role="status"></div>
-                <span class="ms-3 text-muted">Chargement…</span>
+                <span class="ms-3 text-muted">@L["Common_Loading"]</span>
             </div>
         }
         else if (!string.IsNullOrEmpty(_error))
@@ -153,7 +153,13 @@ else
         {
             <table class="table ts-table">
                 <thead>
-                    <tr><th>Date</th><th>Élève</th><th>Matière</th><th>Statut</th><th>Actions</th></tr>
+                    <tr>
+                        <th>@L["Common_Date"]</th>
+                        <th>@L["Common_Student"]</th>
+                        <th>@L["Common_Subject"]</th>
+                        <th>@L["Common_Status"]</th>
+                        <th>@L["Common_Actions"]</th>
+                    </tr>
                 </thead>
                 <tbody>
                     @foreach (var r in FilteredReports)

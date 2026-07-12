@@ -4,15 +4,15 @@
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
 
-<PageTitle>Abonnements – TutorSphere</PageTitle>
+<PageTitle>@L["TutorSubs_Title"] – TutorSphere</PageTitle>
 
 <div class="ts-page-header">
     <div>
-        <h1><i class="bi bi-arrow-repeat me-2"></i>Abonnements</h1>
-        <p class="ts-page-subtitle">Gérez vos plans et vos abonnés</p>
+        <h1><i class="bi bi-arrow-repeat me-2"></i>@L["TutorSubs_Title"]</h1>
+        <p class="ts-page-subtitle">@L["TutorSubs_Subtitle"]</p>
     </div>
     <button class="btn btn-primary" @onclick="()=>_showPlanModal=true">
-        <i class="bi bi-plus-lg me-1"></i>Créer un plan
+        <i class="bi bi-plus-lg me-1"></i>@L["TutorSubs_CreatePlan"]
     </button>
 </div>
 
@@ -21,25 +21,25 @@
     <div class="col-6 col-lg-3">
         <div class="ts-kpi-card ts-kpi-card--success">
             <span class="ts-kpi-val">@_subs.Count(s=>s.Status=="Actif")</span>
-            <span class="ts-kpi-label">Abonnements actifs</span>
+            <span class="ts-kpi-label">@L["TutorSubs_Active"]</span>
         </div>
     </div>
     <div class="col-6 col-lg-3">
         <div class="ts-kpi-card ts-kpi-card--warning">
             <span class="ts-kpi-val">@_subs.Count(s=>s.ExpiresAt <= DateTime.Today.AddDays(14) && s.Status=="Actif")</span>
-            <span class="ts-kpi-label">Expirent bientôt</span>
+            <span class="ts-kpi-label">@L["TutorSubs_ExpiringSoon"]</span>
         </div>
     </div>
     <div class="col-6 col-lg-3">
         <div class="ts-kpi-card">
             <span class="ts-kpi-val">@_subs.Where(s=>s.Status=="Actif").Sum(s=>s.Amount).ToString("N0") $</span>
-            <span class="ts-kpi-label">MRR (revenus récurrents)</span>
+            <span class="ts-kpi-label">@L["TutorSubs_MRR"]</span>
         </div>
     </div>
     <div class="col-6 col-lg-3">
         <div class="ts-kpi-card">
             <span class="ts-kpi-val">@((_subs.Count(s=>s.Status=="Actif") > 0 ? Math.Round(_subs.Where(s=>s.Status=="Actif").Average(s=>s.Amount),0) : 0).ToString("N0")) $</span>
-            <span class="ts-kpi-label">Montant moyen</span>
+            <span class="ts-kpi-label">@L["TutorSubs_AvgAmount"]</span>
         </div>
     </div>
 </div>
@@ -47,13 +47,13 @@
 <!-- Plans section -->
 <div class="section-card mb-4">
     <div class="section-card-header">
-        <h2>Mes plans</h2>
+        <h2>@L["TutorSubs_MyPlans"]</h2>
     </div>
     <div class="sub-plans-grid">
         @foreach (var plan in _plans)
         {
             <div class="sub-plan-card @(plan.Popular?"sub-plan-card--featured":"")">
-                @if (plan.Popular) { <div class="sub-plan-badge">Populaire</div> }
+                @if (plan.Popular) { <div class="sub-plan-badge">@L["TutorSubs_Popular"]</div> }
                 <h3>@plan.Name</h3>
                 <div class="sub-plan-price">
                     <span class="sub-plan-amount">@plan.Price $</span>
@@ -66,9 +66,9 @@
                     }
                 </ul>
                 <div class="sub-plan-footer">
-                    <span class="text-muted small">@_subs.Count(s=>s.PlanName==plan.Name&&s.Status=="Actif") abonné(s)</span>
+                    <span class="text-muted small">@string.Format(L["TutorSubs_Subscribers"].Value, _subs.Count(s=>s.PlanName==plan.Name&&s.Status=="Actif"))</span>
                     <div class="d-flex gap-1">
-                        <button class="ts-icon-btn" title="@(plan.IsActive ? "Désactiver" : "Activer")"
+                        <button class="ts-icon-btn" title="@(plan.IsActive ? L["TutorSubs_Deactivate"] : L["TutorSubs_Activate"])"
                                 @onclick="async () => await TogglePlan(plan)">
                             <i class="bi @(plan.IsActive ? "bi-toggle-on text-success" : "bi-toggle-off text-muted")"></i>
                         </button>
