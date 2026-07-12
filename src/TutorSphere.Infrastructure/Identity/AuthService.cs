@@ -194,6 +194,15 @@ public class AuthService : IAuthService
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSection["Key"]!));
         var expires = DateTime.UtcNow.AddHours(double.Parse(jwtSection["ExpireHours"] ?? "24"));
 
+        string? tenantName = null;
+        if (user.TenantId.HasValue)
+        {
+            tenantName = _db.Tenants
+                .Where(t => t.Id == user.TenantId.Value)
+                .Select(t => t.Name)
+                .FirstOrDefault();
+        }
+
         var claims = new List<Claim>
         {
             new(ClaimTypes.NameIdentifier, user.Id),
@@ -205,6 +214,9 @@ public class AuthService : IAuthService
         if (user.TenantId.HasValue)
             claims.Add(new Claim("tenant_id", user.TenantId.Value.ToString()));
 
+        if (!string.IsNullOrWhiteSpace(tenantName))
+            claims.Add(new Claim("tenant_name", tenantName));
+
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
         var token = new JwtSecurityToken(
             issuer: jwtSection["Issuer"],
@@ -214,7 +226,7 @@ public class AuthService : IAuthService
             signingCredentials: credentials);
 
         var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
-        return new AuthResponse(tokenString, user.Email ?? string.Empty, user.FullName, role, user.TenantId, expires);
+        return new AuthResponse(tokenString, user.Email ?? string.Empty, user.FullName, role, user.TenantId, expires, tenantName);
     }
 
     private static string NormalizeRole(string role) =>

@@ -47,6 +47,7 @@ public sealed class AuthService
     public string? PrimaryRole => _authProvider.PrimaryRole;
     public string? Token => _authProvider.Token;
     public Guid? TenantId => _authProvider.TenantId;
+    public string? SchoolName => _authProvider.SchoolName;
 
     /// <summary>Calls the API login endpoint and caches the result.</summary>
     public async Task<LoginResult> LoginAsync(string email, string password)
@@ -324,9 +325,10 @@ public sealed class AuthService
             var role = GetClaim(doc, ClaimTypes.Role, "role") ?? "";
             var tenantRaw = GetClaim(doc, "tenant_id");
             Guid? tenantId = tenantRaw is not null && Guid.TryParse(tenantRaw, out var g) ? g : null;
+            var tenantName = GetClaim(doc, "tenant_name");
 
             var expiresAt = TryGetJwtExpiry(token)?.UtcDateTime ?? DateTime.UtcNow.AddHours(24);
-            return new AuthResponse(token, email, name, role, tenantId, expiresAt);
+            return new AuthResponse(token, email, name, role, tenantId, expiresAt, tenantName);
         }
         catch
         {
@@ -402,7 +404,8 @@ internal sealed record AuthResponse(
     string FullName,
     string Role,
     Guid? TenantId,
-    DateTime ExpiresAt);
+    DateTime ExpiresAt,
+    string? TenantName = null);
 
 /// <summary>
 /// Circuit-scoped authentication state.
@@ -415,6 +418,7 @@ public sealed class CustomAuthenticationStateProvider : AuthenticationStateProvi
     public string? UserEmail => _user.FindFirst(ClaimTypes.Email)?.Value;
     public string? UserName => _user.FindFirst(ClaimTypes.Name)?.Value;
     public string? PrimaryRole => _user.FindFirst(ClaimTypes.Role)?.Value;
+    public string? SchoolName => _user.FindFirst("tenant_name")?.Value;
 
     public Guid? TenantId
     {
@@ -446,10 +450,15 @@ public sealed class CustomAuthenticationStateProvider : AuthenticationStateProvi
         if (auth.TenantId.HasValue)
             claims.Add(new Claim("tenant_id", auth.TenantId.Value.ToString()));
 
+        if (!string.IsNullOrWhiteSpace(auth.TenantName))
+            claims.Add(new Claim("tenant_name", auth.TenantName));
+
         foreach (var (key, value) in ParseJwtPayloadClaims(auth.Token))
         {
             if (key is "tenant_id" && claims.All(c => c.Type != "tenant_id"))
                 claims.Add(new Claim("tenant_id", value));
+            if (key is "tenant_name" && claims.All(c => c.Type != "tenant_name"))
+                claims.Add(new Claim("tenant_name", value));
             if (key is "role" or "http://schemas.microsoft.com/ws/2008/06/identity/claims/role"
                 && claims.All(c => c.Type != ClaimTypes.Role))
                 claims.Add(new Claim(ClaimTypes.Role, value));

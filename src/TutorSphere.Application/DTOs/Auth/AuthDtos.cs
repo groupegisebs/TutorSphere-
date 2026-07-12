@@ -30,7 +30,8 @@ public record AuthResponse(
     string FullName,
     string Role,
     Guid? TenantId,
-    DateTime ExpiresAt);
+    DateTime ExpiresAt,
+    string? TenantName = null);
 
 public record ForgotPasswordRequest(string Email);
 
