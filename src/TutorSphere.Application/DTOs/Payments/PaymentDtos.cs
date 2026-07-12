@@ -37,3 +37,18 @@ public record CancelSubscriptionResponse(
     string SubscriptionCode,
     string Status,
     DateTime? CancelledAt);
+
+/// <summary>Ligne d'historique paiements / factures côté parent.</summary>
+public record ParentPaymentDto(
+    Guid Id,
+    Guid? InvoiceId,
+    string? InvoiceNumber,
+    string Description,
+    string? StudentName,
+    string? TutorName,
+    decimal Amount,
+    string Currency,
+    string Status,
+    DateTime CreatedAt,
+    DateTime? PaidAt,
+    bool CanDownloadInvoice);

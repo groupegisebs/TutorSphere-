@@ -27,7 +27,11 @@ public interface IApplicationDbContext
     IQueryable<LessonReport> LessonReports { get; }
     IQueryable<Homework> Homeworks { get; }
     IQueryable<Invoice> Invoices { get; }
+    /// <summary>Invoices without tenant filter (parent portal).</summary>
+    IQueryable<Invoice> InvoicesForAnyTenant { get; }
     IQueryable<Payment> Payments { get; }
+    /// <summary>Payments without tenant filter (parent portal).</summary>
+    IQueryable<Payment> PaymentsForAnyTenant { get; }
     IQueryable<Document> Documents { get; }
     IQueryable<Message> Messages { get; }
     IQueryable<LessonAttendance> LessonAttendances { get; }

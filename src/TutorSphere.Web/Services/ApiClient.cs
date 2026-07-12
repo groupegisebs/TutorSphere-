@@ -254,6 +254,37 @@ public sealed class ApiClient
         return result.Error is null;
     }
 
+    public async Task<ApiResult<byte[]>> GetBytesWithErrorAsync(string url)
+    {
+        var authFailure = await FailIfUnauthenticatedAsync<byte[]>();
+        if (authFailure is not null)
+            return new ApiResult<byte[]>(null, authFailure.Error);
+
+        try
+        {
+            var req = await BuildRequestAsync(HttpMethod.Get, url);
+            using var resp = await _http.SendAsync(req);
+            if (resp.StatusCode == HttpStatusCode.Unauthorized)
+            {
+                HandleUnauthorizedResponse();
+                return UnauthorizedResult<byte[]>();
+            }
+
+            if (!resp.IsSuccessStatusCode)
+            {
+                var body = await resp.Content.ReadAsStringAsync();
+                return FailFromResponse<byte[]>(resp, body);
+            }
+
+            var bytes = await resp.Content.ReadAsByteArrayAsync();
+            return new ApiResult<byte[]>(bytes, null);
+        }
+        catch (Exception ex)
+        {
+            return new ApiResult<byte[]>(null, $"Erreur de connexion à l'API : {ex.Message}");
+        }
+    }
+
     public async Task<ApiResult<T>> PostMultipartAsync<T>(string url, MultipartFormDataContent content) where T : class
     {
         var authFailure = await FailIfUnauthenticatedAsync<T>();

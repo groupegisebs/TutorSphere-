@@ -19,6 +19,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
     private readonly PayGatewayClient _gateway;
     private readonly PayGatewaySettings _settings;
     private readonly ISubscriptionLessonScheduler _lessonScheduler;
+    private readonly IInvoiceService _invoices;
     private readonly ILogger<PayGatewayService> _logger;
     private string? _cachedPublishableKey;
 
@@ -27,12 +28,14 @@ internal sealed class PayGatewayService : IPaymentGatewayService
         PayGatewayClient gateway,
         IOptions<PayGatewaySettings> settings,
         ISubscriptionLessonScheduler lessonScheduler,
+        IInvoiceService invoices,
         ILogger<PayGatewayService> logger)
     {
         _db = db;
         _gateway = gateway;
         _settings = settings.Value;
         _lessonScheduler = lessonScheduler;
+        _invoices = invoices;
         _logger = logger;
     }
 
@@ -159,7 +162,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
 
     public async Task<PaymentStatusResponse> SyncPaymentStatusAsync(Guid paymentId, CancellationToken ct = default)
     {
-        var payment = await _db.Payments.FirstOrDefaultAsync(p => p.Id == paymentId, ct)
+        var payment = await _db.PaymentsForAnyTenant.FirstOrDefaultAsync(p => p.Id == paymentId, ct)
             ?? throw new InvalidOperationException("Paiement introuvable.");
 
         if (string.IsNullOrEmpty(payment.StripePaymentIntentId))
@@ -184,7 +187,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
         int retryDelayMs = 2000,
         CancellationToken ct = default)
     {
-        var payment = await _db.Payments
+        var payment = await _db.PaymentsForAnyTenant
             .Where(p => p.SubscriptionId == subscriptionId)
             .OrderByDescending(p => p.CreatedAt)
             .FirstOrDefaultAsync(ct)
@@ -351,6 +354,15 @@ internal sealed class PayGatewayService : IPaymentGatewayService
                     subscription.Status = SubscriptionStatus.Active;
                     await TryLinkGatewaySubscriptionAsync(subscription, gatewayPayment.CustomerCode, ct);
                     await _db.SaveChangesAsync(ct);
+                    try
+                    {
+                        await _invoices.EnsureInvoiceForPaymentAsync(payment.Id, ct);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Facture non créée pour le paiement {PaymentId}", payment.Id);
+                    }
+
                     await _lessonScheduler.EnsureScheduledAsync(subscription.Id, ct);
                     return;
                 }
@@ -358,6 +370,18 @@ internal sealed class PayGatewayService : IPaymentGatewayService
         }
 
         await _db.SaveChangesAsync(ct);
+
+        if (mapped == PaymentStatus.Completed && !payment.InvoiceId.HasValue)
+        {
+            try
+            {
+                await _invoices.EnsureInvoiceForPaymentAsync(payment.Id, ct);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Facture non créée pour le paiement {PaymentId}", payment.Id);
+            }
+        }
     }
 
     private async Task TryLinkGatewaySubscriptionAsync(

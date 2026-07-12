@@ -53,7 +53,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     IQueryable<LessonReport> IApplicationDbContext.LessonReports => LessonReportsSet;
     IQueryable<Homework> IApplicationDbContext.Homeworks => HomeworksSet;
     IQueryable<Invoice> IApplicationDbContext.Invoices => InvoicesSet;
+    IQueryable<Invoice> IApplicationDbContext.InvoicesForAnyTenant => InvoicesSet.IgnoreQueryFilters();
     IQueryable<Payment> IApplicationDbContext.Payments => PaymentsSet;
+    IQueryable<Payment> IApplicationDbContext.PaymentsForAnyTenant => PaymentsSet.IgnoreQueryFilters();
     IQueryable<Document> IApplicationDbContext.Documents => DocumentsSet;
     IQueryable<Message> IApplicationDbContext.Messages => MessagesSet;
     IQueryable<LessonAttendance> IApplicationDbContext.LessonAttendances => LessonAttendancesSet;

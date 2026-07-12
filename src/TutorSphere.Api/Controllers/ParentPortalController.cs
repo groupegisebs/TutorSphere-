@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using TutorSphere.Application.Common;
 using TutorSphere.Application.DTOs.Lessons;
 using TutorSphere.Application.DTOs.Parents;
+using TutorSphere.Application.DTOs.Payments;
 using TutorSphere.Application.DTOs.StudentSubscriptions;
 using TutorSphere.Application.DTOs.Students;
 using TutorSphere.Application.Services;
@@ -20,15 +21,18 @@ public class ParentPortalController : ControllerBase
     private readonly IParentService _parentService;
     private readonly IAuthService _authService;
     private readonly IStudentSubscriptionService _subscriptions;
+    private readonly IInvoiceService _invoices;
 
     public ParentPortalController(
         IParentService parentService,
         IAuthService authService,
-        IStudentSubscriptionService subscriptions)
+        IStudentSubscriptionService subscriptions,
+        IInvoiceService invoices)
     {
         _parentService = parentService;
         _authService = authService;
         _subscriptions = subscriptions;
+        _invoices = invoices;
     }
 
     [HttpGet("me")]
@@ -137,6 +141,37 @@ public class ParentPortalController : ControllerBase
         catch (DbUpdateException)
         {
             return BadRequest(new { error = "Impossible de supprimer l'enfant." });
+        }
+    }
+
+    [HttpGet("payments")]
+    public async Task<ActionResult<IReadOnlyList<ParentPaymentDto>>> Payments(CancellationToken ct)
+    {
+        var userId = await ResolveParentUserIdAsync(ct);
+        if (userId is null)
+            return Unauthorized();
+
+        return Ok(await _parentService.GetPaymentsForUserAsync(userId, ct));
+    }
+
+    [HttpGet("payments/{paymentId:guid}/invoice")]
+    public async Task<IActionResult> DownloadInvoice(Guid paymentId, CancellationToken ct)
+    {
+        var userId = await ResolveParentUserIdAsync(ct);
+        if (userId is null)
+            return Unauthorized();
+
+        try
+        {
+            var pdf = await _invoices.BuildInvoicePdfForParentAsync(userId, paymentId, ct);
+            if (pdf is null)
+                return NotFound(new { error = "Facture introuvable." });
+
+            return File(pdf.Value.Content, "application/pdf", pdf.Value.FileName);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
         }
     }
 

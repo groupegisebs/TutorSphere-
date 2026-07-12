@@ -3,6 +3,7 @@
 @rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
+@inject IJSRuntime JS
 
 <PageTitle>Mes Paiements – TutorSphere</PageTitle>
 
@@ -12,6 +13,11 @@
         <p class="ts-page-subtitle">Historique de vos paiements et factures</p>
     </div>
 </div>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-danger py-2 px-3 mb-3">@_error</div>
+}
 
 @if (_loading)
 {
@@ -25,13 +31,13 @@ else
     <div class="row g-3 mb-4">
         <div class="col-6 col-lg-3">
             <div class="ts-kpi-card ts-kpi-card--success">
-                <span class="ts-kpi-val">@_payments.Where(p => p.Status == "paid").Sum(p => p.Amount).ToString("N0") $</span>
+                <span class="ts-kpi-val">@PaidTotal.ToString("N2") $</span>
                 <span class="ts-kpi-label">Total payé</span>
             </div>
         </div>
         <div class="col-6 col-lg-3">
             <div class="ts-kpi-card ts-kpi-card--warning">
-                <span class="ts-kpi-val">@_payments.Where(p => p.Status == "open").Sum(p => p.Amount).ToString("N0") $</span>
+                <span class="ts-kpi-val">@PendingTotal.ToString("N2") $</span>
                 <span class="ts-kpi-label">En attente</span>
             </div>
         </div>
@@ -39,27 +45,65 @@ else
 
     <div class="ts-table-card">
         <table class="table ts-table">
-            <thead><tr><th>Date</th><th>Description</th><th>Montant</th><th>Statut</th><th></th></tr></thead>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Description</th>
+                    <th>Montant</th>
+                    <th>Statut</th>
+                    <th></th>
+                </tr>
+            </thead>
             <tbody>
                 @foreach (var p in _payments)
                 {
-                    var statusLabel = p.Status switch { "paid" => "Payé", "open" => "En attente", "void" => "Annulé", _ => p.Status };
-                    var statusBadge = p.Status switch { "paid" => "ts-badge-success", "open" => "ts-badge-warning", _ => "ts-badge-danger" };
+                    var statusLabel = StatusLabel(p.Status);
+                    var statusBadge = StatusBadge(p.Status);
                     <tr>
-                        <td>@p.CreatedAt.ToString("dd/MM/yyyy")</td>
-                        <td>@(p.Description ?? "Facture")</td>
-                        <td class="fw-semibold">@p.Amount.ToString("N0") $ @p.Currency.ToUpper()</td>
+                        <td>@(p.PaidAt ?? p.CreatedAt).ToLocalTime().ToString("dd/MM/yyyy")</td>
+                        <td>
+                            <div class="fw-semibold">@p.Description</div>
+                            @if (!string.IsNullOrWhiteSpace(p.StudentName) || !string.IsNullOrWhiteSpace(p.TutorName))
+                            {
+                                <div class="text-muted small">
+                                    @if (!string.IsNullOrWhiteSpace(p.StudentName))
+                                    {
+                                        <span>@p.StudentName</span>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(p.TutorName))
+                                    {
+                                        <span> · @p.TutorName</span>
+                                    }
+                                </div>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(p.InvoiceNumber))
+                            {
+                                <div class="text-muted small">@p.InvoiceNumber</div>
+                            }
+                        </td>
+                        <td class="fw-semibold">@p.Amount.ToString("N2") @p.Currency.ToUpper()</td>
                         <td><span class="ts-badge @statusBadge">@statusLabel</span></td>
                         <td>
-                            @if (!string.IsNullOrEmpty(p.PdfUrl))
+                            @if (p.CanDownloadInvoice)
                             {
-                                <a class="ts-icon-btn" href="@p.PdfUrl" target="_blank" title="Facture PDF">
-                                    <i class="bi bi-file-pdf"></i>
-                                </a>
+                                <button type="button" class="ts-icon-btn" title="Télécharger la facture"
+                                        disabled="@(_downloadingId == p.Id)"
+                                        @onclick="() => DownloadInvoiceAsync(p)">
+                                    @if (_downloadingId == p.Id)
+                                    {
+                                        <span class="spinner-border spinner-border-sm"></span>
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-file-pdf"></i>
+                                    }
+                                </button>
                             }
                             else
                             {
-                                <button class="ts-icon-btn" title="Facture PDF" disabled><i class="bi bi-file-pdf"></i></button>
+                                <button type="button" class="ts-icon-btn" title="Facture indisponible" disabled>
+                                    <i class="bi bi-file-pdf"></i>
+                                </button>
                             }
                         </td>
                     </tr>
@@ -75,20 +119,99 @@ else
 
 @code {
     private bool _loading = true;
-    private List<InvoiceDto> _payments = [];
+    private string? _error;
+    private Guid? _downloadingId;
+    private List<ParentPaymentVm> _payments = [];
+
+    private decimal PaidTotal =>
+        _payments.Where(p => p.Status is "Completed").Sum(p => p.Amount);
+
+    private decimal PendingTotal =>
+        _payments.Where(p => p.Status is "Pending").Sum(p => p.Amount);
+
+    private static string StatusLabel(string status) => status switch
+    {
+        "Completed" => "Payé",
+        "Pending" => "En attente",
+        "Failed" => "Échoué",
+        "Refunded" => "Remboursé",
+        _ => status
+    };
+
+    private static string StatusBadge(string status) => status switch
+    {
+        "Completed" => "ts-badge-success",
+        "Pending" => "ts-badge-warning",
+        "Refunded" => "ts-badge-muted",
+        _ => "ts-badge-danger"
+    };
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
-            var result = await Api.GetAsync<List<InvoiceDto>>("api/invoices");
-            _payments = result ?? [];
+            var result = await Api.GetWithErrorAsync<List<ParentPaymentVm>>("api/parent/payments");
+            if (result.Error is not null)
+            {
+                _error = result.Error;
+                _payments = [];
+            }
+            else
+            {
+                _payments = result.Value ?? [];
+            }
         }
-        catch { }
-        finally { _loading = false; }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _payments = [];
+        }
+        finally
+        {
+            _loading = false;
+        }
     }
 
-    private record InvoiceDto(
-        Guid Id, string? Description, decimal Amount, string Currency,
-        string Status, DateTime CreatedAt, string? PdfUrl);
+    private async Task DownloadInvoiceAsync(ParentPaymentVm payment)
+    {
+        _error = null;
+        _downloadingId = payment.Id;
+        try
+        {
+            var result = await Api.GetBytesWithErrorAsync($"api/parent/payments/{payment.Id}/invoice");
+            if (result.Error is not null || result.Value is null || result.Value.Length == 0)
+            {
+                _error = result.Error ?? "Impossible de télécharger la facture.";
+                return;
+            }
+
+            var fileName = string.IsNullOrWhiteSpace(payment.InvoiceNumber)
+                ? $"Facture-{payment.Id:N}.pdf"
+                : $"Facture-{payment.InvoiceNumber}.pdf";
+            var base64 = Convert.ToBase64String(result.Value);
+            await JS.InvokeVoidAsync("downloadFileFromBase64", fileName, "application/pdf", base64);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _downloadingId = null;
+        }
+    }
+
+    private record ParentPaymentVm(
+        Guid Id,
+        Guid? InvoiceId,
+        string? InvoiceNumber,
+        string Description,
+        string? StudentName,
+        string? TutorName,
+        decimal Amount,
+        string Currency,
+        string Status,
+        DateTime CreatedAt,
+        DateTime? PaidAt,
+        bool CanDownloadInvoice);
 }

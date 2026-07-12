@@ -1,6 +1,7 @@
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.Lessons;
 using TutorSphere.Application.DTOs.Parents;
+using TutorSphere.Application.DTOs.Payments;
 using TutorSphere.Application.DTOs.Students;
 using TutorSphere.Domain.Entities;
 using TutorSphere.Domain.Enums;
@@ -25,6 +26,9 @@ public interface IParentService
         string userId,
         DateTime start,
         DateTime end,
+        CancellationToken ct = default);
+    Task<IReadOnlyList<ParentPaymentDto>> GetPaymentsForUserAsync(
+        string userId,
         CancellationToken ct = default);
 }
 
@@ -460,6 +464,136 @@ public class ParentService : IParentService
             .ToList();
 
         return Task.FromResult<IReadOnlyList<LessonDto>>(lessons);
+    }
+
+    public async Task<IReadOnlyList<ParentPaymentDto>> GetPaymentsForUserAsync(
+        string userId,
+        CancellationToken ct = default)
+    {
+        var parent = _db.ParentProfilesForAnyTenant.FirstOrDefault(p => p.UserId == userId);
+        if (parent is null)
+            return [];
+
+        var childIds = _db.StudentsForAnyTenant
+            .Where(s => s.ParentProfileId == parent.Id)
+            .Select(s => s.Id)
+            .ToList();
+        if (childIds.Count == 0)
+            return [];
+
+        var subscriptionIds = _db.StudentSubscriptionsForAnyTenant
+            .Where(s => childIds.Contains(s.StudentId))
+            .Select(s => s.Id)
+            .ToList();
+        if (subscriptionIds.Count == 0)
+            return [];
+
+        var payments = _db.PaymentsForAnyTenant
+            .Where(p => p.SubscriptionId.HasValue && subscriptionIds.Contains(p.SubscriptionId.Value))
+            .OrderByDescending(p => p.CreatedAt)
+            .ToList();
+
+        // Ensure invoices for completed payments (backfill)
+        foreach (var payment in payments.Where(p =>
+                     p.Status == PaymentStatus.Completed && !p.InvoiceId.HasValue))
+        {
+            try
+            {
+                await EnsureInvoiceInlineAsync(payment, parent.Id, ct);
+            }
+            catch
+            {
+                // keep listing even if invoice creation fails
+            }
+        }
+
+        // reload after backfill
+        payments = _db.PaymentsForAnyTenant
+            .Where(p => p.SubscriptionId.HasValue && subscriptionIds.Contains(p.SubscriptionId.Value))
+            .OrderByDescending(p => p.CreatedAt)
+            .ToList();
+
+        var subs = _db.StudentSubscriptionsForAnyTenant
+            .Where(s => subscriptionIds.Contains(s.Id))
+            .ToDictionary(s => s.Id);
+        var offeringIds = subs.Values.Select(s => s.OfferingId).Distinct().ToList();
+        var offerings = _db.SubscriptionOfferingsForAnyTenant
+            .Where(o => offeringIds.Contains(o.Id))
+            .ToDictionary(o => o.Id);
+        var students = _db.StudentsForAnyTenant
+            .Where(s => childIds.Contains(s.Id))
+            .ToDictionary(s => s.Id);
+        var invoiceIds = payments.Where(p => p.InvoiceId.HasValue).Select(p => p.InvoiceId!.Value).Distinct().ToList();
+        var invoices = _db.InvoicesForAnyTenant
+            .Where(i => invoiceIds.Contains(i.Id))
+            .ToDictionary(i => i.Id);
+        var tenantIds = payments.Select(p => p.TenantId).Distinct().ToList();
+        var tenants = _db.Tenants.Where(t => tenantIds.Contains(t.Id)).ToDictionary(t => t.Id);
+
+        return payments.Select(p =>
+        {
+            string? studentName = null;
+            string? description = "Paiement abonnement";
+            if (p.SubscriptionId is Guid sid && subs.TryGetValue(sid, out var sub))
+            {
+                if (students.TryGetValue(sub.StudentId, out var student))
+                    studentName = $"{student.FirstName} {student.LastName}".Trim();
+                if (offerings.TryGetValue(sub.OfferingId, out var offering))
+                    description = offering.Title;
+            }
+
+            invoices.TryGetValue(p.InvoiceId ?? Guid.Empty, out var invoice);
+            tenants.TryGetValue(p.TenantId, out var tutor);
+
+            return new ParentPaymentDto(
+                p.Id,
+                p.InvoiceId,
+                invoice?.InvoiceNumber,
+                description,
+                studentName,
+                tutor?.Name,
+                p.Amount,
+                p.Currency,
+                p.Status.ToString(),
+                p.CreatedAt,
+                p.CompletedAt,
+                p.Status is PaymentStatus.Completed or PaymentStatus.Pending);
+        }).ToList();
+    }
+
+    private async Task EnsureInvoiceInlineAsync(Payment payment, Guid parentProfileId, CancellationToken ct)
+    {
+        if (payment.InvoiceId.HasValue)
+            return;
+
+        string? offeringTitle = null;
+        if (payment.SubscriptionId is Guid subId)
+        {
+            var subscription = _db.StudentSubscriptionsForAnyTenant.FirstOrDefault(s => s.Id == subId);
+            if (subscription is not null)
+            {
+                var offering = _db.SubscriptionOfferingsForAnyTenant.FirstOrDefault(o => o.Id == subscription.OfferingId);
+                offeringTitle = offering?.Title;
+            }
+        }
+
+        var invoice = new Invoice
+        {
+            TenantId = payment.TenantId,
+            ParentProfileId = parentProfileId,
+            InvoiceNumber = $"INV-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..6].ToUpperInvariant()}",
+            Amount = payment.Amount,
+            Currency = payment.Currency,
+            Status = payment.Status,
+            IssuedAt = payment.CreatedAt == default ? DateTime.UtcNow : payment.CreatedAt,
+            PaidAt = payment.CompletedAt,
+            StripeInvoiceId = offeringTitle
+        };
+        _db.Add(invoice);
+        await _db.SaveChangesAsync(ct);
+        payment.InvoiceId = invoice.Id;
+        payment.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
     }
 
     private Guid RequireTenantId()
