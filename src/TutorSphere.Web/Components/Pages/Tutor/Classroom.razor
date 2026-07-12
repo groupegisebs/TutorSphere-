@@ -8,6 +8,7 @@
 @inject AuthService Auth
 @inject ApiClient Api
 @inject LessonService LessonSvc
+@inject IHttpClientFactory HttpFactory
 
 <PageTitle>@L["Classroom_Title"] – TutorSphere</PageTitle>
 
@@ -95,6 +96,13 @@
                         @if (!_showLocalVideo)
                         {
                             <i class="bi bi-person-fill" style="font-size:1.25rem;color:rgba(255,255,255,0.15);"></i>
+                        }
+                        @if (_sharing)
+                        {
+                            <span class="cr-share-badge">
+                                <i class="bi @(_sharingWhiteboard ? "bi-easel" : "bi-display")"></i>
+                                @(_sharingWhiteboard ? "Tableau" : "Écran")
+                            </span>
                         }
                         @if (!string.IsNullOrEmpty(_mediaError))
                         {
@@ -301,20 +309,32 @@
                 else if (_activeTab == "Documents")
                 {
                     <div class="cr-docs-list">
-                        <button class="cr-upload-btn">
+                        <label class="cr-upload-btn">
+                            <InputFile OnChange="OnDocSelected" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.png,.jpg,.jpeg" />
                             <i class="bi bi-upload me-1"></i>@L["Classroom_Share"]
-                        </button>
+                        </label>
+                        @if (_docsLoading)
+                        {
+                            <div class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm"></span></div>
+                        }
+                        else if (_documents.Count == 0)
+                        {
+                            <p class="text-muted small px-2">Aucun document lié à cette séance.</p>
+                        }
                         @foreach (var doc in _documents)
                         {
                             <div class="cr-doc-row">
-                                <i class="bi bi-file-earmark-pdf cr-doc-icon"></i>
+                                <i class="bi bi-file-earmark-text cr-doc-icon"></i>
                                 <div class="cr-doc-meta">
                                     <div class="cr-doc-name">@doc.Name</div>
                                     <div class="cr-doc-size">@doc.Size</div>
                                 </div>
-                                <button class="cr-doc-dl-btn" title="@L["Common_Download"]">
-                                    <i class="bi bi-download"></i>
-                                </button>
+                                @if (!string.IsNullOrEmpty(doc.Url))
+                                {
+                                    <a class="cr-doc-dl-btn" href="@doc.Url" target="_blank" rel="noopener" title="@L["Common_Download"]">
+                                        <i class="bi bi-download"></i>
+                                    </a>
+                                }
                             </div>
                         }
                     </div>
@@ -340,16 +360,22 @@
             <span class="cr-tool-lbl">@L["Classroom_Camera"]</span>
         </div>
         <div class="cr-tool-item">
-            <button class="cr-tool-btn @(_sharing ? "cr-tool-btn--active" : "")" @onclick="ToggleShare" title="@L["Classroom_ShareScreen"]">
+            <button class="cr-tool-btn @(_sharing && !_sharingWhiteboard ? "cr-tool-btn--active" : "")" @onclick="ToggleShare" title="@L["Classroom_ShareScreen"]">
                 <i class="bi bi-display"></i>
             </button>
             <span class="cr-tool-lbl">@L["Classroom_Share"]</span>
         </div>
         <div class="cr-tool-item">
-            <button class="cr-tool-btn" title="@L["Classroom_Whiteboard"]">
+            <button class="cr-tool-btn @(_sharingWhiteboard ? "cr-tool-btn--active" : "")" @onclick="ToggleWhiteboardShare" title="@L["Classroom_Whiteboard"]">
                 <i class="bi bi-easel"></i>
             </button>
             <span class="cr-tool-lbl">@L["Classroom_Whiteboard"]</span>
+        </div>
+        <div class="cr-tool-item">
+            <button class="cr-tool-btn" @onclick='() => _activeTab = "Documents"' title="@L["Classroom_Documents"]">
+                <i class="bi bi-folder2-open"></i>
+            </button>
+            <span class="cr-tool-lbl">@L["Classroom_Documents"]</span>
         </div>
         <div class="cr-tool-item">
             <button class="cr-tool-btn" @onclick='() => _activeTab = "Participants"' title="@L["Classroom_Participants"]">
@@ -394,10 +420,13 @@
     private bool _micOn      = true;
     private bool _camOn      = true;
     private bool _sharing    = false;
+    private bool _sharingWhiteboard = false;
     private bool _recording  = false;
     private bool _mediaReady = false;
     private bool _mediaStarted;
+    private bool _docsLoading;
     private string? _mediaError;
+    private DotNetObjectReference<Classroom>? _jsRef;
 
     private ElementReference _localVideo;
     private bool _showLocalVideo => _sharing || (_camOn && _mediaReady);
@@ -439,12 +468,14 @@
 
     protected override async Task OnInitializedAsync()
     {
+        var colors = new[] { "#7c3aed", "#0ea5e9", "#10b981", "#ec4899", "#f59e0b", "#f97316" };
+
         _lesson = new ClassroomLesson
         {
-            Title           = string.IsNullOrWhiteSpace(Title)    ? "Mathématiques – Chapitre 3" : Title,
-            StudentName     = string.IsNullOrWhiteSpace(Student)  ? "Élève"                      : Student,
-            StudentInitials = string.IsNullOrWhiteSpace(Initials) ? "EL"                         : Initials,
-            Subject         = string.IsNullOrWhiteSpace(Subject)  ? "Équations du 2ᵉ degré"      : Subject,
+            Title           = string.IsNullOrWhiteSpace(Title) ? "Séance" : Title!,
+            StudentName     = string.IsNullOrWhiteSpace(Student) ? "" : Student!,
+            StudentInitials = string.IsNullOrWhiteSpace(Initials) ? "" : Initials!,
+            Subject         = string.IsNullOrWhiteSpace(Subject) ? "" : Subject!,
             AvatarColor     = "#7c3aed",
         };
 
@@ -452,9 +483,76 @@
         [
             new() { Name = TutorDisplayName, Initials = TutorInitials, Color = "#5831E0", Role = "Tuteur",
                     MicOn = _micOn, CamOn = _camOn },
-            new() { Name = _lesson.StudentName, Initials = _lesson.StudentInitials,
-                    Color = _lesson.AvatarColor, Role = "Élève", MicOn = true, CamOn = false },
         ];
+
+        if (Guid.TryParse(LessonId, out var lessonGuid))
+        {
+            try
+            {
+                var dto = await Api.GetAsync<LessonDto>($"api/lessons/{lessonGuid}");
+                if (dto is not null)
+                {
+                    if (string.IsNullOrWhiteSpace(Title)) _lesson.Title = dto.Title;
+                    if (string.IsNullOrWhiteSpace(Subject)) _lesson.Subject = dto.Subject ?? "";
+                }
+            }
+            catch { /* keep query defaults */ }
+
+            try
+            {
+                var attendances = await LessonSvc.GetAttendancesAsync(lessonGuid);
+                var i = 0;
+                foreach (var a in attendances)
+                {
+                    var name = string.IsNullOrWhiteSpace(a.StudentName) ? "Élève" : a.StudentName.Trim();
+                    _participants.Add(new ParticipantVM
+                    {
+                        Name = name,
+                        Initials = InitialsFrom(name),
+                        Color = colors[i % colors.Length],
+                        Role = "Élève",
+                        MicOn = true,
+                        CamOn = false
+                    });
+                    i++;
+                }
+
+                if (_participants.Count == 1 && !string.IsNullOrWhiteSpace(_lesson.StudentName))
+                {
+                    _participants.Add(new ParticipantVM
+                    {
+                        Name = _lesson.StudentName,
+                        Initials = string.IsNullOrWhiteSpace(_lesson.StudentInitials)
+                            ? InitialsFrom(_lesson.StudentName)
+                            : _lesson.StudentInitials,
+                        Color = _lesson.AvatarColor,
+                        Role = "Élève",
+                        MicOn = true,
+                        CamOn = false
+                    });
+                }
+            }
+            catch { /* roster fallback below */ }
+
+            try { await LessonSvc.NotifyLessonStartedAsync(lessonGuid); }
+            catch { /* best-effort */ }
+
+            await LoadDocumentsAsync(lessonGuid);
+        }
+
+        if (_participants.Count == 1)
+        {
+            var fallback = string.IsNullOrWhiteSpace(_lesson.StudentName) ? "Élève" : _lesson.StudentName;
+            _participants.Add(new ParticipantVM
+            {
+                Name = fallback,
+                Initials = InitialsFrom(fallback),
+                Color = "#7c3aed",
+                Role = "Élève",
+                MicOn = true,
+                CamOn = false
+            });
+        }
 
         InitChatMessages();
 
@@ -463,14 +561,37 @@
             _elapsedSeconds++;
             InvokeAsync(StateHasChanged);
         }, null, 1000, 1000);
-
-        // Notify students when the tutor actually opens the classroom.
-        if (Guid.TryParse(LessonId, out var lessonGuid))
-        {
-            try { await LessonSvc.NotifyLessonStartedAsync(lessonGuid); }
-            catch { /* best-effort */ }
-        }
     }
+
+    private async Task LoadDocumentsAsync(Guid lessonId)
+    {
+        _docsLoading = true;
+        try
+        {
+            var docs = await Api.GetAsync<List<ApiDocDto>>($"api/documents?lessonId={lessonId}") ?? [];
+            _documents = docs.Select(d => new DocumentVM
+            {
+                Name = d.FileName,
+                Size = FormatSize(d.FileSize),
+                Url = d.Url
+            }).ToList();
+        }
+        catch { _documents = []; }
+        finally { _docsLoading = false; }
+    }
+
+    private static string InitialsFrom(string name)
+    {
+        var parts = name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length >= 2)
+            return $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[^1][0])}";
+        return name.Length > 0 ? name[..Math.Min(2, name.Length)].ToUpperInvariant() : "?";
+    }
+
+    private static string FormatSize(long bytes) =>
+        bytes < 1024 ? $"{bytes} o"
+        : bytes < 1024 * 1024 ? $"{bytes / 1024.0:0.#} Ko"
+        : $"{bytes / (1024.0 * 1024):0.#} Mo";
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -481,12 +602,14 @@
                 await JS.InvokeVoidAsync("whiteboard.init", _canvasRef);
                 _wbReady = true;
             }
-            catch { /* prerender phase — JS not yet available */ }
+            catch { /* prerender */ }
         }
 
         if (firstRender && !_mediaStarted)
         {
             _mediaStarted = true;
+            _jsRef = DotNetObjectReference.Create(this);
+            try { await JS.InvokeVoidAsync("classroomMedia.setEndedCallback", _jsRef); } catch { }
             await StartLocalMediaAsync();
         }
     }
@@ -494,7 +617,16 @@
     public void Dispose()
     {
         _timer?.Dispose();
+        _jsRef?.Dispose();
         _ = StopLocalMediaAsync();
+    }
+
+    [JSInvokable]
+    public Task OnScreenShareEnded(string kind)
+    {
+        _sharing = false;
+        _sharingWhiteboard = false;
+        return InvokeAsync(StateHasChanged);
     }
 
     private static string FormatElapsed(int s)
@@ -566,11 +698,10 @@
 
     private void SyncTutorMediaFlags()
     {
-        if (_participants.Count > 0)
-        {
-            _participants[0].MicOn = _micOn;
-            _participants[0].CamOn = _camOn;
-        }
+        var me = _participants.FirstOrDefault(p => p.Role == "Tuteur");
+        if (me is null) return;
+        me.MicOn = _micOn;
+        me.CamOn = _camOn || _sharing;
     }
 
     private async Task ToggleMic()
@@ -604,11 +735,11 @@
 
     private async Task ToggleShare()
     {
-        if (_sharing)
+        if (_sharing && !_sharingWhiteboard)
         {
-            try { await JS.InvokeVoidAsync("classroomMedia.stopScreenShare", _localVideo); }
-            catch { }
+            try { await JS.InvokeVoidAsync("classroomMedia.stopScreenShare", _localVideo); } catch { }
             _sharing = false;
+            _sharingWhiteboard = false;
             return;
         }
 
@@ -621,9 +752,73 @@
                 return;
             }
             _sharing = true;
+            _sharingWhiteboard = false;
             _mediaError = null;
         }
         catch (JSException ex)
+        {
+            _mediaError = ex.Message;
+        }
+    }
+
+    private async Task ToggleWhiteboardShare()
+    {
+        if (_sharingWhiteboard)
+        {
+            try { await JS.InvokeVoidAsync("classroomMedia.stopScreenShare", _localVideo); } catch { }
+            _sharing = false;
+            _sharingWhiteboard = false;
+            return;
+        }
+
+        try
+        {
+            if (!_wbReady)
+                await JS.InvokeVoidAsync("whiteboard.init", _canvasRef);
+
+            var result = await JS.InvokeAsync<MediaStartResult>(
+                "classroomMedia.startWhiteboardShare", _localVideo, _canvasRef);
+            if (result is null || !result.Ok)
+            {
+                _mediaError = result?.Error ?? "Partage du tableau impossible.";
+                return;
+            }
+            _sharing = true;
+            _sharingWhiteboard = true;
+            _mediaError = null;
+        }
+        catch (JSException ex)
+        {
+            _mediaError = ex.Message;
+        }
+    }
+
+    private async Task OnDocSelected(InputFileChangeEventArgs e)
+    {
+        if (!Guid.TryParse(LessonId, out var lessonId)) return;
+        var file = e.File;
+        if (file is null) return;
+
+        try
+        {
+            await using var stream = file.OpenReadStream(20 * 1024 * 1024);
+            using var content = new MultipartFormDataContent();
+            var streamContent = new StreamContent(stream);
+            streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
+                string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType);
+            content.Add(streamContent, "file", file.Name);
+            content.Add(new StringContent(lessonId.ToString()), "lessonId");
+
+            var http = HttpFactory.CreateClient("TutorSphereApi");
+            http.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", Auth.Token);
+            using var resp = await http.PostAsync("api/documents", content);
+            if (resp.IsSuccessStatusCode)
+                await LoadDocumentsAsync(lessonId);
+            else
+                _mediaError = "Échec de l'envoi du document.";
+        }
+        catch (Exception ex)
         {
             _mediaError = ex.Message;
         }
@@ -705,11 +900,11 @@
         ];
     }
 
-    private readonly List<DocumentVM> _documents =
-    [
-        new() { Name = "Exercices_Chapitre3.pdf", Size = "1.2 Mo" },
-        new() { Name = "Cours_Fonctions.pdf",     Size = "840 Ko" },
-    ];
+    private List<DocumentVM> _documents = [];
+
+    private record ApiDocDto(
+        Guid Id, string FileName, long FileSize, string ContentType,
+        DateTime UploadedAt, Guid? StudentId, Guid? LessonId, string Url);
 
     private class ClassroomLesson
     {
@@ -742,6 +937,7 @@
     {
         public string Name { get; set; } = "";
         public string Size { get; set; } = "";
+        public string? Url { get; set; }
     }
 
     private sealed class MediaStartResult
@@ -750,5 +946,6 @@
         public bool Video { get; set; }
         public bool Audio { get; set; }
         public string? Error { get; set; }
+        public string? Kind { get; set; }
     }
 }

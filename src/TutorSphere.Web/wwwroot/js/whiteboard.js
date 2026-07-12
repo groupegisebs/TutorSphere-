@@ -137,6 +137,10 @@ window.whiteboard = (function () {
             if (!canvas || !ctx) return;
             ctx.fillStyle = '#ffffff';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
+        },
+
+        getCanvas() {
+            return canvas || null;
         }
     };
 })();

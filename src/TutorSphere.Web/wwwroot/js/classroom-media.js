@@ -1,6 +1,8 @@
 window.classroomMedia = (function () {
     let stream = null;
     let screenStream = null;
+    let canvasStream = null;
+    let endedCallback = null;
 
     function stopTracks(mediaStream) {
         if (!mediaStream) return;
@@ -29,8 +31,22 @@ window.classroomMedia = (function () {
         };
     }
 
+    function notifyEnded(kind) {
+        if (endedCallback && typeof endedCallback.invokeMethodAsync === "function") {
+            endedCallback.invokeMethodAsync("OnScreenShareEnded", kind || "screen").catch(function () { });
+        }
+    }
+
+    function restoreCamera(videoEl) {
+        if (stream) attach(videoEl, stream);
+        else if (videoEl) videoEl.srcObject = null;
+    }
+
     return {
-        /** Request camera + mic and bind to a <video> element. */
+        setEndedCallback: function (dotNetRef) {
+            endedCallback = dotNetRef;
+        },
+
         start: async function (videoEl, opts) {
             opts = opts || {};
             var wantVideo = opts.video !== false;
@@ -51,7 +67,8 @@ window.classroomMedia = (function () {
                     audio: wantAudio ? { echoCancellation: true, noiseSuppression: true } : false
                 });
 
-                attach(videoEl, stream);
+                if (!screenStream && !canvasStream)
+                    attach(videoEl, stream);
                 var st = trackStates(stream);
                 return { ok: true, video: st.video, audio: st.audio };
             } catch (ex) {
@@ -89,6 +106,8 @@ window.classroomMedia = (function () {
             stream = null;
             stopTracks(screenStream);
             screenStream = null;
+            stopTracks(canvasStream);
+            canvasStream = null;
             if (videoEl) videoEl.srcObject = null;
         },
 
@@ -97,25 +116,50 @@ window.classroomMedia = (function () {
                 return { ok: false, error: "Le partage d'écran n'est pas supporté." };
             }
             try {
+                stopTracks(canvasStream);
+                canvasStream = null;
+                stopTracks(screenStream);
                 screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
                 attach(videoEl, screenStream);
                 screenStream.getVideoTracks()[0].addEventListener("ended", function () {
-                    if (stream) attach(videoEl, stream);
-                    else if (videoEl) videoEl.srcObject = null;
                     screenStream = null;
+                    restoreCamera(videoEl);
+                    notifyEnded("screen");
                 });
-                return { ok: true };
+                return { ok: true, kind: "screen" };
             } catch (ex) {
                 return { ok: false, error: ex && ex.message ? ex.message : "Partage d'écran annulé." };
+            }
+        },
+
+        /** Affiche le tableau blanc dans la vignette vidéo (captureStream). */
+        startWhiteboardShare: async function (videoEl, canvasEl) {
+            if (!canvasEl || typeof canvasEl.captureStream !== "function") {
+                return { ok: false, error: "Impossible de partager le tableau blanc sur cet appareil." };
+            }
+            try {
+                stopTracks(screenStream);
+                screenStream = null;
+                stopTracks(canvasStream);
+                canvasStream = canvasEl.captureStream(15);
+                attach(videoEl, canvasStream);
+                return { ok: true, kind: "whiteboard" };
+            } catch (ex) {
+                return { ok: false, error: ex && ex.message ? ex.message : "Partage du tableau impossible." };
             }
         },
 
         stopScreenShare: function (videoEl) {
             stopTracks(screenStream);
             screenStream = null;
-            if (stream) attach(videoEl, stream);
-            else if (videoEl) videoEl.srcObject = null;
+            stopTracks(canvasStream);
+            canvasStream = null;
+            restoreCamera(videoEl);
             return true;
+        },
+
+        isSharing: function () {
+            return !!(screenStream || canvasStream);
         }
     };
 })();

@@ -5,9 +5,11 @@
 @inject IStringLocalizer<SharedResources> L
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
+@using TutorSphere.Application.DTOs.Lessons
+@using TutorSphere.Application.DTOs.Documents
+@using TutorSphere.Application.DTOs.Messages
 @inject AuthService Auth
 @inject ApiClient Api
-@using TutorSphere.Application.DTOs.Lessons
 
 <PageTitle>@L["Classroom_Title"] – TutorSphere</PageTitle>
 
@@ -300,20 +302,24 @@
                 else if (_activeTab == "Documents")
                 {
                     <div class="cr-docs-list">
-                        <button class="cr-upload-btn">
-                            <i class="bi bi-upload me-1"></i>@L["Classroom_Share"]
-                        </button>
+                        @if (_documents.Count == 0)
+                        {
+                            <p class="text-muted small px-2">Aucun document pour cette séance.</p>
+                        }
                         @foreach (var doc in _documents)
                         {
                             <div class="cr-doc-row">
-                                <i class="bi bi-file-earmark-pdf cr-doc-icon"></i>
+                                <i class="bi bi-file-earmark-text cr-doc-icon"></i>
                                 <div class="cr-doc-meta">
                                     <div class="cr-doc-name">@doc.Name</div>
                                     <div class="cr-doc-size">@doc.Size</div>
                                 </div>
-                                <button class="cr-doc-dl-btn" title="@L["Common_Download"]">
-                                    <i class="bi bi-download"></i>
-                                </button>
+                                @if (!string.IsNullOrEmpty(doc.Url))
+                                {
+                                    <a class="cr-doc-dl-btn" href="@doc.Url" target="_blank" rel="noopener" title="@L["Common_Download"]">
+                                        <i class="bi bi-download"></i>
+                                    </a>
+                                }
                             </div>
                         }
                     </div>
@@ -467,9 +473,46 @@
         [
             new() { Name = "Tuteur", Initials = "TU", Color = "#5831E0", Role = "Tuteur",
                     MicOn = true, CamOn = true },
-            new() { Name = _lesson.StudentName, Initials = _lesson.StudentInitials,
+            new() { Name = SelfDisplayName, Initials = SelfInitials,
                     Color = _lesson.AvatarColor, Role = "Élève", MicOn = _micOn, CamOn = _camOn },
         ];
+
+        try
+        {
+            var teachers = await Api.GetAsync<List<ConversationDto>>("api/students/me/teachers") ?? [];
+            if (teachers.Count > 0)
+            {
+                var t = teachers[0];
+                var name = string.IsNullOrWhiteSpace(t.OtherUserName) ? "Tuteur" : t.OtherUserName.Trim();
+                var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                var initials = parts.Length >= 2
+                    ? $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[^1][0])}"
+                    : name[..Math.Min(2, name.Length)].ToUpperInvariant();
+                _participants[0] = new ParticipantVM
+                {
+                    Name = name,
+                    Initials = initials,
+                    Color = "#5831E0",
+                    Role = "Tuteur",
+                    MicOn = true,
+                    CamOn = true
+                };
+            }
+        }
+        catch { /* keep default tutor label */ }
+
+        if (Guid.TryParse(LessonId, out var lid))
+        {
+            try
+            {
+                var docs = await Api.GetAsync<List<DocumentDto>>("api/students/me/documents") ?? [];
+                _documents = docs
+                    .Where(d => d.LessonId == lid || d.LessonId is null)
+                    .Select(d => new DocumentVM { Name = d.FileName, Size = FormatSize(d.FileSize), Url = d.Url })
+                    .ToList();
+            }
+            catch { _documents = []; }
+        }
 
         InitChatMessages();
 
@@ -712,11 +755,12 @@
         ];
     }
 
-    private readonly List<DocumentVM> _documents =
-    [
-        new() { Name = "Exercices_Chapitre3.pdf", Size = "1.2 Mo" },
-        new() { Name = "Cours_Fonctions.pdf",     Size = "840 Ko" },
-    ];
+    private List<DocumentVM> _documents = [];
+
+    private static string FormatSize(long bytes) =>
+        bytes < 1024 ? $"{bytes} o"
+        : bytes < 1024 * 1024 ? $"{bytes / 1024.0:0.#} Ko"
+        : $"{bytes / (1024.0 * 1024):0.#} Mo";
 
     private class ClassroomLesson
     {
@@ -749,6 +793,7 @@
     {
         public string Name { get; set; } = "";
         public string Size { get; set; } = "";
+        public string? Url { get; set; }
     }
 
     private sealed class MediaStartResult

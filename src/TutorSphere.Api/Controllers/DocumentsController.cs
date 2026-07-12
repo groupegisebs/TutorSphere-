@@ -24,8 +24,9 @@ public class DocumentsController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<DocumentDto>>> List(
         [FromQuery] Guid? studentId,
+        [FromQuery] Guid? lessonId,
         CancellationToken ct)
-        => Ok(await _documentService.GetAllAsync(studentId, ct));
+        => Ok(await _documentService.GetAllAsync(studentId, lessonId, ct));
 
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<DocumentDto>> GetById(Guid id, CancellationToken ct)

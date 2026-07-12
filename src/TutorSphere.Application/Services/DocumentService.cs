@@ -6,7 +6,7 @@ namespace TutorSphere.Application.Services;
 
 public interface IDocumentService
 {
-    Task<IReadOnlyList<DocumentDto>> GetAllAsync(Guid? studentId = null, CancellationToken ct = default);
+    Task<IReadOnlyList<DocumentDto>> GetAllAsync(Guid? studentId = null, Guid? lessonId = null, CancellationToken ct = default);
     Task<DocumentDto?> GetByIdAsync(Guid id, CancellationToken ct = default);
     Task<DocumentDto> CreateAsync(
         string fileName,
@@ -32,12 +32,14 @@ public class DocumentService : IDocumentService
         _tenantContext = tenantContext;
     }
 
-    public Task<IReadOnlyList<DocumentDto>> GetAllAsync(Guid? studentId = null, CancellationToken ct = default)
+    public Task<IReadOnlyList<DocumentDto>> GetAllAsync(Guid? studentId = null, Guid? lessonId = null, CancellationToken ct = default)
     {
         var query = _db.Documents.AsEnumerable();
 
         if (studentId.HasValue)
             query = query.Where(d => d.StudentId == studentId.Value);
+        if (lessonId.HasValue)
+            query = query.Where(d => d.LessonId == lessonId.Value);
 
         var docs = query
             .OrderByDescending(d => d.CreatedAt)
