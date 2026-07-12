@@ -55,7 +55,7 @@ dotnet run --project src/TutorSphere.Api
 
 L'API démarre sur `https://localhost:7xxx` avec OpenAPI en développement.
 
-**Compte super-admin par défaut :** `admin@tutorsphere.com` / `Admin123!`
+Aucun compte utilisateur n’est créé automatiquement. Inscrivez une école via l’UI, ou activez ponctuellement `Seed:BootstrapAdmin` dans la config pour un SuperAdmin d’ops.
 
 ### Lancer l'interface web
 

@@ -1,10 +1,8 @@
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using TutorSphere.Application.DTOs.Auth;
-using TutorSphere.Infrastructure.Identity;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Infrastructure.Persistence;
 
@@ -16,18 +14,15 @@ public class AuthController : ControllerBase
 {
     private readonly IAuthService _authService;
     private readonly IConfiguration _configuration;
-    private readonly UserManager<ApplicationUser> _userManager;
     private readonly ApplicationDbContext _db;
 
     public AuthController(
         IAuthService authService,
         IConfiguration configuration,
-        UserManager<ApplicationUser> userManager,
         ApplicationDbContext db)
     {
         _authService = authService;
         _configuration = configuration;
-        _userManager = userManager;
         _db = db;
     }
 
@@ -145,28 +140,6 @@ public class AuthController : ControllerBase
             dbError = ex.Message;
         }
 
-        var seedEmails = new[] { "admin@tutorsphere.com", "bediga.jean@gisebs.com" };
-        var accounts = new List<object>();
-        foreach (var email in seedEmails)
-        {
-            var user = await _userManager.FindByEmailAsync(email);
-            if (user is null)
-            {
-                accounts.Add(new { email, exists = false });
-                continue;
-            }
-
-            var roles = await _userManager.GetRolesAsync(user);
-            accounts.Add(new
-            {
-                email,
-                exists = true,
-                emailConfirmed = user.EmailConfirmed,
-                lockedOut = user.LockoutEnd is not null && user.LockoutEnd > DateTimeOffset.UtcNow,
-                roles
-            });
-        }
-
         return Ok(new
         {
             database = new { connected = dbOk, error = dbError, userCount },
@@ -176,8 +149,12 @@ public class AuthController : ControllerBase
                 issuer = _configuration["Jwt:Issuer"],
                 audience = _configuration["Jwt:Audience"]
             },
-            seedAccounts = accounts,
-            resetKnownAdminPasswords = _configuration.GetValue("Seed:ResetKnownAdminPasswords", true)
+            seed = new
+            {
+                includeDemoData = _configuration.GetValue("Seed:IncludeDemoData", false),
+                removeLegacyBootstrapUsers = _configuration.GetValue("Seed:RemoveLegacyBootstrapUsers", true),
+                bootstrapAdminEnabled = _configuration.GetValue("Seed:BootstrapAdmin:Enabled", false)
+            }
         });
     }
 

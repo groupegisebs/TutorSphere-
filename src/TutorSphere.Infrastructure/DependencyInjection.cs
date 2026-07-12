@@ -73,19 +73,33 @@ public static class DependencyInjection
         }
 
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
-        var resetKnownPasswords = configuration.GetValue("Seed:ResetKnownAdminPasswords", true);
         var includeDemoData = configuration.GetValue("Seed:IncludeDemoData", false);
+        var removeLegacyBootstrap = configuration.GetValue("Seed:RemoveLegacyBootstrapUsers", true);
 
-        await EnsureSeedAdminUserAsync(
-            userManager, logger, resetKnownPasswords,
-            "admin@tutorsphere.com", "Admin123!", "Super", "Admin", UserRoles.SuperAdmin);
+        // No hardcoded demo/bootstrap users. Real accounts come from registration or optional BootstrapAdmin.
+        if (removeLegacyBootstrap)
+            await RemoveLegacyBootstrapUsersAsync(userManager, db, logger);
 
-        // Compte enseignant de bootstrap (espace tuteur + tenant).
-        await EnsureSeedTutorUserAsync(
-            userManager, db, logger, resetKnownPasswords,
-            "bediga.jean@gisebs.com", "Mcd!35578", "Jean", "Bediga",
-            tenantName: "École Jean Bediga",
-            tenantSlug: "jean-bediga");
+        var bootstrapEnabled = configuration.GetValue("Seed:BootstrapAdmin:Enabled", false);
+        if (bootstrapEnabled)
+        {
+            var email = configuration["Seed:BootstrapAdmin:Email"];
+            var password = configuration["Seed:BootstrapAdmin:Password"];
+            if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
+            {
+                logger.LogWarning(
+                    "Seed:BootstrapAdmin:Enabled=true but Email/Password missing — skipped.");
+            }
+            else
+            {
+                await EnsureBootstrapAdminAsync(
+                    userManager, logger,
+                    email.Trim(),
+                    password,
+                    configuration["Seed:BootstrapAdmin:FirstName"] ?? "Admin",
+                    configuration["Seed:BootstrapAdmin:LastName"] ?? "Platform");
+            }
+        }
 
         if (includeDemoData)
         {
@@ -101,217 +115,96 @@ public static class DependencyInjection
         await EnsureExistingParentProfilesAsync(db, userManager);
 
         var userCount = await db.Users.CountAsync();
-        logger.LogInformation("Seed complete — {UserCount} user(s) in database.", userCount);
+        logger.LogInformation("Seed complete — {UserCount} user(s) in database (real data only).", userCount);
     }
 
     /// <summary>
-    /// Ensures bootstrap SuperAdmin accounts exist with the documented seed passwords.
-    /// When <paramref name="resetPassword"/> is true, known accounts always get the seed password
-    /// (recovery after a bad deploy or manual DB edits).
+    /// Removes obsolete hardcoded bootstrap accounts created by older TutorSphere builds.
+    /// Does not touch real user emails (e.g. registered tutors).
     /// </summary>
-    private static async Task EnsureSeedAdminUserAsync(
-        UserManager<ApplicationUser> userManager,
-        ILogger logger,
-        bool resetPassword,
-        string email,
-        string password,
-        string firstName,
-        string lastName,
-        string role)
-    {
-        var user = await userManager.FindByEmailAsync(email);
-        if (user is null)
-        {
-            user = new ApplicationUser
-            {
-                UserName = email,
-                Email = email,
-                FirstName = firstName,
-                LastName = lastName,
-                EmailConfirmed = true
-            };
-
-            var createResult = await userManager.CreateAsync(user, password);
-            if (!createResult.Succeeded)
-            {
-                logger.LogError(
-                    "Seed failed to create {Email}: {Errors}",
-                    email,
-                    string.Join("; ", createResult.Errors.Select(e => e.Description)));
-                return;
-            }
-
-            await userManager.AddToRoleAsync(user, role);
-            logger.LogInformation("Seed created {Email} with role {Role}.", email, role);
-            return;
-        }
-
-        if (!user.EmailConfirmed)
-        {
-            user.EmailConfirmed = true;
-            await userManager.UpdateAsync(user);
-            logger.LogInformation("Seed confirmed email for {Email}.", email);
-        }
-
-        if (user.LockoutEnd is not null && user.LockoutEnd > DateTimeOffset.UtcNow)
-        {
-            await userManager.SetLockoutEndDateAsync(user, null);
-            logger.LogInformation("Seed unlocked {Email}.", email);
-        }
-
-        if (!await userManager.IsInRoleAsync(user, role))
-        {
-            await userManager.AddToRoleAsync(user, role);
-            logger.LogInformation("Seed assigned role {Role} to {Email}.", role, email);
-        }
-
-        if (!resetPassword)
-            return;
-
-        var token = await userManager.GeneratePasswordResetTokenAsync(user);
-        var resetResult = await userManager.ResetPasswordAsync(user, token, password);
-        if (!resetResult.Succeeded)
-        {
-            logger.LogError(
-                "Seed failed to reset password for {Email}: {Errors}",
-                email,
-                string.Join("; ", resetResult.Errors.Select(e => e.Description)));
-            return;
-        }
-
-        logger.LogInformation("Seed reset password for {Email}.", email);
-    }
-
-    /// <summary>
-    /// Ensures a Tutor account exists with an owned tenant (for calendar, students, etc.).
-    /// If the email was previously seeded as SuperAdmin, converts it to Tutor.
-    /// </summary>
-    private static async Task EnsureSeedTutorUserAsync(
+    private static async Task RemoveLegacyBootstrapUsersAsync(
         UserManager<ApplicationUser> userManager,
         ApplicationDbContext db,
+        ILogger logger)
+    {
+        // Purely synthetic seed accounts from older versions — never real customers.
+        string[] legacyEmails = ["admin@tutorsphere.com"];
+
+        foreach (var email in legacyEmails)
+        {
+            var user = await userManager.FindByEmailAsync(email);
+            if (user is null)
+                continue;
+
+            try
+            {
+                var ownedTenants = db.TenantsSet.Where(t => t.OwnerUserId == user.Id).ToList();
+                foreach (var tenant in ownedTenants)
+                    tenant.OwnerUserId = string.Empty;
+
+                if (ownedTenants.Count > 0)
+                    await db.SaveChangesAsync();
+
+                var result = await userManager.DeleteAsync(user);
+                if (result.Succeeded)
+                    logger.LogInformation("Removed legacy seed user {Email}.", email);
+                else
+                    logger.LogWarning(
+                        "Could not remove legacy seed user {Email}: {Errors}",
+                        email,
+                        string.Join("; ", result.Errors.Select(e => e.Description)));
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed removing legacy seed user {Email}.", email);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Optional one-time platform admin when Seed:BootstrapAdmin:Enabled=true (empty DB / ops recovery).
+    /// Never resets an existing password.
+    /// </summary>
+    private static async Task EnsureBootstrapAdminAsync(
+        UserManager<ApplicationUser> userManager,
         ILogger logger,
-        bool resetPassword,
         string email,
         string password,
         string firstName,
-        string lastName,
-        string tenantName,
-        string tenantSlug)
+        string lastName)
     {
-        var tenant = db.TenantsSet.FirstOrDefault(t => t.Slug == tenantSlug);
-        if (tenant is null)
-        {
-            tenant = new Tenant
-            {
-                Name = tenantName,
-                Slug = tenantSlug,
-                Subdomain = tenantSlug,
-                Description = "Espace enseignant TutorSphere",
-                Language = "fr",
-                Status = TenantStatus.Active,
-                IsPublicProfile = false,
-                Branding = new TenantBranding()
-            };
-            db.TenantsSet.Add(tenant);
-            await db.SaveChangesAsync();
-            logger.LogInformation("Seed created tenant {Slug}.", tenantSlug);
-        }
-
         var user = await userManager.FindByEmailAsync(email);
-        if (user is null)
+        if (user is not null)
         {
-            user = new ApplicationUser
+            if (!await userManager.IsInRoleAsync(user, UserRoles.SuperAdmin))
             {
-                UserName = email,
-                Email = email,
-                FirstName = firstName,
-                LastName = lastName,
-                EmailConfirmed = true,
-                TenantId = tenant.Id
-            };
-
-            var createResult = await userManager.CreateAsync(user, password);
-            if (!createResult.Succeeded)
-            {
-                logger.LogError(
-                    "Seed failed to create tutor {Email}: {Errors}",
-                    email,
-                    string.Join("; ", createResult.Errors.Select(e => e.Description)));
-                return;
+                await userManager.AddToRoleAsync(user, UserRoles.SuperAdmin);
+                logger.LogInformation("Bootstrap assigned SuperAdmin to existing {Email}.", email);
             }
-
-            await userManager.AddToRoleAsync(user, UserRoles.Tutor);
-            tenant.OwnerUserId = user.Id;
-            await db.SaveChangesAsync();
-            logger.LogInformation("Seed created tutor {Email}.", email);
             return;
         }
 
-        var changed = false;
-        if (string.IsNullOrWhiteSpace(user.FirstName))
+        user = new ApplicationUser
         {
-            user.FirstName = firstName;
-            changed = true;
-        }
+            UserName = email,
+            Email = email,
+            FirstName = firstName,
+            LastName = lastName,
+            EmailConfirmed = true
+        };
 
-        if (string.IsNullOrWhiteSpace(user.LastName))
-        {
-            user.LastName = lastName;
-            changed = true;
-        }
-
-        if (!user.EmailConfirmed)
-        {
-            user.EmailConfirmed = true;
-            changed = true;
-        }
-
-        if (user.TenantId != tenant.Id)
-        {
-            user.TenantId = tenant.Id;
-            changed = true;
-        }
-
-        if (changed)
-            await userManager.UpdateAsync(user);
-
-        if (tenant.OwnerUserId != user.Id)
-        {
-            tenant.OwnerUserId = user.Id;
-            await db.SaveChangesAsync();
-        }
-
-        // Prefer Tutor over leftover SuperAdmin from older seeds.
-        if (await userManager.IsInRoleAsync(user, UserRoles.SuperAdmin))
-        {
-            await userManager.RemoveFromRoleAsync(user, UserRoles.SuperAdmin);
-            logger.LogInformation("Seed removed SuperAdmin from {Email} (now Tutor).", email);
-        }
-
-        if (!await userManager.IsInRoleAsync(user, UserRoles.Tutor))
-        {
-            await userManager.AddToRoleAsync(user, UserRoles.Tutor);
-            logger.LogInformation("Seed assigned Tutor to {Email}.", email);
-        }
-
-        if (user.LockoutEnd is not null && user.LockoutEnd > DateTimeOffset.UtcNow)
-            await userManager.SetLockoutEndDateAsync(user, null);
-
-        if (!resetPassword)
-            return;
-
-        var token = await userManager.GeneratePasswordResetTokenAsync(user);
-        var resetResult = await userManager.ResetPasswordAsync(user, token, password);
-        if (!resetResult.Succeeded)
+        var createResult = await userManager.CreateAsync(user, password);
+        if (!createResult.Succeeded)
         {
             logger.LogError(
-                "Seed failed to reset password for tutor {Email}: {Errors}",
+                "Bootstrap admin create failed for {Email}: {Errors}",
                 email,
-                string.Join("; ", resetResult.Errors.Select(e => e.Description)));
+                string.Join("; ", createResult.Errors.Select(e => e.Description)));
             return;
         }
 
-        logger.LogInformation("Seed reset password for tutor {Email}.", email);
+        await userManager.AddToRoleAsync(user, UserRoles.SuperAdmin);
+        logger.LogInformation("Bootstrap created SuperAdmin {Email}.", email);
     }
 
     private static async Task RemoveDemoDataAsync(
