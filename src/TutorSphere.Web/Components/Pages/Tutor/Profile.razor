@@ -225,6 +225,20 @@ else if (_tab == "subjects")
                 </button>
             }
         </div>
+
+        <hr class="my-4" />
+        <h5 class="mb-2">@L["Label_Level"]</h5>
+        <p class="text-muted mb-3">@L["Profile_LevelsHint"]</p>
+        <div class="subject-chips">
+            @foreach (var level in _allLevels)
+            {
+                var active = _p.Levels.Contains(level);
+                <button type="button" class="ts-chip @(active?"active":"")"
+                        @onclick="()=>{ if(active) _p.Levels.Remove(level); else _p.Levels.Add(level); }">
+                    @level
+                </button>
+            }
+        </div>
     </div>
 }
 else if (_tab == "availability")
@@ -286,6 +300,17 @@ else if (_tab == "availability")
     }
 
     private static readonly string[] _allSubjects = ["Mathématiques","Physique","Chimie","Biologie","Français","Anglais","Espagnol","Histoire-Géo","Philosophie","Économie","Informatique","Comptabilité"];
+    private static readonly string[] _allLevels =
+    [
+        "Primaire",
+        "Secondaire 1",
+        "Secondaire 2",
+        "Secondaire 3",
+        "Secondaire 4",
+        "Secondaire 5",
+        "Cégep",
+        "Université"
+    ];
     private static readonly string[] _days = ["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"];
     private static readonly string[] _timeSlots = ["Matin","Après-midi","Soir"];
 
@@ -359,6 +384,7 @@ else if (_tab == "availability")
                 Year = c.Year ?? ""
             }).ToList() ?? [];
             _p.Subjects = data.Subjects?.ToList() ?? [];
+            _p.Levels = data.Levels?.ToList() ?? [];
             _p.Availability = data.Availability is { Count: > 0 }
                 ? new HashSet<string>(data.Availability)
                 : [];
@@ -406,6 +432,7 @@ else if (_tab == "availability")
                     _p.Diplomas.Select(c => new CredentialDto(c.Title, c.Institution, c.Year)).ToList(),
                     _p.Certifications.Select(c => new CredentialDto(c.Title, c.Institution, c.Year)).ToList(),
                     _p.Subjects.ToList(),
+                    _p.Levels.ToList(),
                     _p.Availability.ToList());
 
                 var brandingResult = await Api.PutWithErrorAsync<BrandingDto>($"api/branding/tenant/{tenantId}", new
@@ -449,6 +476,7 @@ else if (_tab == "availability")
         List<CredentialDto>? Diplomas,
         List<CredentialDto>? Certifications,
         List<string>? Subjects,
+        List<string>? Levels,
         List<string>? Availability);
 
     private void OpenDiplomaForm()
@@ -537,6 +565,7 @@ else if (_tab == "availability")
         public List<Credential> Diplomas{get;set;}=[];
         public List<Credential> Certifications{get;set;}=[];
         public List<string> Subjects{get;set;}=[];
+        public List<string> Levels{get;set;}=[];
         public HashSet<string> Availability{get;set;}=[];
     }
     private ProfileVM _p = new();

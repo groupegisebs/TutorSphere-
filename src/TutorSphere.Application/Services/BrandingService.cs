@@ -152,6 +152,19 @@ public class BrandingService : IBrandingService
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
+        var offeringLevels = offerings
+            .Select(o => ExtractLevelFromConditions(o.Conditions))
+            .Where(l => !string.IsNullOrWhiteSpace(l) && !IsAllLevels(l))
+            .Cast<string>()
+            .ToList();
+
+        var levels = portfolio.Levels
+            .Concat(offeringLevels)
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(s => s, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
         var offeringAvailability = offerings
             .SelectMany(o => ExtractAvailabilityFromConditions(o.Conditions))
             .ToList();
@@ -211,6 +224,7 @@ public class BrandingService : IBrandingService
             portfolio.Diplomas,
             portfolio.Certifications,
             subjects,
+            levels,
             availability,
             publicOfferings);
 
@@ -294,12 +308,51 @@ public class BrandingService : IBrandingService
                 ReadCredentials(root, "diplomas", "Diplomas"),
                 ReadCredentials(root, "certifications", "Certifications"),
                 ReadStringList(root, "subjects", "Subjects"),
+                ReadStringList(root, "levels", "Levels"),
                 ReadStringList(root, "availability", "Availability"));
         }
         catch (JsonException)
         {
             return PortfolioParsed.Empty;
         }
+    }
+
+    private static string? ExtractLevelFromConditions(string? conditions)
+    {
+        if (string.IsNullOrWhiteSpace(conditions))
+            return null;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(conditions);
+            if (TryGetProperty(doc.RootElement, out var levelEl, "level", "Level")
+                && levelEl.ValueKind == JsonValueKind.String)
+            {
+                var level = levelEl.GetString();
+                return string.IsNullOrWhiteSpace(level) ? null : level.Trim();
+            }
+        }
+        catch (JsonException)
+        {
+            /* ignore */
+        }
+
+        return null;
+    }
+
+    private static bool IsAllLevels(string? level) =>
+        string.Equals(level?.Trim(), "Tous niveaux", StringComparison.OrdinalIgnoreCase);
+
+    private static bool TryGetProperty(JsonElement root, out JsonElement value, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (root.TryGetProperty(name, out value))
+                return true;
+        }
+
+        value = default;
+        return false;
     }
 
     private static int ReadInt(JsonElement root, params string[] names)
@@ -392,9 +445,10 @@ public class BrandingService : IBrandingService
         List<PublicCredentialDto> Diplomas,
         List<PublicCredentialDto> Certifications,
         List<string> Subjects,
+        List<string> Levels,
         List<string> Availability)
     {
-        public static PortfolioParsed Empty { get; } = new(0, 0, null, [], [], [], []);
+        public static PortfolioParsed Empty { get; } = new(0, 0, null, [], [], [], [], []);
     }
 
     private static TenantBrandingDto MapToDto(TenantBranding branding) => new(

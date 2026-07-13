@@ -69,5 +69,6 @@ public record PublicTutorDetailDto(
     IReadOnlyList<PublicCredentialDto> Diplomas,
     IReadOnlyList<PublicCredentialDto> Certifications,
     IReadOnlyList<string> Subjects,
+    IReadOnlyList<string> Levels,
     IReadOnlyList<string> Availability,
     IReadOnlyList<PublicOfferingDto> Offerings);
