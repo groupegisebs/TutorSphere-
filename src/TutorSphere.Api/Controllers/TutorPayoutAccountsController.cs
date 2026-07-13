@@ -17,7 +17,16 @@ public class TutorPayoutAccountsController : ControllerBase
 
     [HttpGet("setup")]
     public async Task<ActionResult<TutorPayoutSetupDto>> GetSetup(CancellationToken ct)
-        => Ok(await _accounts.GetSetupAsync(ct));
+    {
+        try
+        {
+            return Ok(await _accounts.GetSetupAsync(ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
 
     [HttpPut("profile")]
     public async Task<ActionResult<TutorPayoutSetupDto>> UpdateProfile(

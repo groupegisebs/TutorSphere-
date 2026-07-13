@@ -1,10 +1,11 @@
 @page "/tutor/payout-settings"
 @layout TutorLayout
-@rendermode InteractiveServer
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
 @inject NavigationManager Nav
 @using Microsoft.AspNetCore.WebUtilities
+@using Microsoft.AspNetCore.Components.Web
 
 <PageTitle>@L["Payout_Title"] – TutorSphere</PageTitle>
 
@@ -128,9 +129,9 @@ else if (_setup is not null)
                     <div class="col-md-3">
                         <label class="form-label">@L["Payout_Provider"]</label>
                         <select class="form-select" @bind="_form.ProviderKind">
-                            @foreach (var c in _setup.Catalog.Where(x => x.ProviderKind != "StripeConnect"))
+                            @foreach (var c in _setup.CatalogList.Where(x => x.ProviderKind != "StripeConnect"))
                             {
-                                <option value="@c.ProviderKind">@c.DisplayName @(c.Required ? "*" : "")</option>
+                                <option value="@c.ProviderKind">@c.DisplayName @(c.IsRequired ? "*" : "")</option>
                             }
                         </select>
                     </div>
@@ -169,7 +170,7 @@ else if (_setup is not null)
             </div>
         }
 
-        @if (_setup.Accounts.Count == 0)
+        @if (_setup.AccountList.Count == 0)
         {
             <p class="text-muted mb-0">@L["Payout_NoAccounts"]</p>
         }
@@ -187,7 +188,7 @@ else if (_setup is not null)
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var a in _setup.Accounts)
+                    @foreach (var a in _setup.AccountList)
                     {
                         <tr>
                             <td>
@@ -219,6 +220,15 @@ else if (_setup is not null)
         <i class="bi bi-shield-lock me-1"></i>@L["Payout_SecurityNote"]
     </div>
 }
+else
+{
+    <div class="section-card p-4">
+        <p class="text-muted mb-3">@(string.IsNullOrEmpty(_error) ? L["Payout_LoadFailed"].Value : _error)</p>
+        <button class="btn btn-primary" disabled="@_busy" @onclick="ReloadAsync">
+            @L["Common_Retry"]
+        </button>
+    </div>
+}
 
 @code {
     private bool _loading = true, _busy, _showAdd;
@@ -228,15 +238,19 @@ else if (_setup is not null)
     private string? _paypalEmail;
     private AccountForm _form = new();
 
-    private record CatalogItem(string ProviderKind, string DisplayName, bool Required, string Region);
+    private record CatalogItem(string ProviderKind, string DisplayName, bool IsRequired, string Region);
     private record AccountDto(
         Guid Id, string Label, string ProviderKind, string CountryCode, string Currency,
         bool IsPrimary, bool IsActive, string AccountHolderName, string? EmailOrAccountId,
         string? PhoneNumber, string? PaymentDetails, bool IsVerified, DateTime? VerifiedAt);
     private record SetupDto(
-        string Region, string CountryCode, string Currency, List<string> RequiredProviders,
+        string Region, string CountryCode, string Currency, List<string>? RequiredProviders,
         bool StripeConfigured, bool PayPalConfigured, bool SetupComplete,
-        string? StripeAccountId, string? PayPalEmail, List<AccountDto> Accounts, List<CatalogItem> Catalog);
+        string? StripeAccountId, string? PayPalEmail, List<AccountDto>? Accounts, List<CatalogItem>? Catalog)
+    {
+        public List<AccountDto> AccountList => Accounts ?? [];
+        public List<CatalogItem> CatalogList => Catalog ?? [];
+    }
     private record OnboardResult(string ExternalAccountId, string OnboardingUrl, string Status);
     private record OAuthStart(string AuthorizationUrl, string State);
 
@@ -256,25 +270,39 @@ else if (_setup is not null)
         await ReloadAsync();
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Recharge une fois le circuit interactif prêt (évite page vide après prerender sans auth).
+        if (firstRender && _setup is null && !_loading)
+            await ReloadAsync();
+    }
+
     private async Task HandleReturnQueryAsync()
     {
-        var uri = Nav.ToAbsoluteUri(Nav.Uri);
-        var query = QueryHelpers.ParseQuery(uri.Query);
-        if (query.TryGetValue("stripe", out var stripe) && stripe == "return")
+        try
         {
-            await Api.PostWithErrorAsync<SetupDto>("api/tutor-payout-accounts/stripe/sync", new { });
-            _success = L["Payout_StripeSynced"];
-            Nav.NavigateTo("/tutor/payout-settings", replace: true);
-        }
-        if (query.TryGetValue("paypal", out var paypal) && paypal == "linked")
-        {
-            query.TryGetValue("email", out var email);
-            await Api.PostWithErrorAsync<SetupDto>("api/tutor-payout-accounts/paypal/oauth/complete", new
+            var uri = Nav.ToAbsoluteUri(Nav.Uri);
+            var query = QueryHelpers.ParseQuery(uri.Query);
+            if (query.TryGetValue("stripe", out var stripe) && stripe == "return")
             {
-                maskedEmail = email.ToString()
-            });
-            _success = L["Payout_PayPalLinked"];
-            Nav.NavigateTo("/tutor/payout-settings", replace: true);
+                await Api.PostWithErrorAsync<SetupDto>("api/tutor-payout-accounts/stripe/sync", new { });
+                _success = L["Payout_StripeSynced"];
+                Nav.NavigateTo("/tutor/payout-settings", replace: true);
+            }
+            if (query.TryGetValue("paypal", out var paypal) && paypal == "linked")
+            {
+                query.TryGetValue("email", out var email);
+                await Api.PostWithErrorAsync<SetupDto>("api/tutor-payout-accounts/paypal/oauth/complete", new
+                {
+                    maskedEmail = email.ToString()
+                });
+                _success = L["Payout_PayPalLinked"];
+                Nav.NavigateTo("/tutor/payout-settings", replace: true);
+            }
+        }
+        catch
+        {
+            // ignore query handling errors; ReloadAsync will surface setup issues
         }
     }
 
@@ -282,21 +310,41 @@ else if (_setup is not null)
     {
         _loading = true;
         _error = null;
+        await InvokeAsync(StateHasChanged);
         try
         {
-            _setup = await Api.GetAsync<SetupDto>("api/tutor-payout-accounts/setup");
+            var result = await Api.GetWithErrorAsync<SetupDto>("api/tutor-payout-accounts/setup");
+            if (result.Error is not null)
+            {
+                _error = result.Error;
+                _setup = null;
+                return;
+            }
+
+            _setup = result.Value;
             if (_setup is not null)
             {
                 _country = _setup.CountryCode;
                 _paypalEmail = _setup.PayPalEmail;
-                if (_setup.Catalog.Count > 0)
-                    _form.ProviderKind = _setup.Catalog.FirstOrDefault(c => c.ProviderKind != "StripeConnect")?.ProviderKind
-                        ?? _setup.Catalog[0].ProviderKind;
+                var catalog = _setup.CatalogList;
+                if (catalog.Count > 0)
+                    _form.ProviderKind = catalog.FirstOrDefault(c => c.ProviderKind != "StripeConnect")?.ProviderKind
+                        ?? catalog[0].ProviderKind;
             }
+            else
+            {
+                _error = L["Payout_LoadFailed"];
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _setup = null;
         }
         finally
         {
             _loading = false;
+            await InvokeAsync(StateHasChanged);
         }
     }
 

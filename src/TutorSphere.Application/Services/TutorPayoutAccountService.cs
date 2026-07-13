@@ -365,7 +365,7 @@ public class TutorPayoutAccountService : ITutorPayoutAccountService
             foreach (var p in TutorPayoutPolicy.AfricaMobileMoneyProviders)
             {
                 catalog.Add(new PayoutProviderCatalogItemDto(
-                    p.ToString(), DisplayName(p), Required: false, region.ToString()));
+                    p.ToString(), DisplayName(p), IsRequired: false, region.ToString()));
             }
         }
         else

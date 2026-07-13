@@ -44,7 +44,7 @@ public record TutorPayoutSetupDto(
 public record PayoutProviderCatalogItemDto(
     string ProviderKind,
     string DisplayName,
-    bool Required,
+    bool IsRequired,
     string Region);
 
 public record UpdateTutorPayoutProfileRequest(
