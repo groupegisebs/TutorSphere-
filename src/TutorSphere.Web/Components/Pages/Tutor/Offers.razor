@@ -3,6 +3,7 @@
 @rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
+@inject IJSRuntime JS
 
 <PageTitle>@L["Offers_Title"] – TutorSphere</PageTitle>
 
@@ -93,11 +94,17 @@
 
 @if (_showModal)
 {
-    <div class="ts-modal-backdrop" @onclick="CloseModal">
-        <div class="ts-modal ts-modal-lg" @onclick:stopPropagation="true">
+    <div class="ts-modal-backdrop" role="presentation">
+        <div class="ts-modal ts-modal-lg"
+             role="dialog"
+             aria-modal="true"
+             @onclick:stopPropagation="true"
+             @onmousedown:stopPropagation="true">
             <div class="ts-modal-header">
                 <h2>@(_editing == null ? L["Offers_New"] : L["Offers_EditTitle"])</h2>
-                <button class="ts-modal-close" @onclick="CloseModal"><i class="bi bi-x-lg"></i></button>
+                <button type="button" class="ts-modal-close" @onclick="RequestCloseModal" aria-label="@L["Common_Cancel"]">
+                    <i class="bi bi-x-lg"></i>
+                </button>
             </div>
             <div class="ts-modal-body">
                 <div class="row g-3">
@@ -186,8 +193,8 @@
                 }
             </div>
             <div class="ts-modal-footer">
-                <button class="btn btn-outline-secondary" @onclick="CloseModal">@L["Common_Cancel"]</button>
-                <button class="btn btn-primary" @onclick="SaveOffer">
+                <button type="button" class="btn btn-outline-secondary" @onclick="RequestCloseModal">@L["Common_Cancel"]</button>
+                <button type="button" class="btn btn-primary" @onclick="SaveOffer">
                     @(_editing == null ? L["Offers_CreateOffer"] : L["Common_Save"])
                 </button>
             </div>
@@ -330,7 +337,34 @@
         _showModal = true;
     }
 
-    private void CloseModal() => _showModal = false;
+    private async Task RequestCloseModal()
+    {
+        if (IsOfferFormDirty())
+        {
+            var discard = await JS.InvokeAsync<bool>(
+                "confirm",
+                L["Offers_DiscardChanges"].Value);
+            if (!discard)
+                return;
+        }
+
+        CloseModal();
+    }
+
+    private void CloseModal()
+    {
+        _showModal = false;
+        _modalError = "";
+    }
+
+    private bool IsOfferFormDirty() =>
+        !string.IsNullOrWhiteSpace(_mf.Name)
+        || !string.IsNullOrWhiteSpace(_mf.Description)
+        || !string.IsNullOrWhiteSpace(_mf.Subject)
+        || !string.IsNullOrWhiteSpace(_mf.CancellationPolicy)
+        || _mf.Price != 150m
+        || _mf.HourlyRate > 0
+        || _mf.DaySlots.Values.Any(s => s.Enabled);
 
     private void OnDayToggle(string day, ChangeEventArgs e)
     {

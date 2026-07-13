@@ -5,6 +5,7 @@
 @inject ApiClient Api
 @inject LessonService LessonSvc
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 
 <PageTitle>@L["PageTitle_Calendar"]</PageTitle>
 
@@ -235,11 +236,17 @@
 
 @if (_showLessonModal)
 {
-    <div class="ts-modal-backdrop" @onclick="CloseLessonModal">
-        <div class="ts-modal" @onclick:stopPropagation="true">
+    <div class="ts-modal-backdrop" role="presentation">
+        <div class="ts-modal ts-modal-lg"
+             role="dialog"
+             aria-modal="true"
+             @onclick:stopPropagation="true"
+             @onmousedown:stopPropagation="true">
             <div class="ts-modal-header">
-                <h2>@(_editingLessonId.HasValue ? "Modifier le cours" : "Nouveau cours")</h2>
-                <button type="button" class="ts-modal-close" @onclick="CloseLessonModal"><i class="bi bi-x-lg"></i></button>
+                <h2>@(_editingLessonId.HasValue ? L["Lessons_Edit"] : L["Lessons_New"])</h2>
+                <button type="button" class="ts-modal-close" @onclick="RequestCloseLessonModal" aria-label="@L["Common_Cancel"]">
+                    <i class="bi bi-x-lg"></i>
+                </button>
             </div>
             <div class="ts-modal-body">
                 @if (!string.IsNullOrEmpty(_formError))
@@ -248,44 +255,81 @@
                 }
                 <div class="row g-3">
                     <div class="col-12">
-                        <label class="form-label">Titre *</label>
+                        <label class="form-label">@L["Common_Title"] *</label>
                         <input class="form-control" @bind="_lessonForm.Title" placeholder="Cours de mathématiques" />
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">Matière</label>
+                        <label class="form-label">@L["Common_Subject"]</label>
                         <input class="form-control" @bind="_lessonForm.Subject" placeholder="Mathématiques" />
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">Mode</label>
+                        <label class="form-label">@L["Common_Mode"]</label>
                         <select class="form-select" @bind="_lessonForm.Mode">
                             <option>En ligne</option>
                             <option>Présentiel</option>
                             <option>Hybride</option>
                         </select>
                     </div>
+
                     <div class="col-md-6">
-                        <label class="form-label">Date *</label>
-                        <input type="date" class="form-control" @bind="_lessonForm.Date" />
+                        <label class="form-label">@L["Lessons_DateRequired"]</label>
+                        <input type="date" class="form-control" @bind="_lessonForm.Date" disabled="@_slotTimeLocked" />
                     </div>
                     <div class="col-md-3">
-                        <label class="form-label">Début</label>
-                        <input type="time" class="form-control" @bind="_lessonForm.StartTime" />
+                        <label class="form-label">@L["Lessons_StartTime"]</label>
+                        <input type="time" class="form-control" @bind="_lessonForm.StartTime" disabled="@_slotTimeLocked" />
                     </div>
                     <div class="col-md-3">
-                        <label class="form-label">Durée (h)</label>
+                        <label class="form-label">@L["Lessons_DurationHours"]</label>
                         <input type="number" step="0.5" min="0.5" max="8" class="form-control" @bind="_lessonForm.Duration" />
                     </div>
+                    @if (_slotTimeLocked && !_editingLessonId.HasValue)
+                    {
+                        <div class="col-12">
+                            <div class="alert alert-info py-2 mb-0">
+                                <i class="bi bi-calendar-check me-1"></i>
+                                Créneau choisi : @_lessonForm.Date.ToString("dddd d MMMM yyyy") à @_lessonForm.StartTime.ToString("HH:mm")
+                            </div>
+                        </div>
+                    }
+
                     <div class="col-md-6">
-                        <label class="form-label">Nombre max d'élèves</label>
+                        <label class="form-label">@L["Lessons_MaxStudents"]</label>
                         <input type="number" class="form-control" min="1" max="100"
                                @bind="_lessonForm.MaxStudents" @bind:after="ClampSelectedStudents" />
                         <small class="text-muted">Limite les inscriptions à cette séance.</small>
                     </div>
-                    <div class="col-12">
+                    <div class="col-md-6">
                         <label class="form-label">Lieu / lien</label>
                         <input class="form-control" @bind="_lessonForm.LocationOrUrl"
                                placeholder="Adresse ou URL de visioconférence" />
                     </div>
+
+                    @if (!_editingLessonId.HasValue)
+                    {
+                        <div class="col-12">
+                            <label class="form-label">@L["Lessons_Recurrence"]</label>
+                            <select class="form-select" @bind="_lessonForm.Recurrence">
+                                <option value="none">@L["Lessons_Once"]</option>
+                                <option value="weekly">@L["Lessons_Weekly"]</option>
+                                <option value="biweekly">@L["Lessons_Biweekly"]</option>
+                                <option value="monthly">@L["Lessons_Monthly"]</option>
+                            </select>
+                            <small class="text-muted">Optionnel — crée plusieurs séances à partir du créneau choisi.</small>
+                        </div>
+                        @if (_lessonForm.Recurrence != "none")
+                        {
+                            <div class="col-md-6">
+                                <label class="form-label">@L["Lessons_Occurrences"]</label>
+                                <input type="number" class="form-control" min="2" max="52" @bind="_lessonForm.Occurrences" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">@L["Lessons_Until"]</label>
+                                <input type="date" class="form-control" @bind="_lessonForm.UntilDate" />
+                            </div>
+                        }
+                    }
+
                     <div class="col-12">
                         <label class="form-label">Élèves (pour rappels e-mail) — @_lessonForm.StudentIds.Count / @_lessonForm.MaxStudents</label>
                         @if (_students.Count == 0)
@@ -312,7 +356,7 @@
                         }
                     </div>
                     <div class="col-12">
-                        <label class="form-label">Description</label>
+                        <label class="form-label">@L["Lessons_Description"]</label>
                         <textarea class="form-control" rows="2" @bind="_lessonForm.Description"></textarea>
                     </div>
                 </div>
@@ -324,10 +368,10 @@
                         <i class="bi bi-trash me-1"></i>Supprimer
                     </button>
                 }
-                <button type="button" class="btn btn-outline-secondary" @onclick="CloseLessonModal" disabled="@_saving">Annuler</button>
+                <button type="button" class="btn btn-outline-secondary" @onclick="RequestCloseLessonModal" disabled="@_saving">@L["Common_Cancel"]</button>
                 <button type="button" class="btn btn-primary" @onclick="SaveLessonAsync" disabled="@_saving">
                     @if (_saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
-                    @(_editingLessonId.HasValue ? "Enregistrer" : "Créer")
+                    @(_editingLessonId.HasValue ? L["Common_Save"] : L["Common_Create"])
                 </button>
             </div>
         </div>
@@ -401,6 +445,7 @@
     private LessonFormModel _lessonForm = new();
     private UnavailFormModel _unavailForm = new();
     private Guid? _editingLessonId;
+    private bool _slotTimeLocked;
     private readonly List<StudentOption> _students = [];
 
     private record StudentOption(Guid Id, string Name);
@@ -550,6 +595,9 @@
         public double Duration { get; set; } = 1;
         public int MaxStudents { get; set; } = 1;
         public HashSet<Guid> StudentIds { get; set; } = [];
+        public string Recurrence { get; set; } = "none";
+        public int Occurrences { get; set; } = 8;
+        public DateTime? UntilDate { get; set; }
     }
 
     private sealed class UnavailFormModel
@@ -663,12 +711,16 @@
         _formError = null;
         _bannerSuccess = null;
         _editingLessonId = null;
+        _slotTimeLocked = date.HasValue || hour.HasValue;
         _lessonForm = new LessonFormModel
         {
             Date = (date ?? WeekStart.AddDays(Math.Max(0, (DateTime.Today - WeekStart).Days))).Date,
             StartTime = hour is int h ? new TimeOnly(h, 0) : new TimeOnly(10, 0),
             Duration = 1,
-            Mode = "En ligne"
+            Mode = "En ligne",
+            Recurrence = "none",
+            Occurrences = 8,
+            UntilDate = null
         };
         _showLessonModal = true;
     }
@@ -682,6 +734,7 @@
         _formError = null;
         _bannerSuccess = null;
         _editingLessonId = evt.Id;
+        _slotTimeLocked = false;
         var locOrUrl = string.IsNullOrWhiteSpace(evt.MeetingUrl) ? (evt.Location ?? "") : evt.MeetingUrl;
         _lessonForm = new LessonFormModel
         {
@@ -693,17 +746,44 @@
             Date = evt.Date,
             StartTime = new TimeOnly(evt.StartH, evt.StartM),
             Duration = Math.Max(0.5, Math.Round(evt.DurMin / 60.0, 1)),
-            MaxStudents = Math.Max(1, evt.MaxStudents)
+            MaxStudents = Math.Max(1, evt.MaxStudents),
+            Recurrence = "none"
         };
         _showLessonModal = true;
+    }
+
+    private async Task RequestCloseLessonModal()
+    {
+        if (_saving) return;
+
+        if (IsLessonFormDirty())
+        {
+            var discard = await JS.InvokeAsync<bool>(
+                "confirm",
+                L["Offers_DiscardChanges"].Value);
+            if (!discard)
+                return;
+        }
+
+        CloseLessonModal();
     }
 
     private void CloseLessonModal()
     {
         _showLessonModal = false;
         _editingLessonId = null;
+        _slotTimeLocked = false;
         _formError = null;
     }
+
+    private bool IsLessonFormDirty() =>
+        !string.IsNullOrWhiteSpace(_lessonForm.Title)
+        || !string.IsNullOrWhiteSpace(_lessonForm.Subject)
+        || !string.IsNullOrWhiteSpace(_lessonForm.Description)
+        || !string.IsNullOrWhiteSpace(_lessonForm.LocationOrUrl)
+        || _lessonForm.StudentIds.Count > 0
+        || _lessonForm.Recurrence != "none"
+        || _editingLessonId.HasValue;
 
     private void ToggleStudent(Guid id, bool selected)
     {
@@ -807,6 +887,19 @@
             }
             else
             {
+                string? recurrenceFrequency = null;
+                int? recurrenceOccurrences = null;
+                DateTime? recurrenceUntil = null;
+
+                if (_lessonForm.Recurrence is not "none")
+                {
+                    recurrenceFrequency = _lessonForm.Recurrence;
+                    if (_lessonForm.UntilDate is { } until && until.Date >= _lessonForm.Date.Date)
+                        recurrenceUntil = DateTime.SpecifyKind(until.Date, DateTimeKind.Utc);
+                    else
+                        recurrenceOccurrences = Math.Clamp(_lessonForm.Occurrences, 2, 52);
+                }
+
                 var req = new Application.DTOs.Lessons.CreateLessonRequest(
                     _lessonForm.Title.Trim(),
                     string.IsNullOrWhiteSpace(_lessonForm.Description) ? null : _lessonForm.Description.Trim(),
@@ -818,6 +911,9 @@
                     meetingUrl,
                     null,
                     _lessonForm.StudentIds.Count > 0 ? _lessonForm.StudentIds.ToList() : null,
+                    RecurrenceFrequency: recurrenceFrequency,
+                    RecurrenceOccurrences: recurrenceOccurrences,
+                    RecurrenceUntil: recurrenceUntil,
                     MaxStudents: Math.Clamp(_lessonForm.MaxStudents, 1, 100));
 
                 var result = await Api.PostWithErrorAsync<List<Application.DTOs.Lessons.LessonDto>>("api/lessons", req);
@@ -829,7 +925,10 @@
                 }
 
                 _showLessonModal = false;
-                _bannerSuccess = "Cours créé.";
+                _slotTimeLocked = false;
+                _bannerSuccess = result.Value.Count > 1
+                    ? $"{result.Value.Count} cours créés (récurrence)."
+                    : "Cours créé.";
             }
 
             await LoadCalendarDataAsync();
