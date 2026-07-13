@@ -95,96 +95,11 @@
             }
             else
             {
-                <p class="results-count">@L["Search_ResultsCount", Results.Count]</p>
+            <p class="results-count"><i class="bi bi-people me-1"></i>@L["Search_ResultsCount", Results.Count]</p>
                 <div class="results-grid">
                     @foreach (var tutor in Results)
                     {
-                        <article class="tutor-card">
-                            <div class="tutor-card-top">
-                                @if (!string.IsNullOrWhiteSpace(tutor.PhotoUrl))
-                                {
-                                    <img class="tutor-avatar tutor-avatar-photo" src="@tutor.PhotoUrl" alt="@tutor.Name" />
-                                }
-                                else
-                                {
-                                    <div class="tutor-avatar" aria-hidden="true">@GetInitials(tutor.Name)</div>
-                                }
-                                <div class="tutor-card-header">
-                                    <h3>@tutor.Name</h3>
-                                    @if (!string.IsNullOrWhiteSpace(tutor.City))
-                                    {
-                                        <span class="tutor-location">
-                                            <i class="bi bi-geo-alt"></i>
-                                            @tutor.City@(string.IsNullOrWhiteSpace(tutor.Country) ? "" : $", {tutor.Country}")
-                                        </span>
-                                    }
-                                </div>
-                                @if (tutor.Levels is { Count: > 0 })
-                                {
-                                    <div class="tutor-levels" title="@L["Label_Level"]">
-                                        @string.Join(" · ", tutor.Levels)
-                                    </div>
-                                }
-                            </div>
-                            @if (!string.IsNullOrWhiteSpace(tutor.Description))
-                            {
-                                <p class="tutor-description">@tutor.Description</p>
-                            }
-                            <ul class="tutor-stats" aria-label="@L["Search_StatsLabel"]">
-                                <li>
-                                    <i class="bi bi-clock" aria-hidden="true"></i>
-                                    <span>@L["Search_WeeklyHours", FormatHours(tutor.WeeklyHours)]</span>
-                                </li>
-                                <li>
-                                    <i class="bi bi-people" aria-hidden="true"></i>
-                                    <span>@L["Search_CurrentStudents", tutor.CurrentStudentCount]</span>
-                                </li>
-                                @if (tutor.Rating.HasValue)
-                                {
-                                    <li>
-                                        <i class="bi bi-star-fill" aria-hidden="true"></i>
-                                        <span>@L["Search_Satisfaction", tutor.Rating.Value.ToString("0")]</span>
-                                    </li>
-                                }
-                            </ul>
-                            <div class="tutor-meta">
-                                @if (tutor.Subjects.Count > 0)
-                                {
-                                    <div class="tutor-tags">
-                                        @foreach (var subject in tutor.Subjects)
-                                        {
-                                            <span class="badge bg-light text-dark">@subject</span>
-                                        }
-                                    </div>
-                                }
-                                @if (tutor.Modes.Count > 0)
-                                {
-                                    <p class="tutor-modes">
-                                        <strong>@L["Search_Modes"]</strong> @string.Join(", ", tutor.Modes)
-                                    </p>
-                                }
-                                @if (tutor.MinPrice.HasValue)
-                                {
-                                    <p class="tutor-price">
-                                        <strong>@L["Search_Price"]</strong>
-                                        @if (tutor.MaxPrice.HasValue && tutor.MaxPrice != tutor.MinPrice)
-                                        {
-                                            <span>@tutor.MinPrice.Value.ToString("0.##") $ – @tutor.MaxPrice.Value.ToString("0.##") $ @tutor.Currency</span>
-                                        }
-                                        else
-                                        {
-                                            <span>@tutor.MinPrice.Value.ToString("0.##") $ @tutor.Currency</span>
-                                        }
-                                    </p>
-                                }
-                                <p class="tutor-language"><strong>@L["Search_Language"]</strong> @FormatLanguage(tutor.Language)</p>
-                            </div>
-                            <div class="tutor-card-footer">
-                                <a class="btn btn-outline-primary btn-sm" href="/tutor/@tutor.Slug">
-                                    <i class="bi bi-arrow-right me-1"></i>@L["Button_ViewProfile"]
-                                </a>
-                            </div>
-                        </article>
+                        <TutorSearchCard Tutor="tutor" ProfileHref="@($"/tutor/{tutor.Slug}")" />
                     }
                 </div>
             }
@@ -250,32 +165,6 @@
         if (!string.IsNullOrWhiteSpace(value))
             parts.Add($"{key}={Uri.EscapeDataString(value.Trim())}");
     }
-
-    private static string GetInitials(string name)
-    {
-        if (string.IsNullOrWhiteSpace(name))
-            return "?";
-
-        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        return parts.Length >= 2
-            ? $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant()
-            : parts[0][0].ToString().ToUpperInvariant();
-    }
-
-    private static string FormatHours(decimal hours) =>
-        hours % 1m == 0 ? hours.ToString("0") : hours.ToString("0.#");
-
-    private string FormatLanguage(string language) => language.ToLowerInvariant() switch
-    {
-        SupportedLanguageCodes.French => L["Lang_French"],
-        SupportedLanguageCodes.English => L["Lang_English"],
-        SupportedLanguageCodes.Spanish => L["Lang_Spanish"],
-        SupportedLanguageCodes.German => L["Lang_German"],
-        SupportedLanguageCodes.Portuguese => L["Lang_Portuguese"],
-        "zh-hans" => L["Lang_Mandarin"],
-        SupportedLanguageCodes.Arabic => L["Lang_Arabic"],
-        _ => language
-    };
 
     private sealed class SearchFiltersModel
     {

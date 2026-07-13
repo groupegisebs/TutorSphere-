@@ -29,4 +29,9 @@ public record TutorSearchResultDto(
     string? PhotoUrl = null,
     int CurrentStudentCount = 0,
     decimal WeeklyHours = 0m,
-    IReadOnlyList<string>? Levels = null);
+    IReadOnlyList<string>? Levels = null,
+    IReadOnlyList<string>? Specialties = null,
+    IReadOnlyList<string>? Languages = null,
+    int? SessionDurationMin = null,
+    bool IsVerified = false,
+    bool HasFlexibleSessions = false);

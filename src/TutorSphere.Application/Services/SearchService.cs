@@ -87,11 +87,9 @@ public class SearchService : ISearchService
             .GroupBy(b => b.TenantId)
             .ToDictionary(g => g.Key, g => g.First().LogoUrl!.Trim());
 
-        var portfolioLevelsByTenant = brandings
+        var portfolioByTenant = brandings
             .GroupBy(b => b.TenantId)
-            .ToDictionary(
-                g => g.Key,
-                g => ParsePortfolioLevels(g.First().Portfolio));
+            .ToDictionary(g => g.Key, g => ParsePortfolioExtras(g.First().Portfolio));
 
         var studentCounts = _db.StudentsForAnyTenant
             .Where(s => tenantIds.Contains(s.TenantId) && s.IsActive)
@@ -128,20 +126,60 @@ public class SearchService : ISearchService
                 studentCounts.TryGetValue(t.Id, out var studentCount);
                 weeklyHoursByTenant.TryGetValue(t.Id, out var weeklyHours);
                 logosByTenant.TryGetValue(t.Id, out var photoUrl);
-                portfolioLevelsByTenant.TryGetValue(t.Id, out var portfolioLevels);
+                portfolioByTenant.TryGetValue(t.Id, out var portfolio);
+                portfolio ??= PortfolioExtras.Empty;
 
                 var offeringLevels = tenantOfferings
                     .Select(o => ExtractOfferingLevel(o.Conditions))
                     .Where(l => !string.IsNullOrWhiteSpace(l) && !IsAllLevels(l))
                     .Cast<string>();
 
-                var levels = (portfolioLevels ?? [])
+                var levels = portfolio.Levels
                     .Concat(offeringLevels)
                     .Select(l => l.Trim())
                     .Where(l => l.Length > 0)
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .OrderBy(l => l, StringComparer.OrdinalIgnoreCase)
                     .ToList();
+
+                var subjects = tenantOfferings
+                    .Select(o => o.Subject)
+                    .Where(s => !string.IsNullOrWhiteSpace(s))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Cast<string>()
+                    .ToList();
+
+                var specialties = portfolio.Subjects
+                    .Where(s => subjects.All(sub => !string.Equals(sub, s, StringComparison.OrdinalIgnoreCase)))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                var durations = tenantOfferings
+                    .Select(o => ExtractSessionDuration(o.Conditions))
+                    .Where(d => d is > 0)
+                    .Select(d => d!.Value)
+                    .ToList();
+
+                int? sessionDuration = durations.Count > 0
+                    ? (int)Math.Round(durations.Average())
+                    : null;
+
+                var modes = tenantOfferings
+                    .Select(o => FormatMode(o.Mode))
+                    .Distinct()
+                    .ToList();
+
+                var hasFlexible = tenantOfferings.Any(o =>
+                    o.Mode is LessonMode.Online or LessonMode.Hybrid);
+
+                var languages = new List<string>();
+                if (!string.IsNullOrWhiteSpace(t.Language))
+                    languages.Add(t.Language.Trim());
+                foreach (var lang in portfolio.Languages)
+                {
+                    if (languages.All(x => !string.Equals(x, lang, StringComparison.OrdinalIgnoreCase)))
+                        languages.Add(lang);
+                }
 
                 return new TutorSearchResultDto(
                     t.Id,
@@ -154,21 +192,18 @@ public class SearchService : ISearchService
                     t.Currency,
                     tenantOfferings.Min(o => o.Price),
                     tenantOfferings.Max(o => o.Price),
-                    tenantOfferings
-                        .Select(o => o.Subject)
-                        .Where(s => !string.IsNullOrWhiteSpace(s))
-                        .Distinct(StringComparer.OrdinalIgnoreCase)
-                        .Cast<string>()
-                        .ToList(),
-                    tenantOfferings
-                        .Select(o => FormatMode(o.Mode))
-                        .Distinct()
-                        .ToList(),
+                    subjects,
+                    modes,
                     null,
                     string.IsNullOrWhiteSpace(photoUrl) ? null : photoUrl,
                     studentCount,
                     weeklyHours,
-                    levels);
+                    levels,
+                    specialties,
+                    languages,
+                    sessionDuration,
+                    portfolio.IsVerified,
+                    hasFlexible);
             })
             .Where(r => !filters.MinRating.HasValue || (r.Rating ?? 0) >= filters.MinRating.Value)
             .Where(r => string.IsNullOrWhiteSpace(levelFilter)
@@ -203,13 +238,24 @@ public class SearchService : ISearchService
 
     private static string? ExtractOfferingLevel(string? conditions)
     {
+        var schedule = TryParseSchedule(conditions);
+        return string.IsNullOrWhiteSpace(schedule?.Level) ? null : schedule.Level.Trim();
+    }
+
+    private static int? ExtractSessionDuration(string? conditions)
+    {
+        var schedule = TryParseSchedule(conditions);
+        return schedule?.SessionDurationMin > 0 ? schedule.SessionDurationMin : null;
+    }
+
+    private static OfferingScheduleDto? TryParseSchedule(string? conditions)
+    {
         if (string.IsNullOrWhiteSpace(conditions))
             return null;
 
         try
         {
-            var schedule = JsonSerializer.Deserialize<OfferingScheduleDto>(conditions, ScheduleJson);
-            return string.IsNullOrWhiteSpace(schedule?.Level) ? null : schedule.Level.Trim();
+            return JsonSerializer.Deserialize<OfferingScheduleDto>(conditions, ScheduleJson);
         }
         catch (JsonException)
         {
@@ -217,41 +263,62 @@ public class SearchService : ISearchService
         }
     }
 
-    private static List<string> ParsePortfolioLevels(string? portfolioJson)
+    private static PortfolioExtras ParsePortfolioExtras(string? portfolioJson)
     {
         if (string.IsNullOrWhiteSpace(portfolioJson))
-            return [];
+            return PortfolioExtras.Empty;
 
         try
         {
             using var doc = JsonDocument.Parse(portfolioJson);
             var root = doc.RootElement;
-            if (!TryGetProperty(root, out var levelsEl, "levels", "Levels")
-                || levelsEl.ValueKind != JsonValueKind.Array)
-                return [];
+            var levels = ReadStringList(root, "levels", "Levels");
+            var subjects = ReadStringList(root, "subjects", "Subjects");
+            var languages = ReadStringList(root, "languages", "Languages");
+            var hasDiplomas = HasCredentialItems(root, "diplomas", "Diplomas");
+            var hasCerts = HasCredentialItems(root, "certifications", "Certifications");
 
-            return levelsEl.EnumerateArray()
+            return new PortfolioExtras(levels, subjects, languages, hasDiplomas || hasCerts);
+        }
+        catch (JsonException)
+        {
+            return PortfolioExtras.Empty;
+        }
+    }
+
+    private static List<string> ReadStringList(JsonElement root, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (!root.TryGetProperty(name, out var p) || p.ValueKind != JsonValueKind.Array)
+                continue;
+
+            return p.EnumerateArray()
                 .Select(x => x.ValueKind == JsonValueKind.String ? x.GetString() : null)
                 .Where(s => !string.IsNullOrWhiteSpace(s))
                 .Select(s => s!.Trim())
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
         }
-        catch (JsonException)
-        {
-            return [];
-        }
+
+        return [];
     }
 
-    private static bool TryGetProperty(JsonElement root, out JsonElement value, params string[] names)
+    private static bool HasCredentialItems(JsonElement root, params string[] names)
     {
         foreach (var name in names)
         {
-            if (root.TryGetProperty(name, out value))
-                return true;
+            if (!root.TryGetProperty(name, out var p) || p.ValueKind != JsonValueKind.Array)
+                continue;
+
+            return p.EnumerateArray().Any(item =>
+                item.ValueKind == JsonValueKind.Object
+                && ((item.TryGetProperty("title", out var t) && t.ValueKind == JsonValueKind.String
+                     && !string.IsNullOrWhiteSpace(t.GetString()))
+                    || (item.TryGetProperty("Title", out var t2) && t2.ValueKind == JsonValueKind.String
+                        && !string.IsNullOrWhiteSpace(t2.GetString()))));
         }
 
-        value = default;
         return false;
     }
 
@@ -262,4 +329,13 @@ public class SearchService : ISearchService
         LessonMode.Hybrid => "Hybride",
         _ => mode.ToString()
     };
+
+    private sealed record PortfolioExtras(
+        List<string> Levels,
+        List<string> Subjects,
+        List<string> Languages,
+        bool IsVerified)
+    {
+        public static PortfolioExtras Empty { get; } = new([], [], [], false);
+    }
 }
