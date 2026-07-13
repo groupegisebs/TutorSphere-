@@ -101,7 +101,14 @@
                     {
                         <article class="tutor-card">
                             <div class="tutor-card-top">
-                                <div class="tutor-avatar" aria-hidden="true">@GetInitials(tutor.Name)</div>
+                                @if (!string.IsNullOrWhiteSpace(tutor.PhotoUrl))
+                                {
+                                    <img class="tutor-avatar tutor-avatar-photo" src="@tutor.PhotoUrl" alt="@tutor.Name" />
+                                }
+                                else
+                                {
+                                    <div class="tutor-avatar" aria-hidden="true">@GetInitials(tutor.Name)</div>
+                                }
                                 <div class="tutor-card-header">
                                     <h3>@tutor.Name</h3>
                                     @if (!string.IsNullOrWhiteSpace(tutor.City))
@@ -117,6 +124,23 @@
                             {
                                 <p class="tutor-description">@tutor.Description</p>
                             }
+                            <ul class="tutor-stats" aria-label="@L["Search_StatsLabel"]">
+                                <li>
+                                    <i class="bi bi-clock" aria-hidden="true"></i>
+                                    <span>@L["Search_WeeklyHours", FormatHours(tutor.WeeklyHours)]</span>
+                                </li>
+                                <li>
+                                    <i class="bi bi-people" aria-hidden="true"></i>
+                                    <span>@L["Search_CurrentStudents", tutor.CurrentStudentCount]</span>
+                                </li>
+                                @if (tutor.Rating.HasValue)
+                                {
+                                    <li>
+                                        <i class="bi bi-star-fill" aria-hidden="true"></i>
+                                        <span>@L["Search_Satisfaction", tutor.Rating.Value.ToString("0")]</span>
+                                    </li>
+                                }
+                            </ul>
                             <div class="tutor-meta">
                                 @if (tutor.Subjects.Count > 0)
                                 {
@@ -231,6 +255,9 @@
             ? $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant()
             : parts[0][0].ToString().ToUpperInvariant();
     }
+
+    private static string FormatHours(decimal hours) =>
+        hours % 1m == 0 ? hours.ToString("0") : hours.ToString("0.#");
 
     private string FormatLanguage(string language) => language.ToLowerInvariant() switch
     {

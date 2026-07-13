@@ -25,4 +25,7 @@ public record TutorSearchResultDto(
     decimal? MaxPrice,
     IReadOnlyList<string> Subjects,
     IReadOnlyList<string> Modes,
-    decimal? Rating);
+    decimal? Rating,
+    string? PhotoUrl = null,
+    int CurrentStudentCount = 0,
+    decimal WeeklyHours = 0m);

@@ -77,11 +77,49 @@ public class SearchService : ISearchService
             .GroupBy(o => o.TenantId)
             .ToDictionary(g => g.Key, g => g.ToList());
 
+        var tenantIds = tenants.Select(t => t.Id).ToList();
+
+        var logosByTenant = _db.TenantBrandings
+            .Where(b => tenantIds.Contains(b.TenantId) && b.LogoUrl != null && b.LogoUrl != "")
+            .Select(b => new { b.TenantId, b.LogoUrl })
+            .ToList()
+            .GroupBy(b => b.TenantId)
+            .ToDictionary(g => g.Key, g => g.First().LogoUrl!.Trim());
+
+        var studentCounts = _db.StudentsForAnyTenant
+            .Where(s => tenantIds.Contains(s.TenantId) && s.IsActive)
+            .GroupBy(s => s.TenantId)
+            .Select(g => new { TenantId = g.Key, Count = g.Count() })
+            .ToList()
+            .ToDictionary(x => x.TenantId, x => x.Count);
+
+        var (weekStart, weekEnd) = GetUtcWeekBounds(DateTime.UtcNow);
+        var weekLessons = _db.LessonsForAnyTenant
+            .Where(l => tenantIds.Contains(l.TenantId)
+                        && l.SettlementStatus != LessonSettlementStatus.CancelledFree
+                        && l.StartTime >= weekStart
+                        && l.StartTime < weekEnd)
+            .Select(l => new { l.TenantId, l.StartTime, l.EndTime })
+            .ToList();
+
+        var weeklyHoursByTenant = weekLessons
+            .GroupBy(l => l.TenantId)
+            .ToDictionary(
+                g => g.Key,
+                g => Math.Round(
+                    (decimal)g.Sum(l => (l.EndTime - l.StartTime).TotalHours),
+                    1,
+                    MidpointRounding.AwayFromZero));
+
         var results = tenants
             .Where(t => offeringsByTenant.ContainsKey(t.Id))
             .Select(t =>
             {
                 var tenantOfferings = offeringsByTenant[t.Id];
+                studentCounts.TryGetValue(t.Id, out var studentCount);
+                weeklyHoursByTenant.TryGetValue(t.Id, out var weeklyHours);
+                logosByTenant.TryGetValue(t.Id, out var photoUrl);
+
                 return new TutorSearchResultDto(
                     t.Id,
                     t.Name,
@@ -103,12 +141,25 @@ public class SearchService : ISearchService
                         .Select(o => FormatMode(o.Mode))
                         .Distinct()
                         .ToList(),
-                    null);
+                    null,
+                    string.IsNullOrWhiteSpace(photoUrl) ? null : photoUrl,
+                    studentCount,
+                    weeklyHours);
             })
+            .Where(r => !filters.MinRating.HasValue || (r.Rating ?? 0) >= filters.MinRating.Value)
             .OrderBy(r => r.Name)
             .ToList();
 
         return Task.FromResult<IReadOnlyList<TutorSearchResultDto>>(results);
+    }
+
+    /// <summary>Semaine calendaire lundi → dimanche (UTC).</summary>
+    private static (DateTime Start, DateTime End) GetUtcWeekBounds(DateTime utcNow)
+    {
+        var today = utcNow.Date;
+        var offset = today.DayOfWeek == DayOfWeek.Sunday ? 6 : (int)today.DayOfWeek - 1;
+        var weekStart = today.AddDays(-offset);
+        return (weekStart, weekStart.AddDays(7));
     }
 
     private static string FormatMode(LessonMode mode) => mode switch
