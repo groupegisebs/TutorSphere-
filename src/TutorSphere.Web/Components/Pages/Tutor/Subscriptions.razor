@@ -21,6 +21,14 @@
 {
     <div class="alert alert-warning mb-3" role="alert">@_loadError</div>
 }
+@if (!string.IsNullOrEmpty(_actionError))
+{
+    <div class="alert alert-danger mb-3" role="alert">@_actionError</div>
+}
+@if (!string.IsNullOrEmpty(_actionBanner))
+{
+    <div class="alert alert-success mb-3" role="alert">@_actionBanner</div>
+}
 
 <!-- KPIs -->
 <div class="row g-3 mb-4">
@@ -92,10 +100,12 @@
         <div class="d-flex gap-2">
             <select class="form-select form-select-sm w-auto" @bind="_filterSubStatus">
                 <option value="">@L["Common_All"]</option>
+                <option value="Pending">@L["TutorSubs_StatusPending"]</option>
+                <option value="AwaitingPayment">@L["TutorSubs_StatusAwaitingPayment"]</option>
                 <option value="Active">@L["TutorSubs_StatusActive"]</option>
                 <option value="Paused">@L["TutorSubs_StatusSuspended"]</option>
+                <option value="Rejected">@L["TutorSubs_StatusRejected"]</option>
                 <option value="Cancelled">@L["TutorSubs_StatusCancelled"]</option>
-                <option value="Pending">@L["TutorSubs_StatusPending"]</option>
             </select>
         </div>
     </div>
@@ -145,7 +155,29 @@
                         <td><span class="ts-badge @SubBadge(s.Status)">@SubStatusLabel(s.Status)</span></td>
                         <td>
                             <div class="ts-action-group">
-                                @if (s.Status == "Active")
+                                @if (s.Status == "Pending")
+                                {
+                                    <button class="btn btn-sm btn-success"
+                                            disabled="@(_busyId == s.Id)"
+                                            title="@L["TutorSubs_Accept"]"
+                                            @onclick="async () => await AcceptAsync(s)">
+                                        @if (_busyId == s.Id)
+                                        {
+                                            <span class="spinner-border spinner-border-sm"></span>
+                                        }
+                                        else
+                                        {
+                                            <i class="bi bi-check-lg me-1"></i>@L["TutorSubs_Accept"]
+                                        }
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger"
+                                            disabled="@(_busyId == s.Id)"
+                                            title="@L["TutorSubs_Refuse"]"
+                                            @onclick="async () => await RejectAsync(s)">
+                                        <i class="bi bi-x-lg me-1"></i>@L["TutorSubs_Refuse"]
+                                    </button>
+                                }
+                                else if (s.Status == "Active")
                                 {
                                     <button class="ts-icon-btn" title="@L["TutorSubs_Suspend"]" @onclick='() => s.Status = "Paused"'>
                                         <i class="bi bi-pause-circle text-warning"></i>
@@ -212,6 +244,9 @@
     private bool _loading = true;
     private bool _initialLoadDone;
     private string? _loadError;
+    private string? _actionError;
+    private string? _actionBanner;
+    private Guid? _busyId;
     private PlanForm _pf = new();
 
     private static bool IsActiveStatus(string status) =>
@@ -225,9 +260,9 @@
 
     private static string SubBadge(string s) => s switch {
         "Active" or "Actif" => "ts-badge-success",
-        "Paused" or "Suspendu" => "ts-badge-warning",
-        "Cancelled" or "Résilié" => "ts-badge-danger",
-        "Pending" => "ts-badge-neutral",
+        "Paused" or "Suspendu" or "AwaitingPayment" or "Pending" => "ts-badge-warning",
+        "Cancelled" or "Résilié" or "Rejected" => "ts-badge-danger",
+        "Expired" => "ts-badge-neutral",
         _ => "ts-badge-neutral"
     };
 
@@ -236,6 +271,8 @@
         "Paused" or "Suspendu" => L["TutorSubs_StatusSuspended"],
         "Cancelled" or "Résilié" => L["TutorSubs_StatusCancelled"],
         "Pending" => L["TutorSubs_StatusPending"],
+        "AwaitingPayment" => L["TutorSubs_StatusAwaitingPayment"],
+        "Rejected" => L["TutorSubs_StatusRejected"],
         "Expired" => L["TutorSubs_StatusExpired"],
         _ => s
     };
@@ -285,21 +322,85 @@
 
             var subscribers = await subscribersTask ?? [];
             _subs.Clear();
-            _subs.AddRange(subscribers.Select(s => new SubVM
-            {
-                StudentName = s.StudentName,
-                ParentName = s.ParentName ?? "",
-                PlanName = s.OfferingTitle,
-                Amount = s.Price,
-                ExpiresAt = s.EndDate.Kind == DateTimeKind.Utc ? s.EndDate.ToLocalTime().Date : s.EndDate.Date,
-                Status = s.Status
-            }));
+            _subs.AddRange(subscribers.Select(MapSubscriber));
         }
         catch (Exception ex)
         {
             _loadError = string.Format(L["TutorSubs_LoadError"].Value, ex.Message);
         }
         finally { _loading = false; }
+    }
+
+    private static SubVM MapSubscriber(ApiSubscriberDto s) => new()
+    {
+        Id = s.Id,
+        StudentName = s.StudentName,
+        ParentName = s.ParentName ?? "",
+        PlanName = s.OfferingTitle,
+        Amount = s.Price,
+        ExpiresAt = s.EndDate.Kind == DateTimeKind.Utc ? s.EndDate.ToLocalTime().Date : s.EndDate.Date,
+        Status = s.Status
+    };
+
+    private async Task AcceptAsync(SubVM sub)
+    {
+        _busyId = sub.Id;
+        _actionError = null;
+        _actionBanner = null;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<ApiSubscriberDto>(
+                $"api/subscription-offerings/subscribers/{sub.Id}/accept",
+                new { });
+            if (result.Error is not null || result.Value is null)
+            {
+                _actionError = result.Error ?? L["TutorSubs_ActionFailed"];
+                return;
+            }
+
+            ApplySubscriberUpdate(sub.Id, result.Value);
+            _actionBanner = result.Value.Status == "Active"
+                ? L["TutorSubs_AcceptActiveBanner"]
+                : L["TutorSubs_AcceptPaymentBanner"];
+        }
+        catch (Exception ex)
+        {
+            _actionError = ex.Message;
+        }
+        finally { _busyId = null; }
+    }
+
+    private async Task RejectAsync(SubVM sub)
+    {
+        _busyId = sub.Id;
+        _actionError = null;
+        _actionBanner = null;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<ApiSubscriberDto>(
+                $"api/subscription-offerings/subscribers/{sub.Id}/reject",
+                new { });
+            if (result.Error is not null || result.Value is null)
+            {
+                _actionError = result.Error ?? L["TutorSubs_ActionFailed"];
+                return;
+            }
+
+            ApplySubscriberUpdate(sub.Id, result.Value);
+            _actionBanner = L["TutorSubs_RejectBanner"];
+        }
+        catch (Exception ex)
+        {
+            _actionError = ex.Message;
+        }
+        finally { _busyId = null; }
+    }
+
+    private void ApplySubscriberUpdate(Guid id, ApiSubscriberDto dto)
+    {
+        var idx = _subs.FindIndex(s => s.Id == id);
+        if (idx < 0) return;
+        _subs[idx] = MapSubscriber(dto);
     }
 
     private async Task SavePlan()
@@ -378,6 +479,7 @@
     }
     private class SubVM
     {
+        public Guid Id { get; set; }
         public string StudentName { get; set; } = "";
         public string ParentName { get; set; } = "";
         public string PlanName { get; set; } = "";

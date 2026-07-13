@@ -81,6 +81,10 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             .FirstOrDefaultAsync(s => s.Id == subscriptionId, ct)
             ?? throw new InvalidOperationException("Abonnement introuvable.");
 
+        if (subscription.Status != SubscriptionStatus.AwaitingPayment)
+            throw new InvalidOperationException(
+                "Le paiement n'est possible qu'après acceptation de la demande par l'enseignant.");
+
         var offering = await _db.SubscriptionOfferingsForAnyTenant
             .FirstOrDefaultAsync(o => o.Id == subscription.OfferingId, ct)
             ?? throw new InvalidOperationException("Offre d'abonnement introuvable.");
@@ -351,20 +355,31 @@ internal sealed class PayGatewayService : IPaymentGatewayService
 
                 if (subscription is not null)
                 {
-                    subscription.Status = SubscriptionStatus.Active;
-                    await TryLinkGatewaySubscriptionAsync(subscription, gatewayPayment.CustomerCode, ct);
-                    await _db.SaveChangesAsync(ct);
-                    try
+                    if (subscription.Status is SubscriptionStatus.Rejected or SubscriptionStatus.Cancelled)
                     {
-                        await _invoices.EnsureInvoiceForPaymentAsync(payment.Id, ct);
+                        _logger.LogWarning(
+                            "Paiement {PaymentId} ignoré pour abonnement {SubscriptionId} (statut {Status})",
+                            payment.Id,
+                            subscription.Id,
+                            subscription.Status);
                     }
-                    catch (Exception ex)
+                    else
                     {
-                        _logger.LogWarning(ex, "Facture non créée pour le paiement {PaymentId}", payment.Id);
-                    }
+                        subscription.Status = SubscriptionStatus.Active;
+                        await TryLinkGatewaySubscriptionAsync(subscription, gatewayPayment.CustomerCode, ct);
+                        await _db.SaveChangesAsync(ct);
+                        try
+                        {
+                            await _invoices.EnsureInvoiceForPaymentAsync(payment.Id, ct);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogWarning(ex, "Facture non créée pour le paiement {PaymentId}", payment.Id);
+                        }
 
-                    await _lessonScheduler.EnsureScheduledAsync(subscription.Id, ct);
-                    return;
+                        await _lessonScheduler.EnsureScheduledAsync(subscription.Id, ct);
+                        return;
+                    }
                 }
             }
         }

@@ -72,7 +72,9 @@ public static class StudentScheduleConflictChecker
             var existingSubs = db.StudentSubscriptionsForAnyTenant
                 .Where(s => s.StudentId == studentId
                             && s.OfferingId != newOfferingId
-                            && (s.Status == SubscriptionStatus.Pending || s.Status == SubscriptionStatus.Active))
+                            && (s.Status == SubscriptionStatus.Pending
+                                || s.Status == SubscriptionStatus.AwaitingPayment
+                                || s.Status == SubscriptionStatus.Active))
                 .ToList();
 
             if (existingSubs.Count > 0)

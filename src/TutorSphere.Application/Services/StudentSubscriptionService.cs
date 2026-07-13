@@ -9,13 +9,22 @@ public interface IStudentSubscriptionService
     Task<IReadOnlyList<StudentSubscriptionDto>> GetForParentUserAsync(string parentUserId, CancellationToken ct = default);
     Task<IReadOnlyList<StudentSubscriptionDto>> GetForCurrentTenantAsync(CancellationToken ct = default);
     Task CancelAsync(string parentUserId, Guid subscriptionId, CancellationToken ct = default);
+    Task<StudentSubscriptionDto> AcceptAsync(Guid subscriptionId, CancellationToken ct = default);
+    Task<StudentSubscriptionDto> RejectAsync(Guid subscriptionId, CancellationToken ct = default);
 }
 
 public class StudentSubscriptionService : IStudentSubscriptionService
 {
     private readonly Common.Interfaces.IApplicationDbContext _db;
+    private readonly ISubscriptionLessonScheduler _lessonScheduler;
 
-    public StudentSubscriptionService(Common.Interfaces.IApplicationDbContext db) => _db = db;
+    public StudentSubscriptionService(
+        Common.Interfaces.IApplicationDbContext db,
+        ISubscriptionLessonScheduler lessonScheduler)
+    {
+        _db = db;
+        _lessonScheduler = lessonScheduler;
+    }
 
     public async Task<StudentSubscriptionDto> EnrollAsync(
         string parentUserId,
@@ -36,13 +45,17 @@ public class StudentSubscriptionService : IStudentSubscriptionService
         var duplicate = _db.StudentSubscriptionsForAnyTenant.Any(s =>
             s.StudentId == student.Id
             && s.OfferingId == offering.Id
-            && (s.Status == SubscriptionStatus.Pending || s.Status == SubscriptionStatus.Active));
+            && (s.Status == SubscriptionStatus.Pending
+                || s.Status == SubscriptionStatus.AwaitingPayment
+                || s.Status == SubscriptionStatus.Active));
         if (duplicate)
             throw new InvalidOperationException("Cet enfant est déjà abonné (ou en cours d'abonnement) à cette offre.");
 
         var activeCount = _db.StudentSubscriptionsForAnyTenant.Count(s =>
             s.OfferingId == offering.Id
-            && (s.Status == SubscriptionStatus.Pending || s.Status == SubscriptionStatus.Active));
+            && (s.Status == SubscriptionStatus.Pending
+                || s.Status == SubscriptionStatus.AwaitingPayment
+                || s.Status == SubscriptionStatus.Active));
         if (activeCount >= offering.MaxCapacity)
             throw new InvalidOperationException(
                 $"Cette offre est complète ({offering.MaxCapacity} place(s) maximum).");
@@ -198,9 +211,85 @@ public class StudentSubscriptionService : IStudentSubscriptionService
         if (!childIds.Contains(sub.StudentId))
             throw new InvalidOperationException("Abonnement introuvable.");
 
+        if (sub.Status is SubscriptionStatus.Cancelled or SubscriptionStatus.Rejected or SubscriptionStatus.Expired)
+            throw new InvalidOperationException("Cet abonnement ne peut plus être annulé.");
+
         sub.Status = SubscriptionStatus.Cancelled;
         sub.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync(ct);
+    }
+
+    public async Task<StudentSubscriptionDto> AcceptAsync(Guid subscriptionId, CancellationToken ct = default)
+    {
+        var sub = _db.StudentSubscriptions.FirstOrDefault(s => s.Id == subscriptionId)
+            ?? throw new InvalidOperationException("Demande d'inscription introuvable.");
+
+        if (sub.Status != SubscriptionStatus.Pending)
+            throw new InvalidOperationException("Seules les demandes en attente peuvent être acceptées.");
+
+        var offering = _db.SubscriptionOfferings.FirstOrDefault(o => o.Id == sub.OfferingId)
+            ?? throw new InvalidOperationException("Offre introuvable.");
+
+        var student = _db.StudentsForAnyTenant.FirstOrDefault(s => s.Id == sub.StudentId);
+        var parentName = ResolveParentName(student);
+
+        if (offering.Price <= 0)
+        {
+            sub.Status = SubscriptionStatus.Active;
+            sub.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync(ct);
+            await _lessonScheduler.EnsureScheduledAsync(sub.Id, ct);
+        }
+        else
+        {
+            sub.Status = SubscriptionStatus.AwaitingPayment;
+            sub.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync(ct);
+        }
+
+        return Map(
+            sub,
+            offering.Title,
+            offering.Subject,
+            offering.Price,
+            offering.Currency,
+            student is null ? "" : $"{student.FirstName} {student.LastName}".Trim(),
+            parentName);
+    }
+
+    public async Task<StudentSubscriptionDto> RejectAsync(Guid subscriptionId, CancellationToken ct = default)
+    {
+        var sub = _db.StudentSubscriptions.FirstOrDefault(s => s.Id == subscriptionId)
+            ?? throw new InvalidOperationException("Demande d'inscription introuvable.");
+
+        if (sub.Status != SubscriptionStatus.Pending)
+            throw new InvalidOperationException("Seules les demandes en attente peuvent être refusées.");
+
+        var offering = _db.SubscriptionOfferings.FirstOrDefault(o => o.Id == sub.OfferingId);
+        var student = _db.StudentsForAnyTenant.FirstOrDefault(s => s.Id == sub.StudentId);
+        var parentName = ResolveParentName(student);
+
+        sub.Status = SubscriptionStatus.Rejected;
+        sub.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
+
+        return Map(
+            sub,
+            offering?.Title ?? "Offre",
+            offering?.Subject,
+            offering?.Price ?? 0,
+            offering?.Currency ?? "CAD",
+            student is null ? "" : $"{student.FirstName} {student.LastName}".Trim(),
+            parentName);
+    }
+
+    private string? ResolveParentName(Domain.Entities.Student? student)
+    {
+        if (student?.ParentProfileId is not Guid pid)
+            return null;
+
+        var parent = _db.ParentProfilesForAnyTenant.FirstOrDefault(p => p.Id == pid);
+        return parent is null ? null : $"{parent.FirstName} {parent.LastName}".Trim();
     }
 
     private static StudentSubscriptionDto Map(

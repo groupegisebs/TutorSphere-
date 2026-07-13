@@ -87,7 +87,7 @@ else
                         <td><span class="ts-badge @StatusBadge(sub.Status)">@StatusLabel(sub.Status)</span></td>
                         <td class="text-end">
                             <div class="d-inline-flex align-items-center justify-content-end gap-2 flex-wrap">
-                                @if (sub.Status is "Active" or "Pending" or "Paused")
+                                @if (sub.Status is "Active" or "Pending" or "AwaitingPayment" or "Paused")
                                 {
                                     <button type="button"
                                             class="btn btn-outline-danger btn-sm"
@@ -100,7 +100,7 @@ else
                                         @L["ParentSubs_Cancel"]
                                     </button>
                                 }
-                                @if (sub.Status == "Pending")
+                                @if (sub.Status == "AwaitingPayment")
                                 {
                                     <button type="button"
                                             class="btn btn-primary btn-sm"
@@ -189,9 +189,13 @@ else
             {
                 var activated = subscriptionId.HasValue
                     && _subs.Any(s => s.Id == subscriptionId && s.Status == "Active");
+                var awaitingApproval = subscriptionId.HasValue
+                    && _subs.Any(s => s.Id == subscriptionId && s.Status == "Pending");
                 _banner = activated
                     ? L["ParentSubs_BannerPaid"]
-                    : L["ParentSubs_BannerSaved"];
+                    : awaitingApproval
+                        ? L["ParentSubs_BannerAwaitingApproval"]
+                        : L["ParentSubs_BannerSaved"];
             }
         }
         catch (Exception ex)
@@ -246,9 +250,9 @@ else
 
     private static bool MatchesTab(string status, string tab) => tab switch
     {
-        "pending" => status is "Pending",
+        "pending" => status is "Pending" or "AwaitingPayment",
         "active" => status is "Active" or "Paused",
-        "cancelled" => status is "Cancelled",
+        "cancelled" => status is "Cancelled" or "Rejected",
         "history" => status is "Expired" or "Completed",
         _ => false
     };
@@ -258,9 +262,11 @@ else
     private string StatusLabel(string status) => status switch
     {
         "Active" => L["Common_Active"],
-        "Pending" => L["ParentSubs_StatusPendingPayment"],
+        "Pending" => L["ParentSubs_StatusAwaitingApproval"],
+        "AwaitingPayment" => L["ParentSubs_StatusPendingPayment"],
         "Paused" => L["ParentSubs_StatusPaused"],
         "Cancelled" => L["Common_Cancelled"],
+        "Rejected" => L["ParentSubs_StatusRejected"],
         "Expired" => L["ParentSubs_StatusExpired"],
         "Completed" => L["Common_Completed"],
         _ => status
@@ -269,7 +275,7 @@ else
     private static string StatusBadge(string status) => status switch
     {
         "Active" => "ts-badge-success",
-        "Pending" or "Paused" => "ts-badge-warning",
+        "Pending" or "AwaitingPayment" or "Paused" => "ts-badge-warning",
         "Completed" => "ts-badge-success",
         _ => "ts-badge-danger"
     };

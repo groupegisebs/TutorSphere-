@@ -530,26 +530,10 @@
                 return;
             }
 
-            var baseUri = Navigation.BaseUri.TrimEnd('/');
-            var checkout = await Api.PostWithErrorAsync<CheckoutResult>(
-                $"api/payments/subscriptions/{enroll.Value.Id}/checkout",
-                new
-                {
-                    successUrl = $"{baseUri}/parent/subscriptions?paid=1&sub={enroll.Value.Id}",
-                    cancelUrl = $"{baseUri}/parent/tutors/{Profile.Slug}?canceled=1"
-                });
-
-            if (checkout.Error is not null || string.IsNullOrWhiteSpace(checkout.Value?.CheckoutUrl))
-            {
-                // Abonnement créé même si la passerelle paiement est indisponible.
-                _subscribeError = null;
-                CloseSubscribe();
-                Navigation.NavigateTo($"/parent/subscriptions?created={enroll.Value.Id}");
-                return;
-            }
-
-            // Inclure paymentId dans l'URL de succès si on devait re-créer — sub= suffit pour confirm.
-            await JS.InvokeVoidAsync("open", checkout.Value.CheckoutUrl, "_self");
+            // La demande reste en attente jusqu'à acceptation par l'enseignant.
+            _subscribeError = null;
+            CloseSubscribe();
+            Navigation.NavigateTo($"/parent/subscriptions?created={enroll.Value.Id}");
         }
         catch (Exception ex)
         {

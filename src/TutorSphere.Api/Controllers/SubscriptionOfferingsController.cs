@@ -32,6 +32,34 @@ public class SubscriptionOfferingsController : ControllerBase
     public async Task<ActionResult<IReadOnlyList<StudentSubscriptionDto>>> Subscribers(CancellationToken ct)
         => Ok(await _subscriptions.GetForCurrentTenantAsync(ct));
 
+    /// <summary>Accepte une demande d'inscription : active (gratuit) ou ouvre le paiement, puis admet aux prochains cours.</summary>
+    [HttpPost("subscribers/{subscriptionId:guid}/accept")]
+    public async Task<ActionResult<StudentSubscriptionDto>> AcceptSubscriber(Guid subscriptionId, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _subscriptions.AcceptAsync(subscriptionId, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>Refuse une demande d'inscription.</summary>
+    [HttpPost("subscribers/{subscriptionId:guid}/reject")]
+    public async Task<ActionResult<StudentSubscriptionDto>> RejectSubscriber(Guid subscriptionId, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _subscriptions.RejectAsync(subscriptionId, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<SubscriptionOfferingDto>> GetById(Guid id, CancellationToken ct)
     {
