@@ -13,17 +13,26 @@ public interface ITutorPayoutAccountService
     Task<TutorPayoutAccountDto> UpsertAccountAsync(UpsertTutorPayoutAccountRequest request, Guid? id = null, CancellationToken ct = default);
     Task SetPrimaryAsync(Guid accountId, CancellationToken ct = default);
     Task DeactivateAsync(Guid accountId, CancellationToken ct = default);
+    Task<TutorConnectOnboardingResult> StartStripeConnectAsync(string returnUrl, string refreshUrl, CancellationToken ct = default);
+    Task SyncStripeConnectAsync(CancellationToken ct = default);
+    Task<TutorPayPalOAuthStart> StartPayPalOAuthAsync(string returnUrl, CancellationToken ct = default);
+    Task CompletePayPalOAuthAsync(string? maskedEmail, CancellationToken ct = default);
 }
 
 public class TutorPayoutAccountService : ITutorPayoutAccountService
 {
     private readonly IApplicationDbContext _db;
     private readonly ITenantContext _tenantContext;
+    private readonly ITutorDisbursementGateway _gateway;
 
-    public TutorPayoutAccountService(IApplicationDbContext db, ITenantContext tenantContext)
+    public TutorPayoutAccountService(
+        IApplicationDbContext db,
+        ITenantContext tenantContext,
+        ITutorDisbursementGateway gateway)
     {
         _db = db;
         _tenantContext = tenantContext;
+        _gateway = gateway;
     }
 
     public Task<TutorPayoutSetupDto> GetSetupAsync(CancellationToken ct = default)
@@ -47,27 +56,12 @@ public class TutorPayoutAccountService : ITutorPayoutAccountService
             if (email.Length > 0 && !email.Contains('@'))
                 throw new InvalidOperationException("Adresse e-mail PayPal invalide.");
             tenant.PayPalEmail = string.IsNullOrWhiteSpace(email) ? null : email.ToLowerInvariant();
+
+            if (!string.IsNullOrWhiteSpace(tenant.PayPalEmail))
+                await EnsurePayPalAccountAsync(tenant, tenant.PayPalEmail, ct);
         }
 
-        if (request.StripeAccountId is not null)
-        {
-            var acct = request.StripeAccountId.Trim();
-            tenant.StripeAccountId = string.IsNullOrWhiteSpace(acct) ? null : acct;
-        }
-
-        // Exigences inscription / configuration
-        var region = TutorPayoutPolicy.ResolveRegion(tenant.Country);
-        if (TutorPayoutPolicy.RequiresPayPalAtSignup(tenant.Country)
-            && string.IsNullOrWhiteSpace(tenant.PayPalEmail))
-            throw new InvalidOperationException(
-                "Un compte PayPal (e-mail) est obligatoire pour recevoir vos paiements dans votre zone.");
-
-        if (region == PayoutRegionKind.StripeConnectZone
-            && string.IsNullOrWhiteSpace(tenant.StripeAccountId))
-        {
-            // Autoriser la sauvegarde partielle (pays + PayPal) ; le setup restera incomplet.
-        }
-
+        // StripeAccountId n'est plus saisi manuellement (onboarding Connect via PayGateway).
         tenant.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync(ct);
         return BuildSetup(tenant);
@@ -83,6 +77,36 @@ public class TutorPayoutAccountService : ITutorPayoutAccountService
             throw new InvalidOperationException("Type de moyen de paiement inconnu.");
 
         ValidateAccountPayload(kind, request);
+
+        string? externalToken = request.EmailOrAccountId;
+        string? maskedPhone = null;
+
+        if (PayoutProviderCodes.IsMobileMoney(kind))
+        {
+            if (_gateway.IsConfigured)
+            {
+                var validation = await _gateway.ValidateMobileMoneyAsync(
+                    TutorPayoutPolicy.NormalizeCountry(request.CountryCode ?? tenant.Country),
+                    PayoutProviderCodes.ToPayGatewayCode(kind),
+                    request.PhoneNumber!,
+                    request.AccountHolderName,
+                    ct);
+                if (!validation.IsValid)
+                    throw new InvalidOperationException(validation.Message ?? "Numéro Mobile Money invalide.");
+
+                externalToken = validation.ExternalToken;
+                maskedPhone = validation.MaskedPhone;
+
+                var externalRef = $"tutor-{tenant.Id:N}-{kind}";
+                await _gateway.RegisterMobileMoneyRecipientAsync(
+                    externalRef,
+                    TutorPayoutPolicy.NormalizeCountry(request.CountryCode ?? tenant.Country),
+                    PayoutProviderCodes.ToPayGatewayCode(kind),
+                    request.PhoneNumber!,
+                    request.AccountHolderName,
+                    ct);
+            }
+        }
 
         TutorPayoutAccount account;
         if (id is Guid existingId)
@@ -103,17 +127,23 @@ public class TutorPayoutAccountService : ITutorPayoutAccountService
             ? TutorPayoutPolicy.PolicyCurrency
             : request.Currency.Trim().ToUpperInvariant();
         account.AccountHolderName = request.AccountHolderName.Trim();
-        account.EmailOrAccountId = string.IsNullOrWhiteSpace(request.EmailOrAccountId)
-            ? null
-            : request.EmailOrAccountId.Trim();
+        account.EmailOrAccountId = string.IsNullOrWhiteSpace(externalToken)
+            ? (string.IsNullOrWhiteSpace(request.EmailOrAccountId) ? null : request.EmailOrAccountId.Trim())
+            : externalToken.Trim();
         account.PhoneNumber = string.IsNullOrWhiteSpace(request.PhoneNumber)
             ? null
             : request.PhoneNumber.Trim();
         account.PaymentDetails = string.IsNullOrWhiteSpace(request.PaymentDetails)
-            ? null
+            ? maskedPhone
             : request.PaymentDetails.Trim();
         account.IsActive = true;
         account.UpdatedAt = DateTime.UtcNow;
+
+        if (PayoutProviderCodes.IsMobileMoney(kind))
+        {
+            account.IsVerified = true;
+            account.VerifiedAt = DateTime.UtcNow;
+        }
 
         if (request.IsPrimary || !_db.TutorPayoutAccounts.Any(a => a.TenantId == tenant.Id && a.IsPrimary && a.Id != account.Id))
         {
@@ -126,7 +156,6 @@ public class TutorPayoutAccountService : ITutorPayoutAccountService
             account.IsPrimary = false;
         }
 
-        // Miroir sur Tenant pour Stripe / PayPal
         if (kind == PayoutProviderKind.PayPal && !string.IsNullOrWhiteSpace(account.EmailOrAccountId))
             tenant.PayPalEmail = account.EmailOrAccountId;
         if (kind == PayoutProviderKind.StripeConnect && !string.IsNullOrWhiteSpace(account.EmailOrAccountId))
@@ -160,6 +189,143 @@ public class TutorPayoutAccountService : ITutorPayoutAccountService
         await _db.SaveChangesAsync(ct);
     }
 
+    public async Task<TutorConnectOnboardingResult> StartStripeConnectAsync(
+        string returnUrl, string refreshUrl, CancellationToken ct = default)
+    {
+        if (!_gateway.IsConfigured)
+            throw new InvalidOperationException("PayGateway n'est pas configuré pour Stripe Connect.");
+
+        var tenant = RequireTenant();
+        var reference = $"tutor-{tenant.Id:N}";
+        var result = await _gateway.StartStripeConnectOnboardingAsync(
+            reference,
+            TutorPayoutPolicy.NormalizeCountry(tenant.Country),
+            TutorPayoutPolicy.PolicyCurrency,
+            tenant.PayPalEmail,
+            returnUrl,
+            refreshUrl,
+            ct);
+
+        var account = _db.TutorPayoutAccounts.FirstOrDefault(a =>
+            a.ProviderKind == PayoutProviderKind.StripeConnect && a.IsActive);
+        if (account is null)
+        {
+            account = new TutorPayoutAccount
+            {
+                TenantId = tenant.Id,
+                Label = "Stripe Connect",
+                ProviderKind = PayoutProviderKind.StripeConnect,
+                CountryCode = TutorPayoutPolicy.NormalizeCountry(tenant.Country),
+                Currency = TutorPayoutPolicy.PolicyCurrency,
+                AccountHolderName = tenant.Name,
+                IsPrimary = !_db.TutorPayoutAccounts.Any(a => a.IsPrimary && a.IsActive)
+            };
+            _db.Add(account);
+        }
+
+        account.EmailOrAccountId = result.ExternalAccountId;
+        account.UpdatedAt = DateTime.UtcNow;
+        tenant.StripeAccountId = result.ExternalAccountId;
+        tenant.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        return result;
+    }
+
+    public async Task SyncStripeConnectAsync(CancellationToken ct = default)
+    {
+        if (!_gateway.IsConfigured) return;
+        var tenant = RequireTenant();
+        var account = _db.TutorPayoutAccounts.FirstOrDefault(a =>
+            a.ProviderKind == PayoutProviderKind.StripeConnect && a.IsActive
+            && !string.IsNullOrWhiteSpace(a.EmailOrAccountId));
+        if (account?.EmailOrAccountId is null) return;
+
+        var status = await _gateway.GetStripeConnectAccountAsync(account.EmailOrAccountId, ct);
+        if (status is null) return;
+
+        account.IsVerified = status.PayoutsEnabled && status.DetailsSubmitted;
+        account.VerifiedAt = account.IsVerified ? DateTime.UtcNow : account.VerifiedAt;
+        account.PaymentDetails = status.MaskedEmail;
+        account.UpdatedAt = DateTime.UtcNow;
+        tenant.StripeAccountId = status.ExternalAccountId;
+        tenant.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
+    }
+
+    public async Task<TutorPayPalOAuthStart> StartPayPalOAuthAsync(string returnUrl, CancellationToken ct = default)
+    {
+        if (!_gateway.IsConfigured)
+            throw new InvalidOperationException("PayGateway / PayPal OAuth non configuré. Utilisez l'e-mail PayPal.");
+
+        var tenant = RequireTenant();
+        var reference = $"tutor-{tenant.Id:N}";
+        var result = await _gateway.StartPayPalOAuthAsync(reference, returnUrl, ct);
+        return result ?? throw new InvalidOperationException("Impossible de démarrer OAuth PayPal.");
+    }
+
+    public async Task CompletePayPalOAuthAsync(string? maskedEmail, CancellationToken ct = default)
+    {
+        var tenant = RequireTenant();
+        var reference = $"tutor-{tenant.Id:N}";
+        string? masked = maskedEmail;
+
+        if (_gateway.IsConfigured)
+        {
+            var linked = await _gateway.GetPayPalAccountAsync(reference, ct);
+            if (linked is not null)
+                masked = linked.MaskedEmail ?? masked;
+        }
+
+        masked ??= "PayPal ••••";
+        var account = _db.TutorPayoutAccounts.FirstOrDefault(a =>
+            a.ProviderKind == PayoutProviderKind.PayPal && a.IsActive
+            && a.EmailOrAccountId == reference);
+        if (account is null)
+        {
+            account = new TutorPayoutAccount
+            {
+                TenantId = tenant.Id,
+                Label = "PayPal",
+                ProviderKind = PayoutProviderKind.PayPal,
+                CountryCode = TutorPayoutPolicy.NormalizeCountry(tenant.Country),
+                Currency = TutorPayoutPolicy.PolicyCurrency,
+                AccountHolderName = tenant.Name,
+                EmailOrAccountId = reference,
+                IsPrimary = !_db.TutorPayoutAccounts.Any(a => a.IsPrimary && a.IsActive)
+            };
+            _db.Add(account);
+        }
+
+        account.PaymentDetails = masked;
+        account.IsVerified = true;
+        account.VerifiedAt = DateTime.UtcNow;
+        account.UpdatedAt = DateTime.UtcNow;
+        tenant.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
+    }
+
+    private async Task EnsurePayPalAccountAsync(Tenant tenant, string email, CancellationToken ct)
+    {
+        var existing = _db.TutorPayoutAccounts.FirstOrDefault(a =>
+            a.ProviderKind == PayoutProviderKind.PayPal && a.IsActive
+            && a.EmailOrAccountId == email);
+        if (existing is not null) return;
+
+        _db.Add(new TutorPayoutAccount
+        {
+            TenantId = tenant.Id,
+            Label = "PayPal",
+            ProviderKind = PayoutProviderKind.PayPal,
+            CountryCode = TutorPayoutPolicy.NormalizeCountry(tenant.Country),
+            Currency = TutorPayoutPolicy.PolicyCurrency,
+            AccountHolderName = tenant.Name,
+            EmailOrAccountId = email,
+            IsPrimary = !_db.TutorPayoutAccounts.Any(a => a.IsPrimary && a.IsActive),
+            IsActive = true
+        });
+        await Task.CompletedTask;
+    }
+
     private TutorPayoutSetupDto BuildSetup(Tenant tenant)
     {
         var country = TutorPayoutPolicy.NormalizeCountry(tenant.Country);
@@ -180,33 +346,38 @@ public class TutorPayoutAccountService : ITutorPayoutAccountService
             || accounts.Any(a => a.ProviderKind.Equals(nameof(PayoutProviderKind.PayPal), StringComparison.OrdinalIgnoreCase)
                                  && !string.IsNullOrWhiteSpace(a.EmailOrAccountId));
 
-        var waveOk = accounts.Any(a => a.ProviderKind.Equals(nameof(PayoutProviderKind.Wave), StringComparison.OrdinalIgnoreCase)
-                                       && !string.IsNullOrWhiteSpace(a.PhoneNumber));
-        var ttsOk = accounts.Any(a => a.ProviderKind.Equals(nameof(PayoutProviderKind.TapTapSend), StringComparison.OrdinalIgnoreCase)
-                                      && (!string.IsNullOrWhiteSpace(a.PhoneNumber) || !string.IsNullOrWhiteSpace(a.EmailOrAccountId)));
+        var mobileMoneyOk = accounts.Any(a =>
+            Enum.TryParse<PayoutProviderKind>(a.ProviderKind, true, out var kind)
+            && PayoutProviderCodes.IsMobileMoney(kind)
+            && !string.IsNullOrWhiteSpace(a.PhoneNumber)
+            && !string.IsNullOrWhiteSpace(a.AccountHolderName));
 
         var setupComplete = region switch
         {
             PayoutRegionKind.StripeConnectZone => stripeOk && paypalOk,
-            PayoutRegionKind.Africa => waveOk && ttsOk,
+            PayoutRegionKind.Africa => mobileMoneyOk,
             _ => paypalOk
         };
 
-        var catalog = required.Select(p => new PayoutProviderCatalogItemDto(
-            p.ToString(),
-            DisplayName(p),
-            Required: true,
-            region.ToString())).ToList();
-
-        // Ajouter les optionnels du catalogue pour la région
-        foreach (var extra in Enum.GetValues<PayoutProviderKind>())
+        var catalog = new List<PayoutProviderCatalogItemDto>();
+        if (region == PayoutRegionKind.Africa)
         {
-            if (required.Contains(extra)) continue;
-            if (region == PayoutRegionKind.StripeConnectZone && extra is PayoutProviderKind.Wave or PayoutProviderKind.TapTapSend)
-                continue;
-            if (region == PayoutRegionKind.Africa && extra == PayoutProviderKind.StripeConnect)
-                continue;
-            catalog.Add(new PayoutProviderCatalogItemDto(extra.ToString(), DisplayName(extra), false, region.ToString()));
+            foreach (var p in TutorPayoutPolicy.AfricaMobileMoneyProviders)
+            {
+                catalog.Add(new PayoutProviderCatalogItemDto(
+                    p.ToString(), DisplayName(p), Required: false, region.ToString()));
+            }
+        }
+        else
+        {
+            foreach (var p in required)
+                catalog.Add(new PayoutProviderCatalogItemDto(p.ToString(), DisplayName(p), true, region.ToString()));
+            foreach (var extra in Enum.GetValues<PayoutProviderKind>())
+            {
+                if (required.Contains(extra)) continue;
+                if (PayoutProviderCodes.IsMobileMoney(extra)) continue;
+                catalog.Add(new PayoutProviderCatalogItemDto(extra.ToString(), DisplayName(extra), false, region.ToString()));
+            }
         }
 
         return new TutorPayoutSetupDto(
@@ -228,7 +399,7 @@ public class TutorPayoutAccountService : ITutorPayoutAccountService
         if (string.IsNullOrWhiteSpace(request.Label))
             throw new InvalidOperationException("Libellé obligatoire.");
         if (string.IsNullOrWhiteSpace(request.AccountHolderName))
-            throw new InvalidOperationException("Nom du titulaire obligatoire.");
+            throw new InvalidOperationException("Nom du titulaire obligatoire (info publique).");
 
         switch (kind)
         {
@@ -237,13 +408,13 @@ public class TutorPayoutAccountService : ITutorPayoutAccountService
                     throw new InvalidOperationException("E-mail PayPal obligatoire.");
                 break;
             case PayoutProviderKind.StripeConnect:
-                if (string.IsNullOrWhiteSpace(request.EmailOrAccountId))
-                    throw new InvalidOperationException("Identifiant de compte Stripe Connect (acct_…) obligatoire.");
-                break;
-            case PayoutProviderKind.Wave:
-            case PayoutProviderKind.TapTapSend:
-                if (string.IsNullOrWhiteSpace(request.PhoneNumber) && string.IsNullOrWhiteSpace(request.EmailOrAccountId))
-                    throw new InvalidOperationException("Numéro de téléphone (ou identifiant) obligatoire pour Wave / TapTap Send.");
+                throw new InvalidOperationException("Utilisez l'onboarding Stripe Connect (pas de saisie manuelle acct_).");
+            default:
+                if (PayoutProviderCodes.IsMobileMoney(kind))
+                {
+                    if (string.IsNullOrWhiteSpace(request.PhoneNumber))
+                        throw new InvalidOperationException("Numéro de téléphone public obligatoire (aucun PIN / OTP).");
+                }
                 break;
         }
     }
@@ -254,6 +425,11 @@ public class TutorPayoutAccountService : ITutorPayoutAccountService
         PayoutProviderKind.PayPal => "PayPal",
         PayoutProviderKind.Wave => "Wave",
         PayoutProviderKind.TapTapSend => "TapTap Send",
+        PayoutProviderKind.OrangeMoney => "Orange Money",
+        PayoutProviderKind.MtnMomo => "MTN MoMo",
+        PayoutProviderKind.Mpesa => "M-Pesa",
+        PayoutProviderKind.Moov => "Moov Money",
+        PayoutProviderKind.Airtel => "Airtel Money",
         _ => kind.ToString()
     };
 
@@ -266,7 +442,10 @@ public class TutorPayoutAccountService : ITutorPayoutAccountService
         a.IsPrimary,
         a.IsActive,
         a.AccountHolderName,
-        a.EmailOrAccountId,
+        // Ne jamais exposer acct_ brut : masquer côté DTO pour Stripe
+        a.ProviderKind == PayoutProviderKind.StripeConnect
+            ? (string.IsNullOrWhiteSpace(a.EmailOrAccountId) ? null : "Stripe Connect configuré")
+            : a.EmailOrAccountId,
         a.PhoneNumber,
         a.PaymentDetails,
         a.IsVerified,

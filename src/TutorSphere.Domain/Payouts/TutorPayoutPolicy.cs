@@ -69,13 +69,23 @@ public static class TutorPayoutPolicy
         region switch
         {
             PayoutRegionKind.StripeConnectZone => [PayoutProviderKind.StripeConnect, PayoutProviderKind.PayPal],
-            PayoutRegionKind.Africa => [PayoutProviderKind.Wave, PayoutProviderKind.TapTapSend],
+            PayoutRegionKind.Africa => AfricaMobileMoneyProviders,
             _ => [PayoutProviderKind.PayPal]
         };
+
+    public static IReadOnlyList<PayoutProviderKind> AfricaMobileMoneyProviders { get; } =
+    [
+        PayoutProviderKind.Wave,
+        PayoutProviderKind.OrangeMoney,
+        PayoutProviderKind.MtnMomo,
+        PayoutProviderKind.TapTapSend,
+        PayoutProviderKind.Mpesa,
+        PayoutProviderKind.Moov,
+        PayoutProviderKind.Airtel
+    ];
 
     public static bool RequiresPayPalAtSignup(string? country) =>
         ResolveRegion(country) is PayoutRegionKind.StripeConnectZone or PayoutRegionKind.Other;
 
-    public static bool RequiresStripeAtSignup(string? country) =>
-        ResolveRegion(country) == PayoutRegionKind.StripeConnectZone;
+    public static bool RequiresStripeAtSignup(string? country) => false;
 }

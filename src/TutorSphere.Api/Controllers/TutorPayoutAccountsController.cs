@@ -92,4 +92,63 @@ public class TutorPayoutAccountsController : ControllerBase
             return BadRequest(new { error = ex.Message });
         }
     }
+
+    [HttpPost("stripe/onboard")]
+    public async Task<IActionResult> StartStripeOnboard(
+        [FromBody] OnboardUrlsRequest request,
+        CancellationToken ct)
+    {
+        try
+        {
+            var result = await _accounts.StartStripeConnectAsync(request.ReturnUrl, request.RefreshUrl, ct);
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("stripe/sync")]
+    public async Task<IActionResult> SyncStripe(CancellationToken ct)
+    {
+        await _accounts.SyncStripeConnectAsync(ct);
+        return Ok(await _accounts.GetSetupAsync(ct));
+    }
+
+    [HttpPost("paypal/oauth/start")]
+    public async Task<IActionResult> StartPayPalOAuth(
+        [FromBody] PayPalOAuthStartRequestDto request,
+        CancellationToken ct)
+    {
+        try
+        {
+            var result = await _accounts.StartPayPalOAuthAsync(request.ReturnUrl, ct);
+            return Ok(result);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("paypal/oauth/complete")]
+    public async Task<IActionResult> CompletePayPalOAuth(
+        [FromBody] PayPalOAuthCompleteRequestDto request,
+        CancellationToken ct)
+    {
+        try
+        {
+            await _accounts.CompletePayPalOAuthAsync(request.MaskedEmail, ct);
+            return Ok(await _accounts.GetSetupAsync(ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    public record OnboardUrlsRequest(string ReturnUrl, string RefreshUrl);
+    public record PayPalOAuthStartRequestDto(string ReturnUrl);
+    public record PayPalOAuthCompleteRequestDto(string? MaskedEmail);
 }

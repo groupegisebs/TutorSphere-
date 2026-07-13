@@ -88,6 +88,69 @@ internal sealed class PayGatewayClient
         return await ReadSuccessAsync<GatewayCancelSubscriptionResponse>(response, ct);
     }
 
+    public bool IsConfigured =>
+        !string.IsNullOrWhiteSpace(_settings.BaseUrl)
+        && !string.IsNullOrWhiteSpace(_settings.AppCode)
+        && !string.IsNullOrWhiteSpace(_settings.ApiKey);
+
+    public async Task<GatewayConnectAccountResponse> CreateConnectAccountAsync(
+        GatewayCreateConnectAccountRequest request, CancellationToken ct = default)
+    {
+        using var response = await SendAsync(HttpMethod.Post, "api/connect/accounts", request, ct);
+        return await ReadSuccessAsync<GatewayConnectAccountResponse>(response, ct);
+    }
+
+    public async Task<GatewayAccountLinkResponse> CreateAccountLinkAsync(
+        GatewayCreateAccountLinkRequest request, CancellationToken ct = default)
+    {
+        using var response = await SendAsync(HttpMethod.Post, "api/connect/account-links", request, ct);
+        return await ReadSuccessAsync<GatewayAccountLinkResponse>(response, ct);
+    }
+
+    public async Task<GatewayConnectAccountResponse?> GetConnectAccountAsync(string externalAccountId, CancellationToken ct = default)
+    {
+        using var response = await SendAsync(HttpMethod.Get, $"api/connect/accounts/{Uri.EscapeDataString(externalAccountId)}", null, ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            return null;
+        return await ReadSuccessAsync<GatewayConnectAccountResponse>(response, ct);
+    }
+
+    public async Task<GatewayDisbursementResponse> EnqueueDisbursementAsync(
+        GatewayEnqueueDisbursementRequest request, CancellationToken ct = default)
+    {
+        using var response = await SendAsync(HttpMethod.Post, "api/payouts/disbursement-requests", request, ct);
+        return await ReadSuccessAsync<GatewayDisbursementResponse>(response, ct);
+    }
+
+    public async Task<GatewayPayPalOAuthStartResponse> StartPayPalOAuthAsync(
+        GatewayPayPalOAuthStartRequest request, CancellationToken ct = default)
+    {
+        using var response = await SendAsync(HttpMethod.Post, "api/paypal/oauth/start", request, ct);
+        return await ReadSuccessAsync<GatewayPayPalOAuthStartResponse>(response, ct);
+    }
+
+    public async Task<GatewayPayPalAccountResponse?> GetPayPalAccountAsync(string externalReference, CancellationToken ct = default)
+    {
+        using var response = await SendAsync(HttpMethod.Get, $"api/paypal/accounts/{Uri.EscapeDataString(externalReference)}", null, ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            return null;
+        return await ReadSuccessAsync<GatewayPayPalAccountResponse>(response, ct);
+    }
+
+    public async Task<GatewayMobileMoneyValidateResponse> ValidateMobileMoneyAsync(
+        GatewayMobileMoneyValidateRequest request, CancellationToken ct = default)
+    {
+        using var response = await SendAsync(HttpMethod.Post, "api/payouts/mobile-money/validate", request, ct);
+        return await ReadSuccessAsync<GatewayMobileMoneyValidateResponse>(response, ct);
+    }
+
+    public async Task RegisterMobileMoneyRecipientAsync(
+        GatewayRegisterMobileMoneyRequest request, CancellationToken ct = default)
+    {
+        using var response = await SendAsync(HttpMethod.Post, "api/payouts/mobile-money/recipients", request, ct);
+        await EnsureSuccessAsync(response, ct);
+    }
+
     private async Task<HttpResponseMessage> SendAsync(
         HttpMethod method,
         string path,

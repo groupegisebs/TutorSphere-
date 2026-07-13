@@ -3,6 +3,8 @@
 @rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
+@inject NavigationManager Nav
+@using Microsoft.AspNetCore.WebUtilities
 
 <PageTitle>@L["Payout_Title"] – TutorSphere</PageTitle>
 
@@ -55,6 +57,7 @@ else if (_setup is not null)
             <li>@L["Payout_Rule100"]</li>
             <li>@L["Payout_Rule30"]</li>
             <li>@L["Payout_Rule10"]</li>
+            <li>@L["Payout_RuleGateway"]</li>
         </ul>
     </div>
 
@@ -62,7 +65,7 @@ else if (_setup is not null)
         <div class="section-card-header"><h2>@L["Payout_ProfileTitle"]</h2></div>
         <p class="text-muted small">@L["Payout_ProfileHint"]</p>
         <div class="row g-3">
-            <div class="col-md-4">
+            <div class="col-md-6">
                 <label class="form-label">@L["School_Country"]</label>
                 <select class="form-select" @bind="_country">
                     <option value="CA">Canada (CA)</option>
@@ -81,18 +84,32 @@ else if (_setup is not null)
                     <option value="MA">Maroc (MA)</option>
                 </select>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-6">
                 <label class="form-label">@L["Payout_PayPalEmail"]</label>
                 <input class="form-control" @bind="_paypalEmail" placeholder="email@paypal.com" />
             </div>
-            <div class="col-md-4">
-                <label class="form-label">@L["Payout_StripeAccountId"]</label>
-                <input class="form-control" @bind="_stripeAccountId" placeholder="acct_…" />
-            </div>
         </div>
-        <button class="btn btn-primary mt-3" disabled="@_busy" @onclick="SaveProfileAsync">
-            @L["Common_Save"]
-        </button>
+        <div class="d-flex flex-wrap gap-2 mt-3">
+            <button class="btn btn-primary" disabled="@_busy" @onclick="SaveProfileAsync">
+                @L["Common_Save"]
+            </button>
+            @if (_setup.Region == "StripeConnectZone")
+            {
+                <button class="btn btn-outline-primary" disabled="@_busy" @onclick="StartStripeAsync">
+                    @L["Payout_StripeOnboard"]
+                </button>
+                <button class="btn btn-outline-secondary" disabled="@_busy" @onclick="SyncStripeAsync">
+                    @L["Payout_StripeSync"]
+                </button>
+                <button class="btn btn-outline-primary" disabled="@_busy" @onclick="StartPayPalOAuthAsync">
+                    @L["Payout_PayPalOAuth"]
+                </button>
+            }
+        </div>
+        @if (_setup.StripeConfigured)
+        {
+            <p class="small text-success mt-2 mb-0"><i class="bi bi-check-circle me-1"></i>@L["Payout_StripeConfigured"]</p>
+        }
     </div>
 
     <div class="section-card mb-4">
@@ -106,11 +123,12 @@ else if (_setup is not null)
         @if (_showAdd)
         {
             <div class="border rounded p-3 mb-3 bg-light">
+                <p class="small text-muted">@L["Payout_PublicInfoOnly"]</p>
                 <div class="row g-2">
                     <div class="col-md-3">
                         <label class="form-label">@L["Payout_Provider"]</label>
                         <select class="form-select" @bind="_form.ProviderKind">
-                            @foreach (var c in _setup.Catalog)
+                            @foreach (var c in _setup.Catalog.Where(x => x.ProviderKind != "StripeConnect"))
                             {
                                 <option value="@c.ProviderKind">@c.DisplayName @(c.Required ? "*" : "")</option>
                             }
@@ -124,18 +142,20 @@ else if (_setup is not null)
                         <label class="form-label">@L["Payout_Holder"]</label>
                         <input class="form-control" @bind="_form.AccountHolderName" />
                     </div>
-                    <div class="col-md-3">
-                        <label class="form-label">@L["Payout_EmailOrId"]</label>
-                        <input class="form-control" @bind="_form.EmailOrAccountId" />
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label">@L["Payout_Phone"]</label>
-                        <input class="form-control" @bind="_form.PhoneNumber" placeholder="+237…" />
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">@L["Payout_Details"]</label>
-                        <input class="form-control" @bind="_form.PaymentDetails" />
-                    </div>
+                    @if (_form.ProviderKind == "PayPal")
+                    {
+                        <div class="col-md-3">
+                            <label class="form-label">@L["Payout_PayPalEmail"]</label>
+                            <input class="form-control" @bind="_form.EmailOrAccountId" type="email" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="col-md-3">
+                            <label class="form-label">@L["Payout_Phone"]</label>
+                            <input class="form-control" @bind="_form.PhoneNumber" placeholder="+237…" />
+                        </div>
+                    }
                     <div class="col-md-3 d-flex align-items-end">
                         <div class="form-check">
                             <input class="form-check-input" type="checkbox" @bind="_form.IsPrimary" id="prim" />
@@ -179,7 +199,7 @@ else if (_setup is not null)
                             </td>
                             <td>@a.ProviderKind</td>
                             <td>@a.AccountHolderName</td>
-                            <td>@(a.EmailOrAccountId ?? "—")</td>
+                            <td>@(a.EmailOrAccountId ?? a.PaymentDetails ?? "—")</td>
                             <td>@(a.PhoneNumber ?? "—")</td>
                             <td class="text-end">
                                 @if (!a.IsPrimary)
@@ -205,7 +225,7 @@ else if (_setup is not null)
     private string? _error, _success;
     private SetupDto? _setup;
     private string _country = "CA";
-    private string? _paypalEmail, _stripeAccountId;
+    private string? _paypalEmail;
     private AccountForm _form = new();
 
     private record CatalogItem(string ProviderKind, string DisplayName, bool Required, string Region);
@@ -217,6 +237,8 @@ else if (_setup is not null)
         string Region, string CountryCode, string Currency, List<string> RequiredProviders,
         bool StripeConfigured, bool PayPalConfigured, bool SetupComplete,
         string? StripeAccountId, string? PayPalEmail, List<AccountDto> Accounts, List<CatalogItem> Catalog);
+    private record OnboardResult(string ExternalAccountId, string OnboardingUrl, string Status);
+    private record OAuthStart(string AuthorizationUrl, string State);
 
     private class AccountForm
     {
@@ -225,11 +247,36 @@ else if (_setup is not null)
         public string AccountHolderName { get; set; } = "";
         public string? EmailOrAccountId { get; set; }
         public string? PhoneNumber { get; set; }
-        public string? PaymentDetails { get; set; }
         public bool IsPrimary { get; set; } = true;
     }
 
-    protected override async Task OnInitializedAsync() => await ReloadAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        await HandleReturnQueryAsync();
+        await ReloadAsync();
+    }
+
+    private async Task HandleReturnQueryAsync()
+    {
+        var uri = Nav.ToAbsoluteUri(Nav.Uri);
+        var query = QueryHelpers.ParseQuery(uri.Query);
+        if (query.TryGetValue("stripe", out var stripe) && stripe == "return")
+        {
+            await Api.PostWithErrorAsync<SetupDto>("api/tutor-payout-accounts/stripe/sync", new { });
+            _success = L["Payout_StripeSynced"];
+            Nav.NavigateTo("/tutor/payout-settings", replace: true);
+        }
+        if (query.TryGetValue("paypal", out var paypal) && paypal == "linked")
+        {
+            query.TryGetValue("email", out var email);
+            await Api.PostWithErrorAsync<SetupDto>("api/tutor-payout-accounts/paypal/oauth/complete", new
+            {
+                maskedEmail = email.ToString()
+            });
+            _success = L["Payout_PayPalLinked"];
+            Nav.NavigateTo("/tutor/payout-settings", replace: true);
+        }
+    }
 
     private async Task ReloadAsync()
     {
@@ -242,9 +289,8 @@ else if (_setup is not null)
             {
                 _country = _setup.CountryCode;
                 _paypalEmail = _setup.PayPalEmail;
-                _stripeAccountId = _setup.StripeAccountId;
                 if (_setup.Catalog.Count > 0)
-                    _form.ProviderKind = _setup.Catalog.FirstOrDefault(c => c.Required)?.ProviderKind
+                    _form.ProviderKind = _setup.Catalog.FirstOrDefault(c => c.ProviderKind != "StripeConnect")?.ProviderKind
                         ?? _setup.Catalog[0].ProviderKind;
             }
         }
@@ -262,12 +308,56 @@ else if (_setup is not null)
             var result = await Api.PutWithErrorAsync<SetupDto>("api/tutor-payout-accounts/profile", new
             {
                 country = _country,
-                payPalEmail = _paypalEmail,
-                stripeAccountId = _stripeAccountId
+                payPalEmail = _paypalEmail
             });
             if (result.Error is not null) { _error = result.Error; return; }
             _setup = result.Value;
             _success = L["Payout_Saved"];
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task StartStripeAsync()
+    {
+        _busy = true; _error = null; _success = null;
+        try
+        {
+            var returnUrl = Nav.ToAbsoluteUri("/tutor/payout-settings?stripe=return").ToString();
+            var result = await Api.PostWithErrorAsync<OnboardResult>("api/tutor-payout-accounts/stripe/onboard", new
+            {
+                returnUrl,
+                refreshUrl = returnUrl
+            });
+            if (result.Error is not null) { _error = result.Error; return; }
+            if (!string.IsNullOrWhiteSpace(result.Value?.OnboardingUrl))
+                Nav.NavigateTo(result.Value.OnboardingUrl, forceLoad: true);
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task SyncStripeAsync()
+    {
+        _busy = true; _error = null;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<SetupDto>("api/tutor-payout-accounts/stripe/sync", new { });
+            if (result.Error is not null) { _error = result.Error; return; }
+            _setup = result.Value;
+            _success = L["Payout_StripeSynced"];
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task StartPayPalOAuthAsync()
+    {
+        _busy = true; _error = null;
+        try
+        {
+            var returnUrl = Nav.ToAbsoluteUri("/tutor/payout-settings").ToString();
+            var result = await Api.PostWithErrorAsync<OAuthStart>("api/tutor-payout-accounts/paypal/oauth/start", new { returnUrl });
+            if (result.Error is not null) { _error = result.Error; return; }
+            if (!string.IsNullOrWhiteSpace(result.Value?.AuthorizationUrl))
+                Nav.NavigateTo(result.Value.AuthorizationUrl, forceLoad: true);
         }
         finally { _busy = false; }
     }
@@ -279,7 +369,7 @@ else if (_setup is not null)
         {
             var result = await Api.PostWithErrorAsync<AccountDto>("api/tutor-payout-accounts", new
             {
-                label = _form.Label,
+                label = string.IsNullOrWhiteSpace(_form.Label) ? _form.ProviderKind : _form.Label,
                 providerKind = _form.ProviderKind,
                 countryCode = _country,
                 currency = "CAD",
@@ -287,7 +377,7 @@ else if (_setup is not null)
                 accountHolderName = _form.AccountHolderName,
                 emailOrAccountId = _form.EmailOrAccountId,
                 phoneNumber = _form.PhoneNumber,
-                paymentDetails = _form.PaymentDetails
+                paymentDetails = (string?)null
             });
             if (result.Error is not null) { _error = result.Error; return; }
             _showAdd = false;

@@ -70,6 +70,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     IQueryable<LessonAttendance> IApplicationDbContext.LessonAttendancesForAnyTenant =>
         LessonAttendancesSet.IgnoreQueryFilters();
     IQueryable<TutorPayout> IApplicationDbContext.TutorPayouts => TutorPayoutsSet;
+    IQueryable<TutorPayout> IApplicationDbContext.TutorPayoutsForAnyTenant => TutorPayoutsSet.IgnoreQueryFilters();
     IQueryable<TutorPayoutAccount> IApplicationDbContext.TutorPayoutAccounts => TutorPayoutAccountsSet;
 
     public new void Add<T>(T entity) where T : class => Set<T>().Add(entity);
@@ -108,8 +109,12 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
         builder.Entity<TutorPayout>(e =>
         {
             e.Property(p => p.Amount).HasPrecision(18, 2);
+            e.Property(p => p.IdempotencyKey).HasMaxLength(80);
+            e.Property(p => p.ExternalDisbursementId).HasMaxLength(80);
+            e.Property(p => p.ProviderPayoutId).HasMaxLength(120);
             e.HasIndex(p => p.TenantId);
             e.HasIndex(p => p.RequestedAt);
+            e.HasIndex(p => p.IdempotencyKey);
             e.HasOne(p => p.PayoutAccount).WithMany().HasForeignKey(p => p.PayoutAccountId)
                 .OnDelete(DeleteBehavior.SetNull);
         });

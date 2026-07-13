@@ -34,6 +34,7 @@ public record TutorPayoutStatusNames
     public static string Of(TutorPayoutStatus status) => status switch
     {
         TutorPayoutStatus.Pending => "pending",
+        TutorPayoutStatus.Processing => "processing",
         TutorPayoutStatus.Completed => "completed",
         TutorPayoutStatus.Failed => "failed",
         TutorPayoutStatus.Cancelled => "cancelled",

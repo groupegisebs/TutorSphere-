@@ -42,6 +42,7 @@ public static class DependencyInjection
         services.Configure<PayGatewaySettings>(configuration.GetSection(PayGatewaySettings.SectionName));
         services.AddHttpClient<PayGatewayClient>();
         services.AddScoped<IPaymentGatewayService, PayGatewayService>();
+        services.AddScoped<ITutorDisbursementGateway, TutorDisbursementGateway>();
         services.Configure<MailGatewaySettings>(configuration.GetSection(MailGatewaySettings.SectionName));
         services.AddHttpClient<MailGatewayClient>();
         services.AddScoped<IEmailService, EmailService>();

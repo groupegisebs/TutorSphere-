@@ -13,27 +13,32 @@ public interface ITutorEarningsService
     Task<IReadOnlyList<TutorPayoutDto>> ListPayoutsAsync(CancellationToken ct = default);
     Task<TutorPayoutDto> RequestPayoutAsync(RequestTutorPayoutRequest request, CancellationToken ct = default);
     Task<PayoutEligibilityDto> GetEligibilityAsync(CancellationToken ct = default);
+    Task<(bool Success, string? Error)> CompleteFromGatewayAsync(string idempotencyKeyOrRef, string? providerPayoutId, CancellationToken ct = default);
+    Task<(bool Success, string? Error)> RejectFromGatewayAsync(string idempotencyKeyOrRef, string? reason, CancellationToken ct = default);
 }
 
 /// <summary>
 /// Gains tuteur : encaissable uniquement pour les cours déjà donnés et terminés.
-/// Règles de retrait CAD :
-/// ≥ 100 $ → immédiat ; &lt; 100 $ → délai 30 j ; &lt; 10 $ → aucun transfert.
+/// Règles CAD : ≥ 100 $ immédiat ; &lt; 100 $ délai 30 j ; &lt; 10 $ aucun transfert.
+/// Paiement réel via file PayGateway (revue + rapprochement admin).
 /// </summary>
 public class TutorEarningsService : ITutorEarningsService
 {
     private readonly IApplicationDbContext _db;
     private readonly ITenantContext _tenantContext;
     private readonly ITutorPayoutAccountService _payoutAccounts;
+    private readonly ITutorDisbursementGateway _disbursements;
 
     public TutorEarningsService(
         IApplicationDbContext db,
         ITenantContext tenantContext,
-        ITutorPayoutAccountService payoutAccounts)
+        ITutorPayoutAccountService payoutAccounts,
+        ITutorDisbursementGateway disbursements)
     {
         _db = db;
         _tenantContext = tenantContext;
         _payoutAccounts = payoutAccounts;
+        _disbursements = disbursements;
     }
 
     public async Task<TutorEarningsSummaryDto> GetSummaryAsync(CancellationToken ct = default)
@@ -110,8 +115,14 @@ public class TutorEarningsService : ITutorEarningsService
         var primary = _db.TutorPayoutAccounts
             .Where(a => a.IsActive)
             .OrderByDescending(a => a.IsPrimary)
-            .FirstOrDefault();
+            .FirstOrDefault()
+            ?? throw new InvalidOperationException("Aucun moyen de versement configuré.");
 
+        var destinationToken = ResolveDestinationToken(primary);
+        if (string.IsNullOrWhiteSpace(destinationToken))
+            throw new InvalidOperationException("Destination de versement incomplète.");
+
+        var idempotencyKey = $"tutor-payout-{tenantId:N}-{Guid.NewGuid():N}"[..64];
         var payout = new TutorPayout
         {
             TenantId = tenantId,
@@ -120,23 +131,96 @@ public class TutorEarningsService : ITutorEarningsService
             Status = TutorPayoutStatus.Pending,
             Note = string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim(),
             RequestedAt = DateTime.UtcNow,
-            PayoutAccountId = primary?.Id,
-            ProviderKind = primary?.ProviderKind
+            PayoutAccountId = primary.Id,
+            ProviderKind = primary.ProviderKind,
+            IdempotencyKey = idempotencyKey
         };
 
         _db.Add(payout);
         await _db.SaveChangesAsync(ct);
 
-        // Traitement immédiat côté ledger (le versement provider reste asynchrone / manuel).
-        payout.Status = TutorPayoutStatus.Completed;
-        payout.CompletedAt = DateTime.UtcNow;
-        await _db.SaveChangesAsync(ct);
+        if (_disbursements.IsConfigured)
+        {
+            var tenant = _db.Tenants.FirstOrDefault(t => t.Id == tenantId);
+            var amountMinor = (long)Math.Round(amount * 100m, MidpointRounding.AwayFromZero);
+            var enqueued = await _disbursements.EnqueueAsync(new TutorDisbursementEnqueueRequest(
+                ExternalReference: $"tutor-payout-{payout.Id:N}",
+                IdempotencyKey: idempotencyKey,
+                SellerExternalId: $"tutor-{tenantId:N}",
+                SellerDisplayName: tenant?.Name,
+                ProviderCode: PayoutProviderCodes.ToPayGatewayCode(primary.ProviderKind),
+                DestinationMasked: MaskDestination(primary),
+                DestinationToken: destinationToken,
+                AmountMinor: amountMinor,
+                Currency: TutorPayoutPolicy.PolicyCurrency,
+                CountryCode: primary.CountryCode), ct);
 
-        // Après un retrait, si le solde restant < 100 $, on repart le compteur 30 j.
+            payout.ExternalDisbursementId = enqueued.Id.ToString();
+            payout.Status = TutorPayoutStatus.Processing;
+            await _db.SaveChangesAsync(ct);
+        }
+        else
+        {
+            // Sans PayGateway : reste en attente manuelle (admin / ops).
+            payout.Status = TutorPayoutStatus.Processing;
+            payout.Note = (payout.Note ?? "") + " | PayGateway non configuré — traitement manuel.";
+            await _db.SaveChangesAsync(ct);
+        }
+
         var after = ComputeSnapshot();
         await SyncHoldingClockAsync(tenantId, after.Available, ct, forceRestartIfBelowThreshold: true);
 
         return MapPayout(payout);
+    }
+
+    public async Task<(bool Success, string? Error)> CompleteFromGatewayAsync(
+        string idempotencyKeyOrRef, string? providerPayoutId, CancellationToken ct = default)
+    {
+        var payout = FindPayout(idempotencyKeyOrRef);
+        if (payout is null) return (false, "not_found");
+        if (payout.Status == TutorPayoutStatus.Completed) return (true, null);
+
+        payout.Status = TutorPayoutStatus.Completed;
+        payout.CompletedAt = DateTime.UtcNow;
+        if (!string.IsNullOrWhiteSpace(providerPayoutId))
+            payout.ProviderPayoutId = providerPayoutId;
+        payout.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
+
+        var after = ComputeSnapshotForTenant(payout.TenantId);
+        await SyncHoldingClockForTenantAsync(payout.TenantId, after.Available, ct, forceRestartIfBelowThreshold: true);
+        return (true, null);
+    }
+
+    public async Task<(bool Success, string? Error)> RejectFromGatewayAsync(
+        string idempotencyKeyOrRef, string? reason, CancellationToken ct = default)
+    {
+        var payout = FindPayout(idempotencyKeyOrRef);
+        if (payout is null) return (false, "not_found");
+        if (payout.Status is TutorPayoutStatus.Completed or TutorPayoutStatus.Cancelled)
+            return (true, null);
+
+        payout.Status = TutorPayoutStatus.Failed;
+        payout.FailureMessage = reason ?? "rejected_by_paygateway";
+        payout.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
+
+        var after = ComputeSnapshotForTenant(payout.TenantId);
+        await SyncHoldingClockForTenantAsync(payout.TenantId, after.Available, ct);
+        return (true, null);
+    }
+
+    private TutorPayout? FindPayout(string key)
+    {
+        var payout = _db.TutorPayoutsForAnyTenant.FirstOrDefault(p => p.IdempotencyKey == key);
+        if (payout is not null) return payout;
+
+        if (key.StartsWith("tutor-payout-", StringComparison.OrdinalIgnoreCase)
+            && Guid.TryParseExact(key["tutor-payout-".Length..], "N", out var id))
+            return _db.TutorPayoutsForAnyTenant.FirstOrDefault(p => p.Id == id);
+
+        return _db.TutorPayoutsForAnyTenant.FirstOrDefault(p =>
+            p.ExternalDisbursementId == key || p.ProviderPayoutId == key);
     }
 
     private async Task<PayoutEligibilityDto> BuildEligibilityAsync(EarningsSnapshot snapshot, CancellationToken ct)
@@ -157,8 +241,8 @@ public class TutorEarningsService : ITutorEarningsService
         {
             can = false;
             block = setup.Region == nameof(PayoutRegionKind.Africa)
-                ? "Configurez Wave et TapTap Send (détails complets) avant de demander un retrait."
-                : "Configurez Stripe Connect et PayPal avant de demander un retrait.";
+                ? "Configurez un portefeuille Mobile Money (titulaire + numéro public) avant de demander un retrait."
+                : "Configurez Stripe Connect (onboarding) et PayPal avant de demander un retrait.";
         }
         else if (available < TutorPayoutPolicy.MinimumTransferCad)
         {
@@ -176,7 +260,6 @@ public class TutorEarningsService : ITutorEarningsService
         }
         else
         {
-            // < 100 $ : délai de 30 jours
             if (holdingStarted is null)
             {
                 can = false;
@@ -225,7 +308,14 @@ public class TutorEarningsService : ITutorEarningsService
             TutorPayoutPolicy.PolicyCurrency);
     }
 
-    private async Task SyncHoldingClockAsync(
+    private Task SyncHoldingClockAsync(
+        Guid tenantId,
+        decimal available,
+        CancellationToken ct,
+        bool forceRestartIfBelowThreshold = false)
+        => SyncHoldingClockForTenantAsync(tenantId, available, ct, forceRestartIfBelowThreshold);
+
+    private async Task SyncHoldingClockForTenantAsync(
         Guid tenantId,
         decimal available,
         CancellationToken ct,
@@ -235,28 +325,24 @@ public class TutorEarningsService : ITutorEarningsService
         if (tenant is null) return;
 
         if (available <= 0)
-        {
             tenant.PayoutHoldingStartedAt = null;
-        }
         else if (available >= TutorPayoutPolicy.InstantClaimThresholdCad)
-        {
-            // Au-dessus du seuil : pas de délai, on peut effacer le compteur.
             tenant.PayoutHoldingStartedAt = null;
-        }
-        else
-        {
-            // Sous 100 $ : démarrer / conserver le compteur 30 j.
-            if (tenant.PayoutHoldingStartedAt is null || forceRestartIfBelowThreshold)
-                tenant.PayoutHoldingStartedAt = DateTime.UtcNow;
-        }
+        else if (tenant.PayoutHoldingStartedAt is null || forceRestartIfBelowThreshold)
+            tenant.PayoutHoldingStartedAt = DateTime.UtcNow;
 
         tenant.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync(ct);
     }
 
-    private EarningsSnapshot ComputeSnapshot()
+    private EarningsSnapshot ComputeSnapshot() => ComputeSnapshotForTenant(RequireTenantId());
+
+    private EarningsSnapshot ComputeSnapshotForTenant(Guid tenantId)
     {
-        var completedPayments = _db.Payments
+        // Query filters already scope to current tenant when set; for webhook use ForAnyTenant + explicit filter.
+        var completedPayments = (_tenantContext.HasTenant && _tenantContext.TenantId == tenantId
+                ? _db.Payments
+                : _db.PaymentsForAnyTenant.Where(p => p.TenantId == tenantId))
             .Where(p => p.Status == PaymentStatus.Completed)
             .ToList();
 
@@ -269,12 +355,16 @@ public class TutorEarningsService : ITutorEarningsService
             .Distinct()
             .ToList();
 
-        var subscriptions = _db.StudentSubscriptions
+        var subscriptions = (_tenantContext.HasTenant && _tenantContext.TenantId == tenantId
+                ? _db.StudentSubscriptions
+                : _db.StudentSubscriptionsForAnyTenant.Where(s => s.TenantId == tenantId))
             .Where(s => subscriptionIds.Contains(s.Id))
             .ToList();
 
         var offeringIds = subscriptions.Select(s => s.OfferingId).Distinct().ToList();
-        var offerings = _db.SubscriptionOfferings
+        var offerings = (_tenantContext.HasTenant && _tenantContext.TenantId == tenantId
+                ? _db.SubscriptionOfferings
+                : _db.SubscriptionOfferingsForAnyTenant.Where(o => o.TenantId == tenantId))
             .Where(o => offeringIds.Contains(o.Id))
             .ToDictionary(o => o.Id);
 
@@ -305,13 +395,50 @@ public class TutorEarningsService : ITutorEarningsService
         held = Math.Min(held, collected);
         var released = decimal.Round(collected - held, 2, MidpointRounding.AwayFromZero);
 
-        var withdrawn = _db.TutorPayouts
-            .Where(p => p.Status == TutorPayoutStatus.Pending || p.Status == TutorPayoutStatus.Completed)
+        var withdrawn = (_tenantContext.HasTenant && _tenantContext.TenantId == tenantId
+                ? _db.TutorPayouts
+                : _db.TutorPayoutsForAnyTenant.Where(p => p.TenantId == tenantId))
+            .Where(p => p.Status == TutorPayoutStatus.Pending
+                        || p.Status == TutorPayoutStatus.Processing
+                        || p.Status == TutorPayoutStatus.Completed)
             .Sum(p => (decimal?)p.Amount) ?? 0m;
 
         var available = decimal.Round(Math.Max(0m, released - withdrawn), 2, MidpointRounding.AwayFromZero);
 
         return new EarningsSnapshot(collected, held, released, withdrawn, available, currency, sessionsHeld);
+    }
+
+    private static string? ResolveDestinationToken(TutorPayoutAccount account) =>
+        account.ProviderKind switch
+        {
+            PayoutProviderKind.StripeConnect => account.EmailOrAccountId,
+            PayoutProviderKind.PayPal => account.EmailOrAccountId,
+            _ when PayoutProviderCodes.IsMobileMoney(account.ProviderKind)
+                => account.EmailOrAccountId ?? account.PhoneNumber,
+            _ => account.EmailOrAccountId ?? account.PhoneNumber
+        };
+
+    private static string MaskDestination(TutorPayoutAccount account)
+    {
+        if (!string.IsNullOrWhiteSpace(account.PhoneNumber))
+        {
+            var digits = new string(account.PhoneNumber.Where(char.IsDigit).ToArray());
+            if (digits.Length >= 4)
+                return $"{account.ProviderKind} +{digits[..Math.Min(3, digits.Length)]} ••• {digits[^2..]}";
+        }
+
+        if (!string.IsNullOrWhiteSpace(account.EmailOrAccountId) && account.EmailOrAccountId.Contains('@'))
+        {
+            var parts = account.EmailOrAccountId.Split('@', 2);
+            var local = parts[0];
+            var masked = local.Length <= 2 ? "••" : $"{local[0]}••••{local[^1]}";
+            return $"{masked}@{parts[1]}";
+        }
+
+        if (!string.IsNullOrWhiteSpace(account.EmailOrAccountId) && account.EmailOrAccountId.StartsWith("acct_"))
+            return "Stripe ••••" + account.EmailOrAccountId[^4..];
+
+        return account.Label;
     }
 
     private Guid RequireTenantId() =>
