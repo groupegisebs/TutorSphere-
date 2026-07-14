@@ -141,13 +141,23 @@
                                autoplay playsinline muted></video>
                         @if (!_showLocalVideo)
                         {
-                            <div class="cr-pro-placeholder cr-pro-placeholder--av" style="--av:#5831e0">
+                            <div class="cr-pro-placeholder cr-pro-placeholder--av" style="--av:#1e3a5f">
                                 <span>@SelfInitials</span>
                             </div>
                         }
+                        <div class="cr-pro-thumb-chrome">
+                            <span class="cr-pro-thumb-live"><i class="bi bi-circle-fill"></i>LIVE</span>
+                            @if (_handRaised) { <span class="cr-pro-thumb-react">✋</span> }
+                        </div>
                         <div class="cr-pro-thumb-label">
                             <span>@SelfDisplayName (@L["ClassroomPro_You"])</span>
-                            <i class="bi @(_micOn ? "bi-mic-fill" : "bi-mic-mute-fill")"></i>
+                        </div>
+                        <div class="cr-pro-thumb-telemetry">
+                            <i class="bi @(_micOn ? "bi-mic-fill" : "bi-mic-mute-fill") @(_micOn ? null : "is-off")"></i>
+                            <i class="bi @(_camOn ? "bi-camera-video-fill" : "bi-camera-video-off-fill") @(_camOn ? null : "is-off")"></i>
+                            <i class="bi bi-wifi"></i>
+                            <span>@L["ClassroomPro_NetworkExcellent"]</span>
+                            <span class="ping">~28ms</span>
                         </div>
                     </div>
                     @foreach (var p in VisibleRemoteTiles)
@@ -166,20 +176,26 @@
                                     <span>@p.Initials</span>
                                 </div>
                             }
-                            @if (p.IsOnline)
-                            {
-                                <span class="cr-pro-thumb-online" title='@L["Classroom_Online"]'></span>
-                            }
-                            else
-                            {
-                                <span class="cr-pro-thumb-offline">@L["ClassroomPro_Absent"]</span>
-                            }
+                            <div class="cr-pro-thumb-chrome">
+                                @if (p.IsOnline)
+                                {
+                                    <span class="cr-pro-thumb-live"><i class="bi bi-circle-fill"></i>LIVE</span>
+                                }
+                                else
+                                {
+                                    <span class="cr-pro-thumb-offline">@L["ClassroomPro_Absent"]</span>
+                                }
+                                @if (p.HandRaised) { <span class="cr-pro-thumb-react">✋</span> }
+                            </div>
                             <div class="cr-pro-thumb-label">
                                 <span>@p.Name</span>
-                                <span>
-                                    <i class="bi @(p.MicOn && p.IsOnline ? "bi-mic-fill" : "bi-mic-mute-fill")"></i>
-                                    @if (p.HandRaised) { <i class="bi bi-hand-index-thumb-fill" style="color:#eab308"></i> }
-                                </span>
+                            </div>
+                            <div class="cr-pro-thumb-telemetry">
+                                <i class="bi @(p.MicOn && p.IsOnline ? "bi-mic-fill" : "bi-mic-mute-fill") @(p.MicOn && p.IsOnline ? null : "is-off")"></i>
+                                <i class="bi @(p.CamOn && p.IsOnline ? "bi-camera-video-fill" : "bi-camera-video-off-fill") @(p.CamOn && p.IsOnline ? null : "is-off")"></i>
+                                <i class="bi bi-wifi"></i>
+                                <span>@(p.IsOnline ? L["ClassroomPro_NetworkExcellent"] : "—")</span>
+                                <span class="ping">@(p.IsOnline ? "~30ms" : "—")</span>
                             </div>
                         </div>
                     }
@@ -251,8 +267,16 @@
                 </div>
             }
 
-            <section class="cr-pro-board">
-                <div class="cr-pro-board-toolbar">
+            <section class="cr-pro-board" @onclick="OnBoardPeekClick">
+                <button type="button" class="cr-pro-wb-peek" @onclick="ExpandBoardFromPeek" @onclick:stopPropagation="true">
+                    <span class="cr-pro-wb-peek-icon"><i class="bi bi-easel"></i></span>
+                    <span class="cr-pro-wb-peek-copy">
+                        <strong>@L["Classroom_Whiteboard"]</strong>
+                        <span>@(_boardDocName ?? L["ClassroomPro_WbPeekHint"].Value)</span>
+                    </span>
+                    <span class="cr-pro-wb-peek-cta">@L["ClassroomPro_WbExpand"] <i class="bi bi-chevron-up"></i></span>
+                </button>
+                <div class="cr-pro-board-toolbar" @onclick:stopPropagation="true">
                     <button type="button" class="cr-pro-wb-btn @(_wbTool == "select" ? "active" : "")" @onclick='() => SetWbTool("select")' title='@L["Classroom_Select"]'><i class="bi bi-cursor-fill"></i></button>
                     <button type="button" class="cr-pro-wb-btn @(_wbTool == "pen" ? "active" : "")" @onclick='() => SetWbTool("pen")' title='@L["Classroom_Pen"]'><i class="bi bi-pencil-fill"></i></button>
                     <button type="button" class="cr-pro-wb-btn @(_wbTool == "highlighter" ? "active" : "")" @onclick='() => SetWbTool("highlighter")' title='@L["ClassroomPro_Highlighter"]'><i class="bi bi-highlighter"></i></button>
@@ -282,14 +306,14 @@
                     <span style="flex:1"></span>
                     <button type="button" class="cr-pro-wb-btn" @onclick="ToggleWbCollapsed" title='@L["ClassroomPro_CollapseBoard"]'><i class="bi bi-chevron-down"></i></button>
                 </div>
-                <div class="cr-pro-board-canvas-wrap">
+                <div class="cr-pro-board-canvas-wrap" @onclick:stopPropagation="true">
                     @if (!string.IsNullOrEmpty(_boardDocName))
                     {
                         <div class="cr-pro-board-doc"><i class="bi bi-image me-1"></i>@_boardDocName — @L["Classroom_AnnotateHint"]</div>
                     }
                     <canvas @ref="_canvasRef" class="cr-canvas"></canvas>
                 </div>
-                <div class="cr-pro-board-footer">
+                <div class="cr-pro-board-footer" @onclick:stopPropagation="true">
                     <button type="button" class="cr-pro-wb-btn" @onclick="PrevPage"><i class="bi bi-chevron-left"></i></button>
                     <span>@_wbPage / @_wbTotalPages</span>
                     <button type="button" class="cr-pro-wb-btn" @onclick="NextPage"><i class="bi bi-chevron-right"></i></button>
@@ -589,6 +613,19 @@
         _wbCollapsed = !_wbCollapsed;
         _wbForeground = !_wbCollapsed;
         _needRtcRemount = true;
+    }
+
+    private void ExpandBoardFromPeek()
+    {
+        _wbCollapsed = false;
+        _wbForeground = true;
+        _needRtcRemount = true;
+    }
+
+    private void OnBoardPeekClick()
+    {
+        if (_wbCollapsed)
+            ExpandBoardFromPeek();
     }
 
     private void ToggleHand()

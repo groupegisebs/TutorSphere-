@@ -23,10 +23,23 @@
                     {
                         <span class="cr-pro-chip"><i class="bi bi-journal-bookmark"></i>@_lesson.Subject</span>
                     }
-                    <span class="cr-pro-chip"><i class="bi bi-person-badge"></i>@TutorDisplayName</span>
+                    <span class="cr-pro-chip"><i class="bi bi-bullseye"></i>@L["ClassroomPro_SessionGoal"]</span>
                     <span class="cr-pro-chip cr-pro-chip--live">
                         <i class="bi bi-circle-fill"></i>@L["Classroom_Live"]
                     </span>
+                    @if (_recording)
+                    {
+                        <span class="cr-pro-chip" style="color:#b91c1c;background:#fee2e2;border-color:#fecaca">
+                            <i class="bi bi-record-circle-fill"></i>@L["Classroom_Record"]
+                        </span>
+                    }
+                </div>
+                <div class="cr-pro-progress" title='@L["ClassroomPro_Progress"]'>
+                    <div class="cr-pro-progress-meta">
+                        <span>@L["ClassroomPro_SessionProgress"]</span>
+                        <span>@SessionProgressPercent%</span>
+                    </div>
+                    <div class="cr-pro-progress-bar" aria-hidden="true"><span style="width:@SessionProgressPercent%"></span></div>
                 </div>
             </div>
         </div>
@@ -47,6 +60,10 @@
                 <span class="cr-pro-stat-label">@L["ClassroomPro_Participants"]</span>
                 <span class="cr-pro-stat-value"><i class="bi bi-people"></i>@_participants.Count</span>
             </div>
+            <button type="button" class="cr-pro-stat" style="cursor:pointer;border:1px solid var(--crp-border)" @onclick='() => OpenSide("Holo")' title="Holo">
+                <span class="cr-pro-stat-label">Holo</span>
+                <span class="cr-pro-stat-value" style="color:var(--crp-ai)"><i class="bi bi-stars"></i>IA</span>
+            </button>
         </div>
 
         <div class="cr-pro-header-right">
@@ -140,13 +157,24 @@
                                autoplay playsinline muted></video>
                         @if (!_showLocalVideo)
                         {
-                            <div class="cr-pro-placeholder cr-pro-placeholder--av" style="--av:#5831e0">
+                            <div class="cr-pro-placeholder cr-pro-placeholder--av" style="--av:#1e3a5f">
                                 <span>@TutorInitials</span>
                             </div>
                         }
+                        <div class="cr-pro-thumb-chrome">
+                            <span class="cr-pro-thumb-live"><i class="bi bi-circle-fill"></i>LIVE</span>
+                            @if (_sharing) { <span class="cr-pro-thumb-react" title='@L["Classroom_ShareScreen"]'>🖥️</span> }
+                            @if (_handRaised) { <span class="cr-pro-thumb-react">✋</span> }
+                        </div>
                         <div class="cr-pro-thumb-label">
                             <span>@TutorDisplayName (@L["ClassroomPro_You"])</span>
-                            <i class="bi @(_micOn ? "bi-mic-fill" : "bi-mic-mute-fill")"></i>
+                        </div>
+                        <div class="cr-pro-thumb-telemetry">
+                            <i class="bi @(_micOn ? "bi-mic-fill" : "bi-mic-mute-fill") @(_micOn ? null : "is-off")"></i>
+                            <i class="bi @(_camOn ? "bi-camera-video-fill" : "bi-camera-video-off-fill") @(_camOn ? null : "is-off")"></i>
+                            <i class="bi bi-wifi"></i>
+                            <span>@L["ClassroomPro_NetworkExcellent"]</span>
+                            <span class="ping">~24ms</span>
                         </div>
                     </div>
                     @foreach (var p in VisibleStudentTiles)
@@ -165,20 +193,26 @@
                                     <span>@p.Initials</span>
                                 </div>
                             }
-                            @if (p.IsOnline)
-                            {
-                                <span class="cr-pro-thumb-online" title='@L["Classroom_Online"]'></span>
-                            }
-                            else
-                            {
-                                <span class="cr-pro-thumb-offline">@L["ClassroomPro_Absent"]</span>
-                            }
+                            <div class="cr-pro-thumb-chrome">
+                                @if (p.IsOnline)
+                                {
+                                    <span class="cr-pro-thumb-live"><i class="bi bi-circle-fill"></i>LIVE</span>
+                                }
+                                else
+                                {
+                                    <span class="cr-pro-thumb-offline">@L["ClassroomPro_Absent"]</span>
+                                }
+                                @if (p.HandRaised) { <span class="cr-pro-thumb-react">✋</span> }
+                            </div>
                             <div class="cr-pro-thumb-label">
                                 <span>@p.Name</span>
-                                <span>
-                                    <i class="bi @(p.MicOn && p.IsOnline ? "bi-mic-fill" : "bi-mic-mute-fill")"></i>
-                                    @if (p.HandRaised) { <i class="bi bi-hand-index-thumb-fill" style="color:#eab308"></i> }
-                                </span>
+                            </div>
+                            <div class="cr-pro-thumb-telemetry">
+                                <i class="bi @(p.MicOn && p.IsOnline ? "bi-mic-fill" : "bi-mic-mute-fill") @(p.MicOn && p.IsOnline ? null : "is-off")"></i>
+                                <i class="bi @(p.CamOn && p.IsOnline ? "bi-camera-video-fill" : "bi-camera-video-off-fill") @(p.CamOn && p.IsOnline ? null : "is-off")"></i>
+                                <i class="bi bi-wifi"></i>
+                                <span>@(p.IsOnline ? L["ClassroomPro_NetworkExcellent"] : "—")</span>
+                                <span class="ping">@(p.IsOnline ? "~32ms" : "—")</span>
                             </div>
                         </div>
                     }
@@ -250,8 +284,16 @@
                 </div>
             }
 
-            <section class="cr-pro-board">
-                <div class="cr-pro-board-toolbar">
+            <section class="cr-pro-board" @onclick="OnBoardPeekClick">
+                <button type="button" class="cr-pro-wb-peek" @onclick="ExpandBoardFromPeek" @onclick:stopPropagation="true">
+                    <span class="cr-pro-wb-peek-icon"><i class="bi bi-easel"></i></span>
+                    <span class="cr-pro-wb-peek-copy">
+                        <strong>@L["Classroom_Whiteboard"]</strong>
+                        <span>@(_boardDocName ?? L["ClassroomPro_WbPeekHint"].Value)</span>
+                    </span>
+                    <span class="cr-pro-wb-peek-cta">@L["ClassroomPro_WbExpand"] <i class="bi bi-chevron-up"></i></span>
+                </button>
+                <div class="cr-pro-board-toolbar" @onclick:stopPropagation="true">
                     <button type="button" class="cr-pro-wb-btn @(_wbTool == "select" ? "active" : "")" @onclick='() => SetWbTool("select")' title='@L["Classroom_Select"]'><i class="bi bi-cursor-fill"></i></button>
                     <button type="button" class="cr-pro-wb-btn @(_wbTool == "pen" ? "active" : "")" @onclick='() => SetWbTool("pen")' title='@L["Classroom_Pen"]'><i class="bi bi-pencil-fill"></i></button>
                     <button type="button" class="cr-pro-wb-btn @(_wbTool == "highlighter" ? "active" : "")" @onclick='() => SetWbTool("highlighter")' title='@L["ClassroomPro_Highlighter"]'><i class="bi bi-highlighter"></i></button>
@@ -281,14 +323,14 @@
                     <span style="flex:1"></span>
                     <button type="button" class="cr-pro-wb-btn" @onclick="ToggleWbCollapsed" title='@L["ClassroomPro_CollapseBoard"]'><i class="bi bi-chevron-down"></i></button>
                 </div>
-                <div class="cr-pro-board-canvas-wrap">
+                <div class="cr-pro-board-canvas-wrap" @onclick:stopPropagation="true">
                     @if (!string.IsNullOrEmpty(_boardDocName))
                     {
                         <div class="cr-pro-board-doc"><i class="bi bi-image me-1"></i>@_boardDocName — @L["Classroom_AnnotateHint"]</div>
                     }
                     <canvas @ref="_canvasRef" class="cr-canvas"></canvas>
                 </div>
-                <div class="cr-pro-board-footer">
+                <div class="cr-pro-board-footer" @onclick:stopPropagation="true">
                     <button type="button" class="cr-pro-wb-btn" @onclick="PrevPage"><i class="bi bi-chevron-left"></i></button>
                     <span>@_wbPage / @_wbTotalPages</span>
                     <button type="button" class="cr-pro-wb-btn" @onclick="NextPage"><i class="bi bi-chevron-right"></i></button>
@@ -307,89 +349,118 @@
         </div>
 
         <aside class="cr-pro-side">
-            <div class="cr-pro-side-card">
-                <div class="cr-pro-side-head">
-                    <h3>@L["Classroom_Participants"] (@_participants.Count)</h3>
-                    <button type="button" class="cr-pro-invite" @onclick='() => PushToast(L["ClassroomPro_InviteSoon"])'>
-                        <i class="bi bi-person-plus"></i> @L["ClassroomPro_Invite"]
-                    </button>
-                </div>
-                <div class="cr-pro-search">
-                    <i class="bi bi-search"></i>
-                    <input @bind="_participantFilter" @bind:event="oninput" placeholder='@L["ClassroomPro_SearchParticipant"]' />
-                </div>
-                <div class="cr-pro-plist">
-                    @foreach (var p in FilteredParticipants)
-                    {
-                        <div class="cr-pro-prow @(p.Role == "Tuteur" ? "is-self" : null)">
-                            <div class="cr-pro-prow-av" style="background:@p.Color">@p.Initials</div>
-                            <div>
-                                <div class="cr-pro-prow-name">@p.Name</div>
-                                <div class="cr-pro-prow-role">
-                                    @p.Role
-                                    · @(p.IsOnline || p.Role == "Tuteur" ? L["ClassroomPro_Present"] : L["ClassroomPro_Absent"])
-                                </div>
-                            </div>
-                            <div class="cr-pro-prow-icons">
-                                @if (p.HandRaised) { <i class="bi bi-hand-index-thumb-fill is-hand"></i> }
-                                <i class="bi @(p.MicOn ? "bi-mic-fill" : "bi-mic-mute-fill") @(p.MicOn ? "" : "is-off")"></i>
-                                <i class="bi @(p.CamOn || p.HasRemoteVideo ? "bi-camera-video-fill" : "bi-camera-video-off-fill") @(p.CamOn || p.HasRemoteVideo ? "" : "is-off")"></i>
-                                @if (p.Role != "Tuteur")
-                                {
-                                    <button type="button" class="cr-pro-icon-btn" style="width:28px;height:28px;border:none" title='@L["ClassroomPro_Mute"]'
-                                            @onclick="() => MuteParticipant(p)"><i class="bi bi-mic-mute"></i></button>
-                                }
-                            </div>
-                        </div>
-                    }
-                </div>
+            <div class="cr-pro-side-tabs">
+                <button type="button" class="cr-pro-side-tab @(_sideRail == "People" ? "active" : null)" @onclick='() => _sideRail = "People"'><i class="bi bi-people"></i>@L["Classroom_Participants"]</button>
+                <button type="button" class="cr-pro-side-tab @(_sideRail == "Chat" ? "active" : null)" @onclick='() => { _sideRail = "Chat"; _activeTab = "Chat"; }'><i class="bi bi-chat"></i>@L["Classroom_Chat"]</button>
+                <button type="button" class="cr-pro-side-tab is-ai @(_sideRail == "Holo" ? "active" : null)" @onclick='() => _sideRail = "Holo"'><i class="bi bi-stars"></i>Holo</button>
+                <button type="button" class="cr-pro-side-tab @(_sideRail == "Docs" ? "active" : null)" @onclick='() => { _sideRail = "Docs"; _activeTab = "Documents"; }'><i class="bi bi-folder"></i>@L["Classroom_Documents"]</button>
+                <button type="button" class="cr-pro-side-tab @(_sideRail == "Quiz" ? "active" : null)" @onclick='() => _sideRail = "Quiz"'><i class="bi bi-question-circle"></i>Quiz</button>
+                <button type="button" class="cr-pro-side-tab @(_sideRail == "Notes" ? "active" : null)" @onclick='() => _sideRail = "Notes"'><i class="bi bi-journal-text"></i>@L["ClassroomPro_AiNotes"]</button>
             </div>
 
-            <div class="cr-pro-side-card">
-                <div class="cr-pro-side-head">
-                    <h3>@(_activeTab == "Documents" ? L["Classroom_Documents"] : L["Classroom_Chat"])</h3>
-                    <div style="display:flex;gap:0.25rem">
-                        <button type="button" class="cr-pro-icon-btn" style="width:28px;height:28px" @onclick='() => _activeTab = "Chat"' title='@L["Classroom_Chat"]'><i class="bi bi-chat"></i></button>
-                        <button type="button" class="cr-pro-icon-btn" style="width:28px;height:28px" @onclick='() => _activeTab = "Documents"' title='@L["Classroom_Documents"]'><i class="bi bi-folder"></i></button>
+            @if (_sideRail == "People")
+            {
+                <div class="cr-pro-side-card" style="border:none;box-shadow:none">
+                    <div class="cr-pro-side-head">
+                        <h3>@L["Classroom_Participants"] (@_participants.Count)</h3>
+                        <button type="button" class="cr-pro-invite" @onclick='() => PushToast(L["ClassroomPro_InviteSoon"])'>
+                            <i class="bi bi-person-plus"></i> @L["ClassroomPro_Invite"]
+                        </button>
                     </div>
-                </div>
-
-                @if (_activeTab == "Documents")
-                {
-                    <div class="cr-pro-plist" style="padding:0.75rem">
-                        <label class="cr-pro-invite" style="display:inline-flex;cursor:pointer;margin-bottom:0.75rem">
-                            <i class="bi bi-upload me-1"></i>@L["ClassroomPro_Upload"]
-                            <InputFile OnChange="OnDocSelected" style="display:none" />
-                        </label>
-                        @foreach (var doc in _documents)
+                    <div class="cr-pro-search">
+                        <i class="bi bi-search"></i>
+                        <input @bind="_participantFilter" @bind:event="oninput" placeholder='@L["ClassroomPro_SearchParticipant"]' />
+                    </div>
+                    <div class="cr-pro-plist">
+                        @foreach (var p in FilteredParticipants)
                         {
-                            <div class="cr-pro-prow">
-                                <i class="bi bi-file-earmark" style="color:var(--crp-violet)"></i>
+                            <div class="cr-pro-prow @(p.Role == "Tuteur" ? "is-self" : null)">
+                                <div class="cr-pro-prow-av" style="background:@p.Color">@p.Initials</div>
                                 <div>
-                                    <div class="cr-pro-prow-name">@doc.Name</div>
-                                    <div class="cr-pro-prow-role">@doc.Size</div>
+                                    <div class="cr-pro-prow-name">@p.Name</div>
+                                    <div class="cr-pro-prow-role">
+                                        @p.Role
+                                        · @(p.IsOnline || p.Role == "Tuteur" ? L["ClassroomPro_Present"] : L["ClassroomPro_Absent"])
+                                    </div>
                                 </div>
-                                @if (doc.IsImage)
-                                {
-                                    <button type="button" class="cr-pro-invite" @onclick="() => OpenDocumentOnBoardAsync(doc)" title='@L["Classroom_AnnotateHint"]'>
-                                        <i class="bi bi-share me-1"></i>@L["Classroom_ShareDocAction"]
-                                    </button>
-                                }
+                                <div class="cr-pro-prow-icons">
+                                    @if (p.HandRaised) { <i class="bi bi-hand-index-thumb-fill is-hand"></i> }
+                                    <i class="bi @(p.MicOn ? "bi-mic-fill" : "bi-mic-mute-fill") @(p.MicOn ? "" : "is-off")"></i>
+                                    <i class="bi @(p.CamOn || p.HasRemoteVideo ? "bi-camera-video-fill" : "bi-camera-video-off-fill") @(p.CamOn || p.HasRemoteVideo ? "" : "is-off")"></i>
+                                    @if (p.Role != "Tuteur")
+                                    {
+                                        <button type="button" class="cr-pro-icon-btn" style="width:28px;height:28px;border:none" title='@L["ClassroomPro_Mute"]'
+                                                @onclick="() => MuteParticipant(p)"><i class="bi bi-mic-mute"></i></button>
+                                    }
+                                </div>
                             </div>
                         }
-                        @if (_documents.Count == 0)
-                        {
-                            <p class="text-muted small mb-0">@L["ClassroomPro_NoDocuments"]</p>
-                        }
                     </div>
-                }
-                else
-                {
+                </div>
+            }
+            else if (_sideRail == "Holo")
+            {
+                <div class="cr-pro-holo-panel">
+                    <div class="cr-pro-holo-insight">
+                        <strong>Holo</strong> — @L["ClassroomPro_HoloInsight"]
+                    </div>
+                    <div class="cr-pro-holo-actions">
+                        <button type="button" @onclick='() => RunAi("explain")'><i class="bi bi-lightbulb"></i>@L["ClassroomPro_AiExplain"]</button>
+                        <button type="button" @onclick='() => RunAi("hint")'><i class="bi bi-magic"></i>@L["ClassroomPro_HoloHint"]</button>
+                        <button type="button" @onclick='() => RunAi("draw")'><i class="bi bi-brush"></i>@L["ClassroomPro_HoloDraw"]</button>
+                        <button type="button" @onclick='() => RunAi("exercises")'><i class="bi bi-journal-plus"></i>@L["ClassroomPro_AiExercises"]</button>
+                        <button type="button" @onclick='() => RunAi("quiz")'><i class="bi bi-question-circle"></i>@L["ClassroomPro_AiQuiz"]</button>
+                        <button type="button" @onclick='() => RunAi("correct")'><i class="bi bi-check2-circle"></i>@L["ClassroomPro_AiCorrect"]</button>
+                        <button type="button" @onclick='() => RunAi("translate")'><i class="bi bi-translate"></i>@L["ClassroomPro_AiTranslate"]</button>
+                        <button type="button" @onclick='() => RunAi("summary")'><i class="bi bi-stars"></i>@L["ClassroomPro_AiSummary"]</button>
+                        <button type="button" @onclick='() => RunAi("voice")'><i class="bi bi-soundwave"></i>@L["ClassroomPro_AiVoice"]</button>
+                        <button type="button" @onclick='() => RunAi("adapt")'><i class="bi bi-sliders"></i>@L["ClassroomPro_HoloAdapt"]</button>
+                    </div>
+                </div>
+            }
+            else if (_sideRail == "Docs")
+            {
+                <div class="cr-pro-plist" style="padding:0.75rem">
+                    <label class="cr-pro-invite" style="display:inline-flex;cursor:pointer;margin-bottom:0.75rem">
+                        <i class="bi bi-upload me-1"></i>@L["ClassroomPro_Upload"]
+                        <InputFile OnChange="OnDocSelected" style="display:none" />
+                    </label>
+                    @foreach (var doc in _documents)
+                    {
+                        <div class="cr-pro-prow">
+                            <i class="bi bi-file-earmark" style="color:var(--crp-violet)"></i>
+                            <div>
+                                <div class="cr-pro-prow-name">@doc.Name</div>
+                                <div class="cr-pro-prow-role">@doc.Size</div>
+                            </div>
+                            @if (doc.IsImage)
+                            {
+                                <button type="button" class="cr-pro-invite" @onclick="() => OpenDocumentOnBoardAsync(doc)" title='@L["Classroom_AnnotateHint"]'>
+                                    <i class="bi bi-share me-1"></i>@L["Classroom_ShareDocAction"]
+                                </button>
+                            }
+                        </div>
+                    }
+                    @if (_documents.Count == 0)
+                    {
+                        <p class="text-muted small mb-0">@L["ClassroomPro_NoDocuments"]</p>
+                    }
+                </div>
+            }
+            else if (_sideRail is "Quiz" or "Notes")
+            {
+                <div class="cr-pro-side-empty">
+                    @(_sideRail == "Quiz" ? L["ClassroomPro_QuizSoon"] : L["ClassroomPro_NotesSoon"])
+                </div>
+            }
+            else
+            {
+                <div class="cr-pro-side-card" style="border:none;box-shadow:none;display:flex;flex-direction:column;min-height:0;flex:1">
                     <div class="cr-pro-chat">
                         @foreach (var m in _chatMessages)
                         {
                             <div class="cr-pro-msg @(m.IsMe ? "is-me" : null)">
-                                <div class="cr-pro-msg-av" style="background:@(m.IsMe ? "#5831e0" : GetSenderColor(m.Sender))">@GetSenderInitials(m.Sender)</div>
+                                <div class="cr-pro-msg-av" style="background:@(m.IsMe ? "#1e3a5f" : GetSenderColor(m.Sender))">@GetSenderInitials(m.Sender)</div>
                                 <div>
                                     <div class="cr-pro-bubble">
                                         <div class="cr-pro-msg-meta">
@@ -412,8 +483,8 @@
                         <input @bind="_newMessage" @onkeydown="OnChatKeyDown" placeholder='@L["Classroom_TypeMessage"]' />
                         <button type="button" class="cr-pro-send" @onclick="SendMessageAsync"><i class="bi bi-send-fill"></i></button>
                     </div>
-                }
-            </div>
+                </div>
+            }
         </aside>
     </div>
 
@@ -424,27 +495,28 @@
         }
     </div>
 
-    <button type="button" class="cr-pro-ai-fab" @onclick="() => _showAiDrawer = !_showAiDrawer">
-        ✨ @L["ClassroomPro_AiAssistant"]
+    <button type="button" class="cr-pro-ai-fab" @onclick='() => OpenSide("Holo")'>
+        <i class="bi bi-stars"></i> Holo
     </button>
     @if (_showAiDrawer)
     {
         <div class="cr-pro-ai-drawer">
             <header>
-                <h4>✨ @L["ClassroomPro_AiAssistant"]</h4>
+                <h4><i class="bi bi-stars me-1"></i> Holo</h4>
                 <button type="button" class="cr-pro-icon-btn" style="background:rgba(255,255,255,.15);color:#fff;border:none" @onclick="() => _showAiDrawer = false"><i class="bi bi-x-lg"></i></button>
             </header>
-            <div class="cr-pro-ai-grid">
-                <button type="button" class="cr-pro-ai-item" @onclick='() => RunAi("summary")'><i class="bi bi-stars"></i>@L["ClassroomPro_AiSummary"]</button>
-                <button type="button" class="cr-pro-ai-item" @onclick='() => RunAi("correct")'><i class="bi bi-check2-circle"></i>@L["ClassroomPro_AiCorrect"]</button>
-                <button type="button" class="cr-pro-ai-item" @onclick='() => RunAi("explain")'><i class="bi bi-lightbulb"></i>@L["ClassroomPro_AiExplain"]</button>
-                <button type="button" class="cr-pro-ai-item" @onclick='() => RunAi("exercises")'><i class="bi bi-journal-plus"></i>@L["ClassroomPro_AiExercises"]</button>
-                <button type="button" class="cr-pro-ai-item" @onclick='() => RunAi("quiz")'><i class="bi bi-question-circle"></i>@L["ClassroomPro_AiQuiz"]</button>
-                <button type="button" class="cr-pro-ai-item" @onclick='() => RunAi("translate")'><i class="bi bi-translate"></i>@L["ClassroomPro_AiTranslate"]</button>
-                <button type="button" class="cr-pro-ai-item" @onclick='() => RunAi("voice")'><i class="bi bi-soundwave"></i>@L["ClassroomPro_AiVoice"]</button>
-                <button type="button" class="cr-pro-ai-item" @onclick='() => RunAi("questions")'><i class="bi bi-chat-quote"></i>@L["ClassroomPro_AiQuestions"]</button>
-                <button type="button" class="cr-pro-ai-item" @onclick='() => RunAi("participation")'><i class="bi bi-bar-chart"></i>@L["ClassroomPro_AiParticipation"]</button>
-                <button type="button" class="cr-pro-ai-item" @onclick='() => RunAi("tips")'><i class="bi bi-mortarboard"></i>@L["ClassroomPro_AiTips"]</button>
+            <div class="cr-pro-holo-panel">
+                <div class="cr-pro-holo-insight">@L["ClassroomPro_HoloInsight"]</div>
+                <div class="cr-pro-holo-actions">
+                    <button type="button" @onclick='() => RunAi("explain")'><i class="bi bi-lightbulb"></i>@L["ClassroomPro_AiExplain"]</button>
+                    <button type="button" @onclick='() => RunAi("hint")'><i class="bi bi-magic"></i>@L["ClassroomPro_HoloHint"]</button>
+                    <button type="button" @onclick='() => RunAi("draw")'><i class="bi bi-brush"></i>@L["ClassroomPro_HoloDraw"]</button>
+                    <button type="button" @onclick='() => RunAi("exercises")'><i class="bi bi-journal-plus"></i>@L["ClassroomPro_AiExercises"]</button>
+                    <button type="button" @onclick='() => RunAi("quiz")'><i class="bi bi-question-circle"></i>@L["ClassroomPro_AiQuiz"]</button>
+                    <button type="button" @onclick='() => RunAi("correct")'><i class="bi bi-check2-circle"></i>@L["ClassroomPro_AiCorrect"]</button>
+                    <button type="button" @onclick='() => RunAi("translate")'><i class="bi bi-translate"></i>@L["ClassroomPro_AiTranslate"]</button>
+                    <button type="button" @onclick='() => RunAi("summary")'><i class="bi bi-stars"></i>@L["ClassroomPro_AiSummary"]</button>
+                </div>
             </div>
         </div>
     }
@@ -612,9 +684,43 @@
 
     private void OpenSide(string tab)
     {
-        _activeTab = tab;
         _panelOpen = true;
         _panelCollapsed = false;
+        _showAiDrawer = false;
+        switch (tab)
+        {
+            case "Participants":
+            case "People":
+                _sideRail = "People";
+                break;
+            case "Documents":
+                _sideRail = "Docs";
+                _activeTab = "Documents";
+                break;
+            case "Holo":
+                _sideRail = "Holo";
+                break;
+            default:
+                _sideRail = "Chat";
+                _activeTab = "Chat";
+                break;
+        }
+    }
+
+    private int SessionProgressPercent =>
+        Math.Clamp(_elapsedSeconds * 100 / Math.Max(1, 55 * 60), 4, 99);
+
+    private void ExpandBoardFromPeek()
+    {
+        _wbCollapsed = false;
+        _wbForeground = true;
+        _needRtcRemount = true;
+    }
+
+    private void OnBoardPeekClick()
+    {
+        if (_wbCollapsed)
+            ExpandBoardFromPeek();
     }
 
     private void MuteParticipant(ParticipantVM p)
@@ -627,11 +733,15 @@
     {
         _newMessage = $"@{m.Sender} ";
         _activeTab = "Chat";
+        _sideRail = "Chat";
     }
 
     private void RunAi(string action)
     {
         _showAiDrawer = false;
+        _sideRail = "Holo";
+        _panelOpen = true;
+        _panelCollapsed = false;
         PushToast(string.Format(L["ClassroomPro_AiStartedFmt"].Value, action));
     }
 
@@ -653,6 +763,7 @@
     }
 
     private string _activeTab  = "Chat";
+    private string _sideRail = "People";
     private string _newMessage = "";
 
     private ClassroomLesson _lesson = new();
