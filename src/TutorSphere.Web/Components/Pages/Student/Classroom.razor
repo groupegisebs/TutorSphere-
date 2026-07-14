@@ -68,7 +68,7 @@
     <div class="cr-pro-body @(_panelOpen ? "is-panel-open" : null) @(_panelCollapsed ? "is-panel-collapsed" : null)">
         <div class="cr-pro-panel-scrim" @onclick="() => _panelOpen = false"></div>
 
-        <div class="cr-pro-center @(_wbCollapsed ? "is-wb-collapsed" : null)">
+        <div class="cr-pro-center @(_wbCollapsed && !_wbForeground ? "is-wb-collapsed" : null) @(_wbForeground ? "is-wb-foreground" : null)">
             @if (_sharing)
             {
                 <div class="cr-pro-sharebar">
@@ -141,7 +141,9 @@
                                autoplay playsinline muted></video>
                         @if (!_showLocalVideo)
                         {
-                            <div class="cr-pro-placeholder" style="font-size:1.6rem"><i class="bi bi-person-fill"></i></div>
+                            <div class="cr-pro-placeholder cr-pro-placeholder--av" style="--av:#5831e0">
+                                <span>@SelfInitials</span>
+                            </div>
                         }
                         <div class="cr-pro-thumb-label">
                             <span>@SelfDisplayName (@L["ClassroomPro_You"])</span>
@@ -151,25 +153,31 @@
                     @foreach (var p in VisibleRemoteTiles)
                     {
                         <div @key="p.ConnectionId ?? p.Name"
-                             class="cr-pro-thumb @(p.IsSpeaking || (p.CamOn && p.HasRemoteVideo) ? "is-speaking" : null) @(p.CamOn && p.HasRemoteVideo ? "has-video" : null)"
+                             class="cr-pro-thumb @(p.IsOnline ? null : "is-offline") @(p.IsSpeaking || (p.CamOn && p.HasRemoteVideo) ? "is-speaking" : null) @(p.CamOn && p.HasRemoteVideo ? "has-video" : null)"
                              @onclick="() => FocusPeer(p)" title="@p.Name">
-                            @if (!string.IsNullOrEmpty(p.ConnectionId))
+                            @if (!string.IsNullOrEmpty(p.ConnectionId) && p.IsOnline)
                             {
                                 <video data-rtc-peer="@p.ConnectionId"
                                        autoplay playsinline></video>
                             }
-                            @if (!(p.CamOn && p.HasRemoteVideo) || string.IsNullOrEmpty(p.ConnectionId))
+                            @if (!(p.CamOn && p.HasRemoteVideo && p.IsOnline) || string.IsNullOrEmpty(p.ConnectionId))
                             {
-                                <div class="cr-pro-placeholder" style="font-size:1.6rem"><i class="bi bi-person-fill"></i></div>
+                                <div class="cr-pro-placeholder cr-pro-placeholder--av" style="--av:@p.Color">
+                                    <span>@p.Initials</span>
+                                </div>
                             }
                             @if (p.IsOnline)
                             {
                                 <span class="cr-pro-thumb-online" title='@L["Classroom_Online"]'></span>
                             }
+                            else
+                            {
+                                <span class="cr-pro-thumb-offline">@L["ClassroomPro_Absent"]</span>
+                            }
                             <div class="cr-pro-thumb-label">
                                 <span>@p.Name</span>
                                 <span>
-                                    <i class="bi @(p.MicOn ? "bi-mic-fill" : "bi-mic-mute-fill")"></i>
+                                    <i class="bi @(p.MicOn && p.IsOnline ? "bi-mic-fill" : "bi-mic-mute-fill")"></i>
                                     @if (p.HandRaised) { <i class="bi bi-hand-index-thumb-fill" style="color:#eab308"></i> }
                                 </span>
                             </div>
@@ -357,7 +365,9 @@
                                 </div>
                                 @if (doc.IsImage)
                                 {
-                                    <button type="button" class="cr-pro-invite" @onclick="() => OpenDocumentOnBoardAsync(doc)">@L["Classroom_Annotate"]</button>
+                                    <button type="button" class="cr-pro-invite" @onclick="() => OpenDocumentOnBoardAsync(doc)" title='@L["Classroom_AnnotateHint"]'>
+                                        <i class="bi bi-share me-1"></i>@L["Classroom_ShareDocAction"]
+                                    </button>
                                 }
                             </div>
                         }
@@ -459,7 +469,7 @@
     private string _bgMode = "none";
     private string? _bgPreset;
     private bool _wbForeground;
-    private bool _wbCollapsed;
+    private bool _wbCollapsed = true;
     private bool _panelOpen;
     private bool _panelCollapsed;
     private bool _handRaised;
@@ -481,6 +491,9 @@
 
     private async Task FocusPeer(ParticipantVM peer)
     {
+        if (!peer.IsOnline || string.IsNullOrEmpty(peer.ConnectionId))
+            return;
+
         peer.IsSpeaking = true;
         foreach (var other in _participants.Where(x => x != peer))
             other.IsSpeaking = false;
@@ -495,20 +508,38 @@
         }
 
         _focusedPeer = peer;
-        if (!string.IsNullOrEmpty(peer.ConnectionId) && peer.CamOn)
+        if (peer.CamOn)
         {
             try { await JS.InvokeVoidAsync("classroomRtc.focusRemote", peer.ConnectionId); } catch { }
         }
     }
 
     private IEnumerable<ParticipantVM> RemoteParticipants =>
-        _participants.Where(x => x.IsOnline && !string.IsNullOrEmpty(x.ConnectionId));
+        _participants.Where(x => x.Role != "Élève");
 
-    private IEnumerable<ParticipantVM> VisibleRemoteTiles =>
-        RemoteParticipants.Take(_viewMode is "gallery" or "mosaic" ? 50 : 5);
+    private bool ShowAllPanelistTiles =>
+        _wbForeground || _viewMode is "gallery" or "mosaic";
+
+    private IEnumerable<ParticipantVM> VisibleRemoteTiles
+    {
+        get
+        {
+            var take = ShowAllPanelistTiles ? 50 : 5;
+            var source = ShowAllPanelistTiles
+                ? RemoteParticipants
+                : RemoteParticipants.Where(x => x.IsOnline && !string.IsNullOrEmpty(x.ConnectionId));
+            return source
+                .OrderByDescending(x => x.IsOnline)
+                .ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+                .Take(take);
+        }
+    }
 
     private int HiddenRemoteCount =>
-        Math.Max(0, RemoteParticipants.Count() - (_viewMode is "gallery" or "mosaic" ? 50 : 5));
+        Math.Max(0, (ShowAllPanelistTiles
+            ? RemoteParticipants.Count()
+            : RemoteParticipants.Count(x => x.IsOnline && !string.IsNullOrEmpty(x.ConnectionId)))
+            - (ShowAllPanelistTiles ? 50 : 5));
 
     private IEnumerable<ParticipantVM> FilteredParticipants =>
         _participants.Where(p =>
@@ -553,7 +584,12 @@
         _showViewMenu = false;
     }
 
-    private void ToggleWbCollapsed() => _wbCollapsed = !_wbCollapsed;
+    private void ToggleWbCollapsed()
+    {
+        _wbCollapsed = !_wbCollapsed;
+        _wbForeground = !_wbCollapsed;
+        _needRtcRemount = true;
+    }
 
     private void ToggleHand()
     {
@@ -1039,7 +1075,7 @@
         {
             if (string.IsNullOrEmpty(bg.DocumentId) || !Guid.TryParse(bg.DocumentId, out var docId))
                 return;
-            await ApplyDocumentBackgroundLocalAsync(docId, bg.ContentType, broadcast: false);
+            await PresentDocumentOnBoardAsync(docId, bg.ContentType, broadcast: false, displayName: null);
         });
 
     [JSInvokable]
@@ -1298,7 +1334,10 @@
     private void ToggleWhiteboardForeground()
     {
         _wbForeground = !_wbForeground;
+        if (_wbForeground)
+            _wbCollapsed = false;
         _showBgMenu = false;
+        _needRtcRemount = true;
     }
 
     private async Task SetBackgroundAsync(string mode, string? preset = null, string? imageUrl = null)
@@ -1476,10 +1515,34 @@
     private async Task OpenDocumentOnBoardAsync(DocumentVM doc)
     {
         if (doc.Id is null || !doc.IsImage) return;
-        await ApplyDocumentBackgroundLocalAsync(doc.Id.Value, doc.ContentType, broadcast: true);
-        _boardDocName = doc.Name;
+        _activeTab = "Documents";
+        await PresentDocumentOnBoardAsync(doc.Id.Value, doc.ContentType, broadcast: true, displayName: doc.Name);
+    }
+
+    /// <summary>
+    /// Affiche un document comme le tableau en avant (zone principale + panélistes à gauche),
+    /// puis le diffuse aux autres participants si demandé.
+    /// </summary>
+    private async Task PresentDocumentOnBoardAsync(Guid documentId, string? contentType, bool broadcast, string? displayName)
+    {
         _wbForeground = true;
-        StateHasChanged();
+        _wbCollapsed = false;
+        _boardDocName = displayName
+            ?? _documents.FirstOrDefault(d => d.Id == documentId)?.Name
+            ?? L["Classroom_SharedDoc"].Value;
+        _needRtcRemount = true;
+        await InvokeAsync(StateHasChanged);
+        await Task.Delay(50);
+
+        try
+        {
+            await JS.InvokeVoidAsync("whiteboard.init", _canvasRef);
+            _wbReady = true;
+        }
+        catch { /* circuit not ready */ }
+
+        await ApplyDocumentBackgroundLocalAsync(documentId, contentType, broadcast);
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task ApplyDocumentBackgroundLocalAsync(Guid documentId, string? contentType, bool broadcast)
@@ -1511,6 +1574,12 @@
             var ok = await JS.InvokeAsync<bool>("whiteboard.setBackground", dataUrl);
             if (!ok)
             {
+                await Task.Delay(80);
+                try { await JS.InvokeVoidAsync("whiteboard.init", _canvasRef); } catch { }
+                ok = await JS.InvokeAsync<bool>("whiteboard.setBackground", dataUrl);
+            }
+            if (!ok)
+            {
                 _mediaError = L["Classroom_BgFailed"].Value;
                 return;
             }
@@ -1522,7 +1591,7 @@
         }
 
         var local = _documents.FirstOrDefault(d => d.Id == documentId);
-        _boardDocName = local?.Name ?? L["Classroom_SharedDoc"].Value;
+        _boardDocName = local?.Name ?? _boardDocName ?? L["Classroom_SharedDoc"].Value;
 
         if (broadcast && _lessonGuid is Guid lid)
             await ClassroomRt.SetBackgroundAsync(lid, documentId.ToString("D"), mime);
