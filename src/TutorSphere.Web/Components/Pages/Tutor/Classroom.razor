@@ -133,16 +133,29 @@
                 </div>
 
                 <div class="cr-pro-strip">
+                    <div class="cr-pro-thumb is-self" title="@TutorDisplayName">
+                        <video data-rtc-local
+                               class="@(_showLocalVideo ? "" : "is-hidden")"
+                               autoplay playsinline muted></video>
+                        @if (!_showLocalVideo)
+                        {
+                            <div class="cr-pro-placeholder" style="font-size:1.6rem"><i class="bi bi-person-fill"></i></div>
+                        }
+                        <div class="cr-pro-thumb-label">
+                            <span>@TutorDisplayName (@L["ClassroomPro_You"])</span>
+                            <i class="bi @(_micOn ? "bi-mic-fill" : "bi-mic-mute-fill")"></i>
+                        </div>
+                    </div>
                     @foreach (var p in VisibleStudentTiles)
                     {
-                        <div class="cr-pro-thumb @(p.IsSpeaking ? "is-speaking" : null)" @onclick="() => FocusPeer(p)" title="@p.Name">
+                        <div class="cr-pro-thumb @(p.IsSpeaking || p.HasRemoteVideo ? "is-speaking" : null) @(p.HasRemoteVideo ? "has-video" : null)"
+                             @onclick="() => FocusPeer(p)" title="@p.Name">
                             @if (!string.IsNullOrEmpty(p.ConnectionId))
                             {
                                 <video data-rtc-peer="@p.ConnectionId"
-                                       class="@(p.HasRemoteVideo && !_showRemoteMain ? "" : "is-hidden")"
                                        autoplay playsinline></video>
                             }
-                            @if (!p.HasRemoteVideo || _showRemoteMain || string.IsNullOrEmpty(p.ConnectionId))
+                            @if (!p.HasRemoteVideo || string.IsNullOrEmpty(p.ConnectionId))
                             {
                                 <div class="cr-pro-placeholder" style="font-size:1.6rem"><i class="bi bi-person-fill"></i></div>
                             }
@@ -460,7 +473,8 @@
     private bool _showViewMenu;
     private bool _showMoreMenu;
     private bool _viewFullscreen;
-    private string _viewMode = "speaker";
+    private bool _needRtcRemount;
+    private string _viewMode = "gallery";
     private string _participantFilter = "";
     private readonly List<string> _toasts = [];
     private System.Threading.Timer? _toastTimer;
@@ -779,8 +793,17 @@
             _jsRef = DotNetObjectReference.Create(this);
             try { await JS.InvokeVoidAsync("classroomMedia.setEndedCallback", _jsRef); } catch { }
             try { await JS.InvokeVoidAsync("whiteboard.setStrokeDotNetRef", _jsRef); } catch { }
-            await ConnectCollaborativeBoardAsync();
+            // Caméra d'abord, puis SignalR/WebRTC — pour que l'offre contienne déjà les pistes.
             await StartLocalMediaAsync();
+            await ConnectCollaborativeBoardAsync();
+            await RefreshRtcTracksAsync();
+            _needRtcRemount = true;
+        }
+
+        if (_needRtcRemount)
+        {
+            _needRtcRemount = false;
+            try { await JS.InvokeVoidAsync("classroomRtc.remountAll"); } catch { }
         }
     }
 
@@ -837,12 +860,9 @@
                 try { await JS.InvokeVoidAsync("classroomRtc.connect", peer.ConnectionId, true); }
                 catch { }
             }
-            await InvokeAsync(async () =>
-            {
-                await Task.Delay(50);
-                try { await JS.InvokeVoidAsync("classroomRtc.remountAll"); } catch { }
-                StateHasChanged();
-            });
+            await RefreshRtcTracksAsync();
+            _needRtcRemount = true;
+            StateHasChanged();
         });
 
     private void OnPeerJoined(Guid lessonId, ClassroomPeerDto peer) =>
@@ -851,12 +871,12 @@
             if (_lessonGuid != lessonId) return;
             UpsertLivePeer(peer);
             PushToast(string.Format(L["ClassroomPro_JoinedFmt"].Value, peer.DisplayName));
-            // Le nouveau participant envoie l'offre ; on prépare juste le PC.
+            // Prépare le PC ; le nouvel arrivant crée l'offre (avec sa caméra).
             try { await JS.InvokeVoidAsync("classroomRtc.connect", peer.ConnectionId, false); }
             catch { }
+            await RefreshRtcTracksAsync();
+            _needRtcRemount = true;
             StateHasChanged();
-            await Task.Delay(80);
-            try { await JS.InvokeVoidAsync("classroomRtc.remountAll"); } catch { }
         });
 
     private void OnPeerLeft(Guid lessonId, string connectionId) =>
@@ -950,17 +970,15 @@
             if (hasAudio) p.MicOn = true;
             if (hasVideo) p.CamOn = true;
 
-            // Afficher automatiquement l'élève en grand dès que sa caméra arrive.
-            if (hasVideo && (_focusedPeer is null || _focusedPeer.ConnectionId == connectionId))
+            // En vue galerie : tous voient la vignette. En grand : monter aussi sur la scène.
+            if (hasVideo && _viewMode is "speaker" or "presenter"
+                && (_focusedPeer is null || _focusedPeer.ConnectionId == connectionId))
             {
                 _focusedPeer = p;
                 try { await JS.InvokeVoidAsync("classroomRtc.focusRemote", connectionId); } catch { }
             }
-            else
-            {
-                try { await JS.InvokeVoidAsync("classroomRtc.remount", connectionId); } catch { }
-            }
             StateHasChanged();
+            _needRtcRemount = true;
         });
 
     [JSInvokable]
@@ -1117,6 +1135,7 @@
             SyncTutorMediaFlags();
             await RefreshRtcTracksAsync();
             await BroadcastOwnMediaStateAsync();
+            _needRtcRemount = true;
             StateHasChanged();
         }
         catch (JSException ex)
@@ -1198,6 +1217,9 @@
                     _camOn = result.Video;
                     _mediaError = _camOn ? null : L["Classroom_NoCamera"].Value;
                     SyncTutorMediaFlags();
+                    await RefreshRtcTracksAsync();
+                    await BroadcastOwnMediaStateAsync();
+                    _needRtcRemount = true;
                     return;
                 }
                 catch (JSException ex)
