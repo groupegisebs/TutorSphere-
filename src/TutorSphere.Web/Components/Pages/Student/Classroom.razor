@@ -971,8 +971,19 @@
             p.CamOn = camOn;
             if (!camOn)
                 p.HasRemoteVideo = false;
+            else
+            {
+                try { await JS.InvokeVoidAsync("classroomRtc.probeRemoteMedia", connectionId); } catch { }
+                try { await JS.InvokeVoidAsync("classroomRtc.remount", connectionId); } catch { }
+            }
             try { await JS.InvokeVoidAsync("classroomRtc.setRemoteMediaVisible", connectionId, camOn); }
             catch { }
+            if (camOn && _viewMode is "speaker" or "presenter"
+                && (_focusedPeer is null || _focusedPeer.ConnectionId == connectionId))
+            {
+                _focusedPeer = p;
+                try { await JS.InvokeVoidAsync("classroomRtc.focusRemote", connectionId); } catch { }
+            }
             if (!camOn && _focusedPeer?.ConnectionId == connectionId)
             {
                 _focusedPeer = null;
@@ -1069,11 +1080,20 @@
         {
             var p = _participants.FirstOrDefault(x => x.ConnectionId == connectionId);
             if (p is null) return Task.CompletedTask;
-            if (state is "failed" or "closed" or "disconnected")
+            if (state == "closed")
             {
                 p.HasRemoteVideo = false;
-                if (state is "closed" or "disconnected")
-                    p.IsOnline = false;
+                p.IsOnline = false;
+                StateHasChanged();
+            }
+            else if (state == "failed")
+            {
+                p.HasRemoteVideo = false;
+                StateHasChanged();
+            }
+            else if (state == "connected")
+            {
+                p.IsOnline = true;
                 StateHasChanged();
             }
             return Task.CompletedTask;
@@ -1135,10 +1155,12 @@
     }
 
     [JSInvokable]
-    public Task OnScreenShareEnded(string kind)
+    public async Task OnScreenShareEnded(string kind)
     {
         _sharing = false;
-        return InvokeAsync(StateHasChanged);
+        await RefreshRtcTracksAsync();
+        await BroadcastOwnMediaStateAsync();
+        await InvokeAsync(StateHasChanged);
     }
 
     [JSInvokable]

@@ -480,22 +480,31 @@ window.classroomMedia = (function () {
                     video: {
                         width: { ideal: 1920 },
                         height: { ideal: 1080 },
-                        frameRate: { ideal: 30 }
+                        frameRate: { ideal: 15, max: 30 },
+                        displaySurface: "monitor"
                     },
-                    audio: false
+                    audio: false,
+                    preferCurrentTab: false
                 });
+                var screenTrack = screenStream.getVideoTracks()[0];
+                if (screenTrack) {
+                    try { screenTrack.contentHint = "detail"; } catch (_) { }
+                    try { screenTrack.applyConstraints({ frameRate: { ideal: 15, max: 30 } }); } catch (_) { }
+                }
                 attach(videoEl, screenStream, false);
                 videoEl.classList.add("cr-tile-video--contain");
                 if (window.classroomVirtualBg) classroomVirtualBg.stop();
-                screenStream.getVideoTracks()[0].addEventListener("ended", function () {
-                    screenStream = null;
-                    videoEl.classList.remove("cr-tile-video--contain");
-                    if (bgMode !== "none")
-                        applyBackground(videoEl);
-                    else
-                        restoreCamera(videoEl);
-                    notifyEnded("screen");
-                });
+                if (screenTrack) {
+                    screenTrack.addEventListener("ended", function () {
+                        screenStream = null;
+                        videoEl.classList.remove("cr-tile-video--contain");
+                        if (bgMode !== "none")
+                            applyBackground(videoEl);
+                        else
+                            restoreCamera(videoEl);
+                        notifyEnded("screen");
+                    });
+                }
                 return { ok: true, kind: "screen" };
             } catch (ex) {
                 return { ok: false, error: ex && ex.message ? ex.message : "Partage d'écran annulé." };
@@ -510,7 +519,11 @@ window.classroomMedia = (function () {
                 stopTracks(screenStream);
                 screenStream = null;
                 stopTracks(canvasStream);
-                canvasStream = canvasEl.captureStream(30);
+                canvasStream = canvasEl.captureStream(15);
+                var boardTrack = canvasStream.getVideoTracks()[0];
+                if (boardTrack) {
+                    try { boardTrack.contentHint = "detail"; } catch (_) { }
+                }
                 attach(videoEl, canvasStream, false);
                 videoEl.classList.add("cr-tile-video--contain");
                 if (window.classroomVirtualBg) classroomVirtualBg.stop();

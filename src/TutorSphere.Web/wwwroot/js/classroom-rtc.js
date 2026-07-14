@@ -128,13 +128,19 @@ window.classroomRtc = (function () {
             });
             if (!sender) {
                 var tr = pc.getTransceivers().find(function (t) {
-                    return (t.receiver && t.receiver.track && t.receiver.track.kind === kind)
-                        || (t.sender && t.sender.track && t.sender.track.kind === kind);
+                    if (!t.sender) return false;
+                    if (t.sender.track && t.sender.track.kind === kind) return true;
+                    if (t.sender.track) return false;
+                    // sender sans piste : déduire le kind via le receiver
+                    return !!(t.receiver && t.receiver.track && t.receiver.track.kind === kind);
                 });
                 if (tr) sender = tr.sender;
             }
 
             if (track) {
+                if (kind === "video") {
+                    try { track.contentHint = track.contentHint || "detail"; } catch (_) { }
+                }
                 if (sender) {
                     if (sender.track !== track) {
                         await sender.replaceTrack(track);
@@ -144,6 +150,10 @@ window.classroomRtc = (function () {
                     pc.addTrack(track, local);
                     changed = true;
                 }
+            } else if (sender && sender.track) {
+                // Piste retirée (fin partage sans caméra) : libérer l'émetteur.
+                await sender.replaceTrack(null);
+                changed = true;
             }
         }
         return { changed: changed };
@@ -218,10 +228,31 @@ window.classroomRtc = (function () {
             if (pc.connectionState === "failed") {
                 try { pc.restartIce(); } catch (_) { }
             }
-            if (pc.connectionState === "connected")
+            if (pc.connectionState === "connected") {
                 scheduleRemount(remoteId);
+                var rs = remoteStreams[remoteId];
+                if (rs) notifyRemoteMedia(remoteId, rs);
+            }
             if (dotNetRef && typeof dotNetRef.invokeMethodAsync === "function") {
                 dotNetRef.invokeMethodAsync("OnRtcConnectionState", remoteId, pc.connectionState).catch(function () { });
+            }
+        };
+
+        // Gel fréquent : ICE passe brièvement en disconnected sans tuer la session.
+        pc.oniceconnectionstatechange = function () {
+            var ice = pc.iceConnectionState;
+            if (ice === "failed") {
+                try { pc.restartIce(); } catch (_) { }
+            } else if (ice === "disconnected") {
+                setTimeout(function () {
+                    var s = peers[remoteId];
+                    if (!s || s.pc !== pc) return;
+                    if (pc.iceConnectionState === "disconnected" || pc.iceConnectionState === "failed") {
+                        try { pc.restartIce(); } catch (_) { }
+                    }
+                }, 1500);
+            } else if (ice === "connected" || ice === "completed") {
+                scheduleRemount(remoteId);
             }
         };
 
@@ -248,12 +279,13 @@ window.classroomRtc = (function () {
             dotNetRef.invokeMethodAsync("OnRtcRemoteMedia", remoteId, false, false).catch(function () { });
             return;
         }
-        // Afficher seulement quand la piste est réellement active (pas juste présente / muted).
+        // readyState live suffit : muted/enabled transitent pendant replaceTrack / ICE
+        // et provoquaient un faux « pas de vidéo » (tuile figée / avatar).
         var hasVideo = stream.getVideoTracks().some(function (t) {
-            return t.readyState === "live" && t.enabled;
+            return t.readyState === "live";
         });
         var hasAudio = stream.getAudioTracks().some(function (t) {
-            return t.readyState === "live" && t.enabled;
+            return t.readyState === "live";
         });
         dotNetRef.invokeMethodAsync("OnRtcRemoteMedia", remoteId, hasVideo, hasAudio).catch(function () { });
     }
@@ -475,7 +507,7 @@ window.classroomRtc = (function () {
 
         /**
          * Update published A/V on all peers.
-         * Renegotiate only if already connected (has remoteDescription) — never collide with join offers.
+         * After screen/camera switch, always renegotiate established links so remotes remount the new track.
          */
         refreshLocalTracks: async function () {
             var local = getPublishStream();
@@ -485,30 +517,34 @@ window.classroomRtc = (function () {
                 var state = peers[id];
                 var pc = state.pc;
                 await enqueue(id, async function () {
-                    await applyLocalTracks(pc);
-                    // replaceTrack usually enough; renegotiate only for established links.
-                    if (local && pc.remoteDescription && pc.signalingState === "stable"
-                        && (pc.connectionState === "connected" || pc.iceConnectionState === "connected"
-                            || pc.iceConnectionState === "completed")) {
-                        // Prefer negotiationneeded path: temporarily allow it.
-                        state.suppressNegotiation = false;
-                        try {
-                            // Force a light renegotiation if a transceiver lacks a sender track mid.
-                            var needOffer = pc.getTransceivers().some(function (t) {
-                                return t.direction !== "inactive" && t.sender && !t.sender.track
-                                    && local.getTracks().some(function (tr) {
-                                        return tr.kind === (t.receiver && t.receiver.track && t.receiver.track.kind);
-                                    });
-                            });
-                            if (needOffer)
-                                await makeOffer(id);
-                        } catch (_) { }
+                    var result = await applyLocalTracks(pc);
+                    if (!pc.remoteDescription || pc.signalingState !== "stable")
+                        return;
+                    var linkOk = pc.connectionState === "connected"
+                        || pc.iceConnectionState === "connected"
+                        || pc.iceConnectionState === "completed"
+                        || pc.iceConnectionState === "checking";
+                    if (!linkOk) return;
+                    // replaceTrack seul ne déclenche pas toujours ontrack côté distant (partage écran).
+                    if (result && result.changed) {
+                        try { await makeOffer(id); } catch (_) { }
                     }
                 });
             }
             syncLocalMirrors();
             syncPlaybackRouting();
             return { ok: true, peers: ids.length, hasLocal: !!local };
+        },
+
+        /** Re-évalue le flux distant et notifie Blazor (caméra / partage réactivés). */
+        probeRemoteMedia: function (remoteId) {
+            if (!remoteId) return false;
+            var stream = remoteStreams[remoteId];
+            if (!stream) return false;
+            attachToDom(remoteId, stream);
+            notifyRemoteMedia(remoteId, stream);
+            syncPlaybackRouting();
+            return true;
         },
 
         unlockAudio: async function () {
