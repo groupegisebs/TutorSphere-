@@ -1,9 +1,9 @@
 @page "/login"
 @layout LoginLayout
-@rendermode InteractiveServer
 @using Microsoft.Extensions.Localization
-@inject NavigationManager Navigation
 @inject IStringLocalizer<SharedResources> L
+
+@* Static SSR — no InteractiveServer circuit required for first paint (avoids blank /login until refresh). *@
 
 <PageTitle>TutorSphere — Connexion</PageTitle>
 
@@ -20,41 +20,41 @@
     <div class="login-role-grid">
 
         <!-- Tuteur -->
-        <div class="login-role-card login-role-tutor" @onclick='() => Navigation.NavigateTo("/login/tuteur")'>
+        <a href="/login/tuteur" class="login-role-card login-role-tutor" data-enhance-nav="false">
             <div class="login-role-icon">
                 <i class="bi bi-person-workspace"></i>
             </div>
             <h2>@L["Login_Tutor_Title"]</h2>
             <p>@L["Login_Tutor_Desc"]</p>
-            <button class="login-role-btn">@L["Login_Connect"] <i class="bi bi-arrow-right"></i></button>
-        </div>
+            <span class="login-role-btn">@L["Login_Connect"] <i class="bi bi-arrow-right"></i></span>
+        </a>
 
         <!-- Parent -->
-        <div class="login-role-card login-role-parent" @onclick='() => Navigation.NavigateTo("/login/parent")'>
+        <a href="/login/parent" class="login-role-card login-role-parent" data-enhance-nav="false">
             <span class="login-free-badge">@L["Badge_Free"]</span>
             <div class="login-role-icon">
                 <i class="bi bi-house-heart"></i>
             </div>
             <h2>@L["Login_Parent_Title"]</h2>
             <p>@L["Login_Parent_Desc"]</p>
-            <button class="login-role-btn">@L["Login_Connect"] <i class="bi bi-arrow-right"></i></button>
-        </div>
+            <span class="login-role-btn">@L["Login_Connect"] <i class="bi bi-arrow-right"></i></span>
+        </a>
 
         <!-- Élève -->
-        <div class="login-role-card login-role-eleve" @onclick='() => Navigation.NavigateTo("/login/eleve")'>
+        <a href="/login/eleve" class="login-role-card login-role-eleve" data-enhance-nav="false">
             <span class="login-free-badge">@L["Badge_Free"]</span>
             <div class="login-role-icon">
                 <i class="bi bi-backpack"></i>
             </div>
             <h2>@L["Login_Student_Title"]</h2>
             <p>@L["Login_Student_Desc"]</p>
-            <button class="login-role-btn">@L["Login_Connect"] <i class="bi bi-arrow-right"></i></button>
-        </div>
+            <span class="login-role-btn">@L["Login_Connect"] <i class="bi bi-arrow-right"></i></span>
+        </a>
 
     </div>
 
     <div class="login-selector-footer">
-        <a href="/login/admin" class="login-admin-link">
+        <a href="/login/admin" class="login-admin-link" data-enhance-nav="false">
             <i class="bi bi-shield-lock me-1"></i>@L["Login_SuperAdmin"]
         </a>
     </div>
