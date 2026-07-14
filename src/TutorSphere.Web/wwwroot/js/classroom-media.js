@@ -132,29 +132,24 @@ window.classroomMedia = (function () {
     }
 
     async function getUserMediaWithFallback(wantVideo, wantAudio) {
+        // Essais rapides d'abord (évite 2–5s de timeouts sur contraintes 1080p).
         var attempts = [];
 
         if (wantVideo && wantAudio) {
+            attempts.push({ video: true, audio: true });
             attempts.push({
-                video: {
-                    facingMode: "user",
-                    width: { min: 1280, ideal: 1920, max: 1920 },
-                    height: { min: 720, ideal: 1080, max: 1080 },
-                    frameRate: { ideal: 30, max: 30 },
-                    aspectRatio: { ideal: 16 / 9 }
-                },
+                video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
                 audio: { echoCancellation: true, noiseSuppression: true }
             });
             attempts.push({
                 video: {
                     facingMode: "user",
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 },
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 },
                     frameRate: { ideal: 30 }
                 },
                 audio: { echoCancellation: true, noiseSuppression: true }
             });
-            attempts.push({ video: true, audio: true });
         }
 
         if (wantVideo && !wantAudio) {
@@ -183,8 +178,8 @@ window.classroomMedia = (function () {
                         var caps = track.getCapabilities();
                         var advanced = {};
                         if (caps.width && caps.height) {
-                            advanced.width = Math.min(1920, caps.width.max || 1920);
-                            advanced.height = Math.min(1080, caps.height.max || 1080);
+                            advanced.width = Math.min(1280, caps.width.max || 1280);
+                            advanced.height = Math.min(720, caps.height.max || 720);
                         }
                         if (caps.frameRate)
                             advanced.frameRate = Math.min(30, caps.frameRate.max || 30);

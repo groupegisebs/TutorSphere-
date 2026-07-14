@@ -89,21 +89,25 @@ public sealed class RealtimeClassroomClient : IAsyncDisposable
     public async Task SendRtcSignalAsync(Guid lessonId, string targetConnectionId, string type, string payload)
     {
         if (_hub is null || _hub.State != HubConnectionState.Connected) return;
-        try { await _hub.InvokeAsync("SendRtcSignal", lessonId, targetConnectionId, type, payload); }
+        try { await _hub.SendAsync("SendRtcSignal", lessonId, targetConnectionId, type, payload); }
         catch (Exception ex) { _logger.LogDebug(ex, "SendRtcSignal failed"); }
     }
 
     public async Task BroadcastMediaStateAsync(Guid lessonId, bool micOn, bool camOn)
     {
         if (_hub is null || _hub.State != HubConnectionState.Connected) return;
-        try { await _hub.InvokeAsync("BroadcastMediaState", lessonId, micOn, camOn); }
+        try { await _hub.SendAsync("BroadcastMediaState", lessonId, micOn, camOn); }
         catch (Exception ex) { _logger.LogDebug(ex, "BroadcastMediaState failed"); }
     }
 
     public async Task SendChatMessageAsync(Guid lessonId, string text)
     {
         if (_hub is null || _hub.State != HubConnectionState.Connected) return;
-        try { await _hub.InvokeAsync("SendChatMessage", lessonId, text); }
+        try
+        {
+            // SendAsync : n'attend pas l'ack serveur — chat perçu comme instantané.
+            await _hub.SendAsync("SendChatMessage", lessonId, text);
+        }
         catch (Exception ex) { _logger.LogDebug(ex, "SendChatMessage failed"); }
     }
 

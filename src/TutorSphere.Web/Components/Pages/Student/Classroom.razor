@@ -816,10 +816,10 @@
             _jsRef = DotNetObjectReference.Create(this);
             try { await JS.InvokeVoidAsync("classroomMedia.setEndedCallback", _jsRef); } catch { }
             try { await JS.InvokeVoidAsync("whiteboard.setStrokeDotNetRef", _jsRef); } catch { }
-            await StartLocalMediaAsync();
+            // Hub / chat d'abord — ne pas bloquer la salle sur getUserMedia.
             await ConnectCollaborativeBoardAsync();
-            await RefreshRtcTracksAsync();
             _needRtcRemount = true;
+            _ = BootstrapLocalMediaAsync();
         }
 
         if (_needRtcRemount)
@@ -828,6 +828,19 @@
             try { await JS.InvokeVoidAsync("classroomRtc.remountAll"); } catch { }
             try { await JS.InvokeVoidAsync("classroomRtc.unlockAudio"); } catch { }
         }
+    }
+
+    private async Task BootstrapLocalMediaAsync()
+    {
+        try
+        {
+            await StartLocalMediaAsync();
+            await RefreshRtcTracksAsync();
+            await BroadcastOwnMediaStateAsync();
+            _needRtcRemount = true;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch { /* permission deny / no device — chat reste live */ }
     }
 
     public void Dispose()
@@ -890,12 +903,12 @@
             catch { }
         }
 
-        await ClassroomRt.JoinLessonAsync(lid, SelfDisplayName, "Élève", _micOn, _camOn);
+        await ClassroomRt.JoinLessonAsync(lid, SelfDisplayName, "Élève", micOn: false, camOn: false);
         await BroadcastOwnMediaStateAsync();
     }
 
     private void OnPeerList(Guid lessonId, IReadOnlyList<ClassroomPeerDto> peers) =>
-        _ = InvokeAsync(async () =>
+        _ = InvokeAsync(() =>
         {
             if (_lessonGuid != lessonId) return;
             var selfId = ClassroomRt.ConnectionId ?? "";
@@ -904,15 +917,14 @@
                 UpsertLivePeer(peer);
                 var shouldOffer = !string.IsNullOrEmpty(selfId)
                     && string.CompareOrdinal(selfId, peer.ConnectionId) < 0;
-                try { await JS.InvokeVoidAsync("classroomRtc.connect", peer.ConnectionId, shouldOffer); }
-                catch { }
+                _ = JS.InvokeVoidAsync("classroomRtc.connect", peer.ConnectionId, shouldOffer);
             }
             _needRtcRemount = true;
             StateHasChanged();
         });
 
     private void OnPeerJoined(Guid lessonId, ClassroomPeerDto peer) =>
-        _ = InvokeAsync(async () =>
+        _ = InvokeAsync(() =>
         {
             if (_lessonGuid != lessonId) return;
             UpsertLivePeer(peer);
@@ -920,8 +932,7 @@
             var selfId = ClassroomRt.ConnectionId ?? "";
             var shouldOffer = !string.IsNullOrEmpty(selfId)
                 && string.CompareOrdinal(selfId, peer.ConnectionId) < 0;
-            try { await JS.InvokeVoidAsync("classroomRtc.connect", peer.ConnectionId, shouldOffer); }
-            catch { }
+            _ = JS.InvokeVoidAsync("classroomRtc.connect", peer.ConnectionId, shouldOffer);
             _needRtcRemount = true;
             StateHasChanged();
         });
@@ -980,10 +991,9 @@
     private void OnRtcSignal(Guid lessonId, string fromConnectionId, string type, string payload)
     {
         if (_lessonGuid != lessonId) return;
-        _ = InvokeAsync(async () =>
+        _ = InvokeAsync(() =>
         {
-            try { await JS.InvokeVoidAsync("classroomRtc.handleSignal", fromConnectionId, type, payload); }
-            catch { }
+            _ = JS.InvokeVoidAsync("classroomRtc.handleSignal", fromConnectionId, type, payload);
         });
     }
 
@@ -1481,6 +1491,19 @@
         var text = _newMessage.Trim();
         if (string.IsNullOrEmpty(text) || _lessonGuid is null) return;
         _newMessage = "";
+
+        var sentAt = DateTime.UtcNow;
+        var selfId = ClassroomRt.ConnectionId ?? "";
+        _chatMessages.Add(new ChatMsg
+        {
+            Text = text,
+            IsMe = true,
+            Sender = SelfDisplayName,
+            Time = sentAt.ToLocalTime().ToString("HH:mm"),
+            ConnectionId = selfId,
+            SentAtUtc = sentAt
+        });
+
         await ClassroomRt.SendChatMessageAsync(_lessonGuid.Value, text);
     }
 
@@ -1505,6 +1528,21 @@
     private void AppendChatMessage(ClassroomChatMessageDto msg)
     {
         var selfId = ClassroomRt.ConnectionId ?? "";
+        if (!string.IsNullOrEmpty(selfId) && msg.SenderConnectionId == selfId)
+        {
+            var pending = _chatMessages.LastOrDefault(m =>
+                m.IsMe
+                && m.Text == msg.Text
+                && Math.Abs((m.SentAtUtc - msg.SentAtUtc).TotalSeconds) < 8);
+            if (pending is not null)
+            {
+                pending.ConnectionId = msg.SenderConnectionId;
+                pending.SentAtUtc = msg.SentAtUtc;
+                pending.Time = msg.SentAtUtc.ToLocalTime().ToString("HH:mm");
+                return;
+            }
+        }
+
         _chatMessages.Add(new ChatMsg
         {
             Text = msg.Text,
