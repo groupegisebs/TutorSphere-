@@ -163,6 +163,24 @@ public class ParentPortalController : ControllerBase
         }
     }
 
+    /// <summary>Retourne le code d'accès actuel de l'enfant (sans le régénérer).</summary>
+    [HttpGet("children/{id:guid}/access")]
+    public async Task<ActionResult<ChildLoginAccessDto>> GetChildAccess(Guid id, CancellationToken ct)
+    {
+        var userId = await ResolveParentUserIdAsync(ct);
+        if (userId is null)
+            return Unauthorized();
+
+        try
+        {
+            return Ok(await _authService.GetChildLoginAccessAsync(userId, id, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     [HttpPost("children/{id:guid}/access/regenerate")]
     public async Task<ActionResult<ChildLoginAccessDto>> RegenerateChildAccess(Guid id, CancellationToken ct)
     {

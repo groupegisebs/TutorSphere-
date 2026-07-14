@@ -19,6 +19,7 @@ public interface IAuthService
     Task<AuthResponse> LoginChildAsync(ChildLoginRequest request, CancellationToken ct = default);
     Task<ChildLoginAccessDto> EnableChildLoginAccessAsync(string parentUserId, Guid studentId, CancellationToken ct = default);
     Task<ChildLoginAccessDto> RegenerateChildLoginAccessAsync(string parentUserId, Guid studentId, CancellationToken ct = default);
+    Task<ChildLoginAccessDto> GetChildLoginAccessAsync(string parentUserId, Guid studentId, CancellationToken ct = default);
     Task RevokeChildLoginAccessAsync(string parentUserId, Guid studentId, CancellationToken ct = default);
     Task<RegisterSchoolResponse> RegisterSchoolAsync(RegisterSchoolRequest request, CancellationToken ct = default);
     Task ConfirmEmailAsync(string userId, string token, CancellationToken ct = default);
@@ -144,6 +145,24 @@ public class AuthService : IAuthService
         Guid studentId,
         CancellationToken ct = default) =>
         ProvisionOrRegenerateChildAccessAsync(parentUserId, studentId, ct);
+
+    public async Task<ChildLoginAccessDto> GetChildLoginAccessAsync(
+        string parentUserId,
+        Guid studentId,
+        CancellationToken ct = default)
+    {
+        var student = await GetOwnedChildAsync(parentUserId, studentId, ct);
+        var hasAccess = !string.IsNullOrEmpty(student.UserId);
+        if (!hasAccess)
+            return new ChildLoginAccessDto(student.Id, false, null, null);
+
+        var parent = _db.ParentProfilesForAnyTenant.First(p => p.UserId == parentUserId);
+        var hint = string.IsNullOrWhiteSpace(student.Email)
+            ? $"Connexion : e-mail du parent ({parent.Email}) + ce code"
+            : $"Connexion : e-mail du parent ({parent.Email}) + ce code, ou le courriel de l'enfant avec le code";
+
+        return new ChildLoginAccessDto(student.Id, true, student.LoginAccessCode, hint);
+    }
 
     public async Task RevokeChildLoginAccessAsync(string parentUserId, Guid studentId, CancellationToken ct = default)
     {

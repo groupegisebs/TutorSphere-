@@ -19,7 +19,8 @@ public record StudentDto(
     string? Notes,
     bool IsActive,
     DateTime CreatedAt,
-    bool HasLoginAccess = false);
+    bool HasLoginAccess = false,
+    string? LoginAccessCode = null);
 
 public record CreateStudentRequest(
     string FirstName,

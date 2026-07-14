@@ -6,6 +6,7 @@
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
 @inject AuthService Auth
+@inject IJSRuntime JS
 <PageTitle>@L["Children_Title"] – TutorSphere</PageTitle>
 
 <div class="ts-page-header">
@@ -149,25 +150,12 @@ else
                     <h3 class="h6 mb-2"><i class="bi bi-shield-lock me-1"></i>@L["Children_LoginAccess_Title"]</h3>
                     <p class="text-muted small mb-3">@L["Children_LoginAccess_Help"]</p>
 
-                    @if (!string.IsNullOrEmpty(_accessInfo))
-                    {
-                        <div class="alert alert-success mb-3" role="status">
-                            <div class="fw-semibold mb-1">@L["Children_LoginAccess_CodeReady"]</div>
-                            <code class="fs-5 user-select-all">@_revealedCode</code>
-                            @if (!string.IsNullOrEmpty(_accessHint))
-                            {
-                                <div class="small mt-2">@_accessHint</div>
-                            }
-                            <div class="small mt-1 text-muted">@L["Children_LoginAccess_CodeOnce"]</div>
-                        </div>
-                    }
-
                     @if (!string.IsNullOrEmpty(_accessError))
                     {
                         <div class="alert alert-danger mb-3" role="alert">@_accessError</div>
                     }
 
-                    <div class="d-flex gap-2 flex-wrap">
+                    <div class="d-flex gap-2 flex-wrap align-items-center">
                         @if (!_active.HasLoginAccess)
                         {
                             <button type="button" class="btn btn-primary btn-sm" disabled="@_accessBusy" @onclick="EnableAccessAsync">
@@ -181,6 +169,22 @@ else
                         else
                         {
                             <span class="ts-badge ts-badge-success align-self-center">@L["Children_LoginAccess_Active"]</span>
+                            <div class="child-access-code-box">
+                                <span class="child-access-code-label">@L["Children_LoginAccess_CurrentCode"]</span>
+                                @if (!string.IsNullOrEmpty(CurrentAccessCode))
+                                {
+                                    <code class="child-access-code-value user-select-all">@CurrentAccessCode</code>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" title='@L["Children_LoginAccess_Copy"]' @onclick="CopyAccessCodeAsync">
+                                        <i class="bi bi-clipboard"></i>
+                                    </button>
+                                }
+                                else
+                                {
+                                    <button type="button" class="btn btn-sm btn-outline-primary" disabled="@_accessBusy" @onclick="RevealAccessAsync">
+                                        <i class="bi bi-eye me-1"></i>@L["Children_LoginAccess_ShowCode"]
+                                    </button>
+                                }
+                            </div>
                             <button type="button" class="btn btn-outline-primary btn-sm" disabled="@_accessBusy" @onclick="RegenerateAccessAsync">
                                 @if (_accessBusy)
                                 {
@@ -193,6 +197,10 @@ else
                             </button>
                         }
                     </div>
+                    @if (!string.IsNullOrEmpty(_accessHint) && _active.HasLoginAccess)
+                    {
+                        <div class="small mt-2 text-muted">@_accessHint</div>
+                    }
                 </div>
             </div>
         </div>
@@ -337,7 +345,15 @@ else
 
             _children = (result.Value ?? []).Select((s, i) => MapToChild(s, i)).ToList();
             _active = _children.FirstOrDefault(c => _active is null || c.Id == _active.Id) ?? _children.FirstOrDefault();
-            ClearAccessReveal(keepIfSameChild: true);
+            if (_active is { HasLoginAccess: true } && !string.IsNullOrEmpty(_active.LoginAccessCode))
+            {
+                _revealedCode = _active.LoginAccessCode;
+                _accessInfo = "ok";
+            }
+            else
+            {
+                ClearAccessReveal(keepIfSameChild: true);
+            }
         }
         catch (Exception ex)
         {
@@ -347,12 +363,67 @@ else
         finally { _loading = false; }
     }
 
+    private string? CurrentAccessCode =>
+        !string.IsNullOrEmpty(_revealedCode)
+            ? _revealedCode
+            : _active?.LoginAccessCode;
+
     private void SelectChild(ChildVM child)
     {
         if (_active?.Id != child.Id)
             ClearAccessReveal();
         _active = child;
         _detailError = null;
+        if (child.HasLoginAccess && !string.IsNullOrEmpty(child.LoginAccessCode))
+        {
+            _revealedCode = child.LoginAccessCode;
+            _accessInfo = "ok";
+        }
+    }
+
+    private async Task CopyAccessCodeAsync()
+    {
+        if (string.IsNullOrEmpty(CurrentAccessCode))
+            return;
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", CurrentAccessCode);
+            _accessHint = L["Children_LoginAccess_Copied"];
+        }
+        catch
+        {
+            _accessError = L["Children_LoginAccess_CopyFailed"];
+        }
+    }
+
+    private async Task RevealAccessAsync()
+    {
+        if (_active is null) return;
+        _accessBusy = true;
+        _accessError = null;
+        try
+        {
+            await Auth.EnsureSessionRestoredAsync();
+            var result = await Api.GetWithErrorAsync<ChildLoginAccessDto>($"api/parent/children/{_active.Id}/access");
+            if (result.Error == ApiClient.SessionExpiredMessage)
+            {
+                _sessionExpired = true;
+                _loadError = result.Error;
+                return;
+            }
+            if (result.Error is not null || result.Value is null)
+            {
+                _accessError = result.Error ?? L["Children_LoginAccess_Error"];
+                return;
+            }
+
+            _revealedCode = result.Value.AccessCode;
+            _accessHint = result.Value.LoginHint;
+            _accessInfo = "ok";
+            if (_active is not null)
+                _active.LoginAccessCode = result.Value.AccessCode;
+        }
+        finally { _accessBusy = false; }
     }
 
     private void OpenAddModal()
@@ -633,6 +704,8 @@ else
             _accessHint = result.Value.LoginHint;
             _accessInfo = "ok";
             await LoadChildrenAsync();
+            if (_active is not null)
+                _active.LoginAccessCode = result.Value.AccessCode;
         }
         finally { _accessBusy = false; }
     }
@@ -664,7 +737,8 @@ else
             Subjects = s.Subjects?.ToList() ?? [],
             DateOfBirth = s.DateOfBirth,
             Email = s.Email,
-            HasLoginAccess = s.HasLoginAccess
+            HasLoginAccess = s.HasLoginAccess,
+            LoginAccessCode = s.LoginAccessCode
         };
     }
 
@@ -701,6 +775,7 @@ else
         public string? School { get; set; }
         public string? Email { get; set; }
         public bool HasLoginAccess { get; set; }
+        public string? LoginAccessCode { get; set; }
         public List<string> Subjects { get; set; } = [];
         public DateTime? DateOfBirth { get; set; }
         public int? Age => DateOfBirth.HasValue

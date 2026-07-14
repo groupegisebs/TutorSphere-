@@ -288,7 +288,8 @@ public class StudentPortalService : IStudentPortalService
             s.Notes,
             s.IsActive,
             s.CreatedAt,
-            !string.IsNullOrEmpty(s.UserId));
+            !string.IsNullOrEmpty(s.UserId),
+            s.LoginAccessCode);
     }
 
     private static IReadOnlyList<string> ParseSubjects(string? raw) =>
