@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.SignalR.Client;
 
 namespace TutorSphere.Web.Services;
 
-/// <summary>Circuit-scoped SignalR client for collaborative classroom whiteboard.</summary>
+/// <summary>Circuit-scoped SignalR client for collaborative classroom (whiteboard + WebRTC signaling).</summary>
 public sealed class RealtimeClassroomClient : IAsyncDisposable
 {
     private readonly AuthService _auth;
@@ -26,10 +26,15 @@ public sealed class RealtimeClassroomClient : IAsyncDisposable
     public event Action<BoardStrokeDto>? StrokeReceived;
     public event Action? BoardCleared;
     public event Action<BoardBackgroundDto>? BackgroundChanged;
+    public event Action<Guid, IReadOnlyList<ClassroomPeerDto>>? PeerListReceived;
+    public event Action<Guid, ClassroomPeerDto>? PeerJoined;
+    public event Action<Guid, string>? PeerLeft;
+    public event Action<Guid, string, bool, bool>? PeerMediaStateChanged;
+    public event Action<Guid, string, string, string>? RtcSignalReceived;
 
     public bool IsConnected => _hub?.State == HubConnectionState.Connected;
 
-    public async Task JoinLessonAsync(Guid lessonId)
+    public async Task JoinLessonAsync(Guid lessonId, string? displayName = null, string? role = null)
     {
         await EnsureConnectedAsync();
         if (_hub is null || _hub.State != HubConnectionState.Connected)
@@ -41,7 +46,7 @@ public sealed class RealtimeClassroomClient : IAsyncDisposable
             catch { /* ignore */ }
         }
 
-        await _hub.InvokeAsync("JoinLesson", lessonId);
+        await _hub.InvokeAsync("JoinLesson", lessonId, displayName, role);
         _joinedLessonId = lessonId;
     }
 
@@ -64,6 +69,20 @@ public sealed class RealtimeClassroomClient : IAsyncDisposable
         if (_hub is null || _hub.State != HubConnectionState.Connected) return;
         try { await _hub.InvokeAsync("SetBackground", lessonId, documentId, contentType); }
         catch (Exception ex) { _logger.LogDebug(ex, "SetBackground failed"); }
+    }
+
+    public async Task SendRtcSignalAsync(Guid lessonId, string targetConnectionId, string type, string payload)
+    {
+        if (_hub is null || _hub.State != HubConnectionState.Connected) return;
+        try { await _hub.InvokeAsync("SendRtcSignal", lessonId, targetConnectionId, type, payload); }
+        catch (Exception ex) { _logger.LogDebug(ex, "SendRtcSignal failed"); }
+    }
+
+    public async Task BroadcastMediaStateAsync(Guid lessonId, bool micOn, bool camOn)
+    {
+        if (_hub is null || _hub.State != HubConnectionState.Connected) return;
+        try { await _hub.InvokeAsync("BroadcastMediaState", lessonId, micOn, camOn); }
+        catch (Exception ex) { _logger.LogDebug(ex, "BroadcastMediaState failed"); }
     }
 
     public async Task LeaveAsync()
@@ -142,6 +161,36 @@ public sealed class RealtimeClassroomClient : IAsyncDisposable
             try { BackgroundChanged?.Invoke(bg); }
             catch (Exception ex) { _logger.LogWarning(ex, "BoardBackgroundChanged handler error"); }
         });
+
+        hub.On<Guid, List<ClassroomPeerDto>>("PeerList", (lessonId, peers) =>
+        {
+            try { PeerListReceived?.Invoke(lessonId, peers ?? []); }
+            catch (Exception ex) { _logger.LogWarning(ex, "PeerList handler error"); }
+        });
+
+        hub.On<Guid, ClassroomPeerDto>("PeerJoined", (lessonId, peer) =>
+        {
+            try { PeerJoined?.Invoke(lessonId, peer); }
+            catch (Exception ex) { _logger.LogWarning(ex, "PeerJoined handler error"); }
+        });
+
+        hub.On<Guid, string>("PeerLeft", (lessonId, connectionId) =>
+        {
+            try { PeerLeft?.Invoke(lessonId, connectionId); }
+            catch (Exception ex) { _logger.LogWarning(ex, "PeerLeft handler error"); }
+        });
+
+        hub.On<Guid, string, bool, bool>("PeerMediaState", (lessonId, connectionId, micOn, camOn) =>
+        {
+            try { PeerMediaStateChanged?.Invoke(lessonId, connectionId, micOn, camOn); }
+            catch (Exception ex) { _logger.LogWarning(ex, "PeerMediaState handler error"); }
+        });
+
+        hub.On<Guid, string, string, string>("RtcSignal", (lessonId, fromConnectionId, type, payload) =>
+        {
+            try { RtcSignalReceived?.Invoke(lessonId, fromConnectionId, type, payload); }
+            catch (Exception ex) { _logger.LogWarning(ex, "RtcSignal handler error"); }
+        });
     }
 
     public async ValueTask DisposeAsync()
@@ -170,3 +219,11 @@ public record BoardBackgroundDto(
     Guid LessonId,
     string? DocumentId,
     string? ContentType);
+
+public record ClassroomPeerDto(
+    string ConnectionId,
+    string? UserId,
+    string DisplayName,
+    string Role,
+    bool MicOn,
+    bool CamOn);

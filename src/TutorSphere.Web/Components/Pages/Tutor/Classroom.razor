@@ -55,26 +55,30 @@
             </button>
         </div>
         <div class="cr-gallery">
-            <!-- Grand cadre HD : caméra / partage local (en attendant le flux distant WebRTC) -->
+            <!-- Grand cadre : soi ou élève focalisé (flux WebRTC distant) -->
             <div class="cr-tile-main">
                 <div class="cr-tile-bg cr-tile-bg--tutor">
+                    <video data-rtc-main
+                           class="cr-tile-video @(_showRemoteMain ? "" : "is-hidden")"
+                           autoplay
+                           playsinline></video>
                     <video @ref="_localVideo"
-                           class="cr-tile-video @(_showLocalVideo ? "" : "is-hidden")"
+                           class="cr-tile-video @(_showLocalVideo && !_showRemoteMain ? "" : "is-hidden")"
                            autoplay
                            playsinline
                            muted></video>
-                    @if (!_showLocalVideo)
+                    @if (!_showLocalVideo && !_showRemoteMain)
                     {
                         <i class="bi bi-person-fill cr-tile-placeholder-icon"></i>
                     }
-                    @if (_sharing)
+                    @if (_sharing && !_showRemoteMain)
                     {
                         <span class="cr-share-badge">
                             <i class="bi @(_sharingWhiteboard ? "bi-easel" : "bi-display")"></i>
                             @(_sharingWhiteboard ? "Tableau" : "Écran")
                         </span>
                     }
-                    @if (!string.IsNullOrEmpty(_mediaError))
+                    @if (!string.IsNullOrEmpty(_mediaError) && !_showRemoteMain)
                     {
                         <div class="cr-media-error" role="alert">
                             <i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i>
@@ -83,13 +87,25 @@
                     }
                 </div>
                 <div class="cr-tile-label">
-                    <div class="cr-tile-av" style="background:#5831E0;">@TutorInitials</div>
-                    <span class="cr-tile-name">@TutorDisplayName</span>
-                    <span class="cr-tile-you">Vous</span>
-                    <span class="cr-tile-media-icons">
-                        <i class="bi @(_micOn ? "bi-mic-fill" : "bi-mic-mute-fill") @(_micOn ? "" : "cr-icon-off")"></i>
-                        <i class="bi @(_camOn || _sharing ? "bi-camera-video-fill" : "bi-camera-video-off-fill") @(_camOn || _sharing ? "" : "cr-icon-off")"></i>
-                    </span>
+                    @if (_showRemoteMain && _focusedPeer is not null)
+                    {
+                        <div class="cr-tile-av" style="background:@_focusedPeer.Color;">@_focusedPeer.Initials</div>
+                        <span class="cr-tile-name">@_focusedPeer.Name</span>
+                        <span class="cr-tile-media-icons">
+                            <i class="bi @(_focusedPeer.MicOn ? "bi-mic-fill" : "bi-mic-mute-fill") @(_focusedPeer.MicOn ? "" : "cr-icon-off")"></i>
+                            <i class="bi @(_focusedPeer.CamOn || _focusedPeer.HasRemoteVideo ? "bi-camera-video-fill" : "bi-camera-video-off-fill") @(_focusedPeer.CamOn || _focusedPeer.HasRemoteVideo ? "" : "cr-icon-off")"></i>
+                        </span>
+                    }
+                    else
+                    {
+                        <div class="cr-tile-av" style="background:#5831E0;">@TutorInitials</div>
+                        <span class="cr-tile-name">@TutorDisplayName</span>
+                        <span class="cr-tile-you">Vous</span>
+                        <span class="cr-tile-media-icons">
+                            <i class="bi @(_micOn ? "bi-mic-fill" : "bi-mic-mute-fill") @(_micOn ? "" : "cr-icon-off")"></i>
+                            <i class="bi @(_camOn || _sharing ? "bi-camera-video-fill" : "bi-camera-video-off-fill") @(_camOn || _sharing ? "" : "cr-icon-off")"></i>
+                        </span>
+                    }
                 </div>
             </div>
             <div class="cr-tiles-col">
@@ -97,14 +113,28 @@
                 {
                     <div class="cr-tile-student" @onclick="() => FocusPeer(p)" title="@p.Name">
                         <div class="cr-tile-bg cr-tile-bg--student">
-                            <i class="bi bi-person-fill" style="font-size:1.5rem;color:rgba(255,255,255,0.2);"></i>
+                            @if (!string.IsNullOrEmpty(p.ConnectionId))
+                            {
+                                <video data-rtc-peer="@p.ConnectionId"
+                                       class="cr-tile-video @(p.HasRemoteVideo && !_showRemoteMain ? "" : "is-hidden")"
+                                       autoplay
+                                       playsinline></video>
+                            }
+                            @if (!p.HasRemoteVideo || _showRemoteMain || string.IsNullOrEmpty(p.ConnectionId))
+                            {
+                                <i class="bi bi-person-fill" style="font-size:1.5rem;color:rgba(255,255,255,0.2);"></i>
+                            }
+                            @if (p.IsOnline)
+                            {
+                                <span class="cr-peer-online" title="@L["Classroom_Online"]"></span>
+                            }
                         </div>
                         <div class="cr-tile-label cr-tile-label-sm">
                             <div class="cr-tile-av cr-tile-av-sm" style="background:@p.Color;">@p.Initials</div>
                             <span class="cr-tile-name">@p.Name</span>
                             <span class="cr-tile-media-icons">
                                 <i class="bi @(p.MicOn ? "bi-mic-fill" : "bi-mic-mute-fill") @(p.MicOn ? "" : "cr-icon-off")"></i>
-                                <i class="bi @(p.CamOn ? "bi-camera-video-fill" : "bi-camera-video-off-fill") @(p.CamOn ? "" : "cr-icon-off")"></i>
+                                <i class="bi @(p.CamOn || p.HasRemoteVideo ? "bi-camera-video-fill" : "bi-camera-video-off-fill") @(p.CamOn || p.HasRemoteVideo ? "" : "cr-icon-off")"></i>
                             </span>
                         </div>
                     </div>
@@ -458,8 +488,25 @@
     private ElementReference _localVideo;
     private bool _showLocalVideo => _sharing || (_camOn && _mediaReady);
     private ParticipantVM? _focusedPeer;
+    private bool _showRemoteMain =>
+        _focusedPeer is { HasRemoteVideo: true, ConnectionId: not null and not "" };
 
-    private void FocusPeer(ParticipantVM peer) => _focusedPeer = peer;
+    private async Task FocusPeer(ParticipantVM peer)
+    {
+        if (_focusedPeer?.ConnectionId == peer.ConnectionId && _showRemoteMain)
+        {
+            _focusedPeer = null;
+            try { await JS.InvokeVoidAsync("classroomRtc.clearMain"); } catch { }
+            try { await JS.InvokeVoidAsync("classroomRtc.remountAll"); } catch { }
+            return;
+        }
+
+        _focusedPeer = peer;
+        if (!string.IsNullOrEmpty(peer.ConnectionId) && peer.HasRemoteVideo)
+        {
+            try { await JS.InvokeVoidAsync("classroomRtc.focusRemote", peer.ConnectionId); } catch { }
+        }
+    }
 
     private string _activeTab  = "Chat";
     private string _newMessage = "";
@@ -660,7 +707,13 @@
         ClassroomRt.StrokeReceived -= OnRemoteStroke;
         ClassroomRt.BoardCleared -= OnRemoteBoardCleared;
         ClassroomRt.BackgroundChanged -= OnRemoteBackground;
+        ClassroomRt.PeerListReceived -= OnPeerList;
+        ClassroomRt.PeerJoined -= OnPeerJoined;
+        ClassroomRt.PeerLeft -= OnPeerLeft;
+        ClassroomRt.PeerMediaStateChanged -= OnPeerMediaState;
+        ClassroomRt.RtcSignalReceived -= OnRtcSignal;
         _ = ClassroomRt.LeaveAsync();
+        try { _ = JS.InvokeVoidAsync("classroomRtc.stop"); } catch { }
         _jsRef?.Dispose();
         _ = StopLocalMediaAsync();
     }
@@ -674,7 +727,182 @@
         ClassroomRt.StrokeReceived += OnRemoteStroke;
         ClassroomRt.BoardCleared += OnRemoteBoardCleared;
         ClassroomRt.BackgroundChanged += OnRemoteBackground;
-        await ClassroomRt.JoinLessonAsync(lid);
+        ClassroomRt.PeerListReceived += OnPeerList;
+        ClassroomRt.PeerJoined += OnPeerJoined;
+        ClassroomRt.PeerLeft += OnPeerLeft;
+        ClassroomRt.PeerMediaStateChanged += OnPeerMediaState;
+        ClassroomRt.RtcSignalReceived += OnRtcSignal;
+
+        if (_jsRef is not null)
+        {
+            try { await JS.InvokeVoidAsync("classroomRtc.init", _jsRef, new { polite = false }); }
+            catch { }
+        }
+
+        await ClassroomRt.JoinLessonAsync(lid, TutorDisplayName, "Tuteur");
+        await BroadcastOwnMediaStateAsync();
+    }
+
+    private void OnPeerList(Guid lessonId, IReadOnlyList<ClassroomPeerDto> peers) =>
+        _ = InvokeAsync(async () =>
+        {
+            if (_lessonGuid != lessonId) return;
+            foreach (var peer in peers)
+            {
+                UpsertLivePeer(peer);
+                try { await JS.InvokeVoidAsync("classroomRtc.connect", peer.ConnectionId, true); }
+                catch { }
+            }
+            await InvokeAsync(async () =>
+            {
+                await Task.Delay(50);
+                try { await JS.InvokeVoidAsync("classroomRtc.remountAll"); } catch { }
+                StateHasChanged();
+            });
+        });
+
+    private void OnPeerJoined(Guid lessonId, ClassroomPeerDto peer) =>
+        _ = InvokeAsync(async () =>
+        {
+            if (_lessonGuid != lessonId) return;
+            UpsertLivePeer(peer);
+            // Le nouveau participant envoie l'offre ; on prépare juste le PC.
+            try { await JS.InvokeVoidAsync("classroomRtc.connect", peer.ConnectionId, false); }
+            catch { }
+            StateHasChanged();
+            await Task.Delay(80);
+            try { await JS.InvokeVoidAsync("classroomRtc.remountAll"); } catch { }
+        });
+
+    private void OnPeerLeft(Guid lessonId, string connectionId) =>
+        _ = InvokeAsync(async () =>
+        {
+            if (_lessonGuid != lessonId) return;
+            try { await JS.InvokeVoidAsync("classroomRtc.closePeer", connectionId); } catch { }
+            var p = _participants.FirstOrDefault(x => x.ConnectionId == connectionId);
+            if (p is not null)
+            {
+                p.ConnectionId = null;
+                p.IsOnline = false;
+                p.HasRemoteVideo = false;
+            }
+            if (_focusedPeer?.ConnectionId == connectionId)
+            {
+                _focusedPeer = null;
+                try { await JS.InvokeVoidAsync("classroomRtc.clearMain"); } catch { }
+            }
+            StateHasChanged();
+        });
+
+    private void OnPeerMediaState(Guid lessonId, string connectionId, bool micOn, bool camOn) =>
+        _ = InvokeAsync(() =>
+        {
+            if (_lessonGuid != lessonId) return Task.CompletedTask;
+            var p = _participants.FirstOrDefault(x => x.ConnectionId == connectionId);
+            if (p is not null)
+            {
+                p.MicOn = micOn;
+                p.CamOn = camOn;
+                StateHasChanged();
+            }
+            return Task.CompletedTask;
+        });
+
+    private void OnRtcSignal(Guid lessonId, string fromConnectionId, string type, string payload) =>
+        _ = InvokeAsync(async () =>
+        {
+            if (_lessonGuid != lessonId) return;
+            try { await JS.InvokeVoidAsync("classroomRtc.handleSignal", fromConnectionId, type, payload); }
+            catch { }
+        });
+
+    private void UpsertLivePeer(ClassroomPeerDto peer)
+    {
+        var match = _participants.FirstOrDefault(p =>
+            !string.IsNullOrEmpty(p.ConnectionId) && p.ConnectionId == peer.ConnectionId)
+            ?? _participants.FirstOrDefault(p =>
+                p.Role != "Tuteur"
+                && string.IsNullOrEmpty(p.ConnectionId)
+                && string.Equals(p.Name, peer.DisplayName, StringComparison.OrdinalIgnoreCase))
+            ?? _participants.FirstOrDefault(p =>
+                p.Role != "Tuteur" && string.IsNullOrEmpty(p.ConnectionId) && !p.IsOnline);
+
+        if (match is null)
+        {
+            match = new ParticipantVM
+            {
+                Name = peer.DisplayName,
+                Initials = InitialsFrom(peer.DisplayName),
+                Color = "#7c3aed",
+                Role = string.IsNullOrWhiteSpace(peer.Role) || peer.Role == "Participant" ? "Élève" : peer.Role,
+            };
+            _participants.Add(match);
+        }
+
+        match.ConnectionId = peer.ConnectionId;
+        match.IsOnline = true;
+        match.MicOn = peer.MicOn;
+        match.CamOn = peer.CamOn;
+        if (string.IsNullOrWhiteSpace(match.Name))
+            match.Name = peer.DisplayName;
+    }
+
+    [JSInvokable]
+    public async Task OnRtcOutgoingSignal(string targetConnectionId, string type, string payload)
+    {
+        if (_lessonGuid is null) return;
+        await ClassroomRt.SendRtcSignalAsync(_lessonGuid.Value, targetConnectionId, type, payload);
+    }
+
+    [JSInvokable]
+    public Task OnRtcRemoteMedia(string connectionId, bool hasVideo, bool hasAudio) =>
+        InvokeAsync(async () =>
+        {
+            var p = _participants.FirstOrDefault(x => x.ConnectionId == connectionId);
+            if (p is null) return;
+            p.HasRemoteVideo = hasVideo;
+            p.IsOnline = true;
+            if (hasAudio) p.MicOn = true;
+            if (hasVideo) p.CamOn = true;
+
+            // Afficher automatiquement l'élève en grand dès que sa caméra arrive.
+            if (hasVideo && (_focusedPeer is null || _focusedPeer.ConnectionId == connectionId))
+            {
+                _focusedPeer = p;
+                try { await JS.InvokeVoidAsync("classroomRtc.focusRemote", connectionId); } catch { }
+            }
+            else
+            {
+                try { await JS.InvokeVoidAsync("classroomRtc.remount", connectionId); } catch { }
+            }
+            StateHasChanged();
+        });
+
+    [JSInvokable]
+    public Task OnRtcConnectionState(string connectionId, string state) =>
+        InvokeAsync(() =>
+        {
+            var p = _participants.FirstOrDefault(x => x.ConnectionId == connectionId);
+            if (p is null) return Task.CompletedTask;
+            if (state is "failed" or "closed" or "disconnected")
+            {
+                p.HasRemoteVideo = false;
+                if (state is "closed" or "disconnected")
+                    p.IsOnline = false;
+                StateHasChanged();
+            }
+            return Task.CompletedTask;
+        });
+
+    private async Task BroadcastOwnMediaStateAsync()
+    {
+        if (_lessonGuid is null) return;
+        await ClassroomRt.BroadcastMediaStateAsync(_lessonGuid.Value, _micOn, _camOn || _sharing);
+    }
+
+    private async Task RefreshRtcTracksAsync()
+    {
+        try { await JS.InvokeVoidAsync("classroomRtc.refreshLocalTracks"); } catch { }
     }
 
     private void OnRemoteStroke(BoardStrokeDto stroke) =>
@@ -789,6 +1017,7 @@
                 _mediaError = result?.Error
                     ?? (_cameraAvailable ? "Impossible d'activer la caméra." : L["Classroom_NoCamera"].Value);
                 SyncTutorMediaFlags();
+                await BroadcastOwnMediaStateAsync();
                 StateHasChanged();
                 return;
             }
@@ -801,6 +1030,8 @@
             if (!string.IsNullOrWhiteSpace(result.Warning))
                 _mediaError = result.Warning;
             SyncTutorMediaFlags();
+            await RefreshRtcTracksAsync();
+            await BroadcastOwnMediaStateAsync();
             StateHasChanged();
         }
         catch (JSException ex)
@@ -811,6 +1042,7 @@
             _cameraAvailable = false;
             _mediaError = ex.Message;
             SyncTutorMediaFlags();
+            await BroadcastOwnMediaStateAsync();
             StateHasChanged();
         }
         catch (InvalidOperationException)
@@ -846,6 +1078,7 @@
         try { await JS.InvokeVoidAsync("classroomMedia.setAudioEnabled", _micOn); }
         catch { }
         SyncTutorMediaFlags();
+        await BroadcastOwnMediaStateAsync();
     }
 
     private async Task ToggleCam()
@@ -912,6 +1145,8 @@
         }
         catch { }
         SyncTutorMediaFlags();
+        await RefreshRtcTracksAsync();
+        await BroadcastOwnMediaStateAsync();
     }
 
     private void ToggleWhiteboardForeground()
@@ -1258,6 +1493,9 @@
         public string Role     { get; set; } = "";
         public bool   MicOn    { get; set; } = true;
         public bool   CamOn    { get; set; } = true;
+        public string? ConnectionId { get; set; }
+        public bool IsOnline { get; set; }
+        public bool HasRemoteVideo { get; set; }
     }
 
     private class ChatMsg

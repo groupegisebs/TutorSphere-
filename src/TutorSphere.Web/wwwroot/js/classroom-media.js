@@ -336,6 +336,27 @@ window.classroomMedia = (function () {
             return !!stream;
         },
 
+        getLocalStream: function () {
+            return stream;
+        },
+
+        /** Flux à publier en WebRTC : partage d'écran/tableau, sinon caméra. */
+        getPublishStream: function () {
+            if (screenStream && screenStream.getVideoTracks().length > 0)
+                return screenStream;
+            if (canvasStream && canvasStream.getVideoTracks().length > 0) {
+                // Fusionner audio caméra + vidéo tableau si possible
+                if (stream && stream.getAudioTracks().length > 0) {
+                    var mixed = new MediaStream();
+                    canvasStream.getVideoTracks().forEach(function (t) { mixed.addTrack(t); });
+                    stream.getAudioTracks().forEach(function (t) { mixed.addTrack(t); });
+                    return mixed;
+                }
+                return canvasStream;
+            }
+            return stream;
+        },
+
         hasVideoTrack: function () {
             return !!(stream && stream.getVideoTracks().length > 0);
         },
