@@ -19,6 +19,9 @@ public class ClassroomHub : Hub
         new(StringComparer.Ordinal);
     private static readonly ConcurrentDictionary<string, string> ConnectionToLesson =
         new(StringComparer.Ordinal);
+    private static readonly ConcurrentDictionary<string, ConcurrentQueue<ClassroomChatMessageDto>> ChatByLesson =
+        new(StringComparer.Ordinal);
+    private const int MaxChatHistory = 80;
 
     public async Task JoinLesson(
         Guid lessonId,
@@ -58,6 +61,10 @@ public class ClassroomHub : Hub
         // Demande aux autres de renvoyer leur état média (au cas où).
         await Clients.OthersInGroup(group).SendAsync("MediaSyncRequest", lessonId);
 
+        // Historique court du chat pour le nouvel arrivant.
+        if (ChatByLesson.TryGetValue(group, out var chat) && chat.Count > 0)
+            await Clients.Caller.SendAsync("ChatHistory", lessonId, chat.ToList());
+
         if (States.TryGetValue(group, out var state) && !string.IsNullOrEmpty(state.BackgroundDocumentId))
         {
             await Clients.Caller.SendAsync(
@@ -71,6 +78,38 @@ public class ClassroomHub : Hub
         var group = GroupName(lessonId);
         await RemovePeerFromLessonAsync(Context.ConnectionId, group, lessonId);
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, group);
+    }
+
+    /// <summary>Chat salle : diffusion immédiate à tous les participants connectés.</summary>
+    public async Task SendChatMessage(Guid lessonId, string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return;
+
+        var group = GroupName(lessonId);
+        if (!PeersByLesson.TryGetValue(group, out var peers)
+            || !peers.TryGetValue(Context.ConnectionId, out var peer))
+            return;
+
+        var trimmed = text.Trim();
+        if (trimmed.Length > 2000)
+            trimmed = trimmed[..2000];
+
+        var msg = new ClassroomChatMessageDto(
+            lessonId,
+            Context.ConnectionId,
+            peer.DisplayName,
+            peer.Role,
+            trimmed,
+            DateTime.UtcNow);
+
+        var history = ChatByLesson.GetOrAdd(group, _ => new ConcurrentQueue<ClassroomChatMessageDto>());
+        history.Enqueue(msg);
+        while (history.Count > MaxChatHistory)
+            history.TryDequeue(out _);
+
+        // Tout le monde (y compris l'émetteur) pour rester synchrone.
+        await Clients.Group(group).SendAsync("ChatMessage", msg);
     }
 
     public Task SendStroke(Guid lessonId, BoardStrokeDto stroke) =>
@@ -164,7 +203,10 @@ public class ClassroomHub : Hub
             // Tout le monde retire immédiatement ce participant.
             await Clients.OthersInGroup(group).SendAsync("PeerLeft", lessonId, connectionId, removed.DisplayName);
             if (peers.IsEmpty)
+            {
                 PeersByLesson.TryRemove(group, out _);
+                ChatByLesson.TryRemove(group, out _);
+            }
         }
     }
 
@@ -209,3 +251,11 @@ public record ClassroomPeerDto(
     string Role,
     bool MicOn,
     bool CamOn);
+
+public record ClassroomChatMessageDto(
+    Guid LessonId,
+    string SenderConnectionId,
+    string SenderDisplayName,
+    string SenderRole,
+    string Text,
+    DateTime SentAtUtc);

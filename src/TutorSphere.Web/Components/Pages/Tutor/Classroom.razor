@@ -149,14 +149,15 @@
                     </div>
                     @foreach (var p in VisibleStudentTiles)
                     {
-                        <div class="cr-pro-thumb @(p.IsSpeaking || p.CamOn ? "is-speaking" : null) @(p.CamOn ? "has-video" : null)"
+                        <div @key="p.ConnectionId ?? p.Name"
+                             class="cr-pro-thumb @(p.IsSpeaking || (p.CamOn && p.HasRemoteVideo) ? "is-speaking" : null) @(p.CamOn && p.HasRemoteVideo ? "has-video" : null)"
                              @onclick="() => FocusPeer(p)" title="@p.Name">
                             @if (!string.IsNullOrEmpty(p.ConnectionId))
                             {
                                 <video data-rtc-peer="@p.ConnectionId"
                                        autoplay playsinline></video>
                             }
-                            @if (!p.CamOn || string.IsNullOrEmpty(p.ConnectionId))
+                            @if (!(p.CamOn && p.HasRemoteVideo) || string.IsNullOrEmpty(p.ConnectionId))
                             {
                                 <div class="cr-pro-placeholder" style="font-size:1.6rem"><i class="bi bi-person-fill"></i></div>
                             }
@@ -399,7 +400,7 @@
                         <button type="button" class="cr-pro-icon-btn" style="border:none" @onclick='() => PushToast(L["ClassroomPro_AttachSoon"])'><i class="bi bi-paperclip"></i></button>
                         <button type="button" class="cr-pro-icon-btn" style="border:none" @onclick='() => PushToast(L["ClassroomPro_EmojiSoon"])'><i class="bi bi-emoji-smile"></i></button>
                         <input @bind="_newMessage" @onkeydown="OnChatKeyDown" placeholder='@L["Classroom_TypeMessage"]' />
-                        <button type="button" class="cr-pro-send" @onclick="SendMessage"><i class="bi bi-send-fill"></i></button>
+                        <button type="button" class="cr-pro-send" @onclick="SendMessageAsync"><i class="bi bi-send-fill"></i></button>
                     </div>
                 }
             </div>
@@ -829,6 +830,8 @@
         ClassroomRt.PeerMediaStateChanged -= OnPeerMediaState;
         ClassroomRt.MediaSyncRequested -= OnMediaSyncRequested;
         ClassroomRt.RtcSignalReceived -= OnRtcSignal;
+        ClassroomRt.ChatMessageReceived -= OnChatMessage;
+        ClassroomRt.ChatHistoryReceived -= OnChatHistory;
         _ = ClassroomRt.LeaveAsync();
         try { _ = JS.InvokeVoidAsync("classroomRtc.stop"); } catch { }
         _jsRef?.Dispose();
@@ -850,6 +853,8 @@
         ClassroomRt.PeerMediaStateChanged += OnPeerMediaState;
         ClassroomRt.MediaSyncRequested += OnMediaSyncRequested;
         ClassroomRt.RtcSignalReceived += OnRtcSignal;
+        ClassroomRt.ChatMessageReceived += OnChatMessage;
+        ClassroomRt.ChatHistoryReceived += OnChatHistory;
 
         // Connect hub first so ConnectionId is known before PeerList arrives.
         await ClassroomRt.EnsureHubReadyAsync();
@@ -884,8 +889,9 @@
             foreach (var peer in peers)
             {
                 UpsertLivePeer(peer);
-                // Un seul offreur par paire (ConnectionId plus petit) — l'enseignant voit aussi les élèves.
-                var shouldOffer = string.CompareOrdinal(selfId, peer.ConnectionId) < 0;
+                // Pas d'offre si selfId inconnu — sinon les deux côtés offrent (tuile noire).
+                var shouldOffer = !string.IsNullOrEmpty(selfId)
+                    && string.CompareOrdinal(selfId, peer.ConnectionId) < 0;
                 try { await JS.InvokeVoidAsync("classroomRtc.connect", peer.ConnectionId, shouldOffer); }
                 catch { }
             }
@@ -900,7 +906,8 @@
             UpsertLivePeer(peer);
             PushToast(string.Format(L["ClassroomPro_JoinedFmt"].Value, peer.DisplayName));
             var selfId = ClassroomRt.ConnectionId ?? "";
-            var shouldOffer = string.CompareOrdinal(selfId, peer.ConnectionId) < 0;
+            var shouldOffer = !string.IsNullOrEmpty(selfId)
+                && string.CompareOrdinal(selfId, peer.ConnectionId) < 0;
             try { await JS.InvokeVoidAsync("classroomRtc.connect", peer.ConnectionId, shouldOffer); }
             catch { }
             _needRtcRemount = true;
@@ -939,8 +946,9 @@
             if (p is null) return;
             p.MicOn = micOn;
             p.CamOn = camOn;
-            // SignalR = vérité pour masquage immédiat chez tous.
-            p.HasRemoteVideo = camOn;
+            // Masquage immédiat ; affichage vidéo seulement si flux déjà reçu.
+            if (!camOn)
+                p.HasRemoteVideo = false;
             try { await JS.InvokeVoidAsync("classroomRtc.setRemoteMediaVisible", connectionId, camOn); }
             catch { }
             if (!camOn && _focusedPeer?.ConnectionId == connectionId)
@@ -996,7 +1004,9 @@
         match.IsOnline = true;
         match.MicOn = peer.MicOn;
         match.CamOn = peer.CamOn;
-        match.HasRemoteVideo = peer.CamOn;
+        // Ne pas forcer HasRemoteVideo=true : attendre ontrack (évite tuile noire).
+        if (!peer.CamOn)
+            match.HasRemoteVideo = false;
         if (string.IsNullOrWhiteSpace(match.Name))
             match.Name = peer.DisplayName;
     }
@@ -1014,16 +1024,15 @@
         {
             var p = _participants.FirstOrDefault(x => x.ConnectionId == connectionId);
             if (p is null) return;
-            p.HasRemoteVideo = hasVideo && p.CamOn;
             p.IsOnline = true;
+            // Flux reçu = vrai affichage vidéo (indépendamment de l'intention CamOn SignalR).
+            p.HasRemoteVideo = hasVideo;
+            if (hasVideo) p.CamOn = true;
             if (hasAudio) p.MicOn = true;
-            // Ne force caméra ON que si SignalR n'a pas dit OFF.
-            if (hasVideo && p.CamOn) { /* keep */ }
-            else if (hasVideo && !p.CamOn) p.HasRemoteVideo = false;
             if (hasAudio) p.IsSpeaking = true;
 
             // En vue galerie : tous voient/entendent via la vignette. En grand : monter aussi sur la scène.
-            if ((hasVideo || hasAudio) && p.CamOn && _viewMode is "speaker" or "presenter"
+            if (hasVideo && _viewMode is "speaker" or "presenter"
                 && (_focusedPeer is null || _focusedPeer.ConnectionId == connectionId))
             {
                 _focusedPeer = p;
@@ -1031,7 +1040,7 @@
             }
             StateHasChanged();
             _needRtcRemount = true;
-            try { await JS.InvokeVoidAsync("classroomRtc.setRemoteMediaVisible", connectionId, p.CamOn); } catch { }
+            try { await JS.InvokeVoidAsync("classroomRtc.setRemoteMediaVisible", connectionId, p.CamOn && hasVideo); } catch { }
             try { await JS.InvokeVoidAsync("classroomRtc.unlockAudio"); } catch { }
         });
 
@@ -1516,21 +1525,48 @@
 
     private void OnChatKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key == "Enter" && !e.ShiftKey) SendMessage();
+        if (e.Key == "Enter" && !e.ShiftKey)
+            _ = SendMessageAsync();
     }
 
-    private void SendMessage()
+    private async Task SendMessageAsync()
     {
         var text = _newMessage.Trim();
-        if (string.IsNullOrEmpty(text)) return;
+        if (string.IsNullOrEmpty(text) || _lessonGuid is null) return;
+        _newMessage = "";
+        await ClassroomRt.SendChatMessageAsync(_lessonGuid.Value, text);
+    }
+
+    private void OnChatMessage(ClassroomChatMessageDto msg) =>
+        _ = InvokeAsync(() =>
+        {
+            if (_lessonGuid is null || msg.LessonId != _lessonGuid.Value) return;
+            AppendChatMessage(msg);
+            StateHasChanged();
+        });
+
+    private void OnChatHistory(Guid lessonId, IReadOnlyList<ClassroomChatMessageDto> messages) =>
+        _ = InvokeAsync(() =>
+        {
+            if (_lessonGuid != lessonId) return;
+            _chatMessages.Clear();
+            foreach (var msg in messages)
+                AppendChatMessage(msg);
+            StateHasChanged();
+        });
+
+    private void AppendChatMessage(ClassroomChatMessageDto msg)
+    {
+        var selfId = ClassroomRt.ConnectionId ?? "";
         _chatMessages.Add(new ChatMsg
         {
-            Text   = text,
-            IsMe   = true,
-            Sender = TutorDisplayName,
-            Time   = DateTime.Now.ToString("HH:mm"),
+            Text = msg.Text,
+            IsMe = !string.IsNullOrEmpty(selfId) && msg.SenderConnectionId == selfId,
+            Sender = msg.SenderDisplayName,
+            Time = msg.SentAtUtc.ToLocalTime().ToString("HH:mm"),
+            ConnectionId = msg.SenderConnectionId,
+            SentAtUtc = msg.SentAtUtc
         });
-        _newMessage = "";
     }
 
     private async Task SetWbTool(string tool)
@@ -1646,28 +1682,8 @@
 
     private void InitChatMessages()
     {
-        var students = _participants.Where(p => p.Role == "Élève").ToList();
-        if (students.Count == 0)
-        {
-            _chatMessages = [];
-            return;
-        }
-
-        // Démo : chaque message d'élève utilise un vrai nom (rotation si plusieurs).
-        var first = students[0].Name;
-        var second = students.Count > 1 ? students[1].Name : first;
-        _chatMessages =
-        [
-            new() { Text = "Bonjour ! Je suis prêt(e).",
-                    IsMe = false, Sender = first,
-                    Time = DateTime.Now.AddMinutes(-5).ToString("HH:mm") },
-            new() { Text = "Parfait, on commence par les exercices du chapitre 3.",
-                    IsMe = true,  Sender = TutorDisplayName,
-                    Time = DateTime.Now.AddMinutes(-4).ToString("HH:mm") },
-            new() { Text = "D'accord, j'ai mon cahier ouvert.",
-                    IsMe = false, Sender = second,
-                    Time = DateTime.Now.AddMinutes(-2).ToString("HH:mm") },
-        ];
+        // Chat live via SignalR — pas de messages démo.
+        _chatMessages = [];
     }
 
     private List<DocumentVM> _documents = [];
@@ -1733,6 +1749,8 @@
         public bool   IsMe   { get; set; }
         public string Sender { get; set; } = "";
         public string Time   { get; set; } = "";
+        public string? ConnectionId { get; set; }
+        public DateTime SentAtUtc { get; set; }
     }
 
     private sealed class MediaStartResult

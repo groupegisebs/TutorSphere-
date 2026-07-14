@@ -248,12 +248,12 @@ window.classroomRtc = (function () {
             dotNetRef.invokeMethodAsync("OnRtcRemoteMedia", remoteId, false, false).catch(function () { });
             return;
         }
-        // Afficher dès qu'une piste vidéo existe (même si muted brièvement au démarrage WebRTC).
+        // Afficher seulement quand la piste est réellement active (pas juste présente / muted).
         var hasVideo = stream.getVideoTracks().some(function (t) {
-            return t.readyState !== "ended";
+            return t.readyState === "live" && t.enabled;
         });
         var hasAudio = stream.getAudioTracks().some(function (t) {
-            return t.readyState !== "ended";
+            return t.readyState === "live" && t.enabled;
         });
         dotNetRef.invokeMethodAsync("OnRtcRemoteMedia", remoteId, hasVideo, hasAudio).catch(function () { });
     }
@@ -307,7 +307,7 @@ window.classroomRtc = (function () {
             return;
         }
         var liveVideo = stream.getVideoTracks().some(function (t) {
-            return t.readyState !== "ended";
+            return t.readyState === "live" && t.enabled;
         });
         nodes.forEach(function (el) {
             if (el.srcObject !== stream)
@@ -352,6 +352,14 @@ window.classroomRtc = (function () {
 
         state.suppressNegotiation = true;
         try {
+            // Perfect Negotiation : le pair poli annule son offre locale en collision.
+            if (offerCollision && state.polite) {
+                try {
+                    await pc.setLocalDescription({ type: "rollback" });
+                } catch (rbEx) {
+                    console.warn("classroomRtc rollback", rbEx);
+                }
+            }
             await pc.setRemoteDescription(description);
             if (description.type === "offer") {
                 await applyLocalTracks(pc);
@@ -359,6 +367,8 @@ window.classroomRtc = (function () {
                 if (pc.localDescription)
                     sendSignal(remoteId, "sdp", JSON.stringify(pc.localDescription));
             }
+        } catch (ex) {
+            console.warn("classroomRtc handleSdp", remoteId, ex);
         } finally {
             state.suppressNegotiation = false;
         }
@@ -422,8 +432,10 @@ window.classroomRtc = (function () {
          */
         connect: async function (remoteId, createOffer) {
             if (!remoteId) return { ok: false };
-            // Decide offerer by ConnectionId if createOffer not forced deterministically by caller —
-            // still honor the boolean from Blazor (ID-compared there).
+            if (!selfId) {
+                console.warn("classroomRtc.connect: selfId manquant — attente de l'offre distante");
+                createOffer = false;
+            }
             var state = ensurePc(remoteId);
             state.polite = isPoliteToward(remoteId);
 
@@ -431,10 +443,8 @@ window.classroomRtc = (function () {
                 state.suppressNegotiation = true;
                 await enqueue(remoteId, function () { return makeOffer(remoteId); });
             } else {
-                // Waiting peer: keep negotiation suppressed so we do NOT race the offerer.
                 state.suppressNegotiation = true;
                 await applyLocalTracks(state.pc);
-                // Recovery if remote offer never arrives (lost signal / late joiner).
                 setTimeout(function () {
                     var s = peers[remoteId];
                     if (!s) return;
@@ -442,7 +452,7 @@ window.classroomRtc = (function () {
                     if (remoteStreams[remoteId]) return;
                     console.warn("classroomRtc: recovery offer toward", remoteId);
                     enqueue(remoteId, function () { return makeOffer(remoteId); });
-                }, 2800);
+                }, 2000);
             }
 
             if (remoteStreams[remoteId])
@@ -545,31 +555,42 @@ window.classroomRtc = (function () {
         },
 
         /**
-         * SignalR PeeraMediaState → masquer/afficher immédiatement la vignette distante.
-         * (La piste WebRTC est déjà coupée côté émetteur via track.enabled.)
+         * SignalR PeerMediaState → masquer/afficher la vignette distante.
+         * IMPORTANT : ne jamais cacher l'avatar si camOn=true mais flux pas encore arrivé
+         * (sinon tuile noire vide).
          */
         setRemoteMediaVisible: function (remoteId, camOn) {
             if (!remoteId) return;
             var stream = remoteStreams[remoteId];
+            var hasLiveVideo = !!(stream && stream.getVideoTracks().some(function (t) {
+                return t.readyState !== "ended";
+            }));
+
             document.querySelectorAll('video[data-rtc-peer="' + remoteId + '"]').forEach(function (el) {
                 var thumb = el.closest(".cr-pro-thumb");
-                if (camOn && stream) {
-                    if (el.srcObject !== stream)
-                        el.srcObject = stream;
-                    el.classList.remove("is-hidden");
-                    if (thumb) thumb.classList.add("has-video");
-                    tryPlay(el);
-                } else {
+                if (!camOn) {
+                    // Caméra masquée → avatar immédiat.
                     if (thumb) thumb.classList.remove("has-video");
-                    // Garde srcObject pour reprise instantanée, mais cache l'image.
                     el.classList.add("is-hidden");
+                    return;
                 }
+                // camOn=true : n'afficher la vidéo que si un flux existe déjà.
+                if (!stream || !hasLiveVideo) {
+                    if (thumb) thumb.classList.remove("has-video");
+                    el.classList.add("is-hidden");
+                    return;
+                }
+                if (el.srcObject !== stream)
+                    el.srcObject = stream;
+                el.classList.remove("is-hidden");
+                if (thumb) thumb.classList.add("has-video");
+                tryPlay(el);
             });
             var main = document.querySelector("video[data-rtc-main]");
             if (main && main.dataset.focusedPeer === remoteId) {
-                if (!camOn) {
+                if (!camOn || !stream) {
                     main.classList.add("is-hidden");
-                } else if (stream) {
+                } else {
                     attachMain(stream, remoteId);
                 }
             }

@@ -33,6 +33,8 @@ public sealed class RealtimeClassroomClient : IAsyncDisposable
     public event Action<Guid, string, string, string>? RtcSignalReceived;
     /// <summary>Autre participant demande un rebroadcast de notre état cam/micro.</summary>
     public event Action<Guid>? MediaSyncRequested;
+    public event Action<ClassroomChatMessageDto>? ChatMessageReceived;
+    public event Action<Guid, IReadOnlyList<ClassroomChatMessageDto>>? ChatHistoryReceived;
 
     public bool IsConnected => _hub?.State == HubConnectionState.Connected;
 
@@ -98,6 +100,13 @@ public sealed class RealtimeClassroomClient : IAsyncDisposable
         catch (Exception ex) { _logger.LogDebug(ex, "BroadcastMediaState failed"); }
     }
 
+    public async Task SendChatMessageAsync(Guid lessonId, string text)
+    {
+        if (_hub is null || _hub.State != HubConnectionState.Connected) return;
+        try { await _hub.InvokeAsync("SendChatMessage", lessonId, text); }
+        catch (Exception ex) { _logger.LogDebug(ex, "SendChatMessage failed"); }
+    }
+
     public async Task LeaveAsync()
     {
         if (_hub is null || _joinedLessonId is null) return;
@@ -115,8 +124,18 @@ public sealed class RealtimeClassroomClient : IAsyncDisposable
             if (string.IsNullOrEmpty(_auth.Token))
                 return;
 
-            if (_hub is { State: HubConnectionState.Connected or HubConnectionState.Connecting })
+            if (_hub is { State: HubConnectionState.Connected })
                 return;
+
+            // Attendre la fin d'un StartAsync déjà en cours.
+            if (_hub is { State: HubConnectionState.Connecting })
+            {
+                var waitUntil = DateTime.UtcNow.AddSeconds(15);
+                while (_hub.State == HubConnectionState.Connecting && DateTime.UtcNow < waitUntil)
+                    await Task.Delay(50);
+                if (_hub.State == HubConnectionState.Connected)
+                    return;
+            }
 
             if (_hub is not null)
             {
@@ -140,7 +159,7 @@ public sealed class RealtimeClassroomClient : IAsyncDisposable
 
             BindHandlers(_hub);
             await _hub.StartAsync();
-            _logger.LogDebug("SignalR classroom hub connected.");
+            _logger.LogDebug("SignalR classroom hub connected. ConnectionId={Id}", _hub.ConnectionId);
         }
         catch (Exception ex)
         {
@@ -187,13 +206,7 @@ public sealed class RealtimeClassroomClient : IAsyncDisposable
             catch (Exception ex) { _logger.LogWarning(ex, "PeerJoined handler error"); }
         });
 
-        hub.On<Guid, string>("PeerLeft", (lessonId, connectionId) =>
-        {
-            try { PeerLeft?.Invoke(lessonId, connectionId); }
-            catch (Exception ex) { _logger.LogWarning(ex, "PeerLeft handler error"); }
-        });
-
-        // Compat : hub peut envoyer (lessonId, connectionId, displayName)
+        // Compat unique : le hub envoie (lessonId, connectionId, displayName).
         hub.On<Guid, string, string>("PeerLeft", (lessonId, connectionId, _) =>
         {
             try { PeerLeft?.Invoke(lessonId, connectionId); }
@@ -216,6 +229,18 @@ public sealed class RealtimeClassroomClient : IAsyncDisposable
         {
             try { RtcSignalReceived?.Invoke(lessonId, fromConnectionId, type, payload); }
             catch (Exception ex) { _logger.LogWarning(ex, "RtcSignal handler error"); }
+        });
+
+        hub.On<ClassroomChatMessageDto>("ChatMessage", msg =>
+        {
+            try { ChatMessageReceived?.Invoke(msg); }
+            catch (Exception ex) { _logger.LogWarning(ex, "ChatMessage handler error"); }
+        });
+
+        hub.On<Guid, List<ClassroomChatMessageDto>>("ChatHistory", (lessonId, messages) =>
+        {
+            try { ChatHistoryReceived?.Invoke(lessonId, messages ?? []); }
+            catch (Exception ex) { _logger.LogWarning(ex, "ChatHistory handler error"); }
         });
     }
 
@@ -253,3 +278,11 @@ public record ClassroomPeerDto(
     string Role,
     bool MicOn,
     bool CamOn);
+
+public record ClassroomChatMessageDto(
+    Guid LessonId,
+    string SenderConnectionId,
+    string SenderDisplayName,
+    string SenderRole,
+    string Text,
+    DateTime SentAtUtc);
