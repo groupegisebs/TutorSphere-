@@ -137,6 +137,49 @@ window.classroomRtc = (function () {
         dotNetRef.invokeMethodAsync("OnRtcRemoteMedia", remoteId, hasVideo, hasAudio).catch(function () { });
     }
 
+    function isGalleryLayout() {
+        var root = document.querySelector(".cr-pro-video");
+        return !!(root && (root.classList.contains("is-gallery") || root.classList.contains("is-mosaic")));
+    }
+
+    function tryPlay(el) {
+        if (!el) return Promise.resolve();
+        var play = el.play();
+        if (play && typeof play.catch === "function")
+            return play.catch(function () { return false; });
+        return Promise.resolve();
+    }
+
+    /** Évite le double son : en galerie le son vient des vignettes ; en grand écran, de la scène. */
+    function syncPlaybackRouting() {
+        var gallery = isGalleryLayout();
+        var main = document.querySelector("video[data-rtc-main]");
+        var focused = main && main.dataset.focusedPeer ? main.dataset.focusedPeer : null;
+        var mainActive = !!(main && !gallery && focused && main.srcObject
+            && !main.classList.contains("is-hidden"));
+
+        document.querySelectorAll("video[data-rtc-peer]").forEach(function (el) {
+            var id = el.getAttribute("data-rtc-peer");
+            if (el.srcObject) {
+                // Si la scène diffuse déjà ce pair, mute la vignette pour éviter l'écho local.
+                el.muted = !!(mainActive && id === focused);
+                el.volume = 1;
+                el.playsInline = true;
+                el.autoplay = true;
+                tryPlay(el);
+            }
+        });
+
+        if (main) {
+            if (gallery || !main.srcObject || main.classList.contains("is-hidden"))
+                main.muted = true;
+            else
+                main.muted = false;
+            main.volume = 1;
+            tryPlay(main);
+        }
+    }
+
     function attachToDom(remoteId, stream) {
         if (!remoteId || !stream) return;
         var nodes = document.querySelectorAll('video[data-rtc-peer="' + remoteId + '"]');
@@ -148,14 +191,11 @@ window.classroomRtc = (function () {
         nodes.forEach(function (el) {
             if (el.srcObject !== stream)
                 el.srcObject = stream;
-            el.muted = false;
             el.playsInline = true;
             el.autoplay = true;
             el.classList.remove("is-hidden");
-            var play = el.play();
-            if (play && typeof play.catch === "function")
-                play.catch(function () { });
         });
+        syncPlaybackRouting();
     }
 
     function attachMain(stream, peerId) {
@@ -164,12 +204,10 @@ window.classroomRtc = (function () {
         if (peerId) el.dataset.focusedPeer = peerId;
         if (el.srcObject !== stream)
             el.srcObject = stream;
-        el.muted = false;
         el.playsInline = true;
+        el.autoplay = true;
         el.classList.remove("is-hidden");
-        var play = el.play();
-        if (play && typeof play.catch === "function")
-            play.catch(function () { });
+        syncPlaybackRouting();
     }
 
     async function handleSdp(remoteId, description) {
@@ -251,39 +289,36 @@ window.classroomRtc = (function () {
             }
         },
 
-        /** Publie (ou remplace) les pistes locales vers TOUS les pairs, puis renégocie. */
+        /** Publie (ou remplace) audio+vidéo locaux vers TOUS les pairs, puis renégocie. */
         refreshLocalTracks: async function () {
             var local = getPublishStream();
             var ids = Object.keys(peers);
             for (var i = 0; i < ids.length; i++) {
                 var pc = peers[ids[i]].pc;
-                var senders = pc.getSenders();
-
-                if (!local) {
-                    continue;
-                }
+                if (!local) continue;
 
                 var kinds = ["audio", "video"];
                 for (var k = 0; k < kinds.length; k++) {
                     var kind = kinds[k];
-                    var track = local.getTracks().find(function (t) { return t.kind === kind; }) || null;
-                    var sender = senders.find(function (s) {
-                        return (s.track && s.track.kind === kind) || (s.track == null && s.dtmf === null && kind === "audio")
-                            || (!s.track && pc.getTransceivers().some(function (tr) {
-                                return tr.sender === s && tr.receiver && tr.receiver.track && tr.receiver.track.kind === kind;
-                            }));
+                    var track = local.getTracks().find(function (t) {
+                        return t.kind === kind && t.readyState !== "ended";
+                    }) || null;
+
+                    var sender = null;
+                    var trMatch = pc.getTransceivers().find(function (t) {
+                        var senderKind = t.sender && t.sender.track && t.sender.track.kind;
+                        var recvKind = t.receiver && t.receiver.track && t.receiver.track.kind;
+                        return senderKind === kind || recvKind === kind
+                            || (t.mid == null && !t.sender.track && kind === "audio" && t.direction !== "inactive");
                     });
-                    // Prefer matching sender by transceiver kind
+                    if (trMatch) sender = trMatch.sender;
                     if (!sender) {
-                        var tr = pc.getTransceivers().find(function (t) {
-                            return (t.receiver && t.receiver.track && t.receiver.track.kind === kind)
-                                || (t.sender && t.sender.track && t.sender.track.kind === kind)
-                                || (t.mid && kind === "video" && t.mid.indexOf("v") >= 0);
+                        sender = pc.getSenders().find(function (s) {
+                            return s.track && s.track.kind === kind;
                         });
-                        if (tr) sender = tr.sender;
                     }
                     if (!sender) {
-                        sender = senders.find(function (s) { return !s.track; });
+                        sender = pc.getSenders().find(function (s) { return !s.track; });
                     }
 
                     if (track) {
@@ -295,12 +330,31 @@ window.classroomRtc = (function () {
                 }
             }
 
-            // Forcer une nouvelle offre pour propager la caméra à tous.
+            // Forcer une nouvelle offre pour propager micro/caméra à tous.
             for (var j = 0; j < ids.length; j++) {
                 if (peers[ids[j]].pc.signalingState === "stable")
                     await makeOffer(ids[j]);
             }
+            syncPlaybackRouting();
             return { ok: true, peers: ids.length, hasLocal: !!local };
+        },
+
+        /** Débloque la lecture audio distante (politique autoplay du navigateur). */
+        unlockAudio: async function () {
+            syncPlaybackRouting();
+            var blocked = false;
+            var nodes = document.querySelectorAll("video[data-rtc-peer], video[data-rtc-main]");
+            for (var i = 0; i < nodes.length; i++) {
+                var el = nodes[i];
+                if (!el.srcObject) continue;
+                try {
+                    if (!el.muted)
+                        await el.play();
+                } catch (_) {
+                    blocked = true;
+                }
+            }
+            return { ok: !blocked, blocked: blocked };
         },
 
         focusRemote: function (remoteId) {
@@ -323,7 +377,7 @@ window.classroomRtc = (function () {
 
         remountAll: function () {
             scheduleRemount(null);
-            // Miroir local pour la galerie (tous les participants se voient).
+            // Miroir local pour la galerie (toujours muet pour éviter le Lars feedback).
             var local = getPublishStream();
             document.querySelectorAll("video[data-rtc-local]").forEach(function (el) {
                 if (!local) {
@@ -333,12 +387,12 @@ window.classroomRtc = (function () {
                 if (el.srcObject !== local)
                     el.srcObject = local;
                 el.muted = true;
+                el.volume = 0;
                 el.playsInline = true;
                 el.classList.remove("is-hidden");
-                var play = el.play();
-                if (play && typeof play.catch === "function")
-                    play.catch(function () { });
+                tryPlay(el);
             });
+            syncPlaybackRouting();
         },
 
         hasRemote: function (remoteId) {

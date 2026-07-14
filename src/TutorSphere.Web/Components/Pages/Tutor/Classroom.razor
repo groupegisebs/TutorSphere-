@@ -545,6 +545,12 @@
         _showViewMenu = false;
         if (mode != "fullscreen")
             _viewFullscreen = false;
+        if (mode is "gallery" or "mosaic")
+        {
+            try { _ = JS.InvokeVoidAsync("classroomRtc.clearMain"); } catch { }
+            _focusedPeer = null;
+        }
+        _needRtcRemount = true;
     }
 
     private void ToggleFullscreenView()
@@ -804,6 +810,7 @@
         {
             _needRtcRemount = false;
             try { await JS.InvokeVoidAsync("classroomRtc.remountAll"); } catch { }
+            try { await JS.InvokeVoidAsync("classroomRtc.unlockAudio"); } catch { }
         }
     }
 
@@ -969,9 +976,10 @@
             p.IsOnline = true;
             if (hasAudio) p.MicOn = true;
             if (hasVideo) p.CamOn = true;
+            if (hasAudio) p.IsSpeaking = true;
 
-            // En vue galerie : tous voient la vignette. En grand : monter aussi sur la scène.
-            if (hasVideo && _viewMode is "speaker" or "presenter"
+            // En vue galerie : tous voient/entendent via la vignette. En grand : monter aussi sur la scène.
+            if ((hasVideo || hasAudio) && _viewMode is "speaker" or "presenter"
                 && (_focusedPeer is null || _focusedPeer.ConnectionId == connectionId))
             {
                 _focusedPeer = p;
@@ -979,6 +987,7 @@
             }
             StateHasChanged();
             _needRtcRemount = true;
+            try { await JS.InvokeVoidAsync("classroomRtc.unlockAudio"); } catch { }
         });
 
     [JSInvokable]
@@ -1135,6 +1144,7 @@
             SyncTutorMediaFlags();
             await RefreshRtcTracksAsync();
             await BroadcastOwnMediaStateAsync();
+            try { await JS.InvokeVoidAsync("classroomRtc.unlockAudio"); } catch { }
             _needRtcRemount = true;
             StateHasChanged();
         }
@@ -1178,8 +1188,50 @@
             return;
         }
 
-        _micOn = !_micOn;
-        try { await JS.InvokeVoidAsync("classroomMedia.setAudioEnabled", _micOn); }
+        // Réactiver : s'assurer qu'une piste micro existe et est publiée à tous.
+        if (!_micOn)
+        {
+            var hasAudio = false;
+            try { hasAudio = await JS.InvokeAsync<bool>("classroomMedia.hasAudioTrack"); }
+            catch { }
+
+            if (!hasAudio)
+            {
+                try
+                {
+                    var result = await JS.InvokeAsync<MediaStartResult>("classroomMedia.enableMicrophone");
+                    if (result is null || !result.Ok)
+                    {
+                        _micOn = false;
+                        _mediaError = result?.Error ?? "Aucun microphone détecté.";
+                        SyncTutorMediaFlags();
+                        await BroadcastOwnMediaStateAsync();
+                        return;
+                    }
+                }
+                catch (JSException ex)
+                {
+                    _micOn = false;
+                    _mediaError = ex.Message;
+                    SyncTutorMediaFlags();
+                    await BroadcastOwnMediaStateAsync();
+                    return;
+                }
+            }
+
+            _micOn = true;
+            try { await JS.InvokeVoidAsync("classroomMedia.setAudioEnabled", true); }
+            catch { }
+            SyncTutorMediaFlags();
+            await RefreshRtcTracksAsync();
+            await BroadcastOwnMediaStateAsync();
+            try { await JS.InvokeVoidAsync("classroomRtc.unlockAudio"); } catch { }
+            _needRtcRemount = true;
+            return;
+        }
+
+        _micOn = false;
+        try { await JS.InvokeVoidAsync("classroomMedia.setAudioEnabled", false); }
         catch { }
         SyncTutorMediaFlags();
         await BroadcastOwnMediaStateAsync();
@@ -1321,6 +1373,8 @@
             try { await JS.InvokeVoidAsync("classroomMedia.stopScreenShare", _localVideo); } catch { }
             _sharing = false;
             _sharingWhiteboard = false;
+            await RefreshRtcTracksAsync();
+            await BroadcastOwnMediaStateAsync();
             return;
         }
 
@@ -1335,6 +1389,9 @@
             _sharing = true;
             _sharingWhiteboard = false;
             _mediaError = null;
+            await RefreshRtcTracksAsync();
+            await BroadcastOwnMediaStateAsync();
+            try { await JS.InvokeVoidAsync("classroomRtc.unlockAudio"); } catch { }
         }
         catch (JSException ex)
         {
@@ -1349,6 +1406,8 @@
             try { await JS.InvokeVoidAsync("classroomMedia.stopScreenShare", _localVideo); } catch { }
             _sharing = false;
             _sharingWhiteboard = false;
+            await RefreshRtcTracksAsync();
+            await BroadcastOwnMediaStateAsync();
             return;
         }
 
@@ -1367,6 +1426,9 @@
             _sharing = true;
             _sharingWhiteboard = true;
             _mediaError = null;
+            await RefreshRtcTracksAsync();
+            await BroadcastOwnMediaStateAsync();
+            try { await JS.InvokeVoidAsync("classroomRtc.unlockAudio"); } catch { }
         }
         catch (JSException ex)
         {

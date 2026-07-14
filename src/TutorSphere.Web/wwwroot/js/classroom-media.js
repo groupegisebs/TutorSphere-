@@ -340,25 +340,86 @@ window.classroomMedia = (function () {
             return stream;
         },
 
-        /** Flux à publier en WebRTC : partage d'écran/tableau, sinon caméra. */
+        /** Fusionne les pistes audio du micro local dans un flux vidéo (écran / tableau). */
+        mixWithLocalAudio: function (videoStream) {
+            if (!videoStream) return null;
+            var mixed = new MediaStream();
+            videoStream.getVideoTracks().forEach(function (t) { mixed.addTrack(t); });
+            videoStream.getAudioTracks().forEach(function (t) { mixed.addTrack(t); });
+            if (stream) {
+                stream.getAudioTracks().forEach(function (t) {
+                    if (!mixed.getAudioTracks().some(function (a) { return a.id === t.id; }))
+                        mixed.addTrack(t);
+                });
+            }
+            return mixed;
+        },
+
+        /** Flux à publier en WebRTC : partage d'écran/tableau + micro, sinon caméra/micro. */
         getPublishStream: function () {
             if (screenStream && screenStream.getVideoTracks().length > 0)
-                return screenStream;
-            if (canvasStream && canvasStream.getVideoTracks().length > 0) {
-                // Fusionner audio caméra + vidéo tableau si possible
-                if (stream && stream.getAudioTracks().length > 0) {
-                    var mixed = new MediaStream();
-                    canvasStream.getVideoTracks().forEach(function (t) { mixed.addTrack(t); });
-                    stream.getAudioTracks().forEach(function (t) { mixed.addTrack(t); });
-                    return mixed;
-                }
-                return canvasStream;
-            }
+                return this.mixWithLocalAudio(screenStream);
+            if (canvasStream && canvasStream.getVideoTracks().length > 0)
+                return this.mixWithLocalAudio(canvasStream);
             return stream;
         },
 
         hasVideoTrack: function () {
             return !!(stream && stream.getVideoTracks().length > 0);
+        },
+
+        hasAudioTrack: function () {
+            return !!(stream && stream.getAudioTracks().some(function (t) {
+                return t.readyState === "live";
+            }));
+        },
+
+        /** Active le micro s'il n'y a pas encore de piste audio (comme enableCamera). */
+        enableMicrophone: async function () {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                return { ok: false, error: "Micro non supporté." };
+            }
+
+            var info = await listDevices();
+            if (info.mics === 0) {
+                return {
+                    ok: false,
+                    mics: 0,
+                    error: "Aucun microphone détecté. Branchez un micro puis réessayez."
+                };
+            }
+
+            try {
+                var micStream = await getUserMediaWithFallback(false, true);
+                var audioTrack = micStream.getAudioTracks()[0];
+                if (!audioTrack)
+                    return { ok: false, mics: info.mics, error: "Aucune piste audio disponible." };
+
+                if (stream) {
+                    stream.getAudioTracks().forEach(function (t) {
+                        stream.removeTrack(t);
+                        try { t.stop(); } catch (_) { }
+                    });
+                    stream.addTrack(audioTrack);
+                    micStream.getVideoTracks().forEach(function (t) { try { t.stop(); } catch (_) { } });
+                } else {
+                    stream = micStream;
+                }
+
+                audioTrack.enabled = true;
+                var st = trackStates(stream);
+                var after = await listDevices();
+                return {
+                    ok: true,
+                    video: st.video,
+                    audio: st.audio,
+                    cameras: after.cameras,
+                    mics: after.mics,
+                    error: null
+                };
+            } catch (ex) {
+                return { ok: false, mics: info.mics, error: mapMediaError(ex) };
+            }
         },
 
         stop: function (videoEl) {
