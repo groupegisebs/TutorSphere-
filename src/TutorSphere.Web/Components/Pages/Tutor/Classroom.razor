@@ -154,7 +154,6 @@
                             @if (!string.IsNullOrEmpty(p.ConnectionId))
                             {
                                 <video data-rtc-peer="@p.ConnectionId"
-                                       class="@(p.HasRemoteVideo ? "" : "is-hidden")"
                                        autoplay playsinline></video>
                             }
                             @if (!p.HasRemoteVideo || string.IsNullOrEmpty(p.ConnectionId))
@@ -878,11 +877,13 @@
         _ = InvokeAsync(async () =>
         {
             if (_lessonGuid != lessonId) return;
-            // Joiner: create one offer per existing peer (with local cam already started).
+            var selfId = ClassroomRt.ConnectionId ?? "";
             foreach (var peer in peers)
             {
                 UpsertLivePeer(peer);
-                try { await JS.InvokeVoidAsync("classroomRtc.connect", peer.ConnectionId, true); }
+                // Un seul offreur par paire (ConnectionId plus petit) — l'enseignant voit aussi les élèves.
+                var shouldOffer = string.CompareOrdinal(selfId, peer.ConnectionId) < 0;
+                try { await JS.InvokeVoidAsync("classroomRtc.connect", peer.ConnectionId, shouldOffer); }
                 catch { }
             }
             _needRtcRemount = true;
@@ -895,8 +896,9 @@
             if (_lessonGuid != lessonId) return;
             UpsertLivePeer(peer);
             PushToast(string.Format(L["ClassroomPro_JoinedFmt"].Value, peer.DisplayName));
-            // Existing peer: wait for joiner's offer — do NOT create a competing offer.
-            try { await JS.InvokeVoidAsync("classroomRtc.connect", peer.ConnectionId, false); }
+            var selfId = ClassroomRt.ConnectionId ?? "";
+            var shouldOffer = string.CompareOrdinal(selfId, peer.ConnectionId) < 0;
+            try { await JS.InvokeVoidAsync("classroomRtc.connect", peer.ConnectionId, shouldOffer); }
             catch { }
             _needRtcRemount = true;
             StateHasChanged();
@@ -936,13 +938,16 @@
             return Task.CompletedTask;
         });
 
-    private void OnRtcSignal(Guid lessonId, string fromConnectionId, string type, string payload) =>
+    private void OnRtcSignal(Guid lessonId, string fromConnectionId, string type, string payload)
+    {
+        if (_lessonGuid != lessonId) return;
+        // Traiter le signal immédiatement (sans attendre le cycle UI) pour ne pas perdre SDP/ICE.
         _ = InvokeAsync(async () =>
         {
-            if (_lessonGuid != lessonId) return;
             try { await JS.InvokeVoidAsync("classroomRtc.handleSignal", fromConnectionId, type, payload); }
             catch { }
         });
+    }
 
     private void UpsertLivePeer(ClassroomPeerDto peer)
     {

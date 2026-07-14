@@ -154,7 +154,6 @@
                             @if (!string.IsNullOrEmpty(p.ConnectionId))
                             {
                                 <video data-rtc-peer="@p.ConnectionId"
-                                       class="@(p.HasRemoteVideo ? "" : "is-hidden")"
                                        autoplay playsinline></video>
                             }
                             @if (!p.HasRemoteVideo || string.IsNullOrEmpty(p.ConnectionId))
@@ -818,10 +817,12 @@
         _ = InvokeAsync(async () =>
         {
             if (_lessonGuid != lessonId) return;
+            var selfId = ClassroomRt.ConnectionId ?? "";
             foreach (var peer in peers)
             {
                 UpsertLivePeer(peer);
-                try { await JS.InvokeVoidAsync("classroomRtc.connect", peer.ConnectionId, true); }
+                var shouldOffer = string.CompareOrdinal(selfId, peer.ConnectionId) < 0;
+                try { await JS.InvokeVoidAsync("classroomRtc.connect", peer.ConnectionId, shouldOffer); }
                 catch { }
             }
             _needRtcRemount = true;
@@ -834,7 +835,9 @@
             if (_lessonGuid != lessonId) return;
             UpsertLivePeer(peer);
             PushToast(string.Format(L["ClassroomPro_JoinedFmt"].Value, peer.DisplayName));
-            try { await JS.InvokeVoidAsync("classroomRtc.connect", peer.ConnectionId, false); }
+            var selfId = ClassroomRt.ConnectionId ?? "";
+            var shouldOffer = string.CompareOrdinal(selfId, peer.ConnectionId) < 0;
+            try { await JS.InvokeVoidAsync("classroomRtc.connect", peer.ConnectionId, shouldOffer); }
             catch { }
             _needRtcRemount = true;
             StateHasChanged();
@@ -874,13 +877,15 @@
             return Task.CompletedTask;
         });
 
-    private void OnRtcSignal(Guid lessonId, string fromConnectionId, string type, string payload) =>
+    private void OnRtcSignal(Guid lessonId, string fromConnectionId, string type, string payload)
+    {
+        if (_lessonGuid != lessonId) return;
         _ = InvokeAsync(async () =>
         {
-            if (_lessonGuid != lessonId) return;
             try { await JS.InvokeVoidAsync("classroomRtc.handleSignal", fromConnectionId, type, payload); }
             catch { }
         });
+    }
 
     private void UpsertLivePeer(ClassroomPeerDto peer)
     {

@@ -248,19 +248,12 @@ window.classroomRtc = (function () {
             dotNetRef.invokeMethodAsync("OnRtcRemoteMedia", remoteId, false, false).catch(function () { });
             return;
         }
-        // Compter aussi les pistes muted/disabled côté émetteur (readyState live)
-        // pour afficher l'avatar correctement ; hasVideo = track live + enabled.
+        // Afficher dès qu'une piste vidéo existe (même si muted brièvement au démarrage WebRTC).
         var hasVideo = stream.getVideoTracks().some(function (t) {
-            return t.readyState === "live" && t.enabled && t.muted !== true;
+            return t.readyState !== "ended";
         });
-        // Certains navigateurs mettent muted=true brièvement au démarrage — fallback enabled.
-        if (!hasVideo) {
-            hasVideo = stream.getVideoTracks().some(function (t) {
-                return t.readyState === "live" && t.enabled;
-            });
-        }
         var hasAudio = stream.getAudioTracks().some(function (t) {
-            return t.readyState === "live" && t.enabled;
+            return t.readyState !== "ended";
         });
         dotNetRef.invokeMethodAsync("OnRtcRemoteMedia", remoteId, hasVideo, hasAudio).catch(function () { });
     }
@@ -314,7 +307,7 @@ window.classroomRtc = (function () {
             return;
         }
         var liveVideo = stream.getVideoTracks().some(function (t) {
-            return t.readyState === "live" && t.enabled;
+            return t.readyState !== "ended";
         });
         nodes.forEach(function (el) {
             if (el.srcObject !== stream)
@@ -370,8 +363,7 @@ window.classroomRtc = (function () {
             state.suppressNegotiation = false;
         }
 
-        if (remoteStreams[remoteId])
-            scheduleRemount(remoteId);
+        scheduleRemount(remoteId);
     }
 
     async function handleIce(remoteId, candidate) {
@@ -426,19 +418,31 @@ window.classroomRtc = (function () {
 
         /**
          * @param remoteId peer SignalR connection id
-         * @param createOffer true = this client is the joiner and must create the offer
+         * @param createOffer true = this side must create the SDP offer (ID-based or joiner)
          */
         connect: async function (remoteId, createOffer) {
             if (!remoteId) return { ok: false };
+            // Decide offerer by ConnectionId if createOffer not forced deterministically by caller —
+            // still honor the boolean from Blazor (ID-compared there).
             var state = ensurePc(remoteId);
             state.polite = isPoliteToward(remoteId);
 
             if (createOffer) {
+                state.suppressNegotiation = true;
                 await enqueue(remoteId, function () { return makeOffer(remoteId); });
             } else {
-                // Waiting peer: tracks ready, suppress auto-offer until remote offer arrives.
-                state.suppressNegotiation = false;
+                // Waiting peer: keep negotiation suppressed so we do NOT race the offerer.
+                state.suppressNegotiation = true;
                 await applyLocalTracks(state.pc);
+                // Recovery if remote offer never arrives (lost signal / late joiner).
+                setTimeout(function () {
+                    var s = peers[remoteId];
+                    if (!s) return;
+                    if (s.pc.remoteDescription) return;
+                    if (remoteStreams[remoteId]) return;
+                    console.warn("classroomRtc: recovery offer toward", remoteId);
+                    enqueue(remoteId, function () { return makeOffer(remoteId); });
+                }, 2800);
             }
 
             if (remoteStreams[remoteId])
