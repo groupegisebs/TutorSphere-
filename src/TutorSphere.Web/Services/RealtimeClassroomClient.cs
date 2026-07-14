@@ -31,6 +31,8 @@ public sealed class RealtimeClassroomClient : IAsyncDisposable
     public event Action<Guid, string>? PeerLeft;
     public event Action<Guid, string, bool, bool>? PeerMediaStateChanged;
     public event Action<Guid, string, string, string>? RtcSignalReceived;
+    /// <summary>Autre participant demande un rebroadcast de notre état cam/micro.</summary>
+    public event Action<Guid>? MediaSyncRequested;
 
     public bool IsConnected => _hub?.State == HubConnectionState.Connected;
 
@@ -40,7 +42,12 @@ public sealed class RealtimeClassroomClient : IAsyncDisposable
     /// <summary>Ensure SignalR hub is connected so <see cref="ConnectionId"/> is available before JoinLesson.</summary>
     public Task EnsureHubReadyAsync() => EnsureConnectedAsync();
 
-    public async Task JoinLessonAsync(Guid lessonId, string? displayName = null, string? role = null)
+    public async Task JoinLessonAsync(
+        Guid lessonId,
+        string? displayName = null,
+        string? role = null,
+        bool micOn = true,
+        bool camOn = false)
     {
         await EnsureConnectedAsync();
         if (_hub is null || _hub.State != HubConnectionState.Connected)
@@ -52,7 +59,7 @@ public sealed class RealtimeClassroomClient : IAsyncDisposable
             catch { /* ignore */ }
         }
 
-        await _hub.InvokeAsync("JoinLesson", lessonId, displayName, role);
+        await _hub.InvokeAsync("JoinLesson", lessonId, displayName, role, micOn, camOn);
         _joinedLessonId = lessonId;
     }
 
@@ -186,10 +193,23 @@ public sealed class RealtimeClassroomClient : IAsyncDisposable
             catch (Exception ex) { _logger.LogWarning(ex, "PeerLeft handler error"); }
         });
 
+        // Compat : hub peut envoyer (lessonId, connectionId, displayName)
+        hub.On<Guid, string, string>("PeerLeft", (lessonId, connectionId, _) =>
+        {
+            try { PeerLeft?.Invoke(lessonId, connectionId); }
+            catch (Exception ex) { _logger.LogWarning(ex, "PeerLeft handler error"); }
+        });
+
         hub.On<Guid, string, bool, bool>("PeerMediaState", (lessonId, connectionId, micOn, camOn) =>
         {
             try { PeerMediaStateChanged?.Invoke(lessonId, connectionId, micOn, camOn); }
             catch (Exception ex) { _logger.LogWarning(ex, "PeerMediaState handler error"); }
+        });
+
+        hub.On<Guid>("MediaSyncRequest", lessonId =>
+        {
+            try { MediaSyncRequested?.Invoke(lessonId); }
+            catch (Exception ex) { _logger.LogWarning(ex, "MediaSyncRequest handler error"); }
         });
 
         hub.On<Guid, string, string, string>("RtcSignal", (lessonId, fromConnectionId, type, payload) =>

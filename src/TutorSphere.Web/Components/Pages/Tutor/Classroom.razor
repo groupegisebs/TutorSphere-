@@ -149,14 +149,14 @@
                     </div>
                     @foreach (var p in VisibleStudentTiles)
                     {
-                        <div class="cr-pro-thumb @(p.IsSpeaking || p.HasRemoteVideo ? "is-speaking" : null) @(p.HasRemoteVideo ? "has-video" : null)"
+                        <div class="cr-pro-thumb @(p.IsSpeaking || p.CamOn ? "is-speaking" : null) @(p.CamOn ? "has-video" : null)"
                              @onclick="() => FocusPeer(p)" title="@p.Name">
                             @if (!string.IsNullOrEmpty(p.ConnectionId))
                             {
                                 <video data-rtc-peer="@p.ConnectionId"
                                        autoplay playsinline></video>
                             }
-                            @if (!p.HasRemoteVideo || string.IsNullOrEmpty(p.ConnectionId))
+                            @if (!p.CamOn || string.IsNullOrEmpty(p.ConnectionId))
                             {
                                 <div class="cr-pro-placeholder" style="font-size:1.6rem"><i class="bi bi-person-fill"></i></div>
                             }
@@ -484,7 +484,7 @@
     private bool _showLocalVideo => _sharing || (_camOn && _mediaReady);
     private ParticipantVM? _focusedPeer;
     private bool _showRemoteMain =>
-        _focusedPeer is { HasRemoteVideo: true, ConnectionId: not null and not "" };
+        _focusedPeer is { CamOn: true, ConnectionId: not null and not "" };
 
     private async Task FocusPeer(ParticipantVM peer)
     {
@@ -502,7 +502,7 @@
         }
 
         _focusedPeer = peer;
-        if (!string.IsNullOrEmpty(peer.ConnectionId) && peer.HasRemoteVideo)
+        if (!string.IsNullOrEmpty(peer.ConnectionId) && peer.CamOn)
         {
             try { await JS.InvokeVoidAsync("classroomRtc.focusRemote", peer.ConnectionId); } catch { }
         }
@@ -512,10 +512,11 @@
         _participants.Where(x => x.Role != "Tuteur");
 
     private IEnumerable<ParticipantVM> VisibleStudentTiles =>
-        StudentParticipants.Take(_viewMode is "gallery" or "mosaic" ? 50 : 5);
+        StudentParticipants.Where(x => x.IsOnline)
+            .Take(_viewMode is "gallery" or "mosaic" ? 50 : 5);
 
     private int HiddenStudentCount =>
-        Math.Max(0, StudentParticipants.Count() - (_viewMode is "gallery" or "mosaic" ? 50 : 5));
+        Math.Max(0, StudentParticipants.Count(x => x.IsOnline) - (_viewMode is "gallery" or "mosaic" ? 50 : 5));
 
     private IEnumerable<ParticipantVM> FilteredParticipants =>
         _participants.Where(p =>
@@ -826,6 +827,7 @@
         ClassroomRt.PeerJoined -= OnPeerJoined;
         ClassroomRt.PeerLeft -= OnPeerLeft;
         ClassroomRt.PeerMediaStateChanged -= OnPeerMediaState;
+        ClassroomRt.MediaSyncRequested -= OnMediaSyncRequested;
         ClassroomRt.RtcSignalReceived -= OnRtcSignal;
         _ = ClassroomRt.LeaveAsync();
         try { _ = JS.InvokeVoidAsync("classroomRtc.stop"); } catch { }
@@ -846,6 +848,7 @@
         ClassroomRt.PeerJoined += OnPeerJoined;
         ClassroomRt.PeerLeft += OnPeerLeft;
         ClassroomRt.PeerMediaStateChanged += OnPeerMediaState;
+        ClassroomRt.MediaSyncRequested += OnMediaSyncRequested;
         ClassroomRt.RtcSignalReceived += OnRtcSignal;
 
         // Connect hub first so ConnectionId is known before PeerList arrives.
@@ -869,7 +872,7 @@
             catch { }
         }
 
-        await ClassroomRt.JoinLessonAsync(lid, TutorDisplayName, "Tuteur");
+        await ClassroomRt.JoinLessonAsync(lid, TutorDisplayName, "Tuteur", _micOn, _camOn);
         await BroadcastOwnMediaStateAsync();
     }
 
@@ -912,9 +915,13 @@
             var p = _participants.FirstOrDefault(x => x.ConnectionId == connectionId);
             if (p is not null)
             {
+                var name = p.Name;
                 p.ConnectionId = null;
                 p.IsOnline = false;
                 p.HasRemoteVideo = false;
+                p.CamOn = false;
+                p.MicOn = false;
+                PushToast(string.Format(L["ClassroomPro_LeftFmt"].Value, name));
             }
             if (_focusedPeer?.ConnectionId == connectionId)
             {
@@ -925,17 +932,30 @@
         });
 
     private void OnPeerMediaState(Guid lessonId, string connectionId, bool micOn, bool camOn) =>
-        _ = InvokeAsync(() =>
+        _ = InvokeAsync(async () =>
         {
-            if (_lessonGuid != lessonId) return Task.CompletedTask;
+            if (_lessonGuid != lessonId) return;
             var p = _participants.FirstOrDefault(x => x.ConnectionId == connectionId);
-            if (p is not null)
+            if (p is null) return;
+            p.MicOn = micOn;
+            p.CamOn = camOn;
+            // SignalR = vérité pour masquage immédiat chez tous.
+            p.HasRemoteVideo = camOn;
+            try { await JS.InvokeVoidAsync("classroomRtc.setRemoteMediaVisible", connectionId, camOn); }
+            catch { }
+            if (!camOn && _focusedPeer?.ConnectionId == connectionId)
             {
-                p.MicOn = micOn;
-                p.CamOn = camOn;
-                StateHasChanged();
+                _focusedPeer = null;
+                try { await JS.InvokeVoidAsync("classroomRtc.clearMain"); } catch { }
             }
-            return Task.CompletedTask;
+            StateHasChanged();
+        });
+
+    private void OnMediaSyncRequested(Guid lessonId) =>
+        _ = InvokeAsync(async () =>
+        {
+            if (_lessonGuid != lessonId) return;
+            await BroadcastOwnMediaStateAsync();
         });
 
     private void OnRtcSignal(Guid lessonId, string fromConnectionId, string type, string payload)
@@ -976,6 +996,7 @@
         match.IsOnline = true;
         match.MicOn = peer.MicOn;
         match.CamOn = peer.CamOn;
+        match.HasRemoteVideo = peer.CamOn;
         if (string.IsNullOrWhiteSpace(match.Name))
             match.Name = peer.DisplayName;
     }
@@ -993,14 +1014,16 @@
         {
             var p = _participants.FirstOrDefault(x => x.ConnectionId == connectionId);
             if (p is null) return;
-            p.HasRemoteVideo = hasVideo;
+            p.HasRemoteVideo = hasVideo && p.CamOn;
             p.IsOnline = true;
             if (hasAudio) p.MicOn = true;
-            if (hasVideo) p.CamOn = true;
+            // Ne force caméra ON que si SignalR n'a pas dit OFF.
+            if (hasVideo && p.CamOn) { /* keep */ }
+            else if (hasVideo && !p.CamOn) p.HasRemoteVideo = false;
             if (hasAudio) p.IsSpeaking = true;
 
             // En vue galerie : tous voient/entendent via la vignette. En grand : monter aussi sur la scène.
-            if ((hasVideo || hasAudio) && _viewMode is "speaker" or "presenter"
+            if ((hasVideo || hasAudio) && p.CamOn && _viewMode is "speaker" or "presenter"
                 && (_focusedPeer is null || _focusedPeer.ConnectionId == connectionId))
             {
                 _focusedPeer = p;
@@ -1008,6 +1031,7 @@
             }
             StateHasChanged();
             _needRtcRemount = true;
+            try { await JS.InvokeVoidAsync("classroomRtc.setRemoteMediaVisible", connectionId, p.CamOn); } catch { }
             try { await JS.InvokeVoidAsync("classroomRtc.unlockAudio"); } catch { }
         });
 

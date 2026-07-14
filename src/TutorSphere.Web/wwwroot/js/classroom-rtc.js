@@ -544,6 +544,38 @@ window.classroomRtc = (function () {
             return !!(remoteId && remoteStreams[remoteId]);
         },
 
+        /**
+         * SignalR PeeraMediaState → masquer/afficher immédiatement la vignette distante.
+         * (La piste WebRTC est déjà coupée côté émetteur via track.enabled.)
+         */
+        setRemoteMediaVisible: function (remoteId, camOn) {
+            if (!remoteId) return;
+            var stream = remoteStreams[remoteId];
+            document.querySelectorAll('video[data-rtc-peer="' + remoteId + '"]').forEach(function (el) {
+                var thumb = el.closest(".cr-pro-thumb");
+                if (camOn && stream) {
+                    if (el.srcObject !== stream)
+                        el.srcObject = stream;
+                    el.classList.remove("is-hidden");
+                    if (thumb) thumb.classList.add("has-video");
+                    tryPlay(el);
+                } else {
+                    if (thumb) thumb.classList.remove("has-video");
+                    // Garde srcObject pour reprise instantanée, mais cache l'image.
+                    el.classList.add("is-hidden");
+                }
+            });
+            var main = document.querySelector("video[data-rtc-main]");
+            if (main && main.dataset.focusedPeer === remoteId) {
+                if (!camOn) {
+                    main.classList.add("is-hidden");
+                } else if (stream) {
+                    attachMain(stream, remoteId);
+                }
+            }
+            syncPlaybackRouting();
+        },
+
         closePeer: function (remoteId) {
             var state = peers[remoteId];
             if (state) {

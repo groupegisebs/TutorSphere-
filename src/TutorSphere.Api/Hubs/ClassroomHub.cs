@@ -7,7 +7,9 @@ using TutorSphere.Domain.Enums;
 namespace TutorSphere.Api.Hubs;
 
 /// <summary>
-/// Realtime classroom: collaborative whiteboard + presence + WebRTC signaling (A/V 1:1 / petit groupe).
+/// Realtime classroom: whiteboard + presence + WebRTC signaling.
+/// Presence / caméra / micro : SignalR (effet immédiat pour tous).
+/// Flux A/V : WebRTC mesh, signalé via SendRtcSignal.
 /// </summary>
 [Authorize(Roles = $"{UserRoles.Tutor},{UserRoles.Student},{UserRoles.TeachingAssistant},{UserRoles.SuperAdmin}")]
 public class ClassroomHub : Hub
@@ -18,7 +20,12 @@ public class ClassroomHub : Hub
     private static readonly ConcurrentDictionary<string, string> ConnectionToLesson =
         new(StringComparer.Ordinal);
 
-    public async Task JoinLesson(Guid lessonId, string? displayName = null, string? role = null)
+    public async Task JoinLesson(
+        Guid lessonId,
+        string? displayName = null,
+        string? role = null,
+        bool micOn = true,
+        bool camOn = false)
     {
         var group = GroupName(lessonId);
         await Groups.AddToGroupAsync(Context.ConnectionId, group);
@@ -35,8 +42,8 @@ public class ClassroomHub : Hub
             Context.UserIdentifier,
             name,
             peerRole,
-            MicOn: true,
-            CamOn: false);
+            MicOn: micOn,
+            CamOn: camOn);
         peers[Context.ConnectionId] = peer;
 
         var existing = peers.Values
@@ -44,8 +51,12 @@ public class ClassroomHub : Hub
             .Select(ToDto)
             .ToList();
 
+        // Liste complète des pairs déjà présents (avec leur état cam/micro).
         await Clients.Caller.SendAsync("PeerList", lessonId, existing);
+        // Tout le monde voit immédiatement le nouvel arrivant.
         await Clients.OthersInGroup(group).SendAsync("PeerJoined", lessonId, ToDto(peer));
+        // Demande aux autres de renvoyer leur état média (au cas où).
+        await Clients.OthersInGroup(group).SendAsync("MediaSyncRequest", lessonId);
 
         if (States.TryGetValue(group, out var state) && !string.IsNullOrEmpty(state.BackgroundDocumentId))
         {
@@ -105,6 +116,7 @@ public class ClassroomHub : Hub
             payload ?? "");
     }
 
+    /// <summary>État micro/caméra → effet immédiat chez tous les autres (SignalR).</summary>
     public async Task BroadcastMediaState(Guid lessonId, bool micOn, bool camOn)
     {
         var group = GroupName(lessonId);
@@ -147,9 +159,10 @@ public class ClassroomHub : Hub
         if (!PeersByLesson.TryGetValue(group, out var peers))
             return;
 
-        if (peers.TryRemove(connectionId, out _))
+        if (peers.TryRemove(connectionId, out var removed))
         {
-            await Clients.OthersInGroup(group).SendAsync("PeerLeft", lessonId, connectionId);
+            // Tout le monde retire immédiatement ce participant.
+            await Clients.OthersInGroup(group).SendAsync("PeerLeft", lessonId, connectionId, removed.DisplayName);
             if (peers.IsEmpty)
                 PeersByLesson.TryRemove(group, out _);
         }
