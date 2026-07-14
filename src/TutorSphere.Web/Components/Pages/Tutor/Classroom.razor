@@ -849,9 +849,24 @@
         ClassroomRt.PeerMediaStateChanged += OnPeerMediaState;
         ClassroomRt.RtcSignalReceived += OnRtcSignal;
 
+        // Connect hub first so ConnectionId is known before PeerList arrives.
+        await ClassroomRt.EnsureHubReadyAsync();
+
         if (_jsRef is not null)
         {
-            try { await JS.InvokeVoidAsync("classroomRtc.init", _jsRef, new { polite = false }); }
+            try
+            {
+                await JS.InvokeVoidAsync("classroomRtc.init", _jsRef, new
+                {
+                    selfConnectionId = ClassroomRt.ConnectionId
+                });
+            }
+            catch { }
+        }
+
+        if (!string.IsNullOrEmpty(ClassroomRt.ConnectionId))
+        {
+            try { await JS.InvokeVoidAsync("classroomRtc.setSelfId", ClassroomRt.ConnectionId); }
             catch { }
         }
 
@@ -863,13 +878,13 @@
         _ = InvokeAsync(async () =>
         {
             if (_lessonGuid != lessonId) return;
+            // Joiner: create one offer per existing peer (with local cam already started).
             foreach (var peer in peers)
             {
                 UpsertLivePeer(peer);
                 try { await JS.InvokeVoidAsync("classroomRtc.connect", peer.ConnectionId, true); }
                 catch { }
             }
-            await RefreshRtcTracksAsync();
             _needRtcRemount = true;
             StateHasChanged();
         });
@@ -880,10 +895,9 @@
             if (_lessonGuid != lessonId) return;
             UpsertLivePeer(peer);
             PushToast(string.Format(L["ClassroomPro_JoinedFmt"].Value, peer.DisplayName));
-            // Prépare le PC ; le nouvel arrivant crée l'offre (avec sa caméra).
+            // Existing peer: wait for joiner's offer — do NOT create a competing offer.
             try { await JS.InvokeVoidAsync("classroomRtc.connect", peer.ConnectionId, false); }
             catch { }
-            await RefreshRtcTracksAsync();
             _needRtcRemount = true;
             StateHasChanged();
         });

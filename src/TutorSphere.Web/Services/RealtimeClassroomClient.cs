@@ -34,6 +34,12 @@ public sealed class RealtimeClassroomClient : IAsyncDisposable
 
     public bool IsConnected => _hub?.State == HubConnectionState.Connected;
 
+    /// <summary>SignalR connection id for this browser tab (used for WebRTC politeness).</summary>
+    public string? ConnectionId => _hub?.ConnectionId;
+
+    /// <summary>Ensure SignalR hub is connected so <see cref="ConnectionId"/> is available before JoinLesson.</summary>
+    public Task EnsureHubReadyAsync() => EnsureConnectedAsync();
+
     public async Task JoinLessonAsync(Guid lessonId, string? displayName = null, string? role = null)
     {
         await EnsureConnectedAsync();

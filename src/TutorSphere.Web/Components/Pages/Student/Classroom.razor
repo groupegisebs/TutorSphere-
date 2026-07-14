@@ -790,9 +790,23 @@
         ClassroomRt.PeerMediaStateChanged += OnPeerMediaState;
         ClassroomRt.RtcSignalReceived += OnRtcSignal;
 
+        await ClassroomRt.EnsureHubReadyAsync();
+
         if (_jsRef is not null)
         {
-            try { await JS.InvokeVoidAsync("classroomRtc.init", _jsRef, new { polite = true }); }
+            try
+            {
+                await JS.InvokeVoidAsync("classroomRtc.init", _jsRef, new
+                {
+                    selfConnectionId = ClassroomRt.ConnectionId
+                });
+            }
+            catch { }
+        }
+
+        if (!string.IsNullOrEmpty(ClassroomRt.ConnectionId))
+        {
+            try { await JS.InvokeVoidAsync("classroomRtc.setSelfId", ClassroomRt.ConnectionId); }
             catch { }
         }
 
@@ -810,7 +824,6 @@
                 try { await JS.InvokeVoidAsync("classroomRtc.connect", peer.ConnectionId, true); }
                 catch { }
             }
-            await RefreshRtcTracksAsync();
             _needRtcRemount = true;
             StateHasChanged();
         });
@@ -823,7 +836,6 @@
             PushToast(string.Format(L["ClassroomPro_JoinedFmt"].Value, peer.DisplayName));
             try { await JS.InvokeVoidAsync("classroomRtc.connect", peer.ConnectionId, false); }
             catch { }
-            await RefreshRtcTracksAsync();
             _needRtcRemount = true;
             StateHasChanged();
         });

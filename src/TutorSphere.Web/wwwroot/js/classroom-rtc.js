@@ -1,19 +1,29 @@
+/**
+ * WebRTC mesh for classroom A/V.
+ * Perfect Negotiation: politeness per pair from ConnectionId (lexicographic),
+ * only the joining peer creates the initial offer — avoids glare so everyone sees cameras.
+ */
 window.classroomRtc = (function () {
-    var peers = {}; // connectionId -> { pc, makingOffer, ignoreOffer, polite }
-    var remoteStreams = {}; // connectionId -> MediaStream
-    var pendingConnect = {}; // connectionId -> createOffer bool
+    var peers = {}; // connectionId -> state
+    var remoteStreams = {};
     var dotNetRef = null;
+    var selfId = "";
     var iceServers = [
         { urls: "stun:stun.l.google.com:19302" },
         { urls: "stun:stun1.l.google.com:19302" }
     ];
-    var selfPolite = true;
     var remountTimer = null;
 
     function getPublishStream() {
         if (window.classroomMedia && typeof classroomMedia.getPublishStream === "function")
             return classroomMedia.getPublishStream();
         return null;
+    }
+
+    function isPoliteToward(remoteId) {
+        // Deterministic: smaller ConnectionId is polite. Works for any role pair.
+        if (!selfId || !remoteId) return true;
+        return selfId < remoteId;
     }
 
     function scheduleRemount(remoteId) {
@@ -26,7 +36,9 @@ window.classroomRtc = (function () {
                     attachToDom(id, remoteStreams[id]);
                 });
             remountMainIfFocused();
-        }, 60);
+            syncLocalMirrors();
+            syncPlaybackRouting();
+        }, 80);
     }
 
     function remountMainIfFocused() {
@@ -34,6 +46,107 @@ window.classroomRtc = (function () {
         if (!main || !main.dataset.focusedPeer) return;
         var stream = remoteStreams[main.dataset.focusedPeer];
         if (stream) attachMain(stream, main.dataset.focusedPeer);
+    }
+
+    function syncLocalMirrors() {
+        var local = getPublishStream();
+        var hasLiveVideo = !!(local && local.getVideoTracks().some(function (t) {
+            return t.readyState === "live" && t.enabled;
+        }));
+        document.querySelectorAll("video[data-rtc-local], video[data-rtc-local-stage]").forEach(function (el) {
+            if (!local) {
+                el.srcObject = null;
+                el.classList.add("is-hidden");
+                return;
+            }
+            if (el.srcObject !== local)
+                el.srcObject = local;
+            el.muted = true;
+            el.volume = 0;
+            el.playsInline = true;
+            if (hasLiveVideo)
+                el.classList.remove("is-hidden");
+            else
+                el.classList.add("is-hidden");
+            tryPlay(el);
+            var thumb = el.closest(".cr-pro-thumb");
+            if (thumb) {
+                if (hasLiveVideo) thumb.classList.add("has-video");
+                else thumb.classList.remove("has-video");
+            }
+        });
+    }
+
+    function addLocalTracks(pc) {
+        var local = getPublishStream();
+        var hasAudio = false;
+        var hasVideo = false;
+        try {
+            pc.getTransceivers().forEach(function (t) {
+                var k = (t.receiver && t.receiver.track && t.receiver.track.kind)
+                    || (t.sender && t.sender.track && t.sender.track.kind);
+                if (k === "audio") hasAudio = true;
+                if (k === "video") hasVideo = true;
+            });
+        } catch (_) { }
+
+        try {
+            if (local && local.getAudioTracks().length) {
+                if (!pc.getSenders().some(function (s) { return s.track && s.track.kind === "audio"; }))
+                    pc.addTrack(local.getAudioTracks()[0], local);
+                hasAudio = true;
+            } else if (!hasAudio) {
+                pc.addTransceiver("audio", { direction: "sendrecv" });
+            }
+        } catch (_) { }
+
+        try {
+            if (local && local.getVideoTracks().length) {
+                if (!pc.getSenders().some(function (s) { return s.track && s.track.kind === "video"; }))
+                    pc.addTrack(local.getVideoTracks()[0], local);
+                hasVideo = true;
+            } else if (!hasVideo) {
+                pc.addTransceiver("video", { direction: "sendrecv" });
+            }
+        } catch (_) { }
+    }
+
+    async function applyLocalTracks(pc) {
+        var local = getPublishStream();
+        if (!local) return { changed: false };
+
+        var changed = false;
+        var kinds = ["audio", "video"];
+        for (var k = 0; k < kinds.length; k++) {
+            var kind = kinds[k];
+            var track = local.getTracks().find(function (t) {
+                return t.kind === kind && t.readyState !== "ended";
+            }) || null;
+
+            var sender = pc.getSenders().find(function (s) {
+                return s.track && s.track.kind === kind;
+            });
+            if (!sender) {
+                var tr = pc.getTransceivers().find(function (t) {
+                    return (t.receiver && t.receiver.track && t.receiver.track.kind === kind)
+                        || (t.sender && t.sender.track && t.sender.track.kind === kind);
+                });
+                if (tr) sender = tr.sender;
+            }
+
+            if (track) {
+                if (sender) {
+                    if (sender.track !== track) {
+                        await sender.replaceTrack(track);
+                        changed = true;
+                    }
+                } else {
+                    pc.addTrack(track, local);
+                    changed = true;
+                }
+            }
+        }
+        return { changed: changed };
     }
 
     function ensurePc(remoteId) {
@@ -45,25 +158,14 @@ window.classroomRtc = (function () {
             pc: pc,
             makingOffer: false,
             ignoreOffer: false,
-            polite: selfPolite
+            polite: isPoliteToward(remoteId),
+            // Suppress negotiationneeded until initial connect strategy is applied.
+            suppressNegotiation: true,
+            chain: Promise.resolve()
         };
         peers[remoteId] = state;
 
-        // Toujours préparer audio+vidéo pour que chaque participant puisse envoyer/recevoir.
-        var local = getPublishStream();
-        try {
-            if (local && local.getAudioTracks().length)
-                pc.addTrack(local.getAudioTracks()[0], local);
-            else
-                pc.addTransceiver("audio", { direction: local ? "sendrecv" : "recvonly" });
-        } catch (_) { }
-
-        try {
-            if (local && local.getVideoTracks().length)
-                pc.addTrack(local.getVideoTracks()[0], local);
-            else
-                pc.addTransceiver("video", { direction: local ? "sendrecv" : "recvonly" });
-        } catch (_) { }
+        addLocalTracks(pc);
 
         pc.onicecandidate = function (ev) {
             if (!ev.candidate) return;
@@ -88,33 +190,51 @@ window.classroomRtc = (function () {
             };
             ev.track.onended = function () {
                 notifyRemoteMedia(remoteId, stream);
+                scheduleRemount(remoteId);
+            };
+            ev.track.onmute = function () {
+                notifyRemoteMedia(remoteId, stream);
             };
         };
 
-        pc.onnegotiationneeded = async function () {
-            try {
-                if (state.makingOffer) return;
-                state.makingOffer = true;
-                await pc.setLocalDescription();
-                if (pc.localDescription)
-                    sendSignal(remoteId, "sdp", JSON.stringify(pc.localDescription));
-            } catch (ex) {
-                console.warn("classroomRtc negotiationneeded", ex);
-            } finally {
-                state.makingOffer = false;
-            }
+        pc.onnegotiationneeded = function () {
+            if (state.suppressNegotiation) return;
+            enqueue(remoteId, async function () {
+                try {
+                    if (state.makingOffer) return;
+                    state.makingOffer = true;
+                    await pc.setLocalDescription();
+                    if (pc.localDescription)
+                        sendSignal(remoteId, "sdp", JSON.stringify(pc.localDescription));
+                } catch (ex) {
+                    console.warn("classroomRtc negotiationneeded", ex);
+                } finally {
+                    state.makingOffer = false;
+                }
+            });
         };
 
         pc.onconnectionstatechange = function () {
             if (pc.connectionState === "failed") {
                 try { pc.restartIce(); } catch (_) { }
             }
+            if (pc.connectionState === "connected")
+                scheduleRemount(remoteId);
             if (dotNetRef && typeof dotNetRef.invokeMethodAsync === "function") {
                 dotNetRef.invokeMethodAsync("OnRtcConnectionState", remoteId, pc.connectionState).catch(function () { });
             }
         };
 
         return state;
+    }
+
+    function enqueue(remoteId, fn) {
+        var state = peers[remoteId];
+        if (!state) return Promise.resolve();
+        state.chain = state.chain.then(fn, fn).catch(function (ex) {
+            console.warn("classroomRtc chain", remoteId, ex);
+        });
+        return state.chain;
     }
 
     function sendSignal(targetId, type, payload) {
@@ -128,11 +248,19 @@ window.classroomRtc = (function () {
             dotNetRef.invokeMethodAsync("OnRtcRemoteMedia", remoteId, false, false).catch(function () { });
             return;
         }
+        // Compter aussi les pistes muted/disabled côté émetteur (readyState live)
+        // pour afficher l'avatar correctement ; hasVideo = track live + enabled.
         var hasVideo = stream.getVideoTracks().some(function (t) {
-            return t.readyState !== "ended" && t.enabled;
+            return t.readyState === "live" && t.enabled && t.muted !== true;
         });
+        // Certains navigateurs mettent muted=true brièvement au démarrage — fallback enabled.
+        if (!hasVideo) {
+            hasVideo = stream.getVideoTracks().some(function (t) {
+                return t.readyState === "live" && t.enabled;
+            });
+        }
         var hasAudio = stream.getAudioTracks().some(function (t) {
-            return t.readyState !== "ended" && t.enabled;
+            return t.readyState === "live" && t.enabled;
         });
         dotNetRef.invokeMethodAsync("OnRtcRemoteMedia", remoteId, hasVideo, hasAudio).catch(function () { });
     }
@@ -150,7 +278,6 @@ window.classroomRtc = (function () {
         return Promise.resolve();
     }
 
-    /** Évite le double son : en galerie le son vient des vignettes ; en grand écran, de la scène. */
     function syncPlaybackRouting() {
         var gallery = isGalleryLayout();
         var main = document.querySelector("video[data-rtc-main]");
@@ -161,7 +288,6 @@ window.classroomRtc = (function () {
         document.querySelectorAll("video[data-rtc-peer]").forEach(function (el) {
             var id = el.getAttribute("data-rtc-peer");
             if (el.srcObject) {
-                // Si la scène diffuse déjà ce pair, mute la vignette pour éviter l'écho local.
                 el.muted = !!(mainActive && id === focused);
                 el.volume = 1;
                 el.playsInline = true;
@@ -184,7 +310,6 @@ window.classroomRtc = (function () {
         if (!remoteId || !stream) return;
         var nodes = document.querySelectorAll('video[data-rtc-peer="' + remoteId + '"]');
         if (!nodes.length) {
-            // DOM pas encore rendu (Blazor) — réessayer.
             scheduleRemount(remoteId);
             return;
         }
@@ -205,6 +330,7 @@ window.classroomRtc = (function () {
                 el.classList.remove("is-hidden");
             else
                 el.classList.add("is-hidden");
+            tryPlay(el);
         });
         syncPlaybackRouting();
     }
@@ -224,18 +350,26 @@ window.classroomRtc = (function () {
     async function handleSdp(remoteId, description) {
         var state = ensurePc(remoteId);
         var pc = state.pc;
+
         var offerCollision = description.type === "offer"
             && (state.makingOffer || pc.signalingState !== "stable");
         state.ignoreOffer = !state.polite && offerCollision;
         if (state.ignoreOffer)
             return;
 
-        await pc.setRemoteDescription(description);
-        if (description.type === "offer") {
-            await pc.setLocalDescription();
-            if (pc.localDescription)
-                sendSignal(remoteId, "sdp", JSON.stringify(pc.localDescription));
+        state.suppressNegotiation = true;
+        try {
+            await pc.setRemoteDescription(description);
+            if (description.type === "offer") {
+                await applyLocalTracks(pc);
+                await pc.setLocalDescription();
+                if (pc.localDescription)
+                    sendSignal(remoteId, "sdp", JSON.stringify(pc.localDescription));
+            }
+        } finally {
+            state.suppressNegotiation = false;
         }
+
         if (remoteStreams[remoteId])
             scheduleRemount(remoteId);
     }
@@ -252,8 +386,10 @@ window.classroomRtc = (function () {
 
     async function makeOffer(remoteId) {
         var state = ensurePc(remoteId);
+        state.suppressNegotiation = true;
         try {
             state.makingOffer = true;
+            await applyLocalTracks(state.pc);
             await state.pc.setLocalDescription();
             if (state.pc.localDescription)
                 sendSignal(remoteId, "sdp", JSON.stringify(state.pc.localDescription));
@@ -263,6 +399,7 @@ window.classroomRtc = (function () {
             return { ok: false, error: ex && ex.message ? ex.message : "offer failed" };
         } finally {
             state.makingOffer = false;
+            state.suppressNegotiation = false;
         }
     }
 
@@ -270,18 +407,40 @@ window.classroomRtc = (function () {
         init: function (ref, opts) {
             dotNetRef = ref;
             opts = opts || {};
-            if (opts.polite === false)
-                selfPolite = false;
+            if (opts.selfConnectionId)
+                selfId = String(opts.selfConnectionId);
             if (opts.iceServers && opts.iceServers.length)
                 iceServers = opts.iceServers;
+            // Recalculate politeness for existing peers if selfId arrived late.
+            Object.keys(peers).forEach(function (id) {
+                peers[id].polite = isPoliteToward(id);
+            });
         },
 
+        setSelfId: function (id) {
+            selfId = id ? String(id) : "";
+            Object.keys(peers).forEach(function (rid) {
+                peers[rid].polite = isPoliteToward(rid);
+            });
+        },
+
+        /**
+         * @param remoteId peer SignalR connection id
+         * @param createOffer true = this client is the joiner and must create the offer
+         */
         connect: async function (remoteId, createOffer) {
             if (!remoteId) return { ok: false };
-            pendingConnect[remoteId] = !!createOffer;
             var state = ensurePc(remoteId);
-            if (createOffer)
-                await makeOffer(remoteId);
+            state.polite = isPoliteToward(remoteId);
+
+            if (createOffer) {
+                await enqueue(remoteId, function () { return makeOffer(remoteId); });
+            } else {
+                // Waiting peer: tracks ready, suppress auto-offer until remote offer arrives.
+                state.suppressNegotiation = false;
+                await applyLocalTracks(state.pc);
+            }
+
             if (remoteStreams[remoteId])
                 scheduleRemount(remoteId);
             return { ok: true };
@@ -292,65 +451,52 @@ window.classroomRtc = (function () {
             try {
                 var data = typeof payload === "string" ? JSON.parse(payload) : payload;
                 if (type === "sdp")
-                    await handleSdp(fromId, data);
+                    await enqueue(fromId, function () { return handleSdp(fromId, data); });
                 else if (type === "ice")
-                    await handleIce(fromId, data);
+                    await enqueue(fromId, function () { return handleIce(fromId, data); });
             } catch (ex) {
                 console.warn("classroomRtc handleSignal", ex);
             }
         },
 
-        /** Publie (ou remplace) audio+vidéo locaux vers TOUS les pairs, puis renégocie. */
+        /**
+         * Update published A/V on all peers.
+         * Renegotiate only if already connected (has remoteDescription) — never collide with join offers.
+         */
         refreshLocalTracks: async function () {
             var local = getPublishStream();
             var ids = Object.keys(peers);
             for (var i = 0; i < ids.length; i++) {
-                var pc = peers[ids[i]].pc;
-                if (!local) continue;
-
-                var kinds = ["audio", "video"];
-                for (var k = 0; k < kinds.length; k++) {
-                    var kind = kinds[k];
-                    var track = local.getTracks().find(function (t) {
-                        return t.kind === kind && t.readyState !== "ended";
-                    }) || null;
-
-                    var sender = null;
-                    var trMatch = pc.getTransceivers().find(function (t) {
-                        var senderKind = t.sender && t.sender.track && t.sender.track.kind;
-                        var recvKind = t.receiver && t.receiver.track && t.receiver.track.kind;
-                        return senderKind === kind || recvKind === kind
-                            || (t.mid == null && !t.sender.track && kind === "audio" && t.direction !== "inactive");
-                    });
-                    if (trMatch) sender = trMatch.sender;
-                    if (!sender) {
-                        sender = pc.getSenders().find(function (s) {
-                            return s.track && s.track.kind === kind;
-                        });
+                var id = ids[i];
+                var state = peers[id];
+                var pc = state.pc;
+                await enqueue(id, async function () {
+                    await applyLocalTracks(pc);
+                    // replaceTrack usually enough; renegotiate only for established links.
+                    if (local && pc.remoteDescription && pc.signalingState === "stable"
+                        && (pc.connectionState === "connected" || pc.iceConnectionState === "connected"
+                            || pc.iceConnectionState === "completed")) {
+                        // Prefer negotiationneeded path: temporarily allow it.
+                        state.suppressNegotiation = false;
+                        try {
+                            // Force a light renegotiation if a transceiver lacks a sender track mid.
+                            var needOffer = pc.getTransceivers().some(function (t) {
+                                return t.direction !== "inactive" && t.sender && !t.sender.track
+                                    && local.getTracks().some(function (tr) {
+                                        return tr.kind === (t.receiver && t.receiver.track && t.receiver.track.kind);
+                                    });
+                            });
+                            if (needOffer)
+                                await makeOffer(id);
+                        } catch (_) { }
                     }
-                    if (!sender) {
-                        sender = pc.getSenders().find(function (s) { return !s.track; });
-                    }
-
-                    if (track) {
-                        if (sender)
-                            await sender.replaceTrack(track);
-                        else
-                            pc.addTrack(track, local);
-                    }
-                }
+                });
             }
-
-            // Forcer une nouvelle offre pour propager micro/caméra à tous.
-            for (var j = 0; j < ids.length; j++) {
-                if (peers[ids[j]].pc.signalingState === "stable")
-                    await makeOffer(ids[j]);
-            }
+            syncLocalMirrors();
             syncPlaybackRouting();
             return { ok: true, peers: ids.length, hasLocal: !!local };
         },
 
-        /** Débloque la lecture audio distante (politique autoplay du navigateur). */
         unlockAudio: async function () {
             syncPlaybackRouting();
             var blocked = false;
@@ -388,48 +534,6 @@ window.classroomRtc = (function () {
 
         remountAll: function () {
             scheduleRemount(null);
-            // Miroir local pour la galerie (toujours muet — pas d'écho).
-            var local = getPublishStream();
-            var hasLiveVideo = !!(local && local.getVideoTracks().some(function (t) {
-                return t.readyState === "live" && t.enabled;
-            }));
-            document.querySelectorAll("video[data-rtc-local]").forEach(function (el) {
-                if (!local) {
-                    el.srcObject = null;
-                    el.classList.add("is-hidden");
-                    return;
-                }
-                if (el.srcObject !== local)
-                    el.srcObject = local;
-                el.muted = true;
-                el.volume = 0;
-                el.playsInline = true;
-                // Ne pas forcer l'affichage si la caméra est coupée (évite le rectangle noir).
-                if (hasLiveVideo)
-                    el.classList.remove("is-hidden");
-                else
-                    el.classList.add("is-hidden");
-                tryPlay(el);
-            });
-            // Marquer les vignettes distantes avec/sans vidéo active.
-            document.querySelectorAll("video[data-rtc-peer]").forEach(function (el) {
-                var id = el.getAttribute("data-rtc-peer");
-                var stream = id ? remoteStreams[id] : null;
-                var live = !!(stream && stream.getVideoTracks().some(function (t) {
-                    return t.readyState === "live" && t.enabled;
-                }));
-                var thumb = el.closest(".cr-pro-thumb");
-                if (thumb) {
-                    if (live) thumb.classList.add("has-video");
-                    else thumb.classList.remove("has-video");
-                }
-                if (stream && el.srcObject !== stream)
-                    el.srcObject = stream;
-                if (live)
-                    el.classList.remove("is-hidden");
-                tryPlay(el);
-            });
-            syncPlaybackRouting();
         },
 
         hasRemote: function (remoteId) {
@@ -443,7 +547,6 @@ window.classroomRtc = (function () {
                 delete peers[remoteId];
             }
             delete remoteStreams[remoteId];
-            delete pendingConnect[remoteId];
             document.querySelectorAll('video[data-rtc-peer="' + remoteId + '"]').forEach(function (el) {
                 el.srcObject = null;
             });
@@ -455,7 +558,6 @@ window.classroomRtc = (function () {
             });
             peers = {};
             remoteStreams = {};
-            pendingConnect = {};
             var main = document.querySelector("video[data-rtc-main]");
             if (main) main.srcObject = null;
             document.querySelectorAll("video[data-rtc-peer]").forEach(function (el) {
