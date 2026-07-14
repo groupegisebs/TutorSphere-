@@ -67,7 +67,7 @@
     <div class="cr-pro-body @(_panelOpen ? "is-panel-open" : null) @(_panelCollapsed ? "is-panel-collapsed" : null)">
         <div class="cr-pro-panel-scrim" @onclick="() => _panelOpen = false"></div>
 
-        <div class="cr-pro-center @(_wbCollapsed && !_wbForeground ? "is-wb-collapsed" : null) @(_wbForeground ? "is-wb-foreground" : null)">
+        <div class="cr-pro-center @(_wbCollapsed ? "is-wb-collapsed" : "is-wb-foreground")">
             @if (_sharing)
             {
                 <div class="cr-pro-sharebar">
@@ -526,7 +526,7 @@
         _participants.Where(x => x.Role != "Tuteur");
 
     private bool ShowAllPanelistTiles =>
-        _wbForeground || _viewMode is "gallery" or "mosaic";
+        !_wbCollapsed || _viewMode is "gallery" or "mosaic";
 
     /// <summary>
     /// Galerie / tableau en avant : tous les panélistes. Autres vues : présents d'abord.
@@ -597,7 +597,7 @@
     private void ToggleWbCollapsed()
     {
         _wbCollapsed = !_wbCollapsed;
-        // Ouvrir le tableau = le mettre en avant (local) ; le fermer quitte ce mode.
+        // Ouvrir tableau/document = panélistes à gauche + board en grand (local).
         _wbForeground = !_wbCollapsed;
         _needRtcRemount = true;
     }
@@ -1403,9 +1403,17 @@
 
     private void ToggleWhiteboardForeground()
     {
-        _wbForeground = !_wbForeground;
-        if (_wbForeground)
+        // En avant ↔ galerie : pas de tableau « ouvert en bas » avec panélistes encore en grand.
+        if (!_wbCollapsed)
+        {
+            _wbCollapsed = true;
+            _wbForeground = false;
+        }
+        else
+        {
             _wbCollapsed = false;
+            _wbForeground = true;
+        }
         _showBgMenu = false;
         _needRtcRemount = true;
     }
