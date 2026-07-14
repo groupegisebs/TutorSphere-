@@ -13,448 +13,416 @@
 
 <PageTitle>@L["Classroom_Title"] – TutorSphere</PageTitle>
 
-<div class="cr-page @(_wbForeground ? "cr-page--wb-front" : null)">
-
-    <!-- ── Lesson header (light) ── -->
-    <div class="cr-lesson-header">
-        <div class="cr-lesson-meta">
-            <div class="cr-lesson-icon">
-                <i class="bi bi-mortarboard-fill"></i>
+<div class="cr-pro @(_wbCollapsed ? "cr-pro--wb-min" : null)">
+    <header class="cr-pro-header">
+        <div class="cr-pro-header-left">
+            <div style="min-width:0">
+                <h1 class="cr-pro-course-title">@_lesson.Title</h1>
+                <div class="cr-pro-meta-row">
+                    @if (!string.IsNullOrWhiteSpace(_lesson.Subject))
+                    {
+                        <span class="cr-pro-chip"><i class="bi bi-journal-bookmark"></i>@_lesson.Subject</span>
+                    }
+                    <span class="cr-pro-chip"><i class="bi bi-person-badge"></i>@TutorDisplayName</span>
+                    <span class="cr-pro-chip cr-pro-chip--live">
+                        <i class="bi bi-circle-fill"></i>@L["Classroom_Live"]
+                    </span>
+                </div>
             </div>
-            <div>
-                <div class="cr-lesson-title">@_lesson.Title</div>
-                <div class="cr-lesson-sub">@_lesson.Subject</div>
-            </div>
-            <span class="cr-badge-live">
-                <i class="bi bi-circle-fill" style="font-size:0.45rem;vertical-align:middle;"></i>
-                @L["Classroom_Live"]
-            </span>
         </div>
-        <div class="cr-lesson-actions">
-            <a href="/tutor/dashboard" class="cr-school-link">
-                @L["School_ViewPublic"] <i class="bi bi-box-arrow-up-right" style="font-size:0.75rem;"></i>
-            </a>
-            <span class="cr-elapsed-badge">
-                <i class="bi bi-clock" style="font-size:0.75rem;margin-right:3px;"></i>
-                @FormatElapsed(_elapsedSeconds)
-            </span>
-            <button class="cr-end-btn" @onclick="EndSession">
-                <i class="bi bi-stop-fill me-1"></i>@L["Classroom_EndSession"]
+
+        <div class="cr-pro-stats">
+            <div class="cr-pro-stat">
+                <span class="cr-pro-stat-label">@L["ClassroomPro_Duration"]</span>
+                <span class="cr-pro-stat-value"><i class="bi bi-clock"></i>@FormatElapsed(_elapsedSeconds)</span>
+            </div>
+            <div class="cr-pro-stat">
+                <span class="cr-pro-stat-label">@L["ClassroomPro_Network"]</span>
+                <span class="cr-pro-stat-value">
+                    <span class="cr-pro-net-bars is-good" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
+                    @L["ClassroomPro_NetworkExcellent"]
+                </span>
+            </div>
+            <div class="cr-pro-stat">
+                <span class="cr-pro-stat-label">@L["ClassroomPro_Participants"]</span>
+                <span class="cr-pro-stat-value"><i class="bi bi-people"></i>@_participants.Count</span>
+            </div>
+        </div>
+
+        <div class="cr-pro-header-right">
+            <a class="cr-pro-link" href="/tutor/school">@L["School_ViewPublic"] <i class="bi bi-box-arrow-up-right"></i></a>
+            <button type="button" class="cr-pro-icon-btn" title='@L["Nav_Settings"]' @onclick='() => PushToast(L["ClassroomPro_SettingsSoon"])'>
+                <i class="bi bi-gear"></i>
+            </button>
+            <button type="button" class="cr-pro-icon-btn" title='@L["Nav_Notifications"]' @onclick='() => PushToast(L["ClassroomPro_NoNotifications"])'>
+                <i class="bi bi-bell"></i>
+            </button>
+            <span class="cr-pro-avatar" title="@TutorDisplayName">@TutorInitials</span>
+            <button type="button" class="cr-pro-end-btn" @onclick="EndSession">
+                <i class="bi bi-stop-fill"></i>@L["Classroom_EndSession"]
             </button>
         </div>
-    </div>
+    </header>
 
-    <!-- ── Video gallery (dark) ── -->
-    <div class="cr-video-section">
-        <div class="cr-gallery-header">
-            <span class="cr-gallery-label">
-                <i class="bi bi-camera-video-fill me-1"></i>@L["Classroom_Title"]
-            </span>
-            <button class="cr-gallery-mode-btn">
-                <i class="bi bi-grid me-1"></i>@L["Classroom_Gallery"]
-            </button>
-        </div>
-        <div class="cr-gallery">
-            <!-- Grand cadre : soi ou élève focalisé (flux WebRTC distant) -->
-            <div class="cr-tile-main">
-                <div class="cr-tile-bg cr-tile-bg--tutor">
+    <div class="cr-pro-body @(_panelOpen ? "is-panel-open" : null) @(_panelCollapsed ? "is-panel-collapsed" : null)">
+        <div class="cr-pro-panel-scrim" @onclick="() => _panelOpen = false"></div>
+
+        <div class="cr-pro-center @(_wbCollapsed ? "is-wb-collapsed" : null)">
+            @if (_sharing)
+            {
+                <div class="cr-pro-sharebar">
+                    <i class="bi bi-broadcast"></i>
+                    <span>@L["ClassroomPro_SharingScreen"]</span>
+                    <button type="button" class="ghost" @onclick='() => PushToast(L["ClassroomPro_PauseSoon"])'>@L["ClassroomPro_Pause"]</button>
+                    <button type="button" class="ghost" @onclick="ToggleWhiteboardForeground">@L["ClassroomPro_Annotate"]</button>
+                    <button type="button" class="stop" @onclick="ToggleShare">@L["ClassroomPro_StopShare"]</button>
+                </div>
+            }
+
+            <section class="cr-pro-video @ViewModeClass @(_viewFullscreen ? "is-fullscreen" : null)">
+                <div class="cr-pro-video-top">
+                    <button type="button" class="cr-pro-view-btn" @onclick="() => _showViewMenu = !_showViewMenu">
+                        <i class="bi bi-grid-3x3-gap"></i>@ViewModeLabel
+                    </button>
+                </div>
+                @if (_showViewMenu)
+                {
+                    <div class="cr-pro-view-menu">
+                        <button type="button" class="@(_viewMode == "speaker" ? "active" : null)" @onclick='() => SetViewMode("speaker")'>@L["ClassroomPro_ViewSpeaker"]</button>
+                        <button type="button" class="@(_viewMode == "gallery" ? "active" : null)" @onclick='() => SetViewMode("gallery")'>@L["ClassroomPro_ViewGallery"]</button>
+                        <button type="button" class="@(_viewMode == "presenter" ? "active" : null)" @onclick='() => SetViewMode("presenter")'>@L["ClassroomPro_ViewPresenter"]</button>
+                        <button type="button" class="@(_viewMode == "mosaic" ? "active" : null)" @onclick='() => SetViewMode("mosaic")'>@L["ClassroomPro_ViewMosaic"]</button>
+                        <button type="button" class="@(_viewMode == "vertical" ? "active" : null)" @onclick='() => SetViewMode("vertical")'>@L["ClassroomPro_ViewVertical"]</button>
+                        <button type="button" @onclick="ToggleFullscreenView">@L["ClassroomPro_ViewFullscreen"]</button>
+                    </div>
+                }
+
+                <div class="cr-pro-stage">
+                    <div class="cr-pro-stage-bg"></div>
                     <video data-rtc-main
-                           class="cr-tile-video @(_showRemoteMain ? "" : "is-hidden")"
-                           autoplay
-                           playsinline></video>
+                           class="@(_showRemoteMain ? "" : "is-hidden")"
+                           autoplay playsinline></video>
                     <video @ref="_localVideo"
-                           class="cr-tile-video @(_showLocalVideo && !_showRemoteMain ? "" : "is-hidden")"
-                           autoplay
-                           playsinline
-                           muted></video>
+                           class="@(_showLocalVideo && !_showRemoteMain ? "" : "is-hidden")"
+                           autoplay playsinline muted></video>
                     @if (!_showLocalVideo && !_showRemoteMain)
                     {
-                        <i class="bi bi-person-fill cr-tile-placeholder-icon"></i>
-                    }
-                    @if (_sharing && !_showRemoteMain)
-                    {
-                        <span class="cr-share-badge">
-                            <i class="bi @(_sharingWhiteboard ? "bi-easel" : "bi-display")"></i>
-                            @(_sharingWhiteboard ? "Tableau" : "Écran")
-                        </span>
+                        <div class="cr-pro-placeholder"><i class="bi bi-person-fill"></i></div>
                     }
                     @if (!string.IsNullOrEmpty(_mediaError) && !_showRemoteMain)
                     {
-                        <div class="cr-media-error" role="alert">
-                            <i class="bi bi-exclamation-triangle-fill" aria-hidden="true"></i>
+                        <div class="cr-pro-media-error" role="alert">
+                            <i class="bi bi-exclamation-triangle-fill"></i>
                             <span>@_mediaError</span>
                         </div>
                     }
+                    <div class="cr-pro-stage-label">
+                        @if (_showRemoteMain && _focusedPeer is not null)
+                        {
+                            <span class="cr-pro-stage-av" style="background:@_focusedPeer.Color">@_focusedPeer.Initials</span>
+                            <span>@_focusedPeer.Name</span>
+                            <i class="bi @(_focusedPeer.MicOn ? "bi-mic-fill" : "bi-mic-mute-fill")"></i>
+                        }
+                        else
+                        {
+                            <span class="cr-pro-stage-av">@TutorInitials</span>
+                            <span>@TutorDisplayName</span>
+                            <i class="bi @(_micOn ? "bi-mic-fill" : "bi-mic-mute-fill")"></i>
+                        }
+                    </div>
                 </div>
-                <div class="cr-tile-label">
-                    @if (_showRemoteMain && _focusedPeer is not null)
+
+                <div class="cr-pro-strip">
+                    @foreach (var p in VisibleStudentTiles)
                     {
-                        <div class="cr-tile-av" style="background:@_focusedPeer.Color;">@_focusedPeer.Initials</div>
-                        <span class="cr-tile-name">@_focusedPeer.Name</span>
-                        <span class="cr-tile-media-icons">
-                            <i class="bi @(_focusedPeer.MicOn ? "bi-mic-fill" : "bi-mic-mute-fill") @(_focusedPeer.MicOn ? "" : "cr-icon-off")"></i>
-                            <i class="bi @(_focusedPeer.CamOn || _focusedPeer.HasRemoteVideo ? "bi-camera-video-fill" : "bi-camera-video-off-fill") @(_focusedPeer.CamOn || _focusedPeer.HasRemoteVideo ? "" : "cr-icon-off")"></i>
-                        </span>
-                    }
-                    else
-                    {
-                        <div class="cr-tile-av" style="background:#5831E0;">@TutorInitials</div>
-                        <span class="cr-tile-name">@TutorDisplayName</span>
-                        <span class="cr-tile-you">Vous</span>
-                        <span class="cr-tile-media-icons">
-                            <i class="bi @(_micOn ? "bi-mic-fill" : "bi-mic-mute-fill") @(_micOn ? "" : "cr-icon-off")"></i>
-                            <i class="bi @(_camOn || _sharing ? "bi-camera-video-fill" : "bi-camera-video-off-fill") @(_camOn || _sharing ? "" : "cr-icon-off")"></i>
-                        </span>
-                    }
-                </div>
-            </div>
-            <div class="cr-tiles-col">
-                @foreach (var p in _participants.Where(x => x.Role != "Tuteur"))
-                {
-                    <div class="cr-tile-student" @onclick="() => FocusPeer(p)" title="@p.Name">
-                        <div class="cr-tile-bg cr-tile-bg--student">
+                        <div class="cr-pro-thumb @(p.IsSpeaking ? "is-speaking" : null)" @onclick="() => FocusPeer(p)" title="@p.Name">
                             @if (!string.IsNullOrEmpty(p.ConnectionId))
                             {
                                 <video data-rtc-peer="@p.ConnectionId"
-                                       class="cr-tile-video @(p.HasRemoteVideo && !_showRemoteMain ? "" : "is-hidden")"
-                                       autoplay
-                                       playsinline></video>
+                                       class="@(p.HasRemoteVideo && !_showRemoteMain ? "" : "is-hidden")"
+                                       autoplay playsinline></video>
                             }
                             @if (!p.HasRemoteVideo || _showRemoteMain || string.IsNullOrEmpty(p.ConnectionId))
                             {
-                                <i class="bi bi-person-fill" style="font-size:1.5rem;color:rgba(255,255,255,0.2);"></i>
+                                <div class="cr-pro-placeholder" style="font-size:1.6rem"><i class="bi bi-person-fill"></i></div>
                             }
                             @if (p.IsOnline)
                             {
-                                <span class="cr-peer-online" title="@L["Classroom_Online"]"></span>
+                                <span class="cr-pro-thumb-online" title='@L["Classroom_Online"]'></span>
                             }
+                            <div class="cr-pro-thumb-label">
+                                <span>@p.Name</span>
+                                <span>
+                                    <i class="bi @(p.MicOn ? "bi-mic-fill" : "bi-mic-mute-fill")"></i>
+                                    @if (p.HandRaised) { <i class="bi bi-hand-index-thumb-fill" style="color:#eab308"></i> }
+                                </span>
+                            </div>
                         </div>
-                        <div class="cr-tile-label cr-tile-label-sm">
-                            <div class="cr-tile-av cr-tile-av-sm" style="background:@p.Color;">@p.Initials</div>
-                            <span class="cr-tile-name">@p.Name</span>
-                            <span class="cr-tile-media-icons">
-                                <i class="bi @(p.MicOn ? "bi-mic-fill" : "bi-mic-mute-fill") @(p.MicOn ? "" : "cr-icon-off")"></i>
-                                <i class="bi @(p.CamOn || p.HasRemoteVideo ? "bi-camera-video-fill" : "bi-camera-video-off-fill") @(p.CamOn || p.HasRemoteVideo ? "" : "cr-icon-off")"></i>
-                            </span>
-                        </div>
-                    </div>
-                }
-            </div>
-        </div>
-    </div>
-
-    <!-- ── Work area: whiteboard (left) + chat panel (right) ── -->
-    <div class="cr-work-area">
-
-        <!-- Whiteboard section -->
-        <div class="cr-wb-section">
-            <!-- Toolbar -->
-            <div class="cr-wb-toolbar">
-                <div class="cr-wb-tools">
-                    <button class="cr-wb-tool @(_wbTool == "select" ? "active" : "")" @onclick='() => SetWbTool("select")' title="@L["Classroom_Select"]">
-                        <i class="bi bi-cursor-fill"></i>
-                    </button>
-                    <button class="cr-wb-tool @(_wbTool == "pen" ? "active" : "")" @onclick='() => SetWbTool("pen")' title="@L["Classroom_Pen"]">
-                        <i class="bi bi-pencil-fill"></i>
-                    </button>
-                    <button class="cr-wb-tool @(_wbTool == "eraser" ? "active" : "")" @onclick='() => SetWbTool("eraser")' title="@L["Classroom_Eraser"]">
-                        <i class="bi bi-eraser-fill"></i>
-                    </button>
-                    <button class="cr-wb-tool @(_wbTool == "rect" ? "active" : "")" @onclick='() => SetWbTool("rect")' title="Rectangle">
-                        <i class="bi bi-square"></i>
-                    </button>
-                    <button class="cr-wb-tool @(_wbTool == "text" ? "active" : "")" @onclick='() => SetWbTool("text")' title="Texte">
-                        <i class="bi bi-fonts"></i>
-                    </button>
-                    <button class="cr-wb-tool @(_wbTool == "line" ? "active" : "")" @onclick='() => SetWbTool("line")' title="Ligne">
-                        <i class="bi bi-slash-lg"></i>
-                    </button>
-                    <button class="cr-wb-tool" title="Image"><i class="bi bi-image"></i></button>
-                    <button class="cr-wb-tool" title="Emoji"><i class="bi bi-emoji-smile"></i></button>
-                    <button class="cr-wb-tool" title="Plus"><i class="bi bi-three-dots"></i></button>
-                </div>
-                <div class="cr-wb-sep"></div>
-                <div class="cr-wb-colors">
-                    @foreach (var clr in _wbColors)
+                    }
+                    @if (HiddenStudentCount > 0)
                     {
-                        <button class="cr-wb-color @(_wbColor == clr ? "active" : "")"
-                                style="background:@clr;"
-                                @onclick='() => SetWbColor(clr)'
-                                title="@clr"></button>
+                        <button type="button" class="cr-pro-thumb cr-pro-thumb--more" @onclick='() => OpenSide("Participants")'>
+                            +@HiddenStudentCount @L["ClassroomPro_MoreStudents"]
+                        </button>
                     }
                 </div>
-                <div class="cr-wb-sep"></div>
-                <button class="cr-wb-size-btn @(_wbSize == "thin" ? "active" : "")" @onclick='() => SetWbSize("thin")' title="Fin">
-                    <span class="cr-size-dot" style="width:3px;height:3px;"></span>
-                </button>
-                <button class="cr-wb-size-btn @(_wbSize == "medium" ? "active" : "")" @onclick='() => SetWbSize("medium")' title="Moyen">
-                    <span class="cr-size-dot" style="width:7px;height:7px;"></span>
-                </button>
-                <button class="cr-wb-size-btn @(_wbSize == "thick" ? "active" : "")" @onclick='() => SetWbSize("thick")' title="Épais">
-                    <span class="cr-size-dot" style="width:12px;height:12px;"></span>
-                </button>
-                <div class="cr-wb-sep"></div>
-                <button class="cr-wb-tool" @onclick="ClearWhiteboard" title="@L["Classroom_ClearAll"]">
-                    <i class="bi bi-trash3"></i>
-                </button>
-            </div>
+            </section>
 
-            <!-- Canvas -->
-            <div class="cr-canvas-wrapper">
-                @if (!string.IsNullOrEmpty(_boardDocName))
-                {
-                    <div class="cr-board-doc-badge">
-                        <i class="bi bi-image me-1"></i>@_boardDocName
-                        <span class="text-muted"> — @L["Classroom_AnnotateHint"]</span>
-                    </div>
-                }
-                <canvas @ref="_canvasRef" class="cr-canvas"></canvas>
-            </div>
-
-            <!-- Footer: page nav + zoom -->
-            <div class="cr-wb-footer">
-                <button class="cr-wb-foot-btn" @onclick="PrevPage" title="Page précédente">
-                    <i class="bi bi-chevron-left"></i>
-                </button>
-                <span class="cr-wb-page-info">@_wbPage / @_wbTotalPages</span>
-                <button class="cr-wb-foot-btn" @onclick="NextPage" title="Page suivante">
-                    <i class="bi bi-chevron-right"></i>
-                </button>
-                <div style="flex:1;"></div>
-                <button class="cr-wb-foot-btn" @onclick="ZoomOut" title="Zoom arrière">−</button>
-                <span class="cr-wb-zoom-label">@_wbZoom%</span>
-                <button class="cr-wb-foot-btn" @onclick="ZoomIn" title="Zoom avant">+</button>
-                <button class="cr-wb-foot-btn ms-2 @(_wbForeground ? "active" : "")"
-                        @onclick="ToggleWhiteboardForeground"
-                        title="@L["Classroom_WbForeground"]">
-                    <i class="bi @(_wbForeground ? "bi-fullscreen-exit" : "bi-fullscreen")"></i>
-                </button>
-            </div>
-        </div>
-
-        <!-- Right panel: Chat / Participants / Documents -->
-        <div class="cr-panel">
-            <div class="cr-panel-tabs">
-                <button class="cr-panel-tab @(_activeTab == "Chat" ? "active" : "")" @onclick='() => _activeTab = "Chat"'>
-                    @L["Classroom_Chat"]
-                </button>
-                <button class="cr-panel-tab @(_activeTab == "Participants" ? "active" : "")" @onclick='() => _activeTab = "Participants"'>
-                    @L["Classroom_Participants"] <span class="cr-tab-count">@_participants.Count</span>
-                </button>
-                <button class="cr-panel-tab @(_activeTab == "Documents" ? "active" : "")" @onclick='() => _activeTab = "Documents"'>
-                    @L["Classroom_Documents"]
-                </button>
-            </div>
-
-            <div class="cr-panel-body">
-                @if (_activeTab == "Chat")
-                {
-                    <div class="cr-chat-messages" id="cr-chat-scroll">
-                        <div class="cr-chat-date-sep">Aujourd'hui</div>
-                        @foreach (var msg in _chatMessages)
-                        {
-                            @if (msg.IsMe)
-                            {
-                                <div class="cr-msg-row cr-msg-me">
-                                    <div class="cr-msg-bubble cr-msg-bubble-me">@msg.Text</div>
-                                    <div class="cr-msg-time-me">@msg.Time</div>
-                                </div>
-                            }
-                            else
-                            {
-                                <div class="cr-msg-row cr-msg-them">
-                                    <div class="cr-msg-av-sm" style="background:@GetSenderColor(msg.Sender);">
-                                        @GetSenderInitials(msg.Sender)
-                                    </div>
-                                    <div class="cr-msg-body">
-                                        <div class="cr-msg-header">
-                                            <span class="cr-msg-sender">@msg.Sender</span>
-                                            <span class="cr-msg-time">@msg.Time</span>
-                                        </div>
-                                        <div class="cr-msg-bubble cr-msg-bubble-them">@msg.Text</div>
-                                    </div>
-                                </div>
-                            }
-                        }
-                    </div>
-                    <div class="cr-chat-input-bar">
-                        <button class="cr-chat-icon-btn" title="Emoji">
-                            <i class="bi bi-emoji-smile"></i>
-                        </button>
-                        <input class="cr-chat-input"
-                               placeholder="@L["Classroom_TypeMessage"]"
-                               @bind="_newMessage"
-                               @bind:event="oninput"
-                               @onkeydown="OnChatKeyDown" />
-                        <button class="cr-chat-icon-btn" title="Pièce jointe">
-                            <i class="bi bi-paperclip"></i>
-                        </button>
-                        <button class="cr-chat-send-btn" @onclick="SendMessage" title="Envoyer">
-                            <i class="bi bi-send-fill"></i>
+            <div class="cr-pro-dock-wrap">
+                <div class="cr-pro-dock" role="toolbar" aria-label="@L["Classroom_Title"]">
+                    <button type="button" class="cr-pro-dock-btn @(!_micOn ? "is-off" : null)" @onclick="ToggleMic" title='@L["Classroom_Mic"]'>
+                        <i class="bi @(_micOn ? "bi-mic-fill" : "bi-mic-mute-fill")"></i>
+                    </button>
+                    <button type="button" class="cr-pro-dock-btn @(!_camOn ? "is-off" : null)" @onclick="ToggleCam" title='@L["Classroom_Camera"]'>
+                        <i class="bi @(_camOn ? "bi-camera-video-fill" : "bi-camera-video-off-fill")"></i>
+                    </button>
+                    <button type="button" class="cr-pro-dock-btn @(_sharing && !_sharingWhiteboard ? "is-on" : null)" @onclick="ToggleShare" title='@L["Classroom_ShareScreen"]'>
+                        <i class="bi bi-display"></i>
+                    </button>
+                    <button type="button" class="cr-pro-dock-btn @(_handRaised ? "is-on" : null)" @onclick="ToggleHand" title='@L["ClassroomPro_RaiseHand"]'>
+                        <i class="bi bi-hand-index-thumb"></i>
+                    </button>
+                    <button type="button" class="cr-pro-dock-btn" @onclick='() => OpenSide("Chat")' title='@L["Classroom_Chat"]'>
+                        <i class="bi bi-chat-dots-fill"></i>
+                    </button>
+                    <button type="button" class="cr-pro-dock-btn" @onclick='() => OpenSide("Participants")' title='@L["Classroom_Participants"]'>
+                        <i class="bi bi-people-fill"></i>
+                        <span class="cr-pro-dock-badge">@_participants.Count</span>
+                    </button>
+                    <button type="button" class="cr-pro-dock-btn @(_recording ? "is-rec" : null)" @onclick="ToggleRecording" title='@L["Classroom_Record"]'>
+                        <i class="bi @(_recording ? "bi-stop-circle-fill" : "bi-record-circle")"></i>
+                    </button>
+                    <button type="button" class="cr-pro-dock-btn @(!_wbCollapsed ? "is-on" : null)" @onclick="ToggleWbCollapsed" title='@L["Classroom_Whiteboard"]'>
+                        <i class="bi bi-easel"></i>
+                    </button>
+                    <button type="button" class="cr-pro-dock-btn" @onclick='() => OpenSide("Documents")' title='@L["Classroom_Documents"]'>
+                        <i class="bi bi-folder2-open"></i>
+                    </button>
+                    <div style="position:relative">
+                        <button type="button" class="cr-pro-dock-btn @(_showBgMenu ? "is-on" : null)" @onclick="() => _showBgMenu = !_showBgMenu" title='@L["Classroom_Background"]'>
+                            <i class="bi bi-magic"></i>
                         </button>
                     </div>
-                }
-                else if (_activeTab == "Participants")
-                {
-                    <div class="cr-participants-list">
-                        @foreach (var p in _participants)
-                        {
-                            <div class="cr-participant-row">
-                                <div class="cr-p-avatar" style="background:@p.Color;">@p.Initials</div>
-                                <div class="cr-p-info">
-                                    <div class="cr-p-name">@p.Name</div>
-                                    <div class="cr-p-role">@p.Role</div>
-                                </div>
-                                <div class="cr-p-media">
-                                    <span class="@(p.MicOn ? "cr-p-icon-on" : "cr-p-icon-off")">
-                                        <i class="bi @(p.MicOn ? "bi-mic-fill" : "bi-mic-mute-fill")"></i>
-                                    </span>
-                                    <span class="@(p.CamOn ? "cr-p-icon-on" : "cr-p-icon-off")">
-                                        <i class="bi @(p.CamOn ? "bi-camera-video-fill" : "bi-camera-video-off-fill")"></i>
-                                    </span>
-                                </div>
-                            </div>
-                        }
-                    </div>
-                }
-                else if (_activeTab == "Documents")
-                {
-                    <div class="cr-docs-list">
-                        <label class="cr-upload-btn">
-                            <InputFile OnChange="OnDocSelected" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.png,.jpg,.jpeg" />
-                            <i class="bi bi-upload me-1"></i>@L["Classroom_Share"]
-                        </label>
-                        @if (_docsLoading)
-                        {
-                            <div class="text-center text-muted py-3"><span class="spinner-border spinner-border-sm"></span></div>
-                        }
-                        else if (_documents.Count == 0)
-                        {
-                            <p class="text-muted small px-2">Aucun document lié à cette séance.</p>
-                        }
-                        @foreach (var doc in _documents)
-                        {
-                            <div class="cr-doc-row">
-                                <i class="bi @(doc.IsImage ? "bi-file-earmark-image" : "bi-file-earmark-text") cr-doc-icon"></i>
-                                <div class="cr-doc-meta">
-                                    <div class="cr-doc-name">@doc.Name</div>
-                                    <div class="cr-doc-size">@doc.Size</div>
-                                </div>
-                                @if (doc.IsImage && doc.Id.HasValue)
-                                {
-                                    <button type="button" class="cr-doc-dl-btn" title="@L["Classroom_AnnotateDoc"]"
-                                            @onclick="() => OpenDocumentOnBoardAsync(doc)">
-                                        <i class="bi bi-pencil-square"></i>
-                                    </button>
-                                }
-                                @if (!string.IsNullOrEmpty(doc.Url))
-                                {
-                                    <a class="cr-doc-dl-btn" href="@doc.Url" target="_blank" rel="noopener" title="@L["Common_Download"]">
-                                        <i class="bi bi-download"></i>
-                                    </a>
-                                }
-                            </div>
-                        }
-                    </div>
-                }
+                    <button type="button" class="cr-pro-dock-btn" @onclick="() => _showMoreMenu = !_showMoreMenu" title='@L["ClassroomPro_More"]'>
+                        <i class="bi bi-three-dots"></i>
+                    </button>
+                    <span class="cr-pro-dock-sep"></span>
+                    <button type="button" class="cr-pro-dock-btn cr-pro-dock-btn--quit" @onclick="GoBack" title='@L["Classroom_Leave"]'>
+                        <i class="bi bi-telephone-x-fill"></i>
+                    </button>
+                </div>
             </div>
-        </div>
-    </div>
 
-    <!-- ── Bottom toolbar (dark) ── -->
-    <div class="cr-toolbar">
-        <div class="cr-tool-item">
-            <button class="cr-tool-btn @(_micOn ? "" : "cr-tool-btn--muted")" @onclick="ToggleMic"
-                    title="@L["Classroom_Mic"]">
-                <i class="bi @(_micOn ? "bi-mic-fill" : "bi-mic-mute-fill")"></i>
-            </button>
-            <span class="cr-tool-lbl">@L["Classroom_Mic"]</span>
-        </div>
-        <div class="cr-tool-item">
-            <button class="cr-tool-btn @(_camOn ? "" : "cr-tool-btn--muted")" @onclick="ToggleCam"
-                    title="@(_cameraAvailable ? L["Classroom_Camera"].Value : L["Classroom_NoCamera"].Value)">
-                <i class="bi @(_camOn ? "bi-camera-video-fill" : "bi-camera-video-off-fill")"></i>
-            </button>
-            <span class="cr-tool-lbl">@L["Classroom_Camera"]</span>
-        </div>
-        <div class="cr-tool-item cr-tool-item--menu">
-            <button class="cr-tool-btn @(_bgMode != "none" ? "cr-tool-btn--active" : "")"
-                    @onclick="() => _showBgMenu = !_showBgMenu"
-                    title="@L["Classroom_Background"]">
-                <i class="bi bi-person-bounding-box"></i>
-            </button>
-            <span class="cr-tool-lbl">@L["Classroom_Background"]</span>
             @if (_showBgMenu)
             {
-                <div class="cr-bg-menu" @onclick:stopPropagation="true">
-                    <div class="cr-bg-menu-title">@L["Classroom_Background"]</div>
-                    <button type="button" class="cr-bg-opt @(_bgMode == "none" ? "active" : "")" @onclick='() => SetBackgroundAsync("none")'>
-                        <i class="bi bi-slash-circle"></i> @L["Classroom_BgNone"]
-                    </button>
-                    <button type="button" class="cr-bg-opt @(_bgMode == "blur" ? "active" : "")" @onclick='() => SetBackgroundAsync("blur")'>
-                        <i class="bi bi-droplet-half"></i> @L["Classroom_BgBlur"]
-                    </button>
-                    <button type="button" class="cr-bg-opt @(_bgPreset == "office" ? "active" : "")" @onclick='() => SetBackgroundAsync("image", "office")'>
-                        <i class="bi bi-building"></i> @L["Classroom_BgOffice"]
-                    </button>
-                    <button type="button" class="cr-bg-opt @(_bgPreset == "library" ? "active" : "")" @onclick='() => SetBackgroundAsync("image", "library")'>
-                        <i class="bi bi-book"></i> @L["Classroom_BgLibrary"]
-                    </button>
-                    <button type="button" class="cr-bg-opt @(_bgPreset == "classroom" ? "active" : "")" @onclick='() => SetBackgroundAsync("image", "classroom")'>
-                        <i class="bi bi-easel2"></i> @L["Classroom_BgClassroom"]
-                    </button>
-                    <label class="cr-bg-opt cr-bg-upload">
-                        <i class="bi bi-image"></i> @L["Classroom_BgCustom"]
-                        <InputFile OnChange="OnBackgroundFileAsync" accept="image/*" />
+                <div class="cr-pro-bg-menu">
+                    <button type="button" class="cr-pro-bg-opt @(_bgMode == "none" ? "active" : "")" @onclick='() => SetBackgroundAsync("none")'>@L["Classroom_BgNone"]</button>
+                    <button type="button" class="cr-pro-bg-opt @(_bgMode == "blur" ? "active" : "")" @onclick='() => SetBackgroundAsync("blur")'>@L["Classroom_BgBlur"]</button>
+                    <button type="button" class="cr-pro-bg-opt" @onclick='() => SetBackgroundAsync("image", "library")'>@L["Classroom_BgLibrary"]</button>
+                    <button type="button" class="cr-pro-bg-opt" @onclick='() => SetBackgroundAsync("image", "classroom")'>@L["Classroom_BgClassroom"]</button>
+                    <label class="cr-pro-bg-opt" style="cursor:pointer">
+                        @L["Classroom_BgCustom"]
+                        <InputFile OnChange="OnBackgroundFileAsync" accept="image/*" style="display:none" />
                     </label>
                 </div>
             }
+
+            <section class="cr-pro-board">
+                <div class="cr-pro-board-toolbar">
+                    <button type="button" class="cr-pro-wb-btn @(_wbTool == "select" ? "active" : "")" @onclick='() => SetWbTool("select")' title='@L["Classroom_Select"]'><i class="bi bi-cursor-fill"></i></button>
+                    <button type="button" class="cr-pro-wb-btn @(_wbTool == "pen" ? "active" : "")" @onclick='() => SetWbTool("pen")' title='@L["Classroom_Pen"]'><i class="bi bi-pencil-fill"></i></button>
+                    <button type="button" class="cr-pro-wb-btn @(_wbTool == "highlighter" ? "active" : "")" @onclick='() => SetWbTool("highlighter")' title='@L["ClassroomPro_Highlighter"]'><i class="bi bi-highlighter"></i></button>
+                    <button type="button" class="cr-pro-wb-btn @(_wbTool == "eraser" ? "active" : "")" @onclick='() => SetWbTool("eraser")' title='@L["Classroom_Eraser"]'><i class="bi bi-eraser-fill"></i></button>
+                    <button type="button" class="cr-pro-wb-btn @(_wbTool == "text" ? "active" : "")" @onclick='() => SetWbTool("text")' title='@L["ClassroomPro_Text"]'><i class="bi bi-fonts"></i></button>
+                    <button type="button" class="cr-pro-wb-btn @(_wbTool == "rect" ? "active" : "")" @onclick='() => SetWbTool("rect")' title='@L["ClassroomPro_Rect"]'><i class="bi bi-square"></i></button>
+                    <button type="button" class="cr-pro-wb-btn @(_wbTool == "ellipse" ? "active" : "")" @onclick='() => SetWbTool("ellipse")' title='@L["ClassroomPro_Circle"]'><i class="bi bi-circle"></i></button>
+                    <button type="button" class="cr-pro-wb-btn @(_wbTool == "line" ? "active" : "")" @onclick='() => SetWbTool("line")' title='@L["ClassroomPro_Arrow"]'><i class="bi bi-arrow-up-right"></i></button>
+                    <button type="button" class="cr-pro-wb-btn" @onclick='() => PushToast(L["ClassroomPro_ImageSoon"])' title='@L["ClassroomPro_Image"]'><i class="bi bi-image"></i></button>
+                    <button type="button" class="cr-pro-wb-btn" @onclick='() => PushToast(L["ClassroomPro_StickySoon"])' title='@L["ClassroomPro_Sticky"]'><i class="bi bi-sticky"></i></button>
+                    <button type="button" class="cr-pro-wb-btn @(_wbTool == "laser" ? "active" : "")" @onclick='() => SetWbTool("laser")' title='@L["ClassroomPro_Laser"]'><i class="bi bi-bullseye"></i></button>
+                    <span class="cr-pro-wb-sep"></span>
+                    @foreach (var clr in _wbColors)
+                    {
+                        <button type="button" class="cr-pro-wb-color @(_wbColor == clr ? "active" : "")" style="background:@clr" @onclick="() => SetWbColor(clr)"></button>
+                    }
+                    <span class="cr-pro-wb-sep"></span>
+                    <button type="button" class="cr-pro-wb-size @(_wbSize == "thin" ? "active" : "")" @onclick='() => SetWbSize("thin")'><span class="cr-pro-wb-dot" style="width:3px;height:3px"></span></button>
+                    <button type="button" class="cr-pro-wb-size @(_wbSize == "medium" ? "active" : "")" @onclick='() => SetWbSize("medium")'><span class="cr-pro-wb-dot" style="width:7px;height:7px"></span></button>
+                    <button type="button" class="cr-pro-wb-size @(_wbSize == "thick" ? "active" : "")" @onclick='() => SetWbSize("thick")'><span class="cr-pro-wb-dot" style="width:11px;height:11px"></span></button>
+                    <span class="cr-pro-wb-sep"></span>
+                    <button type="button" class="cr-pro-wb-btn" @onclick='() => PushToast(L["ClassroomPro_UndoSoon"])' title='@L["ClassroomPro_Undo"]'><i class="bi bi-arrow-counterclockwise"></i></button>
+                    <button type="button" class="cr-pro-wb-btn" @onclick='() => PushToast(L["ClassroomPro_RedoSoon"])' title='@L["ClassroomPro_Redo"]'><i class="bi bi-arrow-clockwise"></i></button>
+                    <button type="button" class="cr-pro-wb-btn" @onclick="ClearWhiteboard" title='@L["Classroom_ClearAll"]'><i class="bi bi-trash3"></i></button>
+                    <button type="button" class="cr-pro-wb-btn" @onclick='() => PushToast(L["ClassroomPro_ExportSoon"])' title="PDF"><i class="bi bi-filetype-pdf"></i></button>
+                    <button type="button" class="cr-pro-wb-btn" @onclick='() => PushToast(L["ClassroomPro_ExportSoon"])' title="PNG"><i class="bi bi-filetype-png"></i></button>
+                    <span style="flex:1"></span>
+                    <button type="button" class="cr-pro-wb-btn" @onclick="ToggleWbCollapsed" title='@L["ClassroomPro_CollapseBoard"]'><i class="bi bi-chevron-down"></i></button>
+                </div>
+                <div class="cr-pro-board-canvas-wrap">
+                    @if (!string.IsNullOrEmpty(_boardDocName))
+                    {
+                        <div class="cr-pro-board-doc"><i class="bi bi-image me-1"></i>@_boardDocName — @L["Classroom_AnnotateHint"]</div>
+                    }
+                    <canvas @ref="_canvasRef" class="cr-canvas"></canvas>
+                </div>
+                <div class="cr-pro-board-footer">
+                    <button type="button" class="cr-pro-wb-btn" @onclick="PrevPage"><i class="bi bi-chevron-left"></i></button>
+                    <span>@_wbPage / @_wbTotalPages</span>
+                    <button type="button" class="cr-pro-wb-btn" @onclick="NextPage"><i class="bi bi-chevron-right"></i></button>
+                    <span style="flex:1"></span>
+                    <button type="button" class="cr-pro-wb-btn" @onclick="ZoomOut">−</button>
+                    <span>@_wbZoom%</span>
+                    <button type="button" class="cr-pro-wb-btn" @onclick="ZoomIn">+</button>
+                    <button type="button" class="cr-pro-wb-btn @(_wbForeground ? "active" : "")" @onclick="ToggleWhiteboardForeground" title='@L["Classroom_WbForeground"]'>
+                        <i class="bi @(_wbForeground ? "bi-fullscreen-exit" : "bi-fullscreen")"></i>
+                    </button>
+                    <button type="button" class="cr-pro-wb-btn @(_sharingWhiteboard ? "active" : "")" @onclick="ToggleWhiteboardShare" title='@L["Classroom_Whiteboard"]'>
+                        <i class="bi bi-cast"></i>
+                    </button>
+                </div>
+            </section>
         </div>
-        <div class="cr-tool-item">
-            <button class="cr-tool-btn @(_sharing && !_sharingWhiteboard ? "cr-tool-btn--active" : "")" @onclick="ToggleShare" title="@L["Classroom_ShareScreen"]">
-                <i class="bi bi-display"></i>
-            </button>
-            <span class="cr-tool-lbl">@L["Classroom_Share"]</span>
-        </div>
-        <div class="cr-tool-item">
-            <button class="cr-tool-btn @(_sharingWhiteboard ? "cr-tool-btn--active" : "")" @onclick="ToggleWhiteboardShare" title="@L["Classroom_Whiteboard"]">
-                <i class="bi bi-easel"></i>
-            </button>
-            <span class="cr-tool-lbl">@L["Classroom_Whiteboard"]</span>
-        </div>
-        <div class="cr-tool-item">
-            <button class="cr-tool-btn" @onclick='() => _activeTab = "Documents"' title="@L["Classroom_Documents"]">
-                <i class="bi bi-folder2-open"></i>
-            </button>
-            <span class="cr-tool-lbl">@L["Classroom_Documents"]</span>
-        </div>
-        <div class="cr-tool-item">
-            <button class="cr-tool-btn" @onclick='() => _activeTab = "Participants"' title="@L["Classroom_Participants"]">
-                <i class="bi bi-people-fill"></i>
-            </button>
-            <span class="cr-tool-lbl">@L["Classroom_Participants"]</span>
-        </div>
-        <div class="cr-tool-item">
-            <button class="cr-tool-btn" title="@L["Classroom_Poll"]">
-                <i class="bi bi-bar-chart-fill"></i>
-            </button>
-            <span class="cr-tool-lbl">@L["Classroom_Poll"]</span>
-        </div>
-        <div class="cr-tool-item">
-            <button class="cr-tool-btn @(_recording ? "cr-tool-btn--danger" : "")" @onclick="ToggleRecording"
-                    title="@L["Classroom_Record"]">
-                <i class="bi @(_recording ? "bi-stop-circle-fill" : "bi-record-circle")"></i>
-            </button>
-            <span class="cr-tool-lbl">@L["Classroom_Record"]</span>
-        </div>
-        <div class="cr-tool-sep"></div>
-        <div class="cr-tool-item">
-            <button class="cr-tool-btn cr-tool-btn--quit" @onclick="GoBack" title="@L["Classroom_Leave"]">
-                <i class="bi bi-box-arrow-right"></i>
-            </button>
-            <span class="cr-tool-lbl">@L["Classroom_Leave"]</span>
-        </div>
+
+        <aside class="cr-pro-side">
+            <div class="cr-pro-side-card">
+                <div class="cr-pro-side-head">
+                    <h3>@L["Classroom_Participants"] (@_participants.Count)</h3>
+                    <button type="button" class="cr-pro-invite" @onclick='() => PushToast(L["ClassroomPro_InviteSoon"])'>
+                        <i class="bi bi-person-plus"></i> @L["ClassroomPro_Invite"]
+                    </button>
+                </div>
+                <div class="cr-pro-search">
+                    <i class="bi bi-search"></i>
+                    <input @bind="_participantFilter" @bind:event="oninput" placeholder='@L["ClassroomPro_SearchParticipant"]' />
+                </div>
+                <div class="cr-pro-plist">
+                    @foreach (var p in FilteredParticipants)
+                    {
+                        <div class="cr-pro-prow @(p.Role == "Tuteur" ? "is-self" : null)">
+                            <div class="cr-pro-prow-av" style="background:@p.Color">@p.Initials</div>
+                            <div>
+                                <div class="cr-pro-prow-name">@p.Name</div>
+                                <div class="cr-pro-prow-role">
+                                    @p.Role
+                                    · @(p.IsOnline || p.Role == "Tuteur" ? L["ClassroomPro_Present"] : L["ClassroomPro_Absent"])
+                                </div>
+                            </div>
+                            <div class="cr-pro-prow-icons">
+                                @if (p.HandRaised) { <i class="bi bi-hand-index-thumb-fill is-hand"></i> }
+                                <i class="bi @(p.MicOn ? "bi-mic-fill" : "bi-mic-mute-fill") @(p.MicOn ? "" : "is-off")"></i>
+                                <i class="bi @(p.CamOn || p.HasRemoteVideo ? "bi-camera-video-fill" : "bi-camera-video-off-fill") @(p.CamOn || p.HasRemoteVideo ? "" : "is-off")"></i>
+                                @if (p.Role != "Tuteur")
+                                {
+                                    <button type="button" class="cr-pro-icon-btn" style="width:28px;height:28px;border:none" title='@L["ClassroomPro_Mute"]'
+                                            @onclick="() => MuteParticipant(p)"><i class="bi bi-mic-mute"></i></button>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <div class="cr-pro-side-card">
+                <div class="cr-pro-side-head">
+                    <h3>@(_activeTab == "Documents" ? L["Classroom_Documents"] : L["Classroom_Chat"])</h3>
+                    <div style="display:flex;gap:0.25rem">
+                        <button type="button" class="cr-pro-icon-btn" style="width:28px;height:28px" @onclick='() => _activeTab = "Chat"' title='@L["Classroom_Chat"]'><i class="bi bi-chat"></i></button>
+                        <button type="button" class="cr-pro-icon-btn" style="width:28px;height:28px" @onclick='() => _activeTab = "Documents"' title='@L["Classroom_Documents"]'><i class="bi bi-folder"></i></button>
+                    </div>
+                </div>
+
+                @if (_activeTab == "Documents")
+                {
+                    <div class="cr-pro-plist" style="padding:0.75rem">
+                        <label class="cr-pro-invite" style="display:inline-flex;cursor:pointer;margin-bottom:0.75rem">
+                            <i class="bi bi-upload me-1"></i>@L["ClassroomPro_Upload"]
+                            <InputFile OnChange="OnDocSelected" style="display:none" />
+                        </label>
+                        @foreach (var doc in _documents)
+                        {
+                            <div class="cr-pro-prow">
+                                <i class="bi bi-file-earmark" style="color:var(--crp-violet)"></i>
+                                <div>
+                                    <div class="cr-pro-prow-name">@doc.Name</div>
+                                    <div class="cr-pro-prow-role">@doc.Size</div>
+                                </div>
+                                @if (doc.IsImage)
+                                {
+                                    <button type="button" class="cr-pro-invite" @onclick="() => OpenDocumentOnBoardAsync(doc)">@L["Classroom_AnnotateDoc"]</button>
+                                }
+                            </div>
+                        }
+                        @if (_documents.Count == 0)
+                        {
+                            <p class="text-muted small mb-0">@L["ClassroomPro_NoDocuments"]</p>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="cr-pro-chat">
+                        @foreach (var m in _chatMessages)
+                        {
+                            <div class="cr-pro-msg @(m.IsMe ? "is-me" : null)">
+                                <div class="cr-pro-msg-av" style="background:@(m.IsMe ? "#5831e0" : GetSenderColor(m.Sender))">@GetSenderInitials(m.Sender)</div>
+                                <div>
+                                    <div class="cr-pro-bubble">
+                                        <div class="cr-pro-msg-meta">
+                                            <strong>@m.Sender</strong>
+                                            <span>@m.Time</span>
+                                        </div>
+                                        <div class="cr-pro-msg-text">@m.Text</div>
+                                    </div>
+                                    <div class="cr-pro-msg-actions">
+                                        <button type="button" style="border:none;background:transparent;color:inherit;font-size:0.7rem" @onclick='() => PushToast(L["ClassroomPro_ReactSoon"])'>👍</button>
+                                        <button type="button" style="border:none;background:transparent;color:inherit;font-size:0.7rem" @onclick="() => ReplyTo(m)">@L["ClassroomPro_Reply"]</button>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                    <div class="cr-pro-chat-input">
+                        <button type="button" class="cr-pro-icon-btn" style="border:none" @onclick='() => PushToast(L["ClassroomPro_AttachSoon"])'><i class="bi bi-paperclip"></i></button>
+                        <button type="button" class="cr-pro-icon-btn" style="border:none" @onclick='() => PushToast(L["ClassroomPro_EmojiSoon"])'><i class="bi bi-emoji-smile"></i></button>
+                        <input @bind="_newMessage" @onkeydown="OnChatKeyDown" placeholder='@L["Classroom_TypeMessage"]' />
+                        <button type="button" class="cr-pro-send" @onclick="SendMessage"><i class="bi bi-send-fill"></i></button>
+                    </div>
+                }
+            </div>
+        </aside>
     </div>
+
+    <div class="cr-pro-toasts">
+        @foreach (var t in _toasts)
+        {
+            <div class="cr-pro-toast">@t</div>
+        }
+    </div>
+
+    <button type="button" class="cr-pro-ai-fab" @onclick="() => _showAiDrawer = !_showAiDrawer">
+        ✨ @L["ClassroomPro_AiAssistant"]
+    </button>
+    @if (_showAiDrawer)
+    {
+        <div class="cr-pro-ai-drawer">
+            <header>
+                <h4>✨ @L["ClassroomPro_AiAssistant"]</h4>
+                <button type="button" class="cr-pro-icon-btn" style="background:rgba(255,255,255,.15);color:#fff;border:none" @onclick="() => _showAiDrawer = false"><i class="bi bi-x-lg"></i></button>
+            </header>
+            <div class="cr-pro-ai-grid">
+                <button type="button" class="cr-pro-ai-item" @onclick='() => RunAi("summary")'><i class="bi bi-stars"></i>@L["ClassroomPro_AiSummary"]</button>
+                <button type="button" class="cr-pro-ai-item" @onclick='() => RunAi("correct")'><i class="bi bi-check2-circle"></i>@L["ClassroomPro_AiCorrect"]</button>
+                <button type="button" class="cr-pro-ai-item" @onclick='() => RunAi("explain")'><i class="bi bi-lightbulb"></i>@L["ClassroomPro_AiExplain"]</button>
+                <button type="button" class="cr-pro-ai-item" @onclick='() => RunAi("exercises")'><i class="bi bi-journal-plus"></i>@L["ClassroomPro_AiExercises"]</button>
+                <button type="button" class="cr-pro-ai-item" @onclick='() => RunAi("quiz")'><i class="bi bi-question-circle"></i>@L["ClassroomPro_AiQuiz"]</button>
+                <button type="button" class="cr-pro-ai-item" @onclick='() => RunAi("translate")'><i class="bi bi-translate"></i>@L["ClassroomPro_AiTranslate"]</button>
+                <button type="button" class="cr-pro-ai-item" @onclick='() => RunAi("voice")'><i class="bi bi-soundwave"></i>@L["ClassroomPro_AiVoice"]</button>
+                <button type="button" class="cr-pro-ai-item" @onclick='() => RunAi("questions")'><i class="bi bi-chat-quote"></i>@L["ClassroomPro_AiQuestions"]</button>
+                <button type="button" class="cr-pro-ai-item" @onclick='() => RunAi("participation")'><i class="bi bi-bar-chart"></i>@L["ClassroomPro_AiParticipation"]</button>
+                <button type="button" class="cr-pro-ai-item" @onclick='() => RunAi("tips")'><i class="bi bi-mortarboard"></i>@L["ClassroomPro_AiTips"]</button>
+            </div>
+        </div>
+    }
 </div>
 
 @code {
@@ -484,6 +452,18 @@
     private string _bgMode = "none";
     private string? _bgPreset;
     private bool _wbForeground;
+    private bool _wbCollapsed;
+    private bool _panelOpen;
+    private bool _panelCollapsed;
+    private bool _handRaised;
+    private bool _showAiDrawer;
+    private bool _showViewMenu;
+    private bool _showMoreMenu;
+    private bool _viewFullscreen;
+    private string _viewMode = "speaker";
+    private string _participantFilter = "";
+    private readonly List<string> _toasts = [];
+    private System.Threading.Timer? _toastTimer;
 
     private ElementReference _localVideo;
     private bool _showLocalVideo => _sharing || (_camOn && _mediaReady);
@@ -493,9 +473,14 @@
 
     private async Task FocusPeer(ParticipantVM peer)
     {
+        peer.IsSpeaking = true;
+        foreach (var other in _participants.Where(x => x != peer))
+            other.IsSpeaking = false;
+
         if (_focusedPeer?.ConnectionId == peer.ConnectionId && _showRemoteMain)
         {
             _focusedPeer = null;
+            peer.IsSpeaking = false;
             try { await JS.InvokeVoidAsync("classroomRtc.clearMain"); } catch { }
             try { await JS.InvokeVoidAsync("classroomRtc.remountAll"); } catch { }
             return;
@@ -506,6 +491,104 @@
         {
             try { await JS.InvokeVoidAsync("classroomRtc.focusRemote", peer.ConnectionId); } catch { }
         }
+    }
+
+    private IEnumerable<ParticipantVM> StudentParticipants =>
+        _participants.Where(x => x.Role != "Tuteur");
+
+    private IEnumerable<ParticipantVM> VisibleStudentTiles =>
+        StudentParticipants.Take(_viewMode is "gallery" or "mosaic" ? 50 : 5);
+
+    private int HiddenStudentCount =>
+        Math.Max(0, StudentParticipants.Count() - (_viewMode is "gallery" or "mosaic" ? 50 : 5));
+
+    private IEnumerable<ParticipantVM> FilteredParticipants =>
+        _participants.Where(p =>
+            string.IsNullOrWhiteSpace(_participantFilter)
+            || p.Name.Contains(_participantFilter, StringComparison.OrdinalIgnoreCase));
+
+    private string ViewModeClass => _viewMode switch
+    {
+        "gallery" => "is-gallery",
+        "presenter" => "is-presenter",
+        "mosaic" => "is-mosaic",
+        "vertical" => "is-vertical",
+        _ => ""
+    };
+
+    private string ViewModeLabel => _viewMode switch
+    {
+        "gallery" => L["ClassroomPro_ViewGallery"],
+        "presenter" => L["ClassroomPro_ViewPresenter"],
+        "mosaic" => L["ClassroomPro_ViewMosaic"],
+        "vertical" => L["ClassroomPro_ViewVertical"],
+        _ => L["ClassroomPro_ViewSpeaker"]
+    };
+
+    private void SetViewMode(string mode)
+    {
+        _viewMode = mode;
+        _showViewMenu = false;
+        if (mode != "fullscreen")
+            _viewFullscreen = false;
+    }
+
+    private void ToggleFullscreenView()
+    {
+        _viewFullscreen = !_viewFullscreen;
+        _showViewMenu = false;
+    }
+
+    private void ToggleWbCollapsed() => _wbCollapsed = !_wbCollapsed;
+
+    private void ToggleHand()
+    {
+        _handRaised = !_handRaised;
+        var me = _participants.FirstOrDefault(p => p.Role == "Tuteur");
+        if (me is not null) me.HandRaised = _handRaised;
+        PushToast(_handRaised ? L["ClassroomPro_HandRaised"] : L["ClassroomPro_HandLowered"]);
+    }
+
+    private void OpenSide(string tab)
+    {
+        _activeTab = tab;
+        _panelOpen = true;
+        _panelCollapsed = false;
+    }
+
+    private void MuteParticipant(ParticipantVM p)
+    {
+        p.MicOn = false;
+        PushToast(string.Format(L["ClassroomPro_MutedFmt"].Value, p.Name));
+    }
+
+    private void ReplyTo(ChatMsg m)
+    {
+        _newMessage = $"@{m.Sender} ";
+        _activeTab = "Chat";
+    }
+
+    private void RunAi(string action)
+    {
+        _showAiDrawer = false;
+        PushToast(string.Format(L["ClassroomPro_AiStartedFmt"].Value, action));
+    }
+
+    private void PushToast(string message)
+    {
+        _toasts.Insert(0, message);
+        if (_toasts.Count > 4)
+            _toasts.RemoveAt(_toasts.Count - 1);
+        _toastTimer?.Dispose();
+        _toastTimer = new System.Threading.Timer(_ =>
+        {
+            _ = InvokeAsync(() =>
+            {
+                if (_toasts.Count > 0)
+                    _toasts.RemoveAt(_toasts.Count - 1);
+                StateHasChanged();
+            });
+        }, null, 3500, Timeout.Infinite);
     }
 
     private string _activeTab  = "Chat";
@@ -704,6 +787,7 @@
     public void Dispose()
     {
         _timer?.Dispose();
+        _toastTimer?.Dispose();
         ClassroomRt.StrokeReceived -= OnRemoteStroke;
         ClassroomRt.BoardCleared -= OnRemoteBoardCleared;
         ClassroomRt.BackgroundChanged -= OnRemoteBackground;
@@ -766,6 +850,7 @@
         {
             if (_lessonGuid != lessonId) return;
             UpsertLivePeer(peer);
+            PushToast(string.Format(L["ClassroomPro_JoinedFmt"].Value, peer.DisplayName));
             // Le nouveau participant envoie l'offre ; on prépare juste le PC.
             try { await JS.InvokeVoidAsync("classroomRtc.connect", peer.ConnectionId, false); }
             catch { }
@@ -1322,7 +1407,20 @@
     private async Task SetWbTool(string tool)
     {
         _wbTool = tool;
-        try { await JS.InvokeVoidAsync("whiteboard.setTool", tool); } catch { }
+        var engineTool = tool switch
+        {
+            "highlighter" => "pen",
+            "ellipse" => "rect",
+            "laser" => "pen",
+            "text" => "pen",
+            _ => tool
+        };
+        try { await JS.InvokeVoidAsync("whiteboard.setTool", engineTool); } catch { }
+        if (tool == "highlighter")
+        {
+            try { await JS.InvokeVoidAsync("whiteboard.setColor", "#facc15"); } catch { }
+            try { await JS.InvokeVoidAsync("whiteboard.setSize", "thick"); } catch { }
+        }
     }
 
     private async Task SetWbColor(string color)
@@ -1496,6 +1594,8 @@
         public string? ConnectionId { get; set; }
         public bool IsOnline { get; set; }
         public bool HasRemoteVideo { get; set; }
+        public bool HandRaised { get; set; }
+        public bool IsSpeaking { get; set; }
     }
 
     private class ChatMsg
