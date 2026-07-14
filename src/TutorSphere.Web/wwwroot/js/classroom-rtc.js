@@ -188,12 +188,23 @@ window.classroomRtc = (function () {
             scheduleRemount(remoteId);
             return;
         }
+        var liveVideo = stream.getVideoTracks().some(function (t) {
+            return t.readyState === "live" && t.enabled;
+        });
         nodes.forEach(function (el) {
             if (el.srcObject !== stream)
                 el.srcObject = stream;
             el.playsInline = true;
             el.autoplay = true;
-            el.classList.remove("is-hidden");
+            var thumb = el.closest(".cr-pro-thumb");
+            if (thumb) {
+                if (liveVideo) thumb.classList.add("has-video");
+                else thumb.classList.remove("has-video");
+            }
+            if (liveVideo)
+                el.classList.remove("is-hidden");
+            else
+                el.classList.add("is-hidden");
         });
         syncPlaybackRouting();
     }
@@ -377,11 +388,15 @@ window.classroomRtc = (function () {
 
         remountAll: function () {
             scheduleRemount(null);
-            // Miroir local pour la galerie (toujours muet pour éviter le Lars feedback).
+            // Miroir local pour la galerie (toujours muet — pas d'écho).
             var local = getPublishStream();
+            var hasLiveVideo = !!(local && local.getVideoTracks().some(function (t) {
+                return t.readyState === "live" && t.enabled;
+            }));
             document.querySelectorAll("video[data-rtc-local]").forEach(function (el) {
                 if (!local) {
                     el.srcObject = null;
+                    el.classList.add("is-hidden");
                     return;
                 }
                 if (el.srcObject !== local)
@@ -389,7 +404,29 @@ window.classroomRtc = (function () {
                 el.muted = true;
                 el.volume = 0;
                 el.playsInline = true;
-                el.classList.remove("is-hidden");
+                // Ne pas forcer l'affichage si la caméra est coupée (évite le rectangle noir).
+                if (hasLiveVideo)
+                    el.classList.remove("is-hidden");
+                else
+                    el.classList.add("is-hidden");
+                tryPlay(el);
+            });
+            // Marquer les vignettes distantes avec/sans vidéo active.
+            document.querySelectorAll("video[data-rtc-peer]").forEach(function (el) {
+                var id = el.getAttribute("data-rtc-peer");
+                var stream = id ? remoteStreams[id] : null;
+                var live = !!(stream && stream.getVideoTracks().some(function (t) {
+                    return t.readyState === "live" && t.enabled;
+                }));
+                var thumb = el.closest(".cr-pro-thumb");
+                if (thumb) {
+                    if (live) thumb.classList.add("has-video");
+                    else thumb.classList.remove("has-video");
+                }
+                if (stream && el.srcObject !== stream)
+                    el.srcObject = stream;
+                if (live)
+                    el.classList.remove("is-hidden");
                 tryPlay(el);
             });
             syncPlaybackRouting();

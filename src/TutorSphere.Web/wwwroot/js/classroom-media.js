@@ -24,6 +24,16 @@ window.classroomMedia = (function () {
         var play = videoEl.play();
         if (play && typeof play.catch === "function")
             play.catch(function () { });
+
+        // Miroirs galerie / scène (même flux partout).
+        document.querySelectorAll("video[data-rtc-local], video[data-rtc-local-stage]").forEach(function (el) {
+            if (el === videoEl) return;
+            el.srcObject = mediaStream;
+            el.muted = true;
+            el.playsInline = true;
+            var p = el.play();
+            if (p && typeof p.catch === "function") p.catch(function () { });
+        });
     }
 
     function trackStates(mediaStream) {
@@ -323,6 +333,16 @@ window.classroomMedia = (function () {
             var tracks = stream.getVideoTracks();
             if (tracks.length === 0) return false;
             tracks.forEach(function (t) { t.enabled = !!enabled; });
+            document.querySelectorAll("video[data-rtc-local], video[data-rtc-local-stage]").forEach(function (el) {
+                var thumb = el.closest(".cr-pro-thumb");
+                if (enabled) {
+                    el.classList.remove("is-hidden");
+                    if (thumb) thumb.classList.add("has-video");
+                } else {
+                    el.classList.add("is-hidden");
+                    if (thumb) thumb.classList.remove("has-video");
+                }
+            });
             return true;
         },
 

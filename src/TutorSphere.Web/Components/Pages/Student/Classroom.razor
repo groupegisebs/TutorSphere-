@@ -103,7 +103,7 @@
                     <video data-rtc-main
                            class="@(_showRemoteMain ? "" : "is-hidden")"
                            autoplay playsinline></video>
-                    <video @ref="_localVideo"
+                    <video data-rtc-local-stage
                            class="@(_showLocalVideo && !_showRemoteMain ? "" : "is-hidden")"
                            autoplay playsinline muted></video>
                     @if (!_showLocalVideo && !_showRemoteMain)
@@ -134,8 +134,9 @@
                 </div>
 
                 <div class="cr-pro-strip">
-                    <div class="cr-pro-thumb is-self" title="@SelfDisplayName">
-                        <video data-rtc-local
+                    <div class="cr-pro-thumb is-self @(_showLocalVideo ? "has-video" : null)" title="@SelfDisplayName">
+                        <video @ref="_localVideo"
+                               data-rtc-local
                                class="@(_showLocalVideo ? "" : "is-hidden")"
                                autoplay playsinline muted></video>
                         @if (!_showLocalVideo)
@@ -153,6 +154,7 @@
                             @if (!string.IsNullOrEmpty(p.ConnectionId))
                             {
                                 <video data-rtc-peer="@p.ConnectionId"
+                                       class="@(p.HasRemoteVideo ? "" : "is-hidden")"
                                        autoplay playsinline></video>
                             }
                             @if (!p.HasRemoteVideo || string.IsNullOrEmpty(p.ConnectionId))
