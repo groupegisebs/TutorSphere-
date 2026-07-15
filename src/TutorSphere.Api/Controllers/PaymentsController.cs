@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using TutorSphere.Application.Common;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.Payments;
+using TutorSphere.Application.Services;
 using TutorSphere.Domain.Enums;
 using TutorSphere.Infrastructure.Identity;
 
@@ -15,18 +16,18 @@ public class PaymentsController : ControllerBase
 {
     private readonly IPaymentGatewayService _paymentGateway;
     private readonly IEmailService _email;
-    private readonly IApplicationDbContext _db;
+    private readonly IBillingEmailOrchestrator _billingEmail;
     private readonly UserManager<ApplicationUser> _userManager;
 
     public PaymentsController(
         IPaymentGatewayService paymentGateway,
         IEmailService email,
-        IApplicationDbContext db,
+        IBillingEmailOrchestrator billingEmail,
         UserManager<ApplicationUser> userManager)
     {
         _paymentGateway = paymentGateway;
         _email = email;
-        _db = db;
+        _billingEmail = billingEmail;
         _userManager = userManager;
     }
 
@@ -61,26 +62,12 @@ public class PaymentsController : ControllerBase
         {
             var response = await _paymentGateway.CreateSubscriptionCheckoutAsync(subscriptionId, request, ct);
 
-            // Look up the student subscription to notify the parent
-            var subscription = _db.StudentSubscriptions.FirstOrDefault(s => s.Id == subscriptionId);
-            if (subscription is not null)
-            {
-                var student = _db.Students.FirstOrDefault(s => s.Id == subscription.StudentId);
-                if (student is not null)
-                {
-                    var parent = _db.ParentProfiles.FirstOrDefault(p => p.Id == student.ParentProfileId);
-                    if (parent is not null && !string.IsNullOrWhiteSpace(parent.Email))
-                    {
-                        await _email.SendParentPaymentReceiptAsync(
-                            parent.Email,
-                            parent.FirstName,
-                            $"{student.FirstName} {student.LastName}".Trim(),
-                            response.Amount,
-                            response.CheckoutUrl,
-                            ct);
-                    }
-                }
-            }
+            // Lien de paiement (INVOICE_READY) — le reçu part uniquement après succès.
+            await _billingEmail.NotifyPaymentLinkReadyAsync(
+                subscriptionId,
+                response.CheckoutUrl,
+                response.Amount,
+                ct);
 
             return Ok(response);
         }

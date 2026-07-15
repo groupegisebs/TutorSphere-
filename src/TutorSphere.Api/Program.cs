@@ -36,6 +36,7 @@ builder.Services.AddSingleton<IUserIdProvider, NameIdentifierUserIdProvider>();
 builder.Services.AddScoped<IRealTimeMessaging, SignalRMessageNotifier>();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddHostedService<LessonReminderService>();
+builder.Services.AddHostedService<OverduePaymentReminderService>();
 
 var jwtSection = builder.Configuration.GetSection("Jwt");
 var jwtKey = jwtSection["Key"] ?? "";

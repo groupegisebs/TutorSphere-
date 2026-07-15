@@ -17,13 +17,16 @@ public class StudentSubscriptionService : IStudentSubscriptionService
 {
     private readonly Common.Interfaces.IApplicationDbContext _db;
     private readonly ISubscriptionLessonScheduler _lessonScheduler;
+    private readonly IBillingEmailOrchestrator _billingEmail;
 
     public StudentSubscriptionService(
         Common.Interfaces.IApplicationDbContext db,
-        ISubscriptionLessonScheduler lessonScheduler)
+        ISubscriptionLessonScheduler lessonScheduler,
+        IBillingEmailOrchestrator billingEmail)
     {
         _db = db;
         _lessonScheduler = lessonScheduler;
+        _billingEmail = billingEmail;
     }
 
     public async Task<StudentSubscriptionDto> EnrollAsync(
@@ -90,6 +93,8 @@ public class StudentSubscriptionService : IStudentSubscriptionService
 
         _db.Add(subscription);
         await _db.SaveChangesAsync(ct);
+
+        await _billingEmail.NotifyEnrollmentRequestedAsync(subscription.Id, ct);
 
         return Map(subscription, offering.Title, offering.Subject, offering.Price, offering.Currency,
             $"{student.FirstName} {student.LastName}".Trim(),
@@ -246,6 +251,8 @@ public class StudentSubscriptionService : IStudentSubscriptionService
             sub.UpdatedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync(ct);
         }
+
+        await _billingEmail.NotifyEnrollmentAcceptedAsync(sub.Id, ct);
 
         return Map(
             sub,

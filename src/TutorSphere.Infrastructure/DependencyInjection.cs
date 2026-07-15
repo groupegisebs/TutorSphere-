@@ -46,6 +46,8 @@ public static class DependencyInjection
         services.Configure<MailGatewaySettings>(configuration.GetSection(MailGatewaySettings.SectionName));
         services.AddHttpClient<MailGatewayClient>();
         services.AddScoped<IEmailService, EmailService>();
+        services.AddScoped<IUserContactLookup, IdentityUserContactLookup>();
+        services.AddSingleton<IAppUrlProvider, ConfigurationAppUrlProvider>();
         services.AddApplication();
 
         return services;

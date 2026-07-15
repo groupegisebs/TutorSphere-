@@ -28,17 +28,20 @@ public class InvoiceService : IInvoiceService
     private readonly IApplicationDbContext _db;
     private readonly ITenantContext _tenantContext;
     private readonly IEmailService _email;
+    private readonly IBillingEmailOrchestrator _billingEmail;
     private readonly ILogger<InvoiceService> _logger;
 
     public InvoiceService(
         IApplicationDbContext db,
         ITenantContext tenantContext,
         IEmailService email,
+        IBillingEmailOrchestrator billingEmail,
         ILogger<InvoiceService> logger)
     {
         _db = db;
         _tenantContext = tenantContext;
         _email = email;
+        _billingEmail = billingEmail;
         _logger = logger;
     }
 
@@ -107,11 +110,47 @@ public class InvoiceService : IInvoiceService
         var invoice = _db.Invoices.FirstOrDefault(i => i.Id == id)
             ?? throw new InvalidOperationException("Facture introuvable.");
 
+        var wasPaid = invoice.Status == PaymentStatus.Completed;
         invoice.Status = PaymentStatus.Completed;
         invoice.PaidAt = DateTime.UtcNow;
         invoice.UpdatedAt = DateTime.UtcNow;
 
         await _db.SaveChangesAsync(ct);
+
+        if (!wasPaid)
+        {
+            var payment = _db.PaymentsForAnyTenant.FirstOrDefault(p => p.InvoiceId == invoice.Id);
+            if (payment is not null)
+            {
+                payment.Status = PaymentStatus.Completed;
+                payment.CompletedAt ??= invoice.PaidAt;
+                payment.UpdatedAt = DateTime.UtcNow;
+                await _db.SaveChangesAsync(ct);
+                await _billingEmail.NotifyPaymentSucceededAsync(payment.Id, ct);
+            }
+            else
+            {
+                var parent = _db.ParentProfiles.FirstOrDefault(p => p.Id == invoice.ParentProfileId);
+                if (parent is not null && !string.IsNullOrWhiteSpace(parent.Email))
+                {
+                    try
+                    {
+                        await _email.SendParentPaymentReceiptAsync(
+                            parent.Email,
+                            parent.FirstName,
+                            "Élève",
+                            invoice.Amount,
+                            $"/invoices/{invoice.Id}",
+                            ct);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Échec reçu paiement facture {InvoiceId}", id);
+                    }
+                }
+            }
+        }
+
         return MapToDto(invoice);
     }
 

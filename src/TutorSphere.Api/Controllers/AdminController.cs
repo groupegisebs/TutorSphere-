@@ -2,8 +2,10 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Domain.Enums;
+using TutorSphere.Infrastructure.Email;
 using TutorSphere.Infrastructure.Identity;
 
 namespace TutorSphere.Api.Controllers;
@@ -17,17 +19,23 @@ public class AdminController : ControllerBase
     private readonly IEmailService _email;
     private readonly IApplicationDbContext _db;
     private readonly IConfiguration _configuration;
+    private readonly MailGatewaySettings _mailSettings;
+    private readonly MailGatewayClient _mailClient;
 
     public AdminController(
         UserManager<ApplicationUser> userManager,
         IEmailService email,
         IApplicationDbContext db,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        IOptions<MailGatewaySettings> mailSettings,
+        MailGatewayClient mailClient)
     {
         _userManager = userManager;
         _email = email;
         _db = db;
         _configuration = configuration;
+        _mailSettings = mailSettings.Value;
+        _mailClient = mailClient;
     }
 
     /// <summary>Returns users belonging to a given role.</summary>
@@ -145,6 +153,37 @@ public class AdminController : ControllerBase
         var inactive = all.Count - active;
 
         return Ok(new AdminStatsDto(tutors.Count, parents.Count, students.Count, active, inactive));
+    }
+
+    /// <summary>État de la passerelle e-mail (configuration uniquement — n'envoie rien).</summary>
+    [HttpGet("email/status")]
+    public IActionResult GetEmailStatus() => Ok(new
+    {
+        configured = _mailClient.IsConfigured,
+        baseUrl = _mailSettings.BaseUrl,
+        clientCode = _mailSettings.ClientCode,
+        apiKeyPresent = !string.IsNullOrWhiteSpace(_mailSettings.ApiKey),
+        webBaseUrl = (_configuration["WebBaseUrl"] ?? "").TrimEnd('/'),
+        templates = new[]
+        {
+            "WELCOME", "CONFIRM_EMAIL_SIMPLE",
+            "COURSE_ENROLLMENT_REQUEST", "COURSE_ENROLLMENT_ACCEPTED",
+            "INVOICE_READY", "PARENT_PAYMENT_RECEIPT", "PARENT_PAYMENT_OVERDUE",
+            "TUTOR_STUDENT_PAYMENT_RECEIVED", "LESSON_REMINDER", "LESSON_SCHEDULED"
+        }
+    });
+
+    /// <summary>Envoie un e-mail de test WELCOME à l'adresse indiquée (vérification Mail Gateway).</summary>
+    [HttpPost("email/test")]
+    public async Task<IActionResult> SendTestEmail([FromQuery] string to, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(to))
+            return BadRequest(new { error = "Paramètre 'to' requis." });
+        if (!_mailClient.IsConfigured)
+            return BadRequest(new { error = "Mail Gateway non configuré (Email:ApiKey / Email:BaseUrl)." });
+
+        await _email.SendWelcomeAsync(to.Trim(), "Test", ct);
+        return Ok(new { message = $"E-mail WELCOME demandé pour {to.Trim()}." });
     }
 }
 

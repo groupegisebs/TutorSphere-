@@ -37,6 +37,12 @@ internal static class EmailTemplates
     public const string ParentPaymentReceipt = "PARENT_PAYMENT_RECEIPT";
     public const string ParentPaymentFailed = "PARENT_PAYMENT_FAILED";
     public const string InvoiceReady = "INVOICE_READY";
+    public const string ParentPaymentOverdue = "PARENT_PAYMENT_OVERDUE";
+
+    // Course enrollment / tutor receipt
+    public const string CourseEnrollmentRequest = "COURSE_ENROLLMENT_REQUEST";
+    public const string CourseEnrollmentAccepted = "COURSE_ENROLLMENT_ACCEPTED";
+    public const string TutorStudentPaymentReceived = "TUTOR_STUDENT_PAYMENT_RECEIVED";
 }
 
 public class EmailService : IEmailService
@@ -265,6 +271,58 @@ public class EmailService : IEmailService
         if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — INVOICE_READY non envoyé à {Email}.", to); return; }
         await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.InvoiceReady, [to],
             new Dictionary<string, string> { ["ParentName"] = parentName, ["InvoiceUrl"] = invoiceUrl }), ct);
+    }
+
+    public async Task SendParentPaymentOverdueAsync(string to, string parentName, string studentName, string courseTitle, string payUrl, CancellationToken ct = default)
+    {
+        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — PARENT_PAYMENT_OVERDUE non envoyé à {Email}.", to); return; }
+        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.ParentPaymentOverdue, [to],
+            new Dictionary<string, string>
+            {
+                ["ParentName"] = parentName,
+                ["StudentName"] = studentName,
+                ["CourseTitle"] = courseTitle,
+                ["PayUrl"] = payUrl
+            }), ct);
+    }
+
+    public async Task SendCourseEnrollmentRequestAsync(string to, string tutorName, string studentName, string courseTitle, CancellationToken ct = default)
+    {
+        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — COURSE_ENROLLMENT_REQUEST non envoyé à {Email}.", to); return; }
+        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.CourseEnrollmentRequest, [to],
+            new Dictionary<string, string>
+            {
+                ["TutorName"] = tutorName,
+                ["StudentName"] = studentName,
+                ["CourseTitle"] = courseTitle
+            }), ct);
+    }
+
+    public async Task SendCourseEnrollmentAcceptedAsync(string to, string parentName, string studentName, string courseTitle, string statusNote, string actionUrl, CancellationToken ct = default)
+    {
+        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — COURSE_ENROLLMENT_ACCEPTED non envoyé à {Email}.", to); return; }
+        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.CourseEnrollmentAccepted, [to],
+            new Dictionary<string, string>
+            {
+                ["ParentName"] = parentName,
+                ["StudentName"] = studentName,
+                ["CourseTitle"] = courseTitle,
+                ["StatusNote"] = statusNote,
+                ["ActionUrl"] = actionUrl
+            }), ct);
+    }
+
+    public async Task SendTutorStudentPaymentReceivedAsync(string to, string tutorName, string studentName, string courseTitle, decimal amount, CancellationToken ct = default)
+    {
+        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — TUTOR_STUDENT_PAYMENT_RECEIVED non envoyé à {Email}.", to); return; }
+        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.TutorStudentPaymentReceived, [to],
+            new Dictionary<string, string>
+            {
+                ["TutorName"] = tutorName,
+                ["StudentName"] = studentName,
+                ["CourseTitle"] = courseTitle,
+                ["Amount"] = amount.ToString("C")
+            }), ct);
     }
 
     private async Task TrySendAsync(SendMailRequest request, CancellationToken ct)

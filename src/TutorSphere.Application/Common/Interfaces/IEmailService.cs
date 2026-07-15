@@ -49,4 +49,12 @@ public interface IEmailService
     Task SendParentPaymentReceiptAsync(string to, string parentName, string studentName, decimal amount, string invoiceUrl, CancellationToken ct = default);
     Task SendParentPaymentFailedAsync(string to, string parentName, CancellationToken ct = default);
     Task SendInvoiceReadyAsync(string to, string parentName, string invoiceUrl, CancellationToken ct = default);
+    Task SendParentPaymentOverdueAsync(string to, string parentName, string studentName, string courseTitle, string payUrl, CancellationToken ct = default);
+
+    // Course enrollment
+    Task SendCourseEnrollmentRequestAsync(string to, string tutorName, string studentName, string courseTitle, CancellationToken ct = default);
+    Task SendCourseEnrollmentAcceptedAsync(string to, string parentName, string studentName, string courseTitle, string statusNote, string actionUrl, CancellationToken ct = default);
+
+    /// <summary>Notifie le tuteur qu'un paiement parent a été reçu pour un cours.</summary>
+    Task SendTutorStudentPaymentReceivedAsync(string to, string tutorName, string studentName, string courseTitle, decimal amount, CancellationToken ct = default);
 }

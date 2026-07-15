@@ -14,6 +14,9 @@ public class StudentSubscription : BaseEntity, ITenantEntity
     public int SessionsRemaining { get; set; }
     public string? StripeSubscriptionId { get; set; }
 
+    /// <summary>Dernier e-mail « paiement en retard » envoyé (AwaitingPayment).</summary>
+    public DateTime? OverdueReminderSentAt { get; set; }
+
     public Tenant Tenant { get; set; } = null!;
     public Student Student { get; set; } = null!;
     public SubscriptionOffering Offering { get; set; } = null!;

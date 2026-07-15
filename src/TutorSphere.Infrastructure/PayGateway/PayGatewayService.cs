@@ -20,6 +20,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
     private readonly PayGatewaySettings _settings;
     private readonly ISubscriptionLessonScheduler _lessonScheduler;
     private readonly IInvoiceService _invoices;
+    private readonly IBillingEmailOrchestrator _billingEmail;
     private readonly ILogger<PayGatewayService> _logger;
     private string? _cachedPublishableKey;
 
@@ -29,6 +30,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
         IOptions<PayGatewaySettings> settings,
         ISubscriptionLessonScheduler lessonScheduler,
         IInvoiceService invoices,
+        IBillingEmailOrchestrator billingEmail,
         ILogger<PayGatewayService> logger)
     {
         _db = db;
@@ -36,6 +38,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
         _settings = settings.Value;
         _lessonScheduler = lessonScheduler;
         _invoices = invoices;
+        _billingEmail = billingEmail;
         _logger = logger;
     }
 
@@ -323,6 +326,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
         GatewayPaymentResponse gatewayPayment,
         CancellationToken ct)
     {
+        var previousStatus = payment.Status;
         var mapped = MapPaymentStatus(gatewayPayment.Status);
         if (mapped == payment.Status && mapped != PaymentStatus.Completed)
             return;
@@ -378,6 +382,9 @@ internal sealed class PayGatewayService : IPaymentGatewayService
                         }
 
                         await _lessonScheduler.EnsureScheduledAsync(subscription.Id, ct);
+
+                        if (previousStatus != PaymentStatus.Completed)
+                            await _billingEmail.NotifyPaymentSucceededAsync(payment.Id, ct);
                         return;
                     }
                 }
@@ -397,6 +404,9 @@ internal sealed class PayGatewayService : IPaymentGatewayService
                 _logger.LogWarning(ex, "Facture non créée pour le paiement {PaymentId}", payment.Id);
             }
         }
+
+        if (mapped == PaymentStatus.Completed && previousStatus != PaymentStatus.Completed)
+            await _billingEmail.NotifyPaymentSucceededAsync(payment.Id, ct);
     }
 
     private async Task TryLinkGatewaySubscriptionAsync(
