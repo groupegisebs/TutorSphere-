@@ -85,6 +85,24 @@
         <div class="cr-pro-panel-scrim" @onclick="() => _panelOpen = false"></div>
 
         <div class="cr-pro-center @(_wbCollapsed ? "is-wb-collapsed" : "is-wb-foreground")">
+            @if (_pendingShareRequests.Count > 0)
+            {
+                <div class="cr-pro-share-requests">
+                    @foreach (var req in _pendingShareRequests.ToList())
+                    {
+                        <div class="cr-pro-share-request" @key="req.RequesterConnectionId">
+                            <i class="bi bi-display"></i>
+                            <span>
+                                <strong>@req.RequesterDisplayName</strong>
+                                @(req.Kind == "whiteboard" ? " demande à partager son tableau" : " demande à partager son écran")
+                            </span>
+                            <button type="button" class="ok" @onclick="() => RespondShareAsync(req, true)">Autoriser</button>
+                            <button type="button" class="stop" @onclick="() => RespondShareAsync(req, false)">Refuser</button>
+                        </div>
+                    }
+                </div>
+            }
+
             @if (_sharing)
             {
                 <div class="cr-pro-sharebar">
@@ -539,6 +557,7 @@
     private int _cameraCount;
     private bool _sharing    = false;
     private bool _sharingWhiteboard = false;
+    private readonly List<ClassroomShareRequestDto> _pendingShareRequests = [];
     private bool _recording  = false;
     private bool _mediaReady = false;
     private bool _mediaStarted;
@@ -551,7 +570,8 @@
     private bool _wbForeground;
     private bool _wbCollapsed = true;
     private bool _panelOpen;
-    private bool _panelCollapsed;
+    /// <summary>Replié au démarrage pour maximiser vidéo / tableau ; rouvert via le dock.</summary>
+    private bool _panelCollapsed = true;
     private bool _handRaised;
     private bool _showAiDrawer;
     private bool _showViewMenu;
@@ -732,8 +752,7 @@
     private void ReplyTo(ChatMsg m)
     {
         _newMessage = $"@{m.Sender} ";
-        _activeTab = "Chat";
-        _sideRail = "Chat";
+        OpenSide("Chat");
     }
 
     private void RunAi(string action)
@@ -993,6 +1012,9 @@
         ClassroomRt.RtcSignalReceived -= OnRtcSignal;
         ClassroomRt.ChatMessageReceived -= OnChatMessage;
         ClassroomRt.ChatHistoryReceived -= OnChatHistory;
+        ClassroomRt.ShareRequestReceived -= OnShareRequest;
+        ClassroomRt.ShareLiveStartedReceived -= OnShareLiveStarted;
+        ClassroomRt.ShareLiveEndedReceived -= OnShareLiveEnded;
         _ = ClassroomRt.LeaveAsync();
         try { _ = JS.InvokeVoidAsync("classroomRtc.stop"); } catch { }
         _jsRef?.Dispose();
@@ -1016,6 +1038,9 @@
         ClassroomRt.RtcSignalReceived += OnRtcSignal;
         ClassroomRt.ChatMessageReceived += OnChatMessage;
         ClassroomRt.ChatHistoryReceived += OnChatHistory;
+        ClassroomRt.ShareRequestReceived += OnShareRequest;
+        ClassroomRt.ShareLiveStartedReceived += OnShareLiveStarted;
+        ClassroomRt.ShareLiveEndedReceived += OnShareLiveEnded;
 
         // Connect hub first so ConnectionId is known before PeerList arrives.
         await ClassroomRt.EnsureHubReadyAsync();
@@ -1299,10 +1324,7 @@
     [JSInvokable]
     public async Task OnScreenShareEnded(string kind)
     {
-        _sharing = false;
-        _sharingWhiteboard = false;
-        await RefreshRtcTracksAsync();
-        await BroadcastOwnMediaStateAsync();
+        await StopTutorShareAsync();
         await InvokeAsync(StateHasChanged);
     }
 
@@ -1618,11 +1640,7 @@
     {
         if (_sharing && !_sharingWhiteboard)
         {
-            try { await JS.InvokeVoidAsync("classroomMedia.stopScreenShare", _localVideo); } catch { }
-            _sharing = false;
-            _sharingWhiteboard = false;
-            await RefreshRtcTracksAsync();
-            await BroadcastOwnMediaStateAsync();
+            await StopTutorShareAsync();
             return;
         }
 
@@ -1639,6 +1657,8 @@
             _mediaError = null;
             await RefreshRtcTracksAsync();
             await BroadcastOwnMediaStateAsync();
+            if (_lessonGuid is not null)
+                await ClassroomRt.AnnounceTutorShareAsync(_lessonGuid.Value, "screen");
             try { await JS.InvokeVoidAsync("classroomRtc.unlockAudio"); } catch { }
         }
         catch (JSException ex)
@@ -1651,11 +1671,7 @@
     {
         if (_sharingWhiteboard)
         {
-            try { await JS.InvokeVoidAsync("classroomMedia.stopScreenShare", _localVideo); } catch { }
-            _sharing = false;
-            _sharingWhiteboard = false;
-            await RefreshRtcTracksAsync();
-            await BroadcastOwnMediaStateAsync();
+            await StopTutorShareAsync();
             return;
         }
 
@@ -1676,6 +1692,8 @@
             _mediaError = null;
             await RefreshRtcTracksAsync();
             await BroadcastOwnMediaStateAsync();
+            if (_lessonGuid is not null)
+                await ClassroomRt.AnnounceTutorShareAsync(_lessonGuid.Value, "whiteboard");
             try { await JS.InvokeVoidAsync("classroomRtc.unlockAudio"); } catch { }
         }
         catch (JSException ex)
@@ -1683,6 +1701,69 @@
             _mediaError = ex.Message;
         }
     }
+
+    private async Task StopTutorShareAsync()
+    {
+        try { await JS.InvokeVoidAsync("classroomMedia.stopScreenShare", _localVideo); } catch { }
+        _sharing = false;
+        _sharingWhiteboard = false;
+        await RefreshRtcTracksAsync();
+        await BroadcastOwnMediaStateAsync();
+        if (_lessonGuid is not null)
+            await ClassroomRt.NotifyShareEndedAsync(_lessonGuid.Value);
+    }
+
+    private void OnShareRequest(ClassroomShareRequestDto req) =>
+        _ = InvokeAsync(() =>
+        {
+            if (_lessonGuid is null || req.LessonId != _lessonGuid.Value) return;
+            _pendingShareRequests.RemoveAll(r => r.RequesterConnectionId == req.RequesterConnectionId);
+            _pendingShareRequests.Add(req);
+            PushToast($"{req.RequesterDisplayName} demande à partager.");
+            StateHasChanged();
+        });
+
+    private async Task RespondShareAsync(ClassroomShareRequestDto req, bool approved)
+    {
+        if (_lessonGuid is null) return;
+        _pendingShareRequests.RemoveAll(r => r.RequesterConnectionId == req.RequesterConnectionId);
+        await ClassroomRt.RespondShareAsync(_lessonGuid.Value, req.RequesterConnectionId, approved);
+        PushToast(approved
+            ? $"Partage de {req.RequesterDisplayName} autorisé."
+            : $"Partage de {req.RequesterDisplayName} refusé.");
+    }
+
+    private void OnShareLiveStarted(Guid lessonId, string connectionId, string displayName) =>
+        _ = InvokeAsync(async () =>
+        {
+            if (_lessonGuid != lessonId) return;
+            if (connectionId == ClassroomRt.ConnectionId) return;
+            _pendingShareRequests.RemoveAll(r => r.RequesterConnectionId == connectionId);
+            var p = _participants.FirstOrDefault(x => x.ConnectionId == connectionId);
+            if (p is not null)
+            {
+                p.CamOn = true;
+                p.HasRemoteVideo = true;
+                _focusedPeer = p;
+                _viewMode = "speaker";
+                try { await JS.InvokeVoidAsync("classroomRtc.focusRemote", connectionId); } catch { }
+            }
+            PushToast($"{displayName} partage maintenant avec la classe.");
+            StateHasChanged();
+        });
+
+    private void OnShareLiveEnded(Guid lessonId, string connectionId) =>
+        _ = InvokeAsync(async () =>
+        {
+            if (_lessonGuid != lessonId) return;
+            _pendingShareRequests.RemoveAll(r => r.RequesterConnectionId == connectionId);
+            if (_focusedPeer?.ConnectionId == connectionId)
+            {
+                _focusedPeer = null;
+                try { await JS.InvokeVoidAsync("classroomRtc.clearMain"); } catch { }
+            }
+            StateHasChanged();
+        });
 
     private async Task OnDocSelected(InputFileChangeEventArgs e)
     {

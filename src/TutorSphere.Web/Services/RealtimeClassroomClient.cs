@@ -35,6 +35,11 @@ public sealed class RealtimeClassroomClient : IAsyncDisposable
     public event Action<Guid>? MediaSyncRequested;
     public event Action<ClassroomChatMessageDto>? ChatMessageReceived;
     public event Action<Guid, IReadOnlyList<ClassroomChatMessageDto>>? ChatHistoryReceived;
+    public event Action<ClassroomShareRequestDto>? ShareRequestReceived;
+    public event Action<Guid>? ShareApprovedReceived;
+    public event Action<Guid, string>? ShareRejectedReceived;
+    public event Action<Guid, string, string>? ShareLiveStartedReceived;
+    public event Action<Guid, string>? ShareLiveEndedReceived;
 
     public bool IsConnected => _hub?.State == HubConnectionState.Connected;
 
@@ -109,6 +114,34 @@ public sealed class RealtimeClassroomClient : IAsyncDisposable
             await _hub.SendAsync("SendChatMessage", lessonId, text);
         }
         catch (Exception ex) { _logger.LogDebug(ex, "SendChatMessage failed"); }
+    }
+
+    public async Task RequestShareAsync(Guid lessonId, string kind)
+    {
+        if (_hub is null || _hub.State != HubConnectionState.Connected) return;
+        try { await _hub.SendAsync("RequestShare", lessonId, kind); }
+        catch (Exception ex) { _logger.LogDebug(ex, "RequestShare failed"); }
+    }
+
+    public async Task RespondShareAsync(Guid lessonId, string requesterConnectionId, bool approved)
+    {
+        if (_hub is null || _hub.State != HubConnectionState.Connected) return;
+        try { await _hub.SendAsync("RespondShare", lessonId, requesterConnectionId, approved); }
+        catch (Exception ex) { _logger.LogDebug(ex, "RespondShare failed"); }
+    }
+
+    public async Task NotifyShareEndedAsync(Guid lessonId)
+    {
+        if (_hub is null || _hub.State != HubConnectionState.Connected) return;
+        try { await _hub.SendAsync("NotifyShareEnded", lessonId); }
+        catch (Exception ex) { _logger.LogDebug(ex, "NotifyShareEnded failed"); }
+    }
+
+    public async Task AnnounceTutorShareAsync(Guid lessonId, string kind)
+    {
+        if (_hub is null || _hub.State != HubConnectionState.Connected) return;
+        try { await _hub.SendAsync("AnnounceTutorShare", lessonId, kind); }
+        catch (Exception ex) { _logger.LogDebug(ex, "AnnounceTutorShare failed"); }
     }
 
     public async Task LeaveAsync()
@@ -246,6 +279,36 @@ public sealed class RealtimeClassroomClient : IAsyncDisposable
             try { ChatHistoryReceived?.Invoke(lessonId, messages ?? []); }
             catch (Exception ex) { _logger.LogWarning(ex, "ChatHistory handler error"); }
         });
+
+        hub.On<ClassroomShareRequestDto>("ShareRequest", dto =>
+        {
+            try { ShareRequestReceived?.Invoke(dto); }
+            catch (Exception ex) { _logger.LogWarning(ex, "ShareRequest handler error"); }
+        });
+
+        hub.On<Guid>("ShareApproved", lessonId =>
+        {
+            try { ShareApprovedReceived?.Invoke(lessonId); }
+            catch (Exception ex) { _logger.LogWarning(ex, "ShareApproved handler error"); }
+        });
+
+        hub.On<Guid, string>("ShareRejected", (lessonId, reason) =>
+        {
+            try { ShareRejectedReceived?.Invoke(lessonId, reason ?? ""); }
+            catch (Exception ex) { _logger.LogWarning(ex, "ShareRejected handler error"); }
+        });
+
+        hub.On<Guid, string, string>("ShareLiveStarted", (lessonId, connectionId, displayName) =>
+        {
+            try { ShareLiveStartedReceived?.Invoke(lessonId, connectionId, displayName); }
+            catch (Exception ex) { _logger.LogWarning(ex, "ShareLiveStarted handler error"); }
+        });
+
+        hub.On<Guid, string>("ShareLiveEnded", (lessonId, connectionId) =>
+        {
+            try { ShareLiveEndedReceived?.Invoke(lessonId, connectionId); }
+            catch (Exception ex) { _logger.LogWarning(ex, "ShareLiveEnded handler error"); }
+        });
     }
 
     public async ValueTask DisposeAsync()
@@ -290,3 +353,9 @@ public record ClassroomChatMessageDto(
     string SenderRole,
     string Text,
     DateTime SentAtUtc);
+
+public record ClassroomShareRequestDto(
+    Guid LessonId,
+    string RequesterConnectionId,
+    string RequesterDisplayName,
+    string Kind);

@@ -173,6 +173,120 @@ public class ClassroomHub : Hub
             camOn);
     }
 
+    /// <summary>
+    /// Élève demande à partager écran/tableau. Seuls les tuteurs reçoivent la demande.
+    /// </summary>
+    public async Task RequestShare(Guid lessonId, string kind)
+    {
+        var group = GroupName(lessonId);
+        if (!PeersByLesson.TryGetValue(group, out var peers)
+            || !peers.TryGetValue(Context.ConnectionId, out var requester))
+            return;
+
+        if (IsTutorRole(requester.Role))
+            return; // Le tuteur partage sans validation.
+
+        var shareKind = NormalizeShareKind(kind);
+        var dto = new ClassroomShareRequestDto(
+            lessonId,
+            Context.ConnectionId,
+            requester.DisplayName,
+            shareKind);
+
+        var tutorIds = peers.Values
+            .Where(p => IsTutorRole(p.Role))
+            .Select(p => p.ConnectionId)
+            .ToList();
+
+        if (tutorIds.Count == 0)
+        {
+            await Clients.Caller.SendAsync("ShareRejected", lessonId, "Aucun tuteur connecté pour valider.");
+            return;
+        }
+
+        await Clients.Clients(tutorIds).SendAsync("ShareRequest", dto);
+    }
+
+    /// <summary>Tuteur approuve ou refuse une demande de partage élève.</summary>
+    public async Task RespondShare(Guid lessonId, string requesterConnectionId, bool approved)
+    {
+        if (string.IsNullOrWhiteSpace(requesterConnectionId))
+            return;
+
+        var group = GroupName(lessonId);
+        if (!PeersByLesson.TryGetValue(group, out var peers)
+            || !peers.TryGetValue(Context.ConnectionId, out var responder)
+            || !peers.TryGetValue(requesterConnectionId, out var requester))
+            return;
+
+        if (!IsTutorRole(responder.Role))
+            return;
+
+        if (!approved)
+        {
+            await Clients.Client(requesterConnectionId).SendAsync(
+                "ShareRejected",
+                lessonId,
+                "Le tuteur a refusé le partage.");
+            return;
+        }
+
+        await Clients.Client(requesterConnectionId).SendAsync("ShareApproved", lessonId);
+        await Clients.Group(group).SendAsync(
+            "ShareLiveStarted",
+            lessonId,
+            requesterConnectionId,
+            requester.DisplayName);
+    }
+
+    /// <summary>Fin de partage (tuteur ou élève après diffusion).</summary>
+    public async Task NotifyShareEnded(Guid lessonId)
+    {
+        var group = GroupName(lessonId);
+        if (!PeersByLesson.TryGetValue(group, out var peers)
+            || !peers.ContainsKey(Context.ConnectionId))
+            return;
+
+        await Clients.OthersInGroup(group).SendAsync(
+            "ShareLiveEnded",
+            lessonId,
+            Context.ConnectionId);
+    }
+
+    /// <summary>Partage tuteur immédiat — informe la classe pour focus scène.</summary>
+    public async Task AnnounceTutorShare(Guid lessonId, string kind)
+    {
+        var group = GroupName(lessonId);
+        if (!PeersByLesson.TryGetValue(group, out var peers)
+            || !peers.TryGetValue(Context.ConnectionId, out var peer)
+            || !IsTutorRole(peer.Role))
+            return;
+
+        _ = NormalizeShareKind(kind);
+        await Clients.OthersInGroup(group).SendAsync(
+            "ShareLiveStarted",
+            lessonId,
+            Context.ConnectionId,
+            peer.DisplayName);
+    }
+
+    private static string NormalizeShareKind(string? kind)
+    {
+        if (string.Equals(kind, "whiteboard", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(kind, "board", StringComparison.OrdinalIgnoreCase))
+            return "whiteboard";
+        return "screen";
+    }
+
+    private static bool IsTutorRole(string? role)
+    {
+        if (string.IsNullOrWhiteSpace(role)) return false;
+        return role.Equals("Tuteur", StringComparison.OrdinalIgnoreCase)
+            || role.Equals("Tutor", StringComparison.OrdinalIgnoreCase)
+            || role.Equals("TeachingAssistant", StringComparison.OrdinalIgnoreCase)
+            || role.Equals("TA", StringComparison.OrdinalIgnoreCase);
+    }
+
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
         if (ConnectionToLesson.TryRemove(Context.ConnectionId, out var group)
@@ -259,3 +373,9 @@ public record ClassroomChatMessageDto(
     string SenderRole,
     string Text,
     DateTime SentAtUtc);
+
+public record ClassroomShareRequestDto(
+    Guid LessonId,
+    string RequesterConnectionId,
+    string RequesterDisplayName,
+    string Kind);

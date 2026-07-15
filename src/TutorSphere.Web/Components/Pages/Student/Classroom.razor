@@ -71,12 +71,20 @@
         <div class="cr-pro-center @(_wbCollapsed ? "is-wb-collapsed" : "is-wb-foreground")">
             @if (_sharing)
             {
-                <div class="cr-pro-sharebar">
-                    <i class="bi bi-broadcast"></i>
-                    <span>@L["ClassroomPro_SharingScreen"]</span>
-                    <button type="button" class="ghost" @onclick='() => PushToast(L["ClassroomPro_PauseSoon"])'>@L["ClassroomPro_Pause"]</button>
+                <div class="cr-pro-sharebar @(_sharePending ? "is-pending" : null)">
+                    <i class="bi @(_sharePending ? "bi-hourglass-split" : "bi-broadcast")"></i>
+                    <span>
+                        @if (_sharePending)
+                        {
+                            <text>En attente de validation du tuteur…</text>
+                        }
+                        else
+                        {
+                            @L["ClassroomPro_SharingScreen"]
+                        }
+                    </span>
                     <button type="button" class="ghost" @onclick="ToggleWhiteboardForeground">@L["ClassroomPro_Annotate"]</button>
-                    <button type="button" class="stop" @onclick="ToggleShare">@L["ClassroomPro_StopShare"]</button>
+                    <button type="button" class="stop" @onclick="StopShareAsync">@L["ClassroomPro_StopShare"]</button>
                 </div>
             }
 
@@ -324,6 +332,9 @@
                     <button type="button" class="cr-pro-wb-btn @(_wbForeground ? "active" : "")" @onclick="ToggleWhiteboardForeground" title='@L["Classroom_WbForeground"]'>
                         <i class="bi @(_wbForeground ? "bi-fullscreen-exit" : "bi-fullscreen")"></i>
                     </button>
+                    <button type="button" class="cr-pro-wb-btn @(_sharingWhiteboard ? "active" : null)" @onclick="ToggleWhiteboardShare" title="Partager mon tableau (attente validation)">
+                        <i class="bi bi-cast"></i>
+                    </button>
                     </div>
             </section>
         </div>
@@ -484,6 +495,9 @@
     private bool _cameraAvailable = true;
     private int _cameraCount;
     private bool _sharing    = false;
+    private bool _sharingWhiteboard = false;
+    private bool _sharePending = false;
+    private bool _shareLive = false;
     private bool _recording  = false;
     private bool _mediaReady = false;
     private bool _mediaStarted;
@@ -495,7 +509,8 @@
     private bool _wbForeground;
     private bool _wbCollapsed = true;
     private bool _panelOpen;
-    private bool _panelCollapsed;
+    /// <summary>Replié au démarrage pour maximiser vidéo / tableau ; rouvert via le dock.</summary>
+    private bool _panelCollapsed = true;
     private bool _handRaised;
     private bool _showAiDrawer;
     private bool _showViewMenu;
@@ -652,7 +667,7 @@
     private void ReplyTo(ChatMsg m)
     {
         _newMessage = $"@{m.Sender} ";
-        _activeTab = "Chat";
+        OpenSide("Chat");
     }
 
     private void RunAi(string action)
@@ -858,6 +873,10 @@
         ClassroomRt.RtcSignalReceived -= OnRtcSignal;
         ClassroomRt.ChatMessageReceived -= OnChatMessage;
         ClassroomRt.ChatHistoryReceived -= OnChatHistory;
+        ClassroomRt.ShareApprovedReceived -= OnShareApproved;
+        ClassroomRt.ShareRejectedReceived -= OnShareRejected;
+        ClassroomRt.ShareLiveStartedReceived -= OnShareLiveStarted;
+        ClassroomRt.ShareLiveEndedReceived -= OnShareLiveEnded;
         _ = ClassroomRt.LeaveAsync();
         try { _ = JS.InvokeVoidAsync("classroomRtc.stop"); } catch { }
         _jsRef?.Dispose();
@@ -882,6 +901,10 @@
         ClassroomRt.RtcSignalReceived += OnRtcSignal;
         ClassroomRt.ChatMessageReceived += OnChatMessage;
         ClassroomRt.ChatHistoryReceived += OnChatHistory;
+        ClassroomRt.ShareApprovedReceived += OnShareApproved;
+        ClassroomRt.ShareRejectedReceived += OnShareRejected;
+        ClassroomRt.ShareLiveStartedReceived += OnShareLiveStarted;
+        ClassroomRt.ShareLiveEndedReceived += OnShareLiveEnded;
 
         await ClassroomRt.EnsureHubReadyAsync();
 
@@ -1102,7 +1125,8 @@
     private async Task BroadcastOwnMediaStateAsync()
     {
         if (_lessonGuid is null) return;
-        await ClassroomRt.BroadcastMediaStateAsync(_lessonGuid.Value, _micOn, _camOn || _sharing);
+        // Ne diffuser "vidéo on" qu'après validation tuteur (évite d'afficher un écran non approuvé).
+        await ClassroomRt.BroadcastMediaStateAsync(_lessonGuid.Value, _micOn, _camOn || _shareLive);
     }
 
     private async Task RefreshRtcTracksAsync()
@@ -1149,6 +1173,8 @@
     public async Task OnLocalBoardStroke(LocalStrokeDto stroke)
     {
         if (_lessonGuid is null || stroke is null) return;
+        // Ardoise privée : traits envoyés seulement si le tableau est en partage validé.
+        if (!_shareLive || !_sharingWhiteboard) return;
         await ClassroomRt.SendStrokeAsync(_lessonGuid.Value, new BoardStrokeDto(
             stroke.Phase, stroke.X, stroke.Y, stroke.Tool, stroke.Color, stroke.Width,
             Auth.UserName));
@@ -1157,10 +1183,7 @@
     [JSInvokable]
     public async Task OnScreenShareEnded(string kind)
     {
-        _sharing = false;
-        await RefreshRtcTracksAsync();
-        await BroadcastOwnMediaStateAsync();
-        await InvokeAsync(StateHasChanged);
+        await StopShareAsync();
     }
 
     [JSInvokable]
@@ -1472,11 +1495,7 @@
     {
         if (_sharing)
         {
-            try { await JS.InvokeVoidAsync("classroomMedia.stopScreenShare", _localVideo); }
-            catch { }
-            _sharing = false;
-            await RefreshRtcTracksAsync();
-            await BroadcastOwnMediaStateAsync();
+            await StopShareAsync();
             return;
         }
 
@@ -1489,9 +1508,14 @@
                 return;
             }
             _sharing = true;
+            _sharingWhiteboard = false;
+            _sharePending = true;
+            _shareLive = false;
             _mediaError = null;
-            await RefreshRtcTracksAsync();
-            await BroadcastOwnMediaStateAsync();
+            // Aperçu local seulement — diffusion WebRTC après ShareApproved.
+            if (_lessonGuid is not null)
+                await ClassroomRt.RequestShareAsync(_lessonGuid.Value, "screen");
+            PushToast("Demande de partage envoyée au tuteur.");
             try { await JS.InvokeVoidAsync("classroomRtc.unlockAudio"); } catch { }
         }
         catch (JSException ex)
@@ -1499,6 +1523,109 @@
             _mediaError = ex.Message;
         }
     }
+
+    private async Task ToggleWhiteboardShare()
+    {
+        if (_sharingWhiteboard)
+        {
+            await StopShareAsync();
+            return;
+        }
+
+        try
+        {
+            if (!_wbReady)
+                await JS.InvokeVoidAsync("whiteboard.init", _canvasRef);
+
+            var result = await JS.InvokeAsync<MediaStartResult>(
+                "classroomMedia.startWhiteboardShare", _localVideo, _canvasRef);
+            if (result is null || !result.Ok)
+            {
+                _mediaError = result?.Error ?? "Partage du tableau impossible.";
+                return;
+            }
+
+            _sharing = true;
+            _sharingWhiteboard = true;
+            _sharePending = true;
+            _shareLive = false;
+            _wbCollapsed = false;
+            _wbForeground = true;
+            _mediaError = null;
+            if (_lessonGuid is not null)
+                await ClassroomRt.RequestShareAsync(_lessonGuid.Value, "whiteboard");
+            PushToast("Demande de partage du tableau envoyée au tuteur.");
+        }
+        catch (JSException ex)
+        {
+            _mediaError = ex.Message;
+        }
+    }
+
+    private async Task StopShareAsync()
+    {
+        var wasLive = _shareLive;
+        try { await JS.InvokeVoidAsync("classroomMedia.stopScreenShare", _localVideo); } catch { }
+        _sharing = false;
+        _sharingWhiteboard = false;
+        _sharePending = false;
+        _shareLive = false;
+        await RefreshRtcTracksAsync();
+        await BroadcastOwnMediaStateAsync();
+        if (wasLive && _lessonGuid is not null)
+            await ClassroomRt.NotifyShareEndedAsync(_lessonGuid.Value);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void OnShareApproved(Guid lessonId) =>
+        _ = InvokeAsync(async () =>
+        {
+            if (_lessonGuid != lessonId || !_sharing) return;
+            _sharePending = false;
+            _shareLive = true;
+            await RefreshRtcTracksAsync();
+            await BroadcastOwnMediaStateAsync();
+            PushToast("Partage autorisé — visible par la classe.");
+            StateHasChanged();
+        });
+
+    private void OnShareRejected(Guid lessonId, string reason) =>
+        _ = InvokeAsync(async () =>
+        {
+            if (_lessonGuid != lessonId) return;
+            PushToast(string.IsNullOrWhiteSpace(reason) ? "Partage refusé par le tuteur." : reason);
+            await StopShareAsync();
+        });
+
+    private void OnShareLiveStarted(Guid lessonId, string connectionId, string displayName) =>
+        _ = InvokeAsync(async () =>
+        {
+            if (_lessonGuid != lessonId) return;
+            if (connectionId == ClassroomRt.ConnectionId) return;
+            var p = _participants.FirstOrDefault(x => x.ConnectionId == connectionId);
+            if (p is not null)
+            {
+                p.CamOn = true;
+                p.HasRemoteVideo = true;
+                _focusedPeer = p;
+                _viewMode = "speaker";
+                try { await JS.InvokeVoidAsync("classroomRtc.focusRemote", connectionId); } catch { }
+            }
+            PushToast($"{displayName} partage avec la classe.");
+            StateHasChanged();
+        });
+
+    private void OnShareLiveEnded(Guid lessonId, string connectionId) =>
+        _ = InvokeAsync(async () =>
+        {
+            if (_lessonGuid != lessonId) return;
+            if (_focusedPeer?.ConnectionId == connectionId)
+            {
+                _focusedPeer = null;
+                try { await JS.InvokeVoidAsync("classroomRtc.clearMain"); } catch { }
+            }
+            StateHasChanged();
+        });
 
     private void ToggleRecording() => _recording = !_recording;
 
@@ -1612,7 +1739,8 @@
     {
         try { await JS.InvokeVoidAsync("whiteboard.clear", false); } catch { }
         _boardDocName = null;
-        if (_lessonGuid is Guid lid)
+        // Ne pas effacer le tableau de la classe sauf si partage tableau validé.
+        if (_shareLive && _sharingWhiteboard && _lessonGuid is Guid lid)
             await ClassroomRt.ClearBoardAsync(lid);
     }
 
@@ -1620,7 +1748,11 @@
     {
         if (doc.Id is null || !doc.IsImage) return;
         _activeTab = "Documents";
-        await PresentDocumentOnBoardAsync(doc.Id.Value, doc.ContentType, broadcast: true, displayName: doc.Name);
+        await PresentDocumentOnBoardAsync(
+            doc.Id.Value,
+            doc.ContentType,
+            broadcast: _shareLive && _sharingWhiteboard,
+            displayName: doc.Name);
     }
 
     /// <summary>
