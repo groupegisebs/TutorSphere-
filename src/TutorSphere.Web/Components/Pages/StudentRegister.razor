@@ -229,13 +229,19 @@
             _error = L["Error_FillAllFields"]; return;
         }
         if (!_dob.HasValue) { _error = L["Error_FillDateOfBirth"]; return; }
+        var age = (int)((DateTime.Today - _dob.Value).TotalDays / 365.25);
+        if (age < 14)
+        {
+            _error = "L’inscription autonome est réservée aux 14 ans et plus. Demandez à un parent de créer votre compte.";
+            return;
+        }
         if (_password != _confirm) { _error = L["Error_PasswordMismatch"]; return; }
         if (!HasLen || !HasNum || !HasSpc) { _error = L["Error_PasswordWeak"]; return; }
 
         _submitting = true;
         try
         {
-            var req = new RegisterRequest(_email.Trim(), _password, _firstName.Trim(), _lastName.Trim(), "Student");
+            var req = new RegisterRequest(_email.Trim(), _password, _firstName.Trim(), _lastName.Trim(), "Student", _dob);
             var resp = await Http.PostAsJsonAsync("api/auth/register", req);
             if (resp.IsSuccessStatusCode)
             {

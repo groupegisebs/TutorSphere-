@@ -52,7 +52,7 @@ public class PaymentsController : ControllerBase
     }
 
     [HttpPost("subscriptions/{subscriptionId:guid}/checkout")]
-    [Authorize(Roles = $"{UserRoles.Parent},{UserRoles.Tutor},{UserRoles.SuperAdmin}")]
+    [Authorize(Roles = $"{UserRoles.Parent},{UserRoles.Student},{UserRoles.Tutor},{UserRoles.SuperAdmin}")]
     public async Task<ActionResult<SubscriptionCheckoutResponse>> CreateSubscriptionCheckout(
         Guid subscriptionId,
         [FromBody] CreateSubscriptionCheckoutRequest request,
@@ -78,7 +78,7 @@ public class PaymentsController : ControllerBase
     }
 
     [HttpPost("subscriptions/{subscriptionId:guid}/payment-intent")]
-    [Authorize(Roles = $"{UserRoles.Parent},{UserRoles.Tutor},{UserRoles.SuperAdmin}")]
+    [Authorize(Roles = $"{UserRoles.Parent},{UserRoles.Student},{UserRoles.Tutor},{UserRoles.SuperAdmin}")]
     [Obsolete("Utiliser POST /api/payments/subscriptions/{id}/checkout")]
     public Task<ActionResult<SubscriptionCheckoutResponse>> CreateSubscriptionPaymentIntent(
         Guid subscriptionId,
@@ -87,7 +87,7 @@ public class PaymentsController : ControllerBase
         CreateSubscriptionCheckout(subscriptionId, request, ct);
 
     [HttpGet("{paymentId:guid}/status")]
-    [Authorize(Roles = $"{UserRoles.Parent},{UserRoles.Tutor},{UserRoles.SuperAdmin}")]
+    [Authorize(Roles = $"{UserRoles.Parent},{UserRoles.Student},{UserRoles.Tutor},{UserRoles.SuperAdmin}")]
     public async Task<ActionResult<PaymentStatusResponse>> SyncPaymentStatus(Guid paymentId, CancellationToken ct)
     {
         try
@@ -102,7 +102,7 @@ public class PaymentsController : ControllerBase
 
     /// <summary>Après retour Stripe Checkout : sync Pay Gateway → active l'abonnement (retries).</summary>
     [HttpPost("subscriptions/{subscriptionId:guid}/confirm")]
-    [Authorize(Roles = $"{UserRoles.Parent},{UserRoles.Tutor},{UserRoles.SuperAdmin}")]
+    [Authorize(Roles = $"{UserRoles.Parent},{UserRoles.Student},{UserRoles.Tutor},{UserRoles.SuperAdmin}")]
     public async Task<ActionResult<PaymentStatusResponse>> ConfirmSubscriptionPayment(
         Guid subscriptionId,
         CancellationToken ct)

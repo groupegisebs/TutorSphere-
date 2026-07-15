@@ -47,6 +47,11 @@
                 <label class="form-label">Téléphone</label>
                 <input class="form-control" @bind="_phone" />
             </div>
+            <div class="col-md-6">
+                <label class="form-label">Date de naissance *</label>
+                <input type="date" class="form-control" @bind="_dob" />
+                <div class="form-text">Obligatoire pour rechercher et s’abonner seul (14 ans et plus).</div>
+            </div>
         </div>
     </div>
 </div>
@@ -70,6 +75,7 @@
     private string _lastName = "";
     private string _email = "";
     private string _phone = "";
+    private DateTime? _dob;
 
     private record NotificationPreferencesDto(bool EmailLessonReminders);
     private record UserProfileDto(
@@ -98,6 +104,21 @@
             _firstName = parts.Length > 0 ? parts[0] : "";
             _lastName = parts.Length > 1 ? parts[1] : "";
         }
+
+        try
+        {
+            var student = await Api.GetAsync<StudentDto>("api/students/me");
+            if (student is not null)
+            {
+                _firstName = student.FirstName;
+                _lastName = student.LastName;
+                _phone = student.Phone ?? _phone;
+                _dob = student.DateOfBirth?.Date;
+                if (!string.IsNullOrWhiteSpace(student.Email))
+                    _email = student.Email;
+            }
+        }
+        catch { /* profil élève absents — compte Identity seul */ }
     }
 
     private async Task SaveAsync()
@@ -114,6 +135,19 @@
         _error = null;
         try
         {
+            var studentResult = await Api.PutWithErrorAsync<StudentDto>("api/students/me", new
+            {
+                firstName = _firstName.Trim(),
+                lastName = _lastName.Trim(),
+                phone = string.IsNullOrWhiteSpace(_phone) ? null : _phone.Trim(),
+                dateOfBirth = _dob
+            });
+            if (studentResult.Error is not null)
+            {
+                _error = studentResult.Error;
+                return;
+            }
+
             var profileResult = await Api.PutWithErrorAsync<UserProfileDto>("api/me/profile", new
             {
                 firstName = _firstName.Trim(),

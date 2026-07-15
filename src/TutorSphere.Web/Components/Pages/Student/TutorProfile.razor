@@ -1,0 +1,80 @@
+@page "/student/tutors/{Slug}"
+@layout StudentLayout
+@rendermode InteractiveServer
+@using TutorSphere.Application.DTOs.Branding
+@inject IStringLocalizer<SharedResources> L
+@inject ApiClient Api
+
+<PageTitle>@(Profile?.TutorFullName ?? Profile?.SchoolName ?? L["Nav_FindTutor"]) — TutorSphere</PageTitle>
+
+<div class="ts-page-header">
+    <div>
+        <a href="/student/search" class="tutor-detail-back">
+            <i class="bi bi-arrow-left"></i> Retour à la recherche
+        </a>
+        <h1><i class="bi bi-person-badge me-2"></i>Profil de l’enseignant</h1>
+        <p class="ts-page-subtitle">Consultez les offres et abonnez-vous</p>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="loading-state">
+        <div class="loading-spinner"></div>
+        <span>@L["Loading"]</span>
+    </div>
+}
+else if (_notFound || Profile is null)
+{
+    <div class="empty-state">
+        <div class="empty-state-icon"><i class="bi bi-person-x"></i></div>
+        <h2 class="h5">Profil introuvable</h2>
+        <p class="text-muted">Cet enseignant n’est pas disponible ou son profil n’est pas public.</p>
+        <a class="btn btn-primary mt-2" href="/student/search">@L["Nav_FindTutor"]</a>
+    </div>
+}
+else if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-danger">
+        <i class="bi bi-exclamation-circle me-2"></i>@_error
+    </div>
+}
+else
+{
+    <TutorDetailView Profile="Profile" AllowSelfSubscribe="@(_me?.IsAutonomous == true)" />
+}
+
+@code {
+    [Parameter] public string Slug { get; set; } = "";
+
+    private PublicTutorDetailDto? Profile { get; set; }
+    private StudentDto? _me;
+    private bool _loading = true;
+    private bool _notFound;
+    private string? _error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _loading = true;
+        _error = null;
+        _notFound = false;
+        Profile = null;
+
+        try
+        {
+            try { _me = await Api.GetAsync<StudentDto>("api/students/me"); }
+            catch { _me = null; }
+
+            Profile = await Api.GetAsync<PublicTutorDetailDto>($"api/branding/{Uri.EscapeDataString(Slug)}/tutor");
+            _notFound = Profile is null;
+        }
+        catch
+        {
+            _error = L["Search_Error_Load"];
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

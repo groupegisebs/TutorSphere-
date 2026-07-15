@@ -60,7 +60,7 @@
             </div>
 
             <div class="tutor-detail-actions">
-                @if (AllowSubscribe && Profile.Offerings.Count > 0)
+                @if ((AllowSubscribe || AllowSelfSubscribe) && Profile.Offerings.Count > 0)
                 {
                     <button type="button" class="btn btn-primary" @onclick="() => OpenSubscribe(Profile.Offerings[0])">
                         <i class="bi bi-plus-lg me-1"></i>@L["PublicProfile_Subscribe"]
@@ -314,7 +314,7 @@
                                             }
                                         </div>
                                     }
-                                    @if (AllowSubscribe)
+                                    @if (AllowSubscribe || AllowSelfSubscribe)
                                     {
                                         <button type="button" class="btn btn-primary btn-sm w-100 mt-3"
                                                 @onclick="() => OpenSubscribe(offer)">
@@ -383,7 +383,11 @@
                     }
                 </p>
 
-                @if (_loadingChildren)
+                @if (AllowSelfSubscribe)
+                {
+                    <p class="mb-0">Envoyer une demande d’inscription pour <strong>vous-même</strong>. Après acceptation par l’enseignant, vous pourrez payer.</p>
+                }
+                else if (_loadingChildren)
                 {
                     <div class="text-muted">@L["ParentSubscribe_LoadingChildren"]</div>
                 }
@@ -408,7 +412,7 @@
             <div class="ts-modal-footer">
                 <button type="button" class="btn btn-outline-secondary" @onclick="CloseSubscribe">@L["Common_Cancel"]</button>
                 <button type="button" class="btn btn-primary"
-                        disabled="@(_subscribing || string.IsNullOrEmpty(_selectedChildId) || _children.Count == 0)"
+                        disabled="@SubscribeDisabled"
                         @onclick="ConfirmSubscribeAsync">
                     @if (_subscribing)
                     {
@@ -425,6 +429,8 @@
     [Parameter] public PublicTutorDetailDto Profile { get; set; } = default!;
     [Parameter] public string? SubscribeHref { get; set; }
     [Parameter] public bool AllowSubscribe { get; set; }
+    /// <summary>Élève autonome (14+) — s'abonne pour lui-même.</summary>
+    [Parameter] public bool AllowSelfSubscribe { get; set; }
     [Inject] private IStringLocalizer<SharedResources> L { get; set; } = default!;
 
     private string _activeTab = "about";
@@ -435,6 +441,10 @@
     private string _selectedChildId = "";
     private PublicOfferingDto? _selectedOffer;
     private List<ChildOption> _children = [];
+
+    private bool SubscribeDisabled =>
+        _subscribing
+        || (!AllowSelfSubscribe && (string.IsNullOrEmpty(_selectedChildId) || _children.Count == 0));
 
     private (string Key, string Label)[] _tabs =>
     [
@@ -480,8 +490,15 @@
         _subscribeError = null;
         _selectedChildId = "";
         _showSubscribeModal = true;
-        _loadingChildren = true;
 
+        if (AllowSelfSubscribe)
+        {
+            _loadingChildren = false;
+            _children = [];
+            return;
+        }
+
+        _loadingChildren = true;
         try
         {
             var children = await Api.GetAsync<List<ChildOption>>("api/parent/children") ?? [];
@@ -509,18 +526,33 @@
 
     private async Task ConfirmSubscribeAsync()
     {
-        if (_selectedOffer is null || !Guid.TryParse(_selectedChildId, out var childId))
+        if (_selectedOffer is null)
+            return;
+
+        if (!AllowSelfSubscribe && !Guid.TryParse(_selectedChildId, out _))
             return;
 
         _subscribing = true;
         _subscribeError = null;
         try
         {
-            var enroll = await Api.PostWithErrorAsync<EnrollResult>("api/parent/subscriptions/enroll", new
+            ApiResult<EnrollResult> enroll;
+            if (AllowSelfSubscribe)
             {
-                studentId = childId,
-                offeringId = _selectedOffer.Id
-            });
+                enroll = await Api.PostWithErrorAsync<EnrollResult>("api/students/me/subscriptions/enroll", new
+                {
+                    offeringId = _selectedOffer.Id
+                });
+            }
+            else
+            {
+                var childId = Guid.Parse(_selectedChildId);
+                enroll = await Api.PostWithErrorAsync<EnrollResult>("api/parent/subscriptions/enroll", new
+                {
+                    studentId = childId,
+                    offeringId = _selectedOffer.Id
+                });
+            }
 
             if (enroll.Error is not null || enroll.Value is null)
             {
@@ -528,10 +560,11 @@
                 return;
             }
 
-            // La demande reste en attente jusqu'à acceptation par l'enseignant.
             _subscribeError = null;
             CloseSubscribe();
-            Navigation.NavigateTo($"/parent/subscriptions?created={enroll.Value.Id}");
+            Navigation.NavigateTo(AllowSelfSubscribe
+                ? $"/student/subscriptions?created={enroll.Value.Id}"
+                : $"/parent/subscriptions?created={enroll.Value.Id}");
         }
         catch (Exception ex)
         {

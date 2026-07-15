@@ -50,6 +50,15 @@ public class AuthService : IAuthService
     public async Task<AuthResponse> RegisterAsync(RegisterRequest request, CancellationToken ct = default)
     {
         var role = NormalizeRole(request.Role);
+        DateTime? studentDob = null;
+        if (role == UserRoles.Student)
+        {
+            studentDob = ValidateStudentRegistrationDob(request.DateOfBirth);
+            if (!_db.Tenants.Any())
+                throw new InvalidOperationException(
+                    "Aucune école disponible pour finaliser l'inscription. Réessayez plus tard.");
+        }
+
         var user = new ApplicationUser
         {
             UserName = request.Email,
@@ -66,6 +75,9 @@ public class AuthService : IAuthService
 
         if (UserRoles.ParentPortalRoles.Contains(role))
             await EnsureParentProfileAsync(user, ct);
+
+        if (role == UserRoles.Student)
+            await EnsureStudentProfileOnRegisterAsync(user, studentDob, ct);
 
         await _email.SendWelcomeAsync(user.Email!, user.FirstName, ct);
 
@@ -441,6 +453,64 @@ public class AuthService : IAuthService
             FirstName = user.FirstName,
             LastName = user.LastName,
             Email = user.Email ?? user.UserName ?? string.Empty
+        });
+        await _db.SaveChangesAsync(ct);
+    }
+
+    private static DateTime ValidateStudentRegistrationDob(DateTime? dateOfBirth)
+    {
+        if (!dateOfBirth.HasValue)
+            throw new InvalidOperationException("La date de naissance est obligatoire pour un compte élève.");
+
+        var dob = dateOfBirth.Value.Date;
+        if (dob > DateTime.UtcNow.Date)
+            throw new InvalidOperationException("La date de naissance ne peut pas être dans le futur.");
+
+        var age = (int)((DateTime.Today - dob).TotalDays / 365.25);
+        if (age < 14)
+            throw new InvalidOperationException(
+                "L'inscription autonome est réservée aux élèves de 14 ans et plus. Demandez à un parent de créer votre compte.");
+
+        return DateTime.SpecifyKind(dob, DateTimeKind.Utc);
+    }
+
+    private async Task EnsureStudentProfileOnRegisterAsync(
+        ApplicationUser user,
+        DateTime? dateOfBirth,
+        CancellationToken ct)
+    {
+        if (_db.StudentsForAnyTenant.Any(s => s.UserId == user.Id))
+            return;
+
+        var dob = dateOfBirth
+            ?? throw new InvalidOperationException("La date de naissance est obligatoire pour un compte élève.");
+
+        var tenantId = user.TenantId ?? _db.Tenants.Select(t => t.Id).FirstOrDefault();
+        if (tenantId == Guid.Empty)
+            throw new InvalidOperationException(
+                "Aucune école disponible pour finaliser l'inscription. Réessayez plus tard.");
+
+        var billingParent = new ParentProfile
+        {
+            TenantId = tenantId,
+            UserId = user.Id,
+            FirstName = user.FirstName,
+            LastName = user.LastName,
+            Email = user.Email ?? user.UserName ?? string.Empty
+        };
+        _db.Add(billingParent);
+        await _db.SaveChangesAsync(ct);
+
+        _db.Add(new Student
+        {
+            TenantId = tenantId,
+            UserId = user.Id,
+            ParentProfileId = billingParent.Id,
+            FirstName = user.FirstName,
+            LastName = user.LastName,
+            Email = user.Email,
+            DateOfBirth = dob,
+            IsActive = true
         });
         await _db.SaveChangesAsync(ct);
     }

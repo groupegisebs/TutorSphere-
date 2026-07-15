@@ -8,6 +8,7 @@ using TutorSphere.Application.DTOs.LessonReports;
 using TutorSphere.Application.DTOs.Lessons;
 using TutorSphere.Application.DTOs.Messages;
 using TutorSphere.Application.DTOs.Students;
+using TutorSphere.Application.DTOs.StudentSubscriptions;
 using TutorSphere.Application.Services;
 using TutorSphere.Domain.Enums;
 
@@ -19,11 +20,16 @@ namespace TutorSphere.Api.Controllers;
 public class StudentPortalController : ControllerBase
 {
     private readonly IStudentPortalService _portal;
+    private readonly IStudentSubscriptionService _subscriptions;
     private readonly IWebHostEnvironment _env;
 
-    public StudentPortalController(IStudentPortalService portal, IWebHostEnvironment env)
+    public StudentPortalController(
+        IStudentPortalService portal,
+        IStudentSubscriptionService subscriptions,
+        IWebHostEnvironment env)
     {
         _portal = portal;
+        _subscriptions = subscriptions;
         _env = env;
     }
 
@@ -36,6 +42,73 @@ public class StudentPortalController : ControllerBase
 
         var student = await _portal.GetMeAsync(userId, ct);
         return student is null ? NotFound(new { error = "Profil élève introuvable." }) : Ok(student);
+    }
+
+    [HttpPut("me")]
+    public async Task<ActionResult<StudentDto>> UpdateMe(
+        [FromBody] UpdateMyStudentProfileRequest request,
+        CancellationToken ct)
+    {
+        var userId = User.GetUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        try
+        {
+            return Ok(await _portal.UpdateMeAsync(userId, request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpGet("me/subscriptions")]
+    public async Task<ActionResult<IReadOnlyList<StudentSubscriptionDto>>> MySubscriptions(CancellationToken ct)
+    {
+        var userId = User.GetUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        return Ok(await _subscriptions.GetForStudentUserAsync(userId, ct));
+    }
+
+    [HttpPost("me/subscriptions/enroll")]
+    public async Task<ActionResult<StudentSubscriptionDto>> EnrollSelf(
+        [FromBody] EnrollSelfRequest request,
+        CancellationToken ct)
+    {
+        var userId = User.GetUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        try
+        {
+            var dto = await _subscriptions.EnrollSelfAsync(userId, request, ct);
+            return Ok(dto);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("me/subscriptions/{id:guid}/cancel")]
+    public async Task<IActionResult> CancelSelf(Guid id, CancellationToken ct)
+    {
+        var userId = User.GetUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        try
+        {
+            await _subscriptions.CancelSelfAsync(userId, id, ct);
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 
     [HttpGet("me/lessons")]

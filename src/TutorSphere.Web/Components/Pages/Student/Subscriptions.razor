@@ -1,0 +1,329 @@
+@page "/student/subscriptions"
+@layout StudentLayout
+@rendermode InteractiveServer
+@using System.Globalization
+@inject IStringLocalizer<SharedResources> L
+@inject ApiClient Api
+@inject NavigationManager Navigation
+
+<PageTitle>Mes abonnements — TutorSphere</PageTitle>
+
+<div class="ts-page-header">
+    <div>
+        <h1><i class="bi bi-arrow-repeat me-2"></i>Mes abonnements</h1>
+        <p class="ts-page-subtitle">Demandes d’inscription, paiements et cours actifs</p>
+    </div>
+    <a class="btn btn-primary" href="/student/search">
+        <i class="bi bi-binoculars me-1"></i>@L["Nav_FindTutor"]
+    </a>
+</div>
+
+@if (!string.IsNullOrEmpty(_banner))
+{
+    <div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>@_banner</div>
+}
+
+@if (_loading)
+{
+    <div class="d-flex align-items-center justify-content-center py-5">
+        <span class="spinner-border text-primary me-3" role="status"></span>
+        <span class="text-muted">Chargement…</span>
+    </div>
+}
+else if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-danger"><i class="bi bi-exclamation-circle me-2"></i>@_error</div>
+}
+else
+{
+    <div class="ts-tabs-bar mb-3">
+        <button type="button" class="ts-tab @(_tab == "pending" ? "active" : "")" @onclick='() => _tab = "pending"'>
+            En attente
+            <span class="ts-tab-count">@CountFor("pending")</span>
+        </button>
+        <button type="button" class="ts-tab @(_tab == "active" ? "active" : "")" @onclick='() => _tab = "active"'>
+            Actifs
+            <span class="ts-tab-count">@CountFor("active")</span>
+        </button>
+        <button type="button" class="ts-tab @(_tab == "cancelled" ? "active" : "")" @onclick='() => _tab = "cancelled"'>
+            Annulés
+            <span class="ts-tab-count">@CountFor("cancelled")</span>
+        </button>
+        <button type="button" class="ts-tab @(_tab == "history" ? "active" : "")" @onclick='() => _tab = "history"'>
+            Historique
+            <span class="ts-tab-count">@CountFor("history")</span>
+        </button>
+    </div>
+
+    <div class="ts-table-card parent-subs-table-wrap">
+        <table class="table ts-table parent-subs-table">
+            <thead>
+                <tr>
+                    <th>Offre</th>
+                    <th>@L["Common_Subject"]</th>
+                    <th>Période</th>
+                    <th>Séances</th>
+                    <th>@L["Common_Amount"]</th>
+                    <th>@L["Common_Status"]</th>
+                    <th class="text-end">@L["Common_Actions"]</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var sub in FilteredSubs)
+                {
+                    <tr>
+                        <td><strong>@sub.OfferingTitle</strong></td>
+                        <td>@(string.IsNullOrWhiteSpace(sub.Subject) ? "—" : sub.Subject)</td>
+                        <td class="text-nowrap">@FormatPeriod(sub.StartDate, sub.EndDate)</td>
+                        <td>@sub.SessionsRemaining</td>
+                        <td class="fw-semibold text-nowrap">@sub.Price.ToString("N2", CultureInfo.CurrentCulture) @sub.Currency</td>
+                        <td><span class="ts-badge @StatusBadge(sub.Status)">@StatusLabel(sub.Status)</span></td>
+                        <td class="text-end">
+                            <div class="d-inline-flex align-items-center justify-content-end gap-2 flex-wrap">
+                                @if (sub.Status is "Active" or "Pending" or "AwaitingPayment" or "Paused")
+                                {
+                                    <button type="button"
+                                            class="btn btn-outline-danger btn-sm"
+                                            disabled="@(_cancelling == sub.Id)"
+                                            @onclick="async () => await CancelAsync(sub.Id)">
+                                        @if (_cancelling == sub.Id)
+                                        {
+                                            <span class="spinner-border spinner-border-sm me-1"></span>
+                                        }
+                                        Annuler
+                                    </button>
+                                }
+                                @if (sub.Status == "AwaitingPayment")
+                                {
+                                    <button type="button"
+                                            class="btn btn-primary btn-sm"
+                                            disabled="@(_paying == sub.Id)"
+                                            @onclick="async () => await PayAsync(sub)">
+                                        @if (_paying == sub.Id)
+                                        {
+                                            <span class="spinner-border spinner-border-sm me-1"></span>
+                                        }
+                                        Payer
+                                    </button>
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                }
+                @if (!FilteredSubs.Any())
+                {
+                    <tr>
+                        <td colspan="7" class="text-center py-5">
+                            <div class="text-muted mb-3">
+                                <i class="bi bi-inbox fs-2 d-block mb-2 opacity-50"></i>
+                                Aucun abonnement dans cet onglet.
+                            </div>
+                            @if (_tab is "pending" or "active")
+                            {
+                                <a class="btn btn-outline-primary btn-sm" href="/student/search">@L["Nav_FindTutor"]</a>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+
+    private bool _loading = true;
+    private string? _error;
+    private string? _banner;
+    private Guid? _cancelling;
+    private Guid? _paying;
+    private string _tab = "pending";
+    private List<SubVm> _subs = [];
+
+    private IEnumerable<SubVm> FilteredSubs => _subs.Where(s => MatchesTab(s.Status, _tab));
+
+    protected override async Task OnInitializedAsync()
+    {
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
+        var paidReturn = query.ContainsKey("paid");
+        var createdReturn = query.ContainsKey("created");
+        if (query.ContainsKey("canceled"))
+            _banner = "Paiement annulé. Vous pourrez réessayer plus tard.";
+
+        Guid? paymentId = null;
+        Guid? subscriptionId = null;
+        if (query.TryGetValue("payment", out var paymentRaw) && Guid.TryParse(paymentRaw, out var pid))
+            paymentId = pid;
+        if (query.TryGetValue("sub", out var subRaw) && Guid.TryParse(subRaw, out var sid))
+            subscriptionId = sid;
+        else if (query.TryGetValue("created", out var createdRaw) && Guid.TryParse(createdRaw, out var cid))
+            subscriptionId = cid;
+
+        try
+        {
+            if (paidReturn || createdReturn)
+                await ConfirmPaymentAfterCheckoutAsync(paymentId, subscriptionId);
+
+            var result = await Api.GetAsync<List<SubVm>>("api/students/me/subscriptions");
+            _subs = result ?? [];
+            _tab = PickDefaultTab();
+
+            if (paidReturn || createdReturn)
+            {
+                var activated = subscriptionId.HasValue
+                    && _subs.Any(s => s.Id == subscriptionId && s.Status == "Active");
+                var awaitingApproval = subscriptionId.HasValue
+                    && _subs.Any(s => s.Id == subscriptionId && s.Status == "Pending");
+                _banner = activated
+                    ? "Paiement confirmé — abonnement actif."
+                    : awaitingApproval
+                        ? "Demande envoyée. L’enseignant doit l’accepter avant le paiement."
+                        : "Abonnement enregistré.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Impossible de charger vos abonnements ({ex.Message}).";
+        }
+        finally { _loading = false; }
+    }
+
+    private async Task ConfirmPaymentAfterCheckoutAsync(Guid? paymentId, Guid? subscriptionId)
+    {
+        try
+        {
+            if (subscriptionId.HasValue)
+            {
+                await Api.PostWithErrorAsync<PaymentStatusVm>(
+                    $"api/payments/subscriptions/{subscriptionId}/confirm",
+                    new { });
+                return;
+            }
+
+            if (!paymentId.HasValue)
+                return;
+
+            for (var attempt = 1; attempt <= 5; attempt++)
+            {
+                var status = await Api.GetAsync<PaymentStatusVm>($"api/payments/{paymentId}/status");
+                if (status is not null
+                    && (string.Equals(status.GatewayStatus, "Succeeded", StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(status.LocalStatus, "Completed", StringComparison.OrdinalIgnoreCase)))
+                    return;
+
+                if (attempt < 5)
+                    await Task.Delay(2000);
+            }
+        }
+        catch { }
+    }
+
+    private string PickDefaultTab()
+    {
+        if (CountFor("pending") > 0) return "pending";
+        if (CountFor("active") > 0) return "active";
+        if (CountFor("cancelled") > 0) return "cancelled";
+        return "history";
+    }
+
+    private static bool MatchesTab(string status, string tab) => tab switch
+    {
+        "pending" => status is "Pending" or "AwaitingPayment",
+        "active" => status is "Active" or "Paused",
+        "cancelled" => status is "Cancelled" or "Rejected",
+        "history" => status is "Expired" or "Completed",
+        _ => false
+    };
+
+    private int CountFor(string tab) => _subs.Count(s => MatchesTab(s.Status, tab));
+
+    private string StatusLabel(string status) => status switch
+    {
+        "Active" => L["Common_Active"],
+        "Pending" => "En attente d’acceptation",
+        "AwaitingPayment" => "Paiement requis",
+        "Paused" => "En pause",
+        "Cancelled" => L["Common_Cancelled"],
+        "Rejected" => "Refusé",
+        "Expired" => "Expiré",
+        "Completed" => L["Common_Completed"],
+        _ => status
+    };
+
+    private static string StatusBadge(string status) => status switch
+    {
+        "Active" => "ts-badge-success",
+        "Pending" or "AwaitingPayment" or "Paused" => "ts-badge-warning",
+        "Completed" => "ts-badge-success",
+        _ => "ts-badge-danger"
+    };
+
+    private static string FormatPeriod(DateTime start, DateTime end)
+    {
+        var culture = CultureInfo.CurrentCulture;
+        return $"{start.ToString("d", culture)} – {end.ToString("d", culture)}";
+    }
+
+    private async Task CancelAsync(Guid id)
+    {
+        _cancelling = id;
+        _error = null;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<object>($"api/students/me/subscriptions/{id}/cancel", new { });
+            if (result.Error is null)
+            {
+                _subs = _subs.Select(s => s.Id == id ? s with { Status = "Cancelled" } : s).ToList();
+                if (!FilteredSubs.Any() && CountFor("cancelled") > 0)
+                    _tab = "cancelled";
+            }
+            else
+                _error = result.Error;
+        }
+        finally { _cancelling = null; }
+    }
+
+    private async Task PayAsync(SubVm sub)
+    {
+        _paying = sub.Id;
+        _error = null;
+        try
+        {
+            var baseUri = Navigation.BaseUri.TrimEnd('/');
+            var checkout = await Api.PostWithErrorAsync<CheckoutResult>(
+                $"api/payments/subscriptions/{sub.Id}/checkout",
+                new
+                {
+                    successUrl = $"{baseUri}/student/subscriptions?paid=1&sub={sub.Id}",
+                    cancelUrl = $"{baseUri}/student/subscriptions?canceled=1"
+                });
+
+            if (!string.IsNullOrWhiteSpace(checkout.Value?.CheckoutUrl))
+                await JS.InvokeVoidAsync("open", checkout.Value.CheckoutUrl, "_self");
+            else
+                _error = checkout.Error ?? "Paiement indisponible pour le moment.";
+        }
+        finally { _paying = null; }
+    }
+
+    private sealed record SubVm(
+        Guid Id,
+        Guid TenantId,
+        Guid StudentId,
+        string StudentName,
+        Guid OfferingId,
+        string OfferingTitle,
+        string? Subject,
+        decimal Price,
+        string Currency,
+        string Status,
+        DateTime StartDate,
+        DateTime EndDate,
+        int SessionsRemaining,
+        string? ParentName = null);
+
+    private sealed record CheckoutResult(string CheckoutUrl);
+    private sealed record PaymentStatusVm(string? GatewayStatus, string? LocalStatus);
+}

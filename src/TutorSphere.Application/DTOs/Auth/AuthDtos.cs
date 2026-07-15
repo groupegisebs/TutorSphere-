@@ -5,7 +5,8 @@ public record RegisterRequest(
     string Password,
     string FirstName,
     string LastName,
-    string Role);
+    string Role,
+    DateTime? DateOfBirth = null);
 
 public record RegisterSchoolRequest(
     string SchoolName,

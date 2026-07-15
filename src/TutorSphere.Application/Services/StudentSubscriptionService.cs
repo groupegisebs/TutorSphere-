@@ -6,9 +6,13 @@ namespace TutorSphere.Application.Services;
 public interface IStudentSubscriptionService
 {
     Task<StudentSubscriptionDto> EnrollAsync(string parentUserId, EnrollStudentRequest request, CancellationToken ct = default);
+    /// <summary>Élève autonome (14+) s'inscrit lui-même à une offre.</summary>
+    Task<StudentSubscriptionDto> EnrollSelfAsync(string studentUserId, EnrollSelfRequest request, CancellationToken ct = default);
     Task<IReadOnlyList<StudentSubscriptionDto>> GetForParentUserAsync(string parentUserId, CancellationToken ct = default);
+    Task<IReadOnlyList<StudentSubscriptionDto>> GetForStudentUserAsync(string studentUserId, CancellationToken ct = default);
     Task<IReadOnlyList<StudentSubscriptionDto>> GetForCurrentTenantAsync(CancellationToken ct = default);
     Task CancelAsync(string parentUserId, Guid subscriptionId, CancellationToken ct = default);
+    Task CancelSelfAsync(string studentUserId, Guid subscriptionId, CancellationToken ct = default);
     Task<StudentSubscriptionDto> AcceptAsync(Guid subscriptionId, CancellationToken ct = default);
     Task<StudentSubscriptionDto> RejectAsync(Guid subscriptionId, CancellationToken ct = default);
 }
@@ -41,8 +45,52 @@ public class StudentSubscriptionService : IStudentSubscriptionService
                 s.Id == request.StudentId && s.ParentProfileId == parent.Id)
             ?? throw new InvalidOperationException("Enfant introuvable.");
 
+        return await CreateEnrollmentAsync(
+            student,
+            request.OfferingId,
+            $"{parent.FirstName} {parent.LastName}".Trim(),
+            ct);
+    }
+
+    public async Task<StudentSubscriptionDto> EnrollSelfAsync(
+        string studentUserId,
+        EnrollSelfRequest request,
+        CancellationToken ct = default)
+    {
+        var student = _db.StudentsForAnyTenant.FirstOrDefault(s =>
+                s.UserId == studentUserId && s.IsActive)
+            ?? throw new InvalidOperationException(
+                "Profil élève introuvable. Complétez votre date de naissance dans les paramètres.");
+
+        if (!student.DateOfBirth.HasValue)
+            throw new InvalidOperationException(
+                "Indiquez votre date de naissance dans les paramètres pour vous abonner.");
+
+        if (!student.IsAutonomous)
+            throw new InvalidOperationException(
+                "Seuls les élèves de 14 ans et plus peuvent s'abonner seuls. Demandez à un parent.");
+
         var offering = _db.SubscriptionOfferingsForAnyTenant.FirstOrDefault(o =>
                 o.Id == request.OfferingId && o.IsActive)
+            ?? throw new InvalidOperationException("Offre introuvable ou inactive.");
+
+        await EnsureSelfBillingParentAsync(student, offering.TenantId, ct);
+
+        return await CreateEnrollmentAsync(
+            student,
+            request.OfferingId,
+            $"{student.FirstName} {student.LastName}".Trim(),
+            ct);
+    }
+
+    private async Task<StudentSubscriptionDto> CreateEnrollmentAsync(
+        Domain.Entities.Student student,
+        Guid offeringId,
+        string payerDisplayName,
+        CancellationToken ct)
+    {
+        var offering = _db.SubscriptionOfferingsForAnyTenant.FirstOrDefault(o =>
+                o.Id == offeringId && o.IsActive)
             ?? throw new InvalidOperationException("Offre introuvable ou inactive.");
 
         var duplicate = _db.StudentSubscriptionsForAnyTenant.Any(s =>
@@ -52,7 +100,7 @@ public class StudentSubscriptionService : IStudentSubscriptionService
                 || s.Status == SubscriptionStatus.AwaitingPayment
                 || s.Status == SubscriptionStatus.Active));
         if (duplicate)
-            throw new InvalidOperationException("Cet enfant est déjà abonné (ou en cours d'abonnement) à cette offre.");
+            throw new InvalidOperationException("Vous êtes déjà abonné (ou en cours d'abonnement) à cette offre.");
 
         var activeCount = _db.StudentSubscriptionsForAnyTenant.Count(s =>
             s.OfferingId == offering.Id
@@ -73,7 +121,6 @@ public class StudentSubscriptionService : IStudentSubscriptionService
             now,
             endDate);
 
-        // Ensure the child is linked to the tutor school for subsequent lessons.
         if (student.TenantId != offering.TenantId)
         {
             student.TenantId = offering.TenantId;
@@ -98,7 +145,88 @@ public class StudentSubscriptionService : IStudentSubscriptionService
 
         return Map(subscription, offering.Title, offering.Subject, offering.Price, offering.Currency,
             $"{student.FirstName} {student.LastName}".Trim(),
-            $"{parent.FirstName} {parent.LastName}".Trim());
+            payerDisplayName);
+    }
+
+    /// <summary>
+    /// Profil « parent » de facturation pour l'élève autonome (même UserId) —
+    /// réutilise le flux PayGateway existant.
+    /// </summary>
+    private async Task EnsureSelfBillingParentAsync(
+        Domain.Entities.Student student,
+        Guid preferredTenantId,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrEmpty(student.UserId))
+            throw new InvalidOperationException("Compte élève incomplet.");
+
+        if (student.ParentProfileId is Guid existingId)
+        {
+            if (_db.ParentProfilesForAnyTenant.Any(p => p.Id == existingId))
+                return;
+        }
+
+        var selfParent = _db.ParentProfilesForAnyTenant.FirstOrDefault(p => p.UserId == student.UserId);
+        if (selfParent is null)
+        {
+            var tenantId = preferredTenantId != Guid.Empty
+                ? preferredTenantId
+                : student.TenantId;
+            if (tenantId == Guid.Empty)
+                tenantId = _db.Tenants.Select(t => t.Id).FirstOrDefault();
+            if (tenantId == Guid.Empty)
+                throw new InvalidOperationException("Impossible de créer le profil de facturation.");
+
+            selfParent = new Domain.Entities.ParentProfile
+            {
+                TenantId = tenantId,
+                UserId = student.UserId,
+                FirstName = student.FirstName,
+                LastName = student.LastName,
+                Email = student.Email ?? string.Empty
+            };
+            _db.Add(selfParent);
+            await _db.SaveChangesAsync(ct);
+        }
+
+        student.ParentProfileId = selfParent.Id;
+        student.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
+    }
+
+    public Task<IReadOnlyList<StudentSubscriptionDto>> GetForStudentUserAsync(
+        string studentUserId,
+        CancellationToken ct = default)
+    {
+        var student = _db.StudentsForAnyTenant.FirstOrDefault(s => s.UserId == studentUserId && s.IsActive);
+        if (student is null)
+            return Task.FromResult<IReadOnlyList<StudentSubscriptionDto>>([]);
+
+        var studentName = $"{student.FirstName} {student.LastName}".Trim();
+        var subs = _db.StudentSubscriptionsForAnyTenant
+            .Where(s => s.StudentId == student.Id)
+            .OrderByDescending(s => s.CreatedAt)
+            .ToList();
+
+        var offeringIds = subs.Select(s => s.OfferingId).Distinct().ToList();
+        var offerings = _db.SubscriptionOfferingsForAnyTenant
+            .Where(o => offeringIds.Contains(o.Id))
+            .ToDictionary(o => o.Id);
+
+        var result = subs.Select(s =>
+        {
+            offerings.TryGetValue(s.OfferingId, out var offering);
+            return Map(
+                s,
+                offering?.Title ?? "Offre",
+                offering?.Subject,
+                offering?.Price ?? 0,
+                offering?.Currency ?? "CAD",
+                studentName,
+                studentName);
+        }).ToList();
+
+        return Task.FromResult<IReadOnlyList<StudentSubscriptionDto>>(result);
     }
 
     public Task<IReadOnlyList<StudentSubscriptionDto>> GetForParentUserAsync(
@@ -216,6 +344,25 @@ public class StudentSubscriptionService : IStudentSubscriptionService
         if (!childIds.Contains(sub.StudentId))
             throw new InvalidOperationException("Abonnement introuvable.");
 
+        await CancelSubscriptionEntityAsync(sub, ct);
+    }
+
+    public async Task CancelSelfAsync(string studentUserId, Guid subscriptionId, CancellationToken ct = default)
+    {
+        var student = _db.StudentsForAnyTenant.FirstOrDefault(s => s.UserId == studentUserId && s.IsActive)
+            ?? throw new InvalidOperationException("Profil élève introuvable.");
+
+        var sub = _db.StudentSubscriptionsForAnyTenant.FirstOrDefault(s =>
+                s.Id == subscriptionId && s.StudentId == student.Id)
+            ?? throw new InvalidOperationException("Abonnement introuvable.");
+
+        await CancelSubscriptionEntityAsync(sub, ct);
+    }
+
+    private async Task CancelSubscriptionEntityAsync(
+        Domain.Entities.StudentSubscription sub,
+        CancellationToken ct)
+    {
         if (sub.Status is SubscriptionStatus.Cancelled or SubscriptionStatus.Rejected or SubscriptionStatus.Expired)
             throw new InvalidOperationException("Cet abonnement ne peut plus être annulé.");
 

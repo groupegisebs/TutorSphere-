@@ -13,6 +13,7 @@ namespace TutorSphere.Application.Services;
 public interface IStudentPortalService
 {
     Task<StudentDto?> GetMeAsync(string userId, CancellationToken ct = default);
+    Task<StudentDto> UpdateMeAsync(string userId, UpdateMyStudentProfileRequest request, CancellationToken ct = default);
     Task<IReadOnlyList<LessonDto>> GetLessonsAsync(
         string userId,
         DateTime? start = null,
@@ -40,6 +41,82 @@ public class StudentPortalService : IStudentPortalService
     {
         var student = ResolveStudent(userId);
         return Task.FromResult(student is null ? null : MapStudent(student));
+    }
+
+    public async Task<StudentDto> UpdateMeAsync(
+        string userId,
+        UpdateMyStudentProfileRequest request,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(request.FirstName) || string.IsNullOrWhiteSpace(request.LastName))
+            throw new InvalidOperationException("Le prénom et le nom sont obligatoires.");
+
+        var student = ResolveStudent(userId);
+        if (student is null)
+        {
+            if (!request.DateOfBirth.HasValue)
+                throw new InvalidOperationException(
+                    "Profil élève introuvable. Indiquez votre date de naissance pour le créer.");
+
+            var dob = request.DateOfBirth.Value.Date;
+            if (dob > DateTime.UtcNow.Date)
+                throw new InvalidOperationException("La date de naissance ne peut pas être dans le futur.");
+
+            var age = (int)((DateTime.Today - dob).TotalDays / 365.25);
+            if (age < 14)
+                throw new InvalidOperationException(
+                    "Seuls les élèves de 14 ans et plus peuvent gérer un profil autonome.");
+
+            var tenantId = _db.Tenants.Select(t => t.Id).FirstOrDefault();
+            if (tenantId == Guid.Empty)
+                throw new InvalidOperationException("Aucune école disponible.");
+
+            var billing = _db.ParentProfilesForAnyTenant.FirstOrDefault(p => p.UserId == userId);
+            if (billing is null)
+            {
+                billing = new ParentProfile
+                {
+                    TenantId = tenantId,
+                    UserId = userId,
+                    FirstName = request.FirstName.Trim(),
+                    LastName = request.LastName.Trim(),
+                    Email = string.Empty
+                };
+                _db.Add(billing);
+                await _db.SaveChangesAsync(ct);
+            }
+
+            student = new Student
+            {
+                TenantId = tenantId,
+                UserId = userId,
+                ParentProfileId = billing.Id,
+                FirstName = request.FirstName.Trim(),
+                LastName = request.LastName.Trim(),
+                Phone = string.IsNullOrWhiteSpace(request.Phone) ? null : request.Phone.Trim(),
+                DateOfBirth = DateTime.SpecifyKind(dob, DateTimeKind.Utc),
+                IsActive = true
+            };
+            _db.Add(student);
+            await _db.SaveChangesAsync(ct);
+            return MapStudent(student);
+        }
+
+        student.FirstName = request.FirstName.Trim();
+        student.LastName = request.LastName.Trim();
+        student.Phone = string.IsNullOrWhiteSpace(request.Phone) ? null : request.Phone.Trim();
+
+        if (request.DateOfBirth.HasValue)
+        {
+            var dob = request.DateOfBirth.Value.Date;
+            if (dob > DateTime.UtcNow.Date)
+                throw new InvalidOperationException("La date de naissance ne peut pas être dans le futur.");
+            student.DateOfBirth = DateTime.SpecifyKind(dob, DateTimeKind.Utc);
+        }
+
+        student.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        return MapStudent(student);
     }
 
     public Task<IReadOnlyList<LessonDto>> GetLessonsAsync(

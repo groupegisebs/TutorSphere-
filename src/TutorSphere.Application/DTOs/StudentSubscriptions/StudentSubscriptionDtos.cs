@@ -2,6 +2,8 @@ namespace TutorSphere.Application.DTOs.StudentSubscriptions;
 
 public record EnrollStudentRequest(Guid StudentId, Guid OfferingId);
 
+public record EnrollSelfRequest(Guid OfferingId);
+
 public record StudentSubscriptionDto(
     Guid Id,
     Guid TenantId,

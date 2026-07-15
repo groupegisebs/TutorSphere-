@@ -46,3 +46,10 @@ public record UpdateStudentRequest(
     string? Subjects,
     string? Notes,
     bool? IsActive);
+
+/// <summary>Mise à jour du profil par l'élève connecté.</summary>
+public record UpdateMyStudentProfileRequest(
+    string FirstName,
+    string LastName,
+    string? Phone,
+    DateTime? DateOfBirth);
