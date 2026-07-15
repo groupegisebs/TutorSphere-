@@ -128,8 +128,23 @@ public class HomeworkService : IHomeworkService
         if (homework.SubmittedAt.HasValue)
             throw new InvalidOperationException("Ce devoir a déjà été soumis.");
 
+        var allowed = homework.SubmissionModes == HomeworkSubmissionMode.None
+            ? HomeworkSubmissionMode.Online
+            : homework.SubmissionModes;
+        var mode = request.Mode == HomeworkSubmissionMode.None
+            ? HomeworkSubmissionMode.Online
+            : request.Mode;
+        if ((allowed & mode) == 0)
+            throw new InvalidOperationException("Cette méthode de remise n'est pas autorisée pour ce devoir.");
+
+        var text = request.SubmissionNotes?.Trim();
+        var attachments = request.Attachments?
+            .Where(a => a.DocumentId != Guid.Empty && !string.IsNullOrWhiteSpace(a.FileName))
+            .ToList() ?? [];
+
+        var payload = new HomeworkSubmissionPayload(mode, text, attachments);
         homework.SubmittedAt = DateTime.UtcNow;
-        homework.SubmissionNotes = request.SubmissionNotes?.Trim();
+        homework.SubmissionNotes = JsonSerializer.Serialize(payload, JsonOpts);
         homework.UpdatedAt = DateTime.UtcNow;
 
         await _db.SaveChangesAsync(ct);

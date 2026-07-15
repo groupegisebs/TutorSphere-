@@ -207,14 +207,35 @@ else
                                         <textarea class="form-control" rows="4" @bind="_hf.PendingBody"
                                                   placeholder="@(_hf.PendingContentType == "form" ? "Questions du formulaire…" : "Texte, consignes, formules…")"></textarea>
                                     }
+                                    else if (_hf.PendingContentType == "file")
+                                    {
+                                        <label class="form-label">Fichier à joindre</label>
+                                        <InputFile class="form-control" OnChange="OnHomeworkFileSelected"
+                                                   accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.gif,.webp,.txt,.zip,.mp4,.mov" />
+                                        @if (_uploadingFile)
+                                        {
+                                            <div class="form-text mt-1">
+                                                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                                                Envoi du fichier sur le serveur…
+                                            </div>
+                                        }
+                                        @if (!string.IsNullOrEmpty(_fileUploadError))
+                                        {
+                                            <div class="text-danger small mt-1">@_fileUploadError</div>
+                                        }
+                                        <div class="form-text mt-2">Ou collez une URL externe (Drive, OneDrive…)</div>
+                                        <input class="form-control mt-1" @bind="_hf.PendingUrl" placeholder="https://…" />
+                                    }
                                     else
                                     {
-                                        <label class="form-label">URL @(_hf.PendingContentType == "video" ? "vidéo" : _hf.PendingContentType == "file" ? "fichier" : "lien")</label>
+                                        <label class="form-label">URL @(_hf.PendingContentType == "video" ? "vidéo" : "lien")</label>
                                         <input class="form-control" @bind="_hf.PendingUrl"
                                                placeholder="https://…" />
                                         <div class="form-text">Collez un lien YouTube, Drive, PDF, etc.</div>
                                     }
-                                    <button type="button" class="btn btn-sm btn-primary mt-3" @onclick="AddContentBlock">
+                                    <button type="button" class="btn btn-sm btn-primary mt-3"
+                                            disabled="@(_uploadingFile || (_hf.PendingContentType == "file" && string.IsNullOrWhiteSpace(_hf.PendingUrl) && string.IsNullOrWhiteSpace(_hf.PendingBody)))"
+                                            @onclick="AddContentBlock">
                                         <i class="bi bi-plus-lg me-1"></i>Ajouter cet élément
                                     </button>
                                 </div>
@@ -234,7 +255,23 @@ else
                                     }
                                     @if (!string.IsNullOrWhiteSpace(block.Url))
                                     {
-                                        <a class="small" href="@block.Url" target="_blank" rel="noopener">@block.Url</a>
+                                        @if (block.Type == "file")
+                                        {
+                                            <p class="mb-0 small text-muted">
+                                                <i class="bi bi-paperclip me-1"></i>
+                                                @(string.IsNullOrWhiteSpace(block.Title) ? "Fichier joint (serveur)" : block.Title)
+                                                <span class="ms-1">— enregistré</span>
+                                            </p>
+                                        }
+                                        else if (block.Url.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                                              || block.Url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            <a class="small" href="@block.Url" target="_blank" rel="noopener">@block.Url</a>
+                                        }
+                                        else
+                                        {
+                                            <span class="small text-muted">@block.Url</span>
+                                        }
                                     }
                                 </div>
                             }
@@ -396,8 +433,8 @@ else
         ["Mathématiques", "Physique", "Chimie", "Français", "Anglais", "Histoire", "Sciences", "Autre"];
 
     private string _search = "", _filterStatus = "";
-    private bool _showModal, _loading = true, _saving;
-    private string _error = "", _saveError = "";
+    private bool _showModal, _loading = true, _saving, _uploadingFile;
+    private string _error = "", _saveError = "", _fileUploadError = "";
     private int _wizardStep;
     private HomeworkVM? _editing, _grading;
     private HomeworkForm _hf = new();
@@ -470,6 +507,8 @@ else
                 {
                     ApiId = first.Id,
                     GroupId = first.AssignmentGroupId,
+                    MemberIds = g.Select(x => x.Id).ToList(),
+                    Members = g.Select(x => new HomeworkMember(x.Id, x.StudentId)).ToList(),
                     Title = first.Title,
                     Subject = first.Subject,
                     DueDate = first.DueDate,
@@ -583,6 +622,11 @@ else
         {
             if (string.IsNullOrWhiteSpace(_hf.PendingBody)) return;
         }
+        else if (_hf.PendingContentType == "file")
+        {
+            // Upload auto-ajoute déjà un bloc ; ici on n’accepte qu’une URL externe.
+            if (string.IsNullOrWhiteSpace(_hf.PendingUrl)) return;
+        }
         else if (string.IsNullOrWhiteSpace(_hf.PendingUrl))
         {
             return;
@@ -599,6 +643,59 @@ else
         _hf.PendingTitle = "";
         _hf.PendingBody = "";
         _hf.PendingUrl = "";
+        _fileUploadError = "";
+    }
+
+    private async Task OnHomeworkFileSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null) return;
+
+        _uploadingFile = true;
+        _fileUploadError = "";
+        try
+        {
+            const long maxSize = 50L * 1024 * 1024;
+            await using var stream = file.OpenReadStream(maxSize);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+
+            using var content = new MultipartFormDataContent();
+            var fileContent = new ByteArrayContent(ms.ToArray());
+            fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
+                string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType);
+            content.Add(fileContent, "file", file.Name);
+            content.Add(new StringContent("Devoirs"), "folder");
+            if (_hf.StudentIds.Count == 1)
+                content.Add(new StringContent(_hf.StudentIds[0].ToString()), "studentId");
+
+            var result = await Api.PostMultipartAsync<HomeworkDocDto>("api/documents", content);
+            if (result.Error is not null || result.Value is null)
+            {
+                _fileUploadError = result.Error ?? "Échec de l'envoi du fichier.";
+                return;
+            }
+
+            var doc = result.Value;
+            _hf.Content.Add(new ContentBlock
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                Type = "file",
+                Title = string.IsNullOrWhiteSpace(_hf.PendingTitle) ? doc.FileName : _hf.PendingTitle.Trim(),
+                Body = doc.Id.ToString("D"),
+                Url = $"api/documents/{doc.Id}/file"
+            });
+            _hf.PendingTitle = "";
+            _hf.PendingUrl = "";
+        }
+        catch (Exception ex)
+        {
+            _fileUploadError = ex.Message;
+        }
+        finally
+        {
+            _uploadingFile = false;
+        }
     }
 
     private void RemoveContent(string id) =>
@@ -643,19 +740,55 @@ else
                 .Select(c => new HomeworkCriterionDto(c.Name.Trim(), c.Points))
                 .ToList();
 
-            if (_editing?.ApiId is Guid id && _editing.StudentIds.Count == 1)
+            var updateReq = new UpdateHomeworkRequest(
+                _hf.Title.Trim(),
+                _hf.Description,
+                due,
+                _hf.Subject,
+                _hf.Instructions,
+                _hf.EstimatedMinutes,
+                _hf.SubmissionModes,
+                content,
+                criteria,
+                draft);
+
+            if (_editing is { Members.Count: > 0 })
             {
-                await HomeworkSvc.UpdateHomeworkAsync(id, new UpdateHomeworkRequest(
-                    _hf.Title.Trim(),
-                    _hf.Description,
-                    due,
-                    _hf.Subject,
-                    _hf.Instructions,
-                    _hf.EstimatedMinutes,
-                    _hf.SubmissionModes,
-                    content,
-                    criteria,
-                    draft));
+                var groupId = _editing.GroupId ?? Guid.NewGuid();
+                var existingByStudent = _editing.Members
+                    .GroupBy(m => m.StudentId)
+                    .ToDictionary(g => g.Key, g => g.First().Id);
+
+                foreach (var studentId in _hf.StudentIds.Distinct())
+                {
+                    if (existingByStudent.TryGetValue(studentId, out var homeworkId))
+                    {
+                        await HomeworkSvc.UpdateHomeworkAsync(homeworkId, updateReq);
+                    }
+                    else
+                    {
+                        await HomeworkSvc.CreateHomeworkAsync(new CreateHomeworkRequest(
+                            studentId,
+                            null,
+                            _hf.Title.Trim(),
+                            _hf.Description,
+                            due,
+                            _hf.Subject,
+                            _hf.Instructions,
+                            _hf.EstimatedMinutes,
+                            _hf.SubmissionModes,
+                            content,
+                            criteria,
+                            draft,
+                            groupId));
+                    }
+                }
+
+                foreach (var member in _editing.Members)
+                {
+                    if (!_hf.StudentIds.Contains(member.StudentId))
+                        await HomeworkSvc.DeleteHomeworkAsync(member.Id);
+                }
             }
             else
             {
@@ -694,8 +827,11 @@ else
 
     private async Task DeleteHomework(HomeworkVM hw)
     {
-        if (hw.ApiId.HasValue)
-            await HomeworkSvc.DeleteHomeworkAsync(hw.ApiId.Value);
+        var ids = hw.MemberIds.Count > 0
+            ? hw.MemberIds
+            : hw.ApiId is Guid singleId ? [singleId] : [];
+        foreach (var homeworkId in ids)
+            await HomeworkSvc.DeleteHomeworkAsync(homeworkId);
         await ReloadAsync();
     }
 
@@ -738,6 +874,8 @@ else
     {
         public Guid? ApiId { get; set; }
         public Guid? GroupId { get; set; }
+        public List<Guid> MemberIds { get; set; } = [];
+        public List<HomeworkMember> Members { get; set; } = [];
         public string Title { get; set; } = "";
         public string? Subject { get; set; }
         public DateTime? DueDate { get; set; }
@@ -755,6 +893,10 @@ else
         public bool IsOverdue => Status == "En retard";
     }
 
+    private sealed record HomeworkMember(Guid Id, Guid StudentId);
+    private sealed record HomeworkDocDto(
+        Guid Id, string FileName, long FileSize, string ContentType,
+        DateTime UploadedAt, Guid? StudentId, Guid? LessonId, string Url);
     private sealed record StudentChoice(Guid Id, string FirstName, string LastName);
     private sealed record StudentDto(Guid Id, string FirstName, string LastName);
 }

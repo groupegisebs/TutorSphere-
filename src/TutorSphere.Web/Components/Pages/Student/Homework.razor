@@ -1,8 +1,10 @@
 @page "/student/homework"
 @layout StudentLayout
 @rendermode InteractiveServer
-@inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
+@inject NavigationManager Nav
+@using TutorSphere.Application.DTOs.Homework
+@using TutorSphere.Domain.Enums
 
 <PageTitle>Mes Devoirs – TutorSphere</PageTitle>
 
@@ -26,8 +28,10 @@ else
         @foreach (var hw in _homeworks)
         {
             var statusLabel = hw.IsGraded ? "Corrigé" : hw.SubmittedAt.HasValue ? "Rendu" :
-                (hw.DueDate.HasValue && hw.DueDate.Value < DateTime.Today) ? "En retard" : "À rendre";
-            var isOverdue   = !hw.IsGraded && !hw.SubmittedAt.HasValue && hw.DueDate.HasValue && hw.DueDate.Value < DateTime.Today;
+                (hw.DueDate.HasValue && hw.DueDate.Value.Date < DateTime.Today) ? "En retard" : "À rendre";
+            var isOverdue = statusLabel == "En retard";
+            var payload = HomeworkJson.TryParseSubmission(hw.SubmissionNotes);
+            var points = hw.Criteria.Sum(c => c.Points);
 
             <div class="hw-card">
                 <div class="hw-card-head">
@@ -35,33 +39,45 @@ else
                     @if (hw.DueDate.HasValue)
                     {
                         <span class="hw-due @(isOverdue ? "text-danger" : "text-muted")">
-                            <i class="bi bi-calendar3 me-1"></i>@hw.DueDate.Value.ToString("dd/MM")
+                            <i class="bi bi-calendar3 me-1"></i>@hw.DueDate.Value.ToLocalTime().ToString("dd/MM")
                         </span>
                     }
                 </div>
                 <h3 class="hw-title">@hw.Title</h3>
+                @if (!string.IsNullOrEmpty(hw.Subject))
+                {
+                    <p class="hw-subject"><i class="bi bi-book me-1 text-muted"></i>@hw.Subject</p>
+                }
                 @if (!string.IsNullOrEmpty(hw.Description))
                 {
-                    <p class="hw-desc">@hw.Description</p>
+                    <p class="hw-desc">@(hw.Description.Length > 120 ? hw.Description[..120] + "…" : hw.Description)</p>
+                }
+                @if (points > 0)
+                {
+                    <p class="hw-desc small text-muted mb-0"><i class="bi bi-trophy me-1"></i>@points points</p>
                 }
                 @if (hw.Grade.HasValue)
                 {
-                    <div class="hw-grade-chip">Note : <strong>@hw.Grade.Value/20</strong></div>
+                    <div class="hw-grade-chip">Note : <strong>@hw.Grade.Value/100</strong></div>
                 }
                 @if (!string.IsNullOrEmpty(hw.Feedback))
                 {
                     <p class="hw-desc text-muted small"><i class="bi bi-chat-square-text me-1"></i>@hw.Feedback</p>
                 }
+                @if (payload?.Attachments is { Count: > 0 })
+                {
+                    <p class="hw-desc small"><i class="bi bi-paperclip me-1"></i>@payload.Attachments.Count fichier(s) remis</p>
+                }
                 <div class="hw-card-footer">
-                    @if (statusLabel == "À rendre" && !_submitting.Contains(hw.Id))
+                    @if (statusLabel is "À rendre" or "En retard")
                     {
-                        <button class="btn btn-sm btn-primary" @onclick="async () => await SubmitAsync(hw.Id)">
-                            <i class="bi bi-check-lg me-1"></i>Marquer rendu
+                        <button class="btn btn-sm btn-primary" @onclick="() => OpenSubmit(hw.Id)">
+                            <i class="bi bi-pencil-square me-1"></i>Répondre
                         </button>
                     }
-                    else if (_submitting.Contains(hw.Id))
+                    else if (statusLabel == "Rendu")
                     {
-                        <span class="spinner-border spinner-border-sm text-primary me-2"></span>
+                        <span class="small text-muted"><i class="bi bi-check2-circle me-1"></i>En attente de correction</span>
                     }
                 </div>
             </div>
@@ -79,14 +95,13 @@ else
 @code {
     private bool _loading = true;
     private List<HomeworkDto> _homeworks = [];
-    private HashSet<Guid> _submitting = [];
 
     private static string HwBadge(string s) => s switch
     {
-        "Corrigé"  => "ts-badge-success",
-        "Rendu"    => "ts-badge-primary",
-        "En retard"=> "ts-badge-danger",
-        _          => "ts-badge-muted"
+        "Corrigé" => "ts-badge-success",
+        "Rendu" => "ts-badge-primary",
+        "En retard" => "ts-badge-danger",
+        _ => "ts-badge-muted"
     };
 
     protected override async Task OnInitializedAsync()
@@ -100,25 +115,5 @@ else
         finally { _loading = false; }
     }
 
-    private async Task SubmitAsync(Guid id)
-    {
-        _submitting.Add(id);
-        try
-        {
-            var result = await Api.PostAsync<HomeworkDto>(
-                $"api/students/me/homework/{id}/submit", new { SubmissionNotes = "" });
-            if (result != null)
-            {
-                var idx = _homeworks.FindIndex(h => h.Id == id);
-                if (idx >= 0) _homeworks[idx] = result;
-            }
-        }
-        finally { _submitting.Remove(id); }
-    }
-
-    private record HomeworkDto(
-        Guid Id, Guid TenantId, Guid StudentId, Guid? LessonId,
-        string Title, string? Description, DateTime? DueDate,
-        DateTime? SubmittedAt, string? SubmissionNotes, decimal? Grade,
-        string? Feedback, bool IsGraded, DateTime CreatedAt, DateTime? UpdatedAt);
+    private void OpenSubmit(Guid id) => Nav.NavigateTo($"/student/homework/{id}/submit");
 }

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using TutorSphere.Domain.Enums;
 
 namespace TutorSphere.Application.DTOs.Homework;
@@ -55,11 +56,52 @@ public record UpdateHomeworkRequest(
     bool? IsDraft = null);
 
 public record SubmitHomeworkRequest(
-    string? SubmissionNotes);
+    string? SubmissionNotes = null,
+    HomeworkSubmissionMode Mode = HomeworkSubmissionMode.Online,
+    IReadOnlyList<HomeworkSubmissionFileDto>? Attachments = null);
+
+public record HomeworkSubmissionFileDto(
+    Guid DocumentId,
+    string FileName,
+    string? Url = null);
+
+/// <summary>Payload JSON stocké dans <see cref="HomeworkDto.SubmissionNotes"/> après remise.</summary>
+public record HomeworkSubmissionPayload(
+    HomeworkSubmissionMode Mode,
+    string? Text,
+    IReadOnlyList<HomeworkSubmissionFileDto> Attachments);
 
 public record GradeHomeworkRequest(
     decimal Grade,
     string? Feedback);
+
+public static class HomeworkJson
+{
+    public static readonly JsonSerializerOptions Options = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true
+    };
+
+    public static HomeworkSubmissionPayload? TryParseSubmission(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var trimmed = raw.Trim();
+        if (trimmed.StartsWith('{'))
+        {
+            try
+            {
+                return JsonSerializer.Deserialize<HomeworkSubmissionPayload>(trimmed, Options);
+            }
+            catch
+            {
+                /* plain-text legacy */
+            }
+        }
+
+        return new HomeworkSubmissionPayload(HomeworkSubmissionMode.Online, trimmed, []);
+    }
+}
 
 public record HomeworkDto(
     Guid Id,

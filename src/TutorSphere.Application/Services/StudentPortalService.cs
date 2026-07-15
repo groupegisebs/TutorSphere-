@@ -1,3 +1,4 @@
+using System.Text.Json;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.Documents;
 using TutorSphere.Application.DTOs.Homework;
@@ -20,10 +21,19 @@ public interface IStudentPortalService
         DateTime? end = null,
         CancellationToken ct = default);
     Task<IReadOnlyList<HomeworkDto>> GetHomeworkAsync(string userId, CancellationToken ct = default);
+    Task<HomeworkDto?> GetHomeworkByIdAsync(string userId, Guid homeworkId, CancellationToken ct = default);
     Task<HomeworkDto> SubmitHomeworkAsync(
         string userId,
         Guid homeworkId,
         SubmitHomeworkRequest request,
+        CancellationToken ct = default);
+    Task<DocumentDto> UploadHomeworkAttachmentAsync(
+        string userId,
+        Guid homeworkId,
+        string fileName,
+        string contentType,
+        long fileSizeBytes,
+        string fileUrl,
         CancellationToken ct = default);
     Task<IReadOnlyList<DocumentDto>> GetDocumentsAsync(string userId, CancellationToken ct = default);
     Task<DocumentDto?> GetDocumentForStudentAsync(string userId, Guid documentId, CancellationToken ct = default);
@@ -169,6 +179,16 @@ public class StudentPortalService : IStudentPortalService
         return Task.FromResult<IReadOnlyList<HomeworkDto>>(items);
     }
 
+    public Task<HomeworkDto?> GetHomeworkByIdAsync(string userId, Guid homeworkId, CancellationToken ct = default)
+    {
+        var student = ResolveStudent(userId);
+        if (student is null) return Task.FromResult<HomeworkDto?>(null);
+
+        var homework = _db.HomeworksForAnyTenant
+            .FirstOrDefault(h => h.Id == homeworkId && h.StudentId == student.Id && !h.IsDraft);
+        return Task.FromResult(homework is null ? null : MapHomework(homework));
+    }
+
     public async Task<HomeworkDto> SubmitHomeworkAsync(
         string userId,
         Guid homeworkId,
@@ -181,14 +201,79 @@ public class StudentPortalService : IStudentPortalService
         var homework = _db.HomeworksForAnyTenant.FirstOrDefault(h => h.Id == homeworkId && h.StudentId == student.Id)
             ?? throw new InvalidOperationException("Devoir introuvable.");
 
+        if (homework.IsDraft)
+            throw new InvalidOperationException("Ce devoir n'est pas encore publié.");
+
         if (homework.SubmittedAt.HasValue)
             throw new InvalidOperationException("Ce devoir a déjà été soumis.");
 
+        var allowed = homework.SubmissionModes == HomeworkSubmissionMode.None
+            ? HomeworkSubmissionMode.Online
+            : homework.SubmissionModes;
+        var mode = request.Mode == HomeworkSubmissionMode.None
+            ? HomeworkSubmissionMode.Online
+            : request.Mode;
+
+        // Une seule méthode à la fois : le bit choisi doit être autorisé.
+        if ((allowed & mode) == 0)
+            throw new InvalidOperationException("Cette méthode de remise n'est pas autorisée pour ce devoir.");
+
+        var text = request.SubmissionNotes?.Trim();
+        var attachments = request.Attachments?
+            .Where(a => a.DocumentId != Guid.Empty && !string.IsNullOrWhiteSpace(a.FileName))
+            .ToList() ?? [];
+
+        var needsFile = mode is HomeworkSubmissionMode.PaperScan
+            or HomeworkSubmissionMode.Video
+            or HomeworkSubmissionMode.FileUpload;
+        if (needsFile && attachments.Count == 0)
+            throw new InvalidOperationException("Ajoutez au moins un fichier pour cette méthode de remise.");
+
+        if (mode == HomeworkSubmissionMode.Online && string.IsNullOrWhiteSpace(text) && attachments.Count == 0)
+            throw new InvalidOperationException("Rédigez une réponse ou joignez un fichier.");
+
+        var payload = new HomeworkSubmissionPayload(mode, text, attachments);
         homework.SubmittedAt = DateTime.UtcNow;
-        homework.SubmissionNotes = request.SubmissionNotes?.Trim();
+        homework.SubmissionNotes = JsonSerializer.Serialize(payload, HomeworkJson.Options);
         homework.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync(ct);
         return MapHomework(homework);
+    }
+
+    public async Task<DocumentDto> UploadHomeworkAttachmentAsync(
+        string userId,
+        Guid homeworkId,
+        string fileName,
+        string contentType,
+        long fileSizeBytes,
+        string fileUrl,
+        CancellationToken ct = default)
+    {
+        var student = ResolveStudent(userId)
+            ?? throw new InvalidOperationException("Profil élève introuvable.");
+
+        var homework = _db.HomeworksForAnyTenant.FirstOrDefault(h => h.Id == homeworkId && h.StudentId == student.Id)
+            ?? throw new InvalidOperationException("Devoir introuvable.");
+
+        if (homework.SubmittedAt.HasValue)
+            throw new InvalidOperationException("Ce devoir a déjà été soumis.");
+
+        var doc = new Document
+        {
+            TenantId = homework.TenantId,
+            Name = fileName,
+            ContentType = string.IsNullOrWhiteSpace(contentType) ? "application/octet-stream" : contentType,
+            FileSizeBytes = fileSizeBytes,
+            FileUrl = fileUrl,
+            UploadedByUserId = userId,
+            StudentId = student.Id,
+            LessonId = homework.LessonId,
+            Folder = "Remises"
+        };
+
+        _db.Add(doc);
+        await _db.SaveChangesAsync(ct);
+        return MapDocument(doc);
     }
 
     public Task<IReadOnlyList<DocumentDto>> GetDocumentsAsync(string userId, CancellationToken ct = default)

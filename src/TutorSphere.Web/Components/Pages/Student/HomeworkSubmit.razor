@@ -1,0 +1,386 @@
+@page "/student/homework/{Id:guid}/submit"
+@layout StudentLayout
+@rendermode InteractiveServer
+@inject ApiClient Api
+@inject NavigationManager Nav
+@using TutorSphere.Application.DTOs.Homework
+@using TutorSphere.Domain.Enums
+@using Microsoft.AspNetCore.Components.Forms
+
+<PageTitle>Soumettre un devoir – TutorSphere</PageTitle>
+
+@if (_loading)
+{
+    <div class="d-flex align-items-center justify-content-center py-5">
+        <span class="spinner-border text-primary me-3" role="status"></span>
+        <span class="text-muted">Chargement du devoir…</span>
+    </div>
+}
+else if (_hw is null)
+{
+    <div class="alert alert-warning">Devoir introuvable.</div>
+    <a class="btn btn-outline-primary" href="/student/homework">Retour à mes devoirs</a>
+}
+else if (_hw.SubmittedAt.HasValue)
+{
+    <div class="alert alert-success">
+        <i class="bi bi-check-circle me-2"></i>Ce devoir a déjà été rendu
+        le @_hw.SubmittedAt.Value.ToLocalTime().ToString("dd/MM/yyyy HH:mm").
+    </div>
+    <a class="btn btn-outline-primary" href="/student/homework">Retour à mes devoirs</a>
+}
+else
+{
+    <div class="stu-hw-submit">
+        <div class="stu-hw-submit-top">
+            <a class="stu-hw-back" href="/student/homework"><i class="bi bi-arrow-left me-1"></i>Retour à mes devoirs</a>
+            <div class="stu-hw-steps" aria-hidden="true">
+                <span class="done"><i class="bi bi-check-lg"></i> Devoir</span>
+                <span class="active">2. Remise</span>
+                <span>3. Confirmation</span>
+            </div>
+        </div>
+
+        <div class="stu-hw-layout">
+            <div class="stu-hw-main">
+                <header class="stu-hw-header">
+                    <div>
+                        <h1>@_hw.Title</h1>
+                        <span class="ts-badge ts-badge-primary">En cours</span>
+                    </div>
+                    <div class="stu-hw-meta">
+                        @if (_hw.DueDate.HasValue)
+                        {
+                            <span><i class="bi bi-calendar3"></i> Date limite : @_hw.DueDate.Value.ToLocalTime().ToString("dd MMM yyyy")</span>
+                        }
+                        @if (_hw.EstimatedMinutes is int mins)
+                        {
+                            <span><i class="bi bi-clock"></i> Durée estimée : @mins min</span>
+                        }
+                        @if (_totalPoints > 0)
+                        {
+                            <span><i class="bi bi-trophy"></i> @_totalPoints points</span>
+                        }
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(_hw.Instructions) || !string.IsNullOrWhiteSpace(_hw.Description) || _hw.Content.Count > 0)
+                    {
+                        <button type="button" class="btn btn-outline-primary btn-sm" @onclick="() => _showInstructions = !_showInstructions">
+                            <i class="bi bi-info-circle me-1"></i>Consignes du devoir
+                        </button>
+                    }
+                </header>
+
+                @if (_showInstructions)
+                {
+                    <div class="stu-hw-instructions card border-0 mb-3">
+                        <div class="card-body">
+                            @if (!string.IsNullOrWhiteSpace(_hw.Instructions))
+                            {
+                                <p class="mb-2" style="white-space:pre-wrap">@_hw.Instructions</p>
+                            }
+                            else if (!string.IsNullOrWhiteSpace(_hw.Description))
+                            {
+                                <p class="mb-2" style="white-space:pre-wrap">@_hw.Description</p>
+                            }
+                            @foreach (var block in _hw.Content)
+                            {
+                                <div class="mb-2">
+                                    <strong>@(string.IsNullOrWhiteSpace(block.Title) ? block.Type : block.Title)</strong>
+                                    @if (!string.IsNullOrWhiteSpace(block.Body) && block.Type is "text" or "form")
+                                    {
+                                        <p class="small mb-0" style="white-space:pre-wrap">@block.Body</p>
+                                    }
+                                    @if (block.Type == "file" && !string.IsNullOrWhiteSpace(block.Url))
+                                    {
+                                        <p class="small mb-0 text-muted"><i class="bi bi-paperclip me-1"></i>@(block.Title ?? "Fichier joint par l'enseignant")</p>
+                                    }
+                                    else if (!string.IsNullOrWhiteSpace(block.Url) && block.Url.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        <a class="small" href="@block.Url" target="_blank" rel="noopener">@block.Url</a>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+
+                <section class="stu-hw-section">
+                    <h2>Méthode de remise</h2>
+                    <div class="stu-hw-modes">
+                        @foreach (var modeOpt in AvailableModes)
+                        {
+                            var on = _mode == modeOpt.Flag;
+                            <button type="button" class="stu-hw-mode @(on ? "active" : null)" @onclick="() => SelectMode(modeOpt.Flag)">
+                                <i class="bi @modeOpt.Icon"></i>
+                                <div>
+                                    <strong>@modeOpt.Title</strong>
+                                    <span>@modeOpt.Hint</span>
+                                </div>
+                            </button>
+                        }
+                    </div>
+                </section>
+
+                <section class="stu-hw-section">
+                    <h2>Votre travail</h2>
+                    <div class="stu-hw-tabs">
+                        <button type="button" class="@(_workTab == "text" ? "active" : null)" @onclick='() => _workTab = "text"'>
+                            <i class="bi bi-pencil-square me-1"></i>Éditeur de texte
+                        </button>
+                        <button type="button" class="@(_workTab == "file" ? "active" : null)" @onclick='() => _workTab = "file"'>
+                            <i class="bi bi-cloud-upload me-1"></i>Importer un fichier
+                        </button>
+                    </div>
+
+                    @if (_workTab == "text")
+                    {
+                        <div class="stu-hw-editor">
+                            <textarea class="form-control" rows="12" value="@_text"
+                                      placeholder="Rédigez votre réponse ici…"
+                                      @oninput="OnTextInput"></textarea>
+                            <div class="stu-hw-editor-foot">
+                                <span>@_wordCount mot(s)</span>
+                            </div>
+                        </div>
+
+                        <div class="stu-hw-drop optional mt-3">
+                            <label class="stu-hw-drop-inner">
+                                <InputFile OnChange="OnFilesSelected" multiple
+                                           accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.webp,.mp4,.mov,.zip"
+                                           disabled="@_uploading" />
+                                <i class="bi bi-paperclip"></i>
+                                <strong>Ajouter des fichiers (optionnel)</strong>
+                                <span>Glissez-déposez ou cliquez pour ajouter des fichiers</span>
+                                <small>PDF, DOC, DOCX, JPG, PNG, vidéo (max 10 Mo)</small>
+                            </label>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="stu-hw-drop">
+                            <label class="stu-hw-drop-inner">
+                                <InputFile OnChange="OnFilesSelected" multiple
+                                           accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.webp,.mp4,.mov,.zip"
+                                           disabled="@_uploading" />
+                                <i class="bi bi-cloud-arrow-up"></i>
+                                <strong>@( _uploading ? "Envoi en cours…" : "Importer un fichier" )</strong>
+                                <span>Glissez-déposez ou cliquez pour ajouter des fichiers</span>
+                                <small>PDF, DOC, DOCX, JPG, PNG, vidéo (max 10 Mo)</small>
+                            </label>
+                        </div>
+                    }
+
+                    @if (_attachments.Count > 0)
+                    {
+                        <ul class="stu-hw-files">
+                            @foreach (var f in _attachments)
+                            {
+                                <li>
+                                    <i class="bi bi-file-earmark me-2"></i>
+                                    <span>@f.FileName</span>
+                                    <button type="button" class="btn btn-link btn-sm text-danger" @onclick="() => RemoveAttachment(f.DocumentId)">Retirer</button>
+                                </li>
+                            }
+                        </ul>
+                    }
+
+                    @if (!string.IsNullOrEmpty(_uploadError))
+                    {
+                        <div class="text-danger small mt-2">@_uploadError</div>
+                    }
+                </section>
+
+                @if (!string.IsNullOrEmpty(_submitError))
+                {
+                    <div class="alert alert-danger">@_submitError</div>
+                }
+
+                <div class="stu-hw-actions">
+                    <a class="btn btn-outline-secondary" href="/student/homework">Annuler</a>
+                    <button type="button" class="btn btn-primary" disabled="@_saving" @onclick="SubmitAsync">
+                        @if (_saving)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2"></span>
+                        }
+                        <i class="bi bi-send me-1"></i>Soumettre le devoir
+                    </button>
+                </div>
+            </div>
+
+            <aside class="stu-hw-side">
+                <div class="stu-hw-side-card">
+                    <h3>Récapitulatif</h3>
+                    <dl>
+                        <div><dt>Matière</dt><dd>@(_hw.Subject ?? "—")</dd></div>
+                        <div><dt>Devoir</dt><dd>@_hw.Title</dd></div>
+                        <div><dt>Date limite</dt><dd>@(_hw.DueDate?.ToLocalTime().ToString("dd MMM yyyy") ?? "—")</dd></div>
+                        <div><dt>Points</dt><dd>@(_totalPoints > 0 ? $"{_totalPoints} pts" : "—")</dd></div>
+                        <div><dt>Durée</dt><dd>@(_hw.EstimatedMinutes is int m ? $"{m} min" : "—")</dd></div>
+                    </dl>
+                </div>
+                <div class="stu-hw-side-card tip">
+                    <h3>Conseils</h3>
+                    <ul>
+                        <li>Relisez bien vos réponses avant de soumettre</li>
+                        <li>Vérifiez que vos fichiers sont lisibles</li>
+                        <li>Respectez la date limite indiquée</li>
+                    </ul>
+                </div>
+                <div class="stu-hw-side-card secure">
+                    <i class="bi bi-shield-check"></i>
+                    <span>Vos données sont stockées de façon sécurisée.</span>
+                </div>
+            </aside>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private static readonly (HomeworkSubmissionMode Flag, string Title, string Hint, string Icon)[] AllModes =
+    [
+        (HomeworkSubmissionMode.Online, "Sur ordinateur", "Rédiger en ligne ou importer un fichier", "bi-laptop"),
+        (HomeworkSubmissionMode.PaperScan, "Sur papier (scanner)", "Scanner ou prendre une photo", "bi-phone"),
+        (HomeworkSubmissionMode.Video, "Enregistrer une vidéo", "Présenter votre solution en vidéo", "bi-camera-reels"),
+        (HomeworkSubmissionMode.FileUpload, "Déposer un fichier", "Importer un fichier (PDF, Word, image…)", "bi-cloud-upload")
+    ];
+
+    private bool _loading = true, _saving, _uploading, _showInstructions;
+    private string _workTab = "text";
+    private string _text = "";
+    private string _submitError = "", _uploadError = "";
+    private int _wordCount, _totalPoints;
+    private HomeworkSubmissionMode _mode = HomeworkSubmissionMode.Online;
+    private HomeworkDto? _hw;
+    private readonly List<HomeworkSubmissionFileDto> _attachments = [];
+
+    private IEnumerable<(HomeworkSubmissionMode Flag, string Title, string Hint, string Icon)> AvailableModes
+    {
+        get
+        {
+            if (_hw is null) return [];
+            var allowed = _hw.SubmissionModes == HomeworkSubmissionMode.None
+                ? HomeworkSubmissionMode.Online
+                : _hw.SubmissionModes;
+            return AllModes.Where(m => (allowed & m.Flag) != 0);
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _hw = await Api.GetAsync<HomeworkDto>($"api/students/me/homework/{Id}");
+            if (_hw is null) return;
+
+            _totalPoints = _hw.Criteria.Sum(c => c.Points);
+            var first = AvailableModes.FirstOrDefault();
+            if (first.Flag != HomeworkSubmissionMode.None)
+                SelectMode(first.Flag);
+            else
+                SelectMode(HomeworkSubmissionMode.Online);
+        }
+        catch
+        {
+            _hw = null;
+        }
+        finally { _loading = false; }
+    }
+
+    private void SelectMode(HomeworkSubmissionMode mode)
+    {
+        _mode = mode;
+        _workTab = mode is HomeworkSubmissionMode.Online ? "text" : "file";
+    }
+
+    private void OnTextInput(ChangeEventArgs e)
+    {
+        _text = e.Value?.ToString() ?? "";
+        _wordCount = string.IsNullOrWhiteSpace(_text)
+            ? 0
+            : _text.Split([' ', '\n', '\r', '\t'], StringSplitOptions.RemoveEmptyEntries).Length;
+    }
+
+    private async Task OnFilesSelected(InputFileChangeEventArgs e)
+    {
+        _uploadError = "";
+        _uploading = true;
+        try
+        {
+            foreach (var file in e.GetMultipleFiles(5))
+            {
+                if (file.Size > 10 * 1024 * 1024)
+                {
+                    _uploadError = $"{file.Name} dépasse 10 Mo.";
+                    continue;
+                }
+
+                await using var stream = file.OpenReadStream(10 * 1024 * 1024);
+                using var ms = new MemoryStream();
+                await stream.CopyToAsync(ms);
+
+                using var content = new MultipartFormDataContent();
+                var bytes = new ByteArrayContent(ms.ToArray());
+                bytes.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
+                    string.IsNullOrWhiteSpace(file.ContentType) ? "application/octet-stream" : file.ContentType);
+                content.Add(bytes, "file", file.Name);
+
+                var result = await Api.PostMultipartAsync<DocDto>($"api/students/me/homework/{Id}/attachments", content);
+                if (result.Error is not null || result.Value is null)
+                {
+                    _uploadError = result.Error ?? $"Échec pour {file.Name}";
+                    continue;
+                }
+
+                var d = result.Value;
+                if (_attachments.All(a => a.DocumentId != d.Id))
+                {
+                    _attachments.Add(new HomeworkSubmissionFileDto(
+                        d.Id, d.FileName, $"api/students/me/documents/{d.Id}/file"));
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _uploadError = ex.Message;
+        }
+        finally { _uploading = false; }
+    }
+
+    private void RemoveAttachment(Guid documentId) =>
+        _attachments.RemoveAll(a => a.DocumentId == documentId);
+
+    private async Task SubmitAsync()
+    {
+        _submitError = "";
+        _saving = true;
+        try
+        {
+            var req = new SubmitHomeworkRequest(
+                string.IsNullOrWhiteSpace(_text) ? null : _text.Trim(),
+                _mode,
+                _attachments.Count == 0 ? null : _attachments.ToList());
+
+            var result = await Api.PostWithErrorAsync<HomeworkDto>(
+                $"api/students/me/homework/{Id}/submit", req);
+
+            if (result.Error is not null || result.Value is null)
+            {
+                _submitError = result.Error ?? "Échec de la soumission.";
+                return;
+            }
+
+            Nav.NavigateTo("/student/homework");
+        }
+        catch (Exception ex)
+        {
+            _submitError = ex.Message;
+        }
+        finally { _saving = false; }
+    }
+
+    private sealed record DocDto(
+        Guid Id, string FileName, long FileSize, string ContentType,
+        DateTime UploadedAt, Guid? StudentId, Guid? LessonId, string Url);
+}

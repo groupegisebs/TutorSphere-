@@ -134,6 +134,17 @@ public class StudentPortalController : ControllerBase
         return Ok(await _portal.GetHomeworkAsync(userId, ct));
     }
 
+    [HttpGet("me/homework/{id:guid}")]
+    public async Task<ActionResult<HomeworkDto>> HomeworkById(Guid id, CancellationToken ct)
+    {
+        var userId = User.GetUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        var hw = await _portal.GetHomeworkByIdAsync(userId, id, ct);
+        return hw is null ? NotFound() : Ok(hw);
+    }
+
     [HttpPost("me/homework/{id:guid}/submit")]
     public async Task<ActionResult<HomeworkDto>> SubmitHomework(
         Guid id,
@@ -147,6 +158,45 @@ public class StudentPortalController : ControllerBase
         try
         {
             return Ok(await _portal.SubmitHomeworkAsync(userId, id, request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("me/homework/{id:guid}/attachments")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(20 * 1024 * 1024)]
+    public async Task<ActionResult<DocumentDto>> UploadHomeworkAttachment(
+        Guid id,
+        IFormFile file,
+        CancellationToken ct)
+    {
+        var userId = User.GetUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        if (file is null || file.Length == 0)
+            return BadRequest(new { error = "Fichier requis." });
+
+        if (file.Length > 10 * 1024 * 1024)
+            return BadRequest(new { error = "Fichier trop volumineux (max 10 Mo)." });
+
+        try
+        {
+            var uploadsRoot = Path.Combine(_env.WebRootPath ?? _env.ContentRootPath, "uploads");
+            Directory.CreateDirectory(uploadsRoot);
+
+            var safeFileName = $"{Guid.NewGuid():N}{Path.GetExtension(file.FileName)}";
+            var filePath = Path.Combine(uploadsRoot, safeFileName);
+            await using (var stream = System.IO.File.Create(filePath))
+                await file.CopyToAsync(stream, ct);
+
+            var fileUrl = $"/uploads/{safeFileName}";
+            var doc = await _portal.UploadHomeworkAttachmentAsync(
+                userId, id, file.FileName, file.ContentType, file.Length, fileUrl, ct);
+            return Ok(doc);
         }
         catch (InvalidOperationException ex)
         {
