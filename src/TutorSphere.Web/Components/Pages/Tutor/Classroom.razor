@@ -582,6 +582,9 @@
 
     private bool _micOn      = true;
     private bool _camOn      = true;
+    private bool _privacyPaused;
+    private bool _micBeforePrivacy = true;
+    private bool _camBeforePrivacy = true;
     private bool _cameraAvailable = true;
     private int _cameraCount;
     private bool _sharing    = false;
@@ -1308,8 +1311,46 @@
     private async Task BroadcastOwnMediaStateAsync()
     {
         if (_lessonGuid is null) return;
+        if (_privacyPaused)
+        {
+            await ClassroomRt.BroadcastMediaStateAsync(_lessonGuid.Value, false, false);
+            return;
+        }
         await ClassroomRt.BroadcastMediaStateAsync(_lessonGuid.Value, _micOn, _camOn || _sharing);
     }
+
+    /// <summary>
+    /// Ordinateur verrouillé / onglet masqué : micro + caméra coupés côté JS ;
+    /// on synchronise les pairs puis on restaure à la reprise.
+    /// </summary>
+    [JSInvokable]
+    public Task OnMediaPrivacyPause(bool paused) =>
+        InvokeAsync(async () =>
+        {
+            if (paused)
+            {
+                if (_privacyPaused) return;
+                _privacyPaused = true;
+                _micBeforePrivacy = _micOn;
+                _camBeforePrivacy = _camOn;
+                await BroadcastOwnMediaStateAsync();
+                StateHasChanged();
+                return;
+            }
+
+            if (!_privacyPaused) return;
+            _privacyPaused = false;
+            _micOn = _micBeforePrivacy;
+            _camOn = _camBeforePrivacy;
+            try { await JS.InvokeVoidAsync("classroomMedia.setAudioEnabled", _micOn); } catch { }
+            try { await JS.InvokeVoidAsync("classroomMedia.setVideoEnabled", _camOn); } catch { }
+            await RefreshRtcTracksAsync();
+            SyncTutorMediaFlags();
+            await BroadcastOwnMediaStateAsync();
+            try { await JS.InvokeVoidAsync("classroomRtc.unlockAudio"); } catch { }
+            _needRtcRemount = true;
+            StateHasChanged();
+        });
 
     private async Task RefreshRtcTracksAsync()
     {

@@ -4,6 +4,12 @@ window.classroomMedia = (function () {
     let canvasStream = null;
     let endedCallback = null;
     let deviceChangeBound = false;
+    let privacyBound = false;
+    let privacyPaused = false;
+    let privacyResumeInFlight = false;
+    let lastVideoEl = null;
+    /** Intent avant verrouillage / onglet masqué — pour soft-resume. */
+    let privacySaved = { audio: false, video: false };
 
     function stopTracks(mediaStream) {
         if (!mediaStream) return;
@@ -56,6 +62,127 @@ window.classroomMedia = (function () {
         if (endedCallback && typeof endedCallback.invokeMethodAsync === "function") {
             endedCallback.invokeMethodAsync("OnMediaDevicesChanged", info).catch(function () { });
         }
+    }
+
+    function notifyPrivacyPause(paused) {
+        if (endedCallback && typeof endedCallback.invokeMethodAsync === "function") {
+            endedCallback.invokeMethodAsync("OnMediaPrivacyPause", !!paused).catch(function () { });
+        }
+    }
+
+    function setAllLocalMediaEnabled(audioOn, videoOn) {
+        if (stream) {
+            stream.getAudioTracks().forEach(function (t) { t.enabled = !!audioOn; });
+            stream.getVideoTracks().forEach(function (t) { t.enabled = !!videoOn; });
+        }
+        // Partage écran / tableau : couper aussi pour ne pas diffuser l'écran de verrouillage.
+        [screenStream, canvasStream].forEach(function (s) {
+            if (!s) return;
+            s.getVideoTracks().forEach(function (t) { t.enabled = !!videoOn; });
+            s.getAudioTracks().forEach(function (t) { t.enabled = !!audioOn; });
+        });
+        document.querySelectorAll("video[data-rtc-local], video[data-rtc-local-stage]").forEach(function (el) {
+            var thumb = el.closest(".cr-pro-thumb");
+            if (videoOn && ((stream && stream.getVideoTracks().length) || screenStream || canvasStream)) {
+                el.classList.remove("is-hidden");
+                if (thumb) thumb.classList.add("has-video");
+            } else if (!videoOn) {
+                el.classList.add("is-hidden");
+                if (thumb) thumb.classList.remove("has-video");
+            }
+        });
+    }
+
+    /**
+     * Verrouillage PC / onglet en arrière-plan :
+     * coupe micro + caméra (et pause le flux partagé), libère le matériel.
+     * Soft-resume au retour (déverrouillage / onglet visible).
+     */
+    async function applyPrivacyPause(pause) {
+        if (pause) {
+            if (privacyPaused) return;
+            privacyPaused = true;
+            privacySaved = {
+                audio: !!(stream && stream.getAudioTracks().some(function (t) {
+                    return t.readyState === "live" && t.enabled;
+                })),
+                video: !!(stream && stream.getVideoTracks().some(function (t) {
+                    return t.readyState === "live" && t.enabled;
+                }))
+            };
+            // Couper immédiatement la diffusion WebRTC.
+            setAllLocalMediaEnabled(false, false);
+            // Libérer la caméra / le micro (voyant matériel).
+            if (stream) {
+                stream.getTracks().forEach(function (t) {
+                    try { t.stop(); } catch (_) { }
+                });
+                stream = null;
+            }
+            notifyPrivacyPause(true);
+            return;
+        }
+
+        if (!privacyPaused || privacyResumeInFlight) return;
+        privacyPaused = false;
+        privacyResumeInFlight = true;
+        try {
+            var wantAudio = privacySaved.audio;
+            var wantVideo = privacySaved.video;
+            if ((wantAudio || wantVideo) && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                try {
+                    var next = await getUserMediaWithFallback(wantVideo, wantAudio);
+                    stream = next;
+                    if (!screenStream && !canvasStream) {
+                        if (bgMode !== "none" && stream.getVideoTracks().length > 0)
+                            await applyBackground(lastVideoEl);
+                        else
+                            attach(lastVideoEl, stream, true);
+                    }
+                    setAllLocalMediaEnabled(wantAudio, wantVideo);
+                    // Réactiver les pistes de partage si elles existent encore.
+                    if (screenStream) {
+                        screenStream.getVideoTracks().forEach(function (t) {
+                            if (t.readyState === "live") t.enabled = true;
+                        });
+                    }
+                    if (canvasStream) {
+                        canvasStream.getVideoTracks().forEach(function (t) {
+                            if (t.readyState === "live") t.enabled = true;
+                        });
+                    }
+                } catch (_) {
+                    // Permissions / appareil — rester muet ; l'utilisateur pourra rallumer.
+                    privacySaved = { audio: false, video: false };
+                }
+            }
+            notifyPrivacyPause(false);
+        } finally {
+            privacyResumeInFlight = false;
+        }
+    }
+
+    function onVisibilityChange() {
+        if (document.hidden || document.visibilityState === "hidden")
+            applyPrivacyPause(true);
+        else
+            applyPrivacyPause(false);
+    }
+
+    function bindPrivacyPause() {
+        if (privacyBound || typeof document === "undefined") return;
+        privacyBound = true;
+        document.addEventListener("visibilitychange", onVisibilityChange);
+        // pagehide : certains navigateurs au verrouillage / mise en veille.
+        window.addEventListener("pagehide", function () { applyPrivacyPause(true); });
+        window.addEventListener("pageshow", function () {
+            if (!document.hidden) applyPrivacyPause(false);
+        });
+        window.addEventListener("freeze", function () { applyPrivacyPause(true); });
+        // Retour focus après verrouillage Windows (complément à visibilitychange).
+        window.addEventListener("focus", function () {
+            if (!document.hidden && privacyPaused) applyPrivacyPause(false);
+        });
     }
 
     function restoreCamera(videoEl) {
@@ -201,12 +328,14 @@ window.classroomMedia = (function () {
         setEndedCallback: function (dotNetRef) {
             endedCallback = dotNetRef;
             bindDeviceChange();
+            bindPrivacyPause();
         },
 
         start: async function (videoEl, opts) {
             opts = opts || {};
             var wantVideo = opts.video !== false;
             var wantAudio = opts.audio !== false;
+            lastVideoEl = videoEl || lastVideoEl;
 
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                 return {
@@ -220,6 +349,26 @@ window.classroomMedia = (function () {
             }
 
             bindDeviceChange();
+            bindPrivacyPause();
+
+            // Ne pas relancer le média pendant un verrouillage.
+            if (document.hidden || privacyPaused) {
+                privacySaved = { audio: wantAudio, video: wantVideo };
+                if (!privacyPaused) {
+                    privacyPaused = true;
+                    notifyPrivacyPause(true);
+                }
+                return {
+                    ok: true,
+                    video: false,
+                    audio: false,
+                    cameras: 0,
+                    mics: 0,
+                    warning: "Média en pause (écran verrouillé ou onglet masqué).",
+                    error: null,
+                    privacyPaused: true
+                };
+            }
 
             try {
                 var before = await listDevices();
@@ -274,6 +423,11 @@ window.classroomMedia = (function () {
 
         /** Active la caméra si elle vient d'être branchée (ajoute une piste vidéo au flux). */
         enableCamera: async function (videoEl) {
+            lastVideoEl = videoEl || lastVideoEl;
+            if (privacyPaused) {
+                privacySaved.video = true;
+                return { ok: false, error: "Caméra en pause (écran verrouillé). Elle se réactivera au déverrouillage." };
+            }
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                 return { ok: false, error: "Caméra non supportée." };
             }
@@ -324,6 +478,10 @@ window.classroomMedia = (function () {
         },
 
         setVideoEnabled: function (enabled) {
+            if (privacyPaused) {
+                privacySaved.video = !!enabled;
+                return false;
+            }
             if (!stream) return false;
             var tracks = stream.getVideoTracks();
             if (tracks.length === 0) return false;
@@ -342,9 +500,17 @@ window.classroomMedia = (function () {
         },
 
         setAudioEnabled: function (enabled) {
+            if (privacyPaused) {
+                privacySaved.audio = !!enabled;
+                return false;
+            }
             if (!stream) return false;
             stream.getAudioTracks().forEach(function (t) { t.enabled = !!enabled; });
             return true;
+        },
+
+        isPrivacyPaused: function () {
+            return !!privacyPaused;
         },
 
         hasStream: function () {
@@ -391,6 +557,10 @@ window.classroomMedia = (function () {
 
         /** Active le micro s'il n'y a pas encore de piste audio (comme enableCamera). */
         enableMicrophone: async function () {
+            if (privacyPaused) {
+                privacySaved.audio = true;
+                return { ok: false, error: "Micro en pause (écran verrouillé). Il se réactivera au déverrouillage." };
+            }
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                 return { ok: false, error: "Micro non supporté." };
             }
