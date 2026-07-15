@@ -77,7 +77,7 @@ public sealed class RealtimeClassroomClient : IAsyncDisposable
     public async Task SendStrokeAsync(Guid lessonId, BoardStrokeDto stroke)
     {
         if (_hub is null || _hub.State != HubConnectionState.Connected) return;
-        try { await _hub.InvokeAsync("SendStroke", lessonId, stroke); }
+        try { await _hub.SendAsync("SendStroke", lessonId, stroke); }
         catch (Exception ex) { _logger.LogDebug(ex, "SendStroke failed"); }
     }
 

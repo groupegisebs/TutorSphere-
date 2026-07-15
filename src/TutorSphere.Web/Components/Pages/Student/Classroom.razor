@@ -1228,9 +1228,14 @@
     private void OnRemoteStroke(BoardStrokeDto stroke) =>
         _ = InvokeAsync(async () =>
         {
-            // Pendant un board distant en vidéo, le canvas local est masqué — ignorer les traits.
-            if (!string.IsNullOrEmpty(_watchingBoardShareFrom))
-                return;
+            // Ouvrir le board automatiquement pour voir les traits en live.
+            if (_wbCollapsed)
+            {
+                _wbCollapsed = false;
+                _wbForeground = true;
+                StateHasChanged();
+                await Task.Delay(50);
+            }
             try
             {
                 await JS.InvokeVoidAsync("whiteboard.applyRemoteStroke", new
@@ -1267,9 +1272,8 @@
     public async Task OnLocalBoardStroke(LocalStrokeDto stroke)
     {
         if (_lessonGuid is null || stroke is null) return;
-        // Traits sync seulement une fois le tuteur a relayé le board à la classe
-        // (sinon le tuteur voit déjà via le flux captureStream).
-        if (!_shareLive || !_sharingWhiteboard || !_shareWithClass) return;
+        // Tableau collaboratif : tout trait (board ouvert) est diffusé instantanément.
+        if (_wbCollapsed) return;
         await ClassroomRt.SendStrokeAsync(_lessonGuid.Value, new BoardStrokeDto(
             stroke.Phase, stroke.X, stroke.Y, stroke.Tool, stroke.Color, stroke.Width,
             Auth.UserName));
@@ -1638,6 +1642,8 @@
 
             if (!_wbReady)
                 await JS.InvokeVoidAsync("whiteboard.init", _canvasRef);
+            if (_jsRef is not null)
+                try { await JS.InvokeVoidAsync("whiteboard.setStrokeDotNetRef", _jsRef); } catch { }
 
             var result = await JS.InvokeAsync<MediaStartResult>(
                 "classroomMedia.startWhiteboardShare", _localVideo, _canvasRef);
@@ -1756,7 +1762,12 @@
         _wbForeground = true;
         await InvokeAsync(StateHasChanged);
         await Task.Delay(80);
-        try { await JS.InvokeVoidAsync("classroomRtc.focusBoardShareWithRetry", connectionId); } catch { }
+        // Collaboratif : traits SignalR sur le canvas — pas de vidéo qui bloque l'écriture.
+        try { await JS.InvokeVoidAsync("classroomRtc.clearBoardShare"); } catch { }
+        if (_jsRef is not null)
+        {
+            try { await JS.InvokeVoidAsync("whiteboard.setStrokeDotNetRef", _jsRef); } catch { }
+        }
     }
 
     private async Task ClearSharedBoardViewAsync()
