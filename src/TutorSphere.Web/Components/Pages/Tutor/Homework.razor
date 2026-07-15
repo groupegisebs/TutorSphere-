@@ -3,6 +3,9 @@
 @rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
 @inject HomeworkService HomeworkSvc
+@inject ApiClient Api
+@using TutorSphere.Application.DTOs.Homework
+@using TutorSphere.Domain.Enums
 
 <PageTitle>@L["Homework_Title"] – TutorSphere</PageTitle>
 
@@ -16,7 +19,6 @@
     </button>
 </div>
 
-<!-- Quick filters -->
 <div class="ts-toolbar">
     <div class="ts-search-box">
         <i class="bi bi-search ts-search-icon"></i>
@@ -28,15 +30,10 @@
         <option value="À rendre">@L["Homework_Due"]</option>
         <option value="Rendu">@L["Homework_Submitted"]</option>
         <option value="Corrigé">@L["Homework_Graded"]</option>
-        <option value="En retard">@L["Homework_Late"]</option>
-    </select>
-    <select class="form-select w-auto" @bind="_filterSubject">
-        <option value="">@L["Homework_AllSubjects"]</option>
-        <option>Mathématiques</option><option>Physique</option><option>Chimie</option><option>Français</option>
+        <option value="Brouillon">Brouillon</option>
     </select>
 </div>
 
-<!-- Homework cards -->
 @if (_loading)
 {
     <div class="ts-loading-state">
@@ -46,134 +43,332 @@
 }
 else if (!string.IsNullOrEmpty(_error))
 {
-    <div class="alert alert-warning">
-        <i class="bi bi-exclamation-triangle me-2"></i>@_error
+    <div class="alert alert-warning"><i class="bi bi-exclamation-triangle me-2"></i>@_error</div>
+}
+else if (!FilteredHomework.Any())
+{
+    <div class="ts-empty-state py-5 text-center text-muted">
+        <i class="bi bi-journal-plus" style="font-size:2rem"></i>
+        <p class="mt-2 mb-0">Aucun devoir pour le moment. Créez-en un avec texte, vidéo, fichiers…</p>
     </div>
 }
 else
 {
-<div class="homework-grid">
-    @foreach (var hw in FilteredHomework)
-    {
-        <div class="hw-card">
-            <div class="hw-card-head">
-                <span class="ts-badge @HwBadge(hw.Status)">@StatusLabel(hw.Status)</span>
-                <span class="hw-due @(hw.IsOverdue ? "text-danger" : "text-muted")">
-                    <i class="bi bi-calendar3 me-1"></i>@hw.DueDate.ToString("dd/MM")
-                </span>
-            </div>
-            <h3 class="hw-title">@hw.Title</h3>
-            <p class="hw-subject"><i class="bi bi-book me-1 text-muted"></i>@hw.Subject</p>
-            <div class="hw-students">
-                @foreach (var s in hw.Students)
-                {
-                    <span class="ts-badge ts-badge-neutral">@s</span>
-                }
-            </div>
-            @if (!string.IsNullOrEmpty(hw.Description))
-            {
-                <p class="hw-desc">@hw.Description</p>
-            }
-            @if (hw.Status == "Corrigé" && hw.Grades.Any())
-            {
-                <div class="hw-grades">
-                    @foreach (var g in hw.Grades)
+    <div class="homework-grid">
+        @foreach (var hw in FilteredHomework)
+        {
+            <div class="hw-card">
+                <div class="hw-card-head">
+                    <span class="ts-badge @HwBadge(hw.Status)">@StatusLabel(hw.Status)</span>
+                    <span class="hw-due @(hw.IsOverdue ? "text-danger" : "text-muted")">
+                        <i class="bi bi-calendar3 me-1"></i>@(hw.DueDate?.ToString("dd/MM") ?? "—")
+                    </span>
+                </div>
+                <h3 class="hw-title">@hw.Title</h3>
+                <p class="hw-subject"><i class="bi bi-book me-1 text-muted"></i>@(hw.Subject ?? "—")</p>
+                <div class="hw-students">
+                    @foreach (var s in hw.StudentNames)
                     {
-                        <span class="hw-grade-chip">@g.Student : <strong>@g.Score/20</strong></span>
+                        <span class="ts-badge ts-badge-neutral">@s</span>
                     }
                 </div>
-            }
-            <div class="hw-card-footer">
-                <button class="ts-icon-btn" title="@L["Common_Edit"]" @onclick="()=>OpenEdit(hw)"><i class="bi bi-pencil"></i></button>
-                @if (hw.Status == "Rendu")
+                @if (hw.ContentCount > 0)
                 {
-                    <button class="ts-icon-btn" title="@L["Homework_Grade"]" @onclick="()=>OpenGrade(hw)">
-                        <i class="bi bi-check2-square text-success"></i>
-                    </button>
+                    <p class="hw-desc"><i class="bi bi-layers me-1"></i>@hw.ContentCount élément(s) de contenu</p>
                 }
-                <button class="ts-icon-btn ts-icon-btn--danger" title="@L["Common_Delete"]"
-                        @onclick="async () => await DeleteHomework(hw)">
-                    <i class="bi bi-trash"></i>
-                </button>
-            </div>
-        </div>
-    }
-</div>
-}
-
-<!-- Add/Edit modal -->
-@if (_showModal)
-{
-    <div class="ts-modal-backdrop" @onclick="CloseModal">
-        <div class="ts-modal" @onclick:stopPropagation="true">
-            <div class="ts-modal-header">
-                <h2>@(_editing == null ? L["Homework_New"] : L["Homework_Edit"])</h2>
-                <button class="ts-modal-close" @onclick="CloseModal"><i class="bi bi-x-lg"></i></button>
-            </div>
-            <div class="ts-modal-body">
-                <div class="row g-3">
-                    <div class="col-12"><label class="form-label">@L["Common_Title"] *</label>
-                        <input class="form-control" @bind="_hf.Title" placeholder="@L["Homework_TitlePlaceholder"]" /></div>
-                    <div class="col-6"><label class="form-label">@L["Common_Subject"]</label>
-                        <input class="form-control" @bind="_hf.Subject" /></div>
-                    <div class="col-6"><label class="form-label">@L["Homework_DueDate"] *</label>
-                        <input type="date" class="form-control" @bind="_hf.DueDate" /></div>
-                    <div class="col-12"><label class="form-label">@L["Common_Description"]</label>
-                        <textarea class="form-control" rows="3" @bind="_hf.Description"
-                            placeholder="@L["Homework_DescPlaceholder"]"></textarea></div>
-                    <div class="col-12">
-                        <label class="form-label">@L["Homework_Students"]</label>
-                        <div class="d-flex flex-wrap gap-2">
-                            @foreach (var s in _studentChoices)
-                            {
-                                var selected = _hf.Students.Contains(s);
-                                <button type="button"
-                                        class="ts-chip @(selected ? "active" : "")"
-                                        @onclick="()=>{ if(selected) _hf.Students.Remove(s); else _hf.Students.Add(s); }">
-                                    @s
-                                </button>
-                            }
-                        </div>
-                    </div>
+                <div class="hw-card-footer">
+                    <button class="ts-icon-btn" title="@L["Common_Edit"]" @onclick="() => OpenEdit(hw)"><i class="bi bi-pencil"></i></button>
+                    @if (hw.Status == "Rendu" && hw.ApiId.HasValue)
+                    {
+                        <button class="ts-icon-btn" title="@L["Homework_Grade"]" @onclick="() => OpenGrade(hw)">
+                            <i class="bi bi-check2-square text-success"></i>
+                        </button>
+                    }
+                    <button class="ts-icon-btn ts-icon-btn--danger" title="@L["Common_Delete"]"
+                            @onclick="async () => await DeleteHomework(hw)">
+                        <i class="bi bi-trash"></i>
+                    </button>
                 </div>
             </div>
-            <div class="ts-modal-footer">
-                <button class="btn btn-outline-secondary" @onclick="CloseModal">@L["Common_Cancel"]</button>
-                <button class="btn btn-primary" @onclick="async () => await SaveHomework()">@L["Common_Save"]</button>
+        }
+    </div>
+}
+
+@* ── Wizard création / édition ── *@
+@if (_showModal)
+{
+    <div class="ts-modal-backdrop hw-wizard-backdrop" @onclick="CloseModal">
+        <div class="ts-modal hw-wizard" @onclick:stopPropagation="true">
+            <div class="hw-wizard-header">
+                <div>
+                    <h2><i class="bi bi-clipboard2-plus me-2"></i>@(_editing is null ? "Nouveau devoir" : "Modifier le devoir")</h2>
+                    <p>Créez un devoir complet pour vos élèves</p>
+                </div>
+                <button type="button" class="ts-modal-close" @onclick="CloseModal"><i class="bi bi-x-lg"></i></button>
+            </div>
+
+            <div class="hw-wizard-steps">
+                @for (var i = 0; i < _stepLabels.Length; i++)
+                {
+                    var idx = i;
+                    <button type="button" class="hw-step @(_wizardStep == idx ? "active" : null) @(_wizardStep > idx ? "done" : null)"
+                            @onclick="() => _wizardStep = idx">
+                        <span class="hw-step-num">@(idx + 1)</span>
+                        <span>@_stepLabels[idx]</span>
+                    </button>
+                }
+            </div>
+
+            <div class="hw-wizard-body">
+                <div class="hw-wizard-main">
+                    @if (_wizardStep == 0)
+                    {
+                        <section class="hw-section">
+                            <h3>Informations générales</h3>
+                            <div class="row g-3">
+                                <div class="col-12">
+                                    <label class="form-label">Titre du devoir *</label>
+                                    <input class="form-control" @bind="_hf.Title" placeholder="Exercices chapitre 4 : Fractions" />
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Matière</label>
+                                    <select class="form-select" @bind="_hf.Subject">
+                                        <option value="">— Choisir —</option>
+                                        @foreach (var s in _subjects)
+                                        {
+                                            <option value="@s">@s</option>
+                                        }
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Date limite *</label>
+                                    <input type="date" class="form-control" @bind="_hf.DueDate" />
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Heure limite</label>
+                                    <input type="time" class="form-control" @bind="_hf.DueTime" />
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Durée estimée</label>
+                                    <div class="input-group">
+                                        <input type="number" min="5" max="600" class="form-control" @bind="_hf.EstimatedMinutes" />
+                                        <span class="input-group-text">minutes</span>
+                                    </div>
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label">Description</label>
+                                    <textarea class="form-control" rows="3" maxlength="1000" @bind="_hf.Description"
+                                              placeholder="Décrivez le but du devoir…"></textarea>
+                                    <div class="form-text text-end">@(_hf.Description?.Length ?? 0)/1000</div>
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label">Élèves concernés *</label>
+                                    <div class="d-flex flex-wrap gap-2">
+                                        @foreach (var s in _students)
+                                        {
+                                            var selected = _hf.StudentIds.Contains(s.Id);
+                                            <button type="button" class="ts-chip @(selected ? "active" : null)"
+                                                    @onclick="() => ToggleStudent(s.Id)">
+                                                @s.FirstName @s.LastName
+                                            </button>
+                                        }
+                                    </div>
+                                    @if (_students.Count == 0)
+                                    {
+                                        <p class="text-muted small mb-0 mt-1">Aucun élève trouvé. Ajoutez des élèves dans votre école.</p>
+                                    }
+                                </div>
+                            </div>
+                        </section>
+                    }
+                    else if (_wizardStep == 1)
+                    {
+                        <section class="hw-section">
+                            <h3>Contenu du devoir</h3>
+                            <div class="hw-content-types">
+                                @foreach (var t in _contentTypes)
+                                {
+                                    <button type="button" class="hw-ctype @(_hf.PendingContentType == t.Key ? "active" : null)"
+                                            @onclick="() => _hf.PendingContentType = t.Key">
+                                        <i class="bi @t.Icon"></i>@t.Label
+                                    </button>
+                                }
+                            </div>
+
+                            <div class="hw-add-block card border-0 bg-light mb-3">
+                                <div class="card-body">
+                                    <div class="mb-2">
+                                        <label class="form-label">Titre (optionnel)</label>
+                                        <input class="form-control form-control-sm" @bind="_hf.PendingTitle" placeholder="Ex. Rappels de cours" />
+                                    </div>
+                                    @if (_hf.PendingContentType is "text" or "form")
+                                    {
+                                        <label class="form-label">Contenu</label>
+                                        <textarea class="form-control" rows="4" @bind="_hf.PendingBody"
+                                                  placeholder="@(_hf.PendingContentType == "form" ? "Questions du formulaire…" : "Texte, consignes, formules…")"></textarea>
+                                    }
+                                    else
+                                    {
+                                        <label class="form-label">URL @(_hf.PendingContentType == "video" ? "vidéo" : _hf.PendingContentType == "file" ? "fichier" : "lien")</label>
+                                        <input class="form-control" @bind="_hf.PendingUrl"
+                                               placeholder="https://…" />
+                                        <div class="form-text">Collez un lien YouTube, Drive, PDF, etc.</div>
+                                    }
+                                    <button type="button" class="btn btn-sm btn-primary mt-3" @onclick="AddContentBlock">
+                                        <i class="bi bi-plus-lg me-1"></i>Ajouter cet élément
+                                    </button>
+                                </div>
+                            </div>
+
+                            @foreach (var block in _hf.Content)
+                            {
+                                <div class="hw-content-item" @key="block.Id">
+                                    <div class="hw-content-item-head">
+                                        <span class="ts-badge ts-badge-primary">@ContentTypeLabel(block.Type)</span>
+                                        <strong>@(string.IsNullOrWhiteSpace(block.Title) ? "(Sans titre)" : block.Title)</strong>
+                                        <button type="button" class="btn btn-link btn-sm text-danger ms-auto" @onclick="() => RemoveContent(block.Id)">Supprimer</button>
+                                    </div>
+                                    @if (!string.IsNullOrWhiteSpace(block.Body))
+                                    {
+                                        <p class="mb-0 small text-muted">@(block.Body.Length > 160 ? block.Body[..160] + "…" : block.Body)</p>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(block.Url))
+                                    {
+                                        <a class="small" href="@block.Url" target="_blank" rel="noopener">@block.Url</a>
+                                    }
+                                </div>
+                            }
+
+                            @if (_hf.Content.Count == 0)
+                            {
+                                <p class="text-muted small">Ajoutez du texte, une vidéo, un fichier, un lien ou un formulaire.</p>
+                            }
+                        </section>
+                    }
+                    else if (_wizardStep == 2)
+                    {
+                        <section class="hw-section">
+                            <h3>Consignes</h3>
+                            <textarea class="form-control" rows="8" @bind="_hf.Instructions"
+                                      placeholder="Précisez comment réaliser le devoir, le matériel requis, les critères attendus…"></textarea>
+                        </section>
+                    }
+                    else if (_wizardStep == 3)
+                    {
+                        <section class="hw-section">
+                            <h3>Remise du devoir</h3>
+                            <p class="text-muted small">Choisissez comment les élèves peuvent rendre leur travail (plusieurs options possibles).</p>
+                            <div class="hw-modes">
+                                @foreach (var m in _submissionModes)
+                                {
+                                    var on = (_hf.SubmissionModes & m.Flag) != 0;
+                                    <button type="button" class="hw-mode @(on ? "active" : null)" @onclick="() => ToggleMode(m.Flag)">
+                                        <i class="bi @m.Icon"></i>
+                                        <div>
+                                            <strong>@m.Title</strong>
+                                            <span>@m.Hint</span>
+                                        </div>
+                                        <i class="bi @(on ? "bi-check-circle-fill" : "bi-circle") hw-mode-check"></i>
+                                    </button>
+                                }
+                            </div>
+                        </section>
+                    }
+                    else
+                    {
+                        <section class="hw-section">
+                            <h3>Options & critères</h3>
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <label class="form-label mb-0">Critères d'évaluation</label>
+                                <button type="button" class="btn btn-sm btn-outline-primary" @onclick="AddCriterion">+ Ajouter un critère</button>
+                            </div>
+                            @foreach (var c in _hf.Criteria)
+                            {
+                                <div class="hw-criterion row g-2 align-items-center mb-2" @key="c.Key">
+                                    <div class="col">
+                                        <input class="form-control form-control-sm" @bind="c.Name" placeholder="Nom du critère" />
+                                    </div>
+                                    <div class="col-auto">
+                                        <div class="input-group input-group-sm" style="width:7rem">
+                                            <span class="input-group-text">/</span>
+                                            <input type="number" min="1" max="100" class="form-control" @bind="c.Points" />
+                                        </div>
+                                    </div>
+                                    <div class="col-auto">
+                                        <button type="button" class="btn btn-sm btn-link text-danger" @onclick="() => _hf.Criteria.Remove(c)"><i class="bi bi-trash"></i></button>
+                                    </div>
+                                </div>
+                            }
+                            <p class="fw-semibold mt-2 mb-0">Total : / @_hf.Criteria.Sum(x => x.Points)</p>
+                        </section>
+                    }
+                </div>
+
+                <aside class="hw-wizard-side">
+                    <div class="hw-side-card">
+                        <h4>Aperçu</h4>
+                        <ul class="hw-preview-list">
+                            <li><span>Matière</span><strong>@(string.IsNullOrWhiteSpace(_hf.Subject) ? "—" : _hf.Subject)</strong></li>
+                            <li><span>Échéance</span><strong>@_hf.DueDate.ToString("dd/MM/yyyy") @_hf.DueTime</strong></li>
+                            <li><span>Durée</span><strong>@(_hf.EstimatedMinutes?.ToString() ?? "—") min</strong></li>
+                            <li><span>Contenu</span><strong>@_hf.Content.Count élément(s)</strong></li>
+                            <li><span>Élèves</span><strong>@_hf.StudentIds.Count</strong></li>
+                            <li><span>Remise</span><strong>@ModesSummary()</strong></li>
+                            <li><span>Points</span><strong>/ @_hf.Criteria.Sum(x => x.Points)</strong></li>
+                        </ul>
+                    </div>
+                    @if (!string.IsNullOrEmpty(_saveError))
+                    {
+                        <div class="alert alert-danger py-2 small mb-0">@_saveError</div>
+                    }
+                </aside>
+            </div>
+
+            <div class="hw-wizard-footer">
+                <button type="button" class="btn btn-outline-secondary" @onclick="CloseModal">Annuler</button>
+                <div class="d-flex gap-2">
+                    @if (_wizardStep > 0)
+                    {
+                        <button type="button" class="btn btn-outline-secondary" @onclick="() => _wizardStep--">Précédent</button>
+                    }
+                    <button type="button" class="btn btn-outline-primary" disabled="@_saving" @onclick="() => SaveAsync(draft: true)">
+                        Enregistrer en brouillon
+                    </button>
+                    @if (_wizardStep < _stepLabels.Length - 1)
+                    {
+                        <button type="button" class="btn btn-primary" @onclick="NextStep">
+                            Suivant <i class="bi bi-arrow-right ms-1"></i>
+                        </button>
+                    }
+                    else
+                    {
+                        <button type="button" class="btn btn-primary" disabled="@_saving" @onclick="() => SaveAsync(draft: false)">
+                            @(_saving ? "Enregistrement…" : "Publier le devoir")
+                        </button>
+                    }
+                </div>
             </div>
         </div>
     </div>
 }
 
-<!-- Grade modal -->
-@if (_grading != null)
+@if (_grading is not null)
 {
-    <div class="ts-modal-backdrop" @onclick="()=>_grading=null">
+    <div class="ts-modal-backdrop" @onclick="() => _grading = null">
         <div class="ts-modal" @onclick:stopPropagation="true">
             <div class="ts-modal-header">
                 <h2>@string.Format(L["Homework_GradeTitle"].Value, _grading.Title)</h2>
-                <button class="ts-modal-close" @onclick="()=>_grading=null"><i class="bi bi-x-lg"></i></button>
+                <button class="ts-modal-close" @onclick="() => _grading = null"><i class="bi bi-x-lg"></i></button>
             </div>
             <div class="ts-modal-body">
-                @foreach (var s in _grading.Students)
-                {
-                    var existing = _grading.Grades.FirstOrDefault(g=>g.Student==s);
-                    var score = existing?.Score ?? 0;
-                    <div class="row align-items-center g-2 mb-2">
-                        <div class="col-6"><strong>@s</strong></div>
-                        <div class="col-4">
-                            <div class="input-group input-group-sm">
-                                <input type="number" min="0" max="20" class="form-control"
-                                       value="@score"
-                                       @onchange='e => SetGrade(_grading, s, int.Parse(e.Value?.ToString() ?? "0"))' />
-                                <span class="input-group-text">/20</span>
-                            </div>
-                        </div>
-                    </div>
-                }
+                <div class="input-group mb-3">
+                    <input type="number" min="0" max="100" class="form-control" @bind="_gradeValue" />
+                    <span class="input-group-text">/100</span>
+                </div>
+                <textarea class="form-control" rows="3" @bind="_gradeFeedback" placeholder="Commentaire…"></textarea>
             </div>
             <div class="ts-modal-footer">
-                <button class="btn btn-outline-secondary" @onclick="()=>_grading=null">@L["Common_Cancel"]</button>
+                <button class="btn btn-outline-secondary" @onclick="() => _grading = null">@L["Common_Cancel"]</button>
                 <button class="btn btn-primary" @onclick="MarkCorrected">@L["Homework_ValidateGrades"]</button>
             </div>
         </div>
@@ -181,136 +376,385 @@ else
 }
 
 @code {
-    private string _search = "", _filterStatus = "", _filterSubject = "";
-    private bool _showModal;
-    private bool _loading = true;
-    private string _error = "";
+    private static readonly string[] _stepLabels = ["Informations", "Contenu", "Consignes", "Remise", "Options"];
+    private static readonly (string Key, string Label, string Icon)[] _contentTypes =
+    [
+        ("text", "Texte", "bi-type"),
+        ("video", "Vidéo", "bi-camera-video"),
+        ("file", "Fichier", "bi-file-earmark"),
+        ("link", "Lien", "bi-link-45deg"),
+        ("form", "Formulaire", "bi-ui-checks")
+    ];
+    private static readonly (HomeworkSubmissionMode Flag, string Title, string Hint, string Icon)[] _submissionModes =
+    [
+        (HomeworkSubmissionMode.Online, "Sur ordinateur", "Réponse en ligne directement sur la plateforme", "bi-laptop"),
+        (HomeworkSubmissionMode.PaperScan, "Sur papier (à scanner)", "Scanner ou prendre une photo du devoir", "bi-phone"),
+        (HomeworkSubmissionMode.Video, "Enregistrer une vidéo", "Filmer la résolution du devoir", "bi-camera-reels"),
+        (HomeworkSubmissionMode.FileUpload, "Déposer un fichier", "Téléverser un fichier (PDF, image, doc…)", "bi-cloud-upload")
+    ];
+    private static readonly string[] _subjects =
+        ["Mathématiques", "Physique", "Chimie", "Français", "Anglais", "Histoire", "Sciences", "Autre"];
+
+    private string _search = "", _filterStatus = "";
+    private bool _showModal, _loading = true, _saving;
+    private string _error = "", _saveError = "";
+    private int _wizardStep;
     private HomeworkVM? _editing, _grading;
     private HomeworkForm _hf = new();
+    private List<HomeworkVM> _homeworks = [];
+    private List<StudentChoice> _students = [];
+    private decimal _gradeValue;
+    private string? _gradeFeedback;
 
-    private static string HwBadge(string s) => s switch {
-        "Corrigé" => "ts-badge-success", "Rendu" => "ts-badge-primary",
-        "En retard" => "ts-badge-danger", _ => "ts-badge-muted"
+    private IEnumerable<HomeworkVM> FilteredHomework => _homeworks
+        .Where(h => string.IsNullOrEmpty(_search) || h.Title.Contains(_search, StringComparison.OrdinalIgnoreCase))
+        .Where(h => string.IsNullOrEmpty(_filterStatus) || h.Status == _filterStatus)
+        .OrderBy(h => h.DueDate ?? DateTime.MaxValue);
+
+    private static string HwBadge(string s) => s switch
+    {
+        "Corrigé" => "ts-badge-success",
+        "Rendu" => "ts-badge-primary",
+        "Brouillon" => "ts-badge-muted",
+        "En retard" => "ts-badge-danger",
+        _ => "ts-badge-muted"
     };
 
-    private string StatusLabel(string s) => s switch {
+    private string StatusLabel(string s) => s switch
+    {
         "À rendre" => L["Homework_Due"],
         "Rendu" => L["Homework_Submitted"],
         "Corrigé" => L["Homework_Graded"],
         "En retard" => L["Homework_Late"],
+        "Brouillon" => "Brouillon",
         _ => s
     };
 
-    private IEnumerable<HomeworkVM> FilteredHomework => _homeworks
-        .Where(h => string.IsNullOrEmpty(_search) ||
-            h.Title.Contains(_search, StringComparison.OrdinalIgnoreCase))
-        .Where(h => string.IsNullOrEmpty(_filterStatus) || h.Status == _filterStatus)
-        .Where(h => string.IsNullOrEmpty(_filterSubject) || h.Subject == _filterSubject)
-        .OrderBy(h => h.DueDate);
+    private static string ContentTypeLabel(string t) => _contentTypes.FirstOrDefault(x => x.Key == t).Label ?? t;
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
-            // No tutor-scoped list endpoint exists yet; mock data kept as fallback.
-            // Create/update/delete operations are wired to the real API below.
-            await Task.CompletedTask;
+            var students = await Api.GetAsync<List<StudentDto>>("api/students") ?? [];
+            _students = students
+                .Select(s => new StudentChoice(s.Id, s.FirstName, s.LastName))
+                .OrderBy(s => s.LastName)
+                .ToList();
+
+            await ReloadAsync();
         }
-        catch { /* keep mock fallback */ }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
         finally { _loading = false; }
     }
 
-    private void OpenAdd() { _editing = null; _hf = new() { DueDate=DateTime.Today.AddDays(7) }; _showModal=true; }
-    private void OpenEdit(HomeworkVM h) { _editing = h; _hf = new HomeworkForm { Title=h.Title, Subject=h.Subject, DueDate=h.DueDate, Description=h.Description, Students=[..h.Students] }; _showModal=true; }
-    private void OpenGrade(HomeworkVM h) => _grading = h;
+    private async Task ReloadAsync()
+    {
+        var list = await HomeworkSvc.GetAllAsync();
+        var nameById = _students.ToDictionary(s => s.Id, s => $"{s.FirstName} {s.LastName}".Trim());
+
+        _homeworks = list
+            .GroupBy(h => h.AssignmentGroupId ?? h.Id)
+            .Select(g =>
+            {
+                var first = g.OrderByDescending(x => x.CreatedAt).First();
+                var status = first.IsDraft ? "Brouillon"
+                    : first.IsGraded ? "Corrigé"
+                    : first.SubmittedAt.HasValue ? "Rendu"
+                    : first.DueDate < DateTime.UtcNow.Date ? "En retard"
+                    : "À rendre";
+                return new HomeworkVM
+                {
+                    ApiId = first.Id,
+                    GroupId = first.AssignmentGroupId,
+                    Title = first.Title,
+                    Subject = first.Subject,
+                    DueDate = first.DueDate,
+                    Description = first.Description,
+                    Instructions = first.Instructions,
+                    EstimatedMinutes = first.EstimatedMinutes,
+                    SubmissionModes = first.SubmissionModes,
+                    Content = first.Content.ToList(),
+                    Criteria = first.Criteria.Select(c => new CriterionRow { Name = c.Name, Points = c.Points }).ToList(),
+                    StudentIds = g.Select(x => x.StudentId).Distinct().ToList(),
+                    StudentNames = g.Select(x => nameById.GetValueOrDefault(x.StudentId, "Élève")).Distinct().ToList(),
+                    Status = status,
+                    IsDraft = first.IsDraft,
+                    ContentCount = first.Content.Count
+                };
+            })
+            .OrderByDescending(h => h.DueDate)
+            .ToList();
+    }
+
+    private void OpenAdd()
+    {
+        _editing = null;
+        _wizardStep = 0;
+        _saveError = "";
+        _hf = new HomeworkForm
+        {
+            DueDate = DateTime.Today.AddDays(7),
+            DueTime = new TimeOnly(23, 59),
+            EstimatedMinutes = 45,
+            SubmissionModes = HomeworkSubmissionMode.Online | HomeworkSubmissionMode.PaperScan,
+            Criteria = [new CriterionRow { Name = "Compréhension", Points = 10 }, new CriterionRow { Name = "Méthode", Points = 10 }]
+        };
+        _showModal = true;
+    }
+
+    private void OpenEdit(HomeworkVM h)
+    {
+        _editing = h;
+        _wizardStep = 0;
+        _saveError = "";
+        var due = h.DueDate ?? DateTime.Today.AddDays(7);
+        _hf = new HomeworkForm
+        {
+            Title = h.Title,
+            Subject = h.Subject ?? "",
+            DueDate = due.Date,
+            DueTime = TimeOnly.FromDateTime(due),
+            Description = h.Description ?? "",
+            Instructions = h.Instructions ?? "",
+            EstimatedMinutes = h.EstimatedMinutes ?? 45,
+            SubmissionModes = h.SubmissionModes == HomeworkSubmissionMode.None
+                ? HomeworkSubmissionMode.Online
+                : h.SubmissionModes,
+            StudentIds = [.. h.StudentIds],
+            Content = h.Content.Select(c => new ContentBlock
+            {
+                Id = c.Id,
+                Type = c.Type,
+                Title = c.Title,
+                Body = c.Body,
+                Url = c.Url
+            }).ToList(),
+            Criteria = h.Criteria.Count > 0
+                ? h.Criteria.Select(c => new CriterionRow { Name = c.Name, Points = c.Points }).ToList()
+                : [new CriterionRow { Name = "Note globale", Points = 20 }]
+        };
+        _showModal = true;
+    }
+
+    private void OpenGrade(HomeworkVM h)
+    {
+        _grading = h;
+        _gradeValue = 0;
+        _gradeFeedback = null;
+    }
+
     private void CloseModal() => _showModal = false;
+
+    private void NextStep()
+    {
+        if (_wizardStep == 0 && string.IsNullOrWhiteSpace(_hf.Title))
+        {
+            _saveError = "Le titre est obligatoire.";
+            return;
+        }
+        _saveError = "";
+        if (_wizardStep < _stepLabels.Length - 1)
+            _wizardStep++;
+    }
+
+    private void ToggleStudent(Guid id)
+    {
+        if (!_hf.StudentIds.Remove(id))
+            _hf.StudentIds.Add(id);
+    }
+
+    private void ToggleMode(HomeworkSubmissionMode flag)
+    {
+        if ((_hf.SubmissionModes & flag) != 0)
+            _hf.SubmissionModes &= ~flag;
+        else
+            _hf.SubmissionModes |= flag;
+        if (_hf.SubmissionModes == HomeworkSubmissionMode.None)
+            _hf.SubmissionModes = HomeworkSubmissionMode.Online;
+    }
+
+    private void AddContentBlock()
+    {
+        if (_hf.PendingContentType is "text" or "form")
+        {
+            if (string.IsNullOrWhiteSpace(_hf.PendingBody)) return;
+        }
+        else if (string.IsNullOrWhiteSpace(_hf.PendingUrl))
+        {
+            return;
+        }
+
+        _hf.Content.Add(new ContentBlock
+        {
+            Id = Guid.NewGuid().ToString("N"),
+            Type = _hf.PendingContentType,
+            Title = _hf.PendingTitle,
+            Body = _hf.PendingBody,
+            Url = _hf.PendingUrl
+        });
+        _hf.PendingTitle = "";
+        _hf.PendingBody = "";
+        _hf.PendingUrl = "";
+    }
+
+    private void RemoveContent(string id) =>
+        _hf.Content.RemoveAll(c => c.Id == id);
+
+    private void AddCriterion() =>
+        _hf.Criteria.Add(new CriterionRow { Name = "Nouveau critère", Points = 5 });
+
+    private string ModesSummary()
+    {
+        var labels = _submissionModes
+            .Where(m => (_hf.SubmissionModes & m.Flag) != 0)
+            .Select(m => m.Title)
+            .ToList();
+        return labels.Count == 0 ? "—" : string.Join(", ", labels);
+    }
+
+    private async Task SaveAsync(bool draft)
+    {
+        _saveError = "";
+        if (string.IsNullOrWhiteSpace(_hf.Title))
+        {
+            _saveError = "Le titre est obligatoire.";
+            _wizardStep = 0;
+            return;
+        }
+        if (_hf.StudentIds.Count == 0)
+        {
+            _saveError = "Sélectionnez au moins un élève.";
+            _wizardStep = 0;
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var due = _hf.DueDate.Date.Add(_hf.DueTime.ToTimeSpan());
+            var content = _hf.Content.Select(c =>
+                new HomeworkContentBlockDto(c.Id, c.Type, c.Title, c.Body, c.Url)).ToList();
+            var criteria = _hf.Criteria
+                .Where(c => !string.IsNullOrWhiteSpace(c.Name))
+                .Select(c => new HomeworkCriterionDto(c.Name.Trim(), c.Points))
+                .ToList();
+
+            if (_editing?.ApiId is Guid id && _editing.StudentIds.Count == 1)
+            {
+                await HomeworkSvc.UpdateHomeworkAsync(id, new UpdateHomeworkRequest(
+                    _hf.Title.Trim(),
+                    _hf.Description,
+                    due,
+                    _hf.Subject,
+                    _hf.Instructions,
+                    _hf.EstimatedMinutes,
+                    _hf.SubmissionModes,
+                    content,
+                    criteria,
+                    draft));
+            }
+            else
+            {
+                await HomeworkSvc.CreateBatchAsync(new CreateHomeworkBatchRequest(
+                    _hf.StudentIds,
+                    null,
+                    _hf.Title.Trim(),
+                    _hf.Description,
+                    due,
+                    _hf.Subject,
+                    _hf.Instructions,
+                    _hf.EstimatedMinutes,
+                    _hf.SubmissionModes,
+                    content,
+                    criteria,
+                    draft));
+            }
+
+            await ReloadAsync();
+            _showModal = false;
+        }
+        catch (Exception ex)
+        {
+            _saveError = ex.Message;
+        }
+        finally { _saving = false; }
+    }
+
     private async Task MarkCorrected()
     {
-        if (_grading is null) return;
-
-        // Call grade API for each graded student if this homework has an ApiId
-        if (_grading.ApiId.HasValue && _grading.Grades.Any())
-        {
-            var topGrade = _grading.Grades.OrderByDescending(g => g.Score).First();
-            var req = new GradeHomeworkRequest(topGrade.Score, null);
-            await HomeworkSvc.GradeHomeworkAsync(_grading.ApiId.Value, req);
-        }
-
-        _grading.Status = "Corrigé";
+        if (_grading?.ApiId is not Guid id) return;
+        await HomeworkSvc.GradeHomeworkAsync(id, new GradeHomeworkRequest(_gradeValue, _gradeFeedback));
         _grading = null;
-    }
-
-    private void SetGrade(HomeworkVM hw, string student, int score)
-    {
-        var existing = hw.Grades.FirstOrDefault(g => g.Student == student);
-        if (existing != null) existing.Score = score;
-        else hw.Grades.Add(new GradeItem { Student = student, Score = score });
-    }
-
-    private async Task SaveHomework()
-    {
-        if (string.IsNullOrWhiteSpace(_hf.Title)) return;
-        if (_editing == null)
-        {
-            // Create requires a real StudentId; store locally until student is linked.
-            _homeworks.Add(new HomeworkVM
-            {
-                Title       = _hf.Title,
-                Subject     = _hf.Subject,
-                DueDate     = _hf.DueDate,
-                Description = _hf.Description,
-                Students    = [.._hf.Students],
-                Status      = _hf.DueDate < DateTime.Today ? "En retard" : "À rendre"
-            });
-        }
-        else
-        {
-            if (_editing.ApiId.HasValue)
-            {
-                var req = new UpdateHomeworkRequest(_hf.Title, _hf.Description, _hf.DueDate);
-                await HomeworkSvc.UpdateHomeworkAsync(_editing.ApiId.Value, req);
-            }
-            _editing.Title       = _hf.Title;
-            _editing.Subject     = _hf.Subject;
-            _editing.DueDate     = _hf.DueDate;
-            _editing.Description = _hf.Description;
-        }
-        _showModal = false;
+        await ReloadAsync();
     }
 
     private async Task DeleteHomework(HomeworkVM hw)
     {
         if (hw.ApiId.HasValue)
             await HomeworkSvc.DeleteHomeworkAsync(hw.ApiId.Value);
-        _homeworks.Remove(hw);
+        await ReloadAsync();
     }
 
-    private class HomeworkForm
+    private sealed class HomeworkForm
     {
         public string Title { get; set; } = "";
         public string Subject { get; set; } = "";
         public DateTime DueDate { get; set; } = DateTime.Today.AddDays(7);
+        public TimeOnly DueTime { get; set; } = new(23, 59);
         public string Description { get; set; } = "";
-        public List<string> Students { get; set; } = [];
-    }
-    private class GradeItem
-    {
-        public string Student { get; set; } = "";
-        public int Score { get; set; }
-    }
-    private class HomeworkVM
-    {
-        public Guid? ApiId { get; set; }
-        public string Title { get; set; } = "";
-        public string Subject { get; set; } = "";
-        public DateTime DueDate { get; set; }
-        public string Description { get; set; } = "";
-        public List<string> Students { get; set; } = [];
-        public string Status { get; set; } = "À rendre";
-        public List<GradeItem> Grades { get; set; } = [];
-        public bool IsOverdue => Status == "En retard" || (DueDate < DateTime.Today && Status != "Corrigé");
+        public string Instructions { get; set; } = "";
+        public int? EstimatedMinutes { get; set; } = 45;
+        public HomeworkSubmissionMode SubmissionModes { get; set; } = HomeworkSubmissionMode.Online;
+        public List<Guid> StudentIds { get; set; } = [];
+        public List<ContentBlock> Content { get; set; } = [];
+        public List<CriterionRow> Criteria { get; set; } = [];
+        public string PendingContentType { get; set; } = "text";
+        public string PendingTitle { get; set; } = "";
+        public string PendingBody { get; set; } = "";
+        public string PendingUrl { get; set; } = "";
     }
 
-    private List<HomeworkVM> _homeworks = [];
-    private readonly List<string> _studentChoices = [];
+    private sealed class ContentBlock
+    {
+        public string Id { get; set; } = Guid.NewGuid().ToString("N");
+        public string Type { get; set; } = "text";
+        public string? Title { get; set; }
+        public string? Body { get; set; }
+        public string? Url { get; set; }
+    }
+
+    private sealed class CriterionRow
+    {
+        public string Key { get; } = Guid.NewGuid().ToString("N");
+        public string Name { get; set; } = "";
+        public int Points { get; set; } = 5;
+    }
+
+    private sealed class HomeworkVM
+    {
+        public Guid? ApiId { get; set; }
+        public Guid? GroupId { get; set; }
+        public string Title { get; set; } = "";
+        public string? Subject { get; set; }
+        public DateTime? DueDate { get; set; }
+        public string? Description { get; set; }
+        public string? Instructions { get; set; }
+        public int? EstimatedMinutes { get; set; }
+        public HomeworkSubmissionMode SubmissionModes { get; set; }
+        public List<HomeworkContentBlockDto> Content { get; set; } = [];
+        public List<CriterionRow> Criteria { get; set; } = [];
+        public List<Guid> StudentIds { get; set; } = [];
+        public List<string> StudentNames { get; set; } = [];
+        public string Status { get; set; } = "À rendre";
+        public bool IsDraft { get; set; }
+        public int ContentCount { get; set; }
+        public bool IsOverdue => Status == "En retard";
+    }
+
+    private sealed record StudentChoice(Guid Id, string FirstName, string LastName);
+    private sealed record StudentDto(Guid Id, string FirstName, string LastName);
 }

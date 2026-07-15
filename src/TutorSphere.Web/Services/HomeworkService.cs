@@ -8,6 +8,9 @@ public sealed class HomeworkService
 
     public HomeworkService(ApiClient api) => _api = api;
 
+    public async Task<List<HomeworkDto>> GetAllAsync() =>
+        await _api.GetAsync<List<HomeworkDto>>("api/homework") ?? [];
+
     public async Task<List<HomeworkDto>> GetHomeworkByStudentAsync(Guid studentId) =>
         await _api.GetAsync<List<HomeworkDto>>($"api/homework/student/{studentId}") ?? [];
 
@@ -17,12 +20,15 @@ public sealed class HomeworkService
     public async Task<HomeworkDto?> CreateHomeworkAsync(CreateHomeworkRequest req) =>
         await _api.PostAsync<HomeworkDto>("api/homework", req);
 
+    public async Task<List<HomeworkDto>> CreateBatchAsync(CreateHomeworkBatchRequest req) =>
+        await _api.PostAsync<List<HomeworkDto>>("api/homework/batch", req) ?? [];
+
     public async Task<HomeworkDto?> UpdateHomeworkAsync(Guid id, UpdateHomeworkRequest req) =>
         await _api.PutAsync<HomeworkDto>($"api/homework/{id}", req);
 
     public async Task<HomeworkDto?> GradeHomeworkAsync(Guid id, GradeHomeworkRequest req) =>
         await _api.PostAsync<HomeworkDto>($"api/homework/{id}/grade", req);
 
-    public async Task<bool> DeleteHomeworkAsync(Guid id) =>
-        await _api.DeleteAsync($"api/homework/{id}");
+    public Task DeleteHomeworkAsync(Guid id) =>
+        _api.DeleteAsync($"api/homework/{id}");
 }

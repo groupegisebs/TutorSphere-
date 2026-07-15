@@ -29,6 +29,25 @@ public class HomeworkController : ControllerBase
         }
     }
 
+    [HttpPost("batch")]
+    public async Task<ActionResult<IReadOnlyList<HomeworkDto>>> CreateBatch(
+        [FromBody] CreateHomeworkBatchRequest request,
+        CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _homeworkService.CreateBatchAsync(request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpGet]
+    public async Task<ActionResult<IReadOnlyList<HomeworkDto>>> GetMine(CancellationToken ct) =>
+        Ok(await _homeworkService.GetForCurrentTenantAsync(ct));
+
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<HomeworkDto>> GetById(Guid id, CancellationToken ct)
     {

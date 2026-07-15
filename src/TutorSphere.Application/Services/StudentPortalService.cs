@@ -83,7 +83,7 @@ public class StudentPortalService : IStudentPortalService
             return Task.FromResult<IReadOnlyList<HomeworkDto>>([]);
 
         var items = _db.HomeworksForAnyTenant
-            .Where(h => h.StudentId == student.Id)
+            .Where(h => h.StudentId == student.Id && !h.IsDraft)
             .OrderByDescending(h => h.CreatedAt)
             .ToList()
             .Select(MapHomework)
@@ -302,9 +302,7 @@ public class StudentPortalService : IStudentPortalService
         l.Mode.ToString(), l.Location, l.MeetingUrl, l.SessionNotes, l.CreatedAt, l.UpdatedAt,
         l.SettlementStatus.ToString(), l.CancelledAt, l.SessionCounted, l.TutorLiable, l.TutorLiabilityResolution);
 
-    private static HomeworkDto MapHomework(Homework h) => new(
-        h.Id, h.TenantId, h.StudentId, h.LessonId, h.Title, h.Description, h.DueDate,
-        h.SubmittedAt, h.SubmissionNotes, h.Grade, h.Feedback, h.IsGraded, h.CreatedAt, h.UpdatedAt);
+    private static HomeworkDto MapHomework(Homework h) => HomeworkService.MapPublic(h);
 
     private static DocumentDto MapDocument(Document d) => new(
         d.Id,
