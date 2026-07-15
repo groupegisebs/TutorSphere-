@@ -509,7 +509,7 @@ window.classroomRtc = (function () {
          * Update published A/V on all peers.
          * After screen/camera switch, always renegotiate established links so remotes remount the new track.
          */
-        refreshLocalTracks: async function () {
+        refreshLocalTracks: async function (forceRenegotiate) {
             var local = getPublishStream();
             var ids = Object.keys(peers);
             for (var i = 0; i < ids.length; i++) {
@@ -525,8 +525,8 @@ window.classroomRtc = (function () {
                         || pc.iceConnectionState === "completed"
                         || pc.iceConnectionState === "checking";
                     if (!linkOk) return;
-                    // replaceTrack seul ne déclenche pas toujours ontrack côté distant (partage écran).
-                    if (result && result.changed) {
+                    // replaceTrack seul ne déclenche pas toujours ontrack côté distant (partage board/écran).
+                    if (forceRenegotiate || (result && result.changed)) {
                         try { await makeOffer(id); } catch (_) { }
                     }
                 });
@@ -534,6 +534,11 @@ window.classroomRtc = (function () {
             syncLocalMirrors();
             syncPlaybackRouting();
             return { ok: true, peers: ids.length, hasLocal: !!local };
+        },
+
+        /** Force une nouvelle offre SDP vers tous les pairs (après captureStream board). */
+        forceRenegotiate: async function () {
+            return await this.refreshLocalTracks(true);
         },
 
         /** Re-évalue le flux distant et notifie Blazor (caméra / partage réactivés). */
@@ -666,11 +671,10 @@ window.classroomRtc = (function () {
                 }
             }
             var board = document.querySelector("video[data-rtc-board-share]");
+            // Le board partagé ne dépend PAS de camOn (revue tuteur = camOn false
+            // mais le flux tableau doit rester visible).
             if (board && board.dataset.sharePeer === remoteId) {
-                if (!camOn || !stream) {
-                    board.srcObject = null;
-                    board.classList.add("is-hidden");
-                } else {
+                if (stream && hasLiveVideo) {
                     if (board.srcObject !== stream)
                         board.srcObject = stream;
                     board.classList.remove("is-hidden");
@@ -678,6 +682,24 @@ window.classroomRtc = (function () {
                 }
             }
             syncPlaybackRouting();
+        },
+
+        /**
+         * Attache le board distant ; réessaie si le flux WebRTC n'est pas encore là.
+         */
+        focusBoardShareWithRetry: function (remoteId, attempts, delayMs) {
+            attempts = typeof attempts === "number" ? attempts : 10;
+            delayMs = typeof delayMs === "number" ? delayMs : 300;
+            var self = this;
+            function tryOnce(left) {
+                if (self.focusBoardShare(remoteId))
+                    return;
+                if (left <= 1)
+                    return;
+                setTimeout(function () { tryOnce(left - 1); }, delayMs);
+            }
+            tryOnce(attempts);
+            return self.hasRemote(remoteId);
         },
 
         closePeer: function (remoteId) {

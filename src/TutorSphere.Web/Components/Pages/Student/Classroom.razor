@@ -1019,22 +1019,29 @@
             if (p is null) return;
             p.MicOn = micOn;
             p.CamOn = camOn;
-            if (!camOn)
+            var watchingBoard = _watchingBoardShareFrom == connectionId;
+            // Board partagé : ne pas effacer HasRemoteVideo quand camOn=false (revue tuteur).
+            if (!camOn && !watchingBoard)
                 p.HasRemoteVideo = false;
             else
             {
                 try { await JS.InvokeVoidAsync("classroomRtc.probeRemoteMedia", connectionId); } catch { }
                 try { await JS.InvokeVoidAsync("classroomRtc.remount", connectionId); } catch { }
             }
-            try { await JS.InvokeVoidAsync("classroomRtc.setRemoteMediaVisible", connectionId, camOn); }
+            try { await JS.InvokeVoidAsync("classroomRtc.setRemoteMediaVisible", connectionId, camOn || watchingBoard); }
             catch { }
-            if (camOn && _viewMode is "speaker" or "presenter"
+            if (watchingBoard)
+            {
+                p.HasRemoteVideo = true;
+                try { await JS.InvokeVoidAsync("classroomRtc.focusBoardShareWithRetry", connectionId); } catch { }
+            }
+            else if (camOn && _viewMode is "speaker" or "presenter"
                 && (_focusedPeer is null || _focusedPeer.ConnectionId == connectionId))
             {
                 _focusedPeer = p;
                 try { await JS.InvokeVoidAsync("classroomRtc.focusRemote", connectionId); } catch { }
             }
-            if (!camOn && _focusedPeer?.ConnectionId == connectionId)
+            if (!camOn && !watchingBoard && _focusedPeer?.ConnectionId == connectionId)
             {
                 _focusedPeer = null;
                 try { await JS.InvokeVoidAsync("classroomRtc.clearMain"); } catch { }
@@ -1114,7 +1121,7 @@
 
             if (hasVideo && _watchingBoardShareFrom == connectionId)
             {
-                try { await JS.InvokeVoidAsync("classroomRtc.focusBoardShare", connectionId); } catch { }
+                try { await JS.InvokeVoidAsync("classroomRtc.focusBoardShareWithRetry", connectionId); } catch { }
             }
             else if (hasVideo && _viewMode is "speaker" or "presenter"
                 && (_focusedPeer is null || _focusedPeer.ConnectionId == connectionId))
@@ -1198,7 +1205,7 @@
             _camOn = _camBeforePrivacy;
             try { await JS.InvokeVoidAsync("classroomMedia.setAudioEnabled", _micOn); } catch { }
             try { await JS.InvokeVoidAsync("classroomMedia.setVideoEnabled", _camOn); } catch { }
-            await RefreshRtcTracksAsync();
+            await RefreshRtcTracksAsync(forceRenegotiate: _sharing || _shareLive);
             SyncTutorMediaFlags();
             await BroadcastOwnMediaStateAsync();
             try { await JS.InvokeVoidAsync("classroomRtc.unlockAudio"); } catch { }
@@ -1206,14 +1213,24 @@
             StateHasChanged();
         });
 
-    private async Task RefreshRtcTracksAsync()
+    private async Task RefreshRtcTracksAsync(bool forceRenegotiate = false)
     {
-        try { await JS.InvokeVoidAsync("classroomRtc.refreshLocalTracks"); } catch { }
+        try
+        {
+            if (forceRenegotiate)
+                await JS.InvokeVoidAsync("classroomRtc.forceRenegotiate");
+            else
+                await JS.InvokeVoidAsync("classroomRtc.refreshLocalTracks");
+        }
+        catch { }
     }
 
     private void OnRemoteStroke(BoardStrokeDto stroke) =>
         _ = InvokeAsync(async () =>
         {
+            // Pendant un board distant en vidéo, le canvas local est masqué — ignorer les traits.
+            if (!string.IsNullOrEmpty(_watchingBoardShareFrom))
+                return;
             try
             {
                 await JS.InvokeVoidAsync("whiteboard.applyRemoteStroke", new
@@ -1613,6 +1630,12 @@
 
         try
         {
+            // Agrandir avant captureStream (sinon canvas peek 1×1 → flux inutilisable).
+            _wbCollapsed = false;
+            _wbForeground = true;
+            await InvokeAsync(StateHasChanged);
+            await Task.Delay(120);
+
             if (!_wbReady)
                 await JS.InvokeVoidAsync("whiteboard.init", _canvasRef);
 
@@ -1629,8 +1652,6 @@
             _sharePending = true;
             _shareLive = false;
             _shareWithClass = false;
-            _wbCollapsed = false;
-            _wbForeground = true;
             _mediaError = null;
             if (_lessonGuid is not null)
                 await ClassroomRt.RequestShareAsync(_lessonGuid.Value, "whiteboard");
@@ -1665,8 +1686,15 @@
             _sharePending = false;
             _shareLive = true;
             _shareWithClass = string.Equals(audience, "class", StringComparison.OrdinalIgnoreCase);
-            await RefreshRtcTracksAsync();
+            // Publier le flux puis (board) annoncer — évite board vide chez le tuteur.
+            await RefreshRtcTracksAsync(forceRenegotiate: true);
+            await Task.Delay(250);
             await BroadcastOwnMediaStateAsync();
+            // Écran : ShareLiveStarted déjà envoyé par RespondShare.
+            // Board : attendre NotifyShareLiveReady après publication WebRTC.
+            if (string.Equals(kind, "whiteboard", StringComparison.OrdinalIgnoreCase)
+                && _lessonGuid is not null)
+                await ClassroomRt.NotifyShareLiveReadyAsync(_lessonGuid.Value, "whiteboard");
             PushToast(kind == "whiteboard" && !_shareWithClass
                 ? "Tableau visible par le tuteur. Il pourra le partager avec la classe."
                 : "Partage autorisé — visible par la classe.");
@@ -1728,7 +1756,7 @@
         _wbForeground = true;
         await InvokeAsync(StateHasChanged);
         await Task.Delay(80);
-        try { await JS.InvokeVoidAsync("classroomRtc.focusBoardShare", connectionId); } catch { }
+        try { await JS.InvokeVoidAsync("classroomRtc.focusBoardShareWithRetry", connectionId); } catch { }
     }
 
     private async Task ClearSharedBoardViewAsync()

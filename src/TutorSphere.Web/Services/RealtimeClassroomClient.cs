@@ -148,6 +148,14 @@ public sealed class RealtimeClassroomClient : IAsyncDisposable
         catch (Exception ex) { _logger.LogDebug(ex, "AnnounceTutorShare failed"); }
     }
 
+    /// <summary>Après publication WebRTC du board/écran — déclenche ShareLiveStarted côté hub.</summary>
+    public async Task NotifyShareLiveReadyAsync(Guid lessonId, string kind)
+    {
+        if (_hub is null || _hub.State != HubConnectionState.Connected) return;
+        try { await _hub.SendAsync("NotifyShareLiveReady", lessonId, kind); }
+        catch (Exception ex) { _logger.LogDebug(ex, "NotifyShareLiveReady failed"); }
+    }
+
     public async Task PublishShareToClassAsync(Guid lessonId, string sharerConnectionId, string? kind = null)
     {
         if (_hub is null || _hub.State != HubConnectionState.Connected) return;

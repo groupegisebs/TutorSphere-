@@ -9,7 +9,7 @@ window.classroomMedia = (function () {
     let privacyResumeInFlight = false;
     let lastVideoEl = null;
     /** Intent avant verrouillage / onglet masqué — pour soft-resume. */
-    let privacySaved = { audio: false, video: false };
+    let privacySaved = { audio: false, video: false, sharing: false };
 
     function stopTracks(mediaStream) {
         if (!mediaStream) return;
@@ -108,11 +108,12 @@ window.classroomMedia = (function () {
                 })),
                 video: !!(stream && stream.getVideoTracks().some(function (t) {
                     return t.readyState === "live" && t.enabled;
-                }))
+                })),
+                sharing: !!(screenStream || canvasStream)
             };
-            // Couper immédiatement la diffusion WebRTC.
+            // Couper immédiatement la diffusion WebRTC (cam / micro / partage).
             setAllLocalMediaEnabled(false, false);
-            // Libérer la caméra / le micro (voyant matériel).
+            // Libérer la caméra / le micro (voyant matériel) — pas le canvas/écran.
             if (stream) {
                 stream.getTracks().forEach(function (t) {
                     try { t.stop(); } catch (_) { }
@@ -129,6 +130,22 @@ window.classroomMedia = (function () {
         try {
             var wantAudio = privacySaved.audio;
             var wantVideo = privacySaved.video;
+            var wantShare = privacySaved.sharing;
+
+            // Toujours réactiver un partage board/écran encore vivant.
+            if (wantShare || screenStream || canvasStream) {
+                if (screenStream) {
+                    screenStream.getVideoTracks().forEach(function (t) {
+                        if (t.readyState === "live") t.enabled = true;
+                    });
+                }
+                if (canvasStream) {
+                    canvasStream.getVideoTracks().forEach(function (t) {
+                        if (t.readyState === "live") t.enabled = true;
+                    });
+                }
+            }
+
             if ((wantAudio || wantVideo) && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
                 try {
                     var next = await getUserMediaWithFallback(wantVideo, wantAudio);
@@ -140,22 +157,13 @@ window.classroomMedia = (function () {
                             attach(lastVideoEl, stream, true);
                     }
                     setAllLocalMediaEnabled(wantAudio, wantVideo);
-                    // Réactiver les pistes de partage si elles existent encore.
-                    if (screenStream) {
-                        screenStream.getVideoTracks().forEach(function (t) {
-                            if (t.readyState === "live") t.enabled = true;
-                        });
-                    }
-                    if (canvasStream) {
-                        canvasStream.getVideoTracks().forEach(function (t) {
-                            if (t.readyState === "live") t.enabled = true;
-                        });
-                    }
                 } catch (_) {
-                    // Permissions / appareil — rester muet ; l'utilisateur pourra rallumer.
-                    privacySaved = { audio: false, video: false };
+                    privacySaved.audio = false;
+                    privacySaved.video = false;
                 }
             }
+
+            // Toujours notifier la reprise (même si seul le board était actif).
             notifyPrivacyPause(false);
         } finally {
             privacyResumeInFlight = false;
@@ -353,7 +361,7 @@ window.classroomMedia = (function () {
 
             // Ne pas relancer le média pendant un verrouillage.
             if (document.hidden || privacyPaused) {
-                privacySaved = { audio: wantAudio, video: wantVideo };
+                privacySaved = { audio: wantAudio, video: wantVideo, sharing: !!(screenStream || canvasStream) };
                 if (!privacyPaused) {
                     privacyPaused = true;
                     notifyPrivacyPause(true);
@@ -697,6 +705,17 @@ window.classroomMedia = (function () {
                 attach(videoEl, canvasStream, false);
                 videoEl.classList.add("cr-tile-video--contain");
                 if (window.classroomVirtualBg) classroomVirtualBg.stop();
+                // Forcer un redraw pour que captureStream envoie des frames non vides.
+                try {
+                    var ctx = canvasEl.getContext("2d");
+                    if (ctx) {
+                        ctx.save();
+                        ctx.globalAlpha = 0.01;
+                        ctx.fillStyle = "#ffffff";
+                        ctx.fillRect(0, 0, 1, 1);
+                        ctx.restore();
+                    }
+                } catch (_) { }
                 return { ok: true, kind: "whiteboard" };
             } catch (ex) {
                 return { ok: false, error: ex && ex.message ? ex.message : "Partage du tableau impossible." };

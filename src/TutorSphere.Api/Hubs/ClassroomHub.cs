@@ -244,26 +244,53 @@ public class ClassroomHub : Hub
             shareKind,
             audience);
 
+        // Tableau : ShareLiveStarted après NotifyShareLiveReady (pistes WebRTC prêtes).
         if (shareKind == "whiteboard")
-        {
-            var tutorIds = peers.Values
-                .Where(p => IsTutorRole(p.Role))
-                .Select(p => p.ConnectionId)
-                .ToList();
-            await Clients.Clients(tutorIds).SendAsync(
-                "ShareLiveStarted",
-                lessonId,
-                requesterConnectionId,
-                requester.DisplayName,
-                shareKind);
             return;
-        }
 
         await Clients.Group(group).SendAsync(
             "ShareLiveStarted",
             lessonId,
             requesterConnectionId,
             requester.DisplayName,
+            shareKind);
+    }
+
+    /// <summary>
+    /// L'émetteur confirme que le flux board/écran est publié — déclenche ShareLiveStarted.
+    /// Board : tuteurs seulement jusqu'à PublishShareToClass.
+    /// </summary>
+    public async Task NotifyShareLiveReady(Guid lessonId, string? kind = null)
+    {
+        var group = GroupName(lessonId);
+        if (!PeersByLesson.TryGetValue(group, out var peers)
+            || !peers.TryGetValue(Context.ConnectionId, out var sharer))
+            return;
+
+        var shareKind = NormalizeShareKind(kind);
+        if (shareKind == "whiteboard")
+        {
+            var tutorIds = peers.Values
+                .Where(p => IsTutorRole(p.Role))
+                .Select(p => p.ConnectionId)
+                .ToList();
+            if (tutorIds.Count == 0)
+                return;
+
+            await Clients.Clients(tutorIds).SendAsync(
+                "ShareLiveStarted",
+                lessonId,
+                Context.ConnectionId,
+                sharer.DisplayName,
+                shareKind);
+            return;
+        }
+
+        await Clients.OthersInGroup(group).SendAsync(
+            "ShareLiveStarted",
+            lessonId,
+            Context.ConnectionId,
+            sharer.DisplayName,
             shareKind);
     }
 
