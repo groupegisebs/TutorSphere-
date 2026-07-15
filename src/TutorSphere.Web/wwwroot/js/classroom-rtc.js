@@ -570,6 +570,41 @@ window.classroomRtc = (function () {
             return !!stream;
         },
 
+        /** Affiche le flux distant (ex. tableau partagé) dans la zone board. */
+        focusBoardShare: function (remoteId) {
+            var el = document.querySelector("video[data-rtc-board-share]");
+            if (!el) return false;
+            if (!remoteId) {
+                el.srcObject = null;
+                delete el.dataset.sharePeer;
+                el.classList.add("is-hidden");
+                return false;
+            }
+            el.dataset.sharePeer = remoteId;
+            var stream = remoteStreams[remoteId];
+            if (!stream) {
+                el.srcObject = null;
+                el.classList.add("is-hidden");
+                return false;
+            }
+            if (el.srcObject !== stream)
+                el.srcObject = stream;
+            el.classList.remove("is-hidden");
+            el.classList.add("cr-tile-video--contain");
+            tryPlay(el);
+            attachMain(stream, remoteId);
+            return true;
+        },
+
+        clearBoardShare: function () {
+            var el = document.querySelector("video[data-rtc-board-share]");
+            if (!el) return;
+            el.srcObject = null;
+            delete el.dataset.sharePeer;
+            el.classList.add("is-hidden");
+            el.classList.remove("cr-tile-video--contain");
+        },
+
         clearMain: function () {
             var el = document.querySelector("video[data-rtc-main]");
             if (el) {
@@ -628,6 +663,18 @@ window.classroomRtc = (function () {
                     main.classList.add("is-hidden");
                 } else {
                     attachMain(stream, remoteId);
+                }
+            }
+            var board = document.querySelector("video[data-rtc-board-share]");
+            if (board && board.dataset.sharePeer === remoteId) {
+                if (!camOn || !stream) {
+                    board.srcObject = null;
+                    board.classList.add("is-hidden");
+                } else {
+                    if (board.srcObject !== stream)
+                        board.srcObject = stream;
+                    board.classList.remove("is-hidden");
+                    tryPlay(board);
                 }
             }
             syncPlaybackRouting();

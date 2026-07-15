@@ -107,10 +107,10 @@
             {
                 <div class="cr-pro-sharebar">
                     <i class="bi bi-broadcast"></i>
-                    <span>@L["ClassroomPro_SharingScreen"]</span>
+                    <span>@(_sharingWhiteboard ? "Vous partagez le tableau avec la classe" : L["ClassroomPro_SharingScreen"])</span>
                     <button type="button" class="ghost" @onclick='() => PushToast(L["ClassroomPro_PauseSoon"])'>@L["ClassroomPro_Pause"]</button>
                     <button type="button" class="ghost" @onclick="ToggleWhiteboardForeground">@L["ClassroomPro_Annotate"]</button>
-                    <button type="button" class="stop" @onclick="ToggleShare">@L["ClassroomPro_StopShare"]</button>
+                    <button type="button" class="stop" @onclick="StopTutorShareAsync">@L["ClassroomPro_StopShare"]</button>
                 </div>
             }
 
@@ -302,15 +302,22 @@
                 </div>
             }
 
-            <section class="cr-pro-board @(_wbCollapsed ? "is-peek" : null)" @onclick="OnBoardPeekClick">
+            <section class="cr-pro-board @(_wbCollapsed ? "is-peek" : null) @(!string.IsNullOrEmpty(_watchingBoardShareFrom) ? "is-remote-share" : null)" @onclick="OnBoardPeekClick">
                 <button type="button" class="cr-pro-wb-peek" @onclick="ExpandBoardFromPeek" @onclick:stopPropagation="true">
                     <span class="cr-pro-wb-peek-icon"><i class="bi bi-easel"></i></span>
                     <span class="cr-pro-wb-peek-copy">
                         <strong>@L["Classroom_Whiteboard"]</strong>
-                        <span>@(_boardDocName ?? L["ClassroomPro_WbPeekHint"].Value)</span>
+                        <span>@(!string.IsNullOrEmpty(_watchingBoardShareName) ? $"Tableau de {_watchingBoardShareName}" : (_boardDocName ?? L["ClassroomPro_WbPeekHint"].Value))</span>
                     </span>
                     <span class="cr-pro-wb-peek-cta">@L["ClassroomPro_WbExpand"] <i class="bi bi-chevron-up"></i></span>
                 </button>
+                @if (!string.IsNullOrEmpty(_watchingBoardShareFrom))
+                {
+                    <div class="cr-pro-board-share-banner" @onclick:stopPropagation="true">
+                        <i class="bi bi-easel"></i>
+                        <span>Tableau partagé de @_watchingBoardShareName</span>
+                    </div>
+                }
                 <div class="cr-pro-board-toolbar" @onclick:stopPropagation="true">
                     <button type="button" class="cr-pro-wb-btn @(_wbTool == "select" ? "active" : "")" @onclick='() => SetWbTool("select")' title='@L["Classroom_Select"]'><i class="bi bi-cursor-fill"></i></button>
                     <button type="button" class="cr-pro-wb-btn @(_wbTool == "pen" ? "active" : "")" @onclick='() => SetWbTool("pen")' title='@L["Classroom_Pen"]'><i class="bi bi-pencil-fill"></i></button>
@@ -342,10 +349,13 @@
                     <button type="button" class="cr-pro-wb-btn" @onclick="ToggleWbCollapsed" title='@L["ClassroomPro_CollapseBoard"]'><i class="bi bi-chevron-down"></i></button>
                 </div>
                 <div class="cr-pro-board-canvas-wrap" @onclick:stopPropagation="true">
-                    @if (!string.IsNullOrEmpty(_boardDocName))
+                    @if (!string.IsNullOrEmpty(_boardDocName) && string.IsNullOrEmpty(_watchingBoardShareFrom))
                     {
                         <div class="cr-pro-board-doc"><i class="bi bi-image me-1"></i>@_boardDocName — @L["Classroom_AnnotateHint"]</div>
                     }
+                    <video data-rtc-board-share
+                           class="cr-pro-board-remote is-hidden"
+                           autoplay playsinline muted></video>
                     <canvas @ref="_canvasRef" class="cr-canvas"></canvas>
                 </div>
                 <div class="cr-pro-board-footer" @onclick:stopPropagation="true">
@@ -557,6 +567,8 @@
     private int _cameraCount;
     private bool _sharing    = false;
     private bool _sharingWhiteboard = false;
+    private string? _watchingBoardShareFrom;
+    private string? _watchingBoardShareName;
     private readonly List<ClassroomShareRequestDto> _pendingShareRequests = [];
     private bool _recording  = false;
     private bool _mediaReady = false;
@@ -1227,7 +1239,11 @@
             if (hasAudio) p.IsSpeaking = true;
 
             // En vue galerie : tous voient/entendent via la vignette. En grand : monter aussi sur la scène.
-            if (hasVideo && _viewMode is "speaker" or "presenter"
+            if (hasVideo && _watchingBoardShareFrom == connectionId)
+            {
+                try { await JS.InvokeVoidAsync("classroomRtc.focusBoardShare", connectionId); } catch { }
+            }
+            else if (hasVideo && _viewMode is "speaker" or "presenter"
                 && (_focusedPeer is null || _focusedPeer.ConnectionId == connectionId))
             {
                 _focusedPeer = p;
@@ -1677,6 +1693,12 @@
 
         try
         {
+            // Agrandir le tableau avant captureStream pour que toute la classe voie un flux utilisable.
+            _wbCollapsed = false;
+            _wbForeground = true;
+            await InvokeAsync(StateHasChanged);
+            await Task.Delay(120);
+
             if (!_wbReady)
                 await JS.InvokeVoidAsync("whiteboard.init", _canvasRef);
 
@@ -1694,6 +1716,7 @@
             await BroadcastOwnMediaStateAsync();
             if (_lessonGuid is not null)
                 await ClassroomRt.AnnounceTutorShareAsync(_lessonGuid.Value, "whiteboard");
+            PushToast("Tableau partagé avec la classe.");
             try { await JS.InvokeVoidAsync("classroomRtc.unlockAudio"); } catch { }
         }
         catch (JSException ex)
@@ -1727,13 +1750,13 @@
     {
         if (_lessonGuid is null) return;
         _pendingShareRequests.RemoveAll(r => r.RequesterConnectionId == req.RequesterConnectionId);
-        await ClassroomRt.RespondShareAsync(_lessonGuid.Value, req.RequesterConnectionId, approved);
+        await ClassroomRt.RespondShareAsync(_lessonGuid.Value, req.RequesterConnectionId, approved, req.Kind);
         PushToast(approved
             ? $"Partage de {req.RequesterDisplayName} autorisé."
             : $"Partage de {req.RequesterDisplayName} refusé.");
     }
 
-    private void OnShareLiveStarted(Guid lessonId, string connectionId, string displayName) =>
+    private void OnShareLiveStarted(Guid lessonId, string connectionId, string displayName, string kind) =>
         _ = InvokeAsync(async () =>
         {
             if (_lessonGuid != lessonId) return;
@@ -1745,10 +1768,25 @@
                 p.CamOn = true;
                 p.HasRemoteVideo = true;
                 _focusedPeer = p;
+            }
+
+            if (string.Equals(kind, "whiteboard", StringComparison.OrdinalIgnoreCase))
+            {
+                _watchingBoardShareFrom = connectionId;
+                _watchingBoardShareName = displayName;
+                _wbCollapsed = false;
+                _wbForeground = true;
+                await InvokeAsync(StateHasChanged);
+                await Task.Delay(80);
+                try { await JS.InvokeVoidAsync("classroomRtc.focusBoardShare", connectionId); } catch { }
+                PushToast($"{displayName} partage son tableau.");
+            }
+            else
+            {
                 _viewMode = "speaker";
                 try { await JS.InvokeVoidAsync("classroomRtc.focusRemote", connectionId); } catch { }
+                PushToast($"{displayName} partage maintenant avec la classe.");
             }
-            PushToast($"{displayName} partage maintenant avec la classe.");
             StateHasChanged();
         });
 
@@ -1757,6 +1795,12 @@
         {
             if (_lessonGuid != lessonId) return;
             _pendingShareRequests.RemoveAll(r => r.RequesterConnectionId == connectionId);
+            if (_watchingBoardShareFrom == connectionId)
+            {
+                _watchingBoardShareFrom = null;
+                _watchingBoardShareName = null;
+                try { await JS.InvokeVoidAsync("classroomRtc.clearBoardShare"); } catch { }
+            }
             if (_focusedPeer?.ConnectionId == connectionId)
             {
                 _focusedPeer = null;

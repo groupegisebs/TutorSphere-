@@ -208,7 +208,7 @@ public class ClassroomHub : Hub
     }
 
     /// <summary>Tuteur approuve ou refuse une demande de partage élève.</summary>
-    public async Task RespondShare(Guid lessonId, string requesterConnectionId, bool approved)
+    public async Task RespondShare(Guid lessonId, string requesterConnectionId, bool approved, string? kind = null)
     {
         if (string.IsNullOrWhiteSpace(requesterConnectionId))
             return;
@@ -231,12 +231,14 @@ public class ClassroomHub : Hub
             return;
         }
 
-        await Clients.Client(requesterConnectionId).SendAsync("ShareApproved", lessonId);
+        var shareKind = NormalizeShareKind(kind);
+        await Clients.Client(requesterConnectionId).SendAsync("ShareApproved", lessonId, shareKind);
         await Clients.Group(group).SendAsync(
             "ShareLiveStarted",
             lessonId,
             requesterConnectionId,
-            requester.DisplayName);
+            requester.DisplayName,
+            shareKind);
     }
 
     /// <summary>Fin de partage (tuteur ou élève après diffusion).</summary>
@@ -253,7 +255,7 @@ public class ClassroomHub : Hub
             Context.ConnectionId);
     }
 
-    /// <summary>Partage tuteur immédiat — informe la classe pour focus scène.</summary>
+    /// <summary>Partage tuteur immédiat — informe la classe pour focus scène / tableau.</summary>
     public async Task AnnounceTutorShare(Guid lessonId, string kind)
     {
         var group = GroupName(lessonId);
@@ -262,12 +264,13 @@ public class ClassroomHub : Hub
             || !IsTutorRole(peer.Role))
             return;
 
-        _ = NormalizeShareKind(kind);
+        var shareKind = NormalizeShareKind(kind);
         await Clients.OthersInGroup(group).SendAsync(
             "ShareLiveStarted",
             lessonId,
             Context.ConnectionId,
-            peer.DisplayName);
+            peer.DisplayName,
+            shareKind);
     }
 
     private static string NormalizeShareKind(string? kind)
