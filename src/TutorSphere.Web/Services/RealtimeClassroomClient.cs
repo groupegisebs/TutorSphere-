@@ -36,11 +36,14 @@ public sealed class RealtimeClassroomClient : IAsyncDisposable
     public event Action<ClassroomChatMessageDto>? ChatMessageReceived;
     public event Action<Guid, IReadOnlyList<ClassroomChatMessageDto>>? ChatHistoryReceived;
     public event Action<ClassroomShareRequestDto>? ShareRequestReceived;
-    public event Action<Guid, string>? ShareApprovedReceived;
+    /// <summary>(lessonId, kind, audience) audience = tutor|class</summary>
+    public event Action<Guid, string, string>? ShareApprovedReceived;
     public event Action<Guid, string>? ShareRejectedReceived;
     /// <summary>(lessonId, connectionId, displayName, kind) kind = screen|whiteboard</summary>
     public event Action<Guid, string, string, string>? ShareLiveStartedReceived;
     public event Action<Guid, string>? ShareLiveEndedReceived;
+    /// <summary>(lessonId, kind) — le tuteur a relayé le partage élève à la classe.</summary>
+    public event Action<Guid, string>? SharePublishedToClassReceived;
 
     public bool IsConnected => _hub?.State == HubConnectionState.Connected;
 
@@ -143,6 +146,13 @@ public sealed class RealtimeClassroomClient : IAsyncDisposable
         if (_hub is null || _hub.State != HubConnectionState.Connected) return;
         try { await _hub.SendAsync("AnnounceTutorShare", lessonId, kind); }
         catch (Exception ex) { _logger.LogDebug(ex, "AnnounceTutorShare failed"); }
+    }
+
+    public async Task PublishShareToClassAsync(Guid lessonId, string sharerConnectionId, string? kind = null)
+    {
+        if (_hub is null || _hub.State != HubConnectionState.Connected) return;
+        try { await _hub.SendAsync("PublishShareToClass", lessonId, sharerConnectionId, kind ?? "whiteboard"); }
+        catch (Exception ex) { _logger.LogDebug(ex, "PublishShareToClass failed"); }
     }
 
     public async Task LeaveAsync()
@@ -287,9 +297,9 @@ public sealed class RealtimeClassroomClient : IAsyncDisposable
             catch (Exception ex) { _logger.LogWarning(ex, "ShareRequest handler error"); }
         });
 
-        hub.On<Guid, string>("ShareApproved", (lessonId, kind) =>
+        hub.On<Guid, string, string>("ShareApproved", (lessonId, kind, audience) =>
         {
-            try { ShareApprovedReceived?.Invoke(lessonId, kind ?? "screen"); }
+            try { ShareApprovedReceived?.Invoke(lessonId, kind ?? "screen", audience ?? "class"); }
             catch (Exception ex) { _logger.LogWarning(ex, "ShareApproved handler error"); }
         });
 
@@ -309,6 +319,12 @@ public sealed class RealtimeClassroomClient : IAsyncDisposable
         {
             try { ShareLiveEndedReceived?.Invoke(lessonId, connectionId); }
             catch (Exception ex) { _logger.LogWarning(ex, "ShareLiveEnded handler error"); }
+        });
+
+        hub.On<Guid, string>("SharePublishedToClass", (lessonId, kind) =>
+        {
+            try { SharePublishedToClassReceived?.Invoke(lessonId, kind ?? "whiteboard"); }
+            catch (Exception ex) { _logger.LogWarning(ex, "SharePublishedToClass handler error"); }
         });
     }
 

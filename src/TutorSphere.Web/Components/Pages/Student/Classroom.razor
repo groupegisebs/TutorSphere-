@@ -78,6 +78,14 @@
                         {
                             <text>En attente de validation du tuteur…</text>
                         }
+                        else if (_sharingWhiteboard && !_shareWithClass)
+                        {
+                            <text>Tableau visible par le tuteur uniquement</text>
+                        }
+                        else if (_sharingWhiteboard)
+                        {
+                            <text>Tableau partagé avec la classe</text>
+                        }
                         else
                         {
                             @L["ClassroomPro_SharingScreen"]
@@ -508,6 +516,8 @@
     private bool _sharingWhiteboard = false;
     private bool _sharePending = false;
     private bool _shareLive = false;
+    /// <summary>false = visible tuteur seule­ment ; true = relayé à toute la classe.</summary>
+    private bool _shareWithClass = false;
     private string? _watchingBoardShareFrom;
     private string? _watchingBoardShareName;
     private bool _recording  = false;
@@ -889,6 +899,7 @@
         ClassroomRt.ShareRejectedReceived -= OnShareRejected;
         ClassroomRt.ShareLiveStartedReceived -= OnShareLiveStarted;
         ClassroomRt.ShareLiveEndedReceived -= OnShareLiveEnded;
+        ClassroomRt.SharePublishedToClassReceived -= OnSharePublishedToClass;
         _ = ClassroomRt.LeaveAsync();
         try { _ = JS.InvokeVoidAsync("classroomRtc.stop"); } catch { }
         _jsRef?.Dispose();
@@ -917,6 +928,7 @@
         ClassroomRt.ShareRejectedReceived += OnShareRejected;
         ClassroomRt.ShareLiveStartedReceived += OnShareLiveStarted;
         ClassroomRt.ShareLiveEndedReceived += OnShareLiveEnded;
+        ClassroomRt.SharePublishedToClassReceived += OnSharePublishedToClass;
 
         await ClassroomRt.EnsureHubReadyAsync();
 
@@ -1138,11 +1150,19 @@
             return Task.CompletedTask;
         });
 
+    /// <summary>
+    /// Tableau en revue tuteur : ne pas annoncer la vidéo aux autres élèves.
+    /// Après PublishShareToClass (ou partage écran), annoncer normalement.
+    /// </summary>
+    private bool AdvertisedCamOn =>
+        _sharingWhiteboard
+            ? _shareLive && _shareWithClass
+            : _camOn || _shareLive;
+
     private async Task BroadcastOwnMediaStateAsync()
     {
         if (_lessonGuid is null) return;
-        // Ne diffuser "vidéo on" qu'après validation tuteur (évite d'afficher un écran non approuvé).
-        await ClassroomRt.BroadcastMediaStateAsync(_lessonGuid.Value, _micOn, _camOn || _shareLive);
+        await ClassroomRt.BroadcastMediaStateAsync(_lessonGuid.Value, _micOn, AdvertisedCamOn);
     }
 
     private async Task RefreshRtcTracksAsync()
@@ -1189,8 +1209,9 @@
     public async Task OnLocalBoardStroke(LocalStrokeDto stroke)
     {
         if (_lessonGuid is null || stroke is null) return;
-        // Ardoise privée : traits envoyés seulement si le tableau est en partage validé.
-        if (!_shareLive || !_sharingWhiteboard) return;
+        // Traits sync seulement une fois le tuteur a relayé le board à la classe
+        // (sinon le tuteur voit déjà via le flux captureStream).
+        if (!_shareLive || !_sharingWhiteboard || !_shareWithClass) return;
         await ClassroomRt.SendStrokeAsync(_lessonGuid.Value, new BoardStrokeDto(
             stroke.Phase, stroke.X, stroke.Y, stroke.Tool, stroke.Color, stroke.Width,
             Auth.UserName));
@@ -1527,6 +1548,7 @@
             _sharingWhiteboard = false;
             _sharePending = true;
             _shareLive = false;
+            _shareWithClass = false;
             _mediaError = null;
             // Aperçu local seulement — diffusion WebRTC après ShareApproved.
             if (_lessonGuid is not null)
@@ -1565,6 +1587,7 @@
             _sharingWhiteboard = true;
             _sharePending = true;
             _shareLive = false;
+            _shareWithClass = false;
             _wbCollapsed = false;
             _wbForeground = true;
             _mediaError = null;
@@ -1586,6 +1609,7 @@
         _sharingWhiteboard = false;
         _sharePending = false;
         _shareLive = false;
+        _shareWithClass = false;
         await RefreshRtcTracksAsync();
         await BroadcastOwnMediaStateAsync();
         if (wasLive && _lessonGuid is not null)
@@ -1593,17 +1617,30 @@
         await InvokeAsync(StateHasChanged);
     }
 
-    private void OnShareApproved(Guid lessonId, string kind) =>
+    private void OnShareApproved(Guid lessonId, string kind, string audience) =>
         _ = InvokeAsync(async () =>
         {
             if (_lessonGuid != lessonId || !_sharing) return;
             _sharePending = false;
             _shareLive = true;
+            _shareWithClass = string.Equals(audience, "class", StringComparison.OrdinalIgnoreCase);
             await RefreshRtcTracksAsync();
             await BroadcastOwnMediaStateAsync();
-            PushToast(kind == "whiteboard"
-                ? "Votre tableau est maintenant visible par la classe."
+            PushToast(kind == "whiteboard" && !_shareWithClass
+                ? "Tableau visible par le tuteur. Il pourra le partager avec la classe."
                 : "Partage autorisé — visible par la classe.");
+            StateHasChanged();
+        });
+
+    private void OnSharePublishedToClass(Guid lessonId, string kind) =>
+        _ = InvokeAsync(async () =>
+        {
+            if (_lessonGuid != lessonId || !_sharing) return;
+            _shareWithClass = true;
+            await BroadcastOwnMediaStateAsync();
+            PushToast(kind == "whiteboard"
+                ? "Le tuteur a partagé votre tableau avec la classe."
+                : "Votre partage est maintenant visible par la classe.");
             StateHasChanged();
         });
 

@@ -208,6 +208,10 @@ public class ClassroomHub : Hub
     }
 
     /// <summary>Tuteur approuve ou refuse une demande de partage élève.</summary>
+    /// <remarks>
+    /// Tableau élève : visible uniquement par les tuteurs jusqu'à PublishShareToClass.
+    /// Écran élève : visible par toute la classe dès l'approbation.
+    /// </remarks>
     public async Task RespondShare(Guid lessonId, string requesterConnectionId, bool approved, string? kind = null)
     {
         if (string.IsNullOrWhiteSpace(requesterConnectionId))
@@ -232,12 +236,66 @@ public class ClassroomHub : Hub
         }
 
         var shareKind = NormalizeShareKind(kind);
-        await Clients.Client(requesterConnectionId).SendAsync("ShareApproved", lessonId, shareKind);
+        // audience: tutor = privé tuteur ; class = toute la classe
+        var audience = shareKind == "whiteboard" ? "tutor" : "class";
+        await Clients.Client(requesterConnectionId).SendAsync(
+            "ShareApproved",
+            lessonId,
+            shareKind,
+            audience);
+
+        if (shareKind == "whiteboard")
+        {
+            var tutorIds = peers.Values
+                .Where(p => IsTutorRole(p.Role))
+                .Select(p => p.ConnectionId)
+                .ToList();
+            await Clients.Clients(tutorIds).SendAsync(
+                "ShareLiveStarted",
+                lessonId,
+                requesterConnectionId,
+                requester.DisplayName,
+                shareKind);
+            return;
+        }
+
         await Clients.Group(group).SendAsync(
             "ShareLiveStarted",
             lessonId,
             requesterConnectionId,
             requester.DisplayName,
+            shareKind);
+    }
+
+    /// <summary>
+    /// Tuteur relaie le tableau (ou partage) d'un élève déjà validé vers toute la classe.
+    /// </summary>
+    public async Task PublishShareToClass(Guid lessonId, string sharerConnectionId, string? kind = null)
+    {
+        if (string.IsNullOrWhiteSpace(sharerConnectionId))
+            return;
+
+        var group = GroupName(lessonId);
+        if (!PeersByLesson.TryGetValue(group, out var peers)
+            || !peers.TryGetValue(Context.ConnectionId, out var tutor)
+            || !peers.TryGetValue(sharerConnectionId, out var sharer))
+            return;
+
+        if (!IsTutorRole(tutor.Role))
+            return;
+
+        var shareKind = NormalizeShareKind(kind);
+        await Clients.Client(sharerConnectionId).SendAsync(
+            "SharePublishedToClass",
+            lessonId,
+            shareKind);
+
+        // Les autres (y compris tuteurs déjà en vue) reçoivent / rafraîchissent le focus classe.
+        await Clients.GroupExcept(group, [sharerConnectionId]).SendAsync(
+            "ShareLiveStarted",
+            lessonId,
+            sharerConnectionId,
+            sharer.DisplayName,
             shareKind);
     }
 

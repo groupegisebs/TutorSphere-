@@ -315,7 +315,26 @@
                 {
                     <div class="cr-pro-board-share-banner" @onclick:stopPropagation="true">
                         <i class="bi bi-easel"></i>
-                        <span>Tableau partagé de @_watchingBoardShareName</span>
+                        <span>
+                            @if (_watchingBoardShareIsOwn)
+                            {
+                                <text>Vous partagez le tableau avec la classe</text>
+                            }
+                            else if (_boardSharePublishedToClass)
+                            {
+                                <text>Tableau de @_watchingBoardShareName — visible par la classe</text>
+                            }
+                            else
+                            {
+                                <text>Tableau de @_watchingBoardShareName — visible par vous seul</text>
+                            }
+                        </span>
+                        @if (!_watchingBoardShareIsOwn && !_boardSharePublishedToClass)
+                        {
+                            <button type="button" class="cr-pro-board-share-publish" @onclick="PublishWatchedBoardToClassAsync">
+                                Partager avec la classe
+                            </button>
+                        }
                     </div>
                 }
                 <div class="cr-pro-board-toolbar" @onclick:stopPropagation="true">
@@ -569,6 +588,11 @@
     private bool _sharingWhiteboard = false;
     private string? _watchingBoardShareFrom;
     private string? _watchingBoardShareName;
+    private string _watchingBoardShareKind = "whiteboard";
+    private bool _boardSharePublishedToClass;
+    private bool _watchingBoardShareIsOwn =>
+        !string.IsNullOrEmpty(_watchingBoardShareFrom)
+        && _watchingBoardShareFrom == ClassroomRt.ConnectionId;
     private readonly List<ClassroomShareRequestDto> _pendingShareRequests = [];
     private bool _recording  = false;
     private bool _mediaReady = false;
@@ -1772,14 +1796,20 @@
 
             if (string.Equals(kind, "whiteboard", StringComparison.OrdinalIgnoreCase))
             {
+                var alreadyWatching = _watchingBoardShareFrom == connectionId;
                 _watchingBoardShareFrom = connectionId;
                 _watchingBoardShareName = displayName;
+                _watchingBoardShareKind = "whiteboard";
+                // Nouveau board élève → revue privée ; 2e event (PublishShareToClass) → classe.
+                _boardSharePublishedToClass = alreadyWatching;
                 _wbCollapsed = false;
                 _wbForeground = true;
                 await InvokeAsync(StateHasChanged);
                 await Task.Delay(80);
                 try { await JS.InvokeVoidAsync("classroomRtc.focusBoardShare", connectionId); } catch { }
-                PushToast($"{displayName} partage son tableau.");
+                PushToast(alreadyWatching
+                    ? $"Tableau de {displayName} partagé avec la classe."
+                    : $"{displayName} partage son tableau (visible par vous).");
             }
             else
             {
@@ -1790,6 +1820,18 @@
             StateHasChanged();
         });
 
+    private async Task PublishWatchedBoardToClassAsync()
+    {
+        if (_lessonGuid is null || string.IsNullOrEmpty(_watchingBoardShareFrom)) return;
+        if (_boardSharePublishedToClass) return;
+        await ClassroomRt.PublishShareToClassAsync(
+            _lessonGuid.Value,
+            _watchingBoardShareFrom,
+            _watchingBoardShareKind);
+        _boardSharePublishedToClass = true;
+        PushToast($"Tableau de {_watchingBoardShareName} partagé avec la classe.");
+    }
+
     private void OnShareLiveEnded(Guid lessonId, string connectionId) =>
         _ = InvokeAsync(async () =>
         {
@@ -1799,6 +1841,7 @@
             {
                 _watchingBoardShareFrom = null;
                 _watchingBoardShareName = null;
+                _boardSharePublishedToClass = false;
                 try { await JS.InvokeVoidAsync("classroomRtc.clearBoardShare"); } catch { }
             }
             if (_focusedPeer?.ConnectionId == connectionId)
