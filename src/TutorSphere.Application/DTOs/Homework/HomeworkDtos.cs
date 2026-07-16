@@ -53,7 +53,8 @@ public record UpdateHomeworkRequest(
     HomeworkSubmissionMode? SubmissionModes = null,
     IReadOnlyList<HomeworkContentBlockDto>? Content = null,
     IReadOnlyList<HomeworkCriterionDto>? Criteria = null,
-    bool? IsDraft = null);
+    bool? IsDraft = null,
+    Guid? AssignmentGroupId = null);
 
 public record SubmitHomeworkRequest(
     string? SubmissionNotes = null,

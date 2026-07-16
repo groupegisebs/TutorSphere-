@@ -11,7 +11,7 @@
 <div class="ts-page-header">
     <div>
         <h1><i class="bi bi-journal-text me-2"></i>Mes Devoirs</h1>
-        <p class="ts-page-subtitle">Devoirs à rendre et corrections</p>
+        <p class="ts-page-subtitle">Devoirs publiés par vos enseignants (enregistrés en base)</p>
     </div>
 </div>
 
@@ -22,13 +22,23 @@
         <span class="text-muted">Chargement des devoirs…</span>
     </div>
 }
+else if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-warning"><i class="bi bi-exclamation-triangle me-2"></i>@_error</div>
+}
 else
 {
+    @if (_homeworks.Count > 0)
+    {
+        <p class="text-muted small mb-3">
+            <i class="bi bi-journal-check me-1"></i>@_homeworks.Count devoir(s) dans votre liste
+        </p>
+    }
     <div class="homework-grid">
         @foreach (var hw in _homeworks)
         {
             var statusLabel = hw.IsGraded ? "Corrigé" : hw.SubmittedAt.HasValue ? "Rendu" :
-                (hw.DueDate.HasValue && hw.DueDate.Value.Date < DateTime.Today) ? "En retard" : "À rendre";
+                (hw.DueDate.HasValue && hw.DueDate.Value < DateTime.UtcNow) ? "En retard" : "À rendre";
             var isOverdue = statusLabel == "En retard";
             var payload = HomeworkJson.TryParseSubmission(hw.SubmissionNotes);
             var points = hw.Criteria.Sum(c => c.Points);
@@ -86,7 +96,7 @@ else
         {
             <div class="text-center py-5 text-muted" style="grid-column:1/-1">
                 <i class="bi bi-journal-text fs-1 d-block mb-3 opacity-50"></i>
-                <p>Aucun devoir trouvé.</p>
+                <p>Aucun devoir publié pour le moment.</p>
             </div>
         }
     </div>
@@ -94,6 +104,7 @@ else
 
 @code {
     private bool _loading = true;
+    private string _error = "";
     private List<HomeworkDto> _homeworks = [];
 
     private static string HwBadge(string s) => s switch
@@ -108,10 +119,18 @@ else
     {
         try
         {
-            var result = await Api.GetAsync<List<HomeworkDto>>("api/students/me/homework") ?? [];
-            _homeworks = [.. result.OrderBy(h => h.DueDate ?? DateTime.MaxValue)];
+            var result = await Api.GetWithErrorAsync<List<HomeworkDto>>("api/students/me/homework");
+            if (result.Error is not null)
+            {
+                _error = result.Error;
+                return;
+            }
+            _homeworks = [.. (result.Value ?? []).OrderBy(h => h.DueDate ?? DateTime.MaxValue)];
         }
-        catch { }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
         finally { _loading = false; }
     }
 

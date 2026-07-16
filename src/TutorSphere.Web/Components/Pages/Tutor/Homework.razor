@@ -12,7 +12,7 @@
 <div class="ts-page-header">
     <div>
         <h1><i class="bi bi-journal-text me-2"></i>@L["Homework_Title"]</h1>
-        <p class="ts-page-subtitle">@L["Homework_Subtitle"]</p>
+        <p class="ts-page-subtitle">Devoirs enregistrés en base — consultez ceux donnés à vos élèves / votre classe</p>
     </div>
     <button class="btn btn-primary" @onclick="OpenAdd">
         <i class="bi bi-plus-lg me-1"></i>@L["Homework_New"]
@@ -32,7 +32,22 @@
         <option value="Corrigé">@L["Homework_Graded"]</option>
         <option value="Brouillon">Brouillon</option>
     </select>
+    <select class="form-select w-auto" @bind="_filterStudentId">
+        <option value="">Tous les élèves</option>
+        @foreach (var s in _students)
+        {
+            <option value="@s.Id">@s.FirstName @s.LastName</option>
+        }
+    </select>
 </div>
+
+@if (!_loading && string.IsNullOrEmpty(_error) && _homeworks.Count > 0)
+{
+    <p class="text-muted small mb-3">
+        <i class="bi bi-database-check me-1"></i>
+        @_homeworks.Count devoir(s) · @_homeworks.Sum(h => h.StudentIds.Count) copie(s) élève en base
+    </p>
+}
 
 @if (_loading)
 {
@@ -67,6 +82,9 @@ else
                 <h3 class="hw-title">@hw.Title</h3>
                 <p class="hw-subject"><i class="bi bi-book me-1 text-muted"></i>@(hw.Subject ?? "—")</p>
                 <div class="hw-students">
+                    <span class="small text-muted me-1">
+                        <i class="bi bi-people me-1"></i>@(hw.StudentIds.Count) élève(s) :
+                    </span>
                     @foreach (var s in hw.StudentNames)
                     {
                         <span class="ts-badge ts-badge-neutral">@s</span>
@@ -162,7 +180,17 @@ else
                                     <div class="form-text text-end">@(_hf.Description?.Length ?? 0)/1000</div>
                                 </div>
                                 <div class="col-12">
-                                    <label class="form-label">Élèves concernés *</label>
+                                    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-1">
+                                        <label class="form-label mb-0">Élèves / classe concernés *</label>
+                                        <div class="btn-group btn-group-sm">
+                                            <button type="button" class="btn btn-outline-primary" @onclick="SelectAllStudents">
+                                                Toute la classe
+                                            </button>
+                                            <button type="button" class="btn btn-outline-secondary" @onclick="ClearStudents">
+                                                Aucun
+                                            </button>
+                                        </div>
+                                    </div>
                                     <div class="d-flex flex-wrap gap-2">
                                         @foreach (var s in _students)
                                         {
@@ -176,6 +204,10 @@ else
                                     @if (_students.Count == 0)
                                     {
                                         <p class="text-muted small mb-0 mt-1">Aucun élève trouvé. Ajoutez des élèves dans votre école.</p>
+                                    }
+                                    else
+                                    {
+                                        <p class="form-text mb-0 mt-1">@_hf.StudentIds.Count / @_students.Count sélectionné(s) — le devoir sera enregistré en base pour chaque élève.</p>
                                     }
                                 </div>
                             </div>
@@ -432,7 +464,7 @@ else
     private static readonly string[] _subjects =
         ["Mathématiques", "Physique", "Chimie", "Français", "Anglais", "Histoire", "Sciences", "Autre"];
 
-    private string _search = "", _filterStatus = "";
+    private string _search = "", _filterStatus = "", _filterStudentId = "";
     private bool _showModal, _loading = true, _saving, _uploadingFile;
     private string _error = "", _saveError = "", _fileUploadError = "";
     private int _wizardStep;
@@ -444,9 +476,13 @@ else
     private string? _gradeFeedback;
 
     private IEnumerable<HomeworkVM> FilteredHomework => _homeworks
-        .Where(h => string.IsNullOrEmpty(_search) || h.Title.Contains(_search, StringComparison.OrdinalIgnoreCase))
+        .Where(h => string.IsNullOrEmpty(_search) || h.Title.Contains(_search, StringComparison.OrdinalIgnoreCase)
+                    || (h.Subject?.Contains(_search, StringComparison.OrdinalIgnoreCase) ?? false)
+                    || h.StudentNames.Any(n => n.Contains(_search, StringComparison.OrdinalIgnoreCase)))
         .Where(h => string.IsNullOrEmpty(_filterStatus) || h.Status == _filterStatus)
-        .OrderBy(h => h.DueDate ?? DateTime.MaxValue);
+        .Where(h => string.IsNullOrEmpty(_filterStudentId)
+                    || (Guid.TryParse(_filterStudentId, out var sid) && h.StudentIds.Contains(sid)))
+        .OrderByDescending(h => h.DueDate ?? DateTime.MinValue);
 
     private static string HwBadge(string s) => s switch
     {
@@ -490,7 +526,16 @@ else
 
     private async Task ReloadAsync()
     {
-        var list = await HomeworkSvc.GetAllAsync();
+        var result = await HomeworkSvc.GetAllWithErrorAsync();
+        if (result.Error is not null)
+        {
+            _error = result.Error;
+            _homeworks = [];
+            return;
+        }
+
+        _error = "";
+        var list = result.Value ?? [];
         var nameById = _students.ToDictionary(s => s.Id, s => $"{s.FirstName} {s.LastName}".Trim());
 
         _homeworks = list
@@ -501,8 +546,16 @@ else
                 var status = first.IsDraft ? "Brouillon"
                     : first.IsGraded ? "Corrigé"
                     : first.SubmittedAt.HasValue ? "Rendu"
-                    : first.DueDate < DateTime.UtcNow.Date ? "En retard"
+                    : first.DueDate < DateTime.UtcNow ? "En retard"
                     : "À rendre";
+                // Si au moins une copie est rendue dans le groupe, prioriser "Rendu" / "Corrigé"
+                if (!first.IsDraft)
+                {
+                    if (g.Any(x => x.IsGraded)) status = "Corrigé";
+                    else if (g.Any(x => x.SubmittedAt.HasValue)) status = "Rendu";
+                    else if (g.Any(x => x.DueDate.HasValue && x.DueDate < DateTime.UtcNow)) status = "En retard";
+                    else status = "À rendre";
+                }
                 return new HomeworkVM
                 {
                     ApiId = first.Id,
@@ -605,6 +658,13 @@ else
         if (!_hf.StudentIds.Remove(id))
             _hf.StudentIds.Add(id);
     }
+
+    private void SelectAllStudents()
+    {
+        _hf.StudentIds = _students.Select(s => s.Id).ToList();
+    }
+
+    private void ClearStudents() => _hf.StudentIds.Clear();
 
     private void ToggleMode(HomeworkSubmissionMode flag)
     {
@@ -755,6 +815,7 @@ else
             if (_editing is { Members.Count: > 0 })
             {
                 var groupId = _editing.GroupId ?? Guid.NewGuid();
+                updateReq = updateReq with { AssignmentGroupId = groupId };
                 var existingByStudent = _editing.Members
                     .GroupBy(m => m.StudentId)
                     .ToDictionary(g => g.Key, g => g.First().Id);
@@ -763,11 +824,16 @@ else
                 {
                     if (existingByStudent.TryGetValue(studentId, out var homeworkId))
                     {
-                        await HomeworkSvc.UpdateHomeworkAsync(homeworkId, updateReq);
+                        var upd = await HomeworkSvc.UpdateHomeworkAsync(homeworkId, updateReq);
+                        if (upd.Error is not null)
+                        {
+                            _saveError = upd.Error;
+                            return;
+                        }
                     }
                     else
                     {
-                        await HomeworkSvc.CreateHomeworkAsync(new CreateHomeworkRequest(
+                        var created = await HomeworkSvc.CreateHomeworkAsync(new CreateHomeworkRequest(
                             studentId,
                             null,
                             _hf.Title.Trim(),
@@ -781,18 +847,30 @@ else
                             criteria,
                             draft,
                             groupId));
+                        if (created.Error is not null)
+                        {
+                            _saveError = created.Error;
+                            return;
+                        }
                     }
                 }
 
                 foreach (var member in _editing.Members)
                 {
                     if (!_hf.StudentIds.Contains(member.StudentId))
-                        await HomeworkSvc.DeleteHomeworkAsync(member.Id);
+                    {
+                        var del = await HomeworkSvc.DeleteHomeworkAsync(member.Id);
+                        if (del.Error is not null)
+                        {
+                            _saveError = del.Error;
+                            return;
+                        }
+                    }
                 }
             }
             else
             {
-                await HomeworkSvc.CreateBatchAsync(new CreateHomeworkBatchRequest(
+                var created = await HomeworkSvc.CreateBatchAsync(new CreateHomeworkBatchRequest(
                     _hf.StudentIds,
                     null,
                     _hf.Title.Trim(),
@@ -805,6 +883,16 @@ else
                     content,
                     criteria,
                     draft));
+                if (created.Error is not null)
+                {
+                    _saveError = created.Error;
+                    return;
+                }
+                if (created.Value is null || created.Value.Count == 0)
+                {
+                    _saveError = "Le devoir n'a pas été enregistré en base.";
+                    return;
+                }
             }
 
             await ReloadAsync();
@@ -820,7 +908,12 @@ else
     private async Task MarkCorrected()
     {
         if (_grading?.ApiId is not Guid id) return;
-        await HomeworkSvc.GradeHomeworkAsync(id, new GradeHomeworkRequest(_gradeValue, _gradeFeedback));
+        var result = await HomeworkSvc.GradeHomeworkAsync(id, new GradeHomeworkRequest(_gradeValue, _gradeFeedback));
+        if (result.Error is not null)
+        {
+            _error = result.Error;
+            return;
+        }
         _grading = null;
         await ReloadAsync();
     }
@@ -831,7 +924,14 @@ else
             ? hw.MemberIds
             : hw.ApiId is Guid singleId ? [singleId] : [];
         foreach (var homeworkId in ids)
-            await HomeworkSvc.DeleteHomeworkAsync(homeworkId);
+        {
+            var del = await HomeworkSvc.DeleteHomeworkAsync(homeworkId);
+            if (del.Error is not null)
+            {
+                _error = del.Error;
+                return;
+            }
+        }
         await ReloadAsync();
     }
 

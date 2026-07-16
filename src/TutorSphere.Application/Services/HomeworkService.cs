@@ -100,7 +100,7 @@ public class HomeworkService : IHomeworkService
 
         homework.Title = request.Title.Trim();
         homework.Description = request.Description?.Trim();
-        homework.DueDate = request.DueDate;
+        homework.DueDate = request.DueDate.HasValue ? ToUtc(request.DueDate.Value) : null;
         if (request.Subject is not null) homework.Subject = request.Subject.Trim();
         if (request.Instructions is not null) homework.Instructions = request.Instructions.Trim();
         if (request.EstimatedMinutes.HasValue) homework.EstimatedMinutes = request.EstimatedMinutes;
@@ -108,6 +108,7 @@ public class HomeworkService : IHomeworkService
         if (request.Content is not null) homework.ContentJson = Serialize(request.Content);
         if (request.Criteria is not null) homework.CriteriaJson = Serialize(request.Criteria);
         if (request.IsDraft.HasValue) homework.IsDraft = request.IsDraft.Value;
+        if (request.AssignmentGroupId.HasValue) homework.AssignmentGroupId = request.AssignmentGroupId;
         homework.UpdatedAt = DateTime.UtcNow;
 
         await _db.SaveChangesAsync(ct);
@@ -191,13 +192,21 @@ public class HomeworkService : IHomeworkService
         Subject = string.IsNullOrWhiteSpace(subject) ? null : subject.Trim(),
         Description = description?.Trim(),
         Instructions = instructions?.Trim(),
-        DueDate = dueDate,
+        DueDate = dueDate.HasValue ? ToUtc(dueDate.Value) : null,
         EstimatedMinutes = estimatedMinutes,
         SubmissionModes = modes == HomeworkSubmissionMode.None ? HomeworkSubmissionMode.Online : modes,
         ContentJson = Serialize(content ?? []),
         CriteriaJson = Serialize(criteria ?? []),
         IsDraft = isDraft
     };
+
+    private static DateTime ToUtc(DateTime dt) =>
+        dt.Kind switch
+        {
+            DateTimeKind.Utc => dt,
+            DateTimeKind.Local => dt.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(dt, DateTimeKind.Utc)
+        };
 
     private Homework GetHomeworkOrThrow(Guid id)
     {
