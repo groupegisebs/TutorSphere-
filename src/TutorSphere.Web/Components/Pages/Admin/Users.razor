@@ -1,220 +1,235 @@
 @page "/admin/users"
+@page "/admin/parents"
+@page "/admin/students"
+@page "/admin/teachers"
 @layout AdminLayout
 @rendermode InteractiveServer
 @inject AdminService AdminSvc
+@inject NavigationManager Navigation
 @inject IStringLocalizer<SharedResources> L
 
-<PageTitle>@L["PageTitle_AdminUsers"]</PageTitle>
+<PageTitle>Gestion des utilisateurs — Control Center</PageTitle>
 
 <AuthorizeView Roles="SuperAdmin,PlatformAdmin">
     <Authorized>
-        <div class="dashboard-header">
+        <div class="cc-toolbar">
             <div>
-                <h1 class="dashboard-greeting">@L["Nav_AdminUsers"]</h1>
-                <p class="dashboard-date">Gérez les tuteurs, parents et élèves de la plateforme.</p>
+                <h1 class="cc-page-title">@_pageHeading</h1>
+                <p class="cc-page-sub">Recherche avancée, actions et supervision des comptes TutorSphere.</p>
             </div>
+            <a href="admin/users" class="cc-btn">Tous les rôles</a>
         </div>
 
-        <!-- Tab bar -->
-        <div class="d-flex align-items-center gap-3 mb-4 flex-wrap">
-            <ul class="nav nav-tabs ts-admin-tabs flex-nowrap">
-                <li class="nav-item">
-                    <button class="nav-link @(_activeTab == "Tutor" ? "active" : "")"
-                            @onclick='() => SwitchTab("Tutor")'>
-                        <i class="bi bi-person-badge me-1"></i>Tuteurs
-                        @if (_tutorCount >= 0) { <span class="badge bg-secondary ms-1">@_tutorCount</span> }
+        <div class="cc-card mb-3">
+            <div class="cc-filters">
+                <div class="cc-field">
+                    <label>Recherche</label>
+                    <input type="search" placeholder="Nom, e-mail, téléphone…" @bind="_search" @bind:event="oninput" />
+                </div>
+                <div class="cc-field">
+                    <label>Rôle</label>
+                    <select @bind="_roleFilter">
+                        <option value="all">Tous</option>
+                        <option value="Parent">Parent</option>
+                        <option value="Student">Élève</option>
+                        <option value="Tutor">Tuteur</option>
+                        <option value="TeachingAssistant">Enseignant</option>
+                    </select>
+                </div>
+                <div class="cc-field">
+                    <label>Pays</label>
+                    <input @bind="_countryFilter" placeholder="Tous" />
+                </div>
+                <div class="cc-field">
+                    <label>Statut</label>
+                    <select @bind="_statusFilter">
+                        <option value="all">Tous</option>
+                        <option value="active">Actif</option>
+                        <option value="inactive">Inactif</option>
+                    </select>
+                </div>
+                <div class="cc-field">
+                    <label>École</label>
+                    <input @bind="_schoolFilter" placeholder="Toutes" />
+                </div>
+                <div class="cc-field d-flex align-items-end">
+                    <button type="button" class="cc-btn cc-btn-primary w-100" @onclick="ReloadAsync">
+                        <i class="bi bi-search"></i> Filtrer
                     </button>
-                </li>
-                <li class="nav-item">
-                    <button class="nav-link @(_activeTab == "Parent" ? "active" : "")"
-                            @onclick='() => SwitchTab("Parent")'>
-                        <i class="bi bi-people me-1"></i>Parents
-                        @if (_parentCount >= 0) { <span class="badge bg-secondary ms-1">@_parentCount</span> }
-                    </button>
-                </li>
-                <li class="nav-item">
-                    <button class="nav-link @(_activeTab == "Student" ? "active" : "")"
-                            @onclick='() => SwitchTab("Student")'>
-                        <i class="bi bi-mortarboard me-1"></i>Élèves
-                        @if (_studentCount >= 0) { <span class="badge bg-secondary ms-1">@_studentCount</span> }
-                    </button>
-                </li>
-            </ul>
-
-            <!-- Search bar -->
-            <div class="ms-auto" style="min-width:240px;">
-                <div class="form-field-icon">
-                    <i class="bi bi-search field-icon" aria-hidden="true"></i>
-                    <input type="search" class="form-control"
-                           placeholder="Rechercher par nom ou courriel…"
-                           @bind="_search" @bind:event="oninput" />
                 </div>
             </div>
         </div>
 
         @if (!string.IsNullOrEmpty(_errorMessage))
         {
-            <div class="alert alert-danger d-flex align-items-center gap-2" role="alert">
-                <i class="bi bi-exclamation-circle-fill"></i>
-                @_errorMessage
-            </div>
+            <div class="cc-alert cc-alert-danger"><i class="bi bi-exclamation-circle"></i> @_errorMessage</div>
         }
-
         @if (!string.IsNullOrEmpty(_successMessage))
         {
-            <div class="alert alert-success d-flex align-items-center gap-2" role="alert">
-                <i class="bi bi-check-circle-fill"></i>
-                @_successMessage
-            </div>
+            <div class="cc-alert cc-alert-success"><i class="bi bi-check-circle"></i> @_successMessage</div>
         }
 
-        @if (_isLoading)
-        {
-            <div class="d-flex align-items-center justify-content-center py-5">
-                <span class="spinner-border text-primary me-3" role="status" aria-hidden="true"></span>
-                <span class="text-muted">Chargement des utilisateurs…</span>
-            </div>
-        }
-        else
-        {
-            var filtered = FilteredUsers;
-            <div class="section-card">
-                @if (!filtered.Any())
-                {
-                    <div class="text-center py-5 text-muted">
-                        <i class="bi bi-person-x fs-1 d-block mb-2 opacity-50"></i>
-                        <p>Aucun utilisateur trouvé.</p>
-                    </div>
-                }
-                else
-                {
-                    <div class="table-responsive">
-                        <table class="table admin-users-table">
-                            <thead>
+        <div class="cc-card">
+            @if (_isLoading)
+            {
+                <div class="cc-empty"><span class="spinner-border text-light"></span><p class="mt-3">Chargement des utilisateurs…</p></div>
+            }
+            else if (!Filtered.Any())
+            {
+                <div class="cc-empty"><i class="bi bi-person-x"></i><p>Aucun utilisateur trouvé.</p></div>
+            }
+            else
+            {
+                <div class="cc-table-wrap">
+                    <table class="cc-table">
+                        <thead>
+                            <tr>
+                                <th>Utilisateur</th>
+                                <th>Type</th>
+                                <th>Pays</th>
+                                <th>École</th>
+                                <th>Statut</th>
+                                <th>Téléphone</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var user in Filtered)
+                            {
                                 <tr>
-                                    <th>Nom</th>
-                                    <th>Courriel</th>
-                                    <th class="text-center">Statut</th>
-                                    <th class="text-end">Actions</th>
+                                    <td>
+                                        <div class="cc-user-cell">
+                                            <span class="cc-user-avatar">@Initials(user.FullName)</span>
+                                            <span class="cc-user-cell-text">
+                                                <strong>@user.FullName</strong>
+                                                <span>@user.Email</span>
+                                            </span>
+                                        </div>
+                                    </td>
+                                    <td><span class="cc-pill cc-pill-type @RoleClass(user.Role)">@RoleLabel(user.Role)</span></td>
+                                    <td>@(string.IsNullOrWhiteSpace(user.Country) ? "—" : user.Country)</td>
+                                    <td>@(string.IsNullOrWhiteSpace(user.SchoolName) ? "—" : user.SchoolName)</td>
+                                    <td>
+                                        <span class="cc-pill @(user.IsActive ? "cc-pill-ok" : "cc-pill-bad")">
+                                            @(user.IsActive ? "Actif" : "Inactif")
+                                        </span>
+                                    </td>
+                                    <td>@(user.Phone ?? "—")</td>
+                                    <td>
+                                        <div class="cc-actions-wrap">
+                                            <button type="button" class="cc-actions-btn" @onclick="() => ToggleMenu(user.Id)">
+                                                <i class="bi bi-three-dots-vertical"></i>
+                                            </button>
+                                            @if (_openMenuId == user.Id)
+                                            {
+                                                <div class="cc-dropdown">
+                                                    <a href="admin/users/@user.Id"><i class="bi bi-eye"></i> Voir</a>
+                                                    <a href="admin/users/@user.Id"><i class="bi bi-pencil"></i> Modifier</a>
+                                                    @if (user.IsActive)
+                                                    {
+                                                        <button type="button" @onclick="() => ToggleUserAsync(user)"><i class="bi bi-lock"></i> Suspendre / Désactiver</button>
+                                                    }
+                                                    else
+                                                    {
+                                                        <button type="button" @onclick="() => ToggleUserAsync(user)"><i class="bi bi-unlock"></i> Activer</button>
+                                                    }
+                                                    <button type="button" @onclick="() => ResetPasswordAsync(user)"><i class="bi bi-arrow-repeat"></i> Réinitialiser mot de passe</button>
+                                                    <a href="admin/support"><i class="bi bi-envelope"></i> Envoyer un message</a>
+                                                    <a href="admin/users/@user.Id?tab=history"><i class="bi bi-graph-up"></i> Historique</a>
+                                                </div>
+                                            }
+                                        </div>
+                                    </td>
                                 </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var user in filtered)
-                                {
-                                    <tr>
-                                        <td>
-                                            <div class="d-flex align-items-center gap-2">
-                                                <div class="admin-user-avatar">@Initials(user.FullName)</div>
-                                                <span class="fw-medium">@user.FullName</span>
-                                            </div>
-                                        </td>
-                                        <td class="text-muted small">@user.Email</td>
-                                        <td class="text-center">
-                                            @if (user.IsActive)
-                                            {
-                                                <span class="admin-status-badge admin-status-badge--active">
-                                                    <i class="bi bi-circle-fill me-1" style="font-size:.45rem;vertical-align:middle;"></i>Actif
-                                                </span>
-                                            }
-                                            else
-                                            {
-                                                <span class="admin-status-badge admin-status-badge--inactive">
-                                                    <i class="bi bi-circle-fill me-1" style="font-size:.45rem;vertical-align:middle;"></i>Inactif
-                                                </span>
-                                            }
-                                        </td>
-                                        <td class="text-end">
-                                            @if (_pendingUserId == user.Id)
-                                            {
-                                                <span class="spinner-border spinner-border-sm text-primary" role="status" aria-hidden="true"></span>
-                                            }
-                                            else if (user.IsActive)
-                                            {
-                                                <button class="btn admin-toggle-btn admin-toggle-btn--deactivate"
-                                                        @onclick="() => ToggleUserAsync(user)">
-                                                    <i class="bi bi-lock me-1"></i>Désactiver
-                                                </button>
-                                            }
-                                            else
-                                            {
-                                                <button class="btn admin-toggle-btn admin-toggle-btn--activate"
-                                                        @onclick="() => ToggleUserAsync(user)">
-                                                    <i class="bi bi-unlock me-1"></i>Activer
-                                                </button>
-                                            }
-                                        </td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                }
-            </div>
-        }
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <div class="mt-3" style="font-size:.78rem;color:var(--cc-text-muted);">
+                    @Filtered.Count() utilisateur(s) affiché(s)
+                </div>
+            }
+        </div>
     </Authorized>
     <NotAuthorized>
-        <div class="d-flex flex-column align-items-center justify-content-center py-5 text-muted">
-            <i class="bi bi-shield-lock fs-1 mb-3"></i>
+        <div class="cc-empty">
+            <i class="bi bi-shield-lock"></i>
             <p>Accès réservé aux administrateurs.</p>
-            <a href="/login" class="btn btn-primary mt-2">Se connecter</a>
+            <a href="/login/admin" class="cc-btn cc-btn-primary mt-3">Se connecter</a>
         </div>
     </NotAuthorized>
 </AuthorizeView>
 
 @code {
-    private string _activeTab = "Tutor";
+    private string _pageHeading = "Utilisateurs";
+    private string _roleFilter = "all";
     private string _search = "";
+    private string _countryFilter = "";
+    private string _schoolFilter = "";
+    private string _statusFilter = "all";
     private bool _isLoading;
     private string? _errorMessage;
     private string? _successMessage;
-    private string? _pendingUserId;
-
-    private int _tutorCount = -1;
-    private int _parentCount = -1;
-    private int _studentCount = -1;
-
+    private string? _openMenuId;
     private List<AdminUserItem> _users = [];
 
-    private IEnumerable<AdminUserItem> FilteredUsers =>
-        string.IsNullOrWhiteSpace(_search)
-            ? _users
-            : _users.Where(u =>
-                u.FullName.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
-                u.Email.Contains(_search, StringComparison.OrdinalIgnoreCase));
+    private IEnumerable<AdminUserItem> Filtered
+    {
+        get
+        {
+            IEnumerable<AdminUserItem> q = _users;
+            if (!string.IsNullOrWhiteSpace(_search))
+            {
+                q = q.Where(u =>
+                    u.FullName.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+                    u.Email.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+                    (u.Phone?.Contains(_search, StringComparison.OrdinalIgnoreCase) ?? false));
+            }
+            if (!string.IsNullOrWhiteSpace(_countryFilter))
+                q = q.Where(u => u.Country?.Contains(_countryFilter, StringComparison.OrdinalIgnoreCase) == true);
+            if (!string.IsNullOrWhiteSpace(_schoolFilter))
+                q = q.Where(u => u.SchoolName?.Contains(_schoolFilter, StringComparison.OrdinalIgnoreCase) == true);
+            if (_statusFilter == "active") q = q.Where(u => u.IsActive);
+            if (_statusFilter == "inactive") q = q.Where(u => !u.IsActive);
+            return q;
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadUsersAsync(_activeTab);
+        var path = new Uri(Navigation.Uri).AbsolutePath.Trim('/').ToLowerInvariant();
+        (_pageHeading, _roleFilter) = path switch
+        {
+            "admin/parents" => ("Parents", "Parent"),
+            "admin/students" => ("Élèves", "Student"),
+            "admin/teachers" => ("Enseignants", "TeachingAssistant"),
+            _ => ("Utilisateurs", "all")
+        };
+
+        var query = new Uri(Navigation.Uri).Query.TrimStart('?');
+        foreach (var part in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var kv = part.Split('=', 2);
+            if (kv.Length == 2 && kv[0].Equals("q", StringComparison.OrdinalIgnoreCase))
+                _search = Uri.UnescapeDataString(kv[1]);
+        }
+
+        await ReloadAsync();
     }
 
-    private async Task SwitchTab(string tab)
-    {
-        if (_activeTab == tab) return;
-        _activeTab = tab;
-        _search = "";
-        _successMessage = null;
-        _errorMessage = null;
-        await LoadUsersAsync(tab);
-    }
-
-    private async Task LoadUsersAsync(string role)
+    private async Task ReloadAsync()
     {
         _isLoading = true;
         _errorMessage = null;
+        _openMenuId = null;
         try
         {
-            _users = await AdminSvc.GetUsersAsync(role);
-
-            switch (role)
-            {
-                case "Tutor":   _tutorCount   = _users.Count; break;
-                case "Parent":  _parentCount  = _users.Count; break;
-                case "Student": _studentCount = _users.Count; break;
-            }
+            var role = _roleFilter == "all" ? "all" : _roleFilter;
+            _users = await AdminSvc.GetUsersAsync(role, string.IsNullOrWhiteSpace(_search) ? null : _search);
         }
         catch
         {
-            _errorMessage = "Impossible de charger les utilisateurs. Vérifiez votre connexion.";
+            _errorMessage = "Impossible de charger les utilisateurs.";
         }
         finally
         {
@@ -222,41 +237,42 @@
         }
     }
 
+    private void ToggleMenu(string id) => _openMenuId = _openMenuId == id ? null : id;
+
     private async Task ToggleUserAsync(AdminUserItem user)
     {
-        _pendingUserId = user.Id;
+        _openMenuId = null;
         _successMessage = null;
         _errorMessage = null;
-
         try
         {
-            bool ok = user.IsActive
+            var ok = user.IsActive
                 ? await AdminSvc.DeactivateUserAsync(user.Id)
                 : await AdminSvc.ActivateUserAsync(user.Id);
+            if (!ok) { _errorMessage = "L'opération a échoué."; return; }
+            var idx = _users.IndexOf(user);
+            if (idx >= 0) _users[idx] = user with { IsActive = !user.IsActive };
+            _successMessage = user.IsActive
+                ? $"Compte de {user.FullName} désactivé."
+                : $"Compte de {user.FullName} activé.";
+        }
+        catch { _errorMessage = "Une erreur inattendue s'est produite."; }
+    }
 
-            if (ok)
-            {
-                var idx = _users.IndexOf(user);
-                if (idx >= 0)
-                    _users[idx] = user with { IsActive = !user.IsActive };
-
-                _successMessage = user.IsActive
-                    ? $"Compte de {user.FullName} désactivé."
-                    : $"Compte de {user.FullName} activé.";
-            }
-            else
-            {
-                _errorMessage = "L'opération a échoué. Veuillez réessayer.";
-            }
-        }
-        catch
+    private async Task ResetPasswordAsync(AdminUserItem user)
+    {
+        _openMenuId = null;
+        _successMessage = null;
+        _errorMessage = null;
+        try
         {
-            _errorMessage = "Une erreur inattendue s'est produite.";
+            var ok = await AdminSvc.ResetPasswordAsync(user.Id);
+            _successMessage = ok
+                ? $"Lien de réinitialisation envoyé à {user.Email}."
+                : null;
+            if (!ok) _errorMessage = "Impossible d'envoyer le lien.";
         }
-        finally
-        {
-            _pendingUserId = null;
-        }
+        catch { _errorMessage = "Une erreur inattendue s'est produite."; }
     }
 
     private static string Initials(string fullName)
@@ -264,8 +280,24 @@
         var parts = fullName.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
         return parts.Length >= 2
             ? $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant()
-            : fullName.Length >= 1
-                ? fullName[..1].ToUpperInvariant()
-                : "?";
+            : fullName.Length >= 1 ? fullName[..1].ToUpperInvariant() : "?";
     }
+
+    private static string RoleLabel(string role) => role switch
+    {
+        "Parent" => "Parent",
+        "Student" => "Élève",
+        "Tutor" => "Tuteur",
+        "TeachingAssistant" => "Enseignant",
+        _ => role
+    };
+
+    private static string RoleClass(string role) => role switch
+    {
+        "Parent" => "parent",
+        "Student" => "student",
+        "Tutor" => "tutor",
+        "TeachingAssistant" => "teacher",
+        _ => ""
+    };
 }

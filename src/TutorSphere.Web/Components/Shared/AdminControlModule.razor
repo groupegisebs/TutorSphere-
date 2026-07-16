@@ -1,0 +1,72 @@
+<AuthorizeView Roles="SuperAdmin,PlatformAdmin">
+    <Authorized>
+        <div class="cc-toolbar">
+            <div>
+                <h1 class="cc-page-title">@Title</h1>
+                <p class="cc-page-sub">@Subtitle</p>
+            </div>
+        </div>
+
+        @if (Kpis is { Length: > 0 })
+        {
+            <div class="cc-stat-grid mb-3">
+                @foreach (var k in Kpis)
+                {
+                    <div class="cc-kpi">
+                        <div class="cc-kpi-label">@k.Label</div>
+                        <div class="cc-kpi-value" style="font-size:1.25rem;">@k.Value</div>
+                    </div>
+                }
+            </div>
+        }
+
+        <div class="cc-card">
+            <div class="cc-card-header">
+                <div>
+                    <h2 class="cc-card-title">@Title</h2>
+                    <p class="cc-card-sub">Module Super Administration TutorSphere</p>
+                </div>
+                <i class="bi @Icon" style="font-size:1.4rem;color:var(--cc-primary);"></i>
+            </div>
+            @if (Rows is { Length: > 0 })
+            {
+                <ul class="cc-activity-list">
+                    @foreach (var r in Rows)
+                    {
+                        <li class="cc-activity-item">
+                            <span class="cc-activity-dot"></span>
+                            <div>
+                                <strong>@r.Title</strong>
+                                <span>@r.Detail</span>
+                            </div>
+                        </li>
+                    }
+                </ul>
+            }
+            else
+            {
+                <div class="cc-empty">
+                    <i class="bi @EmptyIcon"></i>
+                    <p>@EmptyText</p>
+                </div>
+            }
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <div class="cc-empty">
+            <i class="bi bi-shield-lock"></i>
+            <p>Accès réservé aux administrateurs.</p>
+            <a href="/login/admin" class="cc-btn cc-btn-primary mt-3">Se connecter</a>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string Subtitle { get; set; } = "";
+    [Parameter] public string Icon { get; set; } = "bi-grid";
+    [Parameter] public string EmptyIcon { get; set; } = "bi-inbox";
+    [Parameter] public string EmptyText { get; set; } = "Aucune donnée pour le moment.";
+    [Parameter] public (string Label, string Value)[]? Kpis { get; set; }
+    [Parameter] public (string Title, string Detail)[]? Rows { get; set; }
+}

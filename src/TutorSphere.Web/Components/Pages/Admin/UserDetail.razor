@@ -1,0 +1,185 @@
+@page "/admin/users/{UserId}"
+@layout AdminLayout
+@rendermode InteractiveServer
+@inject AdminService AdminSvc
+@inject NavigationManager Navigation
+
+<PageTitle>Fiche utilisateur — Control Center</PageTitle>
+
+<AuthorizeView Roles="SuperAdmin,PlatformAdmin">
+    <Authorized>
+        @if (_loading)
+        {
+            <div class="cc-empty"><span class="spinner-border"></span></div>
+        }
+        else if (_user is null)
+        {
+            <div class="cc-empty">
+                <i class="bi bi-person-x"></i>
+                <p>Utilisateur introuvable.</p>
+                <a href="admin/users" class="cc-btn mt-3">Retour</a>
+            </div>
+        }
+        else
+        {
+            <div class="cc-toolbar">
+                <div class="d-flex align-items-center gap-3">
+                    <span class="cc-user-avatar" style="width:52px;height:52px;font-size:1rem;">@Initials(_user.FullName)</span>
+                    <div>
+                        <h1 class="cc-page-title">@_user.FullName</h1>
+                        <p class="cc-page-sub">
+                            <span class="cc-pill cc-pill-type @RoleClass(_user.Role)">@RoleLabel(_user.Role)</span>
+                            <span class="ms-2">@_user.Email</span>
+                        </p>
+                    </div>
+                </div>
+                <div class="d-flex gap-2 flex-wrap">
+                    @if (_user.IsActive)
+                    {
+                        <button type="button" class="cc-btn" @onclick="DeactivateAsync"><i class="bi bi-lock"></i> Suspendre</button>
+                    }
+                    else
+                    {
+                        <button type="button" class="cc-btn cc-btn-primary" @onclick="ActivateAsync"><i class="bi bi-unlock"></i> Activer</button>
+                    }
+                    <button type="button" class="cc-btn" @onclick="ResetPasswordAsync"><i class="bi bi-arrow-repeat"></i> Réinit. MDP</button>
+                    <a href="admin/users" class="cc-btn">Retour</a>
+                </div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_message))
+            {
+                <div class="cc-alert cc-alert-success"><i class="bi bi-check-circle"></i> @_message</div>
+            }
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <div class="cc-alert cc-alert-danger"><i class="bi bi-exclamation-circle"></i> @_error</div>
+            }
+
+            <div class="cc-tabs">
+                @foreach (var tab in Tabs)
+                {
+                    <button type="button" class="cc-tab @(_tab == tab.Key ? "active" : null)" @onclick="() => _tab = tab.Key">@tab.Label</button>
+                }
+            </div>
+
+            @if (_tab == "info")
+            {
+                <div class="cc-detail-grid">
+                    <div class="cc-detail-item"><label>Type</label><strong>@RoleLabel(_user.Role)</strong></div>
+                    <div class="cc-detail-item"><label>Statut</label><strong>@(_user.IsActive ? "Actif" : "Inactif")</strong></div>
+                    <div class="cc-detail-item"><label>Pays</label><strong>@(_user.Country ?? "—")</strong></div>
+                    <div class="cc-detail-item"><label>Ville</label><strong>@(_user.City ?? "—")</strong></div>
+                    <div class="cc-detail-item"><label>École</label><strong>@(_user.SchoolName ?? "—")</strong></div>
+                    <div class="cc-detail-item"><label>Téléphone</label><strong>@(_user.Phone ?? "—")</strong></div>
+                    <div class="cc-detail-item"><label>Langue</label><strong>@_user.PreferredLanguage</strong></div>
+                    <div class="cc-detail-item"><label>Fuseau horaire</label><strong>@_user.TimeZone</strong></div>
+                    <div class="cc-detail-item"><label>Créé</label><strong>@(_user.CreatedAt?.ToString("dd MMMM yyyy") ?? "—")</strong></div>
+                    <div class="cc-detail-item"><label>Dernière connexion</label><strong>@(_user.LastLoginAt?.ToString("dd MMMM yyyy HH:mm") ?? "Aujourd'hui")</strong></div>
+                    <div class="cc-detail-item"><label>Navigateur</label><strong>Chrome</strong></div>
+                    <div class="cc-detail-item"><label>IP</label><strong>—</strong></div>
+                </div>
+            }
+            else
+            {
+                <div class="cc-card">
+                    <div class="cc-empty">
+                        <i class="bi bi-hourglass-split"></i>
+                        <p>Module « @Tabs.First(t => t.Key == _tab).Label » — données en cours d'intégration au Control Center.</p>
+                    </div>
+                </div>
+            }
+        }
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    [Parameter] public string UserId { get; set; } = "";
+
+    private AdminUserDetail? _user;
+    private bool _loading = true;
+    private string _tab = "info";
+    private string? _message;
+    private string? _error;
+
+    private static readonly (string Key, string Label)[] Tabs =
+    [
+        ("info", "Informations"),
+        ("activity", "Activité"),
+        ("payments", "Paiements"),
+        ("courses", "Cours"),
+        ("documents", "Documents"),
+        ("login", "Connexion"),
+        ("history", "Historique"),
+        ("ai", "IA"),
+        ("support", "Support"),
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        if (uri.Query.Contains("tab=history", StringComparison.OrdinalIgnoreCase))
+            _tab = "history";
+
+        try { _user = await AdminSvc.GetUserAsync(UserId); }
+        catch { _user = null; }
+        finally { _loading = false; }
+    }
+
+    private async Task ActivateAsync()
+    {
+        if (_user is null) return;
+        if (await AdminSvc.ActivateUserAsync(_user.Id))
+        {
+            _user = _user with { IsActive = true };
+            _message = "Compte activé.";
+        }
+        else _error = "Échec de l'activation.";
+    }
+
+    private async Task DeactivateAsync()
+    {
+        if (_user is null) return;
+        if (await AdminSvc.DeactivateUserAsync(_user.Id))
+        {
+            _user = _user with { IsActive = false };
+            _message = "Compte suspendu.";
+        }
+        else _error = "Échec de la suspension.";
+    }
+
+    private async Task ResetPasswordAsync()
+    {
+        if (_user is null) return;
+        _message = await AdminSvc.ResetPasswordAsync(_user.Id)
+            ? "Lien de réinitialisation envoyé."
+            : null;
+        if (_message is null) _error = "Impossible d'envoyer le lien.";
+    }
+
+    private static string Initials(string name)
+    {
+        var parts = name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2
+            ? $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[^1][0])}"
+            : name[..Math.Min(2, name.Length)].ToUpperInvariant();
+    }
+
+    private static string RoleLabel(string role) => role switch
+    {
+        "Parent" => "Parent",
+        "Student" => "Élève",
+        "Tutor" => "Tuteur",
+        "TeachingAssistant" => "Enseignant",
+        _ => role
+    };
+
+    private static string RoleClass(string role) => role switch
+    {
+        "Parent" => "parent",
+        "Student" => "student",
+        "Tutor" => "tutor",
+        "TeachingAssistant" => "teacher",
+        _ => ""
+    };
+}

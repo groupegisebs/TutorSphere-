@@ -1,0 +1,92 @@
+@page "/admin/schools"
+@layout AdminLayout
+@rendermode InteractiveServer
+@inject AdminService AdminSvc
+
+<PageTitle>Écoles — Control Center</PageTitle>
+
+<AuthorizeView Roles="SuperAdmin,PlatformAdmin">
+    <Authorized>
+        <div class="cc-toolbar">
+            <div>
+                <h1 class="cc-page-title">Écoles</h1>
+                <p class="cc-page-sub">Chaque école (tenant) possède sa fiche, son abonnement et ses métriques.</p>
+            </div>
+        </div>
+
+        @if (_loading)
+        {
+            <div class="cc-empty"><span class="spinner-border"></span></div>
+        }
+        else if (_schools.Count == 0)
+        {
+            <div class="cc-card cc-empty">
+                <i class="bi bi-building"></i>
+                <p>Aucune école enregistrée pour le moment.</p>
+            </div>
+        }
+        else
+        {
+            <div class="cc-stat-grid mb-3">
+                <div class="cc-kpi"><div class="cc-kpi-label">Écoles</div><div class="cc-kpi-value">@_schools.Count</div></div>
+                <div class="cc-kpi"><div class="cc-kpi-label">Élèves (total)</div><div class="cc-kpi-value">@_schools.Sum(s => s.StudentCount).ToString("N0")</div></div>
+                <div class="cc-kpi"><div class="cc-kpi-label">Actives</div><div class="cc-kpi-value">@_schools.Count(s => s.Status == "Active")</div></div>
+                <div class="cc-kpi"><div class="cc-kpi-label">En validation</div><div class="cc-kpi-value">@_schools.Count(s => s.Status.Contains("Pending", StringComparison.OrdinalIgnoreCase))</div></div>
+            </div>
+
+            <div class="cc-card">
+                <div class="cc-table-wrap">
+                    <table class="cc-table">
+                        <thead>
+                            <tr>
+                                <th>École</th>
+                                <th>Pays</th>
+                                <th>Ville</th>
+                                <th>Élèves</th>
+                                <th>Abonnement</th>
+                                <th>Statut</th>
+                                <th>Créée</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var s in _schools)
+                            {
+                                <tr>
+                                    <td>
+                                        <div class="cc-user-cell">
+                                            <span class="cc-rank-icon"><i class="bi bi-building"></i></span>
+                                            <span class="cc-user-cell-text">
+                                                <strong>@s.Name</strong>
+                                                <span>/school/@s.Slug</span>
+                                            </span>
+                                        </div>
+                                    </td>
+                                    <td>@(s.Country ?? "—")</td>
+                                    <td>@(s.City ?? "—")</td>
+                                    <td>@s.StudentCount.ToString("N0")</td>
+                                    <td><span class="cc-pill cc-pill-type">@s.Plan</span></td>
+                                    <td>
+                                        <span class="cc-pill @(s.Status == "Active" ? "cc-pill-ok" : "cc-pill-bad")">@s.Status</span>
+                                    </td>
+                                    <td>@s.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    private List<AdminSchoolItem> _schools = [];
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { _schools = await AdminSvc.GetSchoolsAsync(); }
+        catch { _schools = []; }
+        finally { _loading = false; }
+    }
+}

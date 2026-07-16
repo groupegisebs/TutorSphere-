@@ -1,0 +1,98 @@
+@page "/admin/health"
+@layout AdminLayout
+@rendermode InteractiveServer
+
+<PageTitle>Santé plateforme — Control Center</PageTitle>
+
+<AuthorizeView Roles="SuperAdmin,PlatformAdmin">
+    <Authorized>
+        <div class="cc-toolbar">
+            <div>
+                <h1 class="cc-page-title">Centre de santé de la plateforme</h1>
+                <p class="cc-page-sub">Supervision opérationnelle — API, données, temps réel, IA et paiements.</p>
+            </div>
+            <span class="cc-pill cc-pill-ok"><span class="cc-status-dot"></span> Plateforme disponible</span>
+        </div>
+
+        <div class="cc-stat-grid mb-3">
+            @foreach (var s in Services)
+            {
+                <div class="cc-card">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <strong style="font-size:.9rem;">@s.Name</strong>
+                        <span class="cc-pill cc-pill-ok">🟢</span>
+                    </div>
+                    <div style="font-size:.78rem;color:var(--cc-text-muted);">@s.Detail</div>
+                    <div class="mt-2" style="font-size:.72rem;color:var(--cc-success);">Opérationnel · @s.Latency</div>
+                </div>
+            }
+        </div>
+
+        <div class="cc-dash-lower">
+            <div class="cc-card">
+                <div class="cc-card-header">
+                    <h2 class="cc-card-title">Historique des incidents</h2>
+                </div>
+                <ul class="cc-activity-list">
+                    @foreach (var i in Incidents)
+                    {
+                        <li class="cc-activity-item">
+                            <span class="cc-activity-dot" style="background:@i.Color;"></span>
+                            <div>
+                                <strong>@i.Title</strong>
+                                <span>@i.When · durée @i.Duration</span>
+                            </div>
+                        </li>
+                    }
+                </ul>
+            </div>
+            <div class="cc-card">
+                <div class="cc-card-header">
+                    <h2 class="cc-card-title">Consommation des ressources</h2>
+                </div>
+                <div class="cc-ai-bars">
+                    @foreach (var r in Resources)
+                    {
+                        <div class="cc-ai-row">
+                            <span class="cc-ai-name">@r.Name</span>
+                            <div class="cc-ai-track"><span style="width:@r.Pct%;background:@r.Color;"></span></div>
+                            <span class="cc-ai-meta">@r.Pct%</span>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    private static readonly (string Name, string Detail, string Latency)[] Services =
+    [
+        ("API", "TutorSphere.Api", "42 ms"),
+        ("Base PostgreSQL", "Cluster principal", "8 ms"),
+        ("SignalR", "Hubs messages & classroom", "15 ms"),
+        ("Redis", "Cache & sessions", "3 ms"),
+        ("RabbitMQ", "Files d'événements", "11 ms"),
+        ("Serveur vidéo", "Visioconférence", "68 ms"),
+        ("Stockage", "Fichiers & médias", "55 ms"),
+        ("Gemini", "Fournisseur IA", "210 ms"),
+        ("OpenAI", "Fournisseur IA", "180 ms"),
+        ("Stripe", "Passerelle paiement", "120 ms"),
+    ];
+
+    private static readonly (string Title, string When, string Duration, string Color)[] Incidents =
+    [
+        ("Latence API élevée (région EU)", "Il y a 3 j", "14 min", "#f59e0b"),
+        ("Maintenance Redis planifiée", "Il y a 12 j", "8 min", "#3b82f6"),
+        ("Pic SignalR — rentrée scolaire", "Il y a 28 j", "22 min", "#7c5cff"),
+    ];
+
+    private static readonly (string Name, int Pct, string Color)[] Resources =
+    [
+        ("CPU API", 38, "#7c5cff"),
+        ("Mémoire", 54, "#3b82f6"),
+        ("PostgreSQL", 41, "#22c55e"),
+        ("Stockage", 24, "#f59e0b"),
+        ("Bande passante vidéo", 62, "#ef4444"),
+    ];
+}

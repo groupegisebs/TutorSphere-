@@ -1,13 +1,27 @@
 @inherits LayoutComponentBase
+@inject NavigationManager Navigation
 
-<div class="page dashboard-page">
-    <div class="sidebar sidebar-navy">
+<link rel="stylesheet" href="css/admin-control-center.css" />
+
+<div class="cc-shell @(_sidebarOpen ? "cc-sidebar-open" : null)">
+    <aside class="cc-sidebar">
         <AdminSidebar />
-    </div>
-    <main>
-        <DashboardTopbar />
-        <article class="content px-4">
+    </aside>
+    <div class="cc-main">
+        <AdminControlTopbar OnToggleSidebar="ToggleSidebar" />
+        <div class="cc-content">
             @Body
-        </article>
-    </main>
+        </div>
+    </div>
 </div>
+
+@code {
+    private bool _sidebarOpen;
+
+    private void ToggleSidebar() => _sidebarOpen = !_sidebarOpen;
+
+    protected override void OnParametersSet()
+    {
+        _sidebarOpen = false;
+    }
+}

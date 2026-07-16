@@ -1,0 +1,143 @@
+@rendermode InteractiveServer
+@implements IDisposable
+@inject AuthService AuthSvc
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthState
+
+<div class="cc-topbar">
+    <div class="cc-topbar-left">
+        <div class="cc-breadcrumb">
+            <button type="button" class="cc-breadcrumb-btn" @onclick="OnToggleSidebar" aria-label="Menu">
+                <i class="bi bi-list"></i>
+            </button>
+            <span>@_pageTitle</span>
+        </div>
+        <div class="cc-topbar-sub">Vue d'ensemble de la plateforme TutorSphere.</div>
+    </div>
+
+    <div class="cc-search">
+        <i class="bi bi-search" aria-hidden="true"></i>
+        <input type="search" placeholder="Rechercher..." @bind="_search" @onkeydown="OnSearchKey" />
+    </div>
+
+    <div class="cc-topbar-actions">
+        <button type="button" class="cc-icon-btn" aria-label="Notifications">
+            <i class="bi bi-bell"></i>
+            <span class="cc-badge">12</span>
+        </button>
+        <a href="admin/support" class="cc-icon-btn" aria-label="Aide">
+            <i class="bi bi-question-circle"></i>
+        </a>
+        <LanguageSelector />
+        <button type="button" class="cc-user-chip" @onclick="ToggleMenu" @onclick:stopPropagation="true">
+            <span class="cc-user-avatar">@_initials</span>
+            <span class="cc-user-meta">
+                <span class="cc-user-name">@_displayName</span>
+                <span class="cc-user-role">Super Administrateur</span>
+            </span>
+        </button>
+        @if (_menuOpen)
+        {
+            <div class="cc-actions-wrap">
+                <div class="cc-dropdown" style="right:0;top:2.6rem;">
+                    <a href="admin/settings"><i class="bi bi-sliders"></i>Configurations</a>
+                    <a href="admin/security"><i class="bi bi-shield-lock"></i>Sécurité</a>
+                    <button type="button" class="danger" @onclick="Logout"><i class="bi bi-box-arrow-left"></i>Déconnexion</button>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@if (_menuOpen)
+{
+    <div style="position:fixed;inset:0;z-index:25;" @onclick="() => _menuOpen = false"></div>
+}
+
+@code {
+    [Parameter] public EventCallback OnToggleSidebar { get; set; }
+
+    private bool _menuOpen;
+    private string _search = "";
+    private string _pageTitle = "Tableau de bord";
+
+    private string _displayName =>
+        !string.IsNullOrWhiteSpace(AuthSvc.UserName) ? AuthSvc.UserName! :
+        !string.IsNullOrWhiteSpace(AuthSvc.UserEmail) ? AuthSvc.UserEmail! :
+        "Admin Principal";
+
+    private string _initials => GetInitials(_displayName);
+
+    protected override void OnInitialized()
+    {
+        AuthState.AuthenticationStateChanged += OnAuthChanged;
+        Navigation.LocationChanged += OnLocationChanged;
+        _pageTitle = ResolveTitle(Navigation.Uri);
+    }
+
+    private void OnAuthChanged(Task<AuthenticationState> _) => InvokeAsync(StateHasChanged);
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        _pageTitle = ResolveTitle(e.Location);
+        _menuOpen = false;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void ToggleMenu() => _menuOpen = !_menuOpen;
+
+    private void OnSearchKey(KeyboardEventArgs e)
+    {
+        if (e.Key != "Enter" || string.IsNullOrWhiteSpace(_search)) return;
+        Navigation.NavigateTo($"admin/users?q={Uri.EscapeDataString(_search.Trim())}");
+    }
+
+    private void Logout()
+    {
+        _menuOpen = false;
+        AuthSvc.Logout();
+        Navigation.NavigateTo("/login/admin", forceLoad: true);
+    }
+
+    private static string ResolveTitle(string uri)
+    {
+        var path = new Uri(uri).AbsolutePath.Trim('/').ToLowerInvariant();
+        return path switch
+        {
+            "admin" or "admin/dashboard" => "Tableau de bord",
+            "admin/users" => "Utilisateurs",
+            "admin/schools" => "Écoles",
+            "admin/parents" => "Parents",
+            "admin/students" => "Élèves",
+            "admin/teachers" => "Enseignants",
+            "admin/tutors" => "Tuteurs",
+            "admin/roles" => "Rôles & Permissions",
+            "admin/payments" => "Paiements",
+            "admin/ai" => "IA & Modèles",
+            "admin/videoconference" => "Visioconférences",
+            "admin/storage" => "Stockage",
+            "admin/support" => "Support",
+            "admin/logs" => "Logs d'activité",
+            "admin/security" => "Sécurité",
+            "admin/health" => "Santé plateforme",
+            "admin/settings" => "Configurations",
+            _ when path.StartsWith("admin/users/") => "Fiche utilisateur",
+            _ => "Control Center"
+        };
+    }
+
+    private static string GetInitials(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "AP";
+        var parts = name.Trim().Split([' ', '@'], StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2
+            ? $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[^1][0])}"
+            : name[..Math.Min(2, name.Length)].ToUpperInvariant();
+    }
+
+    public void Dispose()
+    {
+        AuthState.AuthenticationStateChanged -= OnAuthChanged;
+        Navigation.LocationChanged -= OnLocationChanged;
+    }
+}
