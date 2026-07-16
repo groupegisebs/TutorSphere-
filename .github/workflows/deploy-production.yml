@@ -100,6 +100,9 @@ jobs:
           EMAIL_CLIENT_CODE_VAR: ${{ vars.TUTORSPHERE_EMAIL_CLIENT_CODE }}
           API_BASE_URL_VAR: ${{ vars.TUTORSPHERE_API_BASE_URL }}
           API_BASE_URL_SECRET: ${{ secrets.TUTORSPHERE_API_BASE_URL }}
+          BOOTSTRAP_ADMIN_ENABLED_VAR: ${{ vars.TUTORSPHERE_BOOTSTRAP_ADMIN_ENABLED }}
+          BOOTSTRAP_ADMIN_EMAIL: ${{ secrets.TUTORSPHERE_BOOTSTRAP_ADMIN_EMAIL }}
+          BOOTSTRAP_ADMIN_PASSWORD: ${{ secrets.TUTORSPHERE_BOOTSTRAP_ADMIN_PASSWORD }}
         run: |
           source deploy/gha-env.sh
           source deploy/database.defaults.sh
@@ -210,6 +213,14 @@ jobs:
           else
             gha_write_env API_BASE_URL "${DEFAULT_API_BASE_URL}"
           fi
+
+          # SuperAdmin bootstrap — défauts prédéfinis ; secrets GitHub optionnels pour surcharge
+          BOOTSTRAP_ENABLED_RAW=$(printf '%s' "${BOOTSTRAP_ADMIN_ENABLED_VAR:-true}" | tr '[:upper:]' '[:lower:]')
+          case "$BOOTSTRAP_ENABLED_RAW" in true|1|yes|on) BOOTSTRAP_ENABLED_RAW=true ;; *) BOOTSTRAP_ENABLED_RAW=false ;; esac
+          gha_write_env SEED_BOOTSTRAP_ADMIN_ENABLED "$BOOTSTRAP_ENABLED_RAW"
+          gha_write_env SEED_BOOTSTRAP_ADMIN_EMAIL "$(gha_sanitize "${BOOTSTRAP_ADMIN_EMAIL:-tutorsphere@gisebs.com}")"
+          gha_write_env SEED_BOOTSTRAP_ADMIN_PASSWORD "$(gha_sanitize "${BOOTSTRAP_ADMIN_PASSWORD:-Mcd!123456789}")"
+
           echo "OK → ${SSH_USER}@${SSH_HOST}:${SSH_PORT} app=${APP_ROOT} api=${API_PORT} web=${WEB_PORT} paygateway.sandbox=${PAYGATEWAY_USE_SANDBOX_RAW}"
 
       - name: Setup SSH key
@@ -245,6 +256,9 @@ jobs:
           API_BASE_URL: ${{ env.API_BASE_URL }}
           API_PORT: ${{ env.API_PORT }}
           WEB_PORT: ${{ env.WEB_PORT }}
+          SEED_BOOTSTRAP_ADMIN_ENABLED: ${{ env.SEED_BOOTSTRAP_ADMIN_ENABLED }}
+          SEED_BOOTSTRAP_ADMIN_EMAIL: ${{ env.SEED_BOOTSTRAP_ADMIN_EMAIL }}
+          SEED_BOOTSTRAP_ADMIN_PASSWORD: ${{ env.SEED_BOOTSTRAP_ADMIN_PASSWORD }}
         run: bash deploy/deploy-gha.sh
 
       - name: Container status

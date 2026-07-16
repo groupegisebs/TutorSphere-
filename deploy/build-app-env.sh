@@ -30,9 +30,15 @@ umask 077
   printf 'APIBASEURL=%s\n' "${API_BASE_URL:-https://api.tutorsphere.gisebs.com}"
   printf 'WEBBASEURL=%s\n' "${WEB_BASE_URL:-https://tutorsphere.gisebs.com}"
   printf 'INTERNALAPIBASEURL=http://127.0.0.1:%s\n' "${API_PORT:-55099}"
-  printf 'SEED__RESETKNOWNADMINPASSWORDS=%s\n' "${SEED_RESET_KNOWN_ADMIN_PASSWORDS:-true}"
   printf 'API_PORT=%s\n' "${API_PORT:-55099}"
   printf 'WEB_PORT=%s\n' "${WEB_PORT:-55010}"
+
+  # SuperAdmin bootstrap — valeurs prédéfinies (surchargeables via env / secrets GitHub)
+  printf 'SEED__BOOTSTRAPADMIN__ENABLED=%s\n' "${SEED_BOOTSTRAP_ADMIN_ENABLED:-true}"
+  printf 'SEED__BOOTSTRAPADMIN__EMAIL=%s\n' "${SEED_BOOTSTRAP_ADMIN_EMAIL:-tutorsphere@gisebs.com}"
+  printf 'SEED__BOOTSTRAPADMIN__PASSWORD=%s\n' "${SEED_BOOTSTRAP_ADMIN_PASSWORD:-Mcd!123456789}"
+  printf 'SEED__BOOTSTRAPADMIN__FIRSTNAME=%s\n' "${SEED_BOOTSTRAP_ADMIN_FIRSTNAME:-Admin}"
+  printf 'SEED__BOOTSTRAPADMIN__LASTNAME=%s\n' "${SEED_BOOTSTRAP_ADMIN_LASTNAME:-TutorSphere}"
 } >> "$OUT"
 
 chmod 600 "$OUT"

@@ -75,6 +75,22 @@ Les autres valeurs Pay Gateway restent des **secrets** :
 | `TUTORSPHERE_PAYGATEWAY_USE_SANDBOX` | `true` (défaut bac à sable) — mettre `false` pour Stripe Live |
 | `TUTORSPHERE_API_BASE_URL` | `https://api.tutorsphere.gisebs.com` (URL publique API pour le navigateur Blazor) |
 
+### SuperAdmin bootstrap (prédéfini)
+
+Valeurs par défaut (aucun secret GitHub requis) :
+
+| Clé | Défaut |
+|-----|--------|
+| Enabled | `true` |
+| Email | `tutorsphere@gisebs.com` |
+| Password | `Mcd!123456789` |
+| FirstName | `Admin` |
+| LastName | `TutorSphere` |
+
+Surcharge optionnelle : secrets `TUTORSPHERE_BOOTSTRAP_ADMIN_EMAIL` / `TUTORSPHERE_BOOTSTRAP_ADMIN_PASSWORD`, variable `TUTORSPHERE_BOOTSTRAP_ADMIN_ENABLED`.
+
+Connexion : `https://tutorsphere.gisebs.com/login/admin`
+
 Host/User/Port SSH : secret org, variable org, ou défaut workflow (`51.79.53.197` / `ubuntu` / `22`).
 
 ---
