@@ -166,8 +166,8 @@ public static class DependencyInjection
     }
 
     /// <summary>
-    /// Optional one-time platform admin when Seed:BootstrapAdmin:Enabled=true (empty DB / ops recovery).
-    /// Never resets an existing password.
+    /// Optional platform admin when Seed:BootstrapAdmin:Enabled=true (empty DB / ops recovery).
+    /// Creates the user if missing; assigns SuperAdmin and syncs the password when Enabled.
     /// </summary>
     private static async Task EnsureBootstrapAdminAsync(
         UserManager<ApplicationUser> userManager,
@@ -185,6 +185,17 @@ public static class DependencyInjection
                 await userManager.AddToRoleAsync(user, UserRoles.SuperAdmin);
                 logger.LogInformation("Bootstrap assigned SuperAdmin to existing {Email}.", email);
             }
+
+            // When BootstrapAdmin is explicitly enabled, sync password (ops recovery / local setup).
+            var resetToken = await userManager.GeneratePasswordResetTokenAsync(user);
+            var reset = await userManager.ResetPasswordAsync(user, resetToken, password);
+            if (reset.Succeeded)
+                logger.LogInformation("Bootstrap reset password for SuperAdmin {Email}.", email);
+            else
+                logger.LogWarning(
+                    "Bootstrap password reset failed for {Email}: {Errors}",
+                    email,
+                    string.Join("; ", reset.Errors.Select(e => e.Description)));
             return;
         }
 
