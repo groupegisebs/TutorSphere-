@@ -90,6 +90,7 @@ public class ParentPortalController : ControllerBase
         try
         {
             var child = await _parentService.AddChildForUserAsync(userId, request, ct);
+            child = await EnsureAutonomousLoginAccessAsync(userId, child, ct);
             return CreatedAtAction(nameof(GetChild), new { id = child.Id }, child);
         }
         catch (InvalidOperationException ex)
@@ -111,7 +112,9 @@ public class ParentPortalController : ControllerBase
 
         try
         {
-            return Ok(await _parentService.UpdateChildForUserAsync(userId, id, request, ct));
+            var child = await _parentService.UpdateChildForUserAsync(userId, id, request, ct);
+            child = await EnsureAutonomousLoginAccessAsync(userId, child, ct);
+            return Ok(child);
         }
         catch (InvalidOperationException ex)
         {
@@ -314,6 +317,34 @@ public class ParentPortalController : ControllerBase
         {
             return BadRequest(new { error = ex.Message });
         }
+    }
+
+    /// <summary>
+    /// Élève 14+ : active automatiquement un accès espace Élève pour qu'il puisse
+    /// rechercher des cours et s'abonner seul.
+    /// </summary>
+    private async Task<StudentDto> EnsureAutonomousLoginAccessAsync(
+        string parentUserId,
+        StudentDto child,
+        CancellationToken ct)
+    {
+        if (!child.IsAutonomous || child.HasLoginAccess)
+            return child;
+
+        if (!child.DateOfBirth.HasValue)
+            return child;
+
+        var access = await _authService.EnableChildLoginAccessAsync(parentUserId, child.Id, ct);
+        var refreshed = (await _parentService.GetChildrenForUserAsync(parentUserId, ct))
+            .FirstOrDefault(c => c.Id == child.Id);
+        if (refreshed is null)
+            return child;
+
+        return refreshed with
+        {
+            HasLoginAccess = access.HasLoginAccess,
+            LoginAccessCode = access.AccessCode
+        };
     }
 
     private async Task<string?> ResolveParentUserIdAsync(CancellationToken ct)

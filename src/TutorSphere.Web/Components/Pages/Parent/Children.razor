@@ -40,11 +40,15 @@
 }
 else
 {
-    @if (_children.Count > 0 && _children.All(c => c.IsAutonomous))
+    @if (_children.Count > 0 && _children.Any(c => c.IsAutonomous))
     {
         <div class="autonomous-notice mb-3">
             <i class="bi bi-info-circle-fill"></i>
-            <span>Tous vos enfants ont atteint l'autonomie (14 ans et plus). Vous pouvez toujours consulter leur planning et les informations générales.</span>
+            <span>
+                Les enfants de 14 ans et plus peuvent se connecter à l'espace Élève
+                (<a href="/login/eleve">/login/eleve</a>) pour rechercher un cours et s'abonner eux-mêmes.
+                Un accès de connexion est créé automatiquement lorsqu'une date de naissance (≥ 14 ans) est enregistrée.
+            </span>
         </div>
     }
 
@@ -71,8 +75,18 @@ else
                 @if (child.IsAutonomous)
                 {
                     <div class="autonomous-notice">
-                        <i class="bi bi-info-circle-fill"></i>
-                        <span>Votre enfant a @child.Age ans ou plus. Conformément à notre politique de confidentialité, certaines informations (rapports détaillés, messages, devoirs) ne sont pas accessibles aux parents pour les élèves autonomes.</span>
+                        <i class="bi bi-mortarboard-fill"></i>
+                        <span>
+                            @child.Age ans — autonome : peut s'abonner à un cours depuis l'espace Élève.
+                            @if (child.HasLoginAccess)
+                            {
+                                <text> Accès connexion actif.</text>
+                            }
+                            else
+                            {
+                                <text> Activez l'accès connexion ci-dessous.</text>
+                            }
+                        </span>
                     </div>
                 }
                 <div class="child-subjects">
@@ -111,8 +125,12 @@ else
             {
                 <div style="padding:1rem 1.5rem 0">
                     <div class="autonomous-notice">
-                        <i class="bi bi-info-circle-fill"></i>
-                        <span>Votre enfant a @_active.Age ans ou plus. Conformément à notre politique de confidentialité, certaines informations (rapports détaillés, messages, devoirs) ne sont pas accessibles aux parents pour les élèves autonomes.</span>
+                        <i class="bi bi-mortarboard-fill"></i>
+                        <span>
+                            @_active.Name (@_active.Age ans) peut rechercher et s'abonner à un cours seul via
+                            <a href="/login/eleve">l'espace Élève</a>
+                            (e-mail parent + code d'accès). Vous pouvez aussi l'inscrire depuis votre espace parent.
+                        </span>
                     </div>
                 </div>
             }
@@ -253,8 +271,11 @@ else
                 @if (_form.Age.HasValue && _form.Age >= 14)
                 {
                     <div class="autonomous-notice mt-3">
-                        <i class="bi bi-info-circle-fill"></i>
-                        <span>Cet enfant a @_form.Age ans ou plus — il sera considéré comme autonome et certaines informations ne seront plus visibles dans votre espace parent.</span>
+                        <i class="bi bi-mortarboard-fill"></i>
+                        <span>
+                            @_form.Age ans ou plus : un accès espace Élève sera créé pour qu'il puisse
+                            s'abonner à des cours lui-même. Conservez le code d'accès affiché après l'enregistrement.
+                        </span>
                     </div>
                 }
             </div>
@@ -480,6 +501,7 @@ else
 
             CloseAddModal();
             await LoadChildrenAsync();
+            RevealAutonomousAccessIfAny(result.Value);
         }
         finally { _saving = false; }
     }
@@ -498,8 +520,26 @@ else
 
             CloseEditModal();
             await LoadChildrenAsync();
+            RevealAutonomousAccessIfAny(result.Value);
         }
         finally { _saving = false; }
+    }
+
+    private void RevealAutonomousAccessIfAny(StudentDto? saved)
+    {
+        if (saved is null || !saved.IsAutonomous || string.IsNullOrEmpty(saved.LoginAccessCode))
+            return;
+
+        var child = _children.FirstOrDefault(c => c.Id == saved.Id);
+        if (child is null)
+            return;
+
+        SelectChild(child);
+        _revealedCode = saved.LoginAccessCode;
+        _accessHint = "Connexion espace Élève : e-mail du parent + ce code. L'enfant peut ensuite s'abonner à un cours.";
+        _accessInfo = "ok";
+        child.LoginAccessCode = saved.LoginAccessCode;
+        child.HasLoginAccess = true;
     }
 
     private async Task DeleteChildAsync()

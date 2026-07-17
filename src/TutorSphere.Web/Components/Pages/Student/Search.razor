@@ -16,7 +16,15 @@
     </a>
 </div>
 
-@if (_profile is not null && !_profile.IsAutonomous)
+@if (_profile is not null && _profile.IsAutonomous)
+{
+    <div class="alert alert-success">
+        <i class="bi bi-check-circle me-2"></i>
+        Vous avez @_profile.Age ans : vous pouvez rechercher un cours et vous y abonner vous-même.
+        Choisissez une offre puis envoyez une demande d’inscription.
+    </div>
+}
+else if (_profile is not null && !_profile.IsAutonomous)
 {
     <div class="alert alert-warning">
         <i class="bi bi-exclamation-triangle me-2"></i>
@@ -29,6 +37,14 @@
         {
             <span> Demandez à un parent de vous inscrire à un cours.</span>
         }
+    </div>
+}
+else if (_profile is null)
+{
+    <div class="alert alert-warning">
+        <i class="bi bi-exclamation-triangle me-2"></i>
+        Complétez votre date de naissance dans <a href="/student/settings">Paramètres</a>
+        (14 ans et plus) pour pouvoir vous abonner à un cours.
     </div>
 }
 
