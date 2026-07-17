@@ -34,7 +34,7 @@ umask 077
   printf 'WEB_PORT=%s\n' "${WEB_PORT:-55010}"
 
   # SuperAdmin bootstrap — valeurs prédéfinies (surchargeables via env / secrets GitHub)
-  printf 'SEED__BOOTSTRAPADMIN__ENABLED=%s\n' "${SEED_BOOTSTRAP_ADMIN_ENABLED:-true}"
+  printf 'SEED__BOOTSTRAPADMIN__ENABLED=%s\n' "${SEED_BOOTSTRAP_ADMIN_ENABLED:-false}"
   printf 'SEED__BOOTSTRAPADMIN__EMAIL=%s\n' "${SEED_BOOTSTRAP_ADMIN_EMAIL:-tutorsphere@gisebs.com}"
   printf 'SEED__BOOTSTRAPADMIN__PASSWORD=%s\n' "${SEED_BOOTSTRAP_ADMIN_PASSWORD:-Mcd!123456789}"
   printf 'SEED__BOOTSTRAPADMIN__FIRSTNAME=%s\n' "${SEED_BOOTSTRAP_ADMIN_FIRSTNAME:-Admin}"

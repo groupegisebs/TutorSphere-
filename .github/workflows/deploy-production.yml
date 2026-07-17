@@ -215,7 +215,7 @@ jobs:
           fi
 
           # SuperAdmin bootstrap — défauts prédéfinis ; secrets GitHub optionnels pour surcharge
-          BOOTSTRAP_ENABLED_RAW=$(printf '%s' "${BOOTSTRAP_ADMIN_ENABLED_VAR:-true}" | tr '[:upper:]' '[:lower:]')
+          BOOTSTRAP_ENABLED_RAW=$(printf '%s' "${BOOTSTRAP_ADMIN_ENABLED_VAR:-false}" | tr '[:upper:]' '[:lower:]')
           case "$BOOTSTRAP_ENABLED_RAW" in true|1|yes|on) BOOTSTRAP_ENABLED_RAW=true ;; *) BOOTSTRAP_ENABLED_RAW=false ;; esac
           gha_write_env SEED_BOOTSTRAP_ADMIN_ENABLED "$BOOTSTRAP_ENABLED_RAW"
           gha_write_env SEED_BOOTSTRAP_ADMIN_EMAIL "$(gha_sanitize "${BOOTSTRAP_ADMIN_EMAIL:-tutorsphere@gisebs.com}")"

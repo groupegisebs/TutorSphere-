@@ -81,7 +81,7 @@ Valeurs par défaut (aucun secret GitHub requis) :
 
 | Clé | Défaut |
 |-----|--------|
-| Enabled | `true` |
+| Enabled | `false` (remettre `true` pour créer / sync le compte) |
 | Email | `tutorsphere@gisebs.com` |
 | Password | `Mcd!123456789` |
 | FirstName | `Admin` |
