@@ -503,7 +503,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
         await _gateway.CreateCatalogItemAsync(new GatewayCreateCatalogItemRequest(
             productCode,
             "Licence annuelle TutorSphere",
-            "Activation / renouvellement de l'établissement (25 $ CAD / an)",
+            "Activation / renouvellement de l'établissement (10 $ USD / an)",
             planCode,
             "Annuel",
             amount,

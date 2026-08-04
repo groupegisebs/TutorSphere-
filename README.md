@@ -122,7 +122,7 @@ Configurer les secrets et variables GitHub — voir [deploy/GITHUB-SECRETS.md](d
 
 ## Modèle économique
 
-**Répétiteurs :** frais annuel de **25 $ CAD** + auto-formation obligatoire pour activer / rendre visible l'établissement.
+**Répétiteurs :** frais annuel de **10 $ USD** + auto-formation obligatoire pour activer / rendre visible l'établissement.
 
 **Parents :** paient uniquement les abonnements / forfaits de cours choisis
 
