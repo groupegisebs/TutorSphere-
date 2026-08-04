@@ -1,22 +1,35 @@
 # Brief campagne Facebook — TutorSphere
 
-## Offre
+## Offres
+
+### Tuteurs (enseignants / étudiants)
 
 | Élément | Valeur |
 |--------|--------|
 | Produit | TutorSphere — école numérique pour répétiteurs |
 | Activation | **10 $ USD / an** |
 | Après paiement | Auto-formation obligatoire → compte **actif et visible** |
-| CTA unique | **Créer mon école** / *Create my school* |
-| Landing | `/tutor/register` (ou URL prod équivalente) |
+| CTA | **Créer mon école** / *Create my school* |
+| Landing | `/tutor/register` |
 
-## Funnel
+### Parents
+
+| Élément | Valeur |
+|--------|--------|
+| Produit | TutorSphere — trouver un répétiteur & suivre les cours |
+| Prix | **Inscription gratuite** |
+| CTA | **Trouver un tuteur** / *Find a tutor* |
+| Landing | `/parent/register` |
+
+## Funnels
 
 ```
-Pub Facebook → Inscription tuteur → Paiement 10 USD → Auto-formation → École active & visible
+Tuteurs : Pub → /tutor/register → Paiement 10 USD → Auto-formation → École active & visible
+Parents : Pub → /parent/register → Recherche tuteur → Réservation / paiement pack
 ```
 
-Ne promettez **pas** un revenu garanti. Parlez d’**opportunité**, de **flexibilité** et d’**outil professionnel**.
+**Tuteurs :** ne promettez **pas** un revenu garanti. Parlez d’**opportunité**, de **flexibilité** et d’**outil professionnel**.  
+**Parents :** ne promettez **pas** de notes / réussite scolaire. Parlez de **soutien**, de **suivi** et de **mise en relation**.
 
 ## Angles créatifs (fixes)
 
@@ -25,6 +38,9 @@ Ne promettez **pas** un revenu garanti. Parlez d’**opportunité**, de **flexib
 
 2. **Étudiants-tuteurs**  
    « Finance tes études en donnant des cours — active ton compte pour 10 $. »
+
+3. **Parents**  
+   « Trouve le bon tuteur pour ton enfant — inscription gratuite, suivi clair. »
 
 ## Preuves / bénéfices (à recycler)
 
@@ -46,12 +62,20 @@ Dossier : `images/`
 | Étudiants Afrique | `fb-etudiants-afrique-{fr,en,pt}.png` |
 | Enseignants monde | `fb-enseignants-monde-{en,es,de,ar,zh}.png` |
 | Étudiants monde | `fb-etudiants-monde-{en,es,de,ar,zh}.png` |
+| Parents Afrique | `fb-parents-afrique-{fr,en,pt}.png` |
+| Parents monde | `fb-parents-monde-{en,es,de,ar,zh}.png` |
 
 Uploader le PNG correspondant dans Meta Ads Manager (créatif principal). Le texte de la fiche reste le copy primaire / titres / description.
 
-## Disclaimer (toutes langues)
+## Disclaimers
+
+**Tuteurs :**
 
 > Les revenus dépendent de votre activité, de vos tarifs et de la demande locale. TutorSphere fournit l’outil ; aucun résultat financier n’est garanti.
+
+**Parents :**
+
+> Les résultats scolaires dépendent de l’élève, du tuteur et de l’assiduité. TutorSphere met en relation ; aucun résultat scolaire n’est garanti.
 
 ## Structure des fiches
 
@@ -72,3 +96,6 @@ Fichiers :
 - `03-enseignants-monde.md` — EN / ES / DE / AR / ZH  
 - `04-etudiants-monde.md` — EN / ES / DE / AR / ZH  
 - `05-cibles-et-budgets.md` — audiences Meta  
+- `06-parents-afrique.md` — FR / EN / PT  
+- `07-parents-monde.md` — EN / ES / DE / AR / ZH  
+ 
