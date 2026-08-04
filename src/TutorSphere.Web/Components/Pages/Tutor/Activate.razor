@@ -1,7 +1,6 @@
 @page "/tutor/activate"
 @layout TutorLayout
 @rendermode InteractiveServer
-@using Microsoft.AspNetCore.Components
 @using Microsoft.Extensions.Localization
 @using Microsoft.JSInterop
 @using TutorSphere.Web.Services
@@ -17,6 +16,14 @@
     {
         <div class="text-center py-5">
             <div class="spinner-border text-primary" role="status"></div>
+        </div>
+    }
+    else if (_status?.RequiresOnboarding == true)
+    {
+        <div class="alert alert-info">
+            <h1 class="h4 mb-2">@L["Onboarding_NeedTraining"]</h1>
+            <p class="mb-3">@L["Onboarding_AfterPay"]</p>
+            <a class="btn btn-primary" href="/tutor/onboarding">@L["Onboarding_Start"]</a>
         </div>
     }
     else if (_status?.HasValidLicense == true && !_renewalMode)
@@ -47,6 +54,7 @@
                     <li class="mb-2"><i class="bi bi-check2-circle text-success me-2"></i>@L["Activate_F1"]</li>
                     <li class="mb-2"><i class="bi bi-check2-circle text-success me-2"></i>@L["Activate_F2"]</li>
                     <li class="mb-2"><i class="bi bi-check2-circle text-success me-2"></i>@L["Activate_F3"]</li>
+                    <li class="mb-2"><i class="bi bi-check2-circle text-success me-2"></i>@L["Activate_F4"]</li>
                 </ul>
 
                 @if (!string.IsNullOrEmpty(_error))
@@ -92,6 +100,11 @@
                     ? $"api/platform-billing/confirm?paymentId={paymentId}"
                     : "api/platform-billing/confirm";
                 var confirm = await Api.PostWithErrorAsync<PlatformLicensePaymentStatusVm>(confirmUrl, new { });
+                if (confirm.Value?.RequiresOnboarding == true || confirm.Value?.HasPaidLicense == true)
+                {
+                    Navigation.NavigateTo("/tutor/onboarding", forceLoad: true);
+                    return;
+                }
                 if (confirm.Value?.HasValidLicense == true)
                 {
                     Navigation.NavigateTo("/tutor/dashboard", forceLoad: true);
@@ -106,6 +119,11 @@
         }
 
         await ReloadStatusAsync();
+        if (_status?.RequiresOnboarding == true)
+        {
+            Navigation.NavigateTo("/tutor/onboarding", forceLoad: true);
+            return;
+        }
         if (_status?.HasValidLicense == true && !_renewalMode && !paid)
         {
             Navigation.NavigateTo("/tutor/dashboard", forceLoad: true);
@@ -155,7 +173,9 @@
         public string SchoolName { get; set; } = "";
         public string Status { get; set; } = "";
         public bool HasValidLicense { get; set; }
+        public bool HasPaidLicense { get; set; }
         public bool RequiresPayment { get; set; }
+        public bool RequiresOnboarding { get; set; }
         public DateTime? LicenseExpiresAt { get; set; }
         public int? DaysUntilExpiry { get; set; }
         public decimal AnnualFee { get; set; }
@@ -166,17 +186,13 @@
     private sealed class PlatformLicenseCheckoutVm
     {
         public Guid PaymentId { get; set; }
-        public string PaymentCode { get; set; } = "";
         public string CheckoutUrl { get; set; } = "";
-        public string SessionId { get; set; } = "";
-        public decimal Amount { get; set; }
-        public string Currency { get; set; } = "CAD";
     }
 
     private sealed class PlatformLicensePaymentStatusVm
     {
-        public Guid PaymentId { get; set; }
         public bool HasValidLicense { get; set; }
-        public DateTime? LicenseExpiresAt { get; set; }
+        public bool HasPaidLicense { get; set; }
+        public bool RequiresOnboarding { get; set; }
     }
 }

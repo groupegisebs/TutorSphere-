@@ -637,6 +637,7 @@ public static class DependencyInjection
         var toPublish = await db.TenantsSet
             .Where(t => tenantIdsWithOffers.Contains(t.Id)
                         && t.Status == TenantStatus.Active
+                        && t.OnboardingCompletedAt != null
                         && t.LicenseExpiresAt != null
                         && t.LicenseExpiresAt > now
                         && !t.IsPublicProfile)

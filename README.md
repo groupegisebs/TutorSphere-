@@ -122,7 +122,7 @@ Configurer les secrets et variables GitHub — voir [deploy/GITHUB-SECRETS.md](d
 
 ## Modèle économique
 
-**Répétiteurs :** frais annuel de **25 $ CAD** pour activer / renouveler l'établissement (paiement via GiseBs Pay Gateway).
+**Répétiteurs :** frais annuel de **25 $ CAD** + auto-formation obligatoire pour activer / rendre visible l'établissement.
 
 **Parents :** paient uniquement les abonnements / forfaits de cours choisis
 
