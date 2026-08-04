@@ -1,0 +1,182 @@
+@page "/tutor/activate"
+@layout TutorLayout
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.Components
+@using Microsoft.Extensions.Localization
+@using Microsoft.JSInterop
+@using TutorSphere.Web.Services
+@inject ApiClient Api
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@inject IStringLocalizer<SharedResources> L
+
+<PageTitle>@L["Activate_Title"] — TutorSphere</PageTitle>
+
+<div class="container py-4" style="max-width:640px">
+    @if (_loading)
+    {
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+        </div>
+    }
+    else if (_status?.HasValidLicense == true && !_renewalMode)
+    {
+        <div class="alert alert-success">
+            <h1 class="h4 mb-2">@L["Activate_AlreadyActive"]</h1>
+            <p class="mb-3">
+                @L["Activate_ExpiresOn"]
+                <strong>@_status.LicenseExpiresAt?.ToLocalTime().ToString("d")</strong>
+            </p>
+            <a class="btn btn-primary" href="/tutor/dashboard">@L["Activate_GoDashboard"]</a>
+        </div>
+    }
+    else
+    {
+        <div class="card border-0 shadow-sm">
+            <div class="card-body p-4 p-md-5">
+                <span class="badge text-bg-primary mb-3">@L["Activate_Badge"]</span>
+                <h1 class="h3 mb-2">@L["Activate_Title"]</h1>
+                <p class="text-muted mb-4">@L["Activate_Subtitle"]</p>
+
+                <div class="d-flex align-items-baseline gap-2 mb-4">
+                    <span class="display-5 fw-bold">@((_status?.AnnualFee ?? 25m).ToString("0.##"))&nbsp;$</span>
+                    <span class="text-muted">@L["Activate_PerYear"] CAD</span>
+                </div>
+
+                <ul class="list-unstyled mb-4">
+                    <li class="mb-2"><i class="bi bi-check2-circle text-success me-2"></i>@L["Activate_F1"]</li>
+                    <li class="mb-2"><i class="bi bi-check2-circle text-success me-2"></i>@L["Activate_F2"]</li>
+                    <li class="mb-2"><i class="bi bi-check2-circle text-success me-2"></i>@L["Activate_F3"]</li>
+                </ul>
+
+                @if (!string.IsNullOrEmpty(_error))
+                {
+                    <div class="alert alert-danger">@_error</div>
+                }
+
+                <button class="btn btn-primary btn-lg w-100" disabled="@_busy" @onclick="CheckoutAsync">
+                    @if (_busy)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2"></span>
+                    }
+                    @L["Activate_PayCta"]
+                </button>
+
+                <p class="small text-muted mt-3 mb-0 text-center">@L["Activate_SecurePay"]</p>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private PlatformLicenseStatusVm? _status;
+    private bool _loading = true;
+    private bool _busy;
+    private bool _renewalMode;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
+        var paid = query.TryGetValue("paid", out var paidVal)
+                   && paidVal.ToString().Equals("1", StringComparison.OrdinalIgnoreCase);
+        var paymentId = query.TryGetValue("paymentId", out var pid) && Guid.TryParse(pid, out var g) ? g : (Guid?)null;
+
+        if (paid)
+        {
+            _busy = true;
+            try
+            {
+                var confirmUrl = paymentId.HasValue
+                    ? $"api/platform-billing/confirm?paymentId={paymentId}"
+                    : "api/platform-billing/confirm";
+                var confirm = await Api.PostWithErrorAsync<PlatformLicensePaymentStatusVm>(confirmUrl, new { });
+                if (confirm.Value?.HasValidLicense == true)
+                {
+                    Navigation.NavigateTo("/tutor/dashboard", forceLoad: true);
+                    return;
+                }
+                _error = confirm.Error ?? L["Activate_ConfirmPending"];
+            }
+            finally
+            {
+                _busy = false;
+            }
+        }
+
+        await ReloadStatusAsync();
+        if (_status?.HasValidLicense == true && !_renewalMode && !paid)
+        {
+            Navigation.NavigateTo("/tutor/dashboard", forceLoad: true);
+            return;
+        }
+        _loading = false;
+    }
+
+    private async Task ReloadStatusAsync()
+    {
+        _status = await Api.GetAsync<PlatformLicenseStatusVm>("api/platform-billing/status");
+        _renewalMode = _status?.RenewalSoon == true;
+    }
+
+    private async Task CheckoutAsync()
+    {
+        _error = null;
+        _busy = true;
+        try
+        {
+            var baseUri = Navigation.BaseUri.TrimEnd('/');
+            var result = await Api.PostWithErrorAsync<PlatformLicenseCheckoutVm>(
+                "api/platform-billing/checkout",
+                new
+                {
+                    successUrl = $"{baseUri}/tutor/activate?paid=1",
+                    cancelUrl = $"{baseUri}/tutor/activate"
+                });
+
+            if (!string.IsNullOrWhiteSpace(result.Value?.CheckoutUrl))
+            {
+                await JS.InvokeVoidAsync("open", result.Value.CheckoutUrl, "_self");
+                return;
+            }
+
+            _error = result.Error ?? L["Activate_PayUnavailable"];
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private sealed class PlatformLicenseStatusVm
+    {
+        public Guid TenantId { get; set; }
+        public string SchoolName { get; set; } = "";
+        public string Status { get; set; } = "";
+        public bool HasValidLicense { get; set; }
+        public bool RequiresPayment { get; set; }
+        public DateTime? LicenseExpiresAt { get; set; }
+        public int? DaysUntilExpiry { get; set; }
+        public decimal AnnualFee { get; set; }
+        public string Currency { get; set; } = "CAD";
+        public bool RenewalSoon { get; set; }
+    }
+
+    private sealed class PlatformLicenseCheckoutVm
+    {
+        public Guid PaymentId { get; set; }
+        public string PaymentCode { get; set; } = "";
+        public string CheckoutUrl { get; set; } = "";
+        public string SessionId { get; set; } = "";
+        public decimal Amount { get; set; }
+        public string Currency { get; set; } = "CAD";
+    }
+
+    private sealed class PlatformLicensePaymentStatusVm
+    {
+        public Guid PaymentId { get; set; }
+        public bool HasValidLicense { get; set; }
+        public DateTime? LicenseExpiresAt { get; set; }
+    }
+}

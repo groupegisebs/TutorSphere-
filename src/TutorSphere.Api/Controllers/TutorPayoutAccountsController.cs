@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using TutorSphere.Api.Filters;
 using TutorSphere.Application.DTOs.TutorPayouts;
 using TutorSphere.Application.Services;
 using TutorSphere.Domain.Enums;
@@ -9,6 +10,7 @@ namespace TutorSphere.Api.Controllers;
 [ApiController]
 [Route("api/tutor-payout-accounts")]
 [Authorize(Roles = $"{UserRoles.Tutor},{UserRoles.SuperAdmin}")]
+[RequireActiveTutorLicense]
 public class TutorPayoutAccountsController : ControllerBase
 {
     private readonly ITutorPayoutAccountService _accounts;

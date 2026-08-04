@@ -166,8 +166,8 @@ public class SubscriptionOfferingService : ISubscriptionOfferingService
     }
 
     /// <summary>
-    /// Publishing an offer makes the school discoverable in parent search
-    /// (search requires Active + IsPublicProfile + at least one active offering).
+    /// Publishing an offer makes the school discoverable only when the annual platform license is valid.
+    /// Does NOT activate the tenant (payment-gated).
     /// </summary>
     private void PublishTenantProfile(Guid tenantId)
     {
@@ -175,22 +175,14 @@ public class SubscriptionOfferingService : ISubscriptionOfferingService
         if (tenant is null)
             return;
 
-        var changed = false;
+        if (!tenant.HasValidLicense())
+            return;
+
         if (!tenant.IsPublicProfile)
         {
             tenant.IsPublicProfile = true;
-            changed = true;
-        }
-
-        // Tutor already published an offer — make them searchable without waiting on admin.
-        if (tenant.Status != TenantStatus.Active)
-        {
-            tenant.Status = TenantStatus.Active;
-            changed = true;
-        }
-
-        if (changed)
             tenant.UpdatedAt = DateTime.UtcNow;
+        }
     }
 
     private static (string? Frequency, string? Conditions, LessonMode Mode, int SessionCount) NormalizeSchedule(

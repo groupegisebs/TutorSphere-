@@ -34,6 +34,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     public DbSet<LessonAttendance> LessonAttendancesSet => Set<LessonAttendance>();
     public DbSet<TutorPayout> TutorPayoutsSet => Set<TutorPayout>();
     public DbSet<TutorPayoutAccount> TutorPayoutAccountsSet => Set<TutorPayoutAccount>();
+    public DbSet<PlatformLicensePayment> PlatformLicensePaymentsSet => Set<PlatformLicensePayment>();
 
     IQueryable<Tenant> IApplicationDbContext.Tenants => TenantsSet;
     IQueryable<TenantBranding> IApplicationDbContext.TenantBrandings => TenantBrandingsSet;
@@ -72,6 +73,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     IQueryable<TutorPayout> IApplicationDbContext.TutorPayouts => TutorPayoutsSet;
     IQueryable<TutorPayout> IApplicationDbContext.TutorPayoutsForAnyTenant => TutorPayoutsSet.IgnoreQueryFilters();
     IQueryable<TutorPayoutAccount> IApplicationDbContext.TutorPayoutAccounts => TutorPayoutAccountsSet;
+    IQueryable<PlatformLicensePayment> IApplicationDbContext.PlatformLicensePayments => PlatformLicensePaymentsSet;
+    IQueryable<PlatformLicensePayment> IApplicationDbContext.PlatformLicensePaymentsForAnyTenant =>
+        PlatformLicensePaymentsSet.IgnoreQueryFilters();
 
     public new void Add<T>(T entity) where T : class => Set<T>().Add(entity);
     public new void Remove<T>(T entity) where T : class => Set<T>().Remove(entity);
@@ -124,6 +128,17 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             e.HasIndex(a => a.TenantId);
             e.HasIndex(a => new { a.TenantId, a.IsPrimary });
             e.HasOne(a => a.Tenant).WithMany().HasForeignKey(a => a.TenantId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<PlatformLicensePayment>(e =>
+        {
+            e.Property(p => p.Amount).HasPrecision(18, 2);
+            e.Property(p => p.Currency).HasMaxLength(8);
+            e.Property(p => p.GatewayPaymentCode).HasMaxLength(120);
+            e.HasIndex(p => p.TenantId);
+            e.HasIndex(p => p.GatewayPaymentCode);
+            e.HasOne(p => p.Tenant).WithMany(t => t.LicensePayments).HasForeignKey(p => p.TenantId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 

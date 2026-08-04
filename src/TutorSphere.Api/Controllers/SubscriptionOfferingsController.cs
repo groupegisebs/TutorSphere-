@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using TutorSphere.Api.Filters;
 using TutorSphere.Application.DTOs.StudentSubscriptions;
 using TutorSphere.Application.DTOs.SubscriptionOfferings;
 using TutorSphere.Application.Services;
@@ -10,6 +11,7 @@ namespace TutorSphere.Api.Controllers;
 [ApiController]
 [Route("api/subscription-offerings")]
 [Authorize(Roles = $"{UserRoles.Tutor},{UserRoles.TeachingAssistant},{UserRoles.SuperAdmin}")]
+[RequireActiveTutorLicense]
 public class SubscriptionOfferingsController : ControllerBase
 {
     private readonly ISubscriptionOfferingService _offeringService;

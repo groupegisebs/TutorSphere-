@@ -40,6 +40,10 @@ public static class DependencyInjection
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IMessageService, MessageService>();
         services.Configure<PayGatewaySettings>(configuration.GetSection(PayGatewaySettings.SectionName));
+        services.Configure<TutorSphere.Application.Common.PlatformBillingOptions>(
+            configuration.GetSection(TutorSphere.Application.Common.PlatformBillingOptions.SectionName));
+        services.AddSingleton(sp =>
+            sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<TutorSphere.Application.Common.PlatformBillingOptions>>().Value);
         services.AddHttpClient<PayGatewayClient>();
         services.AddScoped<IPaymentGatewayService, PayGatewayService>();
         services.AddScoped<ITutorDisbursementGateway, TutorDisbursementGateway>();
@@ -116,7 +120,7 @@ public static class DependencyInjection
         }
 
         await EnsureExistingParentProfilesAsync(db, userManager);
-        await PublishActiveTenantsWithOffersAsync(db, logger);
+        await SyncPublicProfileForLicensedTenantsAsync(db, logger);
 
         var userCount = await db.Users.CountAsync();
         logger.LogInformation("Seed complete — {UserCount} user(s) in database (real data only).", userCount);
@@ -358,6 +362,8 @@ public static class DependencyInjection
                 Country = "CA",
                 Language = "fr",
                 Status = TenantStatus.Active,
+                LicenseExpiresAt = DateTime.UtcNow.AddYears(5),
+                OnboardingCompletedAt = DateTime.UtcNow,
                 IsPublicProfile = true,
                 Branding = new TenantBranding(),
                 Offerings =
@@ -396,6 +402,8 @@ public static class DependencyInjection
                 Country = "CA",
                 Language = "en",
                 Status = TenantStatus.Active,
+                LicenseExpiresAt = DateTime.UtcNow.AddYears(5),
+                OnboardingCompletedAt = DateTime.UtcNow,
                 IsPublicProfile = true,
                 Branding = new TenantBranding(),
                 Offerings =
@@ -423,6 +431,8 @@ public static class DependencyInjection
                 Country = "CA",
                 Language = "fr",
                 Status = TenantStatus.Active,
+                LicenseExpiresAt = DateTime.UtcNow.AddYears(5),
+                OnboardingCompletedAt = DateTime.UtcNow,
                 IsPublicProfile = true,
                 Branding = new TenantBranding(),
                 Offerings =
@@ -608,11 +618,12 @@ public static class DependencyInjection
     }
 
     /// <summary>
-    /// Schools with published offers were invisible in parent search:
-    /// Status stayed PendingValidation and/or IsPublicProfile stayed false.
+    /// Schools with a valid paid license and published offers should be public.
+    /// Does not activate unpaid tenants.
     /// </summary>
-    private static async Task PublishActiveTenantsWithOffersAsync(ApplicationDbContext db, ILogger logger)
+    private static async Task SyncPublicProfileForLicensedTenantsAsync(ApplicationDbContext db, ILogger logger)
     {
+        var now = DateTime.UtcNow;
         var tenantIdsWithOffers = await db.SubscriptionOfferingsSet
             .IgnoreQueryFilters()
             .Where(o => o.IsActive)
@@ -625,7 +636,10 @@ public static class DependencyInjection
 
         var toPublish = await db.TenantsSet
             .Where(t => tenantIdsWithOffers.Contains(t.Id)
-                        && (t.Status != TenantStatus.Active || !t.IsPublicProfile))
+                        && t.Status == TenantStatus.Active
+                        && t.LicenseExpiresAt != null
+                        && t.LicenseExpiresAt > now
+                        && !t.IsPublicProfile)
             .ToListAsync();
 
         if (toPublish.Count == 0)
@@ -633,25 +647,13 @@ public static class DependencyInjection
 
         foreach (var tenant in toPublish)
         {
-            tenant.Status = TenantStatus.Active;
             tenant.IsPublicProfile = true;
             tenant.UpdatedAt = DateTime.UtcNow;
         }
 
-        // Repair missing OwnerUserId so admin approve/email works later.
-        var users = await db.Users
-            .Where(u => u.TenantId != null && tenantIdsWithOffers.Contains(u.TenantId.Value))
-            .ToListAsync();
-        foreach (var tenant in toPublish.Where(t => string.IsNullOrWhiteSpace(t.OwnerUserId)))
-        {
-            var owner = users.FirstOrDefault(u => u.TenantId == tenant.Id);
-            if (owner is not null)
-                tenant.OwnerUserId = owner.Id;
-        }
-
         await db.SaveChangesAsync();
         logger.LogInformation(
-            "Published {Count} school(s) with active offers for parent search.",
+            "Synced public profile for {Count} licensed school(s) with active offers.",
             toPublish.Count);
     }
 }

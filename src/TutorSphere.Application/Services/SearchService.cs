@@ -56,6 +56,8 @@ public class SearchService : ISearchService
         var query = _db.Tenants
             .Where(t => t.Status == TenantStatus.Active
                         && t.IsPublicProfile
+                        && t.LicenseExpiresAt != null
+                        && t.LicenseExpiresAt > DateTime.UtcNow
                         && tenantIdsWithOffers.Contains(t.Id));
 
         if (!string.IsNullOrWhiteSpace(filters.City))

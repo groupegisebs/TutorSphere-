@@ -46,6 +46,8 @@ public interface IApplicationDbContext
     IQueryable<TutorPayout> TutorPayouts { get; }
     IQueryable<TutorPayout> TutorPayoutsForAnyTenant { get; }
     IQueryable<TutorPayoutAccount> TutorPayoutAccounts { get; }
+    IQueryable<PlatformLicensePayment> PlatformLicensePayments { get; }
+    IQueryable<PlatformLicensePayment> PlatformLicensePaymentsForAnyTenant { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     void Add<T>(T entity) where T : class;

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using TutorSphere.Api.Filters;
 using TutorSphere.Application.DTOs.TutorEarnings;
 using TutorSphere.Application.DTOs.TutorPayouts;
 using TutorSphere.Application.Services;
@@ -10,6 +11,7 @@ namespace TutorSphere.Api.Controllers;
 [ApiController]
 [Route("api/tutor-earnings")]
 [Authorize(Roles = $"{UserRoles.Tutor},{UserRoles.SuperAdmin}")]
+[RequireActiveTutorLicense]
 public class TutorEarningsController : ControllerBase
 {
     private readonly ITutorEarningsService _earnings;

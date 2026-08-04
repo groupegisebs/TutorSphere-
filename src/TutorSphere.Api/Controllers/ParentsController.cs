@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using TutorSphere.Api.Filters;
 using TutorSphere.Application.DTOs.Parents;
 using TutorSphere.Application.DTOs.Students;
 using TutorSphere.Application.Services;
@@ -10,6 +11,7 @@ namespace TutorSphere.Api.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize(Roles = $"{UserRoles.Tutor},{UserRoles.TeachingAssistant},{UserRoles.SuperAdmin}")]
+[RequireActiveTutorLicense]
 public class ParentsController : ControllerBase
 {
     private readonly IParentService _parentService;

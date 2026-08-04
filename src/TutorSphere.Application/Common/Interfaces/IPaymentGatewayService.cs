@@ -1,4 +1,5 @@
 using TutorSphere.Application.DTOs.Payments;
+using TutorSphere.Application.DTOs.PlatformBilling;
 
 namespace TutorSphere.Application.Common.Interfaces;
 
@@ -42,4 +43,16 @@ public interface IPaymentGatewayService
     /// Crée / met à jour le produit+plan dans Pay Gateway et Stripe (SyncToStripe).
     /// </summary>
     Task SyncOfferingCatalogAsync(Guid offeringId, CancellationToken ct = default);
+
+    Task<PlatformLicenseCheckoutResponse> CreatePlatformLicenseCheckoutAsync(
+        Guid tenantId,
+        CreatePlatformLicenseCheckoutRequest request,
+        CancellationToken ct = default);
+
+    Task<PaymentStatusResponse> ConfirmPlatformLicensePaymentAsync(
+        Guid tenantId,
+        Guid? paymentId = null,
+        int maxAttempts = 5,
+        int retryDelayMs = 2000,
+        CancellationToken ct = default);
 }

@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using TutorSphere.Api.Filters;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.Homework;
 using TutorSphere.Domain.Enums;
@@ -9,6 +10,7 @@ namespace TutorSphere.Api.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize(Roles = $"{UserRoles.Tutor},{UserRoles.TeachingAssistant}")]
+[RequireActiveTutorLicense]
 public class HomeworkController : ControllerBase
 {
     private readonly IHomeworkService _homeworkService;

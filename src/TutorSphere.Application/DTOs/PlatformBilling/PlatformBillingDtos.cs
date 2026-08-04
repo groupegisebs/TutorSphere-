@@ -1,0 +1,38 @@
+namespace TutorSphere.Application.DTOs.PlatformBilling;
+
+public record PlatformLicenseStatusDto(
+    Guid TenantId,
+    string SchoolName,
+    string Status,
+    bool HasValidLicense,
+    bool HasPaidLicense,
+    bool RequiresPayment,
+    bool RequiresOnboarding,
+    DateTime? LicenseExpiresAt,
+    DateTime? OnboardingCompletedAt,
+    int? DaysUntilExpiry,
+    decimal AnnualFee,
+    string Currency,
+    bool RenewalSoon);
+
+public record CreatePlatformLicenseCheckoutRequest(string SuccessUrl, string CancelUrl);
+
+public record PlatformLicenseCheckoutResponse(
+    Guid PaymentId,
+    string PaymentCode,
+    string CheckoutUrl,
+    string SessionId,
+    string? ClientSecret,
+    decimal Amount,
+    string Currency);
+
+public record PlatformLicensePaymentStatusDto(
+    Guid PaymentId,
+    string PaymentCode,
+    string GatewayStatus,
+    string LocalStatus,
+    DateTime? PaidAt,
+    DateTime? LicenseExpiresAt,
+    bool HasValidLicense,
+    bool HasPaidLicense,
+    bool RequiresOnboarding);

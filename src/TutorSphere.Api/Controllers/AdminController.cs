@@ -240,6 +240,9 @@ public class AdminController : ControllerBase
 
         tenant.Status = TenantStatus.Active;
         tenant.IsPublicProfile = true;
+        // Ops override : licence + formation considérées complètes.
+        tenant.LicenseExpiresAt = DateTime.UtcNow.AddYears(1);
+        tenant.OnboardingCompletedAt ??= DateTime.UtcNow;
         await _db.SaveChangesAsync(ct);
 
         var ownerUser = string.IsNullOrWhiteSpace(tenant.OwnerUserId)

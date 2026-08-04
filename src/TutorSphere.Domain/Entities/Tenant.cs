@@ -21,6 +21,16 @@ public class Tenant : BaseEntity
     public TenantPlan Plan { get; set; } = TenantPlan.Starter;
     public TenantStatus Status { get; set; } = TenantStatus.PendingValidation;
     public bool IsPublicProfile { get; set; }
+
+    /// <summary>Fin de validité de la licence annuelle plateforme (UTC). Null = jamais payée.</summary>
+    public DateTime? LicenseExpiresAt { get; set; }
+
+    /// <summary>Date UTC de fin de l'auto-formation enseignant (null = pas encore complétée).</summary>
+    public DateTime? OnboardingCompletedAt { get; set; }
+
+    /// <summary>Ids de modules d'auto-formation complétés (séparés par des virgules).</summary>
+    public string? OnboardingProgress { get; set; }
+
     public decimal PlatformCommissionPercent { get; set; } = 10m;
     public string? StripeAccountId { get; set; }
     public string? StripeCustomerId { get; set; }
@@ -43,4 +53,27 @@ public class Tenant : BaseEntity
     public ICollection<Unavailability> Unavailabilities { get; set; } = [];
     public ICollection<Holiday> Holidays { get; set; } = [];
     public ICollection<Vacation> Vacations { get; set; } = [];
+    public ICollection<PlatformLicensePayment> LicensePayments { get; set; } = [];
+
+    /// <summary>Licence payée et non expirée (formation éventuellement encore requise).</summary>
+    public bool HasPaidLicense(DateTime? utcNow = null)
+    {
+        var now = utcNow ?? DateTime.UtcNow;
+        if (Status is TenantStatus.Rejected or TenantStatus.Suspended)
+            return false;
+        return LicenseExpiresAt is { } expires && expires > now;
+    }
+
+    /// <summary>Établissement pleinement opérationnel et visible (payé + formation terminée).</summary>
+    public bool HasValidLicense(DateTime? utcNow = null)
+    {
+        var now = utcNow ?? DateTime.UtcNow;
+        return Status == TenantStatus.Active
+               && OnboardingCompletedAt is not null
+               && LicenseExpiresAt is { } expires
+               && expires > now;
+    }
+
+    public bool RequiresOnboarding(DateTime? utcNow = null) =>
+        HasPaidLicense(utcNow) && OnboardingCompletedAt is null;
 }

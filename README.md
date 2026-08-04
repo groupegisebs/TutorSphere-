@@ -116,14 +116,15 @@ Configurer les secrets et variables GitHub — voir [deploy/GITHUB-SECRETS.md](d
 - [ ] Messagerie et notifications temps réel
 - [ ] Site personnalisé par répétiteur
 - [ ] Recherche publique de répétiteurs
-- [ ] Applications mobiles (Android / iOS)
+- [x] PWA installable (shell hors-ligne ; métier online — Blazor Server)
+- [ ] Applications mobiles natives (Android / iOS)
 - [ ] Internationalisation (FR, EN, ES, PT, AR)
 
 ## Modèle économique
 
-**Répétiteurs :** Starter (14,99 $), Professional (29,99 $), Business (59,99 $), Enterprise (sur devis)
+**Répétiteurs :** frais annuel de **25 $ CAD** pour activer / renouveler l'établissement (paiement via GiseBs Pay Gateway).
 
-**Parents :** Paient uniquement les abonnements choisis
+**Parents :** paient uniquement les abonnements / forfaits de cours choisis
 
 **Commission plateforme :** 5 % à 15 % (paramétrable par tenant)
 

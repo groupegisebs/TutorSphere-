@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using TutorSphere.Api.Filters;
 using TutorSphere.Application.DTOs.Calendar;
 using TutorSphere.Application.DTOs.Lessons;
 using TutorSphere.Application.Services;
@@ -10,6 +11,7 @@ namespace TutorSphere.Api.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize(Roles = $"{UserRoles.Tutor},{UserRoles.TeachingAssistant},{UserRoles.SuperAdmin}")]
+[RequireActiveTutorLicense]
 public class LessonsController : ControllerBase
 {
     private readonly ILessonService _lessonService;

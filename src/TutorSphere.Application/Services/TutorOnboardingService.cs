@@ -1,0 +1,268 @@
+using TutorSphere.Application.Common.Interfaces;
+using TutorSphere.Application.DTOs.Onboarding;
+using TutorSphere.Domain.Enums;
+
+namespace TutorSphere.Application.Services;
+
+public interface ITutorOnboardingService
+{
+    Task<TutorOnboardingStatusDto> GetStatusAsync(string ownerUserId, string culture, CancellationToken ct = default);
+    Task<CompleteOnboardingModuleResult> CompleteModuleAsync(
+        string ownerUserId,
+        CompleteOnboardingModuleRequest request,
+        string culture,
+        CancellationToken ct = default);
+}
+
+public class TutorOnboardingService(
+    IApplicationDbContext db,
+    IEmailService email,
+    IUserContactLookup contacts,
+    IAppUrlProvider urls) : ITutorOnboardingService
+{
+    public Task<TutorOnboardingStatusDto> GetStatusAsync(string ownerUserId, string culture, CancellationToken ct = default)
+    {
+        var tenant = RequireOwner(ownerUserId);
+        var completedIds = ParseCompletedModules(tenant);
+        var modules = BuildModules(culture, completedIds);
+        return Task.FromResult(ToStatus(tenant, modules));
+    }
+
+    public async Task<CompleteOnboardingModuleResult> CompleteModuleAsync(
+        string ownerUserId,
+        CompleteOnboardingModuleRequest request,
+        string culture,
+        CancellationToken ct = default)
+    {
+        var tenant = RequireOwner(ownerUserId);
+        if (!tenant.HasPaidLicense())
+            return new CompleteOnboardingModuleResult(request.ModuleId, false, false, false,
+                "La licence annuelle doit être payée avant la formation.");
+
+        if (tenant.OnboardingCompletedAt is not null)
+            return new CompleteOnboardingModuleResult(request.ModuleId, true, true, tenant.HasValidLicense(), null);
+
+        var completedIds = ParseCompletedModules(tenant);
+        var catalog = BuildModules(culture, completedIds);
+        var module = catalog.FirstOrDefault(m => m.Id.Equals(request.ModuleId, StringComparison.OrdinalIgnoreCase));
+        if (module is null)
+            return new CompleteOnboardingModuleResult(request.ModuleId, false, false, false, "Module introuvable.");
+
+        // Ordre obligatoire
+        var previous = catalog.Where(m => m.Order < module.Order).ToList();
+        if (previous.Any(m => !m.IsCompleted))
+            return new CompleteOnboardingModuleResult(request.ModuleId, false, false, false,
+                "Complétez les modules précédents d'abord.");
+
+        if (module.Quiz.Count > 0)
+        {
+            if (request.QuizAnswers is null || request.QuizAnswers.Count != module.Quiz.Count)
+                return new CompleteOnboardingModuleResult(request.ModuleId, false, false, false,
+                    "Répondez à toutes les questions du quiz.");
+
+            for (var i = 0; i < module.Quiz.Count; i++)
+            {
+                if (request.QuizAnswers[i] != module.Quiz[i].CorrectIndex)
+                    return new CompleteOnboardingModuleResult(request.ModuleId, false, false, false,
+                        "Certaines réponses sont incorrectes. Relisez le module et réessayez.");
+            }
+        }
+
+        if (!completedIds.Contains(module.Id, StringComparer.OrdinalIgnoreCase))
+            completedIds.Add(module.Id);
+
+        // Stocker la progression dans Description metadata is messy — use a dedicated approach:
+        // We encode completed module ids in a transient way via UpdatedAt only when all done.
+        // Better: store in Branding or a simple JSON field. For minimal schema change we already
+        // have OnboardingCompletedAt; track partial progress in Tenant via a new field.
+        SetCompletedModules(tenant, completedIds);
+
+        var allDone = catalog.All(m => completedIds.Contains(m.Id, StringComparer.OrdinalIgnoreCase));
+        if (allDone)
+        {
+            tenant.OnboardingCompletedAt = DateTime.UtcNow;
+            tenant.Status = TenantStatus.Active;
+            tenant.IsPublicProfile = true;
+            tenant.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+
+            var contact = await contacts.GetAsync(tenant.OwnerUserId, ct);
+            if (contact is { } c && !string.IsNullOrWhiteSpace(c.Email))
+            {
+                var firstName = c.DisplayName.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()
+                                ?? c.DisplayName;
+                await email.SendSchoolApprovedAsync(
+                    c.Email,
+                    firstName,
+                    tenant.Name,
+                    $"{urls.WebBaseUrl.TrimEnd('/')}/login/tuteur",
+                    ct);
+            }
+
+            return new CompleteOnboardingModuleResult(module.Id, true, true, true, null);
+        }
+
+        tenant.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return new CompleteOnboardingModuleResult(module.Id, true, false, false, null);
+    }
+
+    private Domain.Entities.Tenant RequireOwner(string ownerUserId) =>
+        db.Tenants.FirstOrDefault(t => t.OwnerUserId == ownerUserId)
+        ?? throw new InvalidOperationException("Aucun établissement associé à ce compte.");
+
+    private static TutorOnboardingStatusDto ToStatus(
+        Domain.Entities.Tenant tenant,
+        IReadOnlyList<TutorOnboardingModuleDto> modules) =>
+        new(
+            tenant.Id,
+            tenant.Name,
+            tenant.HasPaidLicense(),
+            tenant.RequiresOnboarding(),
+            tenant.HasValidLicense(),
+            tenant.OnboardingCompletedAt,
+            tenant.LicenseExpiresAt,
+            modules,
+            modules.Count(m => m.IsCompleted),
+            modules.Count);
+
+    /// <summary>
+    /// Progression partielle stockée dans <see cref="Domain.Entities.TenantBranding.CustomCss"/>
+    /// préfixée (évite une migration de colonne dédiée pour les ids de modules).
+    /// Prefer OnboardingProgressJson on Tenant if present — see Tenant.OnboardingProgress.
+    /// </summary>
+    private static List<string> ParseCompletedModules(Domain.Entities.Tenant tenant)
+    {
+        var raw = tenant.OnboardingProgress;
+        if (string.IsNullOrWhiteSpace(raw))
+            return [];
+
+        return raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static void SetCompletedModules(Domain.Entities.Tenant tenant, IReadOnlyList<string> ids) =>
+        tenant.OnboardingProgress = string.Join(',', ids);
+
+    private static IReadOnlyList<TutorOnboardingModuleDto> BuildModules(string culture, IReadOnlyList<string> completed)
+    {
+        var fr = culture.StartsWith("fr", StringComparison.OrdinalIgnoreCase);
+        var defs = fr ? FrModules() : EnModules();
+        return defs.Select(d => d with
+        {
+            IsCompleted = completed.Contains(d.Id, StringComparer.OrdinalIgnoreCase)
+        }).ToList();
+    }
+
+    private static List<TutorOnboardingModuleDto> FrModules() =>
+    [
+        new("welcome", 1, "Bienvenue sur TutorSphere",
+            "Votre école numérique en 2 minutes.",
+            """
+            <p>TutorSphere est votre <strong>espace répétiteur</strong> : élèves, cours, devoirs et paiements parents.</p>
+            <p>Après cette formation, votre établissement sera <strong>actif et visible</strong> dans la recherche parents.</p>
+            <ul><li>Tableau de bord</li><li>Offres d'abonnement</li><li>Calendrier et salle de classe</li></ul>
+            """,
+            [
+                new("Quel est l'objectif de TutorSphere pour vous ?",
+                    ["Réserver un hôtel", "Gérer votre école de soutien scolaire", "Acheter des fournitures"], 1)
+            ], false),
+        new("offers", 2, "Créer vos offres de cours",
+            "Publiez des forfaits que les parents peuvent choisir.",
+            """
+            <p>Menu <strong>Offres</strong> : créez un forfait (matière, prix, durée, mode en ligne/présentiel).</p>
+            <p>Une offre active devient visible aux parents <em>une fois votre école publique</em>.</p>
+            <p>Astuce : commencez par un forfait simple (ex. 4 séances / mois).</p>
+            """,
+            [
+                new("Où créez-vous un forfait de cours ?",
+                    ["Menu Offres", "Menu Messages", "Espace parent"], 0)
+            ], false),
+        new("students", 3, "Élèves, parents et inscriptions",
+            "Accepter une demande puis encaisser le paiement.",
+            """
+            <p>Un parent (ou élève 14+) s'inscrit à une offre → vous <strong>acceptez</strong> la demande.</p>
+            <p>Ensuite le parent paie via la passerelle sécurisée ; l'abonnement passe <strong>Actif</strong>.</p>
+            <p>Gérez vos élèves dans <strong>Mes élèves</strong> et les parents dans <strong>Parents</strong>.</p>
+            """,
+            [
+                new("Quand le parent peut-il payer ?",
+                    ["Avant toute inscription", "Après votre acceptation de la demande", "Jamais"], 1)
+            ], false),
+        new("calendar", 4, "Calendrier, cours et devoirs",
+            "Planifier et animer vos séances.",
+            """
+            <p><strong>Calendrier / Cours</strong> : les séances peuvent être générées après paiement.</p>
+            <p>Lancez la <strong>salle de classe</strong> le jour J, suivez les présences, publiez des <strong>devoirs</strong> et rapports.</p>
+            <p>Indiquez vos indisponibilités pour éviter les conflits.</p>
+            """,
+            [
+                new("Que pouvez-vous faire le jour d'un cours ?",
+                    ["Ouvrir la salle de classe et suivre les présences", "Modifier le prix Stripe manuellement", "Supprimer la plateforme"], 0)
+            ], false),
+        new("payouts", 5, "Revenus et visibilité",
+            "Paiements, commission et profil public.",
+            """
+            <p>Les parents paient vos forfaits ; TutorSphere prélève une <strong>commission</strong> (5–15 %).</p>
+            <p>Configurez un compte de versement (Stripe Connect / PayPal) dans les paramètres de payout.</p>
+            <p>À la fin de cette formation, votre école devient <strong>visible par tous</strong> dans la recherche.</p>
+            """,
+            [
+                new("Quand votre école devient-elle visible publiquement ?",
+                    ["Dès l'inscription", "Après paiement + cette formation", "Jamais"], 1)
+            ], false)
+    ];
+
+    private static List<TutorOnboardingModuleDto> EnModules() =>
+    [
+        new("welcome", 1, "Welcome to TutorSphere",
+            "Your digital tutoring school in 2 minutes.",
+            """
+            <p>TutorSphere is your <strong>tutor workspace</strong>: students, lessons, homework and parent payments.</p>
+            <p>After this training, your school will be <strong>active and visible</strong> in parent search.</p>
+            """,
+            [
+                new("What is TutorSphere for you?",
+                    ["Book a hotel", "Run your tutoring school", "Buy supplies"], 1)
+            ], false),
+        new("offers", 2, "Create course offerings",
+            "Publish packages parents can enroll in.",
+            """
+            <p>Use <strong>Offers</strong> to create a package (subject, price, duration, online/in-person).</p>
+            <p>Active offers become visible once your school is public.</p>
+            """,
+            [
+                new("Where do you create a course package?",
+                    ["Offers menu", "Messages menu", "Parent portal"], 0)
+            ], false),
+        new("students", 3, "Students, parents and enrollment",
+            "Accept a request, then collect payment.",
+            """
+            <p>A parent enrolls → you <strong>accept</strong> → they pay → subscription becomes <strong>Active</strong>.</p>
+            """,
+            [
+                new("When can the parent pay?",
+                    ["Before enrollment", "After you accept the request", "Never"], 1)
+            ], false),
+        new("calendar", 4, "Calendar, lessons and homework",
+            "Plan and run sessions.",
+            """
+            <p>Open the <strong>classroom</strong>, track attendance, publish <strong>homework</strong> and reports.</p>
+            """,
+            [
+                new("What can you do on lesson day?",
+                    ["Open the classroom and track attendance", "Edit Stripe prices manually", "Delete the platform"], 0)
+            ], false),
+        new("payouts", 5, "Revenue and visibility",
+            "Payouts, commission and public profile.",
+            """
+            <p>Parents pay your packages; TutorSphere takes a <strong>commission</strong> (5–15%).</p>
+            <p>Completing this training makes your school <strong>visible to everyone</strong>.</p>
+            """,
+            [
+                new("When does your school become publicly visible?",
+                    ["Right after signup", "After payment + this training", "Never"], 1)
+            ], false)
+    ];
+}

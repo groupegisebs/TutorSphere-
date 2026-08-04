@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
+using TutorSphere.Api.Filters;
 using TutorSphere.Application.DTOs.Documents;
 using TutorSphere.Application.Services;
 using TutorSphere.Domain.Enums;
@@ -10,6 +11,7 @@ namespace TutorSphere.Api.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Authorize(Roles = $"{UserRoles.Tutor},{UserRoles.TeachingAssistant},{UserRoles.SuperAdmin}")]
+[RequireActiveTutorLicense]
 public class DocumentsController : ControllerBase
 {
     private readonly IDocumentService _documentService;

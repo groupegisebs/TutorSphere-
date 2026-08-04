@@ -2,8 +2,10 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using TutorSphere.Application.Common;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.Payments;
+using TutorSphere.Application.DTOs.PlatformBilling;
 using TutorSphere.Application.Services;
 using TutorSphere.Domain.Entities;
 using TutorSphere.Domain.Enums;
@@ -18,9 +20,12 @@ internal sealed class PayGatewayService : IPaymentGatewayService
     private readonly IApplicationDbContext _db;
     private readonly PayGatewayClient _gateway;
     private readonly PayGatewaySettings _settings;
+    private readonly PlatformBillingOptions _platformBilling;
     private readonly ISubscriptionLessonScheduler _lessonScheduler;
     private readonly IInvoiceService _invoices;
     private readonly IBillingEmailOrchestrator _billingEmail;
+    private readonly IUserContactLookup _contacts;
+    private readonly IEmailService _email;
     private readonly ILogger<PayGatewayService> _logger;
     private string? _cachedPublishableKey;
 
@@ -28,17 +33,23 @@ internal sealed class PayGatewayService : IPaymentGatewayService
         IApplicationDbContext db,
         PayGatewayClient gateway,
         IOptions<PayGatewaySettings> settings,
+        IOptions<PlatformBillingOptions> platformBilling,
         ISubscriptionLessonScheduler lessonScheduler,
         IInvoiceService invoices,
         IBillingEmailOrchestrator billingEmail,
+        IUserContactLookup contacts,
+        IEmailService email,
         ILogger<PayGatewayService> logger)
     {
         _db = db;
         _gateway = gateway;
         _settings = settings.Value;
+        _platformBilling = platformBilling.Value;
         _lessonScheduler = lessonScheduler;
         _invoices = invoices;
         _billingEmail = billingEmail;
+        _contacts = contacts;
+        _email = email;
         _logger = logger;
     }
 
@@ -466,4 +477,258 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             "EXPIRED" => SubscriptionStatus.Expired,
             _ => SubscriptionStatus.Pending
         };
+
+    public async Task<PlatformLicenseCheckoutResponse> CreatePlatformLicenseCheckoutAsync(
+        Guid tenantId,
+        CreatePlatformLicenseCheckoutRequest request,
+        CancellationToken ct = default)
+    {
+        var tenant = await _db.Tenants.FirstOrDefaultAsync(t => t.Id == tenantId, ct)
+            ?? throw new InvalidOperationException("Établissement introuvable.");
+
+        var contact = await _contacts.GetAsync(tenant.OwnerUserId, ct)
+            ?? throw new InvalidOperationException("Coordonnées du propriétaire introuvables.");
+
+        var amount = _platformBilling.AnnualFeeCad;
+        var currency = string.IsNullOrWhiteSpace(_platformBilling.Currency)
+            ? "CAD"
+            : _platformBilling.Currency.ToUpperInvariant();
+        var productCode = string.IsNullOrWhiteSpace(_platformBilling.ProductCode)
+            ? "TUTORSPHERE-LICENSE-ANNUAL"
+            : _platformBilling.ProductCode.Trim().ToUpperInvariant();
+        var planCode = string.IsNullOrWhiteSpace(_platformBilling.PlanCode)
+            ? "ANNUAL"
+            : _platformBilling.PlanCode.Trim().ToUpperInvariant();
+
+        await _gateway.CreateCatalogItemAsync(new GatewayCreateCatalogItemRequest(
+            productCode,
+            "Licence annuelle TutorSphere",
+            "Activation / renouvellement de l'établissement (25 $ CAD / an)",
+            planCode,
+            "Annuel",
+            amount,
+            currency.ToLowerInvariant(),
+            "Yearly",
+            SyncToStripe: true), ct);
+
+        var licensePayment = new PlatformLicensePayment
+        {
+            TenantId = tenant.Id,
+            Amount = amount,
+            Currency = currency,
+            Status = PaymentStatus.Pending
+        };
+        _db.Add(licensePayment);
+        await _db.SaveChangesAsync(ct);
+
+        var customerCode = TruncateCustomerCode(
+            _gateway.UsesSandbox
+                ? $"SBX-TUT-{tenant.Id:N}"
+                : $"TUT-{tenant.Id:N}".ToUpperInvariant());
+
+        var metadata = JsonSerializer.Serialize(new
+        {
+            platform_license_payment_id = licensePayment.Id,
+            tenant_id = tenant.Id,
+            type = "platform_license_annual"
+        });
+
+        var checkout = await _gateway.CreateCheckoutSessionAsync(new GatewayCheckoutSessionRequest(
+            customerCode,
+            contact.Email,
+            contact.DisplayName,
+            tenant.OwnerUserId,
+            productCode,
+            planCode,
+            request.SuccessUrl,
+            request.CancelUrl,
+            metadata,
+            TrialDays: null), ct);
+
+        licensePayment.GatewayPaymentCode = checkout.PaymentCode;
+        _cachedPublishableKey ??= checkout.PublishableKey;
+        await _db.SaveChangesAsync(ct);
+
+        _logger.LogInformation(
+            "Checkout licence plateforme créé pour tenant {TenantId} (paymentCode={PaymentCode})",
+            tenant.Id,
+            checkout.PaymentCode);
+
+        return new PlatformLicenseCheckoutResponse(
+            licensePayment.Id,
+            checkout.PaymentCode,
+            checkout.CheckoutUrl,
+            checkout.SessionId,
+            checkout.ClientSecret,
+            amount,
+            currency);
+    }
+
+    public async Task<PaymentStatusResponse> ConfirmPlatformLicensePaymentAsync(
+        Guid tenantId,
+        Guid? paymentId = null,
+        int maxAttempts = 5,
+        int retryDelayMs = 2000,
+        CancellationToken ct = default)
+    {
+        PlatformLicensePayment? payment;
+        if (paymentId.HasValue)
+        {
+            payment = await _db.PlatformLicensePaymentsForAnyTenant
+                .FirstOrDefaultAsync(p => p.Id == paymentId.Value && p.TenantId == tenantId, ct);
+        }
+        else
+        {
+            payment = await _db.PlatformLicensePaymentsForAnyTenant
+                .Where(p => p.TenantId == tenantId)
+                .OrderByDescending(p => p.CreatedAt)
+                .FirstOrDefaultAsync(ct);
+        }
+
+        if (payment is null)
+            throw new InvalidOperationException("Aucun paiement de licence trouvé.");
+
+        if (string.IsNullOrEmpty(payment.GatewayPaymentCode))
+            throw new InvalidOperationException("Aucun code de paiement passerelle associé.");
+
+        maxAttempts = Math.Max(1, maxAttempts);
+        PaymentStatusResponse? last = null;
+        Exception? lastError = null;
+
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            try
+            {
+                last = await SyncPlatformLicensePaymentAsync(payment.Id, ct);
+                if (string.Equals(last.GatewayStatus, "Succeeded", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(last.LocalStatus, nameof(PaymentStatus.Completed), StringComparison.OrdinalIgnoreCase))
+                {
+                    return last;
+                }
+            }
+            catch (Exception ex) when (attempt < maxAttempts)
+            {
+                lastError = ex;
+                _logger.LogInformation(
+                    ex,
+                    "Confirm licence tenant {TenantId} tentative {Attempt}/{Max}",
+                    tenantId,
+                    attempt,
+                    maxAttempts);
+            }
+
+            if (attempt < maxAttempts)
+                await Task.Delay(retryDelayMs, ct);
+        }
+
+        if (last is not null)
+            return last;
+
+        throw lastError
+            ?? new InvalidOperationException("Le paiement de licence n'a pas encore été confirmé.");
+    }
+
+    private async Task<PaymentStatusResponse> SyncPlatformLicensePaymentAsync(
+        Guid paymentId,
+        CancellationToken ct)
+    {
+        var payment = await _db.PlatformLicensePaymentsForAnyTenant.FirstOrDefaultAsync(p => p.Id == paymentId, ct)
+            ?? throw new InvalidOperationException("Paiement de licence introuvable.");
+
+        if (string.IsNullOrEmpty(payment.GatewayPaymentCode))
+            throw new InvalidOperationException("Aucun code de paiement passerelle associé.");
+
+        var gatewayPayment = await _gateway.GetPaymentAsync(payment.GatewayPaymentCode, ct)
+            ?? throw new InvalidOperationException("Paiement introuvable dans la passerelle.");
+
+        await ApplyPlatformLicensePaymentStatusAsync(payment, gatewayPayment, ct);
+
+        return new PaymentStatusResponse(
+            payment.Id,
+            gatewayPayment.PaymentCode,
+            gatewayPayment.Status,
+            payment.Status.ToString(),
+            payment.CompletedAt);
+    }
+
+    private async Task ApplyPlatformLicensePaymentStatusAsync(
+        PlatformLicensePayment payment,
+        GatewayPaymentResponse gatewayPayment,
+        CancellationToken ct)
+    {
+        var previousStatus = payment.Status;
+        var mapped = MapPaymentStatus(gatewayPayment.Status);
+        if (mapped == payment.Status && mapped != PaymentStatus.Completed)
+            return;
+
+        payment.Status = mapped;
+
+        if (mapped == PaymentStatus.Completed)
+        {
+            payment.CompletedAt = gatewayPayment.PaidAt ?? DateTime.UtcNow;
+
+            var tenant = await _db.Tenants.FirstOrDefaultAsync(t => t.Id == payment.TenantId, ct);
+            if (tenant is not null)
+            {
+                var periodStart = DateTime.UtcNow;
+                // Renouvellement : prolonger depuis l'échéance actuelle si encore future.
+                if (tenant.LicenseExpiresAt is { } current && current > periodStart)
+                    periodStart = current;
+
+                var periodEnd = periodStart.AddYears(1);
+                payment.PeriodStart = periodStart;
+                payment.PeriodEnd = periodEnd;
+
+                tenant.LicenseExpiresAt = periodEnd;
+                tenant.UpdatedAt = DateTime.UtcNow;
+
+                // Première activation : formation obligatoire avant visibilité publique.
+                // Renouvellement : garder Active si l'onboarding est déjà fait.
+                if (tenant.OnboardingCompletedAt is null)
+                {
+                    tenant.Status = TenantStatus.AwaitingOnboarding;
+                    tenant.IsPublicProfile = false;
+                }
+                else
+                {
+                    tenant.Status = TenantStatus.Active;
+                    tenant.IsPublicProfile = true;
+                }
+
+                await _db.SaveChangesAsync(ct);
+
+                if (previousStatus != PaymentStatus.Completed)
+                {
+                    var contact = await _contacts.GetAsync(tenant.OwnerUserId, ct);
+                    if (contact is { } c && !string.IsNullOrWhiteSpace(c.Email))
+                    {
+                        var firstName = c.DisplayName.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                                            .FirstOrDefault()
+                                        ?? c.DisplayName;
+                        var invoiceUrl = string.Empty;
+                        await _email.SendTutorPaymentReceiptAsync(
+                            c.Email,
+                            firstName,
+                            payment.Amount,
+                            invoiceUrl,
+                            ct);
+                        // SCHOOL_APPROVED uniquement quand l'école est vraiment ouverte au public
+                        if (tenant.Status == TenantStatus.Active)
+                        {
+                            await _email.SendSchoolApprovedAsync(
+                                c.Email,
+                                firstName,
+                                tenant.Name,
+                                "https://app.tutorsphere.gisebs.com/login/tuteur",
+                                ct);
+                        }
+                    }
+                }
+
+                return;
+            }
+        }
+
+        await _db.SaveChangesAsync(ct);
+    }
 }

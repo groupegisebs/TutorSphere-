@@ -1,6 +1,7 @@
 using System.Globalization;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Localization;
+using Microsoft.AspNetCore.StaticFiles;
 using TutorSphere.Application.Common;
 using TutorSphere.Web.Components;
 using TutorSphere.Web.Services;
@@ -95,6 +96,26 @@ app.Use(async (context, next) =>
 
 app.UseRequestLocalization();
 app.UseAntiforgery();
+
+// PWA: keep SW + manifest fresh; ensure .webmanifest MIME type.
+app.Use(async (context, next) =>
+{
+    var path = context.Request.Path.Value ?? string.Empty;
+    if (path.Equals("/service-worker.js", StringComparison.OrdinalIgnoreCase)
+        || path.Equals("/manifest.webmanifest", StringComparison.OrdinalIgnoreCase))
+    {
+        context.Response.Headers.CacheControl = "no-cache";
+    }
+
+    await next();
+});
+
+var contentTypeProvider = new FileExtensionContentTypeProvider();
+contentTypeProvider.Mappings[".webmanifest"] = "application/manifest+json";
+app.UseStaticFiles(new StaticFileOptions
+{
+    ContentTypeProvider = contentTypeProvider
+});
 
 MapAuthBffEndpoints(app);
 
