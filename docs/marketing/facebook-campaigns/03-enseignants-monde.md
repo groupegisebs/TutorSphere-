@@ -10,6 +10,11 @@ Regions: Europe, Americas, Asia, Australia — adapt creative to locale; copy be
 
 ## English
 
+### Creative image
+![Teachers world — EN](images/fb-enseignants-monde-en.png)
+
+File: `images/fb-enseignants-monde-en.png`
+
 ### Hook
 Turn classroom expertise into flexible extra income.
 
@@ -40,6 +45,11 @@ Earnings depend on your activity and demand. No results guaranteed.
 ---
 
 ## Español
+
+### Imagen creativa
+![Docentes mundo — ES](images/fb-enseignants-monde-es.png)
+
+Archivo: `images/fb-enseignants-monde-es.png`
 
 ### Hook
 Convierte tu experiencia docente en ingresos extra.
@@ -72,6 +82,11 @@ Los ingresos varían según tu actividad. No se garantiza ningún resultado.
 
 ## Deutsch
 
+### Kreativbild
+![Lehrkräfte Welt — DE](images/fb-enseignants-monde-de.png)
+
+Datei: `images/fb-enseignants-monde-de.png`
+
 ### Hook
 Aus Lehrer-Know-how wird flexibles Nebeneinkommen.
 
@@ -103,6 +118,11 @@ Einkommen hängt von Aktivität und Nachfrage ab. Keine Garantie.
 
 ## العربية
 
+### الصورة الإعلانية
+![معلمون العالم — AR](images/fb-enseignants-monde-ar.png)
+
+الملف: `images/fb-enseignants-monde-ar.png`
+
 ### Hook
 حوّل خبرتك التعليمية إلى دخل إضافي مرن.
 
@@ -133,6 +153,11 @@ TutorSphere: باقات، حصص، واجبات، دفع أولياء الأمو
 ---
 
 ## 中文（简体 / Mandarin）
+
+### 创意图片
+![全球教师 — ZH](images/fb-enseignants-monde-zh.png)
+
+文件：`images/fb-enseignants-monde-zh.png`
 
 ### Hook
 把教学经验变成灵活的额外收入。

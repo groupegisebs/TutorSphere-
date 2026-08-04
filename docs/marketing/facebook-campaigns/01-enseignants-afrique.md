@@ -8,6 +8,11 @@
 
 ## Français (Afrique francophone)
 
+### Créa image
+![Enseignants Afrique — FR](images/fb-enseignants-afrique-fr.png)
+
+Fichier : `images/fb-enseignants-afrique-fr.png`
+
 ### Hook
 Ton expertise mérite mieux qu’un seul salaire.
 
@@ -40,6 +45,11 @@ Les revenus dépendent de votre activité et de la demande. Aucun résultat fina
 
 ## English (Anglophone Africa)
 
+### Creative image
+![Teachers Africa — EN](images/fb-enseignants-afrique-en.png)
+
+File: `images/fb-enseignants-afrique-en.png`
+
 ### Hook
 You’re already teaching. Now get paid beyond the classroom.
 
@@ -70,6 +80,11 @@ Earnings vary by activity and demand. No financial results are guaranteed.
 ---
 
 ## Português (África lusófona)
+
+### Imagem criativa
+![Professores África — PT](images/fb-enseignants-afrique-pt.png)
+
+Ficheiro: `images/fb-enseignants-afrique-pt.png`
 
 ### Hook
 A sua competência pode render mais do que um salário.

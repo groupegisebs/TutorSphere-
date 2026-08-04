@@ -8,6 +8,11 @@
 
 ## Français
 
+### Créa image
+![Étudiants Afrique — FR](images/fb-etudiants-afrique-fr.png)
+
+Fichier : `images/fb-etudiants-afrique-fr.png`
+
 ### Hook
 Finance tes études en enseignant ce que tu maîtrises.
 
@@ -41,6 +46,11 @@ Les revenus dépendent de votre activité et de la demande. Aucun résultat fina
 
 ## English
 
+### Creative image
+![Students Africa — EN](images/fb-etudiants-afrique-en.png)
+
+File: `images/fb-etudiants-afrique-en.png`
+
 ### Hook
 Fund your studies by teaching what you already know.
 
@@ -72,6 +82,11 @@ Earnings vary. No financial results are guaranteed.
 ---
 
 ## Português
+
+### Imagem criativa
+![Estudantes África — PT](images/fb-etudiants-afrique-pt.png)
+
+Ficheiro: `images/fb-etudiants-afrique-pt.png`
 
 ### Hook
 Financie os estudos ensinando o que já sabe.

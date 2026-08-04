@@ -34,13 +34,20 @@ Ne promettez **pas** un revenu garanti. Parlez d’**opportunité**, de **flexib
 - Activation annuelle à **10 $ USD** seulement  
 - Visible par les parents après formation  
 
-## Concepts visuels (hints)
+## Créas image (générées)
 
-- Enseignant au tableau / Zoom + sourire + téléphone avec dashboard  
-- Étudiant en bibliothèque qui donne un cours en ligne  
-- Carte Afrique / globe + « 10 $/an » en overlay discret  
-- Avant/après : salaire seul vs revenus complémentaires (sans chiffres inventés)  
-- Couleurs marque TutorSphere (violet / navy) — éviter le look « get rich quick »
+Toutes les fiches ont une **image carrée 1:1** prête pour Meta Ads (placement Feed / Instagram).
+
+Dossier : `images/`
+
+| Campagne | Fichiers |
+|----------|----------|
+| Enseignants Afrique | `fb-enseignants-afrique-{fr,en,pt}.png` |
+| Étudiants Afrique | `fb-etudiants-afrique-{fr,en,pt}.png` |
+| Enseignants monde | `fb-enseignants-monde-{en,es,de,ar,zh}.png` |
+| Étudiants monde | `fb-etudiants-monde-{en,es,de,ar,zh}.png` |
+
+Uploader le PNG correspondant dans Meta Ads Manager (créatif principal). Le texte de la fiche reste le copy primaire / titres / description.
 
 ## Disclaimer (toutes langues)
 
@@ -50,12 +57,13 @@ Ne promettez **pas** un revenu garanti. Parlez d’**opportunité**, de **flexib
 
 Chaque variante Meta Ads contient :
 
-1. Hook (1 ligne)  
-2. Texte court (~125–300 car.) + texte long  
-3. 3 titres (≤ ~40 car.)  
-4. Description du lien  
-5. CTA localisé  
-6. Disclaimer  
+1. **Image générée** (lien vers `images/…`)  
+2. Hook (1 ligne)  
+3. Texte court (~125–300 car.) + texte long  
+4. 3 titres (≤ ~40 car.)  
+5. Description du lien  
+6. CTA localisé  
+7. Disclaimer  
 
 Fichiers :
 

@@ -10,6 +10,11 @@ Regions: Europe, Americas, Asia, Australia.
 
 ## English
 
+### Creative image
+![Students world — EN](images/fb-etudiants-monde-en.png)
+
+File: `images/fb-etudiants-monde-en.png`
+
 ### Hook
 Fund your studies by tutoring what you already aced.
 
@@ -40,6 +45,11 @@ Earnings vary. No financial results guaranteed.
 ---
 
 ## Español
+
+### Imagen creativa
+![Estudiantes mundo — ES](images/fb-etudiants-monde-es.png)
+
+Archivo: `images/fb-etudiants-monde-es.png`
 
 ### Hook
 Financia tus estudios enseñando lo que ya dominas.
@@ -72,6 +82,11 @@ Los ingresos varían. No se garantiza ningún resultado.
 
 ## Deutsch
 
+### Kreativbild
+![Studenten Welt — DE](images/fb-etudiants-monde-de.png)
+
+Datei: `images/fb-etudiants-monde-de.png`
+
 ### Hook
 Studien finanzieren — mit dem, was du schon kannst.
 
@@ -103,6 +118,11 @@ Einkommen variiert. Keine Garantie.
 
 ## العربية
 
+### الصورة الإعلانية
+![طلاب العالم — AR](images/fb-etudiants-monde-ar.png)
+
+الملف: `images/fb-etudiants-monde-ar.png`
+
 ### Hook
 موّل دراستك بتعليم ما تُجيده أصلاً.
 
@@ -133,6 +153,11 @@ TutorSphere = مدرستك الرقمية.
 ---
 
 ## 中文（简体 / Mandarin）
+
+### 创意图片
+![全球学生 — ZH](images/fb-etudiants-monde-zh.png)
+
+文件：`images/fb-etudiants-monde-zh.png`
 
 ### Hook
 用你会的科目，赚学费和生活费。
