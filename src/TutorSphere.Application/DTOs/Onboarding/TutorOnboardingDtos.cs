@@ -21,10 +21,10 @@ public record TutorOnboardingModuleDto(
     IReadOnlyList<TutorOnboardingQuizItemDto> Quiz,
     bool IsCompleted);
 
+/// <summary>Quiz exposé au client — sans l'index de la bonne réponse.</summary>
 public record TutorOnboardingQuizItemDto(
     string Question,
-    IReadOnlyList<string> Choices,
-    int CorrectIndex);
+    IReadOnlyList<string> Choices);
 
 public record CompleteOnboardingModuleRequest(string ModuleId, IReadOnlyList<int> QuizAnswers);
 

@@ -97,6 +97,10 @@ public class AuthService : IAuthService
         if (await _userManager.IsLockedOutAsync(user))
             throw new UnauthorizedAccessException("Ce compte est désactivé. Contactez l'administrateur.");
 
+        if (!await _userManager.IsEmailConfirmedAsync(user))
+            throw new UnauthorizedAccessException(
+                "Veuillez confirmer votre adresse e-mail avant de vous connecter. Consultez votre boîte de réception.");
+
         if (!await _userManager.CheckPasswordAsync(user, request.Password))
             throw new UnauthorizedAccessException("Identifiants invalides.");
 

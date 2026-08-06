@@ -533,6 +533,8 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             type = "platform_license_annual"
         });
 
+        var successUrl = AppendQuery(request.SuccessUrl, "paymentId", licensePayment.Id.ToString("D"));
+
         var checkout = await _gateway.CreateCheckoutSessionAsync(new GatewayCheckoutSessionRequest(
             customerCode,
             contact.Email,
@@ -540,7 +542,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             tenant.OwnerUserId,
             productCode,
             planCode,
-            request.SuccessUrl,
+            successUrl,
             request.CancelUrl,
             metadata,
             TrialDays: null), ct);
@@ -730,5 +732,14 @@ internal sealed class PayGatewayService : IPaymentGatewayService
         }
 
         await _db.SaveChangesAsync(ct);
+    }
+
+    private static string AppendQuery(string url, string key, string value)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return $"?{Uri.EscapeDataString(key)}={Uri.EscapeDataString(value)}";
+
+        var separator = url.Contains('?', StringComparison.Ordinal) ? "&" : "?";
+        return $"{url}{separator}{Uri.EscapeDataString(key)}={Uri.EscapeDataString(value)}";
     }
 }

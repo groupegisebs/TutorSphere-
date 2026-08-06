@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.AspNetCore.Components;
 
 namespace TutorSphere.Web.Services;
 
@@ -17,17 +18,20 @@ public sealed record ApiResult<T>(T? Value, string? Error)
 public sealed class ApiClient
 {
     public const string SessionExpiredMessage = "Session expirée. Veuillez vous reconnecter.";
+    public const string LicenseRequiredMessage = "Licence annuelle ou auto-formation requise.";
 
     private readonly HttpClient _http;
     private readonly AuthService _auth;
+    private readonly NavigationManager _nav;
 
     private static readonly JsonSerializerOptions JsonOpts =
         new(JsonSerializerDefaults.Web);
 
-    public ApiClient(HttpClient http, AuthService auth)
+    public ApiClient(HttpClient http, AuthService auth, NavigationManager nav)
     {
         _http = http;
         _auth = auth;
+        _nav = nav;
     }
 
     private async Task<HttpRequestMessage> BuildRequestAsync(HttpMethod method, string url)
@@ -70,14 +74,57 @@ public sealed class ApiClient
     private static ApiResult<T> ForbiddenResult<T>() where T : class =>
         new(null, "Accès refusé. Connectez-vous avec un compte parent.");
 
-    private static ApiResult<T> FailFromResponse<T>(HttpResponseMessage resp, string responseBody) where T : class
+    private ApiResult<T> FailFromResponse<T>(HttpResponseMessage resp, string responseBody) where T : class
     {
         if (resp.StatusCode == HttpStatusCode.Forbidden)
             return ForbiddenResult<T>();
 
+        if (resp.StatusCode == HttpStatusCode.PaymentRequired)
+        {
+            TryRedirectLicenseGate(responseBody);
+            return new ApiResult<T>(null, ExtractError(responseBody) ?? LicenseRequiredMessage);
+        }
+
         var error = ExtractError(responseBody)
             ?? $"La requête a échoué ({(int)resp.StatusCode}).";
         return new ApiResult<T>(null, error);
+    }
+
+    private void TryRedirectLicenseGate(string responseBody)
+    {
+        try
+        {
+            var path = new Uri(_nav.Uri).AbsolutePath;
+            if (path.Contains("/tutor/activate", StringComparison.OrdinalIgnoreCase)
+                || path.Contains("/tutor/onboarding", StringComparison.OrdinalIgnoreCase)
+                || path.Contains("/login", StringComparison.OrdinalIgnoreCase))
+                return;
+
+            string? activateUrl = null;
+            string? code = null;
+            if (!string.IsNullOrWhiteSpace(responseBody))
+            {
+                using var doc = JsonDocument.Parse(responseBody);
+                if (doc.RootElement.TryGetProperty("activateUrl", out var urlEl)
+                    && urlEl.ValueKind == JsonValueKind.String)
+                    activateUrl = urlEl.GetString();
+                if (doc.RootElement.TryGetProperty("code", out var codeEl)
+                    && codeEl.ValueKind == JsonValueKind.String)
+                    code = codeEl.GetString();
+            }
+
+            var target = !string.IsNullOrWhiteSpace(activateUrl)
+                ? activateUrl!
+                : string.Equals(code, "ONBOARDING_REQUIRED", StringComparison.OrdinalIgnoreCase)
+                    ? "/tutor/onboarding"
+                    : "/tutor/activate";
+
+            _nav.NavigateTo(target, forceLoad: true);
+        }
+        catch
+        {
+            // Ne pas casser l'appel API si la navigation échoue.
+        }
     }
 
     public async Task<ApiResult<T>> GetWithErrorAsync<T>(string url) where T : class
@@ -232,6 +279,12 @@ public sealed class ApiClient
 
             if (resp.StatusCode == HttpStatusCode.Forbidden)
                 return new ApiResult<bool>(false, "Accès refusé. Connectez-vous avec un compte parent.");
+
+            if (resp.StatusCode == HttpStatusCode.PaymentRequired)
+            {
+                TryRedirectLicenseGate(responseBody);
+                return new ApiResult<bool>(false, ExtractError(responseBody) ?? LicenseRequiredMessage);
+            }
 
             if (!resp.IsSuccessStatusCode)
             {

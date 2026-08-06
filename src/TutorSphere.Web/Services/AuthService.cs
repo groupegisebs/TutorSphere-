@@ -122,7 +122,7 @@ public sealed class AuthService
 
             ApplyAuthenticatedSession(result);
             await PersistSessionAsync(result);
-            return new LoginResult(true, null, RoleToRoute(result.Role ?? ""));
+            return new LoginResult(true, null, await ResolvePostLoginRouteAsync(result.Role ?? ""));
         }
         catch (Exception ex)
         {
@@ -156,7 +156,7 @@ public sealed class AuthService
 
             ApplyAuthenticatedSession(result);
             await PersistSessionAsync(result);
-            return new LoginResult(true, null, RoleToRoute(result.Role ?? ""));
+            return new LoginResult(true, null, await ResolvePostLoginRouteAsync(result.Role ?? ""));
         }
         catch (Exception ex)
         {
@@ -480,14 +480,53 @@ public sealed class AuthService
         }
     }
 
+    private async Task<string> ResolvePostLoginRouteAsync(string role)
+    {
+        if (string.Equals(role, "Tutor", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                using var req = new HttpRequestMessage(HttpMethod.Get, "api/platform-billing/status");
+                if (!string.IsNullOrEmpty(Token))
+                    req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", Token);
+
+                using var resp = await _http.SendAsync(req);
+                if (resp.IsSuccessStatusCode)
+                {
+                    var status = await resp.Content.ReadFromJsonAsync<TutorLicenseStatusDto>(JsonOpts);
+                    if (status?.HasValidLicense == true)
+                        return "/tutor/dashboard";
+                    if (status?.RequiresOnboarding == true)
+                        return "/tutor/onboarding";
+                    return "/tutor/activate";
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Unable to resolve tutor post-login route from license status");
+            }
+
+            return "/tutor/activate";
+        }
+
+        return RoleToRoute(role);
+    }
+
     private static string RoleToRoute(string role) => role switch
     {
         "SuperAdmin" or "PlatformAdmin" => "/admin/dashboard",
-        "Tutor" or "TeachingAssistant" => "/tutor/activate",
+        "Tutor" => "/tutor/activate",
+        "TeachingAssistant" => "/tutor/dashboard",
         "Parent" => "/parent",
         "Student" => "/student/dashboard",
         _ => "/tutor/dashboard"
     };
+
+    private sealed record TutorLicenseStatusDto(
+        bool HasValidLicense,
+        bool HasPaidLicense,
+        bool RequiresOnboarding);
+
 
     private static string? TryExtractError(string body)
     {

@@ -24,7 +24,7 @@ public class TutorOnboardingService(
     {
         var tenant = RequireOwner(ownerUserId);
         var completedIds = ParseCompletedModules(tenant);
-        var modules = BuildModules(culture, completedIds);
+        var modules = BuildModulesForClient(culture, completedIds);
         return Task.FromResult(ToStatus(tenant, modules));
     }
 
@@ -43,14 +43,13 @@ public class TutorOnboardingService(
             return new CompleteOnboardingModuleResult(request.ModuleId, true, true, tenant.HasValidLicense(), null);
 
         var completedIds = ParseCompletedModules(tenant);
-        var catalog = BuildModules(culture, completedIds);
+        var catalog = GetModuleCatalog(culture);
         var module = catalog.FirstOrDefault(m => m.Id.Equals(request.ModuleId, StringComparison.OrdinalIgnoreCase));
         if (module is null)
             return new CompleteOnboardingModuleResult(request.ModuleId, false, false, false, "Module introuvable.");
 
-        // Ordre obligatoire
         var previous = catalog.Where(m => m.Order < module.Order).ToList();
-        if (previous.Any(m => !m.IsCompleted))
+        if (previous.Any(m => !completedIds.Contains(m.Id, StringComparer.OrdinalIgnoreCase)))
             return new CompleteOnboardingModuleResult(request.ModuleId, false, false, false,
                 "Complétez les modules précédents d'abord.");
 
@@ -71,10 +70,6 @@ public class TutorOnboardingService(
         if (!completedIds.Contains(module.Id, StringComparer.OrdinalIgnoreCase))
             completedIds.Add(module.Id);
 
-        // Stocker la progression dans Description metadata is messy — use a dedicated approach:
-        // We encode completed module ids in a transient way via UpdatedAt only when all done.
-        // Better: store in Branding or a simple JSON field. For minimal schema change we already
-        // have OnboardingCompletedAt; track partial progress in Tenant via a new field.
         SetCompletedModules(tenant, completedIds);
 
         var allDone = catalog.All(m => completedIds.Contains(m.Id, StringComparer.OrdinalIgnoreCase));
@@ -126,11 +121,6 @@ public class TutorOnboardingService(
             modules.Count(m => m.IsCompleted),
             modules.Count);
 
-    /// <summary>
-    /// Progression partielle stockée dans <see cref="Domain.Entities.TenantBranding.CustomCss"/>
-    /// préfixée (évite une migration de colonne dédiée pour les ids de modules).
-    /// Prefer OnboardingProgressJson on Tenant if present — see Tenant.OnboardingProgress.
-    /// </summary>
     private static List<string> ParseCompletedModules(Domain.Entities.Tenant tenant)
     {
         var raw = tenant.OnboardingProgress;
@@ -145,17 +135,34 @@ public class TutorOnboardingService(
     private static void SetCompletedModules(Domain.Entities.Tenant tenant, IReadOnlyList<string> ids) =>
         tenant.OnboardingProgress = string.Join(',', ids);
 
-    private static IReadOnlyList<TutorOnboardingModuleDto> BuildModules(string culture, IReadOnlyList<string> completed)
-    {
-        var fr = culture.StartsWith("fr", StringComparison.OrdinalIgnoreCase);
-        var defs = fr ? FrModules() : EnModules();
-        return defs.Select(d => d with
-        {
-            IsCompleted = completed.Contains(d.Id, StringComparer.OrdinalIgnoreCase)
-        }).ToList();
-    }
+    private static IReadOnlyList<TutorOnboardingModuleDto> BuildModulesForClient(
+        string culture,
+        IReadOnlyList<string> completed) =>
+        GetModuleCatalog(culture)
+            .Select(d => new TutorOnboardingModuleDto(
+                d.Id,
+                d.Order,
+                d.Title,
+                d.Summary,
+                d.BodyHtml,
+                d.Quiz.Select(q => new TutorOnboardingQuizItemDto(q.Question, q.Choices)).ToList(),
+                completed.Contains(d.Id, StringComparer.OrdinalIgnoreCase)))
+            .ToList();
 
-    private static List<TutorOnboardingModuleDto> FrModules() =>
+    private static IReadOnlyList<ModuleDef> GetModuleCatalog(string culture) =>
+        culture.StartsWith("fr", StringComparison.OrdinalIgnoreCase) ? FrModules() : EnModules();
+
+    private sealed record QuizDef(string Question, IReadOnlyList<string> Choices, int CorrectIndex);
+
+    private sealed record ModuleDef(
+        string Id,
+        int Order,
+        string Title,
+        string Summary,
+        string BodyHtml,
+        IReadOnlyList<QuizDef> Quiz);
+
+    private static List<ModuleDef> FrModules() =>
     [
         new("welcome", 1, "Bienvenue sur TutorSphere",
             "Votre école numérique en 2 minutes.",
@@ -164,10 +171,8 @@ public class TutorOnboardingService(
             <p>Après cette formation, votre établissement sera <strong>actif et visible</strong> dans la recherche parents.</p>
             <ul><li>Tableau de bord</li><li>Offres d'abonnement</li><li>Calendrier et salle de classe</li></ul>
             """,
-            [
-                new("Quel est l'objectif de TutorSphere pour vous ?",
-                    ["Réserver un hôtel", "Gérer votre école de soutien scolaire", "Acheter des fournitures"], 1)
-            ], false),
+            [new("Quel est l'objectif de TutorSphere pour vous ?",
+                ["Réserver un hôtel", "Gérer votre école de soutien scolaire", "Acheter des fournitures"], 1)]),
         new("offers", 2, "Créer vos offres de cours",
             "Publiez des forfaits que les parents peuvent choisir.",
             """
@@ -175,10 +180,8 @@ public class TutorOnboardingService(
             <p>Une offre active devient visible aux parents <em>une fois votre école publique</em>.</p>
             <p>Astuce : commencez par un forfait simple (ex. 4 séances / mois).</p>
             """,
-            [
-                new("Où créez-vous un forfait de cours ?",
-                    ["Menu Offres", "Menu Messages", "Espace parent"], 0)
-            ], false),
+            [new("Où créez-vous un forfait de cours ?",
+                ["Menu Offres", "Menu Messages", "Espace parent"], 0)]),
         new("students", 3, "Élèves, parents et inscriptions",
             "Accepter une demande puis encaisser le paiement.",
             """
@@ -186,10 +189,8 @@ public class TutorOnboardingService(
             <p>Ensuite le parent paie via la passerelle sécurisée ; l'abonnement passe <strong>Actif</strong>.</p>
             <p>Gérez vos élèves dans <strong>Mes élèves</strong> et les parents dans <strong>Parents</strong>.</p>
             """,
-            [
-                new("Quand le parent peut-il payer ?",
-                    ["Avant toute inscription", "Après votre acceptation de la demande", "Jamais"], 1)
-            ], false),
+            [new("Quand le parent peut-il payer ?",
+                ["Avant toute inscription", "Après votre acceptation de la demande", "Jamais"], 1)]),
         new("calendar", 4, "Calendrier, cours et devoirs",
             "Planifier et animer vos séances.",
             """
@@ -197,10 +198,8 @@ public class TutorOnboardingService(
             <p>Lancez la <strong>salle de classe</strong> le jour J, suivez les présences, publiez des <strong>devoirs</strong> et rapports.</p>
             <p>Indiquez vos indisponibilités pour éviter les conflits.</p>
             """,
-            [
-                new("Que pouvez-vous faire le jour d'un cours ?",
-                    ["Ouvrir la salle de classe et suivre les présences", "Modifier le prix Stripe manuellement", "Supprimer la plateforme"], 0)
-            ], false),
+            [new("Que pouvez-vous faire le jour d'un cours ?",
+                ["Ouvrir la salle de classe et suivre les présences", "Modifier le prix Stripe manuellement", "Supprimer la plateforme"], 0)]),
         new("payouts", 5, "Revenus et visibilité",
             "Paiements, commission et profil public.",
             """
@@ -208,13 +207,11 @@ public class TutorOnboardingService(
             <p>Configurez un compte de versement (Stripe Connect / PayPal) dans les paramètres de payout.</p>
             <p>À la fin de cette formation, votre école devient <strong>visible par tous</strong> dans la recherche.</p>
             """,
-            [
-                new("Quand votre école devient-elle visible publiquement ?",
-                    ["Dès l'inscription", "Après paiement + cette formation", "Jamais"], 1)
-            ], false)
+            [new("Quand votre école devient-elle visible publiquement ?",
+                ["Dès l'inscription", "Après paiement + cette formation", "Jamais"], 1)])
     ];
 
-    private static List<TutorOnboardingModuleDto> EnModules() =>
+    private static List<ModuleDef> EnModules() =>
     [
         new("welcome", 1, "Welcome to TutorSphere",
             "Your digital tutoring school in 2 minutes.",
@@ -222,47 +219,37 @@ public class TutorOnboardingService(
             <p>TutorSphere is your <strong>tutor workspace</strong>: students, lessons, homework and parent payments.</p>
             <p>After this training, your school will be <strong>active and visible</strong> in parent search.</p>
             """,
-            [
-                new("What is TutorSphere for you?",
-                    ["Book a hotel", "Run your tutoring school", "Buy supplies"], 1)
-            ], false),
+            [new("What is TutorSphere for you?",
+                ["Book a hotel", "Run your tutoring school", "Buy supplies"], 1)]),
         new("offers", 2, "Create course offerings",
             "Publish packages parents can enroll in.",
             """
             <p>Use <strong>Offers</strong> to create a package (subject, price, duration, online/in-person).</p>
             <p>Active offers become visible once your school is public.</p>
             """,
-            [
-                new("Where do you create a course package?",
-                    ["Offers menu", "Messages menu", "Parent portal"], 0)
-            ], false),
+            [new("Where do you create a course package?",
+                ["Offers menu", "Messages menu", "Parent portal"], 0)]),
         new("students", 3, "Students, parents and enrollment",
             "Accept a request, then collect payment.",
             """
             <p>A parent enrolls → you <strong>accept</strong> → they pay → subscription becomes <strong>Active</strong>.</p>
             """,
-            [
-                new("When can the parent pay?",
-                    ["Before enrollment", "After you accept the request", "Never"], 1)
-            ], false),
+            [new("When can the parent pay?",
+                ["Before enrollment", "After you accept the request", "Never"], 1)]),
         new("calendar", 4, "Calendar, lessons and homework",
             "Plan and run sessions.",
             """
             <p>Open the <strong>classroom</strong>, track attendance, publish <strong>homework</strong> and reports.</p>
             """,
-            [
-                new("What can you do on lesson day?",
-                    ["Open the classroom and track attendance", "Edit Stripe prices manually", "Delete the platform"], 0)
-            ], false),
+            [new("What can you do on lesson day?",
+                ["Open the classroom and track attendance", "Edit Stripe prices manually", "Delete the platform"], 0)]),
         new("payouts", 5, "Revenue and visibility",
             "Payouts, commission and public profile.",
             """
             <p>Parents pay your packages; TutorSphere takes a <strong>commission</strong> (5–15%).</p>
             <p>Completing this training makes your school <strong>visible to everyone</strong>.</p>
             """,
-            [
-                new("When does your school become publicly visible?",
-                    ["Right after signup", "After payment + this training", "Never"], 1)
-            ], false)
+            [new("When does your school become publicly visible?",
+                ["Right after signup", "After payment + this training", "Never"], 1)])
     ];
 }
