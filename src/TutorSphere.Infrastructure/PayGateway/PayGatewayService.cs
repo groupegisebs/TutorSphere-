@@ -497,7 +497,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             ? "TUTORSPHERE-LICENSE-ANNUAL"
             : _platformBilling.ProductCode.Trim().ToUpperInvariant();
         var planCode = string.IsNullOrWhiteSpace(_platformBilling.PlanCode)
-            ? "ANNUAL"
+            ? "YEARLY"
             : _platformBilling.PlanCode.Trim().ToUpperInvariant();
 
         await _gateway.CreateCatalogItemAsync(new GatewayCreateCatalogItemRequest(
