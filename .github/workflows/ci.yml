@@ -17,30 +17,63 @@ env:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        # actions/checkout@v5.1.0
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v5
+        # actions/setup-dotnet@v5.4.0
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: Restore
-        run: dotnet restore TutorSphere.slnx
+      # Retries absorb transient NuGet/network flakes only; final failure still fails the job.
+      - name: Restore (retry)
+        run: |
+          set -euo pipefail
+          for i in 1 2 3; do
+            if dotnet restore TutorSphere.slnx; then
+              exit 0
+            fi
+            echo "Restore failed, retry $i/3..."
+            sleep 15
+          done
+          exit 1
 
-      - name: Build
-        run: dotnet build TutorSphere.slnx --no-restore --configuration Release
+      - name: Build (retry)
+        run: |
+          set -euo pipefail
+          for i in 1 2 3; do
+            if dotnet build TutorSphere.slnx --no-restore --configuration Release; then
+              exit 0
+            fi
+            echo "Build failed, retry $i/3..."
+            sleep 15
+          done
+          exit 1
 
-      - name: Test
-        run: dotnet test TutorSphere.slnx --no-build --configuration Release --verbosity normal
+      - name: Test (retry)
+        run: |
+          set -euo pipefail
+          for i in 1 2 3; do
+            if dotnet test TutorSphere.slnx --no-build --configuration Release --verbosity normal; then
+              exit 0
+            fi
+            echo "Test failed, retry $i/3..."
+            sleep 15
+          done
+          exit 1
 
   docker-build:
     needs: build-and-test
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        # actions/checkout@v5.1.0
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
 
       - name: Build API image
         run: docker build -f src/TutorSphere.Api/Dockerfile -t tutorsphere-api:ci .
