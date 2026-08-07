@@ -1,0 +1,264 @@
+@page "/admin/promo-codes"
+@layout AdminLayout
+@rendermode InteractiveServer
+@inject AdminService AdminSvc
+@inject IJSRuntime JS
+
+<PageTitle>Codes promo — Control Center</PageTitle>
+
+<AuthorizeView Roles="SuperAdmin,PlatformAdmin">
+    <Authorized>
+        <div class="cc-toolbar">
+            <div>
+                <h1 class="cc-page-title">Codes promo enseignants</h1>
+                <p class="cc-page-sub">
+                    Créez des codes à usage unique pour offrir 1 an d'abonnement plateforme gratuitement.
+                </p>
+            </div>
+            <button type="button" class="cc-btn cc-btn-primary" @onclick="() => _showCreate = true">
+                <i class="bi bi-plus-lg"></i> Nouveau code
+            </button>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_flash))
+        {
+            <div class="alert alert-success mb-3">@_flash</div>
+        }
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger mb-3">@_error</div>
+        }
+
+        @if (_loading)
+        {
+            <div class="cc-empty"><span class="spinner-border"></span></div>
+        }
+        else
+        {
+            <div class="cc-stat-grid mb-3">
+                <div class="cc-kpi"><div class="cc-kpi-label">Total</div><div class="cc-kpi-value">@_codes.Count</div></div>
+                <div class="cc-kpi"><div class="cc-kpi-label">Disponibles</div><div class="cc-kpi-value">@_codes.Count(c => c.IsAvailable)</div></div>
+                <div class="cc-kpi"><div class="cc-kpi-label">Utilisés</div><div class="cc-kpi-value">@_codes.Count(c => c.RedeemedAt is not null)</div></div>
+                <div class="cc-kpi"><div class="cc-kpi-label">Désactivés</div><div class="cc-kpi-value">@_codes.Count(c => !c.IsActive)</div></div>
+            </div>
+
+            <div class="cc-card">
+                <div class="cc-table-wrap">
+                    <table class="cc-table">
+                        <thead>
+                            <tr>
+                                <th>Code</th>
+                                <th>Durée</th>
+                                <th>Expiration</th>
+                                <th>Statut</th>
+                                <th>Utilisé par</th>
+                                <th>Créé</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (_codes.Count == 0)
+                            {
+                                <tr>
+                                    <td colspan="7" class="text-muted">Aucun code promo pour le moment.</td>
+                                </tr>
+                            }
+                            @foreach (var c in _codes)
+                            {
+                                <tr>
+                                    <td>
+                                        <strong class="font-monospace">@c.Code</strong>
+                                        @if (!string.IsNullOrWhiteSpace(c.Notes))
+                                        {
+                                            <div class="small text-muted">@c.Notes</div>
+                                        }
+                                    </td>
+                                    <td>@c.LicenseYears an(s)</td>
+                                    <td>@(c.ExpiresAt?.ToLocalTime().ToString("dd MMM yyyy") ?? "—")</td>
+                                    <td>
+                                        @if (c.RedeemedAt is not null)
+                                        {
+                                            <span class="cc-pill cc-pill-type">Utilisé</span>
+                                        }
+                                        else if (!c.IsActive)
+                                        {
+                                            <span class="cc-pill cc-pill-bad">Désactivé</span>
+                                        }
+                                        else if (c.IsAvailable)
+                                        {
+                                            <span class="cc-pill cc-pill-ok">Disponible</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="cc-pill cc-pill-bad">Expiré</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        @if (c.RedeemedAt is not null)
+                                        {
+                                            <div>@(c.RedeemedBySchoolName ?? "École")</div>
+                                            <div class="small text-muted">@c.RedeemedAt.Value.ToLocalTime().ToString("dd MMM yyyy HH:mm")</div>
+                                        }
+                                        else { <span class="text-muted">—</span> }
+                                    </td>
+                                    <td>@c.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</td>
+                                    <td class="text-end">
+                                        <button type="button" class="btn btn-sm btn-outline-secondary me-1"
+                                                title="Copier" @onclick="() => CopyAsync(c.Code)">
+                                            <i class="bi bi-clipboard"></i>
+                                        </button>
+                                        @if (c.RedeemedAt is null)
+                                        {
+                                            <button type="button"
+                                                    class="btn btn-sm @(c.IsActive ? "btn-outline-warning" : "btn-outline-success")"
+                                                    @onclick="() => ToggleActiveAsync(c)">
+                                                @(c.IsActive ? "Désactiver" : "Réactiver")
+                                            </button>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+
+        @if (_showCreate)
+        {
+            <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.45)">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Créer des codes promo</h5>
+                            <button type="button" class="btn-close" @onclick="() => _showCreate = false"></button>
+                        </div>
+                        <div class="modal-body">
+                            @if (!string.IsNullOrEmpty(_createError))
+                            {
+                                <div class="alert alert-danger">@_createError</div>
+                            }
+                            <div class="mb-3">
+                                <label class="form-label">Code personnalisé (optionnel)</label>
+                                <input class="form-control font-monospace" @bind="_formCode"
+                                       placeholder="Ex. RENTREE2026" disabled="@(_formQuantity > 1)" />
+                                <div class="form-text">Laissez vide pour générer automatiquement. Obligatoire vide si quantité &gt; 1.</div>
+                            </div>
+                            <div class="row g-2">
+                                <div class="col-6 mb-3">
+                                    <label class="form-label">Quantité</label>
+                                    <input type="number" class="form-control" min="1" max="100" @bind="_formQuantity" />
+                                </div>
+                                <div class="col-6 mb-3">
+                                    <label class="form-label">Durée (années)</label>
+                                    <input type="number" class="form-control" min="1" max="5" @bind="_formYears" />
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Expire le (optionnel)</label>
+                                <input type="date" class="form-control" @bind="_formExpires" />
+                            </div>
+                            <div class="mb-0">
+                                <label class="form-label">Notes internes</label>
+                                <input class="form-control" @bind="_formNotes" placeholder="Campagne Facebook, partenaire…" />
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-outline-secondary" @onclick="() => _showCreate = false">Annuler</button>
+                            <button type="button" class="btn btn-primary" disabled="@_creating" @onclick="CreateAsync">
+                                @if (_creating) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                                Créer
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    private List<AdminPromoCodeItem> _codes = [];
+    private bool _loading = true;
+    private bool _showCreate;
+    private bool _creating;
+    private string? _flash;
+    private string? _error;
+    private string? _createError;
+
+    private string? _formCode;
+    private int _formQuantity = 1;
+    private int _formYears = 1;
+    private DateTime? _formExpires;
+    private string? _formNotes;
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try { _codes = await AdminSvc.GetPromoCodesAsync(); }
+        catch { _codes = []; _error = "Impossible de charger les codes promo."; }
+        finally { _loading = false; }
+    }
+
+    private async Task CreateAsync()
+    {
+        _createError = null;
+        _creating = true;
+        try
+        {
+            if (_formQuantity > 1) _formCode = null;
+            var created = await AdminSvc.CreatePromoCodesAsync(
+                _formCode,
+                _formQuantity,
+                _formYears,
+                _formExpires,
+                _formNotes);
+
+            if (created is null || created.Count == 0)
+            {
+                _createError = "Création impossible. Vérifiez le code (unique) et réessayez.";
+                return;
+            }
+
+            _showCreate = false;
+            _formCode = null;
+            _formQuantity = 1;
+            _formYears = 1;
+            _formExpires = null;
+            _formNotes = null;
+            _flash = created.Count == 1
+                ? $"Code créé : {created[0].Code}"
+                : $"{created.Count} codes créés.";
+            await ReloadAsync();
+        }
+        finally { _creating = false; }
+    }
+
+    private async Task ToggleActiveAsync(AdminPromoCodeItem item)
+    {
+        _error = null;
+        var updated = await AdminSvc.SetPromoCodeActiveAsync(item.Id, !item.IsActive);
+        if (updated is null)
+        {
+            _error = "Mise à jour impossible.";
+            return;
+        }
+        await ReloadAsync();
+    }
+
+    private async Task CopyAsync(string code)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", code);
+            _flash = $"Code copié : {code}";
+        }
+        catch
+        {
+            _flash = code;
+        }
+    }
+}

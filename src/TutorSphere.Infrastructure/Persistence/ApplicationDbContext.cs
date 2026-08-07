@@ -35,6 +35,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     public DbSet<TutorPayout> TutorPayoutsSet => Set<TutorPayout>();
     public DbSet<TutorPayoutAccount> TutorPayoutAccountsSet => Set<TutorPayoutAccount>();
     public DbSet<PlatformLicensePayment> PlatformLicensePaymentsSet => Set<PlatformLicensePayment>();
+    public DbSet<PlatformPromoCode> PlatformPromoCodesSet => Set<PlatformPromoCode>();
 
     IQueryable<Tenant> IApplicationDbContext.Tenants => TenantsSet;
     IQueryable<TenantBranding> IApplicationDbContext.TenantBrandings => TenantBrandingsSet;
@@ -76,6 +77,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     IQueryable<PlatformLicensePayment> IApplicationDbContext.PlatformLicensePayments => PlatformLicensePaymentsSet;
     IQueryable<PlatformLicensePayment> IApplicationDbContext.PlatformLicensePaymentsForAnyTenant =>
         PlatformLicensePaymentsSet.IgnoreQueryFilters();
+    IQueryable<PlatformPromoCode> IApplicationDbContext.PlatformPromoCodes => PlatformPromoCodesSet;
 
     public new void Add<T>(T entity) where T : class => Set<T>().Add(entity);
     public new void Remove<T>(T entity) where T : class => Set<T>().Remove(entity);
@@ -140,6 +142,16 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             e.HasIndex(p => p.GatewayPaymentCode);
             e.HasOne(p => p.Tenant).WithMany(t => t.LicensePayments).HasForeignKey(p => p.TenantId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<PlatformPromoCode>(e =>
+        {
+            e.Property(p => p.Code).HasMaxLength(32).IsRequired();
+            e.Property(p => p.Notes).HasMaxLength(500);
+            e.Property(p => p.RedeemedByUserId).HasMaxLength(450);
+            e.HasIndex(p => p.Code).IsUnique();
+            e.HasIndex(p => p.RedeemedAt);
+            e.HasIndex(p => p.IsActive);
         });
 
         builder.Entity<Homework>(e =>

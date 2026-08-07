@@ -5,6 +5,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using TutorSphere.Application.Common.Interfaces;
+using TutorSphere.Application.DTOs.PlatformPromo;
+using TutorSphere.Application.Services;
 using TutorSphere.Domain.Enums;
 using TutorSphere.Infrastructure.Email;
 using TutorSphere.Infrastructure.Identity;
@@ -22,6 +24,7 @@ public class AdminController : ControllerBase
     private readonly IConfiguration _configuration;
     private readonly MailGatewaySettings _mailSettings;
     private readonly MailGatewayClient _mailClient;
+    private readonly IPlatformPromoService _promoCodes;
 
     public AdminController(
         UserManager<ApplicationUser> userManager,
@@ -29,7 +32,8 @@ public class AdminController : ControllerBase
         IApplicationDbContext db,
         IConfiguration configuration,
         IOptions<MailGatewaySettings> mailSettings,
-        MailGatewayClient mailClient)
+        MailGatewayClient mailClient,
+        IPlatformPromoService promoCodes)
     {
         _userManager = userManager;
         _email = email;
@@ -37,6 +41,7 @@ public class AdminController : ControllerBase
         _configuration = configuration;
         _mailSettings = mailSettings.Value;
         _mailClient = mailClient;
+        _promoCodes = promoCodes;
     }
 
     /// <summary>Returns users belonging to a given role.</summary>
@@ -376,6 +381,41 @@ public class AdminController : ControllerBase
 
         await _email.SendWelcomeAsync(to.Trim(), "Test", ct);
         return Ok(new { message = $"E-mail WELCOME demandé pour {to.Trim()}." });
+    }
+
+    [HttpGet("promo-codes")]
+    public async Task<IActionResult> ListPromoCodes(CancellationToken ct)
+        => Ok(await _promoCodes.ListAsync(ct));
+
+    [HttpPost("promo-codes")]
+    public async Task<IActionResult> CreatePromoCodes(
+        [FromBody] CreatePlatformPromoCodeRequest request,
+        CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _promoCodes.CreateAsync(request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPut("promo-codes/{id:guid}")]
+    public async Task<IActionResult> SetPromoCodeActive(
+        Guid id,
+        [FromBody] DeactivatePlatformPromoCodeRequest request,
+        CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _promoCodes.SetActiveAsync(id, request.IsActive, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 }
 

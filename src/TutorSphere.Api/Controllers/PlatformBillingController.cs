@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TutorSphere.Application.DTOs.PlatformBilling;
+using TutorSphere.Application.DTOs.PlatformPromo;
 using TutorSphere.Application.Services;
 using TutorSphere.Domain.Enums;
 
@@ -10,7 +11,9 @@ namespace TutorSphere.Api.Controllers;
 [ApiController]
 [Route("api/platform-billing")]
 [Authorize(Roles = UserRoles.Tutor)]
-public class PlatformBillingController(IPlatformBillingService billing) : ControllerBase
+public class PlatformBillingController(
+    IPlatformBillingService billing,
+    IPlatformPromoService promoCodes) : ControllerBase
 {
     private string UserId =>
         User.FindFirstValue(ClaimTypes.NameIdentifier)
@@ -52,6 +55,21 @@ public class PlatformBillingController(IPlatformBillingService billing) : Contro
         try
         {
             return Ok(await billing.ConfirmAsync(UserId, paymentId, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("redeem-promo")]
+    public async Task<ActionResult<PlatformLicensePaymentStatusDto>> RedeemPromo(
+        [FromBody] RedeemPlatformPromoRequest request,
+        CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await promoCodes.RedeemForOwnerAsync(UserId, request.Code, ct));
         }
         catch (InvalidOperationException ex)
         {

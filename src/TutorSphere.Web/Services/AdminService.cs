@@ -32,7 +32,42 @@ public sealed class AdminService
 
     public async Task<List<AdminSchoolItem>> GetSchoolsAsync()
         => await _api.GetAsync<List<AdminSchoolItem>>("api/admin/schools") ?? [];
+
+    public async Task<List<AdminPromoCodeItem>> GetPromoCodesAsync()
+        => await _api.GetAsync<List<AdminPromoCodeItem>>("api/admin/promo-codes") ?? [];
+
+    public async Task<List<AdminPromoCodeItem>?> CreatePromoCodesAsync(
+        string? code,
+        int quantity,
+        int licenseYears,
+        DateTime? expiresAt,
+        string? notes)
+        => await _api.PostAsync<List<AdminPromoCodeItem>>("api/admin/promo-codes", new
+        {
+            code,
+            quantity,
+            licenseYears,
+            expiresAt,
+            notes
+        });
+
+    public async Task<AdminPromoCodeItem?> SetPromoCodeActiveAsync(Guid id, bool isActive)
+        => await _api.PutAsync<AdminPromoCodeItem>($"api/admin/promo-codes/{id}", new { isActive });
 }
+
+public sealed record AdminPromoCodeItem(
+    Guid Id,
+    string Code,
+    bool IsActive,
+    int LicenseYears,
+    DateTime? ExpiresAt,
+    string? Notes,
+    DateTime CreatedAt,
+    DateTime? RedeemedAt,
+    Guid? RedeemedByTenantId,
+    string? RedeemedByUserId,
+    string? RedeemedBySchoolName,
+    bool IsAvailable);
 
 public sealed record AdminUserItem(
     string Id,

@@ -70,6 +70,21 @@
                     @L["Activate_PayCta"]
                 </button>
 
+                <div class="text-center my-3 text-muted small">— ou —</div>
+
+                <label class="form-label" for="promo-code">@L["Activate_PromoLabel"]</label>
+                <div class="input-group mb-2">
+                    <input id="promo-code" class="form-control font-monospace text-uppercase"
+                           placeholder="@L["Activate_PromoPlaceholder"]"
+                           @bind="_promoCode" @bind:event="oninput"
+                           disabled="@_busy" />
+                    <button class="btn btn-outline-primary" type="button" disabled="@(_busy || string.IsNullOrWhiteSpace(_promoCode))"
+                            @onclick="RedeemPromoAsync">
+                        @L["Activate_PromoCta"]
+                    </button>
+                </div>
+                <p class="small text-muted mb-0">@L["Activate_PromoHint"]</p>
+
                 <p class="small text-muted mt-3 mb-0 text-center">@L["Activate_SecurePay"]</p>
             </div>
         </div>
@@ -82,6 +97,7 @@
     private bool _busy;
     private bool _renewalMode;
     private string? _error;
+    private string _promoCode = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -160,6 +176,48 @@
             }
 
             _error = result.Error ?? L["Activate_PayUnavailable"];
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task RedeemPromoAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_promoCode))
+        {
+            _error = L["Activate_PromoRequired"];
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<PlatformLicensePaymentStatusVm>(
+                "api/platform-billing/redeem-promo",
+                new { code = _promoCode.Trim() });
+
+            if (result.Value is null)
+            {
+                _error = result.Error ?? L["Activate_PromoInvalid"];
+                return;
+            }
+
+            if (result.Value.RequiresOnboarding || result.Value.HasPaidLicense)
+            {
+                Navigation.NavigateTo("/tutor/onboarding", forceLoad: true);
+                return;
+            }
+
+            if (result.Value.HasValidLicense)
+            {
+                Navigation.NavigateTo("/tutor/dashboard", forceLoad: true);
+                return;
+            }
+
+            _error = L["Activate_PromoInvalid"];
         }
         finally
         {
