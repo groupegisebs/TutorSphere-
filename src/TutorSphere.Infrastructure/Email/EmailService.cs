@@ -1,6 +1,10 @@
+using System.Globalization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using TutorSphere.Application.Common;
 using TutorSphere.Application.Common.Interfaces;
+using TutorSphere.Infrastructure.Identity;
 
 namespace TutorSphere.Infrastructure.Email;
 
@@ -11,35 +15,29 @@ internal static class EmailTemplates
     public const string LessonReport = "LESSON_REPORT";
     public const string SchoolCreated = "SCHOOL_CREATED";
 
-    // Auth
     public const string ConfirmEmailSimple = "CONFIRM_EMAIL_SIMPLE";
     public const string ResetPassword = "RESET_PASSWORD";
     public const string PasswordChanged = "PASSWORD_CHANGED";
 
-    // Tutor billing
     public const string TutorTrialStarted = "TUTOR_TRIAL_STARTED";
     public const string TutorPaymentReceipt = "TUTOR_PAYMENT_RECEIPT";
     public const string TutorRenewalReminder = "TUTOR_RENEWAL_REMINDER";
     public const string TutorPaymentFailed = "TUTOR_PAYMENT_FAILED";
     public const string TutorSubCancelled = "TUTOR_SUB_CANCELLED";
 
-    // Account lifecycle
     public const string AccountActivated = "ACCOUNT_ACTIVATED";
     public const string AccountDeactivated = "ACCOUNT_DEACTIVATED";
     public const string SchoolApproved = "SCHOOL_APPROVED";
 
-    // Lessons
     public const string LessonScheduled = "LESSON_SCHEDULED";
     public const string LessonReminder = "LESSON_REMINDER";
     public const string LessonCancelled = "LESSON_CANCELLED";
 
-    // Parent billing
     public const string ParentPaymentReceipt = "PARENT_PAYMENT_RECEIPT";
     public const string ParentPaymentFailed = "PARENT_PAYMENT_FAILED";
     public const string InvoiceReady = "INVOICE_READY";
     public const string ParentPaymentOverdue = "PARENT_PAYMENT_OVERDUE";
 
-    // Course enrollment / tutor receipt
     public const string CourseEnrollmentRequest = "COURSE_ENROLLMENT_REQUEST";
     public const string CourseEnrollmentAccepted = "COURSE_ENROLLMENT_ACCEPTED";
     public const string TutorStudentPaymentReceived = "TUTOR_STUDENT_PAYMENT_RECEIVED";
@@ -49,280 +47,260 @@ public class EmailService : IEmailService
 {
     private readonly MailGatewayClient _client;
     private readonly MailGatewaySettings _settings;
+    private readonly UserManager<ApplicationUser> _users;
     private readonly ILogger<EmailService> _logger;
 
     public EmailService(
         MailGatewayClient client,
         IOptions<MailGatewaySettings> settings,
+        UserManager<ApplicationUser> users,
         ILogger<EmailService> logger)
     {
         _client = client;
         _settings = settings.Value;
+        _users = users;
         _logger = logger;
     }
 
-    public async Task SendWelcomeAsync(string email, string firstName, CancellationToken ct = default)
-    {
-        if (!_client.IsConfigured)
-        {
-            _logger.LogWarning("Mail Sender non configuré — e-mail de bienvenue non envoyé à {Email}.", email);
-            return;
-        }
+    public Task SendWelcomeAsync(string email, string firstName, CancellationToken ct = default) =>
+        SendAsync(email, EmailTemplates.Welcome, new Dictionary<string, string> { ["FirstName"] = firstName }, ct);
 
-        await TrySendAsync(new SendMailRequest(
-            ClientCode: _settings.ClientCode,
-            TemplateCode: EmailTemplates.Welcome,
-            To: [email],
-            BodyData: new Dictionary<string, string>
-            {
-                ["FirstName"] = firstName
-            }
-        ), ct);
-    }
-
-    public async Task SendEmailConfirmationAsync(
+    public Task SendEmailConfirmationAsync(
         string email,
         string firstName,
         string confirmationUrl,
-        CancellationToken ct = default)
-    {
-        if (!_client.IsConfigured)
+        CancellationToken ct = default) =>
+        SendAsync(email, EmailTemplates.ConfirmEmail, new Dictionary<string, string>
         {
-            _logger.LogWarning("Mail Sender non configuré — confirmation non envoyée à {Email}.", email);
-            return;
-        }
+            ["FirstName"] = firstName,
+            ["ConfirmationUrl"] = confirmationUrl
+        }, ct);
 
-        await TrySendAsync(new SendMailRequest(
-            ClientCode: _settings.ClientCode,
-            TemplateCode: EmailTemplates.ConfirmEmail,
-            To: [email],
-            BodyData: new Dictionary<string, string>
-            {
-                ["FirstName"] = firstName,
-                ["ConfirmationUrl"] = confirmationUrl
-            }
-        ), ct);
-    }
-
-    public async Task SendLessonReportToParentAsync(
+    public Task SendLessonReportToParentAsync(
         string parentEmail,
         string parentFirstName,
         string studentName,
         string tutorName,
-        CancellationToken ct = default)
-    {
-        if (!_client.IsConfigured)
+        CancellationToken ct = default) =>
+        SendAsync(parentEmail, EmailTemplates.LessonReport, new Dictionary<string, string>
         {
-            _logger.LogWarning("Mail Sender non configuré — rapport non envoyé à {Email}.", parentEmail);
-            return;
-        }
+            ["ParentFirstName"] = parentFirstName,
+            ["StudentName"] = studentName,
+            ["TutorName"] = tutorName
+        }, ct);
 
-        await TrySendAsync(new SendMailRequest(
-            ClientCode: _settings.ClientCode,
-            TemplateCode: EmailTemplates.LessonReport,
-            To: [parentEmail],
-            BodyData: new Dictionary<string, string>
-            {
-                ["ParentFirstName"] = parentFirstName,
-                ["StudentName"] = studentName,
-                ["TutorName"] = tutorName
-            }
-        ), ct);
-    }
-
-    public async Task SendSchoolCreatedAsync(
+    public Task SendSchoolCreatedAsync(
         string ownerEmail,
         string ownerFirstName,
         string schoolName,
-        CancellationToken ct = default)
-    {
-        if (!_client.IsConfigured)
+        CancellationToken ct = default) =>
+        SendAsync(ownerEmail, EmailTemplates.SchoolCreated, new Dictionary<string, string>
         {
-            _logger.LogWarning("Mail Sender non configuré — confirmation école non envoyée à {Email}.", ownerEmail);
-            return;
-        }
+            ["OwnerFirstName"] = ownerFirstName,
+            ["SchoolName"] = schoolName
+        }, ct);
 
-        await TrySendAsync(new SendMailRequest(
-            ClientCode: _settings.ClientCode,
-            TemplateCode: EmailTemplates.SchoolCreated,
-            To: [ownerEmail],
-            BodyData: new Dictionary<string, string>
-            {
-                ["OwnerFirstName"] = ownerFirstName,
-                ["SchoolName"] = schoolName
-            }
-        ), ct);
-    }
+    public Task SendEmailConfirmationSimpleAsync(string to, string firstName, string confirmUrl, CancellationToken ct = default) =>
+        SendAsync(to, EmailTemplates.ConfirmEmailSimple, new Dictionary<string, string>
+        {
+            ["FirstName"] = firstName,
+            ["ConfirmationUrl"] = confirmUrl
+        }, ct);
 
-    public async Task SendEmailConfirmationSimpleAsync(string to, string firstName, string confirmUrl, CancellationToken ct = default)
-    {
-        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — CONFIRM_EMAIL_SIMPLE non envoyé à {Email}.", to); return; }
-        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.ConfirmEmailSimple, [to],
-            new Dictionary<string, string> { ["FirstName"] = firstName, ["ConfirmationUrl"] = confirmUrl }), ct);
-    }
+    public Task SendResetPasswordAsync(string to, string firstName, string resetUrl, CancellationToken ct = default) =>
+        SendAsync(to, EmailTemplates.ResetPassword, new Dictionary<string, string>
+        {
+            ["FirstName"] = firstName,
+            ["ResetUrl"] = resetUrl
+        }, ct);
 
-    public async Task SendResetPasswordAsync(string to, string firstName, string resetUrl, CancellationToken ct = default)
-    {
-        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — RESET_PASSWORD non envoyé à {Email}.", to); return; }
-        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.ResetPassword, [to],
-            new Dictionary<string, string> { ["FirstName"] = firstName, ["ResetUrl"] = resetUrl }), ct);
-    }
+    public Task SendPasswordChangedAsync(string to, string firstName, CancellationToken ct = default) =>
+        SendAsync(to, EmailTemplates.PasswordChanged, new Dictionary<string, string> { ["FirstName"] = firstName }, ct);
 
-    public async Task SendPasswordChangedAsync(string to, string firstName, CancellationToken ct = default)
-    {
-        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — PASSWORD_CHANGED non envoyé à {Email}.", to); return; }
-        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.PasswordChanged, [to],
-            new Dictionary<string, string> { ["FirstName"] = firstName }), ct);
-    }
-
-    public async Task SendTutorTrialStartedAsync(string to, string firstName, CancellationToken ct = default)
-    {
-        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — TUTOR_TRIAL_STARTED non envoyé à {Email}.", to); return; }
-        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.TutorTrialStarted, [to],
-            new Dictionary<string, string> { ["FirstName"] = firstName }), ct);
-    }
+    public Task SendTutorTrialStartedAsync(string to, string firstName, CancellationToken ct = default) =>
+        SendAsync(to, EmailTemplates.TutorTrialStarted, new Dictionary<string, string> { ["FirstName"] = firstName }, ct);
 
     public async Task SendTutorPaymentReceiptAsync(string to, string firstName, decimal amount, string invoiceUrl, CancellationToken ct = default)
     {
-        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — TUTOR_PAYMENT_RECEIPT non envoyé à {Email}.", to); return; }
-        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.TutorPaymentReceipt, [to],
-            new Dictionary<string, string> { ["FirstName"] = firstName, ["Amount"] = amount.ToString("C"), ["InvoiceUrl"] = invoiceUrl }), ct);
+        var culture = await ResolveCultureAsync(to, ct);
+        await SendAsync(to, EmailTemplates.TutorPaymentReceipt, new Dictionary<string, string>
+        {
+            ["FirstName"] = firstName,
+            ["Amount"] = amount.ToString("C", culture),
+            ["InvoiceUrl"] = invoiceUrl
+        }, ct, culture.Name);
     }
 
     public async Task SendTutorRenewalReminderAsync(string to, string firstName, DateTime renewalDate, CancellationToken ct = default)
     {
-        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — TUTOR_RENEWAL_REMINDER non envoyé à {Email}.", to); return; }
-        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.TutorRenewalReminder, [to],
-            new Dictionary<string, string> { ["FirstName"] = firstName, ["RenewalDate"] = renewalDate.ToString("d MMMM yyyy") }), ct);
+        var culture = await ResolveCultureAsync(to, ct);
+        await SendAsync(to, EmailTemplates.TutorRenewalReminder, new Dictionary<string, string>
+        {
+            ["FirstName"] = firstName,
+            ["RenewalDate"] = renewalDate.ToString("D", culture)
+        }, ct, culture.Name);
     }
 
-    public async Task SendTutorPaymentFailedAsync(string to, string firstName, CancellationToken ct = default)
-    {
-        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — TUTOR_PAYMENT_FAILED non envoyé à {Email}.", to); return; }
-        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.TutorPaymentFailed, [to],
-            new Dictionary<string, string> { ["FirstName"] = firstName }), ct);
-    }
+    public Task SendTutorPaymentFailedAsync(string to, string firstName, CancellationToken ct = default) =>
+        SendAsync(to, EmailTemplates.TutorPaymentFailed, new Dictionary<string, string> { ["FirstName"] = firstName }, ct);
 
-    public async Task SendTutorSubscriptionCancelledAsync(string to, string firstName, CancellationToken ct = default)
-    {
-        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — TUTOR_SUB_CANCELLED non envoyé à {Email}.", to); return; }
-        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.TutorSubCancelled, [to],
-            new Dictionary<string, string> { ["FirstName"] = firstName }), ct);
-    }
+    public Task SendTutorSubscriptionCancelledAsync(string to, string firstName, CancellationToken ct = default) =>
+        SendAsync(to, EmailTemplates.TutorSubCancelled, new Dictionary<string, string> { ["FirstName"] = firstName }, ct);
 
-    public async Task SendAccountActivatedAsync(string to, string firstName, CancellationToken ct = default)
-    {
-        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — ACCOUNT_ACTIVATED non envoyé à {Email}.", to); return; }
-        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.AccountActivated, [to],
-            new Dictionary<string, string> { ["FirstName"] = firstName }), ct);
-    }
+    public Task SendAccountActivatedAsync(string to, string firstName, CancellationToken ct = default) =>
+        SendAsync(to, EmailTemplates.AccountActivated, new Dictionary<string, string> { ["FirstName"] = firstName }, ct);
 
-    public async Task SendAccountDeactivatedAsync(string to, string firstName, string reason, CancellationToken ct = default)
-    {
-        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — ACCOUNT_DEACTIVATED non envoyé à {Email}.", to); return; }
-        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.AccountDeactivated, [to],
-            new Dictionary<string, string> { ["FirstName"] = firstName, ["Reason"] = reason }), ct);
-    }
+    public Task SendAccountDeactivatedAsync(string to, string firstName, string reason, CancellationToken ct = default) =>
+        SendAsync(to, EmailTemplates.AccountDeactivated, new Dictionary<string, string>
+        {
+            ["FirstName"] = firstName,
+            ["Reason"] = reason
+        }, ct);
 
-    public async Task SendSchoolApprovedAsync(string to, string firstName, string schoolName, string loginUrl, CancellationToken ct = default)
-    {
-        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — SCHOOL_APPROVED non envoyé à {Email}.", to); return; }
-        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.SchoolApproved, [to],
-            new Dictionary<string, string> { ["FirstName"] = firstName, ["SchoolName"] = schoolName, ["LoginUrl"] = loginUrl }), ct);
-    }
+    public Task SendSchoolApprovedAsync(string to, string firstName, string schoolName, string loginUrl, CancellationToken ct = default) =>
+        SendAsync(to, EmailTemplates.SchoolApproved, new Dictionary<string, string>
+        {
+            ["FirstName"] = firstName,
+            ["SchoolName"] = schoolName,
+            ["LoginUrl"] = loginUrl
+        }, ct);
 
     public async Task SendLessonScheduledAsync(string to, string recipientName, string tutorName, string subject, DateTime lessonDate, CancellationToken ct = default)
     {
-        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — LESSON_SCHEDULED non envoyé à {Email}.", to); return; }
-        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.LessonScheduled, [to],
-            new Dictionary<string, string> { ["RecipientName"] = recipientName, ["TutorName"] = tutorName, ["Subject"] = subject, ["LessonDate"] = lessonDate.ToString("dddd d MMMM yyyy à HH:mm") }), ct);
+        var culture = await ResolveCultureAsync(to, ct);
+        await SendAsync(to, EmailTemplates.LessonScheduled, LessonBody(recipientName, tutorName, subject, lessonDate, culture), ct, culture.Name);
     }
 
     public async Task SendLessonReminderAsync(string to, string recipientName, string tutorName, string subject, DateTime lessonDate, CancellationToken ct = default)
     {
-        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — LESSON_REMINDER non envoyé à {Email}.", to); return; }
-        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.LessonReminder, [to],
-            new Dictionary<string, string> { ["RecipientName"] = recipientName, ["TutorName"] = tutorName, ["Subject"] = subject, ["LessonDate"] = lessonDate.ToString("dddd d MMMM yyyy à HH:mm") }), ct);
+        var culture = await ResolveCultureAsync(to, ct);
+        await SendAsync(to, EmailTemplates.LessonReminder, LessonBody(recipientName, tutorName, subject, lessonDate, culture), ct, culture.Name);
     }
 
     public async Task SendLessonCancelledAsync(string to, string recipientName, string tutorName, string subject, DateTime lessonDate, CancellationToken ct = default)
     {
-        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — LESSON_CANCELLED non envoyé à {Email}.", to); return; }
-        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.LessonCancelled, [to],
-            new Dictionary<string, string> { ["RecipientName"] = recipientName, ["TutorName"] = tutorName, ["Subject"] = subject, ["LessonDate"] = lessonDate.ToString("dddd d MMMM yyyy à HH:mm") }), ct);
+        var culture = await ResolveCultureAsync(to, ct);
+        await SendAsync(to, EmailTemplates.LessonCancelled, LessonBody(recipientName, tutorName, subject, lessonDate, culture), ct, culture.Name);
     }
 
     public async Task SendParentPaymentReceiptAsync(string to, string parentName, string studentName, decimal amount, string invoiceUrl, CancellationToken ct = default)
     {
-        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — PARENT_PAYMENT_RECEIPT non envoyé à {Email}.", to); return; }
-        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.ParentPaymentReceipt, [to],
-            new Dictionary<string, string> { ["ParentName"] = parentName, ["StudentName"] = studentName, ["Amount"] = amount.ToString("C"), ["InvoiceUrl"] = invoiceUrl }), ct);
+        var culture = await ResolveCultureAsync(to, ct);
+        await SendAsync(to, EmailTemplates.ParentPaymentReceipt, new Dictionary<string, string>
+        {
+            ["ParentName"] = parentName,
+            ["StudentName"] = studentName,
+            ["Amount"] = amount.ToString("C", culture),
+            ["InvoiceUrl"] = invoiceUrl
+        }, ct, culture.Name);
     }
 
-    public async Task SendParentPaymentFailedAsync(string to, string parentName, CancellationToken ct = default)
-    {
-        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — PARENT_PAYMENT_FAILED non envoyé à {Email}.", to); return; }
-        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.ParentPaymentFailed, [to],
-            new Dictionary<string, string> { ["ParentName"] = parentName }), ct);
-    }
+    public Task SendParentPaymentFailedAsync(string to, string parentName, CancellationToken ct = default) =>
+        SendAsync(to, EmailTemplates.ParentPaymentFailed, new Dictionary<string, string> { ["ParentName"] = parentName }, ct);
 
-    public async Task SendInvoiceReadyAsync(string to, string parentName, string invoiceUrl, CancellationToken ct = default)
-    {
-        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — INVOICE_READY non envoyé à {Email}.", to); return; }
-        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.InvoiceReady, [to],
-            new Dictionary<string, string> { ["ParentName"] = parentName, ["InvoiceUrl"] = invoiceUrl }), ct);
-    }
+    public Task SendInvoiceReadyAsync(string to, string parentName, string invoiceUrl, CancellationToken ct = default) =>
+        SendAsync(to, EmailTemplates.InvoiceReady, new Dictionary<string, string>
+        {
+            ["ParentName"] = parentName,
+            ["InvoiceUrl"] = invoiceUrl
+        }, ct);
 
-    public async Task SendParentPaymentOverdueAsync(string to, string parentName, string studentName, string courseTitle, string payUrl, CancellationToken ct = default)
-    {
-        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — PARENT_PAYMENT_OVERDUE non envoyé à {Email}.", to); return; }
-        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.ParentPaymentOverdue, [to],
-            new Dictionary<string, string>
-            {
-                ["ParentName"] = parentName,
-                ["StudentName"] = studentName,
-                ["CourseTitle"] = courseTitle,
-                ["PayUrl"] = payUrl
-            }), ct);
-    }
+    public Task SendParentPaymentOverdueAsync(string to, string parentName, string studentName, string courseTitle, string payUrl, CancellationToken ct = default) =>
+        SendAsync(to, EmailTemplates.ParentPaymentOverdue, new Dictionary<string, string>
+        {
+            ["ParentName"] = parentName,
+            ["StudentName"] = studentName,
+            ["CourseTitle"] = courseTitle,
+            ["PayUrl"] = payUrl
+        }, ct);
 
-    public async Task SendCourseEnrollmentRequestAsync(string to, string tutorName, string studentName, string courseTitle, CancellationToken ct = default)
-    {
-        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — COURSE_ENROLLMENT_REQUEST non envoyé à {Email}.", to); return; }
-        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.CourseEnrollmentRequest, [to],
-            new Dictionary<string, string>
-            {
-                ["TutorName"] = tutorName,
-                ["StudentName"] = studentName,
-                ["CourseTitle"] = courseTitle
-            }), ct);
-    }
+    public Task SendCourseEnrollmentRequestAsync(string to, string tutorName, string studentName, string courseTitle, CancellationToken ct = default) =>
+        SendAsync(to, EmailTemplates.CourseEnrollmentRequest, new Dictionary<string, string>
+        {
+            ["TutorName"] = tutorName,
+            ["StudentName"] = studentName,
+            ["CourseTitle"] = courseTitle
+        }, ct);
 
-    public async Task SendCourseEnrollmentAcceptedAsync(string to, string parentName, string studentName, string courseTitle, string statusNote, string actionUrl, CancellationToken ct = default)
-    {
-        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — COURSE_ENROLLMENT_ACCEPTED non envoyé à {Email}.", to); return; }
-        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.CourseEnrollmentAccepted, [to],
-            new Dictionary<string, string>
-            {
-                ["ParentName"] = parentName,
-                ["StudentName"] = studentName,
-                ["CourseTitle"] = courseTitle,
-                ["StatusNote"] = statusNote,
-                ["ActionUrl"] = actionUrl
-            }), ct);
-    }
+    public Task SendCourseEnrollmentAcceptedAsync(string to, string parentName, string studentName, string courseTitle, string statusNote, string actionUrl, CancellationToken ct = default) =>
+        SendAsync(to, EmailTemplates.CourseEnrollmentAccepted, new Dictionary<string, string>
+        {
+            ["ParentName"] = parentName,
+            ["StudentName"] = studentName,
+            ["CourseTitle"] = courseTitle,
+            ["StatusNote"] = statusNote,
+            ["ActionUrl"] = actionUrl
+        }, ct);
 
     public async Task SendTutorStudentPaymentReceivedAsync(string to, string tutorName, string studentName, string courseTitle, decimal amount, CancellationToken ct = default)
     {
-        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — TUTOR_STUDENT_PAYMENT_RECEIVED non envoyé à {Email}.", to); return; }
-        await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.TutorStudentPaymentReceived, [to],
-            new Dictionary<string, string>
-            {
-                ["TutorName"] = tutorName,
-                ["StudentName"] = studentName,
-                ["CourseTitle"] = courseTitle,
-                ["Amount"] = amount.ToString("C")
-            }), ct);
+        var culture = await ResolveCultureAsync(to, ct);
+        await SendAsync(to, EmailTemplates.TutorStudentPaymentReceived, new Dictionary<string, string>
+        {
+            ["TutorName"] = tutorName,
+            ["StudentName"] = studentName,
+            ["CourseTitle"] = courseTitle,
+            ["Amount"] = amount.ToString("C", culture)
+        }, ct, culture.Name);
+    }
+
+    private static Dictionary<string, string> LessonBody(
+        string recipientName,
+        string tutorName,
+        string subject,
+        DateTime lessonDate,
+        CultureInfo culture) =>
+        new()
+        {
+            ["RecipientName"] = recipientName,
+            ["TutorName"] = tutorName,
+            ["Subject"] = subject,
+            ["LessonDate"] = lessonDate.ToString("f", culture)
+        };
+
+    private async Task SendAsync(
+        string to,
+        string templateCode,
+        Dictionary<string, string> bodyData,
+        CancellationToken ct,
+        string? language = null)
+    {
+        if (!_client.IsConfigured)
+        {
+            _logger.LogWarning("Mail Sender non configuré — {Template} non envoyé à {Email}.", templateCode, to);
+            return;
+        }
+
+        var lang = SupportedLanguageCodes.Normalize(language ?? await ResolveLanguageAsync(to, ct));
+        await TrySendAsync(new SendMailRequest(
+            ClientCode: _settings.ClientCode,
+            TemplateCode: templateCode,
+            To: [to],
+            BodyData: bodyData,
+            Language: lang
+        ), ct);
+    }
+
+    private async Task<string> ResolveLanguageAsync(string email, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+            return SupportedLanguageCodes.Default;
+
+        var user = await _users.FindByEmailAsync(email.Trim());
+        return SupportedLanguageCodes.Normalize(user?.PreferredLanguage);
+    }
+
+    private async Task<CultureInfo> ResolveCultureAsync(string email, CancellationToken ct)
+    {
+        var lang = await ResolveLanguageAsync(email, ct);
+        try
+        {
+            return CultureInfo.GetCultureInfo(lang);
+        }
+        catch (CultureNotFoundException)
+        {
+            return CultureInfo.GetCultureInfo(SupportedLanguageCodes.French);
+        }
     }
 
     private async Task TrySendAsync(SendMailRequest request, CancellationToken ct)
@@ -331,13 +309,21 @@ public class EmailService : IEmailService
         {
             var result = await _client.SendAsync(request, ct);
             if (result.Success)
-                _logger.LogInformation("E-mail {Template} envoyé → {MailCode}", request.TemplateCode, result.MailCode);
+                _logger.LogInformation(
+                    "E-mail {Template} ({Language}) envoyé → {MailCode}",
+                    request.TemplateCode,
+                    request.Language,
+                    result.MailCode);
             else
-                _logger.LogWarning("E-mail {Template} refusé : {Error}", request.TemplateCode, result.Error);
+                _logger.LogWarning(
+                    "E-mail {Template} ({Language}) refusé : {Error}",
+                    request.TemplateCode,
+                    request.Language,
+                    result.Error);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Échec d'envoi d'e-mail {Template}.", request.TemplateCode);
+            _logger.LogError(ex, "Échec d'envoi d'e-mail {Template} ({Language}).", request.TemplateCode, request.Language);
         }
     }
 }

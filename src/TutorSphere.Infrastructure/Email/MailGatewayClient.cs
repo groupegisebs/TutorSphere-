@@ -42,8 +42,9 @@ public sealed class MailGatewayClient
         httpRequest.Content = JsonContent.Create(request, options: JsonOptions);
 
         _logger.LogInformation(
-            "Mail Sender → POST api/mail/send template={Template} client={Client} to={To}",
+            "Mail Sender → POST api/mail/send template={Template} lang={Language} client={Client} to={To}",
             request.TemplateCode,
+            request.Language ?? "fr",
             request.ClientCode,
             string.Join(",", request.To));
 

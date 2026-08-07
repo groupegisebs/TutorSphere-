@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using TutorSphere.Application.Common;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Domain.Enums;
 
@@ -72,9 +73,8 @@ public sealed class BillingEmailOrchestrator : IBillingEmailOrchestrator
                 return;
 
             var needsPay = ctx.Value.Sub.Status == SubscriptionStatus.AwaitingPayment;
-            var note = needsPay
-                ? "Votre inscription est acceptée. Veuillez procéder au paiement pour activer les cours."
-                : "Votre inscription est acceptée et active. Les cours seront planifiés prochainement.";
+            var lang = await _contacts.GetPreferredLanguageByEmailAsync(ctx.Value.Parent.Email, ct);
+            var note = EmailCopy.EnrollmentAcceptedNote(lang, needsPay);
             var url = needsPay
                 ? $"{WebBase}/parent/subscriptions"
                 : $"{WebBase}/parent/calendar";

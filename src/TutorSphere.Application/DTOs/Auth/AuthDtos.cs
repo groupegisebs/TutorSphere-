@@ -6,7 +6,8 @@ public record RegisterRequest(
     string FirstName,
     string LastName,
     string Role,
-    DateTime? DateOfBirth = null);
+    DateTime? DateOfBirth = null,
+    string? PreferredLanguage = null);
 
 public record RegisterSchoolRequest(
     string SchoolName,
@@ -16,7 +17,8 @@ public record RegisterSchoolRequest(
     string Email,
     string Password,
     string? City = null,
-    string? Country = null);
+    string? Country = null,
+    string? PreferredLanguage = null);
 
 public record RegisterSchoolResponse(
     Guid TenantId,

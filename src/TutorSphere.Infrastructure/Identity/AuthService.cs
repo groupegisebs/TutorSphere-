@@ -5,6 +5,7 @@ using System.Text;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
+using TutorSphere.Application.Common;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.Auth;
 using TutorSphere.Domain.Entities;
@@ -64,7 +65,8 @@ public class AuthService : IAuthService
             UserName = request.Email,
             Email = request.Email,
             FirstName = request.FirstName.Trim(),
-            LastName = request.LastName.Trim()
+            LastName = request.LastName.Trim(),
+            PreferredLanguage = SupportedLanguageCodes.Normalize(request.PreferredLanguage)
         };
 
         var result = await _userManager.CreateAsync(user, request.Password);
@@ -334,7 +336,8 @@ public class AuthService : IAuthService
             UserName = request.Email,
             Email = request.Email,
             FirstName = request.FirstName.Trim(),
-            LastName = request.LastName.Trim()
+            LastName = request.LastName.Trim(),
+            PreferredLanguage = SupportedLanguageCodes.Normalize(request.PreferredLanguage)
         };
 
         var result = await _userManager.CreateAsync(user, request.Password);

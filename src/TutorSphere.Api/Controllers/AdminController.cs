@@ -198,7 +198,11 @@ public class AdminController : ControllerBase
         if (!result.Succeeded)
             return BadRequest(new { error = string.Join("; ", result.Errors.Select(e => e.Description)) });
 
-        await _email.SendAccountDeactivatedAsync(user.Email ?? string.Empty, user.FirstName, reason ?? "Non spécifié", ct);
+        await _email.SendAccountDeactivatedAsync(
+            user.Email ?? string.Empty,
+            user.FirstName,
+            reason ?? Application.Common.EmailCopy.UnspecifiedReason(user.PreferredLanguage),
+            ct);
 
         return Ok(new { message = "Compte désactivé." });
     }

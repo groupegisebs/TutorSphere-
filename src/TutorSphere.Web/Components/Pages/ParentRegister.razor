@@ -209,7 +209,9 @@
         _submitting = true;
         try
         {
-            var req = new RegisterRequest(_email.Trim(), _password, _firstName.Trim(), _lastName.Trim(), "Parent");
+            var req = new RegisterRequest(
+                _email.Trim(), _password, _firstName.Trim(), _lastName.Trim(), "Parent",
+                PreferredLanguage: System.Globalization.CultureInfo.CurrentUICulture.Name);
             var resp = await Http.PostAsJsonAsync("api/auth/register", req);
             if (resp.IsSuccessStatusCode)
             {

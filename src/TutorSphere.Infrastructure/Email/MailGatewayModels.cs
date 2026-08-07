@@ -5,7 +5,8 @@ public sealed record SendMailRequest(
     string TemplateCode,
     List<string> To,
     Dictionary<string, string>? BodyData = null,
-    int Priority = 1);
+    int Priority = 1,
+    string? Language = null);
 
 public sealed record SendMailResponse(
     bool Success,

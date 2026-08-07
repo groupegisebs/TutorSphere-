@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Identity;
+using TutorSphere.Application.Common;
 using TutorSphere.Application.Common.Interfaces;
 
 namespace TutorSphere.Infrastructure.Identity;
@@ -22,5 +23,14 @@ public sealed class IdentityUserContactLookup : IUserContactLookup
             ? user.Email
             : $"{user.FirstName} {user.LastName}".Trim();
         return (user.Email, name);
+    }
+
+    public async Task<string> GetPreferredLanguageByEmailAsync(string email, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+            return SupportedLanguageCodes.Default;
+
+        var user = await _users.FindByEmailAsync(email.Trim());
+        return SupportedLanguageCodes.Normalize(user?.PreferredLanguage);
     }
 }
