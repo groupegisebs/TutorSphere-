@@ -26,6 +26,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
     private readonly IBillingEmailOrchestrator _billingEmail;
     private readonly IUserContactLookup _contacts;
     private readonly IEmailService _email;
+    private readonly IAppUrlProvider _urls;
     private readonly ILogger<PayGatewayService> _logger;
     private string? _cachedPublishableKey;
 
@@ -39,6 +40,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
         IBillingEmailOrchestrator billingEmail,
         IUserContactLookup contacts,
         IEmailService email,
+        IAppUrlProvider urls,
         ILogger<PayGatewayService> logger)
     {
         _db = db;
@@ -50,6 +52,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
         _billingEmail = billingEmail;
         _contacts = contacts;
         _email = email;
+        _urls = urls;
         _logger = logger;
     }
 
@@ -721,7 +724,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
                                 c.Email,
                                 firstName,
                                 tenant.Name,
-                                "https://app.tutorsphere.gisebs.com/login/tuteur",
+                                $"{_urls.WebBaseUrl}/login/tuteur",
                                 ct);
                         }
                     }

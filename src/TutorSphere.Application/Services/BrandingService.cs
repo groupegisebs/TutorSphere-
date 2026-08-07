@@ -63,8 +63,14 @@ public class BrandingService : IBrandingService
     public Task<PublicTenantSiteDto?> GetPublicSiteBySlugAsync(string slug, CancellationToken ct = default)
     {
         var normalizedSlug = slug.ToLowerInvariant().Trim();
+        var now = DateTime.UtcNow;
         var tenant = _db.Tenants
-            .Where(t => t.Slug == normalizedSlug || t.Subdomain == normalizedSlug)
+            .Where(t => (t.Slug == normalizedSlug || t.Subdomain == normalizedSlug)
+                        && t.IsPublicProfile
+                        && t.Status == TenantStatus.Active
+                        && t.OnboardingCompletedAt != null
+                        && t.LicenseExpiresAt != null
+                        && t.LicenseExpiresAt > now)
             .Select(t => new
             {
                 t.Id,
@@ -113,8 +119,14 @@ public class BrandingService : IBrandingService
     public Task<PublicTutorDetailDto?> GetPublicTutorDetailAsync(string slug, CancellationToken ct = default)
     {
         var normalizedSlug = slug.ToLowerInvariant().Trim();
+        var now = DateTime.UtcNow;
         var tenant = _db.Tenants
-            .Where(t => t.Slug == normalizedSlug || t.Subdomain == normalizedSlug)
+            .Where(t => (t.Slug == normalizedSlug || t.Subdomain == normalizedSlug)
+                        && t.IsPublicProfile
+                        && t.Status == TenantStatus.Active
+                        && t.OnboardingCompletedAt != null
+                        && t.LicenseExpiresAt != null
+                        && t.LicenseExpiresAt > now)
             .Select(t => new
             {
                 t.Id,
@@ -130,7 +142,7 @@ public class BrandingService : IBrandingService
             })
             .FirstOrDefault();
 
-        if (tenant is null || !tenant.IsPublicProfile)
+        if (tenant is null)
             return Task.FromResult<PublicTutorDetailDto?>(null);
 
         var branding = _db.TenantBrandings.FirstOrDefault(b => b.TenantId == tenant.Id);

@@ -73,7 +73,7 @@ public class AuthController : ControllerBase
 
             var webBase = (_configuration["WebBaseUrl"] ?? "").TrimEnd('/');
             if (!string.IsNullOrWhiteSpace(webBase))
-                return Redirect($"{webBase}/login?confirmed=true");
+                return Redirect($"{webBase}/login/tuteur?confirmed=true");
 
             return Content("""
                 <!doctype html>
@@ -87,7 +87,7 @@ public class AuthController : ControllerBase
                 <div class="icon">✅</div>
                 <h1>Adresse confirmée !</h1>
                 <p>Votre e-mail est validé. Vous pouvez maintenant vous connecter pour activer votre école (paiement 10 $ USD / an, puis courte formation).</p>
-                <p><a href="/login">Connexion →</a></p>
+                <p><a href="/login/tuteur">Connexion enseignant →</a></p>
                 </div></body></html>
                 """, "text/html");
         }

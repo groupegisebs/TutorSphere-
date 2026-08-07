@@ -14,8 +14,12 @@ public class TenantsController : ControllerBase
 
     public TenantsController(ITenantService tenantService) => _tenantService = tenantService;
 
+    /// <summary>
+    /// Création directe réservée aux admins. Les écoles publiques passent par
+    /// <c>POST /api/auth/register-school</c> (évite le squat de slugs anonymes).
+    /// </summary>
     [HttpPost]
-    [AllowAnonymous]
+    [Authorize(Roles = UserRoles.SuperAdmin)]
     public async Task<ActionResult<TenantDto>> Create([FromBody] CreateTenantRequest request, CancellationToken ct)
     {
         try
@@ -30,7 +34,7 @@ public class TenantsController : ControllerBase
     }
 
     [HttpGet("{slug}")]
-    [AllowAnonymous]
+    [Authorize(Roles = $"{UserRoles.Tutor},{UserRoles.TeachingAssistant},{UserRoles.SuperAdmin}")]
     public async Task<ActionResult<TenantDto>> GetBySlug(string slug, CancellationToken ct)
     {
         var tenant = await _tenantService.GetBySlugAsync(slug, ct);

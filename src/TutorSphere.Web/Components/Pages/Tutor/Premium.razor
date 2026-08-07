@@ -1,126 +1,12 @@
 @page "/tutor/premium"
 @layout TutorLayout
 @rendermode InteractiveServer
-@inject AuthService AuthSvc
-@inject ApiClient Api
 @inject NavigationManager Navigation
-@inject IStringLocalizer<SharedResources> L
 
-<PageTitle>@L["Nav_Pricing"] – TutorSphere</PageTitle>
-
-<div class="ts-page-header">
-    <div>
-        <h1><i class="bi bi-stars me-2" style="color:#5831E0"></i>@L["Nav_Pricing"]</h1>
-        <p class="ts-page-subtitle">@L["Tutor_PricingDesc"]</p>
-    </div>
-    @if (_plan != null)
-    {
-        <span class="ts-badge @(_plan == "Active" ? "ts-badge-success" : "ts-badge-muted")" style="font-size:1rem;padding:.5rem 1rem">
-            <i class="bi bi-patch-check-fill me-1"></i>
-            @(_plan == "Active" ? L["Pricing_PlanActive"] : L["Pricing_FreeTrialBadge"])
-        </span>
-    }
-</div>
-
-@if (_error != null)
-{
-    <div class="alert alert-danger mb-4">
-        <i class="bi bi-exclamation-circle me-2"></i>@_error
-    </div>
-}
-
-<PricingComparisonTable OnSubscribe="SubscribeAsync"
-                        Subscribing="_subscribing"
-                        SubscribingPlanId="_subscribingPlanId" />
-
-<div class="row justify-content-center">
-    <div class="col-lg-8">
-        <div class="section-card p-4">
-            <h3 class="mb-4 text-center" style="color:var(--ts-primary)">@L["Pricing_Faq_Title"]</h3>
-            @foreach (var faq in Faqs)
-            {
-                <div class="premium-faq-item">
-                    <button class="premium-faq-question"
-                            @onclick="() => faq.Open = !faq.Open">
-                        <span>@L[faq.QuestionKey]</span>
-                        <i class="bi @(faq.Open ? "bi-chevron-up" : "bi-chevron-down")"></i>
-                    </button>
-                    @if (faq.Open)
-                    {
-                        <div class="premium-faq-answer">@L[faq.AnswerKey]</div>
-                    }
-                </div>
-            }
-        </div>
-    </div>
-</div>
-
-<style>
-    .premium-faq-item { border-bottom: 1px solid var(--ts-border); }
-    .premium-faq-item:last-child { border-bottom: none; }
-    .premium-faq-question {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        width: 100%;
-        background: none;
-        border: none;
-        padding: 1rem 0;
-        font-weight: 600;
-        font-size: .95rem;
-        cursor: pointer;
-        color: var(--ts-text);
-        text-align: left;
-    }
-    .premium-faq-question:hover { color: var(--ts-primary); }
-    .premium-faq-answer {
-        padding: 0 0 1rem;
-        color: var(--ts-muted);
-        font-size: .9rem;
-        line-height: 1.6;
-    }
-</style>
-
+@* Ancienne page multi-forfaits : l'activation unique est à 10 $ USD / an. *@
 @code {
-    private string? _plan;
-    private bool _subscribing;
-    private string? _subscribingPlanId;
-    private string? _error;
-
-    private class FaqItem
-    {
-        public string QuestionKey { get; set; } = "";
-        public string AnswerKey { get; set; } = "";
-        public bool Open { get; set; }
-    }
-
-    private List<FaqItem> Faqs { get; } =
-    [
-        new() { QuestionKey = "Pricing_Faq1_Q", AnswerKey = "Pricing_Faq1_A" },
-        new() { QuestionKey = "Pricing_Faq2_Q", AnswerKey = "Pricing_Faq2_A" },
-        new() { QuestionKey = "Pricing_Faq3_Q", AnswerKey = "Pricing_Faq3_A" },
-        new() { QuestionKey = "Pricing_Faq4_Q", AnswerKey = "Pricing_Faq4_A" },
-    ];
-
     protected override void OnInitialized()
     {
-        _plan = AuthSvc.IsAuthenticated ? "Trial" : null;
-    }
-
-    private async Task SubscribeAsync(string planId)
-    {
-        _error = null;
-        _subscribingPlanId = planId;
-        _subscribing = true;
-        try
-        {
-            await Task.Delay(500);
-            _error = L["Pricing_SubscribeError"];
-        }
-        finally
-        {
-            _subscribing = false;
-            _subscribingPlanId = null;
-        }
+        Navigation.NavigateTo("/tutor/activate", replace: true);
     }
 }

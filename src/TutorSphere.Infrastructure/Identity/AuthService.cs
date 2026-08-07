@@ -52,12 +52,7 @@ public class AuthService : IAuthService
         var role = NormalizeRole(request.Role);
         DateTime? studentDob = null;
         if (role == UserRoles.Student)
-        {
             studentDob = ValidateStudentRegistrationDob(request.DateOfBirth);
-            if (!_db.Tenants.Any())
-                throw new InvalidOperationException(
-                    "Aucune école disponible pour finaliser l'inscription. Réessayez plus tard.");
-        }
 
         var user = new ApplicationUser
         {
@@ -86,7 +81,15 @@ public class AuthService : IAuthService
         var confirmUrl = $"{apiBase}/api/auth/confirm-email?userId={Uri.EscapeDataString(user.Id)}&token={Uri.EscapeDataString(confirmToken)}";
         await _email.SendEmailConfirmationSimpleAsync(user.Email!, user.FirstName, confirmUrl, ct);
 
-        return await BuildAuthResponse(user, role);
+        // Pas de JWT tant que l'e-mail n'est pas confirmé (évite un accès API avant validation).
+        return new AuthResponse(
+            string.Empty,
+            user.Email ?? string.Empty,
+            user.FullName,
+            role,
+            user.TenantId,
+            DateTime.UtcNow,
+            null);
     }
 
     public async Task<AuthResponse> LoginAsync(LoginRequest request, CancellationToken ct = default)
@@ -446,7 +449,10 @@ public class AuthService : IAuthService
         if (_db.ParentProfilesForAnyTenant.Any(p => p.UserId == user.Id))
             return;
 
-        var tenantId = user.TenantId ?? _db.Tenants.Select(t => t.Id).FirstOrDefault();
+        // Prefers the user's school; otherwise the dedicated holding tenant for marketplace parents
+        // (avoids attaching every parent to Tenants.First() / a random school).
+        var tenantId = user.TenantId
+            ?? await EnsureMarketplaceParentTenantIdAsync(ct);
         if (tenantId == Guid.Empty)
             return;
 
@@ -459,6 +465,28 @@ public class AuthService : IAuthService
             Email = user.Email ?? user.UserName ?? string.Empty
         });
         await _db.SaveChangesAsync(ct);
+    }
+
+    private async Task<Guid> EnsureMarketplaceParentTenantIdAsync(CancellationToken ct)
+    {
+        const string slug = "platform-parents";
+        var existing = _db.Tenants.Where(t => t.Slug == slug).Select(t => t.Id).FirstOrDefault();
+        if (existing != Guid.Empty)
+            return existing;
+
+        var holding = new Tenant
+        {
+            Name = "TutorSphere Parents",
+            Slug = slug,
+            Subdomain = slug,
+            Status = TenantStatus.Suspended,
+            IsPublicProfile = false,
+            OwnerUserId = string.Empty,
+            Branding = new TenantBranding()
+        };
+        _db.Add(holding);
+        await _db.SaveChangesAsync(ct);
+        return holding.Id;
     }
 
     private static DateTime ValidateStudentRegistrationDob(DateTime? dateOfBirth)
@@ -489,7 +517,8 @@ public class AuthService : IAuthService
         var dob = dateOfBirth
             ?? throw new InvalidOperationException("La date de naissance est obligatoire pour un compte élève.");
 
-        var tenantId = user.TenantId ?? _db.Tenants.Select(t => t.Id).FirstOrDefault();
+        // Élève autonome : rattachement à l'école du compte si déjà connue, sinon holding marketplace.
+        var tenantId = user.TenantId ?? await EnsureMarketplaceParentTenantIdAsync(ct);
         if (tenantId == Guid.Empty)
             throw new InvalidOperationException(
                 "Aucune école disponible pour finaliser l'inscription. Réessayez plus tard.");
