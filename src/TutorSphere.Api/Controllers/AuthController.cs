@@ -111,10 +111,30 @@ public class AuthController : ControllerBase
         {
             return Ok(await _authService.LoginAsync(request, ct));
         }
+        catch (EmailNotConfirmedException ex)
+        {
+            return Unauthorized(new { error = ex.Message, code = EmailNotConfirmedException.ErrorCode });
+        }
         catch (UnauthorizedAccessException ex)
         {
             return Unauthorized(new { error = ex.Message });
         }
+    }
+
+    [HttpPost("resend-confirmation")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ResendConfirmation(
+        [FromBody] ResendEmailConfirmationRequest request,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request.Email))
+            return BadRequest(new { error = "Adresse e-mail requise." });
+
+        await _authService.ResendEmailConfirmationAsync(request.Email, ct);
+        return Ok(new
+        {
+            message = "Si cette adresse e-mail est associée à un compte non confirmé, un nouveau lien a été envoyé."
+        });
     }
 
     /// <summary>Connexion élève : e-mail du parent + code d'accès généré pour l'enfant.</summary>

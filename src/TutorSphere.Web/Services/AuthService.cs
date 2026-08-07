@@ -109,10 +109,11 @@ public sealed class AuthService
             {
                 var body = await resp.Content.ReadAsStringAsync();
                 var apiError = TryExtractError(body);
+                var code = TryExtractCode(body);
                 var msg = apiError is not null
-                    ? $"({(int)resp.StatusCode}) {apiError}"
+                    ? (code == "email_not_confirmed" ? apiError : $"({(int)resp.StatusCode}) {apiError}")
                     : $"({(int)resp.StatusCode}) Identifiants invalides.";
-                return new LoginResult(false, msg, null);
+                return new LoginResult(false, msg, null, code);
             }
 
             var result = await resp.Content.ReadFromJsonAsync<AuthResponse>(JsonOpts);
@@ -128,6 +129,33 @@ public sealed class AuthService
         {
             _logger.LogError(ex, "Login failed");
             return new LoginResult(false, "Impossible de se connecter. Réessayez.", null);
+        }
+    }
+
+    /// <summary>Renvoie le courriel de confirmation (silencieux côté API si compte inexistant).</summary>
+    public async Task<(bool Ok, string? Message)> ResendEmailConfirmationAsync(string email)
+    {
+        try
+        {
+            var resp = await _http.PostAsJsonAsync("api/auth/resend-confirmation", new { email });
+            var body = await resp.Content.ReadAsStringAsync();
+            if (!resp.IsSuccessStatusCode)
+                return (false, TryExtractError(body) ?? "Impossible d'envoyer le courriel. Réessayez.");
+
+            try
+            {
+                using var doc = JsonDocument.Parse(body);
+                if (doc.RootElement.TryGetProperty("message", out var m))
+                    return (true, m.GetString());
+            }
+            catch (JsonException) { }
+
+            return (true, "Un nouveau lien de confirmation a été envoyé si le compte le permet.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Resend confirmation failed");
+            return (false, "Impossible d'envoyer le courriel. Réessayez.");
         }
     }
 
@@ -539,9 +567,21 @@ public sealed class AuthService
         catch (JsonException) { return body; }
         return body;
     }
+
+    private static string? TryExtractCode(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("code", out var c)) return c.GetString();
+        }
+        catch (JsonException) { }
+        return null;
+    }
 }
 
-public sealed record LoginResult(bool Success, string? Error, string? RedirectTo);
+public sealed record LoginResult(bool Success, string? Error, string? RedirectTo, string? ErrorCode = null);
 
 internal sealed record AuthResponse(
     string Token,

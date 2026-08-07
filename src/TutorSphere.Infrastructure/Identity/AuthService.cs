@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
@@ -23,6 +24,7 @@ public interface IAuthService
     Task RevokeChildLoginAccessAsync(string parentUserId, Guid studentId, CancellationToken ct = default);
     Task<RegisterSchoolResponse> RegisterSchoolAsync(RegisterSchoolRequest request, CancellationToken ct = default);
     Task ConfirmEmailAsync(string userId, string token, CancellationToken ct = default);
+    Task ResendEmailConfirmationAsync(string email, CancellationToken ct = default);
     Task ForgotPasswordAsync(string email, CancellationToken ct = default);
     Task ResetPasswordAsync(string userId, string token, string newPassword, CancellationToken ct = default);
     Task EnsureParentProfileForUserAsync(string userId, CancellationToken ct = default);
@@ -30,6 +32,9 @@ public interface IAuthService
 
 public class AuthService : IAuthService
 {
+    private static readonly ConcurrentDictionary<string, DateTime> ConfirmResendCooldown = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly TimeSpan ConfirmResendMinInterval = TimeSpan.FromSeconds(60);
+
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly IConfiguration _configuration;
     private readonly IEmailService _email;
@@ -101,8 +106,7 @@ public class AuthService : IAuthService
             throw new UnauthorizedAccessException("Ce compte est désactivé. Contactez l'administrateur.");
 
         if (!await _userManager.IsEmailConfirmedAsync(user))
-            throw new UnauthorizedAccessException(
-                "Veuillez confirmer votre adresse e-mail avant de vous connecter. Consultez votre boîte de réception.");
+            throw new EmailNotConfirmedException();
 
         if (!await _userManager.CheckPasswordAsync(user, request.Password))
             throw new UnauthorizedAccessException("Identifiants invalides.");
@@ -374,6 +378,39 @@ public class AuthService : IAuthService
         var result = await _userManager.ConfirmEmailAsync(user, token);
         if (!result.Succeeded)
             throw new InvalidOperationException("Le lien de confirmation est invalide ou expiré.");
+    }
+
+    public async Task ResendEmailConfirmationAsync(string email, CancellationToken ct = default)
+    {
+        var normalized = email.Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+            return;
+
+        var user = await _userManager.FindByEmailAsync(normalized);
+        if (user is null || await _userManager.IsEmailConfirmedAsync(user))
+            return;
+
+        var key = normalized.ToLowerInvariant();
+        if (ConfirmResendCooldown.TryGetValue(key, out var last)
+            && DateTime.UtcNow - last < ConfirmResendMinInterval)
+            return;
+
+        var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+        var apiBase = (_configuration["ApiBaseUrl"] ?? "https://api.tutorsphere.gisebs.com").TrimEnd('/');
+        var confirmUrl =
+            $"{apiBase}/api/auth/confirm-email?userId={Uri.EscapeDataString(user.Id)}&token={Uri.EscapeDataString(token)}";
+
+        var roles = await _userManager.GetRolesAsync(user);
+        var isTutor = roles.Any(r =>
+            r.Equals(UserRoles.Tutor, StringComparison.OrdinalIgnoreCase)
+            || r.Equals(UserRoles.TeachingAssistant, StringComparison.OrdinalIgnoreCase));
+
+        if (isTutor)
+            await _email.SendEmailConfirmationAsync(user.Email!, user.FirstName, confirmUrl, ct);
+        else
+            await _email.SendEmailConfirmationSimpleAsync(user.Email!, user.FirstName, confirmUrl, ct);
+
+        ConfirmResendCooldown[key] = DateTime.UtcNow;
     }
 
     public async Task ForgotPasswordAsync(string email, CancellationToken ct = default)

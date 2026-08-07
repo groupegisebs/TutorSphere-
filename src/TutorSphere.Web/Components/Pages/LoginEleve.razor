@@ -84,10 +84,39 @@
                 </button>
             </div>
 
+            @if (!string.IsNullOrEmpty(_successMessage))
+            {
+                <div class="alert alert-success mb-3" role="status">
+                    <i class="bi bi-check-circle me-2"></i>@_successMessage
+                </div>
+            }
+
             @if (!string.IsNullOrEmpty(_errorMessage))
             {
                 <div class="alert alert-danger mb-3" role="alert">
-                    <i class="bi bi-exclamation-circle me-2"></i>@_errorMessage
+                    <div class="d-flex align-items-start gap-2">
+                        <i class="bi bi-exclamation-circle mt-1"></i>
+                        <div class="flex-grow-1">
+                            <div>@_errorMessage</div>
+                            @if (_needsEmailConfirmation && !_useParentCode)
+                            {
+                                <button type="button"
+                                        class="btn btn-sm btn-outline-danger mt-2"
+                                        disabled="@(_isResending || _resendCooldown)"
+                                        @onclick="ResendConfirmationAsync">
+                                    @if (_isResending)
+                                    {
+                                        <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                                    }
+                                    else
+                                    {
+                                        <i class="bi bi-envelope-arrow-up me-1" aria-hidden="true"></i>
+                                    }
+                                    @(_resendCooldown ? L["Login_ResendConfirmationWait"] : L["Login_ResendConfirmation"])
+                                </button>
+                            }
+                        </div>
+                    </div>
                 </div>
             }
 
@@ -200,12 +229,18 @@
     private bool _rememberMe;
     private bool _showPassword;
     private bool _isLoading;
+    private bool _isResending;
+    private bool _resendCooldown;
+    private bool _needsEmailConfirmation;
     private string? _errorMessage;
+    private string? _successMessage;
 
     private void SetMode(bool parentCode)
     {
         _useParentCode = parentCode;
         _errorMessage = null;
+        _successMessage = null;
+        _needsEmailConfirmation = false;
     }
 
     private async Task LoginWithCodeAsync()
@@ -238,6 +273,8 @@
     private async Task LoginAsync()
     {
         _errorMessage = null;
+        _successMessage = null;
+        _needsEmailConfirmation = false;
 
         if (string.IsNullOrWhiteSpace(_email) || string.IsNullOrWhiteSpace(_password))
         {
@@ -262,10 +299,45 @@
                 return;
             }
             _errorMessage = result.Error ?? L["Login_InvalidCredentials"];
+            _needsEmailConfirmation = result.ErrorCode == "email_not_confirmed";
         }
         finally
         {
             _isLoading = false;
         }
+    }
+
+    private async Task ResendConfirmationAsync()
+    {
+        if (_resendCooldown || string.IsNullOrWhiteSpace(_email))
+            return;
+
+        _isResending = true;
+        _successMessage = null;
+        try
+        {
+            var (ok, message) = await AuthSvc.ResendEmailConfirmationAsync(_email.Trim());
+            if (ok)
+            {
+                _successMessage = message ?? L["Login_ResendConfirmationSent"].ToString();
+                _resendCooldown = true;
+                _ = ResetResendCooldownAsync();
+            }
+            else
+            {
+                _errorMessage = message ?? L["Login_ResendConfirmationFailed"].ToString();
+            }
+        }
+        finally
+        {
+            _isResending = false;
+        }
+    }
+
+    private async Task ResetResendCooldownAsync()
+    {
+        await Task.Delay(TimeSpan.FromSeconds(60));
+        _resendCooldown = false;
+        await InvokeAsync(StateHasChanged);
     }
 }

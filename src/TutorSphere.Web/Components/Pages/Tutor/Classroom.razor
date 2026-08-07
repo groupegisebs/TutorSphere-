@@ -398,9 +398,9 @@
         <aside class="cr-pro-side">
             <div class="cr-pro-side-tabs">
                 <button type="button" class="cr-pro-side-tab @(_sideRail == "People" ? "active" : null)" @onclick='() => _sideRail = "People"'><i class="bi bi-people"></i>@L["Classroom_Participants"]</button>
-                <button type="button" class="cr-pro-side-tab @(_sideRail == "Chat" ? "active" : null)" @onclick='() => { _sideRail = "Chat"; _activeTab = "Chat"; }'><i class="bi bi-chat"></i>@L["Classroom_Chat"]</button>
+                <button type="button" class="cr-pro-side-tab @(_sideRail == "Chat" ? "active" : null)" @onclick='() => _sideRail = "Chat"'><i class="bi bi-chat"></i>@L["Classroom_Chat"]</button>
                 <button type="button" class="cr-pro-side-tab is-ai @(_sideRail == "Holo" ? "active" : null)" @onclick='() => _sideRail = "Holo"'><i class="bi bi-stars"></i>Holo</button>
-                <button type="button" class="cr-pro-side-tab @(_sideRail == "Docs" ? "active" : null)" @onclick='() => { _sideRail = "Docs"; _activeTab = "Documents"; }'><i class="bi bi-folder"></i>@L["Classroom_Documents"]</button>
+                <button type="button" class="cr-pro-side-tab @(_sideRail == "Docs" ? "active" : null)" @onclick='() => _sideRail = "Docs"'><i class="bi bi-folder"></i>@L["Classroom_Documents"]</button>
                 <button type="button" class="cr-pro-side-tab @(_sideRail == "Quiz" ? "active" : null)" @onclick='() => _sideRail = "Quiz"'><i class="bi bi-question-circle"></i>Quiz</button>
                 <button type="button" class="cr-pro-side-tab @(_sideRail == "Notes" ? "active" : null)" @onclick='() => _sideRail = "Notes"'><i class="bi bi-journal-text"></i>@L["ClassroomPro_AiNotes"]</button>
             </div>
@@ -472,25 +472,35 @@
                         <i class="bi bi-upload me-1"></i>@L["ClassroomPro_Upload"]
                         <InputFile OnChange="OnDocSelected" style="display:none" />
                     </label>
-                    @foreach (var doc in _documents)
+                    @if (_docsLoading)
                     {
-                        <div class="cr-pro-prow">
-                            <i class="bi bi-file-earmark" style="color:var(--crp-violet)"></i>
-                            <div>
-                                <div class="cr-pro-prow-name">@doc.Name</div>
-                                <div class="cr-pro-prow-role">@doc.Size</div>
-                            </div>
-                            @if (doc.IsImage)
-                            {
-                                <button type="button" class="cr-pro-invite" @onclick="() => OpenDocumentOnBoardAsync(doc)" title='@L["Classroom_AnnotateHint"]'>
-                                    <i class="bi bi-share me-1"></i>@L["Classroom_ShareDocAction"]
-                                </button>
-                            }
+                        <div class="text-muted small py-3 text-center">
+                            <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                            @L["Button_Loading"]
                         </div>
                     }
-                    @if (_documents.Count == 0)
+                    else
                     {
-                        <p class="text-muted small mb-0">@L["ClassroomPro_NoDocuments"]</p>
+                        @foreach (var doc in _documents)
+                        {
+                            <div class="cr-pro-prow">
+                                <i class="bi bi-file-earmark" style="color:var(--crp-violet)"></i>
+                                <div>
+                                    <div class="cr-pro-prow-name">@doc.Name</div>
+                                    <div class="cr-pro-prow-role">@doc.Size</div>
+                                </div>
+                                @if (doc.IsImage)
+                                {
+                                    <button type="button" class="cr-pro-invite" @onclick="() => OpenDocumentOnBoardAsync(doc)" title='@L["Classroom_AnnotateHint"]'>
+                                        <i class="bi bi-share me-1"></i>@L["Classroom_ShareDocAction"]
+                                    </button>
+                                }
+                            </div>
+                        }
+                        @if (_documents.Count == 0)
+                        {
+                            <p class="text-muted small mb-0">@L["ClassroomPro_NoDocuments"]</p>
+                        }
                     }
                 </div>
             }
@@ -754,14 +764,12 @@
                 break;
             case "Documents":
                 _sideRail = "Docs";
-                _activeTab = "Documents";
                 break;
             case "Holo":
                 _sideRail = "Holo";
                 break;
             default:
                 _sideRail = "Chat";
-                _activeTab = "Chat";
                 break;
         }
     }
@@ -820,7 +828,6 @@
         }, null, 3500, Timeout.Infinite);
     }
 
-    private string _activeTab  = "Chat";
     private string _sideRail = "People";
     private string _newMessage = "";
 
@@ -2077,7 +2084,7 @@
     private async Task OpenDocumentOnBoardAsync(DocumentVM doc)
     {
         if (doc.Id is null || !doc.IsImage) return;
-        _activeTab = "Documents";
+        _sideRail = "Docs";
         await PresentDocumentOnBoardAsync(doc.Id.Value, doc.ContentType, broadcast: true, displayName: doc.Name);
     }
 

@@ -45,4 +45,6 @@ public record AuthResponse(
 
 public record ForgotPasswordRequest(string Email);
 
+public record ResendEmailConfirmationRequest(string Email);
+
 public record ResetPasswordRequest(string UserId, string Token, string NewPassword);

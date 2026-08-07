@@ -308,7 +308,6 @@ else
     private ChildForm _form = new();
     private bool _accessBusy;
     private string? _accessError;
-    private string? _accessInfo;
     private string? _revealedCode;
     private string? _accessHint;
 
@@ -369,7 +368,6 @@ else
             if (_active is { HasLoginAccess: true } && !string.IsNullOrEmpty(_active.LoginAccessCode))
             {
                 _revealedCode = _active.LoginAccessCode;
-                _accessInfo = "ok";
             }
             else
             {
@@ -396,10 +394,7 @@ else
         _active = child;
         _detailError = null;
         if (child.HasLoginAccess && !string.IsNullOrEmpty(child.LoginAccessCode))
-        {
             _revealedCode = child.LoginAccessCode;
-            _accessInfo = "ok";
-        }
     }
 
     private async Task CopyAccessCodeAsync()
@@ -440,7 +435,6 @@ else
 
             _revealedCode = result.Value.AccessCode;
             _accessHint = result.Value.LoginHint;
-            _accessInfo = "ok";
             if (_active is not null)
                 _active.LoginAccessCode = result.Value.AccessCode;
         }
@@ -537,7 +531,6 @@ else
         SelectChild(child);
         _revealedCode = saved.LoginAccessCode;
         _accessHint = "Connexion espace Élève : e-mail du parent + ce code. L'enfant peut ensuite s'abonner à un cours.";
-        _accessInfo = "ok";
         child.LoginAccessCode = saved.LoginAccessCode;
         child.HasLoginAccess = true;
     }
@@ -670,7 +663,6 @@ else
     {
         if (keepIfSameChild && _active is not null && !string.IsNullOrEmpty(_revealedCode))
             return;
-        _accessInfo = null;
         _revealedCode = null;
         _accessHint = null;
         _accessError = null;
@@ -742,7 +734,6 @@ else
 
             _revealedCode = result.Value.AccessCode;
             _accessHint = result.Value.LoginHint;
-            _accessInfo = "ok";
             await LoadChildrenAsync();
             if (_active is not null)
                 _active.LoginAccessCode = result.Value.AccessCode;
