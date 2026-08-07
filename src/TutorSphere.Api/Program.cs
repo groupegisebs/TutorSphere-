@@ -123,6 +123,36 @@ var app = builder.Build();
         useSandbox ? "DEV/TEST (bac à sable)" : "LIVE",
         payGw["UseSandbox"] ?? "(auto)",
         app.Environment.EnvironmentName);
+
+    // Mail Sender = GiseMailSender (SecureMailGateway) — https://gisemailsender.gisebs.com
+    var emailSection = app.Configuration.GetSection("Email");
+    var emailBase = emailSection["BaseUrl"] ?? "";
+    var emailKey = emailSection["ApiKey"] ?? "";
+    var emailClient = emailSection["ClientCode"] ?? "TUTORSPHERE";
+    var mailConfigured = !string.IsNullOrWhiteSpace(emailBase) && !string.IsNullOrWhiteSpace(emailKey);
+
+    if (mailConfigured)
+    {
+        app.Logger.LogInformation(
+            "Mail Sender configuré : BaseUrl={BaseUrl}, ClientCode={ClientCode}",
+            emailBase.TrimEnd('/'),
+            emailClient);
+    }
+    else if (app.Environment.IsProduction())
+    {
+        throw new InvalidOperationException(
+            "Mail Sender non configuré (Email:ApiKey / EMAIL__APIKEY manquant). " +
+            "TutorSphere envoie les courriels via https://gisemailsender.gisebs.com — " +
+            "définissez le secret GitHub TUTORSPHERE_EMAIL_API_KEY (client TUTORSPHERE dans GiseMailSender).");
+    }
+    else
+    {
+        app.Logger.LogWarning(
+            "Mail Sender NON configuré — aucun e-mail ne sera envoyé. " +
+            "Définissez Email:ApiKey (user-secrets) ou EMAIL__APIKEY. BaseUrl={BaseUrl}, ClientCode={ClientCode}",
+            string.IsNullOrWhiteSpace(emailBase) ? "(vide)" : emailBase,
+            emailClient);
+    }
 }
 
 if (app.Environment.IsDevelopment())

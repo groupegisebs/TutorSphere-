@@ -41,17 +41,32 @@ public sealed class MailGatewayClient
         httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _settings.ApiKey);
         httpRequest.Content = JsonContent.Create(request, options: JsonOptions);
 
-        _logger.LogDebug("MailGateway → template={Template} to={To}", request.TemplateCode, string.Join(",", request.To));
+        _logger.LogInformation(
+            "Mail Sender → POST api/mail/send template={Template} client={Client} to={To}",
+            request.TemplateCode,
+            request.ClientCode,
+            string.Join(",", request.To));
 
         using var response = await _http.SendAsync(httpRequest, ct);
         var payload = await response.Content.ReadFromJsonAsync<SendMailResponse>(JsonOptions, ct);
 
         if (payload is null)
-            throw new InvalidOperationException("Réponse vide du service d'envoi d'e-mails.");
+            throw new InvalidOperationException("Réponse vide de Mail Sender (GiseMailSender).");
 
         if (!response.IsSuccessStatusCode || !payload.Success)
         {
-            _logger.LogWarning("MailGateway HTTP {Status}: {Error}", (int)response.StatusCode, payload.Error);
+            _logger.LogWarning(
+                "Mail Sender HTTP {Status}: {Error} (template={Template})",
+                (int)response.StatusCode,
+                payload.Error,
+                request.TemplateCode);
+        }
+        else
+        {
+            _logger.LogInformation(
+                "Mail Sender OK template={Template} tracking={TrackingId}",
+                request.TemplateCode,
+                payload.TrackingId);
         }
 
         return payload;

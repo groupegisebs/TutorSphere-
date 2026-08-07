@@ -65,7 +65,7 @@ public class EmailService : IEmailService
     {
         if (!_client.IsConfigured)
         {
-            _logger.LogWarning("MailGateway non configuré — e-mail de bienvenue non envoyé à {Email}.", email);
+            _logger.LogWarning("Mail Sender non configuré — e-mail de bienvenue non envoyé à {Email}.", email);
             return;
         }
 
@@ -88,7 +88,7 @@ public class EmailService : IEmailService
     {
         if (!_client.IsConfigured)
         {
-            _logger.LogWarning("MailGateway non configuré — confirmation non envoyée à {Email}.", email);
+            _logger.LogWarning("Mail Sender non configuré — confirmation non envoyée à {Email}.", email);
             return;
         }
 
@@ -113,7 +113,7 @@ public class EmailService : IEmailService
     {
         if (!_client.IsConfigured)
         {
-            _logger.LogWarning("MailGateway non configuré — rapport non envoyé à {Email}.", parentEmail);
+            _logger.LogWarning("Mail Sender non configuré — rapport non envoyé à {Email}.", parentEmail);
             return;
         }
 
@@ -138,7 +138,7 @@ public class EmailService : IEmailService
     {
         if (!_client.IsConfigured)
         {
-            _logger.LogWarning("MailGateway non configuré — confirmation école non envoyée à {Email}.", ownerEmail);
+            _logger.LogWarning("Mail Sender non configuré — confirmation école non envoyée à {Email}.", ownerEmail);
             return;
         }
 
@@ -156,126 +156,126 @@ public class EmailService : IEmailService
 
     public async Task SendEmailConfirmationSimpleAsync(string to, string firstName, string confirmUrl, CancellationToken ct = default)
     {
-        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — CONFIRM_EMAIL_SIMPLE non envoyé à {Email}.", to); return; }
+        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — CONFIRM_EMAIL_SIMPLE non envoyé à {Email}.", to); return; }
         await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.ConfirmEmailSimple, [to],
             new Dictionary<string, string> { ["FirstName"] = firstName, ["ConfirmationUrl"] = confirmUrl }), ct);
     }
 
     public async Task SendResetPasswordAsync(string to, string firstName, string resetUrl, CancellationToken ct = default)
     {
-        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — RESET_PASSWORD non envoyé à {Email}.", to); return; }
+        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — RESET_PASSWORD non envoyé à {Email}.", to); return; }
         await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.ResetPassword, [to],
             new Dictionary<string, string> { ["FirstName"] = firstName, ["ResetUrl"] = resetUrl }), ct);
     }
 
     public async Task SendPasswordChangedAsync(string to, string firstName, CancellationToken ct = default)
     {
-        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — PASSWORD_CHANGED non envoyé à {Email}.", to); return; }
+        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — PASSWORD_CHANGED non envoyé à {Email}.", to); return; }
         await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.PasswordChanged, [to],
             new Dictionary<string, string> { ["FirstName"] = firstName }), ct);
     }
 
     public async Task SendTutorTrialStartedAsync(string to, string firstName, CancellationToken ct = default)
     {
-        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — TUTOR_TRIAL_STARTED non envoyé à {Email}.", to); return; }
+        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — TUTOR_TRIAL_STARTED non envoyé à {Email}.", to); return; }
         await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.TutorTrialStarted, [to],
             new Dictionary<string, string> { ["FirstName"] = firstName }), ct);
     }
 
     public async Task SendTutorPaymentReceiptAsync(string to, string firstName, decimal amount, string invoiceUrl, CancellationToken ct = default)
     {
-        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — TUTOR_PAYMENT_RECEIPT non envoyé à {Email}.", to); return; }
+        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — TUTOR_PAYMENT_RECEIPT non envoyé à {Email}.", to); return; }
         await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.TutorPaymentReceipt, [to],
             new Dictionary<string, string> { ["FirstName"] = firstName, ["Amount"] = amount.ToString("C"), ["InvoiceUrl"] = invoiceUrl }), ct);
     }
 
     public async Task SendTutorRenewalReminderAsync(string to, string firstName, DateTime renewalDate, CancellationToken ct = default)
     {
-        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — TUTOR_RENEWAL_REMINDER non envoyé à {Email}.", to); return; }
+        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — TUTOR_RENEWAL_REMINDER non envoyé à {Email}.", to); return; }
         await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.TutorRenewalReminder, [to],
             new Dictionary<string, string> { ["FirstName"] = firstName, ["RenewalDate"] = renewalDate.ToString("d MMMM yyyy") }), ct);
     }
 
     public async Task SendTutorPaymentFailedAsync(string to, string firstName, CancellationToken ct = default)
     {
-        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — TUTOR_PAYMENT_FAILED non envoyé à {Email}.", to); return; }
+        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — TUTOR_PAYMENT_FAILED non envoyé à {Email}.", to); return; }
         await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.TutorPaymentFailed, [to],
             new Dictionary<string, string> { ["FirstName"] = firstName }), ct);
     }
 
     public async Task SendTutorSubscriptionCancelledAsync(string to, string firstName, CancellationToken ct = default)
     {
-        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — TUTOR_SUB_CANCELLED non envoyé à {Email}.", to); return; }
+        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — TUTOR_SUB_CANCELLED non envoyé à {Email}.", to); return; }
         await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.TutorSubCancelled, [to],
             new Dictionary<string, string> { ["FirstName"] = firstName }), ct);
     }
 
     public async Task SendAccountActivatedAsync(string to, string firstName, CancellationToken ct = default)
     {
-        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — ACCOUNT_ACTIVATED non envoyé à {Email}.", to); return; }
+        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — ACCOUNT_ACTIVATED non envoyé à {Email}.", to); return; }
         await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.AccountActivated, [to],
             new Dictionary<string, string> { ["FirstName"] = firstName }), ct);
     }
 
     public async Task SendAccountDeactivatedAsync(string to, string firstName, string reason, CancellationToken ct = default)
     {
-        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — ACCOUNT_DEACTIVATED non envoyé à {Email}.", to); return; }
+        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — ACCOUNT_DEACTIVATED non envoyé à {Email}.", to); return; }
         await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.AccountDeactivated, [to],
             new Dictionary<string, string> { ["FirstName"] = firstName, ["Reason"] = reason }), ct);
     }
 
     public async Task SendSchoolApprovedAsync(string to, string firstName, string schoolName, string loginUrl, CancellationToken ct = default)
     {
-        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — SCHOOL_APPROVED non envoyé à {Email}.", to); return; }
+        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — SCHOOL_APPROVED non envoyé à {Email}.", to); return; }
         await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.SchoolApproved, [to],
             new Dictionary<string, string> { ["FirstName"] = firstName, ["SchoolName"] = schoolName, ["LoginUrl"] = loginUrl }), ct);
     }
 
     public async Task SendLessonScheduledAsync(string to, string recipientName, string tutorName, string subject, DateTime lessonDate, CancellationToken ct = default)
     {
-        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — LESSON_SCHEDULED non envoyé à {Email}.", to); return; }
+        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — LESSON_SCHEDULED non envoyé à {Email}.", to); return; }
         await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.LessonScheduled, [to],
             new Dictionary<string, string> { ["RecipientName"] = recipientName, ["TutorName"] = tutorName, ["Subject"] = subject, ["LessonDate"] = lessonDate.ToString("dddd d MMMM yyyy à HH:mm") }), ct);
     }
 
     public async Task SendLessonReminderAsync(string to, string recipientName, string tutorName, string subject, DateTime lessonDate, CancellationToken ct = default)
     {
-        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — LESSON_REMINDER non envoyé à {Email}.", to); return; }
+        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — LESSON_REMINDER non envoyé à {Email}.", to); return; }
         await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.LessonReminder, [to],
             new Dictionary<string, string> { ["RecipientName"] = recipientName, ["TutorName"] = tutorName, ["Subject"] = subject, ["LessonDate"] = lessonDate.ToString("dddd d MMMM yyyy à HH:mm") }), ct);
     }
 
     public async Task SendLessonCancelledAsync(string to, string recipientName, string tutorName, string subject, DateTime lessonDate, CancellationToken ct = default)
     {
-        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — LESSON_CANCELLED non envoyé à {Email}.", to); return; }
+        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — LESSON_CANCELLED non envoyé à {Email}.", to); return; }
         await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.LessonCancelled, [to],
             new Dictionary<string, string> { ["RecipientName"] = recipientName, ["TutorName"] = tutorName, ["Subject"] = subject, ["LessonDate"] = lessonDate.ToString("dddd d MMMM yyyy à HH:mm") }), ct);
     }
 
     public async Task SendParentPaymentReceiptAsync(string to, string parentName, string studentName, decimal amount, string invoiceUrl, CancellationToken ct = default)
     {
-        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — PARENT_PAYMENT_RECEIPT non envoyé à {Email}.", to); return; }
+        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — PARENT_PAYMENT_RECEIPT non envoyé à {Email}.", to); return; }
         await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.ParentPaymentReceipt, [to],
             new Dictionary<string, string> { ["ParentName"] = parentName, ["StudentName"] = studentName, ["Amount"] = amount.ToString("C"), ["InvoiceUrl"] = invoiceUrl }), ct);
     }
 
     public async Task SendParentPaymentFailedAsync(string to, string parentName, CancellationToken ct = default)
     {
-        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — PARENT_PAYMENT_FAILED non envoyé à {Email}.", to); return; }
+        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — PARENT_PAYMENT_FAILED non envoyé à {Email}.", to); return; }
         await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.ParentPaymentFailed, [to],
             new Dictionary<string, string> { ["ParentName"] = parentName }), ct);
     }
 
     public async Task SendInvoiceReadyAsync(string to, string parentName, string invoiceUrl, CancellationToken ct = default)
     {
-        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — INVOICE_READY non envoyé à {Email}.", to); return; }
+        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — INVOICE_READY non envoyé à {Email}.", to); return; }
         await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.InvoiceReady, [to],
             new Dictionary<string, string> { ["ParentName"] = parentName, ["InvoiceUrl"] = invoiceUrl }), ct);
     }
 
     public async Task SendParentPaymentOverdueAsync(string to, string parentName, string studentName, string courseTitle, string payUrl, CancellationToken ct = default)
     {
-        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — PARENT_PAYMENT_OVERDUE non envoyé à {Email}.", to); return; }
+        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — PARENT_PAYMENT_OVERDUE non envoyé à {Email}.", to); return; }
         await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.ParentPaymentOverdue, [to],
             new Dictionary<string, string>
             {
@@ -288,7 +288,7 @@ public class EmailService : IEmailService
 
     public async Task SendCourseEnrollmentRequestAsync(string to, string tutorName, string studentName, string courseTitle, CancellationToken ct = default)
     {
-        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — COURSE_ENROLLMENT_REQUEST non envoyé à {Email}.", to); return; }
+        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — COURSE_ENROLLMENT_REQUEST non envoyé à {Email}.", to); return; }
         await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.CourseEnrollmentRequest, [to],
             new Dictionary<string, string>
             {
@@ -300,7 +300,7 @@ public class EmailService : IEmailService
 
     public async Task SendCourseEnrollmentAcceptedAsync(string to, string parentName, string studentName, string courseTitle, string statusNote, string actionUrl, CancellationToken ct = default)
     {
-        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — COURSE_ENROLLMENT_ACCEPTED non envoyé à {Email}.", to); return; }
+        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — COURSE_ENROLLMENT_ACCEPTED non envoyé à {Email}.", to); return; }
         await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.CourseEnrollmentAccepted, [to],
             new Dictionary<string, string>
             {
@@ -314,7 +314,7 @@ public class EmailService : IEmailService
 
     public async Task SendTutorStudentPaymentReceivedAsync(string to, string tutorName, string studentName, string courseTitle, decimal amount, CancellationToken ct = default)
     {
-        if (!_client.IsConfigured) { _logger.LogWarning("MailGateway non configuré — TUTOR_STUDENT_PAYMENT_RECEIVED non envoyé à {Email}.", to); return; }
+        if (!_client.IsConfigured) { _logger.LogWarning("Mail Sender non configuré — TUTOR_STUDENT_PAYMENT_RECEIVED non envoyé à {Email}.", to); return; }
         await TrySendAsync(new SendMailRequest(_settings.ClientCode, EmailTemplates.TutorStudentPaymentReceived, [to],
             new Dictionary<string, string>
             {

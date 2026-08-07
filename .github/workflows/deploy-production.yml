@@ -171,6 +171,12 @@ jobs:
             echo "→ TUTORSPHERE_PAYGATEWAY_API_KEY (clé gbsk_… de l'app TUTORSPHERE dans PayGateway)"
             missing=1
           fi
+          if [ -z "$EMAIL_API_KEY_RAW" ]; then
+            echo "::error::Mail Sender (GiseMailSender) API Key manquante — aucun e-mail ne partira."
+            echo "→ Secret GitHub TUTORSPHERE_EMAIL_API_KEY"
+            echo "→ Générer le jeton dans https://gisemailsender.gisebs.com pour le client TUTORSPHERE"
+            missing=1
+          fi
           [ "$missing" -eq 0 ] || exit 1
 
           PG_URL_CHECK=$(printf '%s' "$PAYGATEWAY_BASE_URL_RAW" | tr '[:upper:]' '[:lower:]')
@@ -206,8 +212,9 @@ jobs:
           gha_write_env PAYGATEWAY_API_KEY "$(gha_sanitize "$PAYGATEWAY_API_KEY_RAW")"
           gha_write_env PAYGATEWAY_APP_CODE "$(gha_sanitize "$PAYGATEWAY_APP_CODE_RAW")"
           gha_write_env PAYGATEWAY_USE_SANDBOX "$PAYGATEWAY_USE_SANDBOX_RAW"
-          [ -n "$EMAIL_API_KEY_RAW" ] && gha_write_env EMAIL_API_KEY "$(gha_sanitize "$EMAIL_API_KEY_RAW")" || true
+          gha_write_env EMAIL_API_KEY "$(gha_sanitize "$EMAIL_API_KEY_RAW")"
           gha_write_env EMAIL_CLIENT_CODE "$(gha_sanitize "$EMAIL_CLIENT_CODE_RAW")"
+          gha_write_env EMAIL_BASE_URL "https://gisemailsender.gisebs.com"
           if [ -n "$API_BASE_URL_RAW" ]; then
             gha_write_env API_BASE_URL "$(gha_sanitize "$API_BASE_URL_RAW")"
           else
@@ -253,6 +260,7 @@ jobs:
           PAYGATEWAY_USE_SANDBOX: ${{ env.PAYGATEWAY_USE_SANDBOX }}
           EMAIL_API_KEY: ${{ env.EMAIL_API_KEY }}
           EMAIL_CLIENT_CODE: ${{ env.EMAIL_CLIENT_CODE }}
+          EMAIL_BASE_URL: ${{ env.EMAIL_BASE_URL }}
           API_BASE_URL: ${{ env.API_BASE_URL }}
           API_PORT: ${{ env.API_PORT }}
           WEB_PORT: ${{ env.WEB_PORT }}

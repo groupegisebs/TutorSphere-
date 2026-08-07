@@ -352,35 +352,41 @@ public class AdminController : ControllerBase
             recentUsers));
     }
 
-    /// <summary>État de la passerelle e-mail (configuration uniquement — n'envoie rien).</summary>
+    /// <summary>État Mail Sender / GiseMailSender (configuration uniquement — n'envoie rien).</summary>
     [HttpGet("email/status")]
     public IActionResult GetEmailStatus() => Ok(new
     {
+        provider = "Mail Sender (GiseMailSender / SecureMailGateway)",
         configured = _mailClient.IsConfigured,
         baseUrl = _mailSettings.BaseUrl,
         clientCode = _mailSettings.ClientCode,
         apiKeyPresent = !string.IsNullOrWhiteSpace(_mailSettings.ApiKey),
+        endpoint = $"{(_mailSettings.BaseUrl ?? "").TrimEnd('/')}/api/mail/send",
         webBaseUrl = (_configuration["WebBaseUrl"] ?? "").TrimEnd('/'),
         templates = new[]
         {
-            "WELCOME", "CONFIRM_EMAIL_SIMPLE",
+            "WELCOME", "CONFIRM_EMAIL", "CONFIRM_EMAIL_SIMPLE", "RESET_PASSWORD",
             "COURSE_ENROLLMENT_REQUEST", "COURSE_ENROLLMENT_ACCEPTED",
             "INVOICE_READY", "PARENT_PAYMENT_RECEIPT", "PARENT_PAYMENT_OVERDUE",
             "TUTOR_STUDENT_PAYMENT_RECEIVED", "LESSON_REMINDER", "LESSON_SCHEDULED"
         }
     });
 
-    /// <summary>Envoie un e-mail de test WELCOME à l'adresse indiquée (vérification Mail Gateway).</summary>
+    /// <summary>Envoie un e-mail de test WELCOME via Mail Sender.</summary>
     [HttpPost("email/test")]
     public async Task<IActionResult> SendTestEmail([FromQuery] string to, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(to))
             return BadRequest(new { error = "Paramètre 'to' requis." });
         if (!_mailClient.IsConfigured)
-            return BadRequest(new { error = "Mail Gateway non configuré (Email:ApiKey / Email:BaseUrl)." });
+            return BadRequest(new
+            {
+                error = "Mail Sender non configuré (Email:ApiKey / EMAIL__APIKEY). " +
+                        "Client TUTORSPHERE sur https://gisemailsender.gisebs.com — secret TUTORSPHERE_EMAIL_API_KEY."
+            });
 
         await _email.SendWelcomeAsync(to.Trim(), "Test", ct);
-        return Ok(new { message = $"E-mail WELCOME demandé pour {to.Trim()}." });
+        return Ok(new { message = $"E-mail WELCOME demandé via Mail Sender pour {to.Trim()}." });
     }
 
     [HttpGet("promo-codes")]

@@ -16,6 +16,7 @@ Le workflow **Deploy Production** échoue tant que les secrets ci-dessous ne son
 | `TUTORSPHERE_JWT_KEY` | Clé JWT (min. 32 caractères) | chaîne aléatoire longue |
 | `TUTORSPHERE_PAYGATEWAY_BASE_URL` | URL publique du Pay Gateway (nginx HTTPS) | `https://gisebsapipaygateway.gisebs.com` |
 | `TUTORSPHERE_PAYGATEWAY_API_KEY` | Clé API app `TUTORSPHERE` | `gbsk_...` |
+| `TUTORSPHERE_EMAIL_API_KEY` | Jeton **Mail Sender** (GiseMailSender) — client `TUTORSPHERE` | jeton Bearer depuis l’admin Mail Sender |
 
 > **Ne pas utiliser** `giseboutique.gisebs.com` (boutique) ni le port interne `http://51.79.53.197:7843` — l'API est exposée via **[GISEBS Pay Gateway](https://gisebsapipaygateway.gisebs.com/)**.
 
@@ -102,11 +103,16 @@ gh secret set TUTORSPHERE_CONNECTION_STRING --body "Host=51.79.53.197;Port=5432;
 gh secret set TUTORSPHERE_JWT_KEY --body "VOTRE_CLE_JWT_MIN_32_CARACTERES"
 gh secret set TUTORSPHERE_PAYGATEWAY_BASE_URL --body "https://gisebsapipaygateway.gisebs.com"
 gh secret set TUTORSPHERE_PAYGATEWAY_API_KEY --body "gbsk_votre_cle"
+gh secret set TUTORSPHERE_EMAIL_API_KEY --body "VOTRE_JETON_MAIL_SENDER"
 # Variable (pas secret) — Stripe Test ou Live
 gh variable set TUTORSPHERE_PAYGATEWAY_USE_SANDBOX --body "true"
 ```
 
 La clé PayGateway se génère dans l'admin **[GISEBS Pay Gateway](https://gisebsapipaygateway.gisebs.com/)** → Applications → **TUTORSPHERE**.
+
+La clé e-mail se génère dans **[Mail Sender / GiseMailSender](https://gisemailsender.gisebs.com/)** → client **`TUTORSPHERE`** (templates déjà seedés). Sans ce secret, le deploy échoue et l’API refuse de démarrer en production (aucun courriel de confirmation, reset MDP, etc.).
+
+Optionnel : variable `TUTORSPHERE_EMAIL_CLIENT_CODE` (défaut `TUTORSPHERE`).
 
 ---
 
