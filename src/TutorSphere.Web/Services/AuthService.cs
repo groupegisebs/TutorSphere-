@@ -108,18 +108,15 @@ public sealed class AuthService
             if (!resp.IsSuccessStatusCode)
             {
                 var body = await resp.Content.ReadAsStringAsync();
-                var apiError = TryExtractError(body);
                 var code = TryExtractCode(body);
-                var msg = apiError is not null
-                    ? (code == "email_not_confirmed" ? apiError : $"({(int)resp.StatusCode}) {apiError}")
-                    : $"({(int)resp.StatusCode}) Identifiants invalides.";
-                return new LoginResult(false, msg, null, code);
+                // Messages UI via IStringLocalizer (ne pas afficher le texte FR de l'API).
+                return new LoginResult(false, null, null, code ?? "invalid_credentials");
             }
 
             var result = await resp.Content.ReadFromJsonAsync<AuthResponse>(JsonOpts);
 
             if (result is null || string.IsNullOrWhiteSpace(result.Token))
-                return new LoginResult(false, "Réponse de connexion invalide.", null);
+                return new LoginResult(false, null, null, "invalid_response");
 
             ApplyAuthenticatedSession(result);
             await PersistSessionAsync(result);
@@ -128,34 +125,25 @@ public sealed class AuthService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Login failed");
-            return new LoginResult(false, "Impossible de se connecter. Réessayez.", null);
+            return new LoginResult(false, null, null, "login_unavailable");
         }
     }
 
-    /// <summary>Renvoie le courriel de confirmation (silencieux côté API si compte inexistant).</summary>
-    public async Task<(bool Ok, string? Message)> ResendEmailConfirmationAsync(string email)
+    /// <summary>Renvoie le courriel de confirmation. Message UI via localizer (pas le texte API).</summary>
+    public async Task<(bool Ok, string? ErrorCode)> ResendEmailConfirmationAsync(string email)
     {
         try
         {
             var resp = await _http.PostAsJsonAsync("api/auth/resend-confirmation", new { email });
-            var body = await resp.Content.ReadAsStringAsync();
             if (!resp.IsSuccessStatusCode)
-                return (false, TryExtractError(body) ?? "Impossible d'envoyer le courriel. Réessayez.");
+                return (false, "resend_failed");
 
-            try
-            {
-                using var doc = JsonDocument.Parse(body);
-                if (doc.RootElement.TryGetProperty("message", out var m))
-                    return (true, m.GetString());
-            }
-            catch (JsonException) { }
-
-            return (true, "Un nouveau lien de confirmation a été envoyé si le compte le permet.");
+            return (true, null);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Resend confirmation failed");
-            return (false, "Impossible d'envoyer le courriel. Réessayez.");
+            return (false, "resend_failed");
         }
     }
 

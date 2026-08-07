@@ -216,6 +216,11 @@ jobs:
           gha_write_env EMAIL_CLIENT_CODE "$(gha_sanitize "$EMAIL_CLIENT_CODE_RAW")"
           gha_write_env EMAIL_BASE_URL "https://gisemailsender.gisebs.com"
           if [ -n "$API_BASE_URL_RAW" ]; then
+            API_BASE_URL_RAW=$(printf '%s' "$API_BASE_URL_RAW" | sed -e 's/[Qq]isebs\.com/gisebs.com/g' -e 's/[Qq]iscbs\.com/gisebs.com/g')
+            if printf '%s' "$API_BASE_URL_RAW" | grep -qiE 'qisebs|qiscbs'; then
+              echo "::error::TUTORSPHERE_API_BASE_URL contient une faute (qisebs/qiscbs). Utilisez gisebs.com"
+              exit 1
+            fi
             gha_write_env API_BASE_URL "$(gha_sanitize "$API_BASE_URL_RAW")"
           else
             gha_write_env API_BASE_URL "${DEFAULT_API_BASE_URL}"

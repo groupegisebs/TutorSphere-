@@ -57,6 +57,27 @@ public class AuthController : ControllerBase
         }
     }
 
+    /// <summary>Confirmation JSON (appelée par le site Web /confirm-email).</summary>
+    [HttpPost("confirm-email")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ConfirmEmailJson(
+        [FromBody] ConfirmEmailRequest request,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request.UserId) || string.IsNullOrWhiteSpace(request.Token))
+            return BadRequest(new { error = "Paramètres manquants." });
+
+        try
+        {
+            await _authService.ConfirmEmailAsync(request.UserId, request.Token, ct);
+            return Ok(new { confirmed = true });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     [HttpGet("confirm-email")]
     [AllowAnonymous]
     public async Task<IActionResult> ConfirmEmail(
@@ -71,7 +92,8 @@ public class AuthController : ControllerBase
         {
             await _authService.ConfirmEmailAsync(userId, token, ct);
 
-            var webBase = (_configuration["WebBaseUrl"] ?? "").TrimEnd('/');
+            var webBase = TutorSphere.Infrastructure.Services.ConfigurationAppUrlProvider
+                .NormalizePublicUrl(_configuration["WebBaseUrl"], "https://tutorsphere.gisebs.com");
             if (!string.IsNullOrWhiteSpace(webBase))
                 return Redirect($"{webBase}/login/tuteur?confirmed=true");
 

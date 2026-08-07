@@ -208,14 +208,22 @@
                 Navigation.NavigateTo(result.RedirectTo ?? "/parent", forceLoad: true);
                 return;
             }
-            _errorMessage = result.Error ?? L["Login_InvalidCredentials"];
             _needsEmailConfirmation = result.ErrorCode == "email_not_confirmed";
+            _errorMessage = MapLoginError(result.ErrorCode, result.Error);
         }
         finally
         {
             _isLoading = false;
         }
     }
+
+    private string MapLoginError(string? code, string? fallback) => code switch
+    {
+        "email_not_confirmed" => L["Login_EmailNotConfirmed"],
+        "login_unavailable" => L["Login_Unavailable"],
+        "invalid_response" => L["Login_Unavailable"],
+        _ => fallback ?? L["Login_InvalidCredentials"].ToString()
+    };
 
     private async Task ResendConfirmationAsync()
     {
@@ -226,16 +234,16 @@
         _successMessage = null;
         try
         {
-            var (ok, message) = await AuthSvc.ResendEmailConfirmationAsync(_email.Trim());
+            var (ok, _) = await AuthSvc.ResendEmailConfirmationAsync(_email.Trim());
             if (ok)
             {
-                _successMessage = message ?? L["Login_ResendConfirmationSent"].ToString();
+                _successMessage = L["Login_ResendConfirmationSent"];
                 _resendCooldown = true;
                 _ = ResetResendCooldownAsync();
             }
             else
             {
-                _errorMessage = message ?? L["Login_ResendConfirmationFailed"].ToString();
+                _errorMessage = L["Login_ResendConfirmationFailed"];
             }
         }
         finally

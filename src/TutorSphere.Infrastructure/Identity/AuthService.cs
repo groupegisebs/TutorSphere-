@@ -40,17 +40,20 @@ public class AuthService : IAuthService
     private readonly IConfiguration _configuration;
     private readonly IEmailService _email;
     private readonly IApplicationDbContext _db;
+    private readonly IAppUrlProvider _urls;
 
     public AuthService(
         UserManager<ApplicationUser> userManager,
         IConfiguration configuration,
         IEmailService email,
-        IApplicationDbContext db)
+        IApplicationDbContext db,
+        IAppUrlProvider urls)
     {
         _userManager = userManager;
         _configuration = configuration;
         _email = email;
         _db = db;
+        _urls = urls;
     }
 
     public async Task<AuthResponse> RegisterAsync(RegisterRequest request, CancellationToken ct = default)
@@ -84,8 +87,7 @@ public class AuthService : IAuthService
         await _email.SendWelcomeAsync(user.Email!, user.FirstName, ct);
 
         var confirmToken = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-        var apiBase = (_configuration["ApiBaseUrl"] ?? "https://api.tutorsphere.gisebs.com").TrimEnd('/');
-        var confirmUrl = $"{apiBase}/api/auth/confirm-email?userId={Uri.EscapeDataString(user.Id)}&token={Uri.EscapeDataString(confirmToken)}";
+        var confirmUrl = _urls.BuildEmailConfirmUrl(user.Id, confirmToken);
         await _email.SendEmailConfirmationSimpleAsync(user.Email!, user.FirstName, confirmUrl, ct);
 
         // Pas de JWT tant que l'e-mail n'est pas confirmé (évite un accès API avant validation).
@@ -366,8 +368,7 @@ public class AuthService : IAuthService
         await _userManager.UpdateAsync(user);
 
         var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-        var apiBase = (_configuration["ApiBaseUrl"] ?? "https://api.tutorsphere.gisebs.com").TrimEnd('/');
-        var confirmUrl = $"{apiBase}/api/auth/confirm-email?userId={Uri.EscapeDataString(user.Id)}&token={Uri.EscapeDataString(token)}";
+        var confirmUrl = _urls.BuildEmailConfirmUrl(user.Id, token);
         await _email.SendEmailConfirmationAsync(user.Email!, user.FirstName, confirmUrl, ct);
 
         return new RegisterSchoolResponse(tenant.Id, tenant.Slug, user.Email!);
@@ -399,9 +400,7 @@ public class AuthService : IAuthService
             return;
 
         var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-        var apiBase = (_configuration["ApiBaseUrl"] ?? "https://api.tutorsphere.gisebs.com").TrimEnd('/');
-        var confirmUrl =
-            $"{apiBase}/api/auth/confirm-email?userId={Uri.EscapeDataString(user.Id)}&token={Uri.EscapeDataString(token)}";
+        var confirmUrl = _urls.BuildEmailConfirmUrl(user.Id, token);
 
         var roles = await _userManager.GetRolesAsync(user);
         var isTutor = roles.Any(r =>
