@@ -4,76 +4,50 @@
 
 <link rel="stylesheet" href="css/admin-control-center.css" />
 
-@if (_ready && (Auth.PrimaryRole is "SuperAdmin" or "PlatformAdmin"))
-{
-    <div class="cc-shell @(_sidebarOpen ? "cc-sidebar-open" : null)">
-        <aside class="cc-sidebar">
-            <AdminSidebar />
-        </aside>
-        <div class="cc-main">
-            <AdminControlTopbar OnToggleSidebar="ToggleSidebar" />
-            <div class="cc-content">
-                @Body
-            </div>
+<div class="cc-shell @(_sidebarOpen ? "cc-sidebar-open" : null)">
+    <aside class="cc-sidebar">
+        <AdminSidebar />
+    </aside>
+    <div class="cc-main">
+        <AdminControlTopbar OnToggleSidebar="ToggleSidebar" />
+        <div class="cc-content">
+            @Body
         </div>
     </div>
-}
-else if (!_ready)
-{
-    <div class="d-flex align-items-center justify-content-center py-5">
-        <span class="spinner-border text-primary me-3" role="status"></span>
-        <span class="text-muted">Vérification de la session…</span>
-    </div>
-}
-else
-{
-    <div class="d-flex flex-column align-items-center justify-content-center py-5 gap-3">
-        <p class="text-muted mb-0">Session administrateur introuvable.</p>
-        <a class="btn btn-primary" href="/login/admin" data-enhance-nav="false">Retour à la connexion</a>
-    </div>
-}
+</div>
 
 @code {
     private bool _sidebarOpen;
-    private bool _ready;
-    private bool _restoreStarted;
+    private bool _checked;
 
     private void ToggleSidebar() => _sidebarOpen = !_sidebarOpen;
 
+    protected override async Task OnInitializedAsync()
+    {
+        // Cookie / mémoire uniquement — pas de JS (évite le hang Edge/Cently).
+        await Auth.EnsureSessionRestoredAsync(forceJs: false);
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender || _restoreStarted)
+        if (!firstRender || _checked)
             return;
 
-        _restoreStarted = true;
+        _checked = true;
 
-        try
+        if (Auth.PrimaryRole is not ("SuperAdmin" or "PlatformAdmin"))
         {
-            // Plafond absolu : ne jamais rester bloqué sur « Vérification de la session… »
-            var restore = Auth.EnsureSessionRestoredAsync(forceJs: true);
-            var completed = await Task.WhenAny(restore, Task.Delay(TimeSpan.FromSeconds(3)));
-            if (completed != restore)
-                await Task.WhenAny(restore, Task.Delay(TimeSpan.FromMilliseconds(100)));
-            else
-                await restore;
-        }
-        catch
-        {
-            // ignore — on décide avec l'état actuel
-        }
-        finally
-        {
-            _ready = true;
+            // Une seule tentative JS courte ; EnsureSessionRestoredAsync a un timeout interne.
+            await Auth.EnsureSessionRestoredAsync(forceJs: true);
         }
 
-        if (Auth.PrimaryRole is "SuperAdmin" or "PlatformAdmin")
+        if (Auth.PrimaryRole is not ("SuperAdmin" or "PlatformAdmin"))
         {
-            await InvokeAsync(StateHasChanged);
+            // Pas de forceLoad — extensions qui patchent location cassent la nav.
+            Navigation.NavigateTo("/login/admin");
             return;
         }
 
-        // Pas de forceLoad (extensions type Cently cassent window.location).
-        Navigation.NavigateTo("/login/admin");
         await InvokeAsync(StateHasChanged);
     }
 
