@@ -218,9 +218,32 @@ public sealed class AuthService
             return;
         }
 
-        await _restoreLock.WaitAsync();
+        // Cookie first (no JS) — avoids hanging the UI if interop/storage is blocked by the browser.
+        if (TryRestoreFromCookie())
+        {
+            SessionRestoreCompleted = true;
+            _logger.LogDebug("Auth restored from HttpOnly cookie.");
+            return;
+        }
+
+        if (_jsRestoreAttempted && !forceJs)
+        {
+            SessionRestoreCompleted = true;
+            return;
+        }
+
+        var lockTaken = false;
         try
         {
+            // Never block the UI forever (extensions / Tracking Prevention can stall JS interop).
+            lockTaken = await _restoreLock.WaitAsync(TimeSpan.FromSeconds(2));
+            if (!lockTaken)
+            {
+                SessionRestoreCompleted = true;
+                _logger.LogWarning("Auth restore skipped: restore lock busy.");
+                return;
+            }
+
             if (!string.IsNullOrEmpty(Token))
             {
                 SessionRestoreCompleted = true;
@@ -230,7 +253,6 @@ public sealed class AuthService
             if (TryRestoreFromCookie())
             {
                 SessionRestoreCompleted = true;
-                _logger.LogDebug("Auth restored from HttpOnly cookie.");
                 return;
             }
 
@@ -242,7 +264,8 @@ public sealed class AuthService
 
             try
             {
-                var json = await _js.InvokeAsync<string?>("tsAuth.load");
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                var json = await _js.InvokeAsync<string?>("tsAuth.load", cts.Token);
                 _jsRestoreAttempted = true;
                 SessionRestoreCompleted = true;
 
@@ -263,6 +286,12 @@ public sealed class AuthService
                 ApplyAuthenticatedSession(auth);
                 _logger.LogDebug("Auth restored from sessionStorage.");
             }
+            catch (OperationCanceledException)
+            {
+                _jsRestoreAttempted = true;
+                SessionRestoreCompleted = true;
+                _logger.LogWarning("Auth sessionStorage restore timed out.");
+            }
             catch (InvalidOperationException)
             {
                 // Static prerender — JS interop unavailable; retry after first interactive render
@@ -276,7 +305,10 @@ public sealed class AuthService
         }
         finally
         {
-            _restoreLock.Release();
+            if (lockTaken)
+                _restoreLock.Release();
+            if (!SessionRestoreCompleted && string.IsNullOrEmpty(Token))
+                SessionRestoreCompleted = true;
         }
     }
 
