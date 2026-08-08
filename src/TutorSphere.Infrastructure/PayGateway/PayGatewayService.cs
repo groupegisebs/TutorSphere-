@@ -70,7 +70,8 @@ internal sealed class PayGatewayService : IPaymentGatewayService
                 c.PhoneCountryCode,
                 (c.Networks ?? [])
                     .Select(n => new MobileMoneyNetworkOptionDto(n.Network, n.NetworkLabel))
-                    .ToList()))
+                    .ToList(),
+                c.AmountFor10Usd))
             .ToList();
     }
 
@@ -146,13 +147,11 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             .FirstOrDefaultAsync(s => s.Id == subscriptionId, ct)
             ?? throw new InvalidOperationException("Abonnement introuvable.");
 
-        if (subscription.Status != SubscriptionStatus.AwaitingPayment)
-            throw new InvalidOperationException(
-                "Le paiement n'est possible qu'après acceptation de la demande par l'enseignant.");
-
         var offering = await _db.SubscriptionOfferingsForAnyTenant
             .FirstOrDefaultAsync(o => o.Id == subscription.OfferingId, ct)
             ?? throw new InvalidOperationException("Offre d'abonnement introuvable.");
+
+        EnsureSubscriptionPayable(subscription, offering);
 
         var student = await _db.StudentsForAnyTenant
             .FirstOrDefaultAsync(s => s.Id == subscription.StudentId, ct)
@@ -493,7 +492,23 @@ internal sealed class PayGatewayService : IPaymentGatewayService
                     }
                     else
                     {
+                        var offering = await _db.SubscriptionOfferingsForAnyTenant
+                            .FirstOrDefaultAsync(o => o.Id == subscription.OfferingId, ct);
+                        var durationDays = offering?.DurationDays > 0 ? offering.DurationDays : 30;
+                        var periodStart = DateTime.UtcNow;
+                        if (subscription.Status == SubscriptionStatus.Active
+                            && subscription.EndDate > periodStart)
+                        {
+                            periodStart = subscription.EndDate;
+                        }
+
                         subscription.Status = SubscriptionStatus.Active;
+                        subscription.StartDate = periodStart;
+                        subscription.EndDate = periodStart.AddDays(durationDays);
+                        subscription.RenewalReminderSentAt = null;
+                        if (offering is not null)
+                            subscription.SessionsRemaining += Math.Max(0, offering.SessionCount);
+
                         await TryLinkGatewaySubscriptionAsync(subscription, gatewayPayment.CustomerCode, ct);
                         await _db.SaveChangesAsync(ct);
                         try
@@ -550,6 +565,30 @@ internal sealed class PayGatewayService : IPaymentGatewayService
 
         if (match is not null)
             subscription.StripeSubscriptionId = match.SubscriptionCode;
+    }
+
+    /// <summary>
+    /// Premier paiement (AwaitingPayment) ou renouvellement simulé (Active/Paused dans la fenêtre 30 j).
+    /// </summary>
+    private static void EnsureSubscriptionPayable(
+        StudentSubscription subscription,
+        SubscriptionOffering offering)
+    {
+        if (subscription.Status == SubscriptionStatus.AwaitingPayment)
+            return;
+
+        if (subscription.Status is SubscriptionStatus.Active or SubscriptionStatus.Paused)
+        {
+            var windowStart = subscription.EndDate.AddDays(-30);
+            if (DateTime.UtcNow >= windowStart)
+                return;
+
+            throw new InvalidOperationException(
+                "Le renouvellement sera disponible 1 mois avant la fin de l'abonnement.");
+        }
+
+        throw new InvalidOperationException(
+            "Le paiement n'est possible qu'après acceptation de la demande par l'enseignant, ou pour un renouvellement.");
     }
 
     private static string ToProductCode(Guid offeringId) =>
@@ -846,6 +885,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
                 payment.PeriodEnd = periodEnd;
 
                 tenant.LicenseExpiresAt = periodEnd;
+                tenant.LicenseRenewalReminderSentAt = null;
                 tenant.UpdatedAt = DateTime.UtcNow;
 
                 // Première activation : formation obligatoire avant visibilité publique.

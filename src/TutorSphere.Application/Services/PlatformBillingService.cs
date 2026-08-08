@@ -17,6 +17,9 @@ public interface IPlatformBillingService
         Guid? paymentId = null,
         CancellationToken ct = default);
     Task ExpireOverdueLicensesAsync(CancellationToken ct = default);
+
+    /// <summary>Rappel e-mail ~1 mois avant l'échéance de la licence.</summary>
+    Task SendUpcomingRenewalRemindersAsync(CancellationToken ct = default);
 }
 
 public class PlatformBillingService(
@@ -41,14 +44,15 @@ public class PlatformBillingService(
         var tenant = RequireOwnerTenant(ownerUserId);
         await EnsureLicenseStateAsync(tenant, ct);
 
-        // Renouvellement seulement si licence payée encore longue (même si formation en cours).
+        // Renouvellement autorisé dès la fenêtre « 1 mois avant » (ou si déjà en AwaitingRenewal).
         if (tenant.HasPaidLicense()
+            && tenant.Status != TenantStatus.AwaitingRenewal
             && tenant.LicenseExpiresAt is { } expires
             && expires > DateTime.UtcNow.AddDays(options.RenewalReminderDays)
             && tenant.OnboardingCompletedAt is not null)
         {
             throw new InvalidOperationException(
-                "Votre établissement est déjà actif. Le renouvellement sera disponible près de l'échéance.");
+                "Votre établissement est déjà actif. Le renouvellement sera disponible 1 mois avant l'échéance.");
         }
 
         if (tenant.HasPaidLicense() && tenant.RequiresOnboarding())
@@ -106,6 +110,37 @@ public class PlatformBillingService(
         }
 
         if (expired.Count > 0)
+            await db.SaveChangesAsync(ct);
+    }
+
+    public async Task SendUpcomingRenewalRemindersAsync(CancellationToken ct = default)
+    {
+        var now = DateTime.UtcNow;
+        var windowEnd = now.AddDays(options.RenewalReminderDays);
+
+        var due = db.Tenants
+            .Where(t => (t.Status == TenantStatus.Active || t.Status == TenantStatus.AwaitingOnboarding)
+                        && t.LicenseExpiresAt != null
+                        && t.LicenseExpiresAt > now
+                        && t.LicenseExpiresAt <= windowEnd
+                        && t.LicenseRenewalReminderSentAt == null)
+            .ToList();
+
+        foreach (var tenant in due)
+        {
+            var contact = await contacts.GetAsync(tenant.OwnerUserId, ct);
+            if (contact is { } c && !string.IsNullOrWhiteSpace(c.Email))
+            {
+                var firstName = c.DisplayName.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()
+                                ?? c.DisplayName;
+                await email.SendTutorRenewalReminderAsync(c.Email, firstName, tenant.LicenseExpiresAt!.Value, ct);
+            }
+
+            tenant.LicenseRenewalReminderSentAt = now;
+            tenant.UpdatedAt = now;
+        }
+
+        if (due.Count > 0)
             await db.SaveChangesAsync(ct);
     }
 

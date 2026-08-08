@@ -100,7 +100,7 @@ else
                                         @L["ParentSubs_Cancel"]
                                     </button>
                                 }
-                                @if (sub.Status == "AwaitingPayment")
+                                @if (CanPay(sub))
                                 {
                                     <button type="button"
                                             class="btn btn-primary btn-sm"
@@ -309,6 +309,11 @@ else
         }
         finally { _cancelling = null; }
     }
+
+    private static bool CanPay(SubVm sub) =>
+        sub.Status == "AwaitingPayment"
+        || ((sub.Status is "Active" or "Paused")
+            && sub.EndDate <= DateTime.UtcNow.AddDays(30));
 
     private void OpenPay(SubVm sub)
     {

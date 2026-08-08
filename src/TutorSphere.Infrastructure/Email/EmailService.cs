@@ -37,6 +37,7 @@ internal static class EmailTemplates
     public const string ParentPaymentFailed = "PARENT_PAYMENT_FAILED";
     public const string InvoiceReady = "INVOICE_READY";
     public const string ParentPaymentOverdue = "PARENT_PAYMENT_OVERDUE";
+    public const string ParentSubscriptionRenewal = "PARENT_SUBSCRIPTION_RENEWAL";
 
     public const string CourseEnrollmentRequest = "COURSE_ENROLLMENT_REQUEST";
     public const string CourseEnrollmentAccepted = "COURSE_ENROLLMENT_ACCEPTED";
@@ -213,6 +214,26 @@ public class EmailService : IEmailService
             ["CourseTitle"] = courseTitle,
             ["PayUrl"] = payUrl
         }, ct);
+
+    public async Task SendParentSubscriptionRenewalReminderAsync(
+        string to,
+        string parentName,
+        string studentName,
+        string courseTitle,
+        DateTime endDate,
+        string payUrl,
+        CancellationToken ct = default)
+    {
+        var culture = await ResolveCultureAsync(to, ct);
+        await SendAsync(to, EmailTemplates.ParentSubscriptionRenewal, new Dictionary<string, string>
+        {
+            ["ParentName"] = parentName,
+            ["StudentName"] = studentName,
+            ["CourseTitle"] = courseTitle,
+            ["EndDate"] = endDate.ToString("D", culture),
+            ["PayUrl"] = payUrl
+        }, ct, culture.Name);
+    }
 
     public Task SendCourseEnrollmentRequestAsync(string to, string tutorName, string studentName, string courseTitle, CancellationToken ct = default) =>
         SendAsync(to, EmailTemplates.CourseEnrollmentRequest, new Dictionary<string, string>

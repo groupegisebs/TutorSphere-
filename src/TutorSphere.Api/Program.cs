@@ -37,6 +37,7 @@ builder.Services.AddScoped<IRealTimeMessaging, SignalRMessageNotifier>();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddHostedService<LessonReminderService>();
 builder.Services.AddHostedService<OverduePaymentReminderService>();
+builder.Services.AddHostedService<SubscriptionRenewalReminderService>();
 builder.Services.AddHostedService<PlatformLicenseExpiryService>();
 
 var jwtSection = builder.Configuration.GetSection("Jwt");

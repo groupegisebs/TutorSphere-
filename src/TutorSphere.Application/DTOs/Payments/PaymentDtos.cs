@@ -83,7 +83,8 @@ public record MobileMoneyCountryDto(
     string CountryName,
     string Currency,
     string PhoneCountryCode,
-    IReadOnlyList<MobileMoneyNetworkOptionDto> Networks);
+    IReadOnlyList<MobileMoneyNetworkOptionDto> Networks,
+    decimal AmountFor10Usd = 0);
 
 public record MobileMoneyNetworkOptionDto(string Network, string NetworkLabel);
 

@@ -17,6 +17,9 @@ public class StudentSubscription : BaseEntity, ITenantEntity
     /// <summary>Dernier e-mail « paiement en retard » envoyé (AwaitingPayment).</summary>
     public DateTime? OverdueReminderSentAt { get; set; }
 
+    /// <summary>Dernier e-mail « fin d'abonnement dans 1 mois » (renouvellement).</summary>
+    public DateTime? RenewalReminderSentAt { get; set; }
+
     public Tenant Tenant { get; set; } = null!;
     public Student Student { get; set; } = null!;
     public SubscriptionOffering Offering { get; set; } = null!;

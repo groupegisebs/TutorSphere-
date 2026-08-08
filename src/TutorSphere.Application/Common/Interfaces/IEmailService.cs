@@ -51,6 +51,15 @@ public interface IEmailService
     Task SendInvoiceReadyAsync(string to, string parentName, string invoiceUrl, CancellationToken ct = default);
     Task SendParentPaymentOverdueAsync(string to, string parentName, string studentName, string courseTitle, string payUrl, CancellationToken ct = default);
 
+    Task SendParentSubscriptionRenewalReminderAsync(
+        string to,
+        string parentName,
+        string studentName,
+        string courseTitle,
+        DateTime endDate,
+        string payUrl,
+        CancellationToken ct = default);
+
     // Course enrollment
     Task SendCourseEnrollmentRequestAsync(string to, string tutorName, string studentName, string courseTitle, CancellationToken ct = default);
     Task SendCourseEnrollmentAcceptedAsync(string to, string parentName, string studentName, string courseTitle, string statusNote, string actionUrl, CancellationToken ct = default);

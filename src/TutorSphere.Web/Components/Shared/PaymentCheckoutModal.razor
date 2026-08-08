@@ -102,7 +102,7 @@
                                                          width="20"
                                                          height="15"
                                                          loading="lazy" />
-                                                    <span>@selected.CountryName (@selected.Currency)</span>
+                                                    <span>@selected.CountryName (@selected.Currency@(selected.AmountFor10Usd > 0 ? $" · {FormatFixed10(selected)}" : ""))</span>
                                                 </span>
                                             }
                                             else
@@ -128,7 +128,9 @@
                                                                  height="15"
                                                                  loading="lazy" />
                                                             <span>@c.CountryName</span>
-                                                            <span class="pay-country-currency">@c.Currency</span>
+                                                            <span class="pay-country-currency">
+                                                                @(c.AmountFor10Usd > 0 ? FormatFixed10(c) : c.Currency)
+                                                            </span>
                                                         </button>
                                                     </li>
                                                 }
@@ -511,12 +513,16 @@
         }
     }
 
+    private static string FormatFixed10(CountryVm c) =>
+        $"{c.AmountFor10Usd.ToString("N0")} {c.Currency}";
+
     private sealed record CountryVm(
         string CountryCode,
         string CountryName,
         string Currency,
         string PhoneCountryCode,
-        List<NetworkVm>? Networks);
+        List<NetworkVm>? Networks,
+        decimal AmountFor10Usd = 0);
 
     private sealed record NetworkVm(string Network, string NetworkLabel);
 

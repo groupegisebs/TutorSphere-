@@ -25,6 +25,9 @@ public class Tenant : BaseEntity
     /// <summary>Fin de validité de la licence annuelle plateforme (UTC). Null = jamais payée.</summary>
     public DateTime? LicenseExpiresAt { get; set; }
 
+    /// <summary>Dernier e-mail « renouvellement dans 1 mois » envoyé pour la licence plateforme.</summary>
+    public DateTime? LicenseRenewalReminderSentAt { get; set; }
+
     /// <summary>Date UTC de fin de l'auto-formation enseignant (null = pas encore complétée).</summary>
     public DateTime? OnboardingCompletedAt { get; set; }
 

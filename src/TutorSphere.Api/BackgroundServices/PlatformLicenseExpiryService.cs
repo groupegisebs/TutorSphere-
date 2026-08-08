@@ -2,7 +2,9 @@ using TutorSphere.Application.Services;
 
 namespace TutorSphere.Api.BackgroundServices;
 
-/// <summary>Passe les licences annuelles expirées en AwaitingRenewal.</summary>
+/// <summary>
+/// Rappels ~1 mois avant échéance + passage en AwaitingRenewal à expiration.
+/// </summary>
 public class PlatformLicenseExpiryService : BackgroundService
 {
     private readonly IServiceProvider _services;
@@ -26,6 +28,7 @@ public class PlatformLicenseExpiryService : BackgroundService
             {
                 using var scope = _services.CreateScope();
                 var billing = scope.ServiceProvider.GetRequiredService<IPlatformBillingService>();
+                await billing.SendUpcomingRenewalRemindersAsync(stoppingToken);
                 await billing.ExpireOverdueLicensesAsync(stoppingToken);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)

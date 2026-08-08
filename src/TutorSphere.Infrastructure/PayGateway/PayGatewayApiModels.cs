@@ -58,7 +58,8 @@ internal sealed record GatewayMobileMoneyCountryResponse(
     string CountryName,
     string Currency,
     string PhoneCountryCode,
-    IReadOnlyList<GatewayMobileMoneyNetworkOption>? Networks);
+    IReadOnlyList<GatewayMobileMoneyNetworkOption>? Networks,
+    decimal AmountFor10Usd = 0);
 
 internal sealed record GatewayMobileMoneyNetworkOption(string Network, string NetworkLabel);
 
