@@ -181,14 +181,14 @@
                                                 title="Copier" @onclick="() => CopyAsync(c.Code)">
                                             <i class="bi bi-clipboard"></i>
                                         </button>
-                                        @if (c.RedeemedAt is null)
-                                        {
-                                            <button type="button"
-                                                    class="btn btn-sm @(c.IsActive ? "btn-outline-warning" : "btn-outline-success")"
-                                                    @onclick="() => ToggleActiveAsync(c)">
-                                                @(c.IsActive ? "Désactiver" : "Réactiver")
-                                            </button>
-                                        }
+                                        <button type="button"
+                                                class="btn btn-sm @(c.IsActive ? "btn-outline-warning" : "btn-outline-success")"
+                                                title="@(c.RedeemedAt is not null && c.IsActive
+                                                    ? "Désactiver : révoque la licence gratuite — l'enseignant devra payer"
+                                                    : c.IsActive ? "Empêche l'utilisation du code" : "Réactiver le code")"
+                                                @onclick="() => ToggleActiveAsync(c)">
+                                            @(c.IsActive ? "Désactiver" : "Réactiver")
+                                        </button>
                                     </td>
                                 </tr>
                             }
@@ -301,12 +301,22 @@
     private async Task ToggleActiveAsync(AdminPromoCodeItem item)
     {
         _error = null;
-        var updated = await AdminSvc.SetPromoCodeActiveAsync(item.Id, !item.IsActive);
+        _flash = null;
+        var activate = !item.IsActive;
+        var updated = await AdminSvc.SetPromoCodeActiveAsync(item.Id, activate);
         if (updated is null)
         {
             _error = "Mise à jour impossible.";
             return;
         }
+
+        if (!activate && item.RedeemedAt is not null)
+            _flash = $"Code {item.Code} désactivé — licence promo révoquée, l'enseignant doit payer pour continuer.";
+        else if (!activate)
+            _flash = $"Code {item.Code} désactivé — il ne peut plus être utilisé.";
+        else
+            _flash = $"Code {item.Code} réactivé.";
+
         await ReloadAsync();
     }
 

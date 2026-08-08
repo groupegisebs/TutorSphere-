@@ -107,6 +107,11 @@ public sealed class PlatformPromoService(IApplicationDbContext db) : IPlatformPr
 
         entity.IsActive = isActive;
         entity.UpdatedAt = DateTime.UtcNow;
+
+        // Désactiver un code déjà utilisé → révoquer la licence gratuite : l'enseignant doit payer.
+        if (!isActive && entity.RedeemedByTenantId is Guid redeemedTenantId)
+            await RevokePromoLicenseAsync(entity, redeemedTenantId, ct);
+
         await db.SaveChangesAsync(ct);
 
         string? schoolName = null;
@@ -114,6 +119,61 @@ public sealed class PlatformPromoService(IApplicationDbContext db) : IPlatformPr
             schoolName = db.Tenants.Where(t => t.Id == tid).Select(t => t.Name).FirstOrDefault();
 
         return Map(entity, DateTime.UtcNow, schoolName);
+    }
+
+    /// <summary>
+    /// Annule le paiement PROMO:{code} et recalcule LicenseExpiresAt.
+    /// S'il ne reste aucun paiement Completed, l'école passe en AwaitingRenewal (doit payer).
+    /// </summary>
+    private async Task RevokePromoLicenseAsync(
+        PlatformPromoCode promo,
+        Guid tenantId,
+        CancellationToken ct)
+    {
+        var tenant = db.Tenants.FirstOrDefault(t => t.Id == tenantId);
+        if (tenant is null)
+            return;
+
+        var promoMarker = $"PROMO:{promo.Code}";
+        var promoPayments = db.PlatformLicensePaymentsForAnyTenant
+            .Where(p => p.TenantId == tenantId
+                        && p.GatewayPaymentCode == promoMarker
+                        && p.Status == PaymentStatus.Completed)
+            .ToList();
+
+        foreach (var payment in promoPayments)
+        {
+            payment.Status = PaymentStatus.Refunded;
+            payment.UpdatedAt = DateTime.UtcNow;
+        }
+
+        var completedEnds = db.PlatformLicensePaymentsForAnyTenant
+            .Where(p => p.TenantId == tenantId
+                        && p.Status == PaymentStatus.Completed
+                        && p.PeriodEnd != null)
+            .Select(p => p.PeriodEnd!.Value)
+            .ToList();
+
+        if (completedEnds.Count == 0)
+        {
+            tenant.LicenseExpiresAt = DateTime.UtcNow;
+            tenant.IsPublicProfile = false;
+            if (tenant.Status is TenantStatus.Active or TenantStatus.AwaitingOnboarding)
+                tenant.Status = TenantStatus.AwaitingRenewal;
+        }
+        else
+        {
+            tenant.LicenseExpiresAt = completedEnds.Max();
+            if (tenant.LicenseExpiresAt <= DateTime.UtcNow)
+            {
+                tenant.IsPublicProfile = false;
+                if (tenant.Status is TenantStatus.Active or TenantStatus.AwaitingOnboarding)
+                    tenant.Status = TenantStatus.AwaitingRenewal;
+            }
+        }
+
+        tenant.UpdatedAt = DateTime.UtcNow;
+        await Task.CompletedTask;
     }
 
     public async Task<PlatformLicensePaymentStatusDto> RedeemForOwnerAsync(
