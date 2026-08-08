@@ -1,6 +1,7 @@
 @inherits LayoutComponentBase
 @inject NavigationManager Navigation
 @inject AuthService Auth
+@inject ILogger<AdminLayout> Logger
 
 <link rel="stylesheet" href="css/admin-control-center.css" />
 
@@ -24,8 +25,14 @@
 
     protected override async Task OnInitializedAsync()
     {
-        // Cookie / mémoire uniquement — pas de JS (évite le hang Edge/Cently).
-        await Auth.EnsureSessionRestoredAsync(forceJs: false);
+        try
+        {
+            await Auth.EnsureSessionRestoredAsync(forceJs: false);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "AdminLayout cookie session restore failed.");
+        }
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -35,20 +42,23 @@
 
         _checked = true;
 
-        if (Auth.PrimaryRole is not ("SuperAdmin" or "PlatformAdmin"))
+        try
         {
-            // Une seule tentative JS courte ; EnsureSessionRestoredAsync a un timeout interne.
-            await Auth.EnsureSessionRestoredAsync(forceJs: true);
-        }
+            if (Auth.PrimaryRole is not ("SuperAdmin" or "PlatformAdmin"))
+                await Auth.EnsureSessionRestoredAsync(forceJs: true);
 
-        if (Auth.PrimaryRole is not ("SuperAdmin" or "PlatformAdmin"))
+            if (Auth.PrimaryRole is not ("SuperAdmin" or "PlatformAdmin"))
+            {
+                Navigation.NavigateTo("/login/admin");
+                return;
+            }
+
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
         {
-            // Pas de forceLoad — extensions qui patchent location cassent la nav.
-            Navigation.NavigateTo("/login/admin");
-            return;
+            Logger.LogWarning(ex, "AdminLayout post-render session check failed.");
         }
-
-        await InvokeAsync(StateHasChanged);
     }
 
     protected override void OnParametersSet()

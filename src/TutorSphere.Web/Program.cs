@@ -40,6 +40,12 @@ builder.Services.AddScoped<AdminService>();
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+builder.Services.Configure<Microsoft.AspNetCore.Components.Server.CircuitOptions>(options =>
+{
+    // Affiche l'exception réelle dans la console navigateur (sinon « unhandled exception » opaque).
+    options.DetailedErrors = builder.Environment.IsDevelopment()
+        || builder.Configuration.GetValue("Circuits:DetailedErrors", false);
+});
 
 // Blazor Server HttpClient runs on the web host, not in the browser. Prefer InternalApiBaseUrl
 // (loopback, e.g. http://127.0.0.1:55099) in production; ApiBaseUrl stays the public HTTPS URL

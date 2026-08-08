@@ -101,7 +101,15 @@
 
     private static string ResolveTitle(string uri)
     {
-        var path = new Uri(uri).AbsolutePath.Trim('/').ToLowerInvariant();
+        string path;
+        if (Uri.TryCreate(uri, UriKind.Absolute, out var absolute))
+            path = absolute.AbsolutePath;
+        else if (Uri.TryCreate(uri, UriKind.Relative, out _))
+            path = uri.Split('?', '#')[0];
+        else
+            path = uri;
+
+        path = path.Trim('/').ToLowerInvariant();
         return path switch
         {
             "admin" or "admin/dashboard" => "Tableau de bord",
@@ -112,6 +120,7 @@
             "admin/teachers" => "Enseignants",
             "admin/tutors" => "Tuteurs",
             "admin/roles" => "Rôles & Permissions",
+            "admin/promo-codes" => "Codes promo",
             "admin/payments" => "Paiements",
             "admin/ai" => "IA & Modèles",
             "admin/videoconference" => "Visioconférences",
