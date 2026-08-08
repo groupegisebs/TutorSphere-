@@ -23,6 +23,9 @@ builder.Services.Configure<RequestLocalizationOptions>(options =>
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddAuthorizationCore();
+// Requis pour AuthorizeView sous @rendermode InteractiveServer
+// (CascadingAuthenticationState dans App.razor ne traverse pas les frontières de rendu).
+builder.Services.AddCascadingAuthenticationState();
 builder.Services.AddScoped<CustomAuthenticationStateProvider>();
 builder.Services.AddScoped<AuthenticationStateProvider>(sp =>
     sp.GetRequiredService<CustomAuthenticationStateProvider>());
