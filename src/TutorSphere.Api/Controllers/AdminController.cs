@@ -288,10 +288,14 @@ public class AdminController : ControllerBase
         return Ok(schools);
     }
 
-    /// <summary>Returns aggregate counts used by the admin dashboard.</summary>
+    /// <summary>Returns aggregate counts used by the admin dashboard (données réelles uniquement).</summary>
     [HttpGet("stats")]
     public async Task<IActionResult> GetStats(CancellationToken ct)
     {
+        var now = DateTime.UtcNow;
+        var monthStart = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var day30 = now.Date.AddDays(-29);
+
         var tutors = (await _userManager.GetUsersInRoleAsync(UserRoles.Tutor)).ToList();
         var parents = (await _userManager.GetUsersInRoleAsync(UserRoles.Parent)).ToList();
         var students = (await _userManager.GetUsersInRoleAsync(UserRoles.Student)).ToList();
@@ -304,7 +308,13 @@ public class AdminController : ControllerBase
 
         var schools = await _db.Tenants.AsNoTracking().CountAsync(ct);
         var activeCourses = await _db.LessonsForAnyTenant.AsNoTracking()
-            .CountAsync(l => l.StartTime >= DateTime.UtcNow.AddDays(-30), ct);
+            .CountAsync(l => l.CancelledAt == null && l.StartTime >= now.AddDays(-30) && l.StartTime <= now.AddDays(30), ct);
+
+        var liveLessons = await _db.LessonsForAnyTenant.AsNoTracking()
+            .CountAsync(l => l.CancelledAt == null && l.StartTime <= now && l.EndTime >= now, ct);
+
+        var activeSubscriptions = await _db.StudentSubscriptionsForAnyTenant.AsNoTracking()
+            .CountAsync(s => s.Status == SubscriptionStatus.Active, ct);
 
         var countries = await _db.Tenants.AsNoTracking()
             .Where(t => t.Country != null && t.Country != "")
@@ -320,6 +330,10 @@ public class AdminController : ControllerBase
             .Select(t => new AdminTopSchoolDto(t.Id, t.Name, t.Country, t.Students.Count))
             .ToListAsync(ct);
 
+        var tenantLookup = await _db.Tenants.AsNoTracking()
+            .Select(t => new { t.Id, t.Name, t.Country })
+            .ToDictionaryAsync(t => t.Id, ct);
+
         var recentUsers = all
             .OrderByDescending(u => u.Id)
             .Take(8)
@@ -330,16 +344,117 @@ public class AdminController : ControllerBase
                     parents.Any(p => p.Id == u.Id) ? UserRoles.Parent :
                     students.Any(s => s.Id == u.Id) ? UserRoles.Student :
                     UserRoles.TeachingAssistant;
+                string? country = null;
+                string? school = null;
+                if (u.TenantId is { } tid && tenantLookup.TryGetValue(tid, out var ten))
+                {
+                    country = ten.Country;
+                    school = ten.Name;
+                }
+
                 return new AdminRecentUserDto(
                     u.Id,
                     u.FullName,
                     u.Email ?? string.Empty,
                     role,
                     u.LockoutEnd == null || u.LockoutEnd <= DateTimeOffset.UtcNow,
-                    null,
-                    null);
+                    country,
+                    school);
             })
             .ToList();
+
+        var monthPayments = await _db.PaymentsForAnyTenant.AsNoTracking()
+            .Where(p => p.Status == PaymentStatus.Completed
+                        && (p.CompletedAt ?? p.CreatedAt) >= monthStart)
+            .Select(p => new { p.Amount, p.Currency, p.SubscriptionId, At = p.CompletedAt ?? p.CreatedAt })
+            .ToListAsync(ct);
+
+        var monthLicenses = await _db.PlatformLicensePaymentsForAnyTenant.AsNoTracking()
+            .Where(p => p.Status == PaymentStatus.Completed
+                        && (p.CompletedAt ?? p.CreatedAt) >= monthStart)
+            .Select(p => new { p.Amount, p.Currency, At = p.CompletedAt ?? p.CreatedAt })
+            .ToListAsync(ct);
+
+        var monthRevenue = monthPayments.Sum(p => p.Amount) + monthLicenses.Sum(p => p.Amount);
+        var monthCurrency = monthPayments.Select(p => p.Currency)
+            .Concat(monthLicenses.Select(p => p.Currency))
+            .GroupBy(c => c)
+            .OrderByDescending(g => g.Count())
+            .Select(g => g.Key)
+            .FirstOrDefault() ?? "CAD";
+
+        var subRevenue = monthPayments.Where(p => p.SubscriptionId != null).Sum(p => p.Amount);
+        var licenseRevenue = monthLicenses.Sum(p => p.Amount);
+        var otherRevenue = monthPayments.Where(p => p.SubscriptionId == null).Sum(p => p.Amount);
+        var paymentBreakdown = new List<AdminPaymentSliceDto>();
+        if (monthRevenue > 0)
+        {
+            void AddSlice(string label, decimal amount)
+            {
+                if (amount <= 0) return;
+                paymentBreakdown.Add(new AdminPaymentSliceDto(
+                    label,
+                    amount,
+                    Math.Round(amount * 100m / monthRevenue, 1)));
+            }
+
+            AddSlice("Abonnements", subRevenue);
+            AddSlice("Licences plateforme", licenseRevenue);
+            AddSlice("Autres", otherRevenue);
+        }
+
+        var schoolCreated = await _db.Tenants.AsNoTracking()
+            .Where(t => t.CreatedAt >= day30)
+            .Select(t => t.CreatedAt.Date)
+            .ToListAsync(ct);
+        var paymentDays = monthPayments
+            .Where(p => p.At >= day30)
+            .Select(p => p.At.Date)
+            .Concat(monthLicenses.Where(p => p.At >= day30).Select(p => p.At.Date))
+            .ToList();
+
+        var dailySignups = Enumerable.Range(0, 30)
+            .Select(i =>
+            {
+                var d = day30.AddDays(i);
+                return new AdminDailyCountDto(
+                    d,
+                    schoolCreated.Count(x => x == d) + paymentDays.Count(x => x == d));
+            })
+            .ToList();
+
+        var activity = new List<AdminActivityItemDto>();
+        var recentSchools = await _db.Tenants.AsNoTracking()
+            .OrderByDescending(t => t.CreatedAt)
+            .Take(5)
+            .Select(t => new { t.Name, t.CreatedAt })
+            .ToListAsync(ct);
+        foreach (var s in recentSchools)
+            activity.Add(new AdminActivityItemDto("École inscrite", s.Name, s.CreatedAt, "#7c5cff"));
+
+        var recentPay = await _db.PaymentsForAnyTenant.AsNoTracking()
+            .Where(p => p.Status == PaymentStatus.Completed)
+            .OrderByDescending(p => p.CompletedAt ?? p.CreatedAt)
+            .Take(5)
+            .Select(p => new { p.Amount, p.Currency, At = p.CompletedAt ?? p.CreatedAt })
+            .ToListAsync(ct);
+        foreach (var p in recentPay)
+            activity.Add(new AdminActivityItemDto(
+                "Paiement reçu",
+                $"{p.Amount:N0} {p.Currency}",
+                p.At,
+                "#22c55e"));
+
+        var recentLessons = await _db.LessonsForAnyTenant.AsNoTracking()
+            .Where(l => l.CancelledAt == null && l.StartTime <= now.AddHours(2))
+            .OrderByDescending(l => l.StartTime)
+            .Take(5)
+            .Select(l => new { l.Title, l.StartTime })
+            .ToListAsync(ct);
+        foreach (var l in recentLessons)
+            activity.Add(new AdminActivityItemDto("Séance", l.Title, l.StartTime, "#3b82f6"));
+
+        activity = activity.OrderByDescending(a => a.At).Take(10).ToList();
 
         return Ok(new AdminStatsDto(
             all.Count,
@@ -353,7 +468,63 @@ public class AdminController : ControllerBase
             inactive,
             countries,
             topSchools,
-            recentUsers));
+            recentUsers,
+            monthRevenue,
+            monthCurrency,
+            liveLessons,
+            activeSubscriptions,
+            dailySignups,
+            paymentBreakdown,
+            activity));
+    }
+
+    /// <summary>Contrôles de santé réels (DB, e-mail, volumes métier) — pas de données fictives.</summary>
+    [HttpGet("health")]
+    public async Task<IActionResult> GetPlatformHealth(CancellationToken ct)
+    {
+        var checks = new List<AdminHealthCheckDto>();
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            var n = await _db.Tenants.AsNoTracking().CountAsync(ct);
+            sw.Stop();
+            checks.Add(new AdminHealthCheckDto("Base de données", true, $"{n} école(s)", $"{sw.ElapsedMilliseconds} ms"));
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            checks.Add(new AdminHealthCheckDto("Base de données", false, ex.Message, $"{sw.ElapsedMilliseconds} ms"));
+        }
+
+        checks.Add(new AdminHealthCheckDto(
+            "API admin",
+            true,
+            "Endpoint stats / health",
+            "OK"));
+
+        checks.Add(new AdminHealthCheckDto(
+            "Mail Sender",
+            _mailClient.IsConfigured,
+            _mailClient.IsConfigured ? (_mailSettings.BaseUrl ?? "configuré") : "Non configuré",
+            _mailClient.IsConfigured ? "OK" : "—"));
+
+        try
+        {
+            var payments = await _db.PaymentsForAnyTenant.AsNoTracking().CountAsync(ct);
+            var licenses = await _db.PlatformLicensePaymentsForAnyTenant.AsNoTracking().CountAsync(ct);
+            checks.Add(new AdminHealthCheckDto(
+                "Paiements",
+                true,
+                $"{payments} paiement(s), {licenses} licence(s)",
+                "OK"));
+        }
+        catch (Exception ex)
+        {
+            checks.Add(new AdminHealthCheckDto("Paiements", false, ex.Message, "—"));
+        }
+
+        var ok = checks.All(c => c.Ok);
+        return Ok(new AdminHealthDto(ok, DateTime.UtcNow, checks));
     }
 
     /// <summary>État Mail Sender / GiseMailSender (configuration uniquement — n'envoie rien).</summary>
@@ -496,4 +667,17 @@ public sealed record AdminStatsDto(
     int InactiveUsers,
     List<AdminCountryStatDto> Countries,
     List<AdminTopSchoolDto> TopSchools,
-    List<AdminRecentUserDto> RecentUsers);
+    List<AdminRecentUserDto> RecentUsers,
+    decimal MonthRevenue = 0,
+    string MonthCurrency = "CAD",
+    int LiveLessons = 0,
+    int ActiveSubscriptions = 0,
+    List<AdminDailyCountDto>? DailySignups = null,
+    List<AdminPaymentSliceDto>? PaymentBreakdown = null,
+    List<AdminActivityItemDto>? RecentActivity = null);
+
+public sealed record AdminDailyCountDto(DateTime Date, int Count);
+public sealed record AdminPaymentSliceDto(string Label, decimal Amount, decimal Percent);
+public sealed record AdminActivityItemDto(string Title, string Detail, DateTime At, string Color);
+public sealed record AdminHealthCheckDto(string Name, bool Ok, string Detail, string Latency);
+public sealed record AdminHealthDto(bool Healthy, DateTime CheckedAt, List<AdminHealthCheckDto> Checks);

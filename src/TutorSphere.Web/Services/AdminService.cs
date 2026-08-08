@@ -30,6 +30,9 @@ public sealed class AdminService
     public async Task<AdminStats?> GetStatsAsync()
         => await _api.GetAsync<AdminStats>("api/admin/stats");
 
+    public async Task<AdminHealth?> GetHealthAsync()
+        => await _api.GetAsync<AdminHealth>("api/admin/health");
+
     public async Task<List<AdminSchoolItem>> GetSchoolsAsync()
         => await _api.GetAsync<List<AdminSchoolItem>>("api/admin/schools") ?? [];
 
@@ -136,6 +139,19 @@ public sealed record AdminStats(
     int InactiveUsers,
     List<AdminCountryStat>? Countries = null,
     List<AdminTopSchool>? TopSchools = null,
-    List<AdminRecentUser>? RecentUsers = null);
+    List<AdminRecentUser>? RecentUsers = null,
+    decimal MonthRevenue = 0,
+    string MonthCurrency = "CAD",
+    int LiveLessons = 0,
+    int ActiveSubscriptions = 0,
+    List<AdminDailyCount>? DailySignups = null,
+    List<AdminPaymentSlice>? PaymentBreakdown = null,
+    List<AdminActivityItem>? RecentActivity = null);
+
+public sealed record AdminDailyCount(DateTime Date, int Count);
+public sealed record AdminPaymentSlice(string Label, decimal Amount, decimal Percent);
+public sealed record AdminActivityItem(string Title, string Detail, DateTime At, string Color);
+public sealed record AdminHealthCheck(string Name, bool Ok, string Detail, string Latency);
+public sealed record AdminHealth(bool Healthy, DateTime CheckedAt, List<AdminHealthCheck> Checks);
 
 internal sealed record AdminActionResult(string Message);

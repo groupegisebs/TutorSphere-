@@ -21,19 +21,12 @@
     </div>
 
     <div class="cc-topbar-actions">
-        <button type="button" class="cc-icon-btn" aria-label="Notifications">
-            <i class="bi bi-bell"></i>
-            <span class="cc-badge">12</span>
-        </button>
-        <a href="admin/support" class="cc-icon-btn" aria-label="Aide">
-            <i class="bi bi-question-circle"></i>
-        </a>
         <LanguageSelector />
         <button type="button" class="cc-user-chip" @onclick="ToggleMenu" @onclick:stopPropagation="true">
             <span class="cc-user-avatar">@_initials</span>
             <span class="cc-user-meta">
                 <span class="cc-user-name">@_displayName</span>
-                <span class="cc-user-role">Super Administrateur</span>
+                <span class="cc-user-role">@_roleLabel</span>
             </span>
         </button>
         @if (_menuOpen)
@@ -41,7 +34,7 @@
             <div class="cc-actions-wrap">
                 <div class="cc-dropdown" style="right:0;top:2.6rem;">
                     <a href="admin/settings"><i class="bi bi-sliders"></i>Configurations</a>
-                    <a href="admin/security"><i class="bi bi-shield-lock"></i>Sécurité</a>
+                    <a href="admin/health"><i class="bi bi-heart-pulse"></i>Santé plateforme</a>
                     <button type="button" class="danger" @onclick="Logout"><i class="bi bi-box-arrow-left"></i>Déconnexion</button>
                 </div>
             </div>
@@ -64,7 +57,14 @@
     private string _displayName =>
         !string.IsNullOrWhiteSpace(AuthSvc.UserName) ? AuthSvc.UserName! :
         !string.IsNullOrWhiteSpace(AuthSvc.UserEmail) ? AuthSvc.UserEmail! :
-        "Admin Principal";
+        "Administrateur";
+
+    private string _roleLabel => AuthSvc.PrimaryRole switch
+    {
+        "SuperAdmin" => "Super Administrateur",
+        "PlatformAdmin" => "Administrateur plateforme",
+        _ => AuthSvc.PrimaryRole ?? "Administrateur"
+    };
 
     private string _initials => GetInitials(_displayName);
 

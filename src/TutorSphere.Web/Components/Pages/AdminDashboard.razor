@@ -12,337 +12,351 @@
         <div class="cc-toolbar">
             <div>
                 <h1 class="cc-page-title">Tableau de bord</h1>
-                <p class="cc-page-sub">Centre de contrôle TutorSphere — supervision mondiale de la plateforme.</p>
+                <p class="cc-page-sub">Supervision administrative — données réelles de la plateforme.</p>
             </div>
             <div class="d-flex align-items-center gap-2 flex-wrap">
                 <div class="cc-date-range">
                     <i class="bi bi-calendar3"></i>
                     <span>@_rangeLabel</span>
                 </div>
-                <button type="button" class="cc-btn cc-btn-primary">
-                    <i class="bi bi-download"></i> Exporter le rapport
-                </button>
             </div>
         </div>
 
-        <!-- KPI row -->
-        <div class="cc-kpi-grid">
-            <div class="cc-kpi">
-                <div class="cc-kpi-label">Utilisateurs totaux</div>
-                <div class="cc-kpi-value">@Fmt(_stats?.TotalUsers)</div>
-                <span class="cc-kpi-change up"><i class="bi bi-arrow-up-short"></i>+12.5%</span>
+        @if (_loading)
+        {
+            <div class="d-flex align-items-center justify-content-center py-5">
+                <span class="spinner-border text-primary me-3" role="status"></span>
+                <span class="text-muted">Chargement des indicateurs…</span>
             </div>
-            <div class="cc-kpi">
-                <div class="cc-kpi-label">Parents</div>
-                <div class="cc-kpi-value">@Fmt(_stats?.TotalParents)</div>
-                <span class="cc-kpi-change down"><i class="bi bi-arrow-down-short"></i>-3.2%</span>
+        }
+        else if (_error is not null)
+        {
+            <div class="cc-empty">
+                <i class="bi bi-exclamation-triangle"></i>
+                <p>@_error</p>
             </div>
-            <div class="cc-kpi">
-                <div class="cc-kpi-label">Élèves</div>
-                <div class="cc-kpi-value">@Fmt(_stats?.TotalStudents)</div>
-                <span class="cc-kpi-change up"><i class="bi bi-arrow-up-short"></i>+14.7%</span>
-            </div>
-            <div class="cc-kpi">
-                <div class="cc-kpi-label">Enseignants</div>
-                <div class="cc-kpi-value">@Fmt(_stats?.TotalTeachers)</div>
-                <span class="cc-kpi-change up"><i class="bi bi-arrow-up-short"></i>+6.3%</span>
-            </div>
-            <div class="cc-kpi">
-                <div class="cc-kpi-label">Écoles</div>
-                <div class="cc-kpi-value">@Fmt(_stats?.TotalSchools)</div>
-                <span class="cc-kpi-change up"><i class="bi bi-arrow-up-short"></i>+5.1%</span>
-            </div>
-            <div class="cc-kpi">
-                <div class="cc-kpi-label">Cours actifs</div>
-                <div class="cc-kpi-value">@Fmt(_stats?.ActiveCourses)</div>
-                <span class="cc-kpi-change up"><i class="bi bi-arrow-up-short"></i>+9.8%</span>
-            </div>
-        </div>
-
-        <!-- Mid: chart + map + live -->
-        <div class="cc-dash-mid">
-            <div class="cc-card">
-                <div class="cc-card-header">
-                    <div>
-                        <h2 class="cc-card-title">Nouveaux comptes</h2>
-                        <p class="cc-card-sub">30 derniers jours</p>
-                    </div>
+        }
+        else
+        {
+            <div class="cc-kpi-grid">
+                <div class="cc-kpi">
+                    <div class="cc-kpi-label">Utilisateurs</div>
+                    <div class="cc-kpi-value">@Fmt(_stats!.TotalUsers)</div>
+                    <span class="cc-page-sub" style="font-size:.75rem;">@_stats.ActiveUsers actifs · @_stats.InactiveUsers inactifs</span>
                 </div>
-                <div class="cc-line-chart">
-                    <svg viewBox="0 0 400 180" preserveAspectRatio="none" aria-hidden="true">
-                        <defs>
-                            <linearGradient id="ccArea" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stop-color="#7c5cff" stop-opacity="0.45" />
-                                <stop offset="100%" stop-color="#7c5cff" stop-opacity="0" />
-                            </linearGradient>
-                        </defs>
-                        <path d="M0,140 C40,130 60,90 90,100 C120,110 140,60 170,70 C200,80 220,40 250,50 C280,60 300,90 330,55 C360,30 380,70 400,45 L400,180 L0,180 Z" fill="url(#ccArea)" />
-                        <path d="M0,140 C40,130 60,90 90,100 C120,110 140,60 170,70 C200,80 220,40 250,50 C280,60 300,90 330,55 C360,30 380,70 400,45" fill="none" stroke="#7c5cff" stroke-width="2.5" />
-                        <circle cx="250" cy="50" r="5" fill="#7c5cff" stroke="#fff" stroke-width="2" />
-                    </svg>
-                    <div class="cc-chart-tooltip">
-                        <strong>@_tooltipDay</strong>
-                        642 nouveaux comptes
-                    </div>
+                <div class="cc-kpi">
+                    <div class="cc-kpi-label">Parents</div>
+                    <div class="cc-kpi-value">@Fmt(_stats.TotalParents)</div>
+                </div>
+                <div class="cc-kpi">
+                    <div class="cc-kpi-label">Élèves</div>
+                    <div class="cc-kpi-value">@Fmt(_stats.TotalStudents)</div>
+                </div>
+                <div class="cc-kpi">
+                    <div class="cc-kpi-label">Enseignants / Tuteurs</div>
+                    <div class="cc-kpi-value">@Fmt(_stats.TotalTeachers + _stats.TotalTutors)</div>
+                    <span class="cc-page-sub" style="font-size:.75rem;">@_stats.TotalTeachers ens. · @_stats.TotalTutors tuteurs</span>
+                </div>
+                <div class="cc-kpi">
+                    <div class="cc-kpi-label">Écoles</div>
+                    <div class="cc-kpi-value">@Fmt(_stats.TotalSchools)</div>
+                </div>
+                <div class="cc-kpi">
+                    <div class="cc-kpi-label">Séances (fenêtre 60 j)</div>
+                    <div class="cc-kpi-value">@Fmt(_stats.ActiveCourses)</div>
                 </div>
             </div>
 
-            <div class="cc-card">
-                <div class="cc-card-header">
-                    <div>
-                        <h2 class="cc-card-title">Répartition par pays</h2>
-                        <p class="cc-card-sub">Utilisateurs &amp; écoles actifs</p>
+            <div class="cc-dash-mid">
+                <div class="cc-card">
+                    <div class="cc-card-header">
+                        <div>
+                            <h2 class="cc-card-title">Activité (30 jours)</h2>
+                            <p class="cc-card-sub">Nouvelles écoles + paiements complétés / jour</p>
+                        </div>
                     </div>
-                </div>
-                <div class="cc-map-wrap">
-                    <div class="cc-world-map">
-                        <span class="cc-map-dot" style="top:38%;left:22%;"></span>
-                        <span class="cc-map-dot" style="top:34%;left:48%;"></span>
-                        <span class="cc-map-dot" style="top:42%;left:52%;"></span>
-                        <span class="cc-map-dot" style="top:58%;left:50%;"></span>
-                        <span class="cc-map-dot" style="top:36%;left:18%;"></span>
-                    </div>
-                    <ul class="cc-country-list">
-                        @foreach (var c in DisplayCountries)
-                        {
-                            <li>
-                                <span class="cc-country-left">
-                                    <span class="cc-flag">@Flag(c.Country)</span>
-                                    @c.Country
-                                </span>
-                                <span class="cc-country-count">@c.Count.ToString("N0")</span>
-                            </li>
-                        }
-                    </ul>
-                </div>
-            </div>
-
-            <div class="cc-mini-stack">
-                <div class="cc-mini-stat">
-                    <div class="cc-mini-stat-label">Séances en direct</div>
-                    <div class="cc-mini-stat-row">
-                        <span class="cc-mini-stat-value live">92</span>
-                        <svg class="cc-spark" viewBox="0 0 72 28"><polyline fill="none" stroke="#22c55e" stroke-width="2" points="0,20 12,16 24,18 36,10 48,12 60,6 72,8" /></svg>
-                    </div>
-                </div>
-                <div class="cc-mini-stat">
-                    <div class="cc-mini-stat-label">IA en cours</div>
-                    <div class="cc-mini-stat-row">
-                        <span class="cc-mini-stat-value ai">44</span>
-                        <svg class="cc-spark" viewBox="0 0 72 28"><polyline fill="none" stroke="#a78bfa" stroke-width="2" points="0,18 12,14 24,16 36,8 48,14 60,10 72,12" /></svg>
-                    </div>
-                </div>
-                <div class="cc-mini-stat">
-                    <div class="cc-mini-stat-label">Stockage utilisé</div>
-                    <div class="cc-mini-stat-value" style="font-size:1.1rem;">2.4 To</div>
-                    <div class="cc-progress"><span style="width:24%;"></span></div>
-                    <div class="cc-progress-meta"><span>2.4 To / 10 To</span><span>24%</span></div>
-                </div>
-                <div class="cc-mini-stat">
-                    <div class="cc-mini-stat-label">Revenue (ce mois)</div>
-                    <div class="cc-mini-stat-row">
-                        <span class="cc-mini-stat-value money">18 420 $</span>
-                        <span class="cc-kpi-change up">+15.3%</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Recent users + AI -->
-        <div class="cc-dash-lower">
-            <div class="cc-card">
-                <div class="cc-card-header">
-                    <div>
-                        <h2 class="cc-card-title">Utilisateurs récents</h2>
-                        <p class="cc-card-sub">Dernières inscriptions sur la plateforme</p>
-                    </div>
-                    <a href="admin/users" class="cc-btn">Voir tout</a>
-                </div>
-                <div class="cc-table-wrap">
-                    <table class="cc-table">
-                        <thead>
-                            <tr>
-                                <th>Utilisateur</th>
-                                <th>Type</th>
-                                <th>Pays</th>
-                                <th>École</th>
-                                <th>Statut</th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @if (_stats?.RecentUsers is { Count: > 0 } recent)
-                            {
-                                @foreach (var u in recent)
-                                {
-                                    <tr>
-                                        <td>
-                                            <div class="cc-user-cell">
-                                                <span class="cc-user-avatar">@Initials(u.FullName)</span>
-                                                <span class="cc-user-cell-text">
-                                                    <strong>@u.FullName</strong>
-                                                    <span>@u.Email</span>
-                                                </span>
-                                            </div>
-                                        </td>
-                                        <td><span class="cc-pill cc-pill-type @RoleClass(u.Role)">@RoleLabel(u.Role)</span></td>
-                                        <td>@(u.Country ?? "—")</td>
-                                        <td>@(u.SchoolName ?? "—")</td>
-                                        <td>
-                                            @if (u.IsActive)
-                                            {
-                                                <span class="cc-pill cc-pill-ok">Actif</span>
-                                            }
-                                            else
-                                            {
-                                                <span class="cc-pill cc-pill-bad">Inactif</span>
-                                            }
-                                        </td>
-                                        <td><a class="cc-actions-btn" href="admin/users/@u.Id" title="Voir"><i class="bi bi-three-dots"></i></a></td>
-                                    </tr>
-                                }
-                            }
-                            else
-                            {
-                                @foreach (var demo in DemoUsers)
-                                {
-                                    <tr>
-                                        <td>
-                                            <div class="cc-user-cell">
-                                                <span class="cc-user-avatar">@Initials(demo.Name)</span>
-                                                <span class="cc-user-cell-text">
-                                                    <strong>@demo.Name</strong>
-                                                    <span>@demo.Email</span>
-                                                </span>
-                                            </div>
-                                        </td>
-                                        <td><span class="cc-pill cc-pill-type @demo.TypeClass">@demo.Type</span></td>
-                                        <td><span class="cc-flag">@demo.Flag</span> @demo.Country</td>
-                                        <td>@demo.School</td>
-                                        <td><span class="cc-pill @(demo.Active ? "cc-pill-ok" : "cc-pill-bad")">@(demo.Active ? "Actif" : "Inactif")</span></td>
-                                        <td><button type="button" class="cc-actions-btn"><i class="bi bi-three-dots"></i></button></td>
-                                    </tr>
-                                }
-                            }
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <div class="cc-card">
-                <div class="cc-card-header">
-                    <div>
-                        <h2 class="cc-card-title">Utilisation des IA (ce mois)</h2>
-                        <p class="cc-card-sub">Répartition par fournisseur</p>
-                    </div>
-                </div>
-                <div class="cc-ai-bars">
-                    @foreach (var ai in AiUsage)
+                    @if (_stats.DailySignups is { Count: > 0 } days && days.Any(d => d.Count > 0))
                     {
-                        <div class="cc-ai-row">
-                            <span class="cc-ai-name">@ai.Name</span>
-                            <div class="cc-ai-track"><span style="width:@ai.Pct%;background:@ai.Color;"></span></div>
-                            <span class="cc-ai-meta">@ai.Count.ToString("N0") · @ai.Pct%</span>
+                        <div class="cc-line-chart">
+                            <svg viewBox="0 0 400 180" preserveAspectRatio="none" aria-hidden="true">
+                                <defs>
+                                    <linearGradient id="ccAreaReal" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stop-color="#7c5cff" stop-opacity="0.45" />
+                                        <stop offset="100%" stop-color="#7c5cff" stop-opacity="0" />
+                                    </linearGradient>
+                                </defs>
+                                <path d="@ChartAreaPath(days)" fill="url(#ccAreaReal)" />
+                                <path d="@ChartLinePath(days)" fill="none" stroke="#7c5cff" stroke-width="2.5" />
+                            </svg>
+                            <div class="cc-chart-tooltip">
+                                <strong>Total 30 j</strong>
+                                @days.Sum(d => d.Count) événement(s)
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="cc-empty" style="padding:2rem;">
+                            <i class="bi bi-graph-up"></i>
+                            <p>Aucune activité enregistrée sur 30 jours.</p>
                         </div>
                     }
                 </div>
-                <div class="cc-ai-total">
-                    <span>Total requêtes</span>
-                    <strong>7 087</strong>
-                </div>
-            </div>
-        </div>
 
-        <!-- Bottom: payments, schools, activity, health -->
-        <div class="cc-dash-bottom">
-            <div class="cc-card">
-                <div class="cc-card-header">
-                    <div>
-                        <h2 class="cc-card-title">Paiements (ce mois)</h2>
-                        <p class="cc-card-sub">Répartition du chiffre d'affaires</p>
-                    </div>
-                </div>
-                <div class="cc-donut-wrap">
-                    <div class="cc-donut">
-                        <div class="cc-donut-center">
-                            <strong>18 420 $</strong>
-                            Total
+                <div class="cc-card">
+                    <div class="cc-card-header">
+                        <div>
+                            <h2 class="cc-card-title">Répartition par pays</h2>
+                            <p class="cc-card-sub">Écoles actives</p>
                         </div>
                     </div>
-                    <ul class="cc-legend">
-                        <li><span class="cc-dot" style="background:#7c5cff;"></span>Abonnements 67%</li>
-                        <li><span class="cc-dot" style="background:#3b82f6;"></span>Cours à l'unité 17%</li>
-                        <li><span class="cc-dot" style="background:#22c55e;"></span>Devoirs 10%</li>
-                        <li><span class="cc-dot" style="background:#f59e0b;"></span>Autres 6%</li>
-                    </ul>
+                    @if (_stats.Countries is { Count: > 0 } countries)
+                    {
+                        <ul class="cc-country-list" style="padding:1rem;">
+                            @foreach (var c in countries)
+                            {
+                                <li>
+                                    <span class="cc-country-left">
+                                        <span class="cc-flag">@Flag(c.Country)</span>
+                                        @c.Country
+                                    </span>
+                                    <span class="cc-country-count">@c.Count.ToString("N0")</span>
+                                </li>
+                            }
+                        </ul>
+                    }
+                    else
+                    {
+                        <div class="cc-empty" style="padding:2rem;">
+                            <i class="bi bi-globe2"></i>
+                            <p>Aucun pays renseigné sur les écoles.</p>
+                        </div>
+                    }
+                </div>
+
+                <div class="cc-mini-stack">
+                    <div class="cc-mini-stat">
+                        <div class="cc-mini-stat-label">Séances en direct</div>
+                        <div class="cc-mini-stat-row">
+                            <span class="cc-mini-stat-value live">@_stats.LiveLessons</span>
+                        </div>
+                    </div>
+                    <div class="cc-mini-stat">
+                        <div class="cc-mini-stat-label">Abonnements actifs</div>
+                        <div class="cc-mini-stat-row">
+                            <span class="cc-mini-stat-value">@_stats.ActiveSubscriptions</span>
+                        </div>
+                    </div>
+                    <div class="cc-mini-stat">
+                        <div class="cc-mini-stat-label">Revenu (ce mois)</div>
+                        <div class="cc-mini-stat-row">
+                            <span class="cc-mini-stat-value money">@_stats.MonthRevenue.ToString("N0") @_stats.MonthCurrency</span>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <div class="cc-card">
-                <div class="cc-card-header">
-                    <div>
-                        <h2 class="cc-card-title">Top écoles</h2>
-                        <p class="cc-card-sub">Par nombre d'élèves</p>
+            <div class="cc-dash-lower">
+                <div class="cc-card">
+                    <div class="cc-card-header">
+                        <div>
+                            <h2 class="cc-card-title">Utilisateurs récents</h2>
+                            <p class="cc-card-sub">Comptes présents sur la plateforme</p>
+                        </div>
+                        <a href="admin/users" class="cc-btn">Voir tout</a>
                     </div>
-                    <a href="admin/schools" class="cc-btn">Voir</a>
+                    <div class="cc-table-wrap">
+                        <table class="cc-table">
+                            <thead>
+                                <tr>
+                                    <th>Utilisateur</th>
+                                    <th>Type</th>
+                                    <th>Pays</th>
+                                    <th>École</th>
+                                    <th>Statut</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (_stats.RecentUsers is { Count: > 0 } recent)
+                                {
+                                    @foreach (var u in recent)
+                                    {
+                                        <tr>
+                                            <td>
+                                                <div class="cc-user-cell">
+                                                    <span class="cc-user-avatar">@Initials(u.FullName)</span>
+                                                    <span class="cc-user-cell-text">
+                                                        <strong>@u.FullName</strong>
+                                                        <span>@u.Email</span>
+                                                    </span>
+                                                </div>
+                                            </td>
+                                            <td><span class="cc-pill cc-pill-type @RoleClass(u.Role)">@RoleLabel(u.Role)</span></td>
+                                            <td>@(u.Country ?? "—")</td>
+                                            <td>@(u.SchoolName ?? "—")</td>
+                                            <td>
+                                                @if (u.IsActive)
+                                                {
+                                                    <span class="cc-pill cc-pill-ok">Actif</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="cc-pill cc-pill-bad">Inactif</span>
+                                                }
+                                            </td>
+                                            <td><a class="cc-actions-btn" href="admin/users/@u.Id" title="Voir"><i class="bi bi-three-dots"></i></a></td>
+                                        </tr>
+                                    }
+                                }
+                                else
+                                {
+                                    <tr>
+                                        <td colspan="6" class="text-center text-muted py-4">Aucun utilisateur à afficher.</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
-                <ul class="cc-rank-list">
-                    @foreach (var s in DisplayTopSchools)
+
+                <div class="cc-card">
+                    <div class="cc-card-header">
+                        <div>
+                            <h2 class="cc-card-title">Paiements (ce mois)</h2>
+                            <p class="cc-card-sub">Répartition du chiffre d'affaires réel</p>
+                        </div>
+                        <a href="admin/payments" class="cc-btn">Voir</a>
+                    </div>
+                    @if (_stats.PaymentBreakdown is { Count: > 0 } slices)
                     {
-                        <li class="cc-rank-item">
-                            <div class="cc-rank-icon"><i class="bi bi-building"></i></div>
-                            <div class="cc-rank-meta">
-                                <strong>@s.Name</strong>
-                                <span>@(s.Country ?? "—") · @s.StudentCount.ToString("N0") élèves</span>
+                        <div class="cc-donut-wrap">
+                            <div class="cc-donut">
+                                <div class="cc-donut-center">
+                                    <strong>@_stats.MonthRevenue.ToString("N0") @_stats.MonthCurrency</strong>
+                                    Total
+                                </div>
                             </div>
-                        </li>
+                            <ul class="cc-legend">
+                                @foreach (var s in slices)
+                                {
+                                    <li>
+                                        <span class="cc-dot" style="background:@SliceColor(s.Label);"></span>
+                                        @s.Label @s.Percent.ToString("0.#")% · @s.Amount.ToString("N0")
+                                    </li>
+                                }
+                            </ul>
+                        </div>
                     }
-                </ul>
+                    else
+                    {
+                        <div class="cc-empty" style="padding:2rem;">
+                            <i class="bi bi-credit-card"></i>
+                            <p>Aucun paiement complété ce mois-ci.</p>
+                        </div>
+                    }
+                </div>
             </div>
 
-            <div class="cc-card">
-                <div class="cc-card-header">
-                    <div>
-                        <h2 class="cc-card-title">Activité en temps réel</h2>
-                        <p class="cc-card-sub">Flux live de la plateforme</p>
+            <div class="cc-dash-bottom">
+                <div class="cc-card">
+                    <div class="cc-card-header">
+                        <div>
+                            <h2 class="cc-card-title">Top écoles</h2>
+                            <p class="cc-card-sub">Par nombre d'élèves</p>
+                        </div>
+                        <a href="admin/schools" class="cc-btn">Voir</a>
                     </div>
-                </div>
-                <ul class="cc-activity-list">
-                    @foreach (var a in LiveActivity)
+                    @if (_stats.TopSchools is { Count: > 0 } schools)
                     {
-                        <li class="cc-activity-item">
-                            <span class="cc-activity-dot" style="background:@a.Color;"></span>
-                            <div>
-                                <strong>@a.Title</strong>
-                                <span>@a.When</span>
-                            </div>
-                        </li>
+                        <ul class="cc-rank-list">
+                            @foreach (var s in schools)
+                            {
+                                <li class="cc-rank-item">
+                                    <div class="cc-rank-icon"><i class="bi bi-building"></i></div>
+                                    <div class="cc-rank-meta">
+                                        <strong>@s.Name</strong>
+                                        <span>@(s.Country ?? "—") · @s.StudentCount.ToString("N0") élèves</span>
+                                    </div>
+                                </li>
+                            }
+                        </ul>
                     }
-                </ul>
-            </div>
+                    else
+                    {
+                        <div class="cc-empty" style="padding:1.5rem;">
+                            <i class="bi bi-building"></i>
+                            <p>Aucune école enregistrée.</p>
+                        </div>
+                    }
+                </div>
 
-            <div class="cc-card">
-                <div class="cc-card-header">
-                    <div>
-                        <h2 class="cc-card-title">Santé de la plateforme</h2>
-                        <p class="cc-card-sub">Supervision opérationnelle</p>
+                <div class="cc-card">
+                    <div class="cc-card-header">
+                        <div>
+                            <h2 class="cc-card-title">Activité récente</h2>
+                            <p class="cc-card-sub">Écoles, paiements, séances</p>
+                        </div>
                     </div>
-                    <a href="admin/health" class="cc-btn">Détails</a>
-                </div>
-                <ul class="cc-health-list">
-                    @foreach (var h in Health)
+                    @if (_stats.RecentActivity is { Count: > 0 } activity)
                     {
-                        <li class="cc-health-item">
-                            <span class="cc-health-left">
-                                <span class="cc-status-dot"></span>
-                                @h
-                            </span>
-                            <span class="cc-health-status">Opérationnel</span>
-                        </li>
+                        <ul class="cc-activity-list">
+                            @foreach (var a in activity)
+                            {
+                                <li class="cc-activity-item">
+                                    <span class="cc-activity-dot" style="background:@a.Color;"></span>
+                                    <div>
+                                        <strong>@a.Title — @a.Detail</strong>
+                                        <span>@Relative(a.At)</span>
+                                    </div>
+                                </li>
+                            }
+                        </ul>
                     }
-                </ul>
+                    else
+                    {
+                        <div class="cc-empty" style="padding:1.5rem;">
+                            <i class="bi bi-activity"></i>
+                            <p>Aucune activité récente.</p>
+                        </div>
+                    }
+                </div>
+
+                <div class="cc-card">
+                    <div class="cc-card-header">
+                        <div>
+                            <h2 class="cc-card-title">Santé de la plateforme</h2>
+                            <p class="cc-card-sub">Contrôles live</p>
+                        </div>
+                        <a href="admin/health" class="cc-btn">Détails</a>
+                    </div>
+                    @if (_health?.Checks is { Count: > 0 } checks)
+                    {
+                        <ul class="cc-health-list">
+                            @foreach (var h in checks)
+                            {
+                                <li class="cc-health-item">
+                                    <span class="cc-health-left">
+                                        <span class="cc-status-dot" style="@(h.Ok ? "" : "background:#ef4444;")"></span>
+                                        @h.Name
+                                    </span>
+                                    <span class="cc-health-status" style="@(h.Ok ? "" : "color:#ef4444;")">
+                                        @(h.Ok ? "Opérationnel" : "En erreur")
+                                    </span>
+                                </li>
+                            }
+                        </ul>
+                    }
+                    else
+                    {
+                        <div class="cc-empty" style="padding:1.5rem;">
+                            <i class="bi bi-heart-pulse"></i>
+                            <p>Statut indisponible.</p>
+                        </div>
+                    }
+                </div>
             </div>
-        </div>
+        }
     </Authorized>
     <NotAuthorized>
         <div class="cc-empty">
@@ -355,75 +369,34 @@
 
 @code {
     private AdminStats? _stats;
+    private AdminHealth? _health;
+    private bool _loading = true;
+    private string? _error;
     private string _rangeLabel = "";
-    private string _tooltipDay = "";
-
-    private IEnumerable<AdminCountryStat> DisplayCountries =>
-        _stats?.Countries is { Count: > 0 } c ? c : FallbackCountries;
-
-    private IEnumerable<AdminTopSchool> DisplayTopSchools =>
-        _stats?.TopSchools is { Count: > 0 } s ? s : FallbackSchools;
-
-    private static readonly List<AdminCountryStat> FallbackCountries =
-    [
-        new("Cameroun", 4327), new("France", 3421), new("Canada", 2984),
-        new("Belgique", 1243), new("Sénégal", 987), new("Autres", 12450)
-    ];
-
-    private static readonly List<AdminTopSchool> FallbackSchools =
-    [
-        new(Guid.Empty, "École Internationale Lyon", "France", 1243),
-        new(Guid.Empty, "Collège Sainte-Marie", "Canada", 876),
-        new(Guid.Empty, "Académie Yaoundé Plus", "Cameroun", 654),
-        new(Guid.Empty, "Lycée Français Dakar", "Sénégal", 512),
-        new(Guid.Empty, "Institut Bruxelles Nord", "Belgique", 389)
-    ];
-
-    private static readonly (string Name, string Email, string Type, string TypeClass, string Flag, string Country, string School, bool Active)[] DemoUsers =
-    [
-        ("Marie Dupont", "marie.d@email.com", "Parent", "parent", "🇫🇷", "France", "École Lyon", true),
-        ("Jean Baptiste", "j.baptiste@email.com", "Enseignant", "teacher", "🇨🇦", "Canada", "Collège SM", true),
-        ("Amina Ngo", "amina.n@email.com", "Élève", "student", "🇨🇲", "Cameroun", "Académie YDE", true),
-        ("Lucas Martin", "l.martin@email.com", "Tuteur", "tutor", "🇧🇪", "Belgique", "Institut BN", false),
-        ("Sophie Roy", "s.roy@email.com", "Parent", "parent", "🇨🇦", "Canada", "—", true),
-    ];
-
-    private static readonly (string Name, int Count, int Pct, string Color)[] AiUsage =
-    [
-        ("Google Gemini", 3241, 46, "#4285f4"),
-        ("OpenAI GPT-4o", 1422, 20, "#10a37f"),
-        ("DeepSeek", 322, 5, "#4d6bfe"),
-        ("Claude", 121, 2, "#d97706"),
-        ("Autres", 1981, 21, "#64748b"),
-    ];
-
-    private static readonly (string Title, string When, string Color)[] LiveActivity =
-    [
-        ("Nouveau compte créé", "Il y a 2 min", "#7c5cff"),
-        ("Connexion enseignant", "Il y a 3 min", "#3b82f6"),
-        ("Paiement reçu — 49 $", "Il y a 5 min", "#22c55e"),
-        ("Séance en direct démarrée", "Il y a 8 min", "#22c55e"),
-        ("Devoir soumis", "Il y a 12 min", "#f59e0b"),
-        ("Signalement ouvert", "Il y a 18 min", "#ef4444"),
-    ];
-
-    private static readonly string[] Health =
-    [
-        "API", "Base de données", "Serveur de fichiers",
-        "SignalR (Temps réel)", "Stockage Cloud", "Services IA"
-    ];
 
     protected override async Task OnInitializedAsync()
     {
         var end = DateTime.Today;
         var start = end.AddDays(-30);
         _rangeLabel = $"{start:dd MMM yyyy} — {end:dd MMM yyyy}";
-        _tooltipDay = DateTime.Today.AddDays(-4).ToString("dd MMM yyyy");
-        try { _stats = await AdminSvc.GetStatsAsync(); }
-        catch { /* show placeholders */ }
+        try
+        {
+            _stats = await AdminSvc.GetStatsAsync();
+            _health = await AdminSvc.GetHealthAsync();
+            if (_stats is null)
+                _error = "Impossible de charger les statistiques administrateur.";
+        }
+        catch (Exception ex)
+        {
+            _error = $"Erreur de chargement : {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
     }
 
-    private static string Fmt(int? n) => n is null ? "…" : n.Value.ToString("N0");
+    private static string Fmt(int n) => n.ToString("N0");
 
     private static string Initials(string name)
     {
@@ -458,6 +431,41 @@
         "canada" => "🇨🇦",
         "belgique" or "belgium" => "🇧🇪",
         "sénégal" or "senegal" => "🇸🇳",
+        "côte d'ivoire" or "cote d'ivoire" or "ivory coast" => "🇨🇮",
         _ => "🌍"
     };
+
+    private static string SliceColor(string label) => label switch
+    {
+        "Abonnements" => "#7c5cff",
+        "Licences plateforme" => "#3b82f6",
+        _ => "#f59e0b"
+    };
+
+    private static string Relative(DateTime at)
+    {
+        var utc = at.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(at, DateTimeKind.Utc) : at.ToUniversalTime();
+        var delta = DateTime.UtcNow - utc;
+        if (delta.TotalMinutes < 1) return "À l'instant";
+        if (delta.TotalMinutes < 60) return $"Il y a {(int)delta.TotalMinutes} min";
+        if (delta.TotalHours < 24) return $"Il y a {(int)delta.TotalHours} h";
+        if (delta.TotalDays < 7) return $"Il y a {(int)delta.TotalDays} j";
+        return utc.ToLocalTime().ToString("dd/MM/yyyy HH:mm");
+    }
+
+    private static string ChartLinePath(List<AdminDailyCount> days)
+    {
+        var max = Math.Max(1, days.Max(d => d.Count));
+        var n = Math.Max(1, days.Count - 1);
+        var pts = days.Select((d, i) =>
+        {
+            var x = i * 400.0 / n;
+            var y = 160 - (d.Count * 140.0 / max);
+            return $"{x:0.##},{y:0.##}";
+        });
+        return "M" + string.Join(" L", pts);
+    }
+
+    private static string ChartAreaPath(List<AdminDailyCount> days)
+        => ChartLinePath(days) + " L400,180 L0,180 Z";
 }
