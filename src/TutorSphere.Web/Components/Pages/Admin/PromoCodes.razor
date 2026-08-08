@@ -15,7 +15,7 @@
                     Créez des codes à usage unique pour offrir 1 an d'abonnement plateforme gratuitement.
                 </p>
             </div>
-            <button type="button" class="cc-btn cc-btn-primary" @onclick="() => _showCreate = true">
+            <button type="button" class="cc-btn cc-btn-primary" @onclick="OpenCreate">
                 <i class="bi bi-plus-lg"></i> Nouveau code
             </button>
         </div>
@@ -27,6 +27,65 @@
         @if (!string.IsNullOrEmpty(_error))
         {
             <div class="alert alert-danger mb-3">@_error</div>
+        }
+
+        @if (_showCreate)
+        {
+            <div class="cc-card mb-3 cc-promo-create">
+                <div class="cc-card-header">
+                    <div>
+                        <h2 class="cc-card-title">Créer des codes promo</h2>
+                        <p class="cc-card-sub">Usage unique — l’enseignant saisit le code sur /tutor/activate.</p>
+                    </div>
+                    <button type="button" class="cc-btn" @onclick="CloseCreate" aria-label="Fermer">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                </div>
+
+                @if (!string.IsNullOrEmpty(_createError))
+                {
+                    <div class="alert alert-danger">@_createError</div>
+                }
+
+                <div class="mb-3">
+                    <label class="form-label">Code personnalisé (optionnel)</label>
+                    <input class="form-control font-monospace" @bind="_formCode"
+                           placeholder="Ex. RENTREE2026" disabled="@(_formQuantity > 1)" />
+                    <div class="form-text text-muted">Laissez vide pour générer automatiquement (TS-XXXXXXXX).</div>
+                </div>
+                <div class="row g-2">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Quantité</label>
+                        <input type="number" class="form-control" min="1" max="100" @bind="_formQuantity" />
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Durée (années)</label>
+                        <input type="number" class="form-control" min="1" max="5" @bind="_formYears" />
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Expire le (optionnel)</label>
+                    <input type="date" class="form-control" @bind="_formExpires" />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Notes internes</label>
+                    <input class="form-control" @bind="_formNotes" placeholder="Campagne Facebook, partenaire…" />
+                </div>
+                <div class="d-flex gap-2 justify-content-end">
+                    <button type="button" class="cc-btn" @onclick="CloseCreate">Annuler</button>
+                    <button type="button" class="cc-btn cc-btn-primary" disabled="@_creating" @onclick="CreateAsync">
+                        @if (_creating)
+                        {
+                            <span class="spinner-border spinner-border-sm"></span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-check2"></i>
+                        }
+                        Créer
+                    </button>
+                </div>
+            </div>
         }
 
         @if (_loading)
@@ -57,10 +116,21 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @if (_codes.Count == 0)
+                            @if (_codes.Count == 0 && !_showCreate)
                             {
                                 <tr>
-                                    <td colspan="7" class="text-muted">Aucun code promo pour le moment.</td>
+                                    <td colspan="7" class="text-muted">
+                                        Aucun code promo pour le moment.
+                                        <button type="button" class="cc-btn cc-btn-primary btn-sm ms-2" @onclick="OpenCreate">
+                                            Créer le premier code
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                            else if (_codes.Count == 0)
+                            {
+                                <tr>
+                                    <td colspan="7" class="text-muted">Remplissez le formulaire ci-dessus puis cliquez Créer.</td>
                                 </tr>
                             }
                             @foreach (var c in _codes)
@@ -99,7 +169,10 @@
                                             <div>@(c.RedeemedBySchoolName ?? "École")</div>
                                             <div class="small text-muted">@c.RedeemedAt.Value.ToLocalTime().ToString("dd MMM yyyy HH:mm")</div>
                                         }
-                                        else { <span class="text-muted">—</span> }
+                                        else
+                                        {
+                                            <span class="text-muted">—</span>
+                                        }
                                     </td>
                                     <td>@c.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</td>
                                     <td class="text-end">
@@ -123,58 +196,13 @@
                 </div>
             </div>
         }
-
-        @if (_showCreate)
-        {
-            <div class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.45)">
-                <div class="modal-dialog modal-dialog-centered">
-                    <div class="modal-content">
-                        <div class="modal-header">
-                            <h5 class="modal-title">Créer des codes promo</h5>
-                            <button type="button" class="btn-close" @onclick="() => _showCreate = false"></button>
-                        </div>
-                        <div class="modal-body">
-                            @if (!string.IsNullOrEmpty(_createError))
-                            {
-                                <div class="alert alert-danger">@_createError</div>
-                            }
-                            <div class="mb-3">
-                                <label class="form-label">Code personnalisé (optionnel)</label>
-                                <input class="form-control font-monospace" @bind="_formCode"
-                                       placeholder="Ex. RENTREE2026" disabled="@(_formQuantity > 1)" />
-                                <div class="form-text">Laissez vide pour générer automatiquement. Obligatoire vide si quantité &gt; 1.</div>
-                            </div>
-                            <div class="row g-2">
-                                <div class="col-6 mb-3">
-                                    <label class="form-label">Quantité</label>
-                                    <input type="number" class="form-control" min="1" max="100" @bind="_formQuantity" />
-                                </div>
-                                <div class="col-6 mb-3">
-                                    <label class="form-label">Durée (années)</label>
-                                    <input type="number" class="form-control" min="1" max="5" @bind="_formYears" />
-                                </div>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">Expire le (optionnel)</label>
-                                <input type="date" class="form-control" @bind="_formExpires" />
-                            </div>
-                            <div class="mb-0">
-                                <label class="form-label">Notes internes</label>
-                                <input class="form-control" @bind="_formNotes" placeholder="Campagne Facebook, partenaire…" />
-                            </div>
-                        </div>
-                        <div class="modal-footer">
-                            <button type="button" class="btn btn-outline-secondary" @onclick="() => _showCreate = false">Annuler</button>
-                            <button type="button" class="btn btn-primary" disabled="@_creating" @onclick="CreateAsync">
-                                @if (_creating) { <span class="spinner-border spinner-border-sm me-1"></span> }
-                                Créer
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        }
     </Authorized>
+    <NotAuthorized>
+        <div class="cc-empty">
+            <p>Accès réservé aux administrateurs.</p>
+            <a class="cc-btn cc-btn-primary" href="/login/admin" data-enhance-nav="false">Se connecter</a>
+        </div>
+    </NotAuthorized>
 </AuthorizeView>
 
 @code {
@@ -194,6 +222,19 @@
 
     protected override async Task OnInitializedAsync() => await ReloadAsync();
 
+    private void OpenCreate()
+    {
+        _showCreate = true;
+        _createError = null;
+        _flash = null;
+    }
+
+    private void CloseCreate()
+    {
+        _showCreate = false;
+        _createError = null;
+    }
+
     private async Task ReloadAsync()
     {
         _loading = true;
@@ -209,7 +250,10 @@
         _creating = true;
         try
         {
+            if (_formQuantity < 1) _formQuantity = 1;
+            if (_formYears < 1) _formYears = 1;
             if (_formQuantity > 1) _formCode = null;
+
             var created = await AdminSvc.CreatePromoCodesAsync(
                 _formCode,
                 _formQuantity,
@@ -219,7 +263,7 @@
 
             if (created is null || created.Count == 0)
             {
-                _createError = "Création impossible. Vérifiez le code (unique) et réessayez.";
+                _createError = "Création impossible. Vérifiez que le code est unique, ou laissez le champ vide.";
                 return;
             }
 
@@ -233,6 +277,10 @@
                 ? $"Code créé : {created[0].Code}"
                 : $"{created.Count} codes créés.";
             await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _createError = $"Erreur : {ex.Message}";
         }
         finally { _creating = false; }
     }
