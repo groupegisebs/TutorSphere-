@@ -42,9 +42,8 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.Configure<Microsoft.AspNetCore.Components.Server.CircuitOptions>(options =>
 {
-    // Affiche l'exception réelle dans la console navigateur (sinon « unhandled exception » opaque).
-    options.DetailedErrors = builder.Environment.IsDevelopment()
-        || builder.Configuration.GetValue("Circuits:DetailedErrors", false);
+    // true temporairement en prod pour diagnostiquer les crashes circuit (promo-codes, etc.).
+    options.DetailedErrors = true;
 });
 
 // Blazor Server HttpClient runs on the web host, not in the browser. Prefer InternalApiBaseUrl

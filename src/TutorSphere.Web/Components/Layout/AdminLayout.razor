@@ -23,17 +23,8 @@
 
     private void ToggleSidebar() => _sidebarOpen = !_sidebarOpen;
 
-    protected override async Task OnInitializedAsync()
-    {
-        try
-        {
-            await Auth.EnsureSessionRestoredAsync(forceJs: false);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "AdminLayout cookie session restore failed.");
-        }
-    }
+    // Pas de restore dans OnInitializedAsync : NotifyAuthenticationStateChanged
+    // pendant l'init des enfants tue le circuit Blazor.
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -44,6 +35,7 @@
 
         try
         {
+            await Auth.EnsureSessionRestoredAsync(forceJs: false);
             if (Auth.PrimaryRole is not ("SuperAdmin" or "PlatformAdmin"))
                 await Auth.EnsureSessionRestoredAsync(forceJs: true);
 
@@ -57,12 +49,9 @@
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "AdminLayout post-render session check failed.");
+            Logger.LogWarning(ex, "AdminLayout session check failed.");
         }
     }
 
-    protected override void OnParametersSet()
-    {
-        _sidebarOpen = false;
-    }
+    protected override void OnParametersSet() => _sidebarOpen = false;
 }
