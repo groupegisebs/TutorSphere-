@@ -1,21 +1,46 @@
 namespace TutorSphere.Application.DTOs.Payments;
 
+public static class PaymentMethodCodes
+{
+    public const string Card = "card";
+    public const string PayPal = "paypal";
+    public const string MobileMoney = "mobile_money";
+
+    public static string Normalize(string? value) =>
+        (value ?? Card).Trim().ToLowerInvariant() switch
+        {
+            "paypal" or "pp" => PayPal,
+            "mobile_money" or "mobilemoney" or "momo" or "flutterwave" => MobileMoney,
+            _ => Card
+        };
+}
+
 public record PaymentGatewayConfigDto(string? PublishableKey);
 
-public record CreateSubscriptionCheckoutRequest(string SuccessUrl, string CancelUrl);
+public record CreateSubscriptionCheckoutRequest(
+    string SuccessUrl,
+    string CancelUrl,
+    string? PaymentMethod = PaymentMethodCodes.Card,
+    string? CountryCode = null,
+    string? Network = null,
+    string? PhoneNumber = null);
 
 public record ParentCustomerResponse(Guid ParentProfileId, string CustomerCode);
 
 public record SubscriptionCheckoutResponse(
     Guid PaymentId,
     string PaymentCode,
-    string CheckoutUrl,
-    string SessionId,
+    string? CheckoutUrl,
+    string? SessionId,
     string? ClientSecret,
     decimal Amount,
     decimal PlatformFee,
     decimal TutorAmount,
-    string Currency);
+    string Currency,
+    string PaymentMethod,
+    string? Instruction = null,
+    string? RedirectUrl = null,
+    string? Message = null);
 
 public record PaymentStatusResponse(
     Guid PaymentId,
@@ -52,3 +77,20 @@ public record ParentPaymentDto(
     DateTime CreatedAt,
     DateTime? PaidAt,
     bool CanDownloadInvoice);
+
+public record MobileMoneyCountryDto(
+    string CountryCode,
+    string CountryName,
+    string Currency,
+    string PhoneCountryCode,
+    IReadOnlyList<MobileMoneyNetworkOptionDto> Networks);
+
+public record MobileMoneyNetworkOptionDto(string Network, string NetworkLabel);
+
+public record MobileMoneyNetworkDto(
+    string CountryCode,
+    string CountryName,
+    string Currency,
+    string Network,
+    string NetworkLabel,
+    string PhoneCountryCode);

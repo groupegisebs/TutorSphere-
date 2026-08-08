@@ -7,6 +7,12 @@ public interface IPaymentGatewayService
 {
     PaymentGatewayConfigDto GetConfig();
 
+    Task<IReadOnlyList<MobileMoneyCountryDto>> ListMobileMoneyCountriesAsync(CancellationToken ct = default);
+
+    Task<IReadOnlyList<MobileMoneyNetworkDto>> ListMobileMoneyNetworksAsync(
+        string? countryCode = null,
+        CancellationToken ct = default);
+
     Task<ParentCustomerResponse> CreateOrGetParentCustomerAsync(
         Guid parentProfileId,
         CancellationToken ct = default);

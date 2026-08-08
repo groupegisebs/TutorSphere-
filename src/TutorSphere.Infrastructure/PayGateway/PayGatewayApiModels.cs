@@ -13,7 +13,53 @@ internal sealed record GatewayCheckoutSessionRequest(
     string CancelUrl,
     string? MetadataJson,
     int? TrialDays,
-    bool Embedded = false);
+    bool Embedded = false,
+    IReadOnlyList<string>? PaymentMethodTypes = null);
+
+internal sealed record GatewayMobileMoneyChargeRequest(
+    string CustomerCode,
+    string Email,
+    string? FullName,
+    string? ExternalUserId,
+    string ProductCode,
+    string PlanCode,
+    string CountryCode,
+    string Network,
+    string PhoneNumber,
+    decimal? Amount = null,
+    string? ScenarioKey = null);
+
+internal sealed record GatewayMobileMoneyChargeResponse(
+    string PaymentCode,
+    string Status,
+    string Provider,
+    string TxRef,
+    string? FlutterwaveTransactionId,
+    decimal Amount,
+    string Currency,
+    string CountryCode,
+    string Network,
+    string PhoneNumber,
+    string? Instruction,
+    string? RedirectUrl,
+    string? Message);
+
+internal sealed record GatewayMobileMoneyCountryResponse(
+    string CountryCode,
+    string CountryName,
+    string Currency,
+    string PhoneCountryCode,
+    IReadOnlyList<GatewayMobileMoneyNetworkOption>? Networks);
+
+internal sealed record GatewayMobileMoneyNetworkOption(string Network, string NetworkLabel);
+
+internal sealed record GatewayMobileMoneyNetworkResponse(
+    string CountryCode,
+    string CountryName,
+    string Currency,
+    string Network,
+    string NetworkLabel,
+    string PhoneCountryCode);
 
 internal sealed record GatewayCheckoutSessionResponse(
     string PaymentCode,

@@ -58,6 +58,38 @@ internal sealed class PayGatewayService : IPaymentGatewayService
 
     public PaymentGatewayConfigDto GetConfig() => new(_cachedPublishableKey);
 
+    public async Task<IReadOnlyList<MobileMoneyCountryDto>> ListMobileMoneyCountriesAsync(
+        CancellationToken ct = default)
+    {
+        var countries = await _gateway.ListMobileMoneyCountriesAsync(ct);
+        return countries
+            .Select(c => new MobileMoneyCountryDto(
+                c.CountryCode,
+                c.CountryName,
+                c.Currency,
+                c.PhoneCountryCode,
+                (c.Networks ?? [])
+                    .Select(n => new MobileMoneyNetworkOptionDto(n.Network, n.NetworkLabel))
+                    .ToList()))
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<MobileMoneyNetworkDto>> ListMobileMoneyNetworksAsync(
+        string? countryCode = null,
+        CancellationToken ct = default)
+    {
+        var networks = await _gateway.ListMobileMoneyNetworksAsync(countryCode, ct);
+        return networks
+            .Select(n => new MobileMoneyNetworkDto(
+                n.CountryCode,
+                n.CountryName,
+                n.Currency,
+                n.Network,
+                n.NetworkLabel,
+                n.PhoneCountryCode))
+            .ToList();
+    }
+
     public async Task<ParentCustomerResponse> CreateOrGetParentCustomerAsync(
         Guid parentProfileId,
         CancellationToken ct = default)
@@ -126,6 +158,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
         var planCode = ResolvePlanCode(offering.DurationDays);
         await EnsureCatalogItemAsync(offering, productCode, planCode, ct);
 
+        var paymentMethod = PaymentMethodCodes.Normalize(request.PaymentMethod);
         var payment = new Payment
         {
             TenantId = subscription.TenantId,
@@ -139,34 +172,92 @@ internal sealed class PayGatewayService : IPaymentGatewayService
         _db.Add(payment);
         await _db.SaveChangesAsync(ct);
 
+        var fullName = $"{parent.FirstName} {parent.LastName}".Trim();
+
+        if (paymentMethod == PaymentMethodCodes.MobileMoney)
+        {
+            if (string.IsNullOrWhiteSpace(request.CountryCode)
+                || string.IsNullOrWhiteSpace(request.Network)
+                || string.IsNullOrWhiteSpace(request.PhoneNumber))
+            {
+                throw new InvalidOperationException(
+                    "Mobile Money : pays, opérateur et numéro de téléphone sont requis.");
+            }
+
+            var mm = await _gateway.ChargeMobileMoneyAsync(new GatewayMobileMoneyChargeRequest(
+                customer.CustomerCode,
+                parent.Email,
+                fullName,
+                parent.UserId,
+                productCode,
+                planCode,
+                request.CountryCode.Trim().ToUpperInvariant(),
+                request.Network.Trim().ToUpperInvariant(),
+                request.PhoneNumber.Trim(),
+                amount), ct);
+
+            payment.StripePaymentIntentId = mm.PaymentCode;
+            payment.Currency = mm.Currency;
+            await _db.SaveChangesAsync(ct);
+
+            _logger.LogInformation(
+                "Mobile Money initié pour l'abonnement {SubscriptionId} (paymentCode={PaymentCode}, network={Network})",
+                subscription.Id,
+                mm.PaymentCode,
+                mm.Network);
+
+            return new SubscriptionCheckoutResponse(
+                payment.Id,
+                mm.PaymentCode,
+                CheckoutUrl: null,
+                SessionId: null,
+                ClientSecret: null,
+                amount,
+                platformFee,
+                tutorAmount,
+                mm.Currency,
+                paymentMethod,
+                mm.Instruction,
+                mm.RedirectUrl,
+                mm.Message);
+        }
+
         var metadata = JsonSerializer.Serialize(new
         {
             payment_id = payment.Id,
             subscription_id = subscription.Id,
             tenant_id = tenant.Id,
-            commission_percent = commissionPercent.ToString("0.##")
+            commission_percent = commissionPercent.ToString("0.##"),
+            payment_method = paymentMethod
         });
+
+        IReadOnlyList<string> paymentMethodTypes = paymentMethod == PaymentMethodCodes.PayPal
+            ? ["paypal"]
+            : ["card"];
 
         var checkout = await _gateway.CreateCheckoutSessionAsync(new GatewayCheckoutSessionRequest(
             customer.CustomerCode,
             parent.Email,
-            $"{parent.FirstName} {parent.LastName}".Trim(),
+            fullName,
             parent.UserId,
             productCode,
             planCode,
             request.SuccessUrl,
             request.CancelUrl,
             metadata,
-            TrialDays: null), ct);
+            TrialDays: null,
+            Embedded: false,
+            PaymentMethodTypes: paymentMethodTypes), ct);
 
         payment.StripePaymentIntentId = checkout.PaymentCode;
         _cachedPublishableKey ??= checkout.PublishableKey;
         await _db.SaveChangesAsync(ct);
 
         _logger.LogInformation(
-            "Checkout PayGateway créé pour l'abonnement {SubscriptionId} (paymentCode={PaymentCode}, stripeMode={StripeMode})",
+            "Checkout PayGateway créé pour l'abonnement {SubscriptionId} (paymentCode={PaymentCode}, method={Method}, stripeMode={StripeMode})",
             subscription.Id,
             checkout.PaymentCode,
+            paymentMethod,
             checkout.StripeMode ?? "?");
 
         return new SubscriptionCheckoutResponse(
@@ -178,7 +269,8 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             amount,
             platformFee,
             tutorAmount,
-            offering.Currency);
+            offering.Currency,
+            paymentMethod);
     }
 
     public async Task<PaymentStatusResponse> SyncPaymentStatusAsync(Guid paymentId, CancellationToken ct = default)
@@ -537,6 +629,51 @@ internal sealed class PayGatewayService : IPaymentGatewayService
         });
 
         var successUrl = AppendQuery(request.SuccessUrl, "paymentId", licensePayment.Id.ToString("D"));
+        var paymentMethod = PaymentMethodCodes.Normalize(request.PaymentMethod);
+
+        if (paymentMethod == PaymentMethodCodes.MobileMoney)
+        {
+            if (string.IsNullOrWhiteSpace(request.CountryCode)
+                || string.IsNullOrWhiteSpace(request.Network)
+                || string.IsNullOrWhiteSpace(request.PhoneNumber))
+            {
+                throw new InvalidOperationException(
+                    "Mobile Money : pays, opérateur et numéro de téléphone sont requis.");
+            }
+
+            var mm = await _gateway.ChargeMobileMoneyAsync(new GatewayMobileMoneyChargeRequest(
+                customerCode,
+                contact.Email,
+                contact.DisplayName,
+                tenant.OwnerUserId,
+                productCode,
+                planCode,
+                request.CountryCode.Trim().ToUpperInvariant(),
+                request.Network.Trim().ToUpperInvariant(),
+                request.PhoneNumber.Trim(),
+                amount), ct);
+
+            licensePayment.GatewayPaymentCode = mm.PaymentCode;
+            licensePayment.Currency = mm.Currency;
+            await _db.SaveChangesAsync(ct);
+
+            return new PlatformLicenseCheckoutResponse(
+                licensePayment.Id,
+                mm.PaymentCode,
+                CheckoutUrl: null,
+                SessionId: null,
+                ClientSecret: null,
+                amount,
+                mm.Currency,
+                paymentMethod,
+                mm.Instruction,
+                mm.RedirectUrl,
+                mm.Message);
+        }
+
+        IReadOnlyList<string> paymentMethodTypes = paymentMethod == PaymentMethodCodes.PayPal
+            ? ["paypal"]
+            : ["card"];
 
         var checkout = await _gateway.CreateCheckoutSessionAsync(new GatewayCheckoutSessionRequest(
             customerCode,
@@ -548,16 +685,19 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             successUrl,
             request.CancelUrl,
             metadata,
-            TrialDays: null), ct);
+            TrialDays: null,
+            Embedded: false,
+            PaymentMethodTypes: paymentMethodTypes), ct);
 
         licensePayment.GatewayPaymentCode = checkout.PaymentCode;
         _cachedPublishableKey ??= checkout.PublishableKey;
         await _db.SaveChangesAsync(ct);
 
         _logger.LogInformation(
-            "Checkout licence plateforme créé pour tenant {TenantId} (paymentCode={PaymentCode})",
+            "Checkout licence plateforme créé pour tenant {TenantId} (paymentCode={PaymentCode}, method={Method})",
             tenant.Id,
-            checkout.PaymentCode);
+            checkout.PaymentCode,
+            paymentMethod);
 
         return new PlatformLicenseCheckoutResponse(
             licensePayment.Id,
@@ -566,7 +706,8 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             checkout.SessionId,
             checkout.ClientSecret,
             amount,
-            currency);
+            currency,
+            paymentMethod);
     }
 
     public async Task<PaymentStatusResponse> ConfirmPlatformLicensePaymentAsync(

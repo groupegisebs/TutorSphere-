@@ -2,11 +2,9 @@
 @layout TutorLayout
 @rendermode InteractiveServer
 @using Microsoft.Extensions.Localization
-@using Microsoft.JSInterop
 @using TutorSphere.Web.Services
 @inject ApiClient Api
 @inject NavigationManager Navigation
-@inject IJSRuntime JS
 @inject IStringLocalizer<SharedResources> L
 
 <PageTitle>@L["Activate_Title"] — TutorSphere</PageTitle>
@@ -62,11 +60,7 @@
                     <div class="alert alert-danger">@_error</div>
                 }
 
-                <button class="btn btn-primary btn-lg w-100" disabled="@_busy" @onclick="CheckoutAsync">
-                    @if (_busy)
-                    {
-                        <span class="spinner-border spinner-border-sm me-2"></span>
-                    }
+                <button class="btn btn-primary btn-lg w-100" disabled="@_busy" @onclick="OpenPay">
                     @L["Activate_PayCta"]
                 </button>
 
@@ -91,6 +85,15 @@
     }
 </div>
 
+<PaymentCheckoutModal @bind-Visible="_payModalVisible"
+                      IsPlatformLicense="true"
+                      Amount="@(_status?.AnnualFee ?? 10m)"
+                      Currency="@(_status?.Currency ?? "USD")"
+                      SuccessUrl="@_paySuccessUrl"
+                      CancelUrl="@_payCancelUrl"
+                      OnPaid="OnPayCompletedAsync"
+                      OnError="OnPayError" />
+
 @code {
     private PlatformLicenseStatusVm? _status;
     private bool _loading = true;
@@ -98,6 +101,9 @@
     private bool _renewalMode;
     private string? _error;
     private string _promoCode = "";
+    private bool _payModalVisible;
+    private string _paySuccessUrl = "";
+    private string _payCancelUrl = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -154,34 +160,23 @@
         _renewalMode = _status?.RenewalSoon == true;
     }
 
-    private async Task CheckoutAsync()
+    private void OpenPay()
     {
         _error = null;
-        _busy = true;
-        try
-        {
-            var baseUri = Navigation.BaseUri.TrimEnd('/');
-            var result = await Api.PostWithErrorAsync<PlatformLicenseCheckoutVm>(
-                "api/platform-billing/checkout",
-                new
-                {
-                    successUrl = $"{baseUri}/tutor/activate?paid=1",
-                    cancelUrl = $"{baseUri}/tutor/activate"
-                });
-
-            if (!string.IsNullOrWhiteSpace(result.Value?.CheckoutUrl))
-            {
-                await JS.InvokeVoidAsync("open", result.Value.CheckoutUrl, "_self");
-                return;
-            }
-
-            _error = result.Error ?? L["Activate_PayUnavailable"];
-        }
-        finally
-        {
-            _busy = false;
-        }
+        var baseUri = Navigation.BaseUri.TrimEnd('/');
+        _paySuccessUrl = $"{baseUri}/tutor/activate?paid=1";
+        _payCancelUrl = $"{baseUri}/tutor/activate";
+        _payModalVisible = true;
     }
+
+    private async Task OnPayCompletedAsync()
+    {
+        await ReloadStatusAsync();
+        if (_status?.HasValidLicense == true)
+            Navigation.NavigateTo("/tutor/dashboard", forceLoad: true);
+    }
+
+    private void OnPayError(string message) => _error = message;
 
     private async Task RedeemPromoAsync()
     {
@@ -239,12 +234,6 @@
         public decimal AnnualFee { get; set; }
         public string Currency { get; set; } = "USD";
         public bool RenewalSoon { get; set; }
-    }
-
-    private sealed class PlatformLicenseCheckoutVm
-    {
-        public Guid PaymentId { get; set; }
-        public string CheckoutUrl { get; set; } = "";
     }
 
     private sealed class PlatformLicensePaymentStatusVm

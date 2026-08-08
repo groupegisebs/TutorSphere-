@@ -15,16 +15,26 @@ public record PlatformLicenseStatusDto(
     string Currency,
     bool RenewalSoon);
 
-public record CreatePlatformLicenseCheckoutRequest(string SuccessUrl, string CancelUrl);
+public record CreatePlatformLicenseCheckoutRequest(
+    string SuccessUrl,
+    string CancelUrl,
+    string? PaymentMethod = "card",
+    string? CountryCode = null,
+    string? Network = null,
+    string? PhoneNumber = null);
 
 public record PlatformLicenseCheckoutResponse(
     Guid PaymentId,
     string PaymentCode,
-    string CheckoutUrl,
-    string SessionId,
+    string? CheckoutUrl,
+    string? SessionId,
     string? ClientSecret,
     decimal Amount,
-    string Currency);
+    string Currency,
+    string PaymentMethod = "card",
+    string? Instruction = null,
+    string? RedirectUrl = null,
+    string? Message = null);
 
 public record PlatformLicensePaymentStatusDto(
     Guid PaymentId,

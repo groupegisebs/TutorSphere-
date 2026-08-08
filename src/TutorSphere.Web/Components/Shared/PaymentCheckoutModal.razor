@@ -1,0 +1,414 @@
+@inject IStringLocalizer<SharedResources> L
+@inject ApiClient Api
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+@if (Visible)
+{
+    <div class="modal fade show d-block" tabindex="-1" role="dialog" aria-modal="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">@L["PayMethod_Title"]</h5>
+                    <button type="button" class="btn-close" disabled="@_busy" @onclick="CloseAsync" aria-label="@L["PayMethod_Cancel"]"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted mb-3">
+                        <strong>@Amount.ToString("N2") @Currency</strong>
+                    </p>
+
+                    @if (!string.IsNullOrEmpty(_error))
+                    {
+                        <div class="alert alert-danger py-2">@_error</div>
+                    }
+
+                    @if (!string.IsNullOrEmpty(_instruction))
+                    {
+                        <div class="alert alert-info d-flex align-items-start gap-2">
+                            <span class="pay-method-icon pay-method-icon--momo pay-method-icon--sm" aria-hidden="true">
+                                @MobileMoneyIcon
+                            </span>
+                            <span>@_instruction</span>
+                        </div>
+                        <p class="small text-muted mb-0">@L["PayMethod_PendingConfirm"]</p>
+                    }
+                    else
+                    {
+                        <div class="pay-method-list mb-3" role="radiogroup" aria-label="@L["PayMethod_Title"]">
+                            <button type="button"
+                                    class="pay-method-option @SelectedClass(PaymentMethodCodes.Card)"
+                                    disabled="@_busy"
+                                    role="radio"
+                                    aria-checked="@(_method == PaymentMethodCodes.Card ? "true" : "false")"
+                                    @onclick='() => SelectMethod(PaymentMethodCodes.Card)'>
+                                <span class="pay-method-icon pay-method-icon--card" aria-hidden="true">@CardIcon</span>
+                                <span class="pay-method-label">@L["PayMethod_Card"]</span>
+                            </button>
+                            <button type="button"
+                                    class="pay-method-option @SelectedClass(PaymentMethodCodes.PayPal)"
+                                    disabled="@_busy"
+                                    role="radio"
+                                    aria-checked="@(_method == PaymentMethodCodes.PayPal ? "true" : "false")"
+                                    @onclick='() => SelectMethod(PaymentMethodCodes.PayPal)'>
+                                <span class="pay-method-icon pay-method-icon--paypal" aria-hidden="true">@PayPalIcon</span>
+                                <span class="pay-method-label">@L["PayMethod_PayPal"]</span>
+                            </button>
+                            <button type="button"
+                                    class="pay-method-option @SelectedClass(PaymentMethodCodes.MobileMoney)"
+                                    disabled="@_busy"
+                                    role="radio"
+                                    aria-checked="@(_method == PaymentMethodCodes.MobileMoney ? "true" : "false")"
+                                    @onclick='() => SelectMethod(PaymentMethodCodes.MobileMoney)'>
+                                <span class="pay-method-icon pay-method-icon--momo" aria-hidden="true">@MobileMoneyIcon</span>
+                                <span class="pay-method-label">@L["PayMethod_MobileMoney"]</span>
+                            </button>
+                        </div>
+
+                        @if (_method == PaymentMethodCodes.MobileMoney)
+                        {
+                            @if (_loadingCountries)
+                            {
+                                <div class="text-muted small mb-2">
+                                    <span class="spinner-border spinner-border-sm me-2"></span>@L["Common_Loading"]
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="mb-2">
+                                    <label class="form-label">@L["PayMethod_Country"]</label>
+                                    <select class="form-select" @bind="_countryCode" @bind:after="OnCountryChangedAsync" disabled="@_busy">
+                                        <option value="">@L["PayMethod_SelectCountry"]</option>
+                                        @foreach (var c in _countries)
+                                        {
+                                            <option value="@c.CountryCode">@c.CountryName (@c.Currency)</option>
+                                        }
+                                    </select>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label">@L["PayMethod_Network"]</label>
+                                    <select class="form-select" @bind="_network" disabled="@(_busy || string.IsNullOrEmpty(_countryCode))">
+                                        <option value="">@L["PayMethod_SelectNetwork"]</option>
+                                        @foreach (var n in SelectedNetworks)
+                                        {
+                                            <option value="@n.Network">@n.NetworkLabel</option>
+                                        }
+                                    </select>
+                                </div>
+                                <div class="mb-0">
+                                    <label class="form-label">@L["PayMethod_Phone"]</label>
+                                    <div class="input-group">
+                                        @if (!string.IsNullOrEmpty(SelectedDial))
+                                        {
+                                            <span class="input-group-text">+@SelectedDial</span>
+                                        }
+                                        <input class="form-control"
+                                               type="tel"
+                                               inputmode="tel"
+                                               autocomplete="tel"
+                                               placeholder="@L["PayMethod_PhonePlaceholder"]"
+                                               @bind="_phone"
+                                               disabled="@_busy" />
+                                    </div>
+                                </div>
+                            }
+                        }
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" disabled="@_busy" @onclick="CloseAsync">
+                        @L["PayMethod_Cancel"]
+                    </button>
+                    @if (string.IsNullOrEmpty(_instruction))
+                    {
+                        <button type="button" class="btn btn-primary" disabled="@_busy" @onclick="PayAsync">
+                            @if (_busy)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            @L["PayMethod_Continue"]
+                        </button>
+                    }
+                    else
+                    {
+                        <button type="button" class="btn btn-primary" disabled="@_busy" @onclick="ConfirmPendingAsync">
+                            @if (_busy)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            @L["PayMethod_IPaid"]
+                        </button>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter] public Guid? SubscriptionId { get; set; }
+    [Parameter] public bool IsPlatformLicense { get; set; }
+    [Parameter] public decimal Amount { get; set; }
+    [Parameter] public string Currency { get; set; } = "CAD";
+    [Parameter] public string SuccessUrl { get; set; } = "";
+    [Parameter] public string CancelUrl { get; set; } = "";
+    [Parameter] public EventCallback OnPaid { get; set; }
+    [Parameter] public EventCallback<string> OnError { get; set; }
+
+    private string _method = PaymentMethodCodes.Card;
+    private bool _busy;
+    private bool _loadingCountries;
+    private string? _error;
+    private string? _instruction;
+    private Guid? _paymentId;
+    private string _countryCode = "";
+    private string _network = "";
+    private string _phone = "";
+    private List<CountryVm> _countries = [];
+
+    private IEnumerable<NetworkVm> SelectedNetworks =>
+        _countries.FirstOrDefault(c => c.CountryCode == _countryCode)?.Networks ?? [];
+
+    private string? SelectedDial =>
+        _countries.FirstOrDefault(c => c.CountryCode == _countryCode)?.PhoneCountryCode;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!Visible)
+            return;
+
+        if (_countries.Count == 0 && !_loadingCountries)
+            await LoadCountriesAsync();
+    }
+
+    private async Task LoadCountriesAsync()
+    {
+        _loadingCountries = true;
+        try
+        {
+            var list = await Api.GetAsync<List<CountryVm>>("api/payments/mobile-money/countries");
+            _countries = list ?? [];
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loadingCountries = false;
+        }
+    }
+
+    private void SelectMethod(string method)
+    {
+        _method = method;
+        _error = null;
+        _instruction = null;
+    }
+
+    private Task OnCountryChangedAsync()
+    {
+        _network = "";
+        return Task.CompletedTask;
+    }
+
+    private string SelectedClass(string method) =>
+        _method == method ? "is-selected" : "";
+
+    private static readonly MarkupString CardIcon = new(
+        """
+        <svg viewBox="0 0 40 28" xmlns="http://www.w3.org/2000/svg" focusable="false">
+          <rect x="1" y="1" width="38" height="26" rx="4" fill="#1e3a5f"/>
+          <rect x="1" y="7" width="38" height="6" fill="#0f2744"/>
+          <rect x="5" y="18" width="12" height="3.5" rx="1" fill="#f4d35e"/>
+          <rect x="20" y="18" width="7" height="3.5" rx="1" fill="#94a3b8"/>
+          <circle cx="31.5" cy="19.5" r="3.2" fill="#eb001b"/>
+          <circle cx="35" cy="19.5" r="3.2" fill="#f79e1b" fill-opacity=".9"/>
+        </svg>
+        """);
+
+    private static readonly MarkupString PayPalIcon = new(
+        """
+        <svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" focusable="false">
+          <path fill="#003087" d="M14.2 30.2 15.6 21c.1-.5.5-.8 1-.8h4.6c4.7 0 8.1-1.9 9.1-6.1.1-.4.2-.8.2-1.2 0-.2 0-.4-.1-.6H21.2c-.6 0-1.1.4-1.2 1l-1.8 11.4c-.1.5-.5.8-1 .8h-3z"/>
+          <path fill="#009cde" d="M29.4 12.3c-.8 3.9-3.7 5.9-8.1 5.9h-2.3c-.6 0-1.1.4-1.2 1L16.2 28c-.1.4.2.8.6.8h3c.5 0 .9-.3 1-.8l.7-4.3.1-.4c.1-.5.5-.8 1-.8h.6c4.1 0 7.3-1.7 8.2-6.5.4-2 .2-3.7-.8-4.9-.4-.5-.9-.8-1.2-.8z"/>
+          <path fill="#012169" d="M12.8 8.4c.1-.5.5-.8 1-.8h8.7c1.1 0 2.1.1 2.9.3.3.1.6.2.9.3-.3-.2-.5-.3-.9-.3C23.6 7.7 22.6 7.6 21.5 7.6h-8.7c-.6 0-1.1.4-1.2 1L9.2 28.2c-.1.4.2.8.6.8h3.2l.8-5.2 1-6.4z"/>
+        </svg>
+        """);
+
+    private static readonly MarkupString MobileMoneyIcon = new(
+        """
+        <svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" focusable="false">
+          <rect x="10" y="3" width="20" height="34" rx="4" fill="#0f766e"/>
+          <rect x="13" y="7" width="14" height="20" rx="1.5" fill="#ecfdf5"/>
+          <circle cx="20" cy="31.5" r="1.8" fill="#99f6e4"/>
+          <circle cx="20" cy="17" r="5.2" fill="#14b8a6"/>
+          <path fill="#ecfdf5" d="M20 13.8c-1.1 0-1.9.7-1.9 1.7 0 .7.4 1.2 1.1 1.5l.8.3c.4.2.6.3.6.6 0 .4-.4.7-.9.7-.4 0-.7-.1-1-.3l-.3.9c.4.2.9.3 1.4.3 1.2 0 2-.7 2-1.7 0-.7-.4-1.2-1.1-1.5l-.8-.3c-.4-.1-.6-.3-.6-.6 0-.3.3-.6.8-.6.3 0 .6.1.9.3l.3-.9c-.4-.2-.8-.3-1.3-.3z"/>
+          <path fill="#ecfdf5" d="M19.4 12.6h1.2v1h-1.2zm0 7.8h1.2v1h-1.2z"/>
+        </svg>
+        """);
+
+    private async Task CloseAsync()
+    {
+        if (_busy) return;
+        ResetForm();
+        await VisibleChanged.InvokeAsync(false);
+    }
+
+    private void ResetForm()
+    {
+        _method = PaymentMethodCodes.Card;
+        _error = null;
+        _instruction = null;
+        _paymentId = null;
+        _countryCode = "";
+        _network = "";
+        _phone = "";
+        _busy = false;
+    }
+
+    private async Task PayAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_method))
+        {
+            _error = L["PayMethod_SelectRequired"];
+            return;
+        }
+
+        if (_method == PaymentMethodCodes.MobileMoney)
+        {
+            if (string.IsNullOrWhiteSpace(_countryCode) || string.IsNullOrWhiteSpace(_network))
+            {
+                _error = L["PayMethod_CountryNetworkRequired"];
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(_phone))
+            {
+                _error = L["PayMethod_PhoneRequired"];
+                return;
+            }
+        }
+
+        _busy = true;
+        try
+        {
+            var body = new
+            {
+                successUrl = SuccessUrl,
+                cancelUrl = CancelUrl,
+                paymentMethod = _method,
+                countryCode = string.IsNullOrWhiteSpace(_countryCode) ? null : _countryCode,
+                network = string.IsNullOrWhiteSpace(_network) ? null : _network,
+                phoneNumber = string.IsNullOrWhiteSpace(_phone) ? null : _phone
+            };
+
+            if (IsPlatformLicense)
+            {
+                var result = await Api.PostWithErrorAsync<CheckoutVm>("api/platform-billing/checkout", body);
+                await HandleCheckoutResultAsync(result.Value, result.Error);
+            }
+            else if (SubscriptionId.HasValue)
+            {
+                var result = await Api.PostWithErrorAsync<CheckoutVm>(
+                    $"api/payments/subscriptions/{SubscriptionId}/checkout",
+                    body);
+                await HandleCheckoutResultAsync(result.Value, result.Error);
+            }
+            else
+            {
+                _error = L["PayMethod_PayUnavailable"];
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            await OnError.InvokeAsync(ex.Message);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task HandleCheckoutResultAsync(CheckoutVm? checkout, string? error)
+    {
+        if (checkout is null)
+        {
+            _error = error ?? L["PayMethod_PayUnavailable"];
+            await OnError.InvokeAsync(_error);
+            return;
+        }
+
+        _paymentId = checkout.PaymentId;
+
+        if (!string.IsNullOrWhiteSpace(checkout.CheckoutUrl))
+        {
+            await JS.InvokeVoidAsync("open", checkout.CheckoutUrl, "_self");
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(checkout.RedirectUrl))
+        {
+            await JS.InvokeVoidAsync("open", checkout.RedirectUrl, "_self");
+            return;
+        }
+
+        _instruction = string.IsNullOrWhiteSpace(checkout.Instruction)
+            ? L["PayMethod_DefaultInstruction"].Value
+            : checkout.Instruction;
+    }
+
+    private async Task ConfirmPendingAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            if (IsPlatformLicense)
+            {
+                var q = _paymentId.HasValue ? $"?paymentId={_paymentId}" : "";
+                await Api.PostWithErrorAsync<object>($"api/platform-billing/confirm{q}", new { });
+            }
+            else if (SubscriptionId.HasValue)
+            {
+                await Api.PostWithErrorAsync<object>(
+                    $"api/payments/subscriptions/{SubscriptionId}/confirm",
+                    new { });
+            }
+
+            await OnPaid.InvokeAsync();
+            ResetForm();
+            await VisibleChanged.InvokeAsync(false);
+
+            if (!string.IsNullOrWhiteSpace(SuccessUrl))
+                Navigation.NavigateTo(SuccessUrl, forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private sealed record CountryVm(
+        string CountryCode,
+        string CountryName,
+        string Currency,
+        string PhoneCountryCode,
+        List<NetworkVm>? Networks);
+
+    private sealed record NetworkVm(string Network, string NetworkLabel);
+
+    private sealed record CheckoutVm(
+        Guid PaymentId,
+        string? CheckoutUrl,
+        string? Instruction,
+        string? RedirectUrl,
+        string? Message);
+}

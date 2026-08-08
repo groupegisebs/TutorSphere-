@@ -35,6 +35,36 @@ public class PaymentsController : ControllerBase
     [AllowAnonymous]
     public ActionResult<PaymentGatewayConfigDto> GetConfig() => Ok(_paymentGateway.GetConfig());
 
+    [HttpGet("mobile-money/countries")]
+    [Authorize(Roles = $"{UserRoles.Parent},{UserRoles.Student},{UserRoles.Tutor},{UserRoles.SuperAdmin}")]
+    public async Task<ActionResult<IReadOnlyList<MobileMoneyCountryDto>>> MobileMoneyCountries(CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _paymentGateway.ListMobileMoneyCountriesAsync(ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpGet("mobile-money/networks")]
+    [Authorize(Roles = $"{UserRoles.Parent},{UserRoles.Student},{UserRoles.Tutor},{UserRoles.SuperAdmin}")]
+    public async Task<ActionResult<IReadOnlyList<MobileMoneyNetworkDto>>> MobileMoneyNetworks(
+        [FromQuery] string? country,
+        CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _paymentGateway.ListMobileMoneyNetworksAsync(country, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     [HttpPost("customers/parents/{parentProfileId:guid}")]
     [Authorize(Roles = $"{UserRoles.Tutor},{UserRoles.Parent},{UserRoles.SuperAdmin}")]
     public async Task<ActionResult<ParentCustomerResponse>> CreateParentCustomer(
@@ -63,9 +93,12 @@ public class PaymentsController : ControllerBase
             var response = await _paymentGateway.CreateSubscriptionCheckoutAsync(subscriptionId, request, ct);
 
             // Lien de paiement (INVOICE_READY) — le reçu part uniquement après succès.
+            var payLink = response.CheckoutUrl
+                ?? response.RedirectUrl
+                ?? $"{Request.Scheme}://{Request.Host}/parent/subscriptions?sub={subscriptionId}";
             await _billingEmail.NotifyPaymentLinkReadyAsync(
                 subscriptionId,
-                response.CheckoutUrl,
+                payLink,
                 response.Amount,
                 ct);
 

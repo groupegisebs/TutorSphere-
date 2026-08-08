@@ -104,12 +104,7 @@ else
                                 {
                                     <button type="button"
                                             class="btn btn-primary btn-sm"
-                                            disabled="@(_paying == sub.Id)"
-                                            @onclick="async () => await PayAsync(sub)">
-                                        @if (_paying == sub.Id)
-                                        {
-                                            <span class="spinner-border spinner-border-sm me-1"></span>
-                                        }
+                                            @onclick="() => OpenPay(sub)">
                                         @L["ParentSubs_Pay"]
                                     </button>
                                 }
@@ -137,16 +132,26 @@ else
     </div>
 }
 
-@code {
-    [Inject] private IJSRuntime JS { get; set; } = default!;
+<PaymentCheckoutModal @bind-Visible="_payModalVisible"
+                      SubscriptionId="@(_paySub?.Id)"
+                      Amount="@(_paySub?.Price ?? 0)"
+                      Currency="@(_paySub?.Currency ?? "CAD")"
+                      SuccessUrl="@_paySuccessUrl"
+                      CancelUrl="@_payCancelUrl"
+                      OnPaid="OnPayCompletedAsync"
+                      OnError="OnPayError" />
 
+@code {
     private bool _loading = true;
     private string? _error;
     private string? _banner;
     private Guid? _cancelling;
-    private Guid? _paying;
     private string _tab = "pending";
     private List<SubVm> _subs = [];
+    private bool _payModalVisible;
+    private SubVm? _paySub;
+    private string _paySuccessUrl = "";
+    private string _payCancelUrl = "";
 
     private IEnumerable<SubVm> FilteredSubs => _subs.Where(s => MatchesTab(s.Status, _tab));
 
@@ -305,28 +310,24 @@ else
         finally { _cancelling = null; }
     }
 
-    private async Task PayAsync(SubVm sub)
+    private void OpenPay(SubVm sub)
     {
-        _paying = sub.Id;
         _error = null;
-        try
-        {
-            var baseUri = Navigation.BaseUri.TrimEnd('/');
-            var checkout = await Api.PostWithErrorAsync<CheckoutResult>(
-                $"api/payments/subscriptions/{sub.Id}/checkout",
-                new
-                {
-                    successUrl = $"{baseUri}/parent/subscriptions?paid=1&sub={sub.Id}",
-                    cancelUrl = $"{baseUri}/parent/subscriptions?canceled=1"
-                });
-
-            if (!string.IsNullOrWhiteSpace(checkout.Value?.CheckoutUrl))
-                await JS.InvokeVoidAsync("open", checkout.Value.CheckoutUrl, "_self");
-            else
-                _error = checkout.Error ?? L["ParentSubs_PayUnavailable"];
-        }
-        finally { _paying = null; }
+        _paySub = sub;
+        var baseUri = Navigation.BaseUri.TrimEnd('/');
+        _paySuccessUrl = $"{baseUri}/parent/subscriptions?paid=1&sub={sub.Id}";
+        _payCancelUrl = $"{baseUri}/parent/subscriptions?canceled=1";
+        _payModalVisible = true;
     }
+
+    private async Task OnPayCompletedAsync()
+    {
+        var result = await Api.GetAsync<List<SubVm>>("api/parent/subscriptions");
+        _subs = result ?? [];
+        _banner = L["ParentSubs_BannerPaid"];
+    }
+
+    private void OnPayError(string message) => _error = message;
 
     private static string Initials(string name)
     {
@@ -351,7 +352,6 @@ else
         DateTime EndDate,
         int SessionsRemaining);
 
-    private sealed record CheckoutResult(Guid PaymentId, string CheckoutUrl);
     private sealed record PaymentStatusVm(
         Guid PaymentId,
         string PaymentCode,
