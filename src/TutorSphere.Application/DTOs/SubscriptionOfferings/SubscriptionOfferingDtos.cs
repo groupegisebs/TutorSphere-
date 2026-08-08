@@ -11,7 +11,10 @@ public record OfferingScheduleDto(
     string? Level,
     string? CancellationPolicy,
     IReadOnlyList<OfferingScheduleSlotDto> Slots,
-    decimal? HourlyRate = null);
+    decimal? HourlyRate = null,
+    /// <summary>hourly | perSession — facturation après validation du cours.</summary>
+    string? BillingMode = null,
+    decimal? SessionRate = null);
 
 public record SubscriptionOfferingDto(
     Guid Id,

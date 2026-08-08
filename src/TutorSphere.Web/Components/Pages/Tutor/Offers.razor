@@ -51,11 +51,8 @@
                 </span>
             </div>
             <div class="offer-card-meta">
-                <div class="offer-meta-item"><i class="bi bi-currency-dollar"></i><strong>@offer.Price @offer.Currency</strong> @string.Format(L["Offers_PerPeriod"].Value, PeriodLabel(offer.Period))</div>
-                @if (offer.HourlyRate is > 0)
-                {
-                    <div class="offer-meta-item"><i class="bi bi-cash-coin"></i>@offer.HourlyRate.Value.ToString("0.##") $/h</div>
-                }
+                <div class="offer-meta-item"><i class="bi bi-cash-coin"></i><strong>@FormatOfferRate(offer)</strong></div>
+                <div class="offer-meta-item text-muted small"><i class="bi bi-check2-circle"></i>@L["CreateOffer_BillingAfterValidationShort"]</div>
                 <div class="offer-meta-item"><i class="bi bi-calendar3"></i>@offer.SessionsPerMonth @L["Offers_Sessions"]</div>
                 <div class="offer-meta-item"><i class="bi bi-clock"></i>@offer.SessionDuration min</div>
                 <div class="offer-meta-item"><i class="bi bi-book"></i>@offer.Subject@(string.IsNullOrWhiteSpace(offer.Level) ? "" : $" · {LevelLabel(offer.Level)}")</div>
@@ -113,16 +110,47 @@
                     <div class="col-12"><label class="form-label">@L["Common_Description"]</label>
                         <textarea class="form-control" rows="2" @bind="_mf.Description"></textarea></div>
 
-                    <div class="col-3"><label class="form-label">@L["Offers_PackagePrice"]</label>
-                        <input type="number" class="form-control" @bind="_mf.Price" /></div>
-                    <div class="col-3"><label class="form-label">@L["Offers_HourlyRate"]</label>
-                        <input type="number" step="0.01" min="0" class="form-control" @bind="_mf.HourlyRate"
-                               @bind:after="SuggestPackagePrice" /></div>
+                    <div class="col-12">
+                        <div class="alert alert-info py-2 px-3 mb-0" role="status">
+                            <i class="bi bi-info-circle me-1" aria-hidden="true"></i>
+                            @L["CreateOffer_BillingAfterValidation"]
+                        </div>
+                    </div>
+                    <div class="col-3"><label class="form-label">@L["CreateOffer_BillingMode"]</label>
+                        <select class="form-select" @bind="_mf.BillingMode" @bind:after="OnBillingModeChanged">
+                            <option value="hourly">@L["Billing_Hourly"]</option>
+                            <option value="perSession">@L["Billing_PerSession"]</option>
+                            <option value="quarterlyPerValidated">@L["Billing_QuarterlyPerValidated"]</option>
+                        </select>
+                        @if (_mf.BillingMode == "quarterlyPerValidated")
+                        {
+                            <small class="text-muted d-block mt-1">@L["Billing_QuarterlyPerValidated_Hint"]</small>
+                        }
+                    </div>
+                    <div class="col-3">
+                        <label class="form-label">
+                            @(_mf.BillingMode == "hourly"
+                                ? L["Offers_HourlyRate"]
+                                : _mf.BillingMode == "quarterlyPerValidated"
+                                    ? L["CreateOffer_ValidatedLessonRate"]
+                                    : L["CreateOffer_SessionRate"])
+                        </label>
+                        @if (_mf.BillingMode == "hourly")
+                        {
+                            <input type="number" step="0.01" min="0" class="form-control" @bind="_mf.HourlyRate"
+                                   @bind:after="SuggestPackagePrice" />
+                        }
+                        else
+                        {
+                            <input type="number" step="0.01" min="0" class="form-control" @bind="_mf.SessionRate"
+                                   @bind:after="SuggestPackagePrice" />
+                        }
+                    </div>
                     <div class="col-3"><label class="form-label">@L["Offers_Currency"]</label>
                         <select class="form-select" @bind="_mf.Currency">
                             <option>CAD</option><option>EUR</option><option>USD</option>
                         </select></div>
-                    <div class="col-3"><label class="form-label">@L["Offers_BillingPeriod"]</label>
+                    <div class="col-3"><label class="form-label">@L["Offers_SchedulePeriod"]</label>
                         <select class="form-select" @bind="_mf.Period" @bind:after="RecalcSessions">
                             <option value="semaine">@L["Offers_Week"]</option>
                             <option value="mois">@L["Offers_Month"]</option>
@@ -130,6 +158,8 @@
                             <option value="semestre">@L["Offers_PeriodSemester"]</option>
                             <option value="an">@L["Offers_PeriodYear"]</option>
                         </select></div>
+                    <div class="col-3"><label class="form-label">@L["Offers_PackagePrice"] <span class="text-muted fw-normal">(@L["Offers_Estimate"])</span></label>
+                        <input type="number" class="form-control" @bind="_mf.Price" /></div>
 
                     <div class="col-6"><label class="form-label">@L["Offers_Cadence"]</label>
                         <select class="form-select" @bind="_mf.Cadence" @bind:after="RecalcSessions">
@@ -311,7 +341,9 @@
             Name = o.Name,
             Description = o.Description,
             Price = o.Price,
+            BillingMode = string.IsNullOrWhiteSpace(o.BillingMode) ? (o.SessionRate is > 0 ? "perSession" : "hourly") : o.BillingMode,
             HourlyRate = o.HourlyRate ?? 0,
+            SessionRate = o.SessionRate ?? 0,
             Currency = o.Currency,
             Period = NormalizePeriod(o.Period),
             Cadence = o.Cadence,
@@ -364,6 +396,8 @@
         || !string.IsNullOrWhiteSpace(_mf.CancellationPolicy)
         || _mf.Price != 150m
         || _mf.HourlyRate > 0
+        || _mf.SessionRate > 0
+        || _mf.BillingMode != "hourly"
         || _mf.DaySlots.Values.Any(s => s.Enabled);
 
     private void OnDayToggle(string day, ChangeEventArgs e)
@@ -411,13 +445,40 @@
         SuggestPackagePrice();
     }
 
+    private void OnBillingModeChanged()
+    {
+        if (_mf.BillingMode == "quarterlyPerValidated")
+            _mf.Period = "trimestre";
+        SuggestPackagePrice();
+        RecalcSessions();
+    }
+
     private void SuggestPackagePrice()
     {
-        if (_mf.HourlyRate <= 0 || _mf.SessionsPerMonth <= 0 || _mf.SessionDuration <= 0)
+        if (_mf.SessionsPerMonth <= 0 || _mf.SessionDuration <= 0)
             return;
 
+        if (_mf.BillingMode is "perSession" or "quarterlyPerValidated")
+        {
+            if (_mf.SessionRate <= 0) return;
+            _mf.Price = Math.Round(_mf.SessionRate * _mf.SessionsPerMonth, 2);
+            return;
+        }
+
+        if (_mf.HourlyRate <= 0) return;
         var hoursPerSession = _mf.SessionDuration / 60m;
         _mf.Price = Math.Round(_mf.HourlyRate * hoursPerSession * _mf.SessionsPerMonth, 2);
+    }
+
+    private string FormatOfferRate(OfferVM offer)
+    {
+        if (offer.BillingMode == "quarterlyPerValidated" && offer.SessionRate is > 0)
+            return $"{offer.SessionRate.Value.ToString("0.##")} {offer.Currency} / {L["CreateOffer_PerValidatedLesson"]} · {L["Offers_PeriodQuarter"]}";
+        if (offer.BillingMode == "perSession" && offer.SessionRate is > 0)
+            return $"{offer.SessionRate.Value.ToString("0.##")} {offer.Currency} / {L["CreateOffer_PerSessionUnit"]}";
+        if (offer.HourlyRate is > 0)
+            return $"{offer.HourlyRate.Value.ToString("0.##")} {offer.Currency}/h";
+        return $"{offer.Price.ToString("0.##")} {offer.Currency}";
     }
 
     private async Task SaveOffer()
@@ -439,6 +500,9 @@
             return;
         }
 
+        if (_mf.BillingMode == "quarterlyPerValidated")
+            _mf.Period = "trimestre";
+
         var durationDays = _mf.Period switch
         {
             "semaine" => 7,
@@ -453,7 +517,11 @@
             billingPeriod = _mf.Period,
             cadence = _mf.Cadence,
             sessionDurationMin = _mf.SessionDuration,
-            hourlyRate = _mf.HourlyRate > 0 ? (decimal?)_mf.HourlyRate : null,
+            billingMode = _mf.BillingMode,
+            hourlyRate = _mf.BillingMode == "hourly" && _mf.HourlyRate > 0 ? (decimal?)_mf.HourlyRate : null,
+            sessionRate = (_mf.BillingMode is "perSession" or "quarterlyPerValidated") && _mf.SessionRate > 0
+                ? (decimal?)_mf.SessionRate
+                : null,
             level = _mf.Level,
             cancellationPolicy = string.IsNullOrWhiteSpace(_mf.CancellationPolicy) ? null : _mf.CancellationPolicy.Trim(),
             slots
@@ -541,7 +609,11 @@
             Name = o.Title,
             Description = o.Description ?? "",
             Price = o.Price,
+            BillingMode = string.IsNullOrWhiteSpace(schedule?.BillingMode)
+                ? (schedule?.SessionRate is > 0 ? "perSession" : "hourly")
+                : schedule!.BillingMode!,
             HourlyRate = schedule?.HourlyRate,
+            SessionRate = schedule?.SessionRate,
             Currency = o.Currency,
             Period = period,
             Cadence = cadence,
@@ -564,7 +636,9 @@
     private record ApiScheduleDto(
         string BillingPeriod, string Cadence, int SessionDurationMin,
         string? Level, string? CancellationPolicy, List<ApiSlotDto>? Slots,
-        decimal? HourlyRate);
+        decimal? HourlyRate = null,
+        string? BillingMode = null,
+        decimal? SessionRate = null);
     private record ApiOfferingDto(
         Guid Id, string Title, string? Description, string? Subject,
         decimal Price, string Currency, int DurationDays, int SessionCount,
@@ -585,7 +659,9 @@
         public string Name { get; set; } = "";
         public string Description { get; set; } = "";
         public decimal Price { get; set; } = 150;
+        public string BillingMode { get; set; } = "hourly";
         public decimal HourlyRate { get; set; }
+        public decimal SessionRate { get; set; }
         public string Currency { get; set; } = "CAD";
         public string Period { get; set; } = "mois";
         public string Cadence { get; set; } = "weekly";
@@ -606,7 +682,9 @@
         public string Name { get; set; } = "";
         public string Description { get; set; } = "";
         public decimal Price { get; set; }
+        public string BillingMode { get; set; } = "hourly";
         public decimal? HourlyRate { get; set; }
+        public decimal? SessionRate { get; set; }
         public string Currency { get; set; } = "CAD";
         public string Period { get; set; } = "mois";
         public string Cadence { get; set; } = "weekly";
