@@ -120,7 +120,7 @@ public sealed class AuthService
 
             ApplyAuthenticatedSession(result);
             await PersistSessionAsync(result);
-            return new LoginResult(true, null, await ResolvePostLoginRouteAsync(result.Role ?? ""));
+            return new LoginResult(true, null, await ResolvePostLoginRouteAsync(result.Role ?? ""), null, result.Role);
         }
         catch (Exception ex)
         {
@@ -569,7 +569,12 @@ public sealed class AuthService
     }
 }
 
-public sealed record LoginResult(bool Success, string? Error, string? RedirectTo, string? ErrorCode = null);
+public sealed record LoginResult(
+    bool Success,
+    string? Error,
+    string? RedirectTo,
+    string? ErrorCode = null,
+    string? Role = null);
 
 internal sealed record AuthResponse(
     string Token,

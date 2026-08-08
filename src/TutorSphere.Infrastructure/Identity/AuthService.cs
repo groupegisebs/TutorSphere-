@@ -109,14 +109,16 @@ public class AuthService : IAuthService
         if (await _userManager.IsLockedOutAsync(user))
             throw new UnauthorizedAccessException("Ce compte est désactivé. Contactez l'administrateur.");
 
-        if (!await _userManager.IsEmailConfirmedAsync(user))
+        var roles = await _userManager.GetRolesAsync(user);
+        var role = ResolvePrimaryRole(roles);
+
+        // Admins plateforme : pas de blocage « e-mail non confirmé » (bootstrap / ops).
+        var isPlatformAdmin = role is UserRoles.SuperAdmin or UserRoles.PlatformAdmin;
+        if (!isPlatformAdmin && !await _userManager.IsEmailConfirmedAsync(user))
             throw new EmailNotConfirmedException();
 
         if (!await _userManager.CheckPasswordAsync(user, request.Password))
             throw new UnauthorizedAccessException("Identifiants invalides.");
-
-        var roles = await _userManager.GetRolesAsync(user);
-        var role = ResolvePrimaryRole(roles);
 
         // Les admins plateforme n'utilisent que le Control Center (pas de profil parent auto).
         if (role is not (UserRoles.SuperAdmin or UserRoles.PlatformAdmin)

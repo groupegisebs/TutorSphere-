@@ -184,6 +184,25 @@ public static class DependencyInjection
         var user = await userManager.FindByEmailAsync(email);
         if (user is not null)
         {
+            var dirty = false;
+            if (!user.EmailConfirmed)
+            {
+                user.EmailConfirmed = true;
+                dirty = true;
+            }
+
+            if (dirty)
+            {
+                var update = await userManager.UpdateAsync(user);
+                if (update.Succeeded)
+                    logger.LogInformation("Bootstrap confirmed email for SuperAdmin {Email}.", email);
+                else
+                    logger.LogWarning(
+                        "Bootstrap email confirm failed for {Email}: {Errors}",
+                        email,
+                        string.Join("; ", update.Errors.Select(e => e.Description)));
+            }
+
             if (!await userManager.IsInRoleAsync(user, UserRoles.SuperAdmin))
             {
                 await userManager.AddToRoleAsync(user, UserRoles.SuperAdmin);

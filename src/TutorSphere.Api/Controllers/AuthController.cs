@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using TutorSphere.Application.DTOs.Auth;
+using TutorSphere.Domain.Enums;
 using TutorSphere.Infrastructure.Identity;
 using TutorSphere.Infrastructure.Persistence;
 
@@ -15,15 +17,18 @@ public class AuthController : ControllerBase
     private readonly IAuthService _authService;
     private readonly IConfiguration _configuration;
     private readonly ApplicationDbContext _db;
+    private readonly UserManager<ApplicationUser> _userManager;
 
     public AuthController(
         IAuthService authService,
         IConfiguration configuration,
-        ApplicationDbContext db)
+        ApplicationDbContext db,
+        UserManager<ApplicationUser> userManager)
     {
         _authService = authService;
         _configuration = configuration;
         _db = db;
+        _userManager = userManager;
     }
 
     [HttpPost("register")]
@@ -197,6 +202,22 @@ public class AuthController : ControllerBase
             dbError = ex.Message;
         }
 
+        var bootstrapEmail = (_configuration["Seed:BootstrapAdmin:Email"] ?? "").Trim();
+        var bootstrapEnabled = _configuration.GetValue("Seed:BootstrapAdmin:Enabled", false);
+        bool? bootstrapUserExists = null;
+        bool? bootstrapIsSuperAdmin = null;
+        bool? bootstrapEmailConfirmed = null;
+        if (dbOk && !string.IsNullOrWhiteSpace(bootstrapEmail))
+        {
+            var bootstrapUser = await _userManager.FindByEmailAsync(bootstrapEmail);
+            bootstrapUserExists = bootstrapUser is not null;
+            if (bootstrapUser is not null)
+            {
+                bootstrapEmailConfirmed = bootstrapUser.EmailConfirmed;
+                bootstrapIsSuperAdmin = await _userManager.IsInRoleAsync(bootstrapUser, UserRoles.SuperAdmin);
+            }
+        }
+
         return Ok(new
         {
             database = new { connected = dbOk, error = dbError, userCount },
@@ -210,7 +231,11 @@ public class AuthController : ControllerBase
             {
                 includeDemoData = _configuration.GetValue("Seed:IncludeDemoData", false),
                 removeLegacyBootstrapUsers = _configuration.GetValue("Seed:RemoveLegacyBootstrapUsers", true),
-                bootstrapAdminEnabled = _configuration.GetValue("Seed:BootstrapAdmin:Enabled", false)
+                bootstrapAdminEnabled = bootstrapEnabled,
+                bootstrapAdminEmail = string.IsNullOrWhiteSpace(bootstrapEmail) ? null : bootstrapEmail,
+                bootstrapUserExists,
+                bootstrapIsSuperAdmin,
+                bootstrapEmailConfirmed
             }
         });
     }

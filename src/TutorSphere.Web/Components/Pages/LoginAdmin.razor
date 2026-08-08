@@ -95,7 +95,7 @@
             var result = await AuthSvc.LoginAsync(_email, _password);
             if (result.Success)
             {
-                var role = AuthSvc.PrimaryRole ?? "";
+                var role = result.Role ?? AuthSvc.PrimaryRole ?? "";
                 if (role is not ("SuperAdmin" or "PlatformAdmin"))
                 {
                     _errorMessage = L["Login_Admin_WrongRole"];
@@ -105,11 +105,19 @@
                 Navigation.NavigateTo(result.RedirectTo ?? "/admin/dashboard", forceLoad: true);
                 return;
             }
-            _errorMessage = result.Error ?? L["Login_InvalidCredentials"];
+            _errorMessage = MapLoginError(result.ErrorCode, result.Error);
         }
         finally
         {
             _isLoading = false;
         }
     }
+
+    private string MapLoginError(string? code, string? fallback) => code switch
+    {
+        "email_not_confirmed" => L["Login_EmailNotConfirmed"],
+        "login_unavailable" => L["Login_Unavailable"],
+        "invalid_response" => L["Login_Unavailable"],
+        _ => fallback ?? L["Login_InvalidCredentials"].ToString()
+    };
 }
