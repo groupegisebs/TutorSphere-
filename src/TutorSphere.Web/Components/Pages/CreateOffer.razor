@@ -48,13 +48,14 @@
                         </div>
 
                         <div class="mb-3">
-                            <label class="form-label">@L["Label_Level"] <span class="text-danger">*</span></label>
-                            <select class="form-select" @bind="Level">
-                                <option>@L["Level_Elementary"]</option>
-                                <option>@L["Level_Secondary"]</option>
-                                <option>@L["Level_College"]</option>
-                                <option>@L["Level_University"]</option>
+                            <label class="form-label">@L["CreateOffer_Cycle"] <span class="text-danger">*</span></label>
+                            <select class="form-select" value="@Cycle" @onchange="OnCycleChanged">
+                                <option value="primary">@L["Cycle_Primary"]</option>
+                                <option value="secondary">@L["Cycle_Secondary"]</option>
+                                <option value="college">@L["Cycle_College"]</option>
+                                <option value="university">@L["Cycle_University"]</option>
                             </select>
+                            <div class="form-text">@L["CreateOffer_CycleHint"]</div>
                         </div>
 
                         <div class="mb-0">
@@ -103,15 +104,24 @@
 
                         <div class="mb-0">
                             <label class="form-label">@L["CreateOffer_SpecificLevels"] <span class="badge badge-optional ms-1">@L["Label_Optional"]</span></label>
-                            <select class="form-select" multiple size="4">
-                                <option>@L["SpecificLevel_Primary3"]</option>
-                                <option>@L["SpecificLevel_Primary4"]</option>
-                                <option>@L["SpecificLevel_Secondary1"]</option>
-                                <option>@L["SpecificLevel_Secondary2"]</option>
-                                <option>@L["SpecificLevel_Secondary3"]</option>
-                                <option>@L["SpecificLevel_Secondary4"]</option>
-                                <option>@L["SpecificLevel_Secondary5"]</option>
-                            </select>
+                            @if (AvailableSpecificLevels.Count == 0)
+                            {
+                                <div class="form-text text-muted">@L["CreateOffer_SpecificLevelsNone"]</div>
+                            }
+                            else
+                            {
+                                <div class="specific-level-chips">
+                                    @foreach (var lvl in AvailableSpecificLevels)
+                                    {
+                                        <button type="button"
+                                                class="specific-level-chip @(SelectedSpecificLevels.Contains(lvl.Key) ? "selected" : "")"
+                                                @onclick="() => ToggleSpecificLevel(lvl.Key)">
+                                            @lvl.Label
+                                        </button>
+                                    }
+                                </div>
+                                <div class="form-text">@L["CreateOffer_SpecificLevelsHint"]</div>
+                            }
                         </div>
                     </div>
                 </div>
@@ -229,7 +239,7 @@
 
                 <ul class="offer-preview-meta">
                     <li><i class="bi bi-book" aria-hidden="true"></i> @Subject</li>
-                    <li><i class="bi bi-bar-chart-steps" aria-hidden="true"></i> @Level</li>
+                    <li><i class="bi bi-bar-chart-steps" aria-hidden="true"></i> @CycleLabel@SpecificLevelsPreview</li>
                     <li><i class="bi @TeachingModes.FirstOrDefault(m => m.Key == SelectedMode)?.Icon" aria-hidden="true"></i> @ModeLabel</li>
                     <li><i class="bi bi-translate" aria-hidden="true"></i> @Language</li>
                 </ul>
@@ -289,7 +299,8 @@
     private int CurrentStep { get; set; } = 1;
     private string OfferTitle { get; set; } = "";
     private string Subject { get; set; } = "Mathématiques";
-    private string Level { get; set; } = "Secondaire";
+    /// <summary>Cycle d'enseignement : primary | secondary | college | university.</summary>
+    private string Cycle { get; set; } = "secondary";
     private string Description { get; set; } = "";
     private string SelectedMode { get; set; } = "online";
     private string Language { get; set; } = "Français";
@@ -298,6 +309,9 @@
     private int SessionDuration { get; set; } = 60;
 
     private readonly HashSet<string> SelectedBenefits = [];
+    private readonly HashSet<string> SelectedSpecificLevels = [];
+
+    private record SpecificLevelOption(string Key, string Label);
 
     private IReadOnlyList<string> Steps => [
         L["CreateOffer_Step_Info"].Value,
@@ -330,6 +344,57 @@
 
     private string ModeLabel => TeachingModes.FirstOrDefault(m => m.Key == SelectedMode)?.Label ?? SelectedMode;
 
+    private string CycleLabel => Cycle switch
+    {
+        "primary" => L["Cycle_Primary"],
+        "secondary" => L["Cycle_Secondary"],
+        "college" => L["Cycle_College"],
+        "university" => L["Cycle_University"],
+        _ => L["Cycle_Secondary"]
+    };
+
+    private IReadOnlyList<SpecificLevelOption> AvailableSpecificLevels => Cycle switch
+    {
+        "primary" =>
+        [
+            new("p1", L["SpecificLevel_Primary1"]),
+            new("p2", L["SpecificLevel_Primary2"]),
+            new("p3", L["SpecificLevel_Primary3"]),
+            new("p4", L["SpecificLevel_Primary4"]),
+            new("p5", L["SpecificLevel_Primary5"]),
+            new("p6", L["SpecificLevel_Primary6"]),
+        ],
+        "secondary" =>
+        [
+            new("s1", L["SpecificLevel_Secondary1"]),
+            new("s2", L["SpecificLevel_Secondary2"]),
+            new("s3", L["SpecificLevel_Secondary3"]),
+            new("s4", L["SpecificLevel_Secondary4"]),
+            new("s5", L["SpecificLevel_Secondary5"]),
+        ],
+        "college" =>
+        [
+            new("c1", L["SpecificLevel_College1"]),
+            new("c2", L["SpecificLevel_College2"]),
+            new("c3", L["SpecificLevel_College3"]),
+        ],
+        _ => []
+    };
+
+    private string SpecificLevelsPreview
+    {
+        get
+        {
+            if (SelectedSpecificLevels.Count == 0)
+                return "";
+            var labels = AvailableSpecificLevels
+                .Where(l => SelectedSpecificLevels.Contains(l.Key))
+                .Select(l => l.Label)
+                .ToList();
+            return labels.Count == 0 ? "" : " · " + string.Join(", ", labels);
+        }
+    }
+
     protected override void OnInitialized()
     {
         SelectedBenefits.Add(L["CreateOffer_Benefit1"].Value);
@@ -337,6 +402,19 @@
         SelectedBenefits.Add(L["CreateOffer_Benefit3"].Value);
         SelectedBenefits.Add(L["CreateOffer_Benefit4"].Value);
         SelectedBenefits.Add(L["CreateOffer_Benefit5"].Value);
+    }
+
+    private void OnCycleChanged(ChangeEventArgs e)
+    {
+        Cycle = e.Value?.ToString() ?? "secondary";
+        var allowed = AvailableSpecificLevels.Select(l => l.Key).ToHashSet();
+        SelectedSpecificLevels.RemoveWhere(k => !allowed.Contains(k));
+    }
+
+    private void ToggleSpecificLevel(string key)
+    {
+        if (!SelectedSpecificLevels.Remove(key))
+            SelectedSpecificLevels.Add(key);
     }
 
     private void ToggleBenefit(string benefit)
