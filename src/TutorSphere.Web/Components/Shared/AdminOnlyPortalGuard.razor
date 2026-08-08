@@ -3,8 +3,12 @@
 
 @* Redirige les SuperAdmin / PlatformAdmin hors des espaces tuteur / parent / élève. *@
 @code {
-    protected override void OnInitialized()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (!firstRender)
+            return;
+
+        await Auth.EnsureSessionRestoredAsync(forceJs: true);
         var role = Auth.PrimaryRole ?? "";
         if (role is "SuperAdmin" or "PlatformAdmin")
             Navigation.NavigateTo("/admin/dashboard", forceLoad: true);

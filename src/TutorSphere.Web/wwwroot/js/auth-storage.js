@@ -29,5 +29,20 @@ window.tsAuth = {
         try {
             await fetch('/bff/auth/logout', { method: 'POST', credentials: 'same-origin' });
         } catch (_) { }
+    },
+    /** Navigate even when an extension broke window.location setter (fallback: <a> click). */
+    go: function (url) {
+        try {
+            window.location.assign(url);
+            return;
+        } catch (_) { }
+        try {
+            var a = document.createElement('a');
+            a.href = url;
+            a.setAttribute('data-enhance-nav', 'false');
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+        } catch (_) { }
     }
 };
