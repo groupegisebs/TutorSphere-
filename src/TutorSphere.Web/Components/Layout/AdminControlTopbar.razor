@@ -84,18 +84,14 @@
         AuthState.AuthenticationStateChanged += OnAuthChanged;
     }
 
-    private void OnAuthChanged(Task<AuthenticationState> _)
-    {
-        try { _ = InvokeAsync(StateHasChanged); }
-        catch { /* circuit disposing */ }
-    }
+    private void OnAuthChanged(Task<AuthenticationState> task)
+        => InvokeAsync(StateHasChanged);
 
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
     {
         _pageTitle = ResolveTitle(e.Location);
         _menuOpen = false;
-        try { _ = InvokeAsync(StateHasChanged); }
-        catch { /* ignore */ }
+        InvokeAsync(StateHasChanged);
     }
 
     private void ToggleMenu() => _menuOpen = !_menuOpen;
