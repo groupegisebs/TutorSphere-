@@ -27,7 +27,16 @@ internal sealed record GatewayMobileMoneyChargeRequest(
     string Network,
     string PhoneNumber,
     decimal? Amount = null,
+    string? SourceCurrency = null,
     string? ScenarioKey = null);
+
+internal sealed record GatewayMobileMoneyQuoteResponse(
+    decimal OriginalAmount,
+    string OriginalCurrency,
+    decimal Amount,
+    string Currency,
+    string CountryCode,
+    string CountryName);
 
 internal sealed record GatewayMobileMoneyChargeResponse(
     string PaymentCode,

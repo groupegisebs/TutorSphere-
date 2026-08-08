@@ -94,3 +94,11 @@ public record MobileMoneyNetworkDto(
     string Network,
     string NetworkLabel,
     string PhoneCountryCode);
+
+public record MobileMoneyQuoteDto(
+    decimal OriginalAmount,
+    string OriginalCurrency,
+    decimal Amount,
+    string Currency,
+    string CountryCode,
+    string CountryName);

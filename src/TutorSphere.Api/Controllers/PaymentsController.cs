@@ -65,6 +65,25 @@ public class PaymentsController : ControllerBase
         }
     }
 
+    /// <summary>Montant catalogue converti dans la devise Mobile Money du pays.</summary>
+    [HttpGet("mobile-money/quote")]
+    [Authorize(Roles = $"{UserRoles.Parent},{UserRoles.Student},{UserRoles.Tutor},{UserRoles.SuperAdmin}")]
+    public async Task<ActionResult<MobileMoneyQuoteDto>> MobileMoneyQuote(
+        [FromQuery] decimal amount,
+        [FromQuery] string currency,
+        [FromQuery] string countryCode,
+        CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _paymentGateway.QuoteMobileMoneyAsync(amount, currency, countryCode, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     [HttpPost("customers/parents/{parentProfileId:guid}")]
     [Authorize(Roles = $"{UserRoles.Tutor},{UserRoles.Parent},{UserRoles.SuperAdmin}")]
     public async Task<ActionResult<ParentCustomerResponse>> CreateParentCustomer(

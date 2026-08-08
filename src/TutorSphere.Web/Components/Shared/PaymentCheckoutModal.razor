@@ -13,8 +13,18 @@
                     <button type="button" class="btn-close" disabled="@_busy" @onclick="CloseAsync" aria-label="@L["PayMethod_Cancel"]"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="text-muted mb-3">
-                        <strong>@Amount.ToString("N2") @Currency</strong>
+                    <p class="mb-3">
+                        @if (_method == PaymentMethodCodes.MobileMoney && _quote is not null)
+                        {
+                            <strong>@FormatQuoteAmount(_quote) @_quote.Currency</strong>
+                            <span class="text-muted small ms-2">
+                                (@Amount.ToString("N2") @Currency)
+                            </span>
+                        }
+                        else
+                        {
+                            <strong class="text-muted">@Amount.ToString("N2") @Currency</strong>
+                        }
                     </p>
 
                     @if (!string.IsNullOrEmpty(_error))
@@ -40,7 +50,7 @@
                                     disabled="@_busy"
                                     role="radio"
                                     aria-checked="@(_method == PaymentMethodCodes.Card ? "true" : "false")"
-                                    @onclick='() => SelectMethod(PaymentMethodCodes.Card)'>
+                                    @onclick='async () => await SelectMethod(PaymentMethodCodes.Card)'>
                                 <span class="pay-method-icon pay-method-icon--card" aria-hidden="true">@CardIcon</span>
                                 <span class="pay-method-label">@L["PayMethod_Card"]</span>
                             </button>
@@ -49,7 +59,7 @@
                                     disabled="@_busy"
                                     role="radio"
                                     aria-checked="@(_method == PaymentMethodCodes.PayPal ? "true" : "false")"
-                                    @onclick='() => SelectMethod(PaymentMethodCodes.PayPal)'>
+                                    @onclick='async () => await SelectMethod(PaymentMethodCodes.PayPal)'>
                                 <span class="pay-method-icon pay-method-icon--paypal" aria-hidden="true">@PayPalIcon</span>
                                 <span class="pay-method-label">@L["PayMethod_PayPal"]</span>
                             </button>
@@ -58,7 +68,7 @@
                                     disabled="@_busy"
                                     role="radio"
                                     aria-checked="@(_method == PaymentMethodCodes.MobileMoney ? "true" : "false")"
-                                    @onclick='() => SelectMethod(PaymentMethodCodes.MobileMoney)'>
+                                    @onclick='async () => await SelectMethod(PaymentMethodCodes.MobileMoney)'>
                                 <span class="pay-method-icon pay-method-icon--momo" aria-hidden="true">@MobileMoneyIcon</span>
                                 <span class="pay-method-label">@L["PayMethod_MobileMoney"]</span>
                             </button>
@@ -126,6 +136,13 @@
                                         }
                                     </div>
                                 </div>
+                                @if (_quoting)
+                                {
+                                    <div class="text-muted small mb-2">
+                                        <span class="spinner-border spinner-border-sm me-1"></span>@L["Common_Loading"]
+                                    </div>
+                                }
+
                                 <div class="mb-2">
                                     <label class="form-label">@L["PayMethod_Network"]</label>
                                     <select class="form-select" @bind="_network" disabled="@(_busy || string.IsNullOrEmpty(_countryCode))">
@@ -209,6 +226,8 @@
     private string _network = "";
     private string _phone = "";
     private bool _countryMenuOpen;
+    private bool _quoting;
+    private QuoteVm? _quote;
     private List<CountryVm> _countries = [];
 
     private CountryVm? SelectedCountry =>
@@ -246,11 +265,15 @@
         }
     }
 
-    private void SelectMethod(string method)
+    private async Task SelectMethod(string method)
     {
         _method = method;
         _error = null;
         _instruction = null;
+        if (method != PaymentMethodCodes.MobileMoney)
+            _quote = null;
+        else if (!string.IsNullOrEmpty(_countryCode))
+            await RefreshQuoteAsync();
     }
 
     private void ToggleCountryMenu()
@@ -259,16 +282,50 @@
         _countryMenuOpen = !_countryMenuOpen;
     }
 
-    private Task SelectCountryAsync(string countryCode)
+    private async Task SelectCountryAsync(string countryCode)
     {
         _countryCode = countryCode;
         _network = "";
         _countryMenuOpen = false;
-        return Task.CompletedTask;
+        await RefreshQuoteAsync();
+    }
+
+    private async Task RefreshQuoteAsync()
+    {
+        _quote = null;
+        if (string.IsNullOrWhiteSpace(_countryCode) || Amount <= 0)
+            return;
+
+        _quoting = true;
+        try
+        {
+            var path =
+                $"api/payments/mobile-money/quote?amount={Amount.ToString(System.Globalization.CultureInfo.InvariantCulture)}" +
+                $"&currency={Uri.EscapeDataString(Currency)}" +
+                $"&countryCode={Uri.EscapeDataString(_countryCode)}";
+            _quote = await Api.GetAsync<QuoteVm>(path);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _quoting = false;
+        }
     }
 
     private static string FlagUrl(string countryCode) =>
         $"https://flagcdn.com/w40/{countryCode.Trim().ToLowerInvariant()}.png";
+
+    private static string FormatQuoteAmount(QuoteVm quote)
+    {
+        var zeroDecimal = quote.Currency.Equals("XOF", StringComparison.OrdinalIgnoreCase)
+            || quote.Currency.Equals("XAF", StringComparison.OrdinalIgnoreCase)
+            || quote.Currency.Equals("UGX", StringComparison.OrdinalIgnoreCase)
+            || quote.Currency.Equals("RWF", StringComparison.OrdinalIgnoreCase);
+        return quote.Amount.ToString(zeroDecimal ? "N0" : "N2");
+    }
 
     private string SelectedClass(string method) =>
         _method == method ? "is-selected" : "";
@@ -323,6 +380,7 @@
         _network = "";
         _phone = "";
         _countryMenuOpen = false;
+        _quote = null;
         _busy = false;
     }
 
@@ -461,6 +519,14 @@
         List<NetworkVm>? Networks);
 
     private sealed record NetworkVm(string Network, string NetworkLabel);
+
+    private sealed record QuoteVm(
+        decimal OriginalAmount,
+        string OriginalCurrency,
+        decimal Amount,
+        string Currency,
+        string CountryCode,
+        string CountryName);
 
     private sealed record CheckoutVm(
         Guid PaymentId,

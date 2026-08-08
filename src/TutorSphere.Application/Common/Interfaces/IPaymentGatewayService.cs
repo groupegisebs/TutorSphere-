@@ -13,6 +13,12 @@ public interface IPaymentGatewayService
         string? countryCode = null,
         CancellationToken ct = default);
 
+    Task<MobileMoneyQuoteDto> QuoteMobileMoneyAsync(
+        decimal amount,
+        string currency,
+        string countryCode,
+        CancellationToken ct = default);
+
     Task<ParentCustomerResponse> CreateOrGetParentCustomerAsync(
         Guid parentProfileId,
         CancellationToken ct = default);

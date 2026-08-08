@@ -68,6 +68,20 @@ internal sealed class PayGatewayClient
         return await ReadSuccessAsync<GatewayMobileMoneyChargeResponse>(response, ct);
     }
 
+    public async Task<GatewayMobileMoneyQuoteResponse> QuoteMobileMoneyAsync(
+        decimal amount,
+        string currency,
+        string countryCode,
+        CancellationToken ct = default)
+    {
+        var path =
+            $"api/mobile-money/quote?amount={amount.ToString(System.Globalization.CultureInfo.InvariantCulture)}" +
+            $"&currency={Uri.EscapeDataString(currency)}" +
+            $"&countryCode={Uri.EscapeDataString(countryCode)}";
+        using var response = await SendAsync(HttpMethod.Get, path, null, ct);
+        return await ReadSuccessAsync<GatewayMobileMoneyQuoteResponse>(response, ct);
+    }
+
     public async Task<GatewayPaymentResponse?> GetPaymentAsync(string paymentCode, CancellationToken ct = default)
     {
         using var response = await SendAsync(HttpMethod.Get, $"api/payments/{Uri.EscapeDataString(paymentCode)}", null, ct);

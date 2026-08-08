@@ -90,6 +90,22 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             .ToList();
     }
 
+    public async Task<MobileMoneyQuoteDto> QuoteMobileMoneyAsync(
+        decimal amount,
+        string currency,
+        string countryCode,
+        CancellationToken ct = default)
+    {
+        var quote = await _gateway.QuoteMobileMoneyAsync(amount, currency, countryCode, ct);
+        return new MobileMoneyQuoteDto(
+            quote.OriginalAmount,
+            quote.OriginalCurrency,
+            quote.Amount,
+            quote.Currency,
+            quote.CountryCode,
+            quote.CountryName);
+    }
+
     public async Task<ParentCustomerResponse> CreateOrGetParentCustomerAsync(
         Guid parentProfileId,
         CancellationToken ct = default)
@@ -194,9 +210,11 @@ internal sealed class PayGatewayService : IPaymentGatewayService
                 request.CountryCode.Trim().ToUpperInvariant(),
                 request.Network.Trim().ToUpperInvariant(),
                 request.PhoneNumber.Trim(),
-                amount), ct);
+                amount,
+                offering.Currency), ct);
 
             payment.StripePaymentIntentId = mm.PaymentCode;
+            payment.Amount = mm.Amount;
             payment.Currency = mm.Currency;
             await _db.SaveChangesAsync(ct);
 
@@ -212,7 +230,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
                 CheckoutUrl: null,
                 SessionId: null,
                 ClientSecret: null,
-                amount,
+                mm.Amount,
                 platformFee,
                 tutorAmount,
                 mm.Currency,
@@ -651,9 +669,11 @@ internal sealed class PayGatewayService : IPaymentGatewayService
                 request.CountryCode.Trim().ToUpperInvariant(),
                 request.Network.Trim().ToUpperInvariant(),
                 request.PhoneNumber.Trim(),
-                amount), ct);
+                amount,
+                currency), ct);
 
             licensePayment.GatewayPaymentCode = mm.PaymentCode;
+            licensePayment.Amount = mm.Amount;
             licensePayment.Currency = mm.Currency;
             await _db.SaveChangesAsync(ct);
 
@@ -663,7 +683,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
                 CheckoutUrl: null,
                 SessionId: null,
                 ClientSecret: null,
-                amount,
+                mm.Amount,
                 mm.Currency,
                 paymentMethod,
                 mm.Instruction,
