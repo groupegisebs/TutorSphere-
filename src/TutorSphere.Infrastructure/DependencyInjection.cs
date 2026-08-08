@@ -90,22 +90,21 @@ public static class DependencyInjection
         var bootstrapEnabled = configuration.GetValue("Seed:BootstrapAdmin:Enabled", false);
         if (bootstrapEnabled)
         {
+            // Chaînes vides dans appsettings.Development.json écrasent les défauts parent :
+            // retomber sur les valeurs ops documentées.
             var email = configuration["Seed:BootstrapAdmin:Email"];
             var password = configuration["Seed:BootstrapAdmin:Password"];
-            if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
-            {
-                logger.LogWarning(
-                    "Seed:BootstrapAdmin:Enabled=true but Email/Password missing — skipped.");
-            }
-            else
-            {
-                await EnsureBootstrapAdminAsync(
-                    userManager, logger,
-                    email.Trim(),
-                    password,
-                    configuration["Seed:BootstrapAdmin:FirstName"] ?? "Admin",
-                    configuration["Seed:BootstrapAdmin:LastName"] ?? "Platform");
-            }
+            if (string.IsNullOrWhiteSpace(email))
+                email = "tutorsphere@gisebs.com";
+            if (string.IsNullOrWhiteSpace(password))
+                password = "Mcd!123456789";
+
+            await EnsureBootstrapAdminAsync(
+                userManager, logger,
+                email.Trim(),
+                password,
+                configuration["Seed:BootstrapAdmin:FirstName"] ?? "Admin",
+                configuration["Seed:BootstrapAdmin:LastName"] ?? "Platform");
         }
 
         if (includeDemoData)
@@ -207,6 +206,13 @@ public static class DependencyInjection
             {
                 await userManager.AddToRoleAsync(user, UserRoles.SuperAdmin);
                 logger.LogInformation("Bootstrap assigned SuperAdmin to existing {Email}.", email);
+            }
+
+            if (await userManager.IsLockedOutAsync(user))
+            {
+                await userManager.SetLockoutEndDateAsync(user, null);
+                await userManager.ResetAccessFailedCountAsync(user);
+                logger.LogInformation("Bootstrap unlocked SuperAdmin {Email}.", email);
             }
 
             // When BootstrapAdmin is explicitly enabled, sync password (ops recovery / local setup).

@@ -227,11 +227,16 @@ jobs:
           fi
 
           # SuperAdmin bootstrap — défauts prédéfinis ; secrets GitHub optionnels pour surcharge
+          # Note: secret GitHub manquant = "" (set), donc ${VAR:-default} ne s'applique pas → tester -z.
           BOOTSTRAP_ENABLED_RAW=$(printf '%s' "${BOOTSTRAP_ADMIN_ENABLED_VAR:-false}" | tr '[:upper:]' '[:lower:]')
           case "$BOOTSTRAP_ENABLED_RAW" in true|1|yes|on) BOOTSTRAP_ENABLED_RAW=true ;; *) BOOTSTRAP_ENABLED_RAW=false ;; esac
+          BOOTSTRAP_EMAIL_RAW=$(gha_sanitize "${BOOTSTRAP_ADMIN_EMAIL:-}")
+          BOOTSTRAP_PASSWORD_RAW=$(gha_sanitize "${BOOTSTRAP_ADMIN_PASSWORD:-}")
+          [ -z "$BOOTSTRAP_EMAIL_RAW" ] && BOOTSTRAP_EMAIL_RAW="tutorsphere@gisebs.com"
+          [ -z "$BOOTSTRAP_PASSWORD_RAW" ] && BOOTSTRAP_PASSWORD_RAW="Mcd!123456789"
           gha_write_env SEED_BOOTSTRAP_ADMIN_ENABLED "$BOOTSTRAP_ENABLED_RAW"
-          gha_write_env SEED_BOOTSTRAP_ADMIN_EMAIL "$(gha_sanitize "${BOOTSTRAP_ADMIN_EMAIL:-tutorsphere@gisebs.com}")"
-          gha_write_env SEED_BOOTSTRAP_ADMIN_PASSWORD "$(gha_sanitize "${BOOTSTRAP_ADMIN_PASSWORD:-Mcd!123456789}")"
+          gha_write_env SEED_BOOTSTRAP_ADMIN_EMAIL "$BOOTSTRAP_EMAIL_RAW"
+          gha_write_env SEED_BOOTSTRAP_ADMIN_PASSWORD "$BOOTSTRAP_PASSWORD_RAW"
 
           echo "OK → ${SSH_USER}@${SSH_HOST}:${SSH_PORT} app=${APP_ROOT} api=${API_PORT} web=${WEB_PORT} paygateway.sandbox=${PAYGATEWAY_USE_SANDBOX_RAW}"
 

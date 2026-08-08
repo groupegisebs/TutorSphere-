@@ -103,7 +103,10 @@ public class AuthService : IAuthService
 
     public async Task<AuthResponse> LoginAsync(LoginRequest request, CancellationToken ct = default)
     {
-        var user = await _userManager.FindByEmailAsync(request.Email)
+        var email = (request.Email ?? string.Empty).Trim();
+        var password = request.Password ?? string.Empty;
+
+        var user = await _userManager.FindByEmailAsync(email)
             ?? throw new UnauthorizedAccessException("Identifiants invalides.");
 
         if (await _userManager.IsLockedOutAsync(user))
@@ -117,7 +120,7 @@ public class AuthService : IAuthService
         if (!isPlatformAdmin && !await _userManager.IsEmailConfirmedAsync(user))
             throw new EmailNotConfirmedException();
 
-        if (!await _userManager.CheckPasswordAsync(user, request.Password))
+        if (!await _userManager.CheckPasswordAsync(user, password))
             throw new UnauthorizedAccessException("Identifiants invalides.");
 
         // Les admins plateforme n'utilisent que le Control Center (pas de profil parent auto).

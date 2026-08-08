@@ -34,9 +34,15 @@ umask 077
   printf 'WEB_PORT=%s\n' "${WEB_PORT:-55010}"
 
   # SuperAdmin bootstrap — valeurs prédéfinies (surchargeables via env / secrets GitHub)
-  printf 'SEED__BOOTSTRAPADMIN__ENABLED=%s\n' "${SEED_BOOTSTRAP_ADMIN_ENABLED:-false}"
-  printf 'SEED__BOOTSTRAPADMIN__EMAIL=%s\n' "${SEED_BOOTSTRAP_ADMIN_EMAIL:-tutorsphere@gisebs.com}"
-  printf 'SEED__BOOTSTRAPADMIN__PASSWORD=%s\n' "${SEED_BOOTSTRAP_ADMIN_PASSWORD:-Mcd!123456789}"
+  # Secret GitHub vide = "" : forcer les défauts ( ${VAR:-x} ne marche pas si VAR est définie vide ).
+  _bs_enabled="${SEED_BOOTSTRAP_ADMIN_ENABLED:-false}"
+  _bs_email="${SEED_BOOTSTRAP_ADMIN_EMAIL:-}"
+  _bs_password="${SEED_BOOTSTRAP_ADMIN_PASSWORD:-}"
+  [ -z "$_bs_email" ] && _bs_email="tutorsphere@gisebs.com"
+  [ -z "$_bs_password" ] && _bs_password="Mcd!123456789"
+  printf 'SEED__BOOTSTRAPADMIN__ENABLED=%s\n' "$_bs_enabled"
+  printf 'SEED__BOOTSTRAPADMIN__EMAIL=%s\n' "$_bs_email"
+  printf 'SEED__BOOTSTRAPADMIN__PASSWORD=%s\n' "$_bs_password"
   printf 'SEED__BOOTSTRAPADMIN__FIRSTNAME=%s\n' "${SEED_BOOTSTRAP_ADMIN_FIRSTNAME:-Admin}"
   printf 'SEED__BOOTSTRAPADMIN__LASTNAME=%s\n' "${SEED_BOOTSTRAP_ADMIN_LASTNAME:-TutorSphere}"
 } >> "$OUT"

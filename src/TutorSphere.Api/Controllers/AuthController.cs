@@ -144,7 +144,10 @@ public class AuthController : ControllerBase
         }
         catch (UnauthorizedAccessException ex)
         {
-            return Unauthorized(new { error = ex.Message });
+            var code = ex.Message.Contains("désactivé", StringComparison.OrdinalIgnoreCase)
+                ? "account_disabled"
+                : "invalid_credentials";
+            return Unauthorized(new { error = ex.Message, code });
         }
     }
 
