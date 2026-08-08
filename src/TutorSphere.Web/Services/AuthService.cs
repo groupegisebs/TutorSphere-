@@ -535,7 +535,7 @@ public sealed class AuthService
         "TeachingAssistant" => "/tutor/dashboard",
         "Parent" => "/parent",
         "Student" => "/student/dashboard",
-        _ => "/tutor/dashboard"
+        _ => "/login"
     };
 
     private sealed record TutorLicenseStatusDto(

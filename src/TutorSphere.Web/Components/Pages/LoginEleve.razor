@@ -289,7 +289,12 @@
             if (result.Success)
             {
                 var role = AuthSvc.PrimaryRole ?? "";
-                if (role is not ("Student" or "SuperAdmin" or "PlatformAdmin"))
+                if (role is "SuperAdmin" or "PlatformAdmin")
+                {
+                    Navigation.NavigateTo("/admin/dashboard", forceLoad: true);
+                    return;
+                }
+                if (role is not "Student")
                 {
                     _errorMessage = L["Login_Student_WrongRole"];
                     AuthSvc.Logout();

@@ -116,12 +116,14 @@ public class AuthService : IAuthService
             throw new UnauthorizedAccessException("Identifiants invalides.");
 
         var roles = await _userManager.GetRolesAsync(user);
-        var role = roles.FirstOrDefault() ?? UserRoles.Parent;
+        var role = ResolvePrimaryRole(roles);
 
-        if (UserRoles.ParentPortalRoles.Contains(role))
+        // Les admins plateforme n'utilisent que le Control Center (pas de profil parent auto).
+        if (role is not (UserRoles.SuperAdmin or UserRoles.PlatformAdmin)
+            && UserRoles.ParentPortalRoles.Contains(role))
             await EnsureParentProfileAsync(user, ct);
 
-        return await BuildAuthResponse(user, role);
+        return await BuildAuthResponse(user, role, roles);
     }
 
     public async Task<AuthResponse> LoginChildAsync(ChildLoginRequest request, CancellationToken ct = default)
@@ -158,7 +160,7 @@ public class AuthService : IAuthService
 
         var roles = await _userManager.GetRolesAsync(user);
         var role = roles.FirstOrDefault(r => r == UserRoles.Student) ?? UserRoles.Student;
-        return await BuildAuthResponse(user, role);
+        return await BuildAuthResponse(user, role, roles);
     }
 
     public Task<ChildLoginAccessDto> EnableChildLoginAccessAsync(
@@ -438,14 +440,19 @@ public class AuthService : IAuthService
         await _email.SendPasswordChangedAsync(user.Email!, user.FirstName, ct);
     }
 
-    private async Task<AuthResponse> BuildAuthResponse(ApplicationUser user, string role)
+    private async Task<AuthResponse> BuildAuthResponse(
+        ApplicationUser user,
+        string role,
+        IList<string>? allRoles = null)
     {
         var jwtSection = _configuration.GetSection("Jwt");
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSection["Key"]!));
         var expires = DateTime.UtcNow.AddHours(double.Parse(jwtSection["ExpireHours"] ?? "24"));
 
         string? tenantName = null;
-        if (user.TenantId.HasValue)
+        // Les admins plateforme n'ont pas d'école / branding tuteur dans le JWT.
+        var isPlatformAdmin = role is UserRoles.SuperAdmin or UserRoles.PlatformAdmin;
+        if (!isPlatformAdmin && user.TenantId.HasValue)
         {
             tenantName = _db.Tenants
                 .Where(t => t.Id == user.TenantId.Value)
@@ -461,10 +468,17 @@ public class AuthService : IAuthService
             new(ClaimTypes.Role, role)
         };
 
-        if (user.TenantId.HasValue)
+        // Toutes les rôles Identity (AuthorizeView / IsInRole).
+        if (allRoles is not null)
+        {
+            foreach (var r in allRoles.Where(r => !string.Equals(r, role, StringComparison.OrdinalIgnoreCase)))
+                claims.Add(new Claim(ClaimTypes.Role, r));
+        }
+
+        if (!isPlatformAdmin && user.TenantId.HasValue)
             claims.Add(new Claim("tenant_id", user.TenantId.Value.ToString()));
 
-        if (!string.IsNullOrWhiteSpace(tenantName))
+        if (!isPlatformAdmin && !string.IsNullOrWhiteSpace(tenantName))
             claims.Add(new Claim("tenant_name", tenantName));
 
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
@@ -476,7 +490,24 @@ public class AuthService : IAuthService
             signingCredentials: credentials);
 
         var tokenString = new JwtSecurityTokenHandler().WriteToken(token);
-        return new AuthResponse(tokenString, user.Email ?? string.Empty, user.FullName, role, user.TenantId, expires, tenantName);
+        return new AuthResponse(
+            tokenString,
+            user.Email ?? string.Empty,
+            user.FullName,
+            role,
+            isPlatformAdmin ? null : user.TenantId,
+            expires,
+            isPlatformAdmin ? null : tenantName);
+    }
+
+    /// <summary>Priorité : SuperAdmin → PlatformAdmin → premier autre rôle.</summary>
+    private static string ResolvePrimaryRole(IList<string> roles)
+    {
+        if (roles.Contains(UserRoles.SuperAdmin))
+            return UserRoles.SuperAdmin;
+        if (roles.Contains(UserRoles.PlatformAdmin))
+            return UserRoles.PlatformAdmin;
+        return roles.FirstOrDefault() ?? UserRoles.Parent;
     }
 
     private static string NormalizeRole(string role) =>

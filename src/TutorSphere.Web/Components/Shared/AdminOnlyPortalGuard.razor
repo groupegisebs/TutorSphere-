@@ -1,0 +1,12 @@
+@inject AuthService Auth
+@inject NavigationManager Navigation
+
+@* Redirige les SuperAdmin / PlatformAdmin hors des espaces tuteur / parent / élève. *@
+@code {
+    protected override void OnInitialized()
+    {
+        var role = Auth.PrimaryRole ?? "";
+        if (role is "SuperAdmin" or "PlatformAdmin")
+            Navigation.NavigateTo("/admin/dashboard", forceLoad: true);
+    }
+}

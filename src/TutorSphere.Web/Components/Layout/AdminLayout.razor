@@ -1,5 +1,6 @@
 @inherits LayoutComponentBase
 @inject NavigationManager Navigation
+@inject AuthService Auth
 
 <link rel="stylesheet" href="css/admin-control-center.css" />
 
@@ -19,6 +20,13 @@
     private bool _sidebarOpen;
 
     private void ToggleSidebar() => _sidebarOpen = !_sidebarOpen;
+
+    protected override void OnInitialized()
+    {
+        var role = Auth.PrimaryRole ?? "";
+        if (role is not ("SuperAdmin" or "PlatformAdmin"))
+            Navigation.NavigateTo("/login/admin", forceLoad: true);
+    }
 
     protected override void OnParametersSet()
     {

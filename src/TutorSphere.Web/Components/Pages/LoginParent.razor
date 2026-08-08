@@ -199,7 +199,12 @@
             if (result.Success)
             {
                 var role = AuthSvc.PrimaryRole ?? "";
-                if (role is not ("Parent" or "SuperAdmin" or "PlatformAdmin"))
+                if (role is "SuperAdmin" or "PlatformAdmin")
+                {
+                    Navigation.NavigateTo("/admin/dashboard", forceLoad: true);
+                    return;
+                }
+                if (role is not "Parent")
                 {
                     _errorMessage = L["Login_Parent_WrongRole"];
                     AuthSvc.Logout();

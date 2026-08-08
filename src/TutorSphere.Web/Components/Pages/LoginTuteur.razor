@@ -204,6 +204,11 @@
             if (result.Success)
             {
                 var role = AuthSvc.PrimaryRole ?? "";
+                if (role is "SuperAdmin" or "PlatformAdmin")
+                {
+                    Navigation.NavigateTo("/admin/dashboard", forceLoad: true);
+                    return;
+                }
                 if (role is not ("Tutor" or "TeachingAssistant"))
                 {
                     _errorMessage = L["Login_Tutor_WrongRole"];
