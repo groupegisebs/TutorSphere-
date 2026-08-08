@@ -1,0 +1,258 @@
+@inject IJSRuntime JS
+@inject IStringLocalizer<SharedResources> L
+@inject ApiClient Api
+@implements IAsyncDisposable
+
+<div class="presentation-recorder @CssClass">
+    <div class="presentation-recorder-preview">
+        <video @ref="_preview" playsinline autoplay muted></video>
+        @if (_state == "recording")
+        {
+            <span class="presentation-recorder-badge is-live">
+                <i class="bi bi-record-fill" aria-hidden="true"></i>
+                @_elapsedSec / @_maxSeconds s
+            </span>
+        }
+        else if (_state == "stopped")
+        {
+            <span class="presentation-recorder-badge">
+                <i class="bi bi-check-circle-fill" aria-hidden="true"></i>
+                @L["CreateOffer_PresentationVideoRecorded"]
+            </span>
+        }
+    </div>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="text-danger small mt-2">@_error</div>
+    }
+
+    <div class="presentation-recorder-actions mt-3">
+        @if (!_cameraReady && !_busy)
+        {
+            <button type="button" class="btn btn-primary" @onclick="OpenCameraAsync">
+                <i class="bi bi-camera-video me-1" aria-hidden="true"></i>
+                @L["CreateOffer_PresentationVideoRecord"]
+            </button>
+        }
+
+        @if (_cameraReady && _state is "ready" or "idle")
+        {
+            <button type="button" class="btn btn-danger" @onclick="StartRecordingAsync" disabled="@_busy">
+                <i class="bi bi-record-circle me-1" aria-hidden="true"></i>
+                @L["CreateOffer_PresentationVideoStart"]
+            </button>
+            <button type="button" class="btn btn-outline-secondary" @onclick="DisposeCameraAsync" disabled="@_busy">
+                @L["Button_Cancel"]
+            </button>
+        }
+
+        @if (_state == "recording")
+        {
+            <button type="button" class="btn btn-warning" @onclick="StopRecordingAsync" disabled="@_busy">
+                <i class="bi bi-stop-fill me-1" aria-hidden="true"></i>
+                @L["CreateOffer_PresentationVideoStop"]
+            </button>
+        }
+
+        @if (_state == "stopped")
+        {
+            <button type="button" class="btn btn-primary" @onclick="SaveRecordingAsync" disabled="@_busy">
+                @if (_busy)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span>
+                }
+                <i class="bi bi-cloud-upload me-1" aria-hidden="true"></i>
+                @L["CreateOffer_PresentationVideoSave"]
+            </button>
+            <button type="button" class="btn btn-outline-primary" @onclick="RetakeAsync" disabled="@_busy">
+                <i class="bi bi-arrow-counterclockwise me-1" aria-hidden="true"></i>
+                @L["CreateOffer_PresentationVideoRetake"]
+            </button>
+        }
+    </div>
+
+    <p class="text-muted small mt-2 mb-0">@string.Format(L["CreateOffer_PresentationVideoRecordHint"].Value, _maxSeconds)</p>
+</div>
+
+@code {
+    [Parameter] public int MaxSeconds { get; set; } = 90;
+    [Parameter] public string? CssClass { get; set; }
+    [Parameter] public EventCallback<string> OnSaved { get; set; }
+    [Parameter] public EventCallback<string> OnError { get; set; }
+
+    private ElementReference _preview;
+    private DotNetObjectReference<PresentationVideoRecorder>? _selfRef;
+    private bool _cameraReady;
+    private bool _busy;
+    private string _state = "idle";
+    private int _elapsedSec;
+    private int _maxSeconds = 90;
+    private string? _error;
+
+    protected override void OnParametersSet() =>
+        _maxSeconds = Math.Clamp(MaxSeconds, 15, 180);
+
+    [JSInvokable]
+    public void OnRecorderState(string state, int elapsedSec)
+    {
+        _state = state;
+        _elapsedSec = elapsedSec;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OpenCameraAsync()
+    {
+        _error = null;
+        _busy = true;
+        try
+        {
+            _selfRef?.Dispose();
+            _selfRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("tsPresentationRecorder.init", _preview, _maxSeconds, _selfRef);
+            _cameraReady = true;
+            _state = "ready";
+        }
+        catch (Exception ex)
+        {
+            _error = MapError(ex.Message);
+            await OnError.InvokeAsync(_error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task StartRecordingAsync()
+    {
+        _error = null;
+        try
+        {
+            await JS.InvokeVoidAsync("tsPresentationRecorder.start");
+            _state = "recording";
+            _elapsedSec = 0;
+        }
+        catch (Exception ex)
+        {
+            _error = MapError(ex.Message);
+            await OnError.InvokeAsync(_error);
+        }
+    }
+
+    private async Task StopRecordingAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("tsPresentationRecorder.stop");
+        }
+        catch (Exception ex)
+        {
+            _error = MapError(ex.Message);
+            await OnError.InvokeAsync(_error);
+        }
+    }
+
+    private async Task RetakeAsync()
+    {
+        _error = null;
+        try
+        {
+            await JS.InvokeVoidAsync("tsPresentationRecorder.retake");
+            _state = "ready";
+            _elapsedSec = 0;
+        }
+        catch (Exception ex)
+        {
+            _error = MapError(ex.Message);
+        }
+    }
+
+    private async Task SaveRecordingAsync()
+    {
+        _error = null;
+        _busy = true;
+        try
+        {
+            var bytes = await JS.InvokeAsync<byte[]?>("tsPresentationRecorder.getBytes");
+            if (bytes is null || bytes.Length == 0)
+            {
+                _error = L["CreateOffer_PresentationVideoFailed"];
+                await OnError.InvokeAsync(_error);
+                return;
+            }
+
+            var mime = await JS.InvokeAsync<string>("tsPresentationRecorder.getMimeType");
+            var ext = await JS.InvokeAsync<string>("tsPresentationRecorder.getExtension");
+            if (string.IsNullOrWhiteSpace(mime)) mime = "video/webm";
+            if (string.IsNullOrWhiteSpace(ext)) ext = "webm";
+
+            using var content = new MultipartFormDataContent();
+            var fileContent = new ByteArrayContent(bytes);
+            fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(mime);
+            content.Add(fileContent, "file", $"presentation-{DateTime.UtcNow:yyyyMMddHHmmss}.{ext}");
+            content.Add(new StringContent("OfferPresentations"), "folder");
+
+            var result = await Api.PostMultipartAsync<DocVm>("api/documents", content);
+            if (result.Error is not null || result.Value is null)
+            {
+                _error = result.Error ?? L["CreateOffer_PresentationVideoFailed"];
+                await OnError.InvokeAsync(_error);
+                return;
+            }
+
+            await OnSaved.InvokeAsync(result.Value.Url);
+            await DisposeCameraAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = MapError(ex.Message);
+            await OnError.InvokeAsync(_error);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task DisposeCameraAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("tsPresentationRecorder.dispose");
+        }
+        catch
+        {
+            /* ignore */
+        }
+
+        _cameraReady = false;
+        _state = "idle";
+        _elapsedSec = 0;
+        _selfRef?.Dispose();
+        _selfRef = null;
+    }
+
+    private string MapError(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return L["CreateOffer_PresentationVideoFailed"];
+        if (message is "CameraNotSupported" || message.Contains("getUserMedia", StringComparison.OrdinalIgnoreCase))
+            return L["CreateOffer_PresentationVideoNoCamera"];
+        if (message is "RecorderNotSupported")
+            return L["CreateOffer_PresentationVideoNoRecorder"];
+        if (message is "NotAllowedError" || message.Contains("Permission", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("NotAllowed", StringComparison.OrdinalIgnoreCase))
+            return L["CreateOffer_PresentationVideoPermission"];
+        return message;
+    }
+
+    public async ValueTask DisposeAsync() => await DisposeCameraAsync();
+
+    private sealed class DocVm
+    {
+        public Guid Id { get; set; }
+        public string FileName { get; set; } = "";
+        public string Url { get; set; } = "";
+    }
+}

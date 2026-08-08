@@ -88,4 +88,8 @@ public static class TutorPayoutPolicy
         ResolveRegion(country) is PayoutRegionKind.StripeConnectZone or PayoutRegionKind.Other;
 
     public static bool RequiresStripeAtSignup(string? country) => false;
+
+    /// <summary>Interac e-Transfer (virement bancaire) disponible uniquement au Canada.</summary>
+    public static bool SupportsInteracETransfer(string? country) =>
+        string.Equals(NormalizeCountry(country), "CA", StringComparison.OrdinalIgnoreCase);
 }

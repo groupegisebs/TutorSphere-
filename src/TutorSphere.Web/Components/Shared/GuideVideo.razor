@@ -1,0 +1,85 @@
+@*
+  Lecteur pour les vidéos de guide enseignant.
+  Accepte un fichier .mp4 (wwwroot) ou une URL YouTube / Vimeo.
+*@
+@inject IStringLocalizer<SharedResources> L
+
+@if (!string.IsNullOrWhiteSpace(Src))
+{
+    <div class="guide-video @CssClass">
+        @if (!string.IsNullOrWhiteSpace(Title))
+        {
+            <div class="guide-video-caption">
+                <i class="bi bi-play-circle-fill me-1" aria-hidden="true"></i>
+                <span>@Title</span>
+            </div>
+        }
+
+        @if (IsEmbed)
+        {
+            <div class="guide-video-frame">
+                <iframe src="@EmbedUrl"
+                        title="@(Title ?? L["Offers_GuideVideoTitle"])"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                        allowfullscreen
+                        loading="lazy"></iframe>
+            </div>
+        }
+        else
+        {
+            <div class="guide-video-frame">
+                <video controls playsinline preload="metadata" poster="@Poster">
+                    <source src="@Src" type="video/mp4" />
+                    @L["Offers_GuideVideoFallback"]
+                </video>
+            </div>
+            <p class="guide-video-hint text-muted small mb-0">@L["Offers_GuideVideoHint"]</p>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public string? Src { get; set; }
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Poster { get; set; }
+    [Parameter] public string? CssClass { get; set; }
+
+    private bool IsEmbed =>
+        !string.IsNullOrWhiteSpace(Src)
+        && (Src.Contains("youtube.com", StringComparison.OrdinalIgnoreCase)
+            || Src.Contains("youtu.be", StringComparison.OrdinalIgnoreCase)
+            || Src.Contains("vimeo.com", StringComparison.OrdinalIgnoreCase));
+
+    private string EmbedUrl
+    {
+        get
+        {
+            var src = Src?.Trim() ?? "";
+            if (src.Contains("youtu.be/", StringComparison.OrdinalIgnoreCase))
+            {
+                var id = src.Split("youtu.be/", StringSplitOptions.RemoveEmptyEntries).LastOrDefault()?.Split('?', '#')[0];
+                return string.IsNullOrWhiteSpace(id) ? src : $"https://www.youtube.com/embed/{id}";
+            }
+
+            if (src.Contains("youtube.com/watch", StringComparison.OrdinalIgnoreCase))
+            {
+                var uri = new Uri(src, UriKind.Absolute);
+                var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
+                if (query.TryGetValue("v", out var v) && !string.IsNullOrWhiteSpace(v))
+                    return $"https://www.youtube.com/embed/{v}";
+            }
+
+            if (src.Contains("youtube.com/embed/", StringComparison.OrdinalIgnoreCase))
+                return src;
+
+            if (src.Contains("vimeo.com/", StringComparison.OrdinalIgnoreCase)
+                && !src.Contains("player.vimeo.com", StringComparison.OrdinalIgnoreCase))
+            {
+                var id = src.TrimEnd('/').Split('/').LastOrDefault();
+                return string.IsNullOrWhiteSpace(id) ? src : $"https://player.vimeo.com/video/{id}";
+            }
+
+            return src;
+        }
+    }
+}

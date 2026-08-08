@@ -3,6 +3,7 @@ namespace TutorSphere.Domain.Enums;
 /// <summary>
 /// Canal de versement vers l'enseignant.
 /// Stripe Connect : CA / US / UK / EEA / CH.
+/// Canada : Interac e-Transfer (virement bancaire) en option.
 /// Afrique : Mobile Money (Wave, Orange Money, MTN, M-Pesa, etc.) — infos publiques uniquement.
 /// PayPal : exigé en complément pour les zones Stripe.
 /// </summary>
@@ -16,12 +17,14 @@ public enum PayoutProviderKind
     MtnMomo = 5,
     Mpesa = 6,
     Moov = 7,
-    Airtel = 8
+    Airtel = 8,
+    /// <summary>Interac e-Transfer — Canada (virement bancaire via e-mail Autodépôt).</summary>
+    InteracETransfer = 9
 }
 
 public enum PayoutRegionKind
 {
-    /// <summary>Canada, USA, UK, EEA, Suisse — Stripe Connect + PayPal.</summary>
+    /// <summary>Canada, USA, UK, EEA, Suisse — Stripe Connect + PayPal (+ Interac au Canada).</summary>
     StripeConnectZone = 0,
     /// <summary>Afrique — Mobile Money (infos publiques).</summary>
     Africa = 1,
@@ -41,6 +44,7 @@ public static class PayoutProviderCodes
         PayoutProviderKind.Mpesa => "mpesa",
         PayoutProviderKind.Moov => "moov",
         PayoutProviderKind.Airtel => "airtel",
+        PayoutProviderKind.InteracETransfer => "interac_etransfer",
         _ => kind.ToString().ToLowerInvariant()
     };
 
@@ -52,4 +56,7 @@ public static class PayoutProviderCodes
             or PayoutProviderKind.Mpesa
             or PayoutProviderKind.Moov
             or PayoutProviderKind.Airtel;
+
+    public static bool IsInterac(PayoutProviderKind kind) =>
+        kind == PayoutProviderKind.InteracETransfer;
 }

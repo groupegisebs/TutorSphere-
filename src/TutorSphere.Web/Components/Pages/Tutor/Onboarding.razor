@@ -61,6 +61,12 @@
                 <div class="card-body p-4">
                     <h2 class="h5">@_current.Order. @_current.Title</h2>
                     <p class="text-muted">@_current.Summary</p>
+                    @if (!string.IsNullOrWhiteSpace(_current.VideoUrl))
+                    {
+                        <GuideVideo Src="@_current.VideoUrl"
+                                    Title="@L["Offers_GuideVideoTitle"]"
+                                    CssClass="mb-4" />
+                    }
                     <div class="onboarding-body mb-4">@((MarkupString)_current.BodyHtml)</div>
 
                     @if (_current.Quiz is { Count: > 0 })
@@ -230,6 +236,7 @@
         public string BodyHtml { get; set; } = "";
         public List<QuizItemVm> Quiz { get; set; } = [];
         public bool IsCompleted { get; set; }
+        public string? VideoUrl { get; set; }
     }
 
     private sealed class QuizItemVm

@@ -223,9 +223,6 @@ public class SubscriptionOfferingService : ISubscriptionOfferingService
             .DistinctBy(s => $"{s.Day}|{s.Time}")
             .ToList();
 
-        if (slots.Count == 0)
-            throw new InvalidOperationException("Sélectionnez au moins un jour avec une heure de cours.");
-
         var normalized = schedule with
         {
             BillingPeriod = string.IsNullOrWhiteSpace(schedule.BillingPeriod) ? "mois" : schedule.BillingPeriod.Trim().ToLowerInvariant(),
@@ -236,11 +233,15 @@ public class SubscriptionOfferingService : ISubscriptionOfferingService
 
         var computedCount = sessionCount > 0
             ? sessionCount
-            : EstimateSessionCount(normalized.BillingPeriod, normalized.Cadence, slots.Count, durationDays);
+            : slots.Count == 0
+                ? Math.Max(1, sessionCount)
+                : EstimateSessionCount(normalized.BillingPeriod, normalized.Cadence, slots.Count, durationDays);
 
-        var summary = BuildFrequencySummary(normalized);
+        var summary = slots.Count == 0
+            ? $"{normalized.BillingPeriod} · {normalized.BillingMode ?? "horaire"}"
+            : BuildFrequencySummary(normalized);
         var json = JsonSerializer.Serialize(normalized, ScheduleJson);
-        return (summary, json, mode, computedCount);
+        return (summary, json, mode, Math.Max(1, computedCount));
     }
 
     private static int EstimateSessionCount(string billingPeriod, string cadence, int slotsPerWeek, int durationDays)

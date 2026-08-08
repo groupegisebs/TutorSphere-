@@ -3,6 +3,7 @@ using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Localization;
+using Microsoft.Extensions.FileProviders;
 using TutorSphere.Application.Common;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.IdentityModel.Tokens;
@@ -163,6 +164,16 @@ app.UseRequestLocalization();
 app.UseCors();
 if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
+// Vidéos / fichiers uploadés (présentation d'offre, etc.) — même dossier que DocumentsController
+{
+    var uploadsRoot = Path.Combine(app.Environment.WebRootPath ?? app.Environment.ContentRootPath, "uploads");
+    Directory.CreateDirectory(uploadsRoot);
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = new PhysicalFileProvider(uploadsRoot),
+        RequestPath = "/uploads"
+    });
+}
 app.UseAuthentication();
 app.UseMiddleware<TenantResolutionMiddleware>();
 app.UseAuthorization();

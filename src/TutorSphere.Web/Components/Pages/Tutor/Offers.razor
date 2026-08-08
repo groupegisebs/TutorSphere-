@@ -1,9 +1,11 @@
 @page "/tutor/offers"
 @layout TutorLayout
 @rendermode InteractiveServer
+@using Microsoft.AspNetCore.Components.Forms
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
 @inject IJSRuntime JS
+@inject IConfiguration Config
 
 <PageTitle>@L["Offers_Title"] – TutorSphere</PageTitle>
 
@@ -13,14 +15,31 @@
         <p class="ts-page-subtitle">@L["Offers_Subtitle"]</p>
     </div>
     <div class="d-flex gap-2">
+        <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="ToggleGuide">
+            <i class="bi bi-play-btn me-1"></i>@L["Offers_GuideVideoCta"]
+        </button>
         <a href="/tutor/offers/create" class="btn btn-outline-secondary btn-sm">
             <i class="bi bi-eye me-1"></i>@L["Offers_PublicCatalog"]
         </a>
-        <button class="btn btn-primary" @onclick="OpenAdd">
+        <a href="/tutor/offers/create" class="btn btn-primary">
             <i class="bi bi-plus-lg me-1"></i>@L["Offers_New"]
-        </button>
+        </a>
     </div>
 </div>
+
+@if (_showGuide)
+{
+    <div class="offers-guide-panel mb-4">
+        <div class="d-flex justify-content-between align-items-start gap-3 mb-2">
+            <div>
+                <h2 class="h6 mb-1">@L["Offers_GuideVideoTitle"]</h2>
+                <p class="text-muted small mb-0">@L["Offers_GuideVideoSubtitle"]</p>
+            </div>
+            <button type="button" class="btn-close" @onclick="ToggleGuide" aria-label="@L["Button_Cancel"]"></button>
+        </div>
+        <GuideVideo Src="@CreateOfferGuideVideoUrl" />
+    </div>
+}
 
 <div class="row g-3 mb-4">
     <div class="col-sm-6 col-lg-3">
@@ -53,6 +72,10 @@
             <div class="offer-card-meta">
                 <div class="offer-meta-item"><i class="bi bi-cash-coin"></i><strong>@FormatOfferRate(offer)</strong></div>
                 <div class="offer-meta-item text-muted small"><i class="bi bi-check2-circle"></i>@L["CreateOffer_BillingAfterValidationShort"]</div>
+                @if (!string.IsNullOrWhiteSpace(offer.PresentationVideoUrl))
+                {
+                    <div class="offer-meta-item"><i class="bi bi-camera-video"></i>@L["CreateOffer_PresentationVideoReady"]</div>
+                }
                 <div class="offer-meta-item"><i class="bi bi-calendar3"></i>@offer.SessionsPerMonth @L["Offers_Sessions"]</div>
                 <div class="offer-meta-item"><i class="bi bi-clock"></i>@offer.SessionDuration min</div>
                 <div class="offer-meta-item"><i class="bi bi-book"></i>@offer.Subject@(string.IsNullOrWhiteSpace(offer.Level) ? "" : $" · {LevelLabel(offer.Level)}")</div>
@@ -216,6 +239,37 @@
                         <small class="text-muted">@L["Offers_MaxCapacityHint"]</small></div>
                     <div class="col-12"><label class="form-label">@L["Offers_CancellationPolicy"]</label>
                         <textarea class="form-control" rows="2" @bind="_mf.CancellationPolicy"></textarea></div>
+
+                    <div class="col-12">
+                        <label class="form-label">@L["CreateOffer_PresentationVideo"]</label>
+                        <p class="text-muted small mb-2">@L["CreateOffer_PresentationVideoHint"]</p>
+                        <PresentationVideoRecorder MaxSeconds="90"
+                                                   OnSaved="OnOfferVideoSaved"
+                                                   OnError="OnOfferVideoError" />
+                        <div class="mt-3">
+                            <label class="form-label small text-muted">@L["CreateOffer_PresentationVideoOrUpload"]</label>
+                            <InputFile OnChange="OnOfferVideoSelected" accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov" class="form-control" />
+                        </div>
+                        @if (_uploadingVideo)
+                        {
+                            <div class="small text-muted mt-2">
+                                <span class="spinner-border spinner-border-sm me-1"></span>@L["CreateOffer_PresentationVideoUploading"]
+                            </div>
+                        }
+                        @if (!string.IsNullOrEmpty(_videoError))
+                        {
+                            <div class="text-danger small mt-2">@_videoError</div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(_mf.PresentationVideoUrl))
+                        {
+                            <div class="mt-2">
+                                <GuideVideo Src="@OfferVideoPlaybackUrl(_mf.PresentationVideoUrl)" Title="@L["CreateOffer_PresentationVideoReady"]" />
+                                <button type="button" class="btn btn-link btn-sm text-danger px-0" @onclick="ClearOfferVideo">
+                                    @L["CreateOffer_PresentationVideoRemove"]
+                                </button>
+                            </div>
+                        }
+                    </div>
                 </div>
                 @if (!string.IsNullOrEmpty(_modalError))
                 {
@@ -311,7 +365,80 @@
             .Replace("semaine", PeriodLabel("semaine"), StringComparison.OrdinalIgnoreCase);
     }
 
+    private const string CreateOfferGuideVideoUrl = "/videos/guides/create-offer.mp4";
+    private bool _showGuide;
     private bool _showModal;
+    private bool _uploadingVideo;
+    private string? _videoError;
+
+    private void ToggleGuide() => _showGuide = !_showGuide;
+
+    private string OfferVideoPlaybackUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return "";
+        if (url.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return url;
+        var api = string.IsNullOrWhiteSpace(Config["ApiBaseUrl"])
+            ? Config["InternalApiBaseUrl"]
+            : Config["ApiBaseUrl"];
+        return string.IsNullOrWhiteSpace(api)
+            ? url
+            : $"{api.TrimEnd('/')}/{url.TrimStart('/')}";
+    }
+
+    private Task OnOfferVideoSaved(string url)
+    {
+        _mf.PresentationVideoUrl = url;
+        _videoError = null;
+        return Task.CompletedTask;
+    }
+
+    private Task OnOfferVideoError(string error)
+    {
+        _videoError = error;
+        return Task.CompletedTask;
+    }
+
+    private async Task OnOfferVideoSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null) return;
+        _uploadingVideo = true;
+        _videoError = null;
+        try
+        {
+            const long maxSize = 100L * 1024 * 1024;
+            await using var stream = file.OpenReadStream(maxSize);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            using var content = new MultipartFormDataContent();
+            var fileContent = new ByteArrayContent(ms.ToArray());
+            fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
+                string.IsNullOrWhiteSpace(file.ContentType) ? "video/mp4" : file.ContentType);
+            content.Add(fileContent, "file", file.Name);
+            content.Add(new StringContent("OfferPresentations"), "folder");
+            var result = await Api.PostMultipartAsync<OfferDocVm>("api/documents", content);
+            if (result.Error is not null || result.Value is null)
+            {
+                _videoError = result.Error ?? L["CreateOffer_PresentationVideoFailed"];
+                return;
+            }
+            _mf.PresentationVideoUrl = result.Value.Url;
+        }
+        catch (Exception ex)
+        {
+            _videoError = ex.Message;
+        }
+        finally
+        {
+            _uploadingVideo = false;
+        }
+    }
+
+    private void ClearOfferVideo()
+    {
+        _mf.PresentationVideoUrl = null;
+        _videoError = null;
+    }
     private OfferVM? _editing;
     private string _modalError = "";
     private OfferForm _mf = new();
@@ -353,6 +480,7 @@
             Subject = o.Subject,
             Level = string.IsNullOrWhiteSpace(o.Level) ? "Tous niveaux" : o.Level,
             CancellationPolicy = o.CancellationPolicy,
+            PresentationVideoUrl = o.PresentationVideoUrl,
             MaxCapacity = Math.Max(1, o.MaxCapacity)
         };
 
@@ -522,6 +650,7 @@
             sessionRate = (_mf.BillingMode is "perSession" or "quarterlyPerValidated") && _mf.SessionRate > 0
                 ? (decimal?)_mf.SessionRate
                 : null,
+            presentationVideoUrl = string.IsNullOrWhiteSpace(_mf.PresentationVideoUrl) ? null : _mf.PresentationVideoUrl,
             level = _mf.Level,
             cancellationPolicy = string.IsNullOrWhiteSpace(_mf.CancellationPolicy) ? null : _mf.CancellationPolicy.Trim(),
             slots
@@ -623,6 +752,7 @@
             Subject = o.Subject ?? "",
             Level = schedule?.Level ?? "",
             CancellationPolicy = schedule?.CancellationPolicy ?? "",
+            PresentationVideoUrl = schedule?.PresentationVideoUrl,
             ScheduleSummary = o.Frequency,
             Slots = slots,
             IsPublished = o.IsActive,
@@ -638,7 +768,15 @@
         string? Level, string? CancellationPolicy, List<ApiSlotDto>? Slots,
         decimal? HourlyRate = null,
         string? BillingMode = null,
-        decimal? SessionRate = null);
+        decimal? SessionRate = null,
+        string? PresentationVideoUrl = null);
+
+    private sealed class OfferDocVm
+    {
+        public Guid Id { get; set; }
+        public string FileName { get; set; } = "";
+        public string Url { get; set; } = "";
+    }
     private record ApiOfferingDto(
         Guid Id, string Title, string? Description, string? Subject,
         decimal Price, string Currency, int DurationDays, int SessionCount,
@@ -671,6 +809,7 @@
         public string Subject { get; set; } = "";
         public string Level { get; set; } = "Tous niveaux";
         public string CancellationPolicy { get; set; } = "";
+        public string? PresentationVideoUrl { get; set; }
         public int MaxCapacity { get; set; } = 20;
         public Dictionary<string, DaySlot> DaySlots { get; set; } =
             _days.ToDictionary(d => d, _ => new DaySlot());
@@ -694,6 +833,7 @@
         public string Subject { get; set; } = "";
         public string Level { get; set; } = "";
         public string CancellationPolicy { get; set; } = "";
+        public string? PresentationVideoUrl { get; set; }
         public string? ScheduleSummary { get; set; }
         public List<(string Day, string Time)>Slots { get; set; } = [];
         public bool IsPublished { get; set; }

@@ -19,7 +19,8 @@ public record TutorOnboardingModuleDto(
     string Summary,
     string BodyHtml,
     IReadOnlyList<TutorOnboardingQuizItemDto> Quiz,
-    bool IsCompleted);
+    bool IsCompleted,
+    string? VideoUrl = null);
 
 /// <summary>Quiz exposé au client — sans l'index de la bonne réponse.</summary>
 public record TutorOnboardingQuizItemDto(

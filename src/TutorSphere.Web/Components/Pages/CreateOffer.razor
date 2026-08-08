@@ -1,8 +1,11 @@
 @page "/tutor/offers/create"
 @layout TutorLayout
 @rendermode InteractiveServer
+@using Microsoft.AspNetCore.Components.Forms
 @inject IStringLocalizer<SharedResources> L
 @inject NavigationManager Navigation
+@inject ApiClient Api
+@inject IConfiguration Config
 
 <PageTitle>@L["PageTitle_CreateOffer"]</PageTitle>
 
@@ -17,6 +20,11 @@
 </div>
 
 <StepIndicator Steps="@Steps" Subtitles="@StepSubtitles" CurrentStep="@CurrentStep" />
+
+@if (!string.IsNullOrEmpty(_publishError) && CurrentStep < 4)
+{
+    <div class="alert alert-danger mt-3 mb-0">@_publishError</div>
+}
 
 <div class="row g-4 create-offer-body">
     <div class="col-lg-8">
@@ -200,17 +208,49 @@
             <div class="section-card">
                 <h2 class="form-section-title">@L["CreateOffer_SectionOptions"]</h2>
                 <div class="form-check mb-3">
-                    <input class="form-check-input" type="checkbox" checked id="opt-trial" />
+                    <input class="form-check-input" type="checkbox" @bind="OptionTrial" id="opt-trial" />
                     <label class="form-check-label" for="opt-trial">@L["CreateOffer_OptionTrial"]</label>
                 </div>
                 <div class="form-check mb-3">
-                    <input class="form-check-input" type="checkbox" id="opt-materials" />
+                    <input class="form-check-input" type="checkbox" @bind="OptionMaterials" id="opt-materials" />
                     <label class="form-check-label" for="opt-materials">@L["CreateOffer_OptionMaterials"]</label>
                 </div>
                 <div class="form-check mb-3">
-                    <input class="form-check-input" type="checkbox" id="opt-report" />
+                    <input class="form-check-input" type="checkbox" @bind="OptionReport" id="opt-report" />
                     <label class="form-check-label" for="opt-report">@L["CreateOffer_OptionReport"]</label>
                 </div>
+
+                <hr class="my-4" />
+                <h3 class="h6 mb-2">@L["CreateOffer_PresentationVideo"]</h3>
+                <p class="text-muted small mb-3">@L["CreateOffer_PresentationVideoHint"]</p>
+
+                <PresentationVideoRecorder MaxSeconds="90"
+                                           OnSaved="OnPresentationVideoSaved"
+                                           OnError="OnPresentationVideoError" />
+
+                <div class="mt-3">
+                    <label class="form-label small text-muted">@L["CreateOffer_PresentationVideoOrUpload"]</label>
+                    <InputFile OnChange="OnPresentationVideoSelected" accept="video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov" class="form-control" />
+                </div>
+                @if (_uploadingVideo)
+                {
+                    <div class="small text-muted mt-2">
+                        <span class="spinner-border spinner-border-sm me-1"></span>@L["CreateOffer_PresentationVideoUploading"]
+                    </div>
+                }
+                @if (!string.IsNullOrEmpty(_videoError))
+                {
+                    <div class="text-danger small mt-2">@_videoError</div>
+                }
+                @if (!string.IsNullOrWhiteSpace(PresentationVideoUrl))
+                {
+                    <div class="mt-3">
+                        <GuideVideo Src="@PresentationVideoPlaybackUrl" Title="@L["CreateOffer_PresentationVideoReady"]" />
+                        <button type="button" class="btn btn-link btn-sm text-danger px-0" @onclick="ClearPresentationVideo">
+                            @L["CreateOffer_PresentationVideoRemove"]
+                        </button>
+                    </div>
+                }
             </div>
         }
 
@@ -219,7 +259,19 @@
             <div class="section-card">
                 <h2 class="form-section-title">@L["CreateOffer_SectionPreview"]</h2>
                 <p class="text-muted">@L["CreateOffer_PreviewNote"]</p>
-                <button class="btn btn-primary mt-3" type="button">
+                @if (!string.IsNullOrWhiteSpace(PresentationVideoUrl))
+                {
+                    <GuideVideo Src="@PresentationVideoPlaybackUrl" Title="@L["CreateOffer_PresentationVideo"]" CssClass="mb-3" />
+                }
+                @if (!string.IsNullOrEmpty(_publishError))
+                {
+                    <div class="alert alert-danger">@_publishError</div>
+                }
+                <button class="btn btn-primary mt-3" type="button" disabled="@_publishing" @onclick="PublishOfferAsync">
+                    @if (_publishing)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2"></span>
+                    }
                     @L["Button_PublishOffer"] <i class="bi bi-send ms-2" aria-hidden="true"></i>
                 </button>
             </div>
@@ -286,9 +338,22 @@
                     </ul>
                 }
 
-                <button class="btn btn-primary w-100 mt-3" type="button" @onclick="NextStep" disabled="@(CurrentStep >= 4)">
-                    @L["Button_Next"] <i class="bi bi-arrow-right ms-2" aria-hidden="true"></i>
-                </button>
+                @if (CurrentStep < 4)
+                {
+                    <button class="btn btn-primary w-100 mt-3" type="button" @onclick="NextStep">
+                        @L["Button_Next"] <i class="bi bi-arrow-right ms-2" aria-hidden="true"></i>
+                    </button>
+                }
+                else
+                {
+                    <button class="btn btn-primary w-100 mt-3" type="button" disabled="@_publishing" @onclick="PublishOfferAsync">
+                        @if (_publishing)
+                        {
+                            <span class="spinner-border spinner-border-sm me-2"></span>
+                        }
+                        @L["Button_PublishOffer"] <i class="bi bi-send ms-2" aria-hidden="true"></i>
+                    </button>
+                }
             </div>
         </div>
     </div>
@@ -300,12 +365,9 @@
         @L["Button_Cancel"]
     </button>
     <div class="create-offer-footer-actions">
-        <button type="button" class="btn btn-outline-secondary">
-            @L["Button_SaveDraft"]
-        </button>
         @if (CurrentStep > 1)
         {
-            <button type="button" class="btn btn-outline-primary" @onclick="PreviousStep">
+            <button type="button" class="btn btn-outline-primary" @onclick="PreviousStep" disabled="@_publishing">
                 <i class="bi bi-arrow-left me-1" aria-hidden="true"></i> @L["Button_Previous"]
             </button>
         }
@@ -317,7 +379,11 @@
         }
         else
         {
-            <button type="button" class="btn btn-primary">
+            <button type="button" class="btn btn-primary" disabled="@_publishing" @onclick="PublishOfferAsync">
+                @if (_publishing)
+                {
+                    <span class="spinner-border spinner-border-sm me-2"></span>
+                }
                 @L["Button_PublishOffer"] <i class="bi bi-send ms-2" aria-hidden="true"></i>
             </button>
         }
@@ -477,6 +543,240 @@
             SelectedBenefits.Add(benefit);
     }
 
-    private void NextStep() { if (CurrentStep < 4) CurrentStep++; }
-    private void PreviousStep() { if (CurrentStep > 1) CurrentStep--; }
+    private bool OptionTrial { get; set; } = true;
+    private bool OptionMaterials { get; set; }
+    private bool OptionReport { get; set; }
+    private string? PresentationVideoUrl { get; set; }
+    private string? PresentationVideoFileName { get; set; }
+    private bool _uploadingVideo;
+    private bool _publishing;
+    private string? _videoError;
+    private string? _publishError;
+
+    private string PresentationVideoPlaybackUrl =>
+        string.IsNullOrWhiteSpace(PresentationVideoUrl)
+            ? ""
+            : PresentationVideoUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase)
+                ? PresentationVideoUrl
+                : $"{PublicApiBase.TrimEnd('/')}/{PresentationVideoUrl.TrimStart('/')}";
+
+    private string PublicApiBase =>
+        NonEmpty(Config["ApiBaseUrl"])
+        ?? NonEmpty(Config["InternalApiBaseUrl"])
+        ?? Navigation.BaseUri.TrimEnd('/');
+
+    private static string? NonEmpty(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private void NextStep()
+    {
+        _publishError = null;
+        if (CurrentStep == 1 && !ValidateStep1())
+            return;
+        if (CurrentStep == 2 && Rate <= 0)
+        {
+            _publishError = L["CreateOffer_RateRequired"];
+            return;
+        }
+        if (CurrentStep < 4) CurrentStep++;
+    }
+
+    private void PreviousStep()
+    {
+        _publishError = null;
+        if (CurrentStep > 1) CurrentStep--;
+    }
+
+    private bool ValidateStep1()
+    {
+        if (string.IsNullOrWhiteSpace(OfferTitle))
+        {
+            _publishError = L["CreateOffer_TitleRequired"];
+            CurrentStep = 1;
+            return false;
+        }
+        if (string.IsNullOrWhiteSpace(Description))
+        {
+            _publishError = L["CreateOffer_DescriptionRequired"];
+            CurrentStep = 1;
+            return false;
+        }
+        return true;
+    }
+
+    private Task OnPresentationVideoSaved(string url)
+    {
+        PresentationVideoUrl = url;
+        PresentationVideoFileName = "presentation-recorded";
+        _videoError = null;
+        return Task.CompletedTask;
+    }
+
+    private Task OnPresentationVideoError(string error)
+    {
+        _videoError = error;
+        return Task.CompletedTask;
+    }
+
+    private async Task OnPresentationVideoSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null) return;
+
+        _uploadingVideo = true;
+        _videoError = null;
+        try
+        {
+            const long maxSize = 100L * 1024 * 1024; // 100 Mo
+            await using var stream = file.OpenReadStream(maxSize);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+
+            using var content = new MultipartFormDataContent();
+            var fileContent = new ByteArrayContent(ms.ToArray());
+            fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
+                string.IsNullOrWhiteSpace(file.ContentType) ? "video/mp4" : file.ContentType);
+            content.Add(fileContent, "file", file.Name);
+            content.Add(new StringContent("OfferPresentations"), "folder");
+
+            var result = await Api.PostMultipartAsync<DocVm>("api/documents", content);
+            if (result.Error is not null || result.Value is null)
+            {
+                _videoError = result.Error ?? L["CreateOffer_PresentationVideoFailed"];
+                return;
+            }
+
+            PresentationVideoUrl = result.Value.Url;
+            PresentationVideoFileName = result.Value.FileName;
+        }
+        catch (Exception ex)
+        {
+            _videoError = ex.Message;
+        }
+        finally
+        {
+            _uploadingVideo = false;
+        }
+    }
+
+    private void ClearPresentationVideo()
+    {
+        PresentationVideoUrl = null;
+        PresentationVideoFileName = null;
+        _videoError = null;
+    }
+
+    private async Task PublishOfferAsync()
+    {
+        _publishError = null;
+        if (!ValidateStep1())
+        {
+            CurrentStep = 1;
+            return;
+        }
+        if (Rate <= 0)
+        {
+            _publishError = L["CreateOffer_RateRequired"];
+            CurrentStep = 2;
+            return;
+        }
+
+        _publishing = true;
+        try
+        {
+            var durationDays = BillingMode == "quarterlyPerValidated" ? 90 : 30;
+            var billingPeriod = BillingMode == "quarterlyPerValidated" ? "trimestre" : "mois";
+            var modeLabel = SelectedMode switch
+            {
+                "inperson" => "Présentiel",
+                "hybrid" => "Hybride",
+                _ => "En ligne"
+            };
+
+            var levelParts = new List<string> { CycleLabel };
+            if (SelectedSpecificLevels.Count > 0)
+            {
+                levelParts.AddRange(AvailableSpecificLevels
+                    .Where(l => SelectedSpecificLevels.Contains(l.Key))
+                    .Select(l => l.Label));
+            }
+
+            var optionsNote = string.Join(" · ", new[]
+            {
+                OptionTrial ? L["CreateOffer_OptionTrial"].Value : null,
+                OptionMaterials ? L["CreateOffer_OptionMaterials"].Value : null,
+                OptionReport ? L["CreateOffer_OptionReport"].Value : null
+            }.Where(x => x is not null));
+
+            var desc = Description.Trim();
+            if (SelectedBenefits.Count > 0)
+                desc += "\n\n" + string.Join("\n", SelectedBenefits.Select(b => "• " + b));
+            if (!string.IsNullOrWhiteSpace(optionsNote))
+                desc += "\n\n" + optionsNote;
+            if (!string.IsNullOrWhiteSpace(Language))
+                desc += $"\n\n{L["CreateOffer_Language"]}: {Language}";
+
+            var price = BillingMode == "hourly" ? EstimatedSessionCost : Rate;
+
+            var schedule = new
+            {
+                billingPeriod,
+                cadence = "weekly",
+                sessionDurationMin = SessionDuration,
+                billingMode = BillingMode,
+                hourlyRate = BillingMode == "hourly" ? (decimal?)Rate : null,
+                sessionRate = BillingMode is "perSession" or "quarterlyPerValidated" ? (decimal?)Rate : null,
+                presentationVideoUrl = PresentationVideoUrl,
+                level = string.Join(" · ", levelParts),
+                cancellationPolicy = (string?)null,
+                slots = Array.Empty<object>()
+            };
+
+            var req = new
+            {
+                title = OfferTitle.Trim(),
+                description = desc,
+                subject = Subject,
+                price,
+                currency = "CAD",
+                durationDays,
+                sessionCount = 1,
+                frequency = billingPeriod,
+                mode = modeLabel,
+                maxCapacity = 20,
+                schedule
+            };
+
+            var created = await Api.PostWithErrorAsync<CreatedOfferVm>("api/subscription-offerings", req);
+            if (created.Error is not null || created.Value is null)
+            {
+                _publishError = created.Error ?? L["CreateOffer_PublishFailed"];
+                return;
+            }
+
+            // Toujours publié immédiatement (API IsActive = true à la création).
+            Navigation.NavigateTo("tutor/offers");
+        }
+        catch (Exception ex)
+        {
+            _publishError = ex.Message;
+        }
+        finally
+        {
+            _publishing = false;
+        }
+    }
+
+    private sealed class DocVm
+    {
+        public Guid Id { get; set; }
+        public string FileName { get; set; } = "";
+        public string Url { get; set; } = "";
+    }
+
+    private sealed class CreatedOfferVm
+    {
+        public Guid Id { get; set; }
+        public bool IsActive { get; set; }
+    }
 }

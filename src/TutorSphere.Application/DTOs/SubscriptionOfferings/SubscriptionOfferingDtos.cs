@@ -12,9 +12,11 @@ public record OfferingScheduleDto(
     string? CancellationPolicy,
     IReadOnlyList<OfferingScheduleSlotDto> Slots,
     decimal? HourlyRate = null,
-    /// <summary>hourly | perSession — facturation après validation du cours.</summary>
+    /// <summary>hourly | perSession | quarterlyPerValidated — facturation après validation du cours.</summary>
     string? BillingMode = null,
-    decimal? SessionRate = null);
+    decimal? SessionRate = null,
+    /// <summary>URL de la vidéo de présentation du cours (document uploadé ou lien).</summary>
+    string? PresentationVideoUrl = null);
 
 public record SubscriptionOfferingDto(
     Guid Id,

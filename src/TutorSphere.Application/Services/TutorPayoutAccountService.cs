@@ -78,6 +78,10 @@ public class TutorPayoutAccountService : ITutorPayoutAccountService
 
         ValidateAccountPayload(kind, request);
 
+        var country = TutorPayoutPolicy.NormalizeCountry(request.CountryCode ?? tenant.Country);
+        if (PayoutProviderCodes.IsInterac(kind) && !TutorPayoutPolicy.SupportsInteracETransfer(country))
+            throw new InvalidOperationException("Interac e-Transfer est disponible uniquement pour le Canada (CA).");
+
         string? externalToken = request.EmailOrAccountId;
         string? maskedPhone = null;
 
@@ -372,10 +376,22 @@ public class TutorPayoutAccountService : ITutorPayoutAccountService
         {
             foreach (var p in required)
                 catalog.Add(new PayoutProviderCatalogItemDto(p.ToString(), DisplayName(p), true, region.ToString()));
+
+            // Canada : Interac e-Transfer (virement bancaire) en option
+            if (TutorPayoutPolicy.SupportsInteracETransfer(country))
+            {
+                catalog.Add(new PayoutProviderCatalogItemDto(
+                    nameof(PayoutProviderKind.InteracETransfer),
+                    DisplayName(PayoutProviderKind.InteracETransfer),
+                    IsRequired: false,
+                    region.ToString()));
+            }
+
             foreach (var extra in Enum.GetValues<PayoutProviderKind>())
             {
                 if (required.Contains(extra)) continue;
                 if (PayoutProviderCodes.IsMobileMoney(extra)) continue;
+                if (PayoutProviderCodes.IsInterac(extra)) continue; // déjà ajouté pour CA uniquement
                 catalog.Add(new PayoutProviderCatalogItemDto(extra.ToString(), DisplayName(extra), false, region.ToString()));
             }
         }
@@ -407,6 +423,10 @@ public class TutorPayoutAccountService : ITutorPayoutAccountService
                 if (string.IsNullOrWhiteSpace(request.EmailOrAccountId) || !request.EmailOrAccountId.Contains('@'))
                     throw new InvalidOperationException("E-mail PayPal obligatoire.");
                 break;
+            case PayoutProviderKind.InteracETransfer:
+                if (string.IsNullOrWhiteSpace(request.EmailOrAccountId) || !request.EmailOrAccountId.Contains('@'))
+                    throw new InvalidOperationException("E-mail Interac (Autodépôt) obligatoire.");
+                break;
             case PayoutProviderKind.StripeConnect:
                 throw new InvalidOperationException("Utilisez l'onboarding Stripe Connect (pas de saisie manuelle acct_).");
             default:
@@ -423,6 +443,7 @@ public class TutorPayoutAccountService : ITutorPayoutAccountService
     {
         PayoutProviderKind.StripeConnect => "Stripe Connect",
         PayoutProviderKind.PayPal => "PayPal",
+        PayoutProviderKind.InteracETransfer => "Interac e-Transfer",
         PayoutProviderKind.Wave => "Wave",
         PayoutProviderKind.TapTapSend => "TapTap Send",
         PayoutProviderKind.OrangeMoney => "Orange Money",

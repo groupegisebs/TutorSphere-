@@ -143,12 +143,24 @@ else if (_setup is not null)
                         <label class="form-label">@L["Payout_Holder"]</label>
                         <input class="form-control" @bind="_form.AccountHolderName" />
                     </div>
-                    @if (_form.ProviderKind == "PayPal")
+                    @if (_form.ProviderKind is "PayPal" or "InteracETransfer")
                     {
                         <div class="col-md-3">
-                            <label class="form-label">@L["Payout_PayPalEmail"]</label>
-                            <input class="form-control" @bind="_form.EmailOrAccountId" type="email" />
+                            <label class="form-label">
+                                @(_form.ProviderKind == "InteracETransfer" ? L["Payout_InteracEmail"] : L["Payout_PayPalEmail"])
+                            </label>
+                            <input class="form-control" @bind="_form.EmailOrAccountId" type="email"
+                                   placeholder="@(_form.ProviderKind == "InteracETransfer" ? "email@autodeposit.ca" : "email@paypal.com")" />
                         </div>
+                        @if (_form.ProviderKind == "InteracETransfer")
+                        {
+                            <div class="col-md-6">
+                                <label class="form-label">@L["Payout_InteracDetails"]</label>
+                                <input class="form-control" @bind="_form.PaymentDetails"
+                                       placeholder="@L["Payout_InteracDetailsPlaceholder"]" />
+                                <div class="form-text">@L["Payout_InteracHint"]</div>
+                            </div>
+                        }
                     }
                     else
                     {
@@ -198,7 +210,7 @@ else if (_setup is not null)
                                     <span class="ts-badge ts-badge-success ms-1">@L["Payout_Primary"]</span>
                                 }
                             </td>
-                            <td>@a.ProviderKind</td>
+                            <td>@ProviderLabel(a.ProviderKind)</td>
                             <td>@a.AccountHolderName</td>
                             <td>@(a.EmailOrAccountId ?? a.PaymentDetails ?? "—")</td>
                             <td>@(a.PhoneNumber ?? "—")</td>
@@ -261,8 +273,23 @@ else
         public string AccountHolderName { get; set; } = "";
         public string? EmailOrAccountId { get; set; }
         public string? PhoneNumber { get; set; }
+        public string? PaymentDetails { get; set; }
         public bool IsPrimary { get; set; } = true;
     }
+
+    private static string ProviderLabel(string? kind) => kind switch
+    {
+        "InteracETransfer" => "Interac e-Transfer",
+        "StripeConnect" => "Stripe Connect",
+        "PayPal" => "PayPal",
+        "TapTapSend" => "TapTap Send",
+        "OrangeMoney" => "Orange Money",
+        "MtnMomo" => "MTN MoMo",
+        "Mpesa" => "M-Pesa",
+        "Moov" => "Moov Money",
+        "Airtel" => "Airtel Money",
+        _ => kind ?? ""
+    };
 
     protected override async Task OnInitializedAsync()
     {
@@ -328,7 +355,8 @@ else
                 _paypalEmail = _setup.PayPalEmail;
                 var catalog = _setup.CatalogList;
                 if (catalog.Count > 0)
-                    _form.ProviderKind = catalog.FirstOrDefault(c => c.ProviderKind != "StripeConnect")?.ProviderKind
+                    _form.ProviderKind = catalog.FirstOrDefault(c => c.ProviderKind == "InteracETransfer")?.ProviderKind
+                        ?? catalog.FirstOrDefault(c => c.ProviderKind != "StripeConnect")?.ProviderKind
                         ?? catalog[0].ProviderKind;
             }
             else
@@ -425,11 +453,14 @@ else
                 accountHolderName = _form.AccountHolderName,
                 emailOrAccountId = _form.EmailOrAccountId,
                 phoneNumber = _form.PhoneNumber,
-                paymentDetails = (string?)null
+                paymentDetails = string.IsNullOrWhiteSpace(_form.PaymentDetails) ? null : _form.PaymentDetails.Trim()
             });
             if (result.Error is not null) { _error = result.Error; return; }
             _showAdd = false;
-            _form = new AccountForm();
+            _form = new AccountForm
+            {
+                ProviderKind = _country == "CA" ? "InteracETransfer" : "PayPal"
+            };
             _success = L["Payout_Saved"];
             await ReloadAsync();
         }

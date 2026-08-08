@@ -146,11 +146,15 @@ public class TutorOnboardingService(
                 d.Summary,
                 d.BodyHtml,
                 d.Quiz.Select(q => new TutorOnboardingQuizItemDto(q.Question, q.Choices)).ToList(),
-                completed.Contains(d.Id, StringComparer.OrdinalIgnoreCase)))
+                completed.Contains(d.Id, StringComparer.OrdinalIgnoreCase),
+                d.VideoUrl))
             .ToList();
 
     private static IReadOnlyList<ModuleDef> GetModuleCatalog(string culture) =>
         culture.StartsWith("fr", StringComparison.OrdinalIgnoreCase) ? FrModules() : EnModules();
+
+    /// <summary>Vidéo démo « créer une offre » (fichier Web wwwroot ou URL YouTube/Vimeo).</summary>
+    public const string CreateOfferGuideVideoUrl = "/videos/guides/create-offer.mp4";
 
     private sealed record QuizDef(string Question, IReadOnlyList<string> Choices, int CorrectIndex);
 
@@ -160,7 +164,8 @@ public class TutorOnboardingService(
         string Title,
         string Summary,
         string BodyHtml,
-        IReadOnlyList<QuizDef> Quiz);
+        IReadOnlyList<QuizDef> Quiz,
+        string? VideoUrl = null);
 
     private static List<ModuleDef> FrModules() =>
     [
@@ -174,14 +179,18 @@ public class TutorOnboardingService(
             [new("Quel est l'objectif de TutorSphere pour vous ?",
                 ["Réserver un hôtel", "Gérer votre école de soutien scolaire", "Acheter des fournitures"], 1)]),
         new("offers", 2, "Créer vos offres de cours",
-            "Publiez des forfaits que les parents peuvent choisir.",
+            "Regardez la vidéo puis publiez une offre que les parents peuvent choisir.",
             """
-            <p>Menu <strong>Offres</strong> : créez un forfait (matière, prix, durée, mode en ligne/présentiel).</p>
+            <p>Regardez la <strong>vidéo de démonstration</strong> ci-dessous : elle montre comment créer une offre étape par étape.</p>
+            <p>Menu <strong>Offres</strong> → <strong>Nouvelle offre</strong> : matière, cycle, mode (en ligne / présentiel), puis tarification.</p>
+            <p>Modes de facturation : <strong>taux horaire</strong>, <strong>taux par séance</strong>, ou <strong>abonnement trimestriel</strong> — chaque cours n’est comptabilisé qu’après validation de son effectivité.</p>
             <p>Une offre active devient visible aux parents <em>une fois votre école publique</em>.</p>
-            <p>Astuce : commencez par un forfait simple (ex. 4 séances / mois).</p>
             """,
-            [new("Où créez-vous un forfait de cours ?",
-                ["Menu Offres", "Menu Messages", "Espace parent"], 0)]),
+            [new("Quand un cours est-il facturé ?",
+                ["Dès la réservation", "Après validation / confirmation de l'effectivité du cours", "Une fois par an seulement"], 1),
+             new("Où créez-vous une offre de cours ?",
+                ["Menu Offres", "Menu Messages", "Espace parent"], 0)],
+            CreateOfferGuideVideoUrl),
         new("students", 3, "Élèves, parents et inscriptions",
             "Accepter une demande puis encaisser le paiement.",
             """
@@ -222,13 +231,18 @@ public class TutorOnboardingService(
             [new("What is TutorSphere for you?",
                 ["Book a hotel", "Run your tutoring school", "Buy supplies"], 1)]),
         new("offers", 2, "Create course offerings",
-            "Publish packages parents can enroll in.",
+            "Watch the demo video, then publish an offer parents can enroll in.",
             """
-            <p>Use <strong>Offers</strong> to create a package (subject, price, duration, online/in-person).</p>
+            <p>Watch the <strong>demo video</strong> below: it shows how to create an offer step by step.</p>
+            <p>Go to <strong>Offers</strong> → <strong>New offer</strong>: subject, cycle, mode (online / in-person), then pricing.</p>
+            <p>Billing modes: <strong>hourly rate</strong>, <strong>per-session rate</strong>, or <strong>quarterly subscription</strong> — each lesson is charged only after it is validated as having taken place.</p>
             <p>Active offers become visible once your school is public.</p>
             """,
-            [new("Where do you create a course package?",
-                ["Offers menu", "Messages menu", "Parent portal"], 0)]),
+            [new("When is a lesson billed?",
+                ["As soon as it is booked", "After the lesson is validated / confirmed as completed", "Once a year only"], 1),
+             new("Where do you create a course offer?",
+                ["Offers menu", "Messages menu", "Parent portal"], 0)],
+            CreateOfferGuideVideoUrl),
         new("students", 3, "Students, parents and enrollment",
             "Accept a request, then collect payment.",
             """
