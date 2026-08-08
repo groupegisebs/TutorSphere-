@@ -75,14 +75,56 @@
                             else
                             {
                                 <div class="mb-2">
-                                    <label class="form-label">@L["PayMethod_Country"]</label>
-                                    <select class="form-select" @bind="_countryCode" @bind:after="OnCountryChangedAsync" disabled="@_busy">
-                                        <option value="">@L["PayMethod_SelectCountry"]</option>
-                                        @foreach (var c in _countries)
+                                    <label class="form-label" id="pay-country-label">@L["PayMethod_Country"]</label>
+                                    <div class="pay-country-picker">
+                                        <button type="button"
+                                                class="pay-country-trigger form-select text-start"
+                                                disabled="@_busy"
+                                                aria-expanded="@_countryMenuOpen"
+                                                aria-labelledby="pay-country-label"
+                                                @onclick="ToggleCountryMenu">
+                                            @if (SelectedCountry is { } selected)
+                                            {
+                                                <span class="pay-country-option-inner">
+                                                    <img class="pay-country-flag"
+                                                         src="@FlagUrl(selected.CountryCode)"
+                                                         alt=""
+                                                         width="20"
+                                                         height="15"
+                                                         loading="lazy" />
+                                                    <span>@selected.CountryName (@selected.Currency)</span>
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">@L["PayMethod_SelectCountry"]</span>
+                                            }
+                                        </button>
+                                        @if (_countryMenuOpen && !_busy)
                                         {
-                                            <option value="@c.CountryCode">@c.CountryName (@c.Currency)</option>
+                                            <ul class="pay-country-menu" role="listbox">
+                                                @foreach (var c in _countries)
+                                                {
+                                                    <li>
+                                                        <button type="button"
+                                                                class="pay-country-item @(_countryCode == c.CountryCode ? "is-selected" : "")"
+                                                                role="option"
+                                                                aria-selected="@(_countryCode == c.CountryCode ? "true" : "false")"
+                                                                @onclick="() => SelectCountryAsync(c.CountryCode)">
+                                                            <img class="pay-country-flag"
+                                                                 src="@FlagUrl(c.CountryCode)"
+                                                                 alt=""
+                                                                 width="20"
+                                                                 height="15"
+                                                                 loading="lazy" />
+                                                            <span>@c.CountryName</span>
+                                                            <span class="pay-country-currency">@c.Currency</span>
+                                                        </button>
+                                                    </li>
+                                                }
+                                            </ul>
                                         }
-                                    </select>
+                                    </div>
                                 </div>
                                 <div class="mb-2">
                                     <label class="form-label">@L["PayMethod_Network"]</label>
@@ -166,13 +208,16 @@
     private string _countryCode = "";
     private string _network = "";
     private string _phone = "";
+    private bool _countryMenuOpen;
     private List<CountryVm> _countries = [];
 
-    private IEnumerable<NetworkVm> SelectedNetworks =>
-        _countries.FirstOrDefault(c => c.CountryCode == _countryCode)?.Networks ?? [];
+    private CountryVm? SelectedCountry =>
+        _countries.FirstOrDefault(c => c.CountryCode == _countryCode);
 
-    private string? SelectedDial =>
-        _countries.FirstOrDefault(c => c.CountryCode == _countryCode)?.PhoneCountryCode;
+    private IEnumerable<NetworkVm> SelectedNetworks =>
+        SelectedCountry?.Networks ?? [];
+
+    private string? SelectedDial => SelectedCountry?.PhoneCountryCode;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -208,11 +253,22 @@
         _instruction = null;
     }
 
-    private Task OnCountryChangedAsync()
+    private void ToggleCountryMenu()
     {
+        if (_busy) return;
+        _countryMenuOpen = !_countryMenuOpen;
+    }
+
+    private Task SelectCountryAsync(string countryCode)
+    {
+        _countryCode = countryCode;
         _network = "";
+        _countryMenuOpen = false;
         return Task.CompletedTask;
     }
+
+    private static string FlagUrl(string countryCode) =>
+        $"https://flagcdn.com/w40/{countryCode.Trim().ToLowerInvariant()}.png";
 
     private string SelectedClass(string method) =>
         _method == method ? "is-selected" : "";
@@ -266,6 +322,7 @@
         _countryCode = "";
         _network = "";
         _phone = "";
+        _countryMenuOpen = false;
         _busy = false;
     }
 
