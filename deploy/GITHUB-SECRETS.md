@@ -88,7 +88,15 @@ Valeurs par défaut (aucun secret GitHub requis) :
 | FirstName | `Admin` |
 | LastName | `TutorSphere` |
 
-Surcharge optionnelle : secrets `TUTORSPHERE_BOOTSTRAP_ADMIN_EMAIL` / `TUTORSPHERE_BOOTSTRAP_ADMIN_PASSWORD`, variable `TUTORSPHERE_BOOTSTRAP_ADMIN_ENABLED`.
+Surcharge optionnelle (l’un ou l’autre jeu de noms) :
+
+| Rôle | Noms acceptés |
+|------|----------------|
+| Enabled | variable `TUTORSPHERE_BOOTSTRAP_ADMIN_ENABLED` **ou** secret `SEED__BOOTSTRAPADMIN__ENABLED` / `TUTORSPHERE_BOOTSTRAP_ADMIN_ENABLED` (valeur `true`) |
+| Email | `TUTORSPHERE_BOOTSTRAP_ADMIN_EMAIL` **ou** `SEED__BOOTSTRAPADMIN__EMAIL` |
+| Password | `TUTORSPHERE_BOOTSTRAP_ADMIN_PASSWORD` **ou** `SEED__BOOTSTRAPADMIN__PASSWORD` |
+
+Sans `Enabled=true`, le compte SuperAdmin n’est **pas** créé / synchronisé au démarrage.
 
 Connexion : `https://tutorsphere.gisebs.com/login/admin`
 

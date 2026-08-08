@@ -100,9 +100,14 @@ jobs:
           EMAIL_CLIENT_CODE_VAR: ${{ vars.TUTORSPHERE_EMAIL_CLIENT_CODE }}
           API_BASE_URL_VAR: ${{ vars.TUTORSPHERE_API_BASE_URL }}
           API_BASE_URL_SECRET: ${{ secrets.TUTORSPHERE_API_BASE_URL }}
+          # Noms officiels TUTORSPHERE_* OU alias SEED__BOOTSTRAPADMIN__* (secrets déjà créés)
           BOOTSTRAP_ADMIN_ENABLED_VAR: ${{ vars.TUTORSPHERE_BOOTSTRAP_ADMIN_ENABLED }}
+          BOOTSTRAP_ADMIN_ENABLED_SECRET: ${{ secrets.TUTORSPHERE_BOOTSTRAP_ADMIN_ENABLED }}
+          BOOTSTRAP_ADMIN_ENABLED_SEED: ${{ secrets.SEED__BOOTSTRAPADMIN__ENABLED }}
           BOOTSTRAP_ADMIN_EMAIL: ${{ secrets.TUTORSPHERE_BOOTSTRAP_ADMIN_EMAIL }}
+          BOOTSTRAP_ADMIN_EMAIL_SEED: ${{ secrets.SEED__BOOTSTRAPADMIN__EMAIL }}
           BOOTSTRAP_ADMIN_PASSWORD: ${{ secrets.TUTORSPHERE_BOOTSTRAP_ADMIN_PASSWORD }}
+          BOOTSTRAP_ADMIN_PASSWORD_SEED: ${{ secrets.SEED__BOOTSTRAPADMIN__PASSWORD }}
         run: |
           source deploy/gha-env.sh
           source deploy/database.defaults.sh
@@ -226,14 +231,26 @@ jobs:
             gha_write_env API_BASE_URL "${DEFAULT_API_BASE_URL}"
           fi
 
-          # SuperAdmin bootstrap — défauts prédéfinis ; secrets GitHub optionnels pour surcharge
+          # SuperAdmin bootstrap — accepte TUTORSPHERE_* ou SEED__BOOTSTRAPADMIN__*
           # Note: secret GitHub manquant = "" (set), donc ${VAR:-default} ne s'applique pas → tester -z.
-          BOOTSTRAP_ENABLED_RAW=$(printf '%s' "${BOOTSTRAP_ADMIN_ENABLED_VAR:-false}" | tr '[:upper:]' '[:lower:]')
+          BOOTSTRAP_ENABLED_RAW=""
+          for cand in \
+            "${BOOTSTRAP_ADMIN_ENABLED_VAR:-}" \
+            "${BOOTSTRAP_ADMIN_ENABLED_SECRET:-}" \
+            "${BOOTSTRAP_ADMIN_ENABLED_SEED:-}"; do
+            [ -n "$cand" ] && BOOTSTRAP_ENABLED_RAW="$cand" && break
+          done
+          BOOTSTRAP_ENABLED_RAW=$(printf '%s' "${BOOTSTRAP_ENABLED_RAW:-false}" | tr '[:upper:]' '[:lower:]')
           case "$BOOTSTRAP_ENABLED_RAW" in true|1|yes|on) BOOTSTRAP_ENABLED_RAW=true ;; *) BOOTSTRAP_ENABLED_RAW=false ;; esac
+
           BOOTSTRAP_EMAIL_RAW=$(gha_sanitize "${BOOTSTRAP_ADMIN_EMAIL:-}")
-          BOOTSTRAP_PASSWORD_RAW=$(gha_sanitize "${BOOTSTRAP_ADMIN_PASSWORD:-}")
+          [ -z "$BOOTSTRAP_EMAIL_RAW" ] && BOOTSTRAP_EMAIL_RAW=$(gha_sanitize "${BOOTSTRAP_ADMIN_EMAIL_SEED:-}")
           [ -z "$BOOTSTRAP_EMAIL_RAW" ] && BOOTSTRAP_EMAIL_RAW="tutorsphere@gisebs.com"
+
+          BOOTSTRAP_PASSWORD_RAW=$(gha_sanitize "${BOOTSTRAP_ADMIN_PASSWORD:-}")
+          [ -z "$BOOTSTRAP_PASSWORD_RAW" ] && BOOTSTRAP_PASSWORD_RAW=$(gha_sanitize "${BOOTSTRAP_ADMIN_PASSWORD_SEED:-}")
           [ -z "$BOOTSTRAP_PASSWORD_RAW" ] && BOOTSTRAP_PASSWORD_RAW="Mcd!123456789"
+
           gha_write_env SEED_BOOTSTRAP_ADMIN_ENABLED "$BOOTSTRAP_ENABLED_RAW"
           gha_write_env SEED_BOOTSTRAP_ADMIN_EMAIL "$BOOTSTRAP_EMAIL_RAW"
           gha_write_env SEED_BOOTSTRAP_ADMIN_PASSWORD "$BOOTSTRAP_PASSWORD_RAW"
