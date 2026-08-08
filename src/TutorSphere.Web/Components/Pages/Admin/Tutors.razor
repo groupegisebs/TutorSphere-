@@ -1,7 +1,8 @@
 @page "/admin/tutors"
 @layout AdminLayout
-@rendermode InteractiveServer
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject AdminService AdminSvc
+@inject AuthService Auth
 @inject ApiClient Api
 @inject IStringLocalizer<SharedResources> L
 
@@ -170,6 +171,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
         _isLoading = true;
         _errorMessage = null;
         try { _tutors = await AdminSvc.GetUsersAsync("Tutor"); }

@@ -1,12 +1,13 @@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @implements IDisposable
 @inject AuthService AuthSvc
 @inject NavigationManager Navigation
-@inject AuthenticationStateProvider AuthState
+@inject IJSRuntime Js
 
 <div class="cc-topbar">
     <div class="cc-topbar-left">
         <div class="cc-breadcrumb">
-            <button type="button" class="cc-breadcrumb-btn" @onclick="OnToggleSidebar" aria-label="Menu">
+            <button type="button" class="cc-breadcrumb-btn" @onclick="ToggleSidebarAsync" aria-label="Menu">
                 <i class="bi bi-list"></i>
             </button>
             <span>@_pageTitle</span>
@@ -42,16 +43,13 @@
 
 @if (_menuOpen)
 {
-    <div style="position:fixed;inset:0;z-index:25;" @onclick="() => _menuOpen = false"></div>
+    <div style="position:fixed;inset:0;z-index:25;" @onclick="CloseMenu"></div>
 }
 
 @code {
-    [Parameter] public EventCallback OnToggleSidebar { get; set; }
-
     private bool _menuOpen;
-    private bool _listenAuth;
     private string _search = "";
-    private string _pageTitle = "Tableau de bord";
+    private string _pageTitle = "Control Center";
 
     private string _displayName =>
         !string.IsNullOrWhiteSpace(AuthSvc.UserName) ? AuthSvc.UserName! :
@@ -73,28 +71,42 @@
         _pageTitle = ResolveTitle(Navigation.Uri);
     }
 
-    protected override void OnAfterRender(bool firstRender)
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender || _listenAuth)
+        if (!firstRender)
             return;
 
-        // S'abonner APRÈS le 1er rendu : NotifyAuthenticationStateChanged pendant OnInitialized
-        // du layout faisait planter le circuit (« unhandled exception »).
-        _listenAuth = true;
-        AuthState.AuthenticationStateChanged += OnAuthChanged;
+        // Circuit dédié topbar : restaurer la session ici (pas pendant OnInitialized du layout).
+        try
+        {
+            await AuthSvc.EnsureSessionRestoredAsync(forceJs: true);
+            await InvokeAsync(StateHasChanged);
+        }
+        catch
+        {
+            // ne jamais tuer le circuit
+        }
     }
-
-    private void OnAuthChanged(Task<AuthenticationState> task)
-        => InvokeAsync(StateHasChanged);
 
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
     {
         _pageTitle = ResolveTitle(e.Location);
         _menuOpen = false;
-        InvokeAsync(StateHasChanged);
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ToggleSidebarAsync()
+    {
+        try
+        {
+            await Js.InvokeVoidAsync("eval",
+                "document.getElementById('cc-shell')?.classList.toggle('cc-sidebar-open')");
+        }
+        catch { /* ignore */ }
     }
 
     private void ToggleMenu() => _menuOpen = !_menuOpen;
+    private void CloseMenu() => _menuOpen = false;
 
     private void OnSearchKey(KeyboardEventArgs e)
     {
@@ -146,10 +158,5 @@
             : name[..Math.Min(2, name.Length)].ToUpperInvariant();
     }
 
-    public void Dispose()
-    {
-        Navigation.LocationChanged -= OnLocationChanged;
-        if (_listenAuth)
-            AuthState.AuthenticationStateChanged -= OnAuthChanged;
-    }
+    public void Dispose() => Navigation.LocationChanged -= OnLocationChanged;
 }

@@ -3,8 +3,9 @@
 @page "/admin/students"
 @page "/admin/teachers"
 @layout AdminLayout
-@rendermode InteractiveServer
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject AdminService AdminSvc
+@inject AuthService Auth
 @inject NavigationManager Navigation
 @inject IStringLocalizer<SharedResources> L
 
@@ -197,6 +198,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
         var path = new Uri(Navigation.Uri).AbsolutePath.Trim('/').ToLowerInvariant();
         (_pageHeading, _roleFilter) = path switch
         {

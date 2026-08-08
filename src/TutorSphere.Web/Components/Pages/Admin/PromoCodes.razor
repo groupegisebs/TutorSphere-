@@ -2,6 +2,7 @@
 @layout AdminLayout
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject AdminService AdminSvc
+@inject AuthService Auth
 @inject IJSRuntime JS
 
 <PageTitle>Codes promo — Control Center</PageTitle>
@@ -228,6 +229,8 @@
             return;
 
         _loaded = true;
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); }
+        catch { /* ignore */ }
         await ReloadAsync();
         await InvokeAsync(StateHasChanged);
     }

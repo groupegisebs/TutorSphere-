@@ -1,7 +1,8 @@
 @page "/admin/payments"
 @layout AdminLayout
-@rendermode InteractiveServer
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject IStringLocalizer<SharedResources> L
+@inject AuthService Auth
 @inject ApiClient Api
 
 <PageTitle>@L["PageTitle_AdminPayments"]</PageTitle>
@@ -128,6 +129,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
         try
         {
             var result = await Api.GetAsync<List<InvoiceDto>>("api/invoices");

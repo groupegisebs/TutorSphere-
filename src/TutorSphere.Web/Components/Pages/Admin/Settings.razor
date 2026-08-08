@@ -1,7 +1,8 @@
 @page "/admin/settings"
 @layout AdminLayout
-@rendermode InteractiveServer
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject IStringLocalizer<SharedResources> L
+@inject AuthService Auth
 @inject IJSRuntime JS
 
 <PageTitle>@L["PageTitle_AdminSettings"]</PageTitle>
@@ -198,6 +199,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
         try
         {
             var saved = await JS.InvokeAsync<string>("localStorage.getItem", "ts_admin_settings");

@@ -1,7 +1,8 @@
 @page "/admin/users/{UserId}"
 @layout AdminLayout
-@rendermode InteractiveServer
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject AdminService AdminSvc
+@inject AuthService Auth
 @inject NavigationManager Navigation
 
 <PageTitle>Fiche utilisateur — Control Center</PageTitle>
@@ -117,6 +118,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
         var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
         if (uri.Query.Contains("tab=history", StringComparison.OrdinalIgnoreCase))
             _tab = "history";

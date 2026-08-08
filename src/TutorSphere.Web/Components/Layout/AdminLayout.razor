@@ -1,57 +1,18 @@
 @inherits LayoutComponentBase
-@inject NavigationManager Navigation
-@inject AuthService Auth
-@inject ILogger<AdminLayout> Logger
+
+@* Layout statique (Blazor n'autorise pas @rendermode sur les layouts).
+   Interactivité = AdminControlTopbar + pages admin (InteractiveServer). *@
 
 <link rel="stylesheet" href="css/admin-control-center.css" />
 
-<div class="cc-shell @(_sidebarOpen ? "cc-sidebar-open" : null)">
+<div class="cc-shell" id="cc-shell">
     <aside class="cc-sidebar">
         <AdminSidebar />
     </aside>
     <div class="cc-main">
-        <AdminControlTopbar OnToggleSidebar="ToggleSidebar" />
+        <AdminControlTopbar />
         <div class="cc-content">
             @Body
         </div>
     </div>
 </div>
-
-@code {
-    private bool _sidebarOpen;
-    private bool _checked;
-
-    private void ToggleSidebar() => _sidebarOpen = !_sidebarOpen;
-
-    // Pas de restore dans OnInitializedAsync : NotifyAuthenticationStateChanged
-    // pendant l'init des enfants tue le circuit Blazor.
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (!firstRender || _checked)
-            return;
-
-        _checked = true;
-
-        try
-        {
-            await Auth.EnsureSessionRestoredAsync(forceJs: false);
-            if (Auth.PrimaryRole is not ("SuperAdmin" or "PlatformAdmin"))
-                await Auth.EnsureSessionRestoredAsync(forceJs: true);
-
-            if (Auth.PrimaryRole is not ("SuperAdmin" or "PlatformAdmin"))
-            {
-                Navigation.NavigateTo("/login/admin");
-                return;
-            }
-
-            await InvokeAsync(StateHasChanged);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "AdminLayout session check failed.");
-        }
-    }
-
-    protected override void OnParametersSet() => _sidebarOpen = false;
-}
