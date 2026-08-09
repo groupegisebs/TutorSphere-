@@ -18,7 +18,9 @@ public record RegisterSchoolRequest(
     string Password,
     string? City = null,
     string? Country = null,
-    string? PreferredLanguage = null);
+    string? PreferredLanguage = null,
+    bool AcceptedTeacherConductPolicy = false,
+    string? TeacherConductPolicyVersion = null);
 
 public record RegisterSchoolResponse(
     Guid TenantId,

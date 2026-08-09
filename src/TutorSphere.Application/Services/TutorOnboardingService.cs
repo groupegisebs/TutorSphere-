@@ -174,6 +174,7 @@ public class TutorOnboardingService(
             """
             <p>TutorSphere est votre <strong>espace répétiteur</strong> : élèves, cours, devoirs et paiements parents.</p>
             <p>Après cette formation, votre établissement sera <strong>actif et visible</strong> dans la recherche parents.</p>
+            <p>Rappel : vous avez accepté le <strong>Code de conduite et d’éthique enseignant</strong> (respect, sécurité des mineurs, signalement, confidentialité). Un manquement peut entraîner la suspension du compte.</p>
             <ul><li>Tableau de bord</li><li>Offres d'abonnement</li><li>Calendrier et salle de classe</li></ul>
             """,
             [new("Quel est l'objectif de TutorSphere pour vous ?",
@@ -227,6 +228,7 @@ public class TutorOnboardingService(
             """
             <p>TutorSphere is your <strong>tutor workspace</strong>: students, lessons, homework and parent payments.</p>
             <p>After this training, your school will be <strong>active and visible</strong> in parent search.</p>
+            <p>Reminder: you accepted the <strong>Teacher Code of Conduct and Ethics</strong> (respect, child safety, reporting, confidentiality). A breach may lead to account suspension.</p>
             """,
             [new("What is TutorSphere for you?",
                 ["Book a hotel", "Run your tutoring school", "Buy supplies"], 1)]),

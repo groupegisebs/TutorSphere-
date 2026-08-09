@@ -34,6 +34,12 @@ public class Tenant : BaseEntity
     /// <summary>Ids de modules d'auto-formation complétés (séparés par des virgules).</summary>
     public string? OnboardingProgress { get; set; }
 
+    /// <summary>Version du code de conduite enseignant acceptée (ex. 2026.08).</summary>
+    public string? TeacherConductPolicyVersion { get; set; }
+
+    /// <summary>Date UTC d'acceptation du code de conduite enseignant.</summary>
+    public DateTime? TeacherConductAcceptedAt { get; set; }
+
     public decimal PlatformCommissionPercent { get; set; } = 10m;
     public string? StripeAccountId { get; set; }
     public string? StripeCustomerId { get; set; }

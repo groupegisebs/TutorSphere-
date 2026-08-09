@@ -2,6 +2,7 @@
 @layout LoginLayout
 @rendermode InteractiveServer
 @using TutorSphere.Application.DTOs.Auth
+@using TutorSphere.Domain.Policies
 @inject HttpClient Http
 @inject NavigationManager Navigation
 @inject IStringLocalizer<SharedResources> L
@@ -242,7 +243,37 @@
                     }
                 </div>
 
-                <button class="btn btn-primary w-100 py-2" @onclick="CreateSchoolAsync" disabled="@IsSubmitting">
+                <div class="teacher-conduct-box mb-3">
+                    <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+                        <strong>@L["TeacherConduct_Title"]</strong>
+                        <span class="badge text-bg-light">v@(TeacherConductPolicy.CurrentVersion)</span>
+                    </div>
+                    <div class="teacher-conduct-scroll" tabindex="0">
+                        <p class="small mb-2">@L["TeacherConduct_Intro"]</p>
+                        <ul class="small mb-2">
+                            <li>@L["TeacherConduct_Bullet_Trust"]</li>
+                            <li>@L["TeacherConduct_Bullet_Respect"]</li>
+                            <li>@L["TeacherConduct_Bullet_Safety"]</li>
+                            <li>@L["TeacherConduct_Bullet_Report"]</li>
+                            <li>@L["TeacherConduct_Bullet_Privacy"]</li>
+                            <li>@L["TeacherConduct_Bullet_Ethics"]</li>
+                        </ul>
+                        <p class="small text-muted mb-0">@L["TeacherConduct_LegalNote"]</p>
+                    </div>
+                    <a class="small d-inline-block mt-2" href="@TeacherConductPolicy.PublicPath" target="_blank" rel="noopener">
+                        @L["TeacherConduct_ReadFull"] <i class="bi bi-box-arrow-up-right" aria-hidden="true"></i>
+                    </a>
+                    <div class="form-check mt-3">
+                        <input class="form-check-input" type="checkbox" id="accept-conduct"
+                               @bind="AcceptedTeacherConduct" />
+                        <label class="form-check-label" for="accept-conduct">
+                            @L["TeacherConduct_AcceptCheckbox"]
+                        </label>
+                    </div>
+                </div>
+
+                <button class="btn btn-primary w-100 py-2" @onclick="CreateSchoolAsync"
+                        disabled="@(IsSubmitting || !AcceptedTeacherConduct)">
                     @if (IsSubmitting)
                     {
                         <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
@@ -286,6 +317,7 @@
     private bool IsSubmitting { get; set; }
     private bool ShowPassword { get; set; }
     private bool ShowConfirmPassword { get; set; }
+    private bool AcceptedTeacherConduct { get; set; }
 
     private bool IsSlugFormatValid => !string.IsNullOrWhiteSpace(Slug)
         && System.Text.RegularExpressions.Regex.IsMatch(Slug, @"^[a-z0-9]([a-z0-9-]{1,48}[a-z0-9])?$");
@@ -395,6 +427,12 @@
             return;
         }
 
+        if (!AcceptedTeacherConduct)
+        {
+            ErrorMessage = L["TeacherConduct_MustAccept"];
+            return;
+        }
+
         IsSubmitting = true;
         try
         {
@@ -407,7 +445,9 @@
                 Password: Password,
                 City: null,
                 Country: "CA",
-                PreferredLanguage: System.Globalization.CultureInfo.CurrentUICulture.Name);
+                PreferredLanguage: System.Globalization.CultureInfo.CurrentUICulture.Name,
+                AcceptedTeacherConductPolicy: true,
+                TeacherConductPolicyVersion: TeacherConductPolicy.CurrentVersion);
 
             var response = await Http.PostAsJsonAsync("api/auth/register-school", request);
 

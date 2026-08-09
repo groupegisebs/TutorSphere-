@@ -340,6 +340,13 @@ public class AuthService : IAuthService
         if (_db.Tenants.Any(t => t.Slug == slug))
             throw new InvalidOperationException("Cette adresse est déjà utilisée par une autre école.");
 
+        if (!request.AcceptedTeacherConductPolicy
+            || !TutorSphere.Domain.Policies.TeacherConductPolicy.IsCurrent(request.TeacherConductPolicyVersion))
+        {
+            throw new InvalidOperationException(
+                "Vous devez accepter le Code de conduite et d'éthique enseignant (version en vigueur) pour créer un compte.");
+        }
+
         var user = new ApplicationUser
         {
             UserName = request.Email,
@@ -365,7 +372,9 @@ public class AuthService : IAuthService
             Status = TenantStatus.PendingValidation,
             Plan = TenantPlan.Starter,
             OwnerUserId = user.Id,
-            Branding = new TenantBranding()
+            Branding = new TenantBranding(),
+            TeacherConductPolicyVersion = TutorSphere.Domain.Policies.TeacherConductPolicy.CurrentVersion,
+            TeacherConductAcceptedAt = DateTime.UtcNow
         };
 
         _db.Add(tenant);
