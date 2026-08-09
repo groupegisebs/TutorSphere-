@@ -21,7 +21,12 @@
 @code {
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        try { await JS.InvokeVoidAsync("landingInit"); }
+        if (!firstRender) return;
+        try
+        {
+            await JS.InvokeVoidAsync("tsPageAssets.loadLanding");
+            await JS.InvokeVoidAsync("landingInit");
+        }
         catch { /* prerender / no circuit */ }
     }
 }

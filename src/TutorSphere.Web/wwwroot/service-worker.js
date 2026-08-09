@@ -1,5 +1,5 @@
 /* TutorSphere PWA — shell cache only (Blazor Server stays online-first). */
-const CACHE_NAME = 'tutorsphere-v1';
+const CACHE_NAME = 'tutorsphere-v2';
 
 const PRECACHE_URLS = [
   '/offline.html',
@@ -8,13 +8,34 @@ const PRECACHE_URLS = [
   '/icons/icon-192.png',
   '/icons/icon-512.png',
   '/images/tutorsphere-logo.svg',
-  '/js/auth-storage.js'
+  '/app.css',
+  '/lib/bootstrap/dist/css/bootstrap.min.css',
+  '/lib/bootstrap-icons/font/bootstrap-icons.min.css',
+  '/lib/bootstrap-icons/font/fonts/bootstrap-icons.woff2',
+  '/fonts/inter/inter-latin-400-normal.woff2',
+  '/fonts/inter/inter-latin-500-normal.woff2',
+  '/fonts/inter/inter-latin-600-normal.woff2',
+  '/fonts/inter/inter-latin-700-normal.woff2',
+  '/js/auth-storage.js',
+  '/js/page-assets.js',
+  '/js/culture.js',
+  '/js/file-download.js',
+  '/js/pwa-install.js'
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(PRECACHE_URLS))
+      .then((cache) =>
+        Promise.all(
+          PRECACHE_URLS.map((url) =>
+            cache.add(url).catch((err) => {
+              // Fingerprinted Assets (app.*.css) may not match these paths in prod.
+              console.warn('[sw] precache skip', url, err);
+            })
+          )
+        )
+      )
       .then(() => self.skipWaiting())
   );
 });
@@ -80,7 +101,9 @@ self.addEventListener('fetch', (event) => {
         const shouldCache =
           PRECACHE_URLS.includes(path) ||
           path.startsWith('/icons/') ||
-          path.startsWith('/images/');
+          path.startsWith('/images/') ||
+          path.startsWith('/fonts/') ||
+          path.startsWith('/lib/bootstrap');
         if (shouldCache) {
           caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
         }

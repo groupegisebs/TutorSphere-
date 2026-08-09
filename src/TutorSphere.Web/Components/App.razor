@@ -20,13 +20,9 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <base href="/" />
     <ResourcePreloader />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="@Assets["lib/bootstrap/dist/css/bootstrap.min.css"]" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" />
+    <link rel="stylesheet" href="lib/bootstrap-icons/font/bootstrap-icons.min.css" />
     <link rel="stylesheet" href="@Assets["app.css"]" />
-    <link rel="stylesheet" href="@Assets["css/classroom-pro.css"]" />
     @if (dir == "rtl")
     {
         <link rel="stylesheet" href="@Assets["css/rtl.css"]" />
@@ -43,18 +39,41 @@
         <AuthSessionRestorer />
         <Routes />
     </CascadingAuthenticationState>
+
+    @* Blazor toggles classes on this dialog (components-reconnect-show|failed|rejected). *@
+    <div id="components-reconnect-modal" class="ts-reconnect-modal">
+        <div class="ts-reconnect-card ts-reconnect-show">
+            <div class="spinner-border text-primary mb-3" role="status" aria-hidden="true"></div>
+            <p class="mb-0">Connexion interrompue — reconnexion…</p>
+        </div>
+        <div class="ts-reconnect-card ts-reconnect-failed">
+            <p class="mb-3">Impossible de rétablir la connexion (réseau mobile instable).</p>
+            <button type="button" class="btn btn-primary" onclick="location.reload()">Actualiser</button>
+        </div>
+        <div class="ts-reconnect-card ts-reconnect-rejected">
+            <p class="mb-3">Session expirée sur le serveur.</p>
+            <button type="button" class="btn btn-primary" onclick="location.reload()">Recharger</button>
+        </div>
+    </div>
+
     @* auth-storage must load before Blazor so login can persist the JWT immediately *@
     <script src="js/auth-storage.js"></script>
-    <script src="@Assets["_framework/blazor.web.js"]"></script>
+    <script src="js/page-assets.js"></script>
+    <script src="@Assets["_framework/blazor.web.js"]" autostart="false"></script>
     <script src="js/culture.js"></script>
-    <script src="js/whiteboard.js"></script>
-    <script src="js/classroom-virtual-bg.js"></script>
-    <script src="@Assets["js/classroom-media.js"]"></script>
-    <script src="@Assets["js/classroom-rtc.js"]"></script>
-    <script src="js/landing.js"></script>
     <script src="js/file-download.js"></script>
-    <script src="js/presentation-recorder.js"></script>
     <script src="js/pwa-install.js"></script>
+    <script>
+        Blazor.start({
+            circuit: {
+                reconnectionOptions: {
+                    maxRetries: 16,
+                    retryIntervalMilliseconds: 2000,
+                    dialogId: 'components-reconnect-modal'
+                }
+            }
+        });
+    </script>
 </body>
 
 </html>

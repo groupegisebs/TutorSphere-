@@ -840,6 +840,12 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender)
+        {
+            try { await JS.InvokeVoidAsync("tsPageAssets.loadClassroom"); }
+            catch { /* prerender phase — JS not yet available */ }
+        }
+
         if (!_wbReady)
         {
             try

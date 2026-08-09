@@ -45,8 +45,11 @@ builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.Configure<Microsoft.AspNetCore.Components.Server.CircuitOptions>(options =>
 {
-    // true temporairement en prod pour diagnostiquer les crashes circuit (promo-codes, etc.).
-    options.DetailedErrors = true;
+    options.DetailedErrors = builder.Environment.IsDevelopment();
+    // Tolère les coupures data mobile (4G) avant d’abandonner le circuit.
+    options.DisconnectedCircuitRetentionPeriod = TimeSpan.FromMinutes(5);
+    options.DisconnectedCircuitMaxRetained = 200;
+    options.JSInteropDefaultCallTimeout = TimeSpan.FromMinutes(2);
 });
 
 // Blazor Server HttpClient runs on the web host, not in the browser. Prefer InternalApiBaseUrl
