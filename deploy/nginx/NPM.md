@@ -157,7 +157,12 @@ Les challenges sur `/_blazor` cassent le circuit SignalR (page figée / reconnex
 - **Expression** :
 
 ```txt
-(http.host eq "tutorsphere.gisebs.com" and starts_with(http.request.uri.path, "/_blazor"))
+(http.host eq "tutorsphere.gisebs.com" and (
+  starts_with(http.request.uri.path, "/_blazor")
+  or http.request.uri.path eq "/service-worker.js"
+  or http.request.uri.path eq "/manifest.webmanifest"
+  or http.request.uri.path eq "/.well-known/assetlinks.json"
+))
 or
 (http.host eq "api.tutorsphere.gisebs.com" and starts_with(http.request.uri.path, "/hubs/"))
 ```
@@ -172,13 +177,14 @@ Option Canada (réduit encore les challenges pour vos users) :
 
 Action **Skip** Bot Fight / Managed Challenge — seulement si le trafic abusif hors CA est géré autrement.
 
-### PWA (service worker + install)
+### PWA (service worker + install + TWA)
 
-TutorSphere enregistre `/service-worker.js` et sert `/manifest.webmanifest`. Les challenges Cloudflare sur ces chemins ou sur `/_blazor` empêchent l’installation / cassent le mode standalone.
+TutorSphere enregistre `/service-worker.js` et sert `/manifest.webmanifest` et `/.well-known/assetlinks.json` (Digital Asset Links pour Play Store / TWA). Les challenges Cloudflare sur ces chemins ou sur `/_blazor` empêchent l’installation / cassent le mode standalone et la validation TWA.
 
-- Inclure `/service-worker.js` et `/manifest.webmanifest` dans une règle **Skip** (même esprit que `/_blazor`) si Bot Fight reste actif.
+- Inclure `/service-worker.js`, `/manifest.webmanifest` et `/.well-known/assetlinks.json` dans une règle **Skip** (même esprit que `/_blazor`) si Bot Fight reste actif.
 - HTTPS obligatoire (déjà via NPM + Let’s Encrypt).
 - iOS Safari : pas de `beforeinstallprompt` — l’app affiche un hint « Ajouter à l’écran d’accueil ».
+- Publication Play Store (TWA) : [PLAY-STORE-TWA.md](../PLAY-STORE-TWA.md).
 
 ### Vérification
 

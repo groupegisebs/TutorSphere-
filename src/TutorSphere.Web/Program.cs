@@ -108,12 +108,13 @@ app.Use(async (context, next) =>
 app.UseRequestLocalization();
 app.UseAntiforgery();
 
-// PWA: keep SW + manifest fresh; ensure .webmanifest MIME type.
+// PWA: keep SW + manifest + Digital Asset Links fresh; ensure MIME types.
 app.Use(async (context, next) =>
 {
     var path = context.Request.Path.Value ?? string.Empty;
     if (path.Equals("/service-worker.js", StringComparison.OrdinalIgnoreCase)
-        || path.Equals("/manifest.webmanifest", StringComparison.OrdinalIgnoreCase))
+        || path.Equals("/manifest.webmanifest", StringComparison.OrdinalIgnoreCase)
+        || path.Equals("/.well-known/assetlinks.json", StringComparison.OrdinalIgnoreCase))
     {
         context.Response.Headers.CacheControl = "no-cache";
     }
@@ -123,9 +124,19 @@ app.Use(async (context, next) =>
 
 var contentTypeProvider = new FileExtensionContentTypeProvider();
 contentTypeProvider.Mappings[".webmanifest"] = "application/manifest+json";
+// Digital Asset Links: Google requires application/json for assetlinks.json.
+contentTypeProvider.Mappings[".json"] = "application/json";
 app.UseStaticFiles(new StaticFileOptions
 {
-    ContentTypeProvider = contentTypeProvider
+    ContentTypeProvider = contentTypeProvider,
+    OnPrepareResponse = ctx =>
+    {
+        var path = ctx.Context.Request.Path.Value ?? string.Empty;
+        if (path.Equals("/.well-known/assetlinks.json", StringComparison.OrdinalIgnoreCase))
+        {
+            ctx.Context.Response.ContentType = "application/json";
+        }
+    }
 });
 
 MapAuthBffEndpoints(app);

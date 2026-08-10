@@ -136,6 +136,7 @@ Les migrations EF s'exécutent au démarrage de l'API (`Database.MigrateAsync`).
 | `env.example` | Modèle `.env` (sans secrets) |
 | `nginx/NPM.md` | Configuration Nginx Proxy Manager (GISEBS) |
 | `nginx/tutorsphere.conf.example` | Exemple reverse proxy nginx natif |
+| `PLAY-STORE-TWA.md` | Publication Play Store (TWA / PWABuilder + assetlinks) |
 
 ---
 
