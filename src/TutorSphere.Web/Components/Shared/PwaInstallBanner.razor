@@ -1,0 +1,128 @@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@implements IAsyncDisposable
+@inject IStringLocalizer<SharedResources> L
+@inject IJSRuntime JS
+
+@if (_visible)
+{
+    <div class="ts-pwa-banner" role="dialog" aria-label="@L["Pwa_InstallTitle"]">
+        <div class="ts-pwa-banner__inner">
+            <div class="ts-pwa-banner__icon" aria-hidden="true">
+                <img src="icons/icon-192.png" alt="" width="40" height="40" />
+            </div>
+            <div class="ts-pwa-banner__copy">
+                <strong class="ts-pwa-banner__title">@L["Pwa_InstallTitle"]</strong>
+                @if (_isIos)
+                {
+                    <p class="ts-pwa-banner__text">@L["Pwa_IosHint"]</p>
+                }
+                else
+                {
+                    <p class="ts-pwa-banner__text">@L["Pwa_InstallSubtitle"]</p>
+                }
+            </div>
+            <div class="ts-pwa-banner__actions">
+                @if (!_isIos && _canInstall)
+                {
+                    <button type="button" class="btn btn-sm btn-primary ts-pwa-banner__install"
+                            @onclick="InstallAsync">
+                        @L["Pwa_InstallButton"]
+                    </button>
+                }
+                <button type="button" class="btn btn-sm btn-link ts-pwa-banner__dismiss"
+                        @onclick="DismissAsync" aria-label="@L["Common_Close"]">
+                    @L["Pwa_InstallDismiss"]
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _visible;
+    private bool _canInstall;
+    private bool _isIos;
+    private DotNetObjectReference<PwaInstallBanner>? _dotNetRef;
+    private bool _bound;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _bound) return;
+
+        try
+        {
+            _dotNetRef = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("tutorSpherePwa.bind", _dotNetRef);
+            _bound = true;
+        }
+        catch
+        {
+            /* JS not ready / no SW */
+        }
+    }
+
+    [JSInvokable]
+    public Task OnPwaStateChanged(PwaState state)
+    {
+        _canInstall = state.CanInstall;
+        _isIos = state.IsIos;
+        _visible = !state.IsStandalone
+                   && !state.IsDismissed
+                   && (state.CanInstall || state.IsIos);
+        return InvokeAsync(StateHasChanged);
+    }
+
+    private async Task InstallAsync()
+    {
+        try
+        {
+            await JS.InvokeAsync<PwaChoice>("tutorSpherePwa.promptInstall");
+        }
+        catch
+        {
+            /* ignore */
+        }
+    }
+
+    private async Task DismissAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("tutorSpherePwa.dismiss", 14);
+        }
+        catch
+        {
+            /* ignore */
+        }
+
+        _visible = false;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_bound)
+                await JS.InvokeVoidAsync("tutorSpherePwa.unbind");
+        }
+        catch
+        {
+            /* circuit disposed */
+        }
+
+        _dotNetRef?.Dispose();
+    }
+
+    public sealed class PwaState
+    {
+        public bool CanInstall { get; set; }
+        public bool IsStandalone { get; set; }
+        public bool IsIos { get; set; }
+        public bool IsDismissed { get; set; }
+    }
+
+    private sealed class PwaChoice
+    {
+        public string? Outcome { get; set; }
+    }
+}

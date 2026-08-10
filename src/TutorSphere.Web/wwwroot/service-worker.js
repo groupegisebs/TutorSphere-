@@ -1,5 +1,5 @@
 /* TutorSphere PWA — shell cache only (Blazor Server stays online-first). */
-const CACHE_NAME = 'tutorsphere-v2';
+const CACHE_NAME = 'tutorsphere-v3';
 
 const PRECACHE_URLS = [
   '/offline.html',
@@ -7,6 +7,8 @@ const PRECACHE_URLS = [
   '/favicon.png',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
+  '/icons/icon-192-maskable.png',
+  '/icons/icon-512-maskable.png',
   '/images/tutorsphere-logo.svg',
   '/app.css',
   '/lib/bootstrap/dist/css/bootstrap.min.css',
@@ -58,6 +60,7 @@ function isNetworkOnly(url) {
   if (path.startsWith('/bff/')) return true;
   if (path === '/health' || path.startsWith('/health/')) return true;
   if (path.startsWith('/api/')) return true;
+  if (path.startsWith('/hubs/')) return true;
   return false;
 }
 
@@ -73,7 +76,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Navigations: network first, offline fallback
+  // Navigations: network first, offline fallback (Blazor needs the server).
   if (request.mode === 'navigate') {
     event.respondWith(
       fetch(request).catch(() =>

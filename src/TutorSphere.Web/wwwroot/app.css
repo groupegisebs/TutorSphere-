@@ -6408,6 +6408,135 @@ html[dir="rtl"] .login-lang-bar {
   margin-bottom: 0.4rem;
 }
 
+/* ─── PWA install banner ─── */
+.ts-pwa-banner {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1080;
+    padding: 0.75rem max(0.85rem, env(safe-area-inset-right)) max(0.85rem, env(safe-area-inset-bottom)) max(0.85rem, env(safe-area-inset-left));
+    pointer-events: none;
+}
+
+.ts-pwa-banner__inner {
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    max-width: 36rem;
+    margin: 0 auto;
+    padding: 0.85rem 0.95rem;
+    background: var(--ts-surface-elevated);
+    border: 1px solid var(--ts-border);
+    border-radius: var(--ts-radius-lg);
+    box-shadow: var(--ts-shadow-lg);
+}
+
+.ts-pwa-banner__icon img {
+    display: block;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+}
+
+.ts-pwa-banner__copy {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.ts-pwa-banner__title {
+    display: block;
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: var(--ts-text);
+    line-height: 1.25;
+}
+
+.ts-pwa-banner__text {
+    margin: 0.15rem 0 0;
+    font-size: 0.8125rem;
+    color: var(--ts-text-secondary);
+    line-height: 1.35;
+}
+
+.ts-pwa-banner__actions {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.25rem;
+    flex-shrink: 0;
+}
+
+.ts-pwa-banner__install,
+.ts-pwa-banner__dismiss {
+    min-height: 40px;
+    white-space: nowrap;
+}
+
+.ts-pwa-banner__dismiss {
+    color: var(--ts-text-secondary);
+    text-decoration: none;
+}
+
+@media (max-width: 479.98px) {
+    .ts-pwa-banner__inner {
+        flex-wrap: wrap;
+    }
+
+    .ts-pwa-banner__actions {
+        flex-direction: row;
+        width: 100%;
+        justify-content: flex-end;
+    }
+}
+
+/* Standalone PWA shell: safe-area for notch / home indicator */
+@media (display-mode: standalone) {
+    html, body {
+        min-height: 100dvh;
+        background: var(--ts-surface);
+    }
+
+    .dashboard-page .top-row,
+    .dashboard-page .top-row--parent {
+        padding-top: env(safe-area-inset-top);
+        height: calc(var(--ts-topbar-height) + env(safe-area-inset-top));
+    }
+
+    .public-nav {
+        padding-top: env(safe-area-inset-top);
+    }
+
+    .login-lang-bar {
+        padding-top: max(0.5rem, env(safe-area-inset-top));
+        padding-right: max(0.75rem, env(safe-area-inset-right));
+        padding-left: max(0.75rem, env(safe-area-inset-left));
+    }
+
+    .dashboard-page article.content {
+        padding-bottom: max(1.25rem, env(safe-area-inset-bottom));
+    }
+}
+
+@media (max-width: 991.98px) {
+    .dashboard-page .top-row,
+    .dashboard-page .top-row--parent {
+        min-height: var(--ts-topbar-height);
+    }
+
+    .topbar-notification,
+    .topbar-user-btn {
+        min-width: 44px;
+        min-height: 44px;
+    }
+
+    .dashboard-page .sidebar-navy .navbar-toggler {
+        width: 44px;
+        height: 44px;
+    }
+}
+
 /* ─── Blazor circuit reconnect (mobile data) ─── */
 #components-reconnect-modal.ts-reconnect-modal {
   display: none;

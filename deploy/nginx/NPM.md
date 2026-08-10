@@ -125,3 +125,64 @@ Guide complet : [TROUBLESHOOTING-502.md](../TROUBLESHOOTING-502.md)
 | `172.17.0.1` inaccessible depuis NPM | Essayer **`127.0.0.1`** si NPM n’est pas conteneurisé |
 
 Alternative si NPM et TutorSphere partagent le même hôte sans bridge : Forward Host **`127.0.0.1`**, ports **`55010`** / **`55099`**.
+
+---
+
+## 6. Cloudflare — éviter la page « Vérification de sécurité »
+
+Sur mobile (LTE), Cloudflare montre souvent un interstitial *Managed Challenge* / *Bot Fight* **avant** TutorSphere. Ce n’est **pas** corrigible dans le code Blazor : il faut assouplir le domaine dans le dashboard Cloudflare.
+
+### Réglages recommandés (prod pédagogique / Canada)
+
+Dans **Cloudflare → domaine `gisebs.com` (ou la zone qui contient `tutorsphere`)** :
+
+| Zone | Réglage | Valeur recommandée |
+|------|---------|-------------------|
+| **Security → Settings → Security Level** | Niveau | **Medium** (pas *High*, jamais *I'm Under Attack*) |
+| **Overview / Security** | Under Attack Mode | **Off** |
+| **Security → Bots** | Bot Fight Mode | **Off** (cause #1 des challenges sur data mobile) |
+| **Security → Bots → Super Bot Fight Mode** | Definitely automated | Block ou Managed Challenge |
+| idem | Likely automated | **Allow** (ou JS Detection si dispo) |
+| idem | Verified bots | Allow |
+| **Security → Settings** | Browser Integrity Check | On (OK) |
+| **Security → Settings** | Challenge Passage | **30 minutes** ou plus (réduit les re-challenges) |
+
+### Règle WAF « Skip » pour Blazor (fortement conseillée)
+
+Les challenges sur `/_blazor` cassent le circuit SignalR (page figée / reconnexions).
+
+**Security → WAF → Custom rules → Create rule**
+
+- **Name** : `Skip challenge Blazor TutorSphere`
+- **Expression** :
+
+```txt
+(http.host eq "tutorsphere.gisebs.com" and starts_with(http.request.uri.path, "/_blazor"))
+or
+(http.host eq "api.tutorsphere.gisebs.com" and starts_with(http.request.uri.path, "/hubs/"))
+```
+
+- **Action** : **Skip** → cocher *All remaining custom rules*, *Rate limiting*, *Bot Fight Mode* / *Super Bot Fight Mode* (selon le plan), *Managed Challenge* si listé.
+
+Option Canada (réduit encore les challenges pour vos users) :
+
+```txt
+(http.host in {"tutorsphere.gisebs.com" "api.tutorsphere.gisebs.com"} and ip.geoip.country eq "CA")
+```
+
+Action **Skip** Bot Fight / Managed Challenge — seulement si le trafic abusif hors CA est géré autrement.
+
+### PWA (service worker + install)
+
+TutorSphere enregistre `/service-worker.js` et sert `/manifest.webmanifest`. Les challenges Cloudflare sur ces chemins ou sur `/_blazor` empêchent l’installation / cassent le mode standalone.
+
+- Inclure `/service-worker.js` et `/manifest.webmanifest` dans une règle **Skip** (même esprit que `/_blazor`) si Bot Fight reste actif.
+- HTTPS obligatoire (déjà via NPM + Let’s Encrypt).
+- iOS Safari : pas de `beforeinstallprompt` — l’app affiche un hint « Ajouter à l’écran d’accueil ».
+
+### Vérification
+
+1. Téléphone en **data** (pas Wi‑Fi) → ouvrir `https://tutorsphere.gisebs.com` en navigation privée.
+2. La page d’accueil doit s’afficher **sans** « Vérification de sécurité en cours ».
+3. Se connecter / ouvrir une classe : le circuit Blazor ne doit pas rester bloqué derrière un challenge.
+4. Chrome Android : bannière « Installer » / menu « Installer l’application » ; Safari iOS : hint Partager → écran d’accueil.
