@@ -1,8 +1,11 @@
-# Publier TutorSphere sur le Play Store (TWA / PWABuilder)
+# Publier TutorSphere sur le Play Store (TWA)
 
 Guide pratique pour empaqueter la PWA TutorSphere en **Trusted Web Activity (TWA)** Android et la publier sur Google Play.
 
-URL de prod : `https://tutorsphere.gisebs.com`
+URL de prod : `https://tutorsphere.gisebs.com`  
+Package Android : `com.gisebs.tutorsphere`
+
+Projet Android dans le dépôt : [`../android-twa/`](../android-twa/) (ouvrir dans Android Studio).
 
 ---
 
@@ -11,6 +14,7 @@ URL de prod : `https://tutorsphere.gisebs.com`
 | Élément | Détail |
 |---------|--------|
 | **Compte Google Play Console** | Compte développeur payant, app créée (ou prête à créer) |
+| **Android Studio** | Pour ouvrir `android-twa/` et générer l’AAB signé |
 | **HTTPS** | Site servi en HTTPS valide (déjà via NPM + Let’s Encrypt) |
 | **PWA prête** | `manifest.webmanifest`, `service-worker.js`, icônes, installable sur Chrome Android |
 | **Digital Asset Links** | Fichier `/.well-known/assetlinks.json` déployé avec le bon package + SHA-256 |
@@ -20,24 +24,69 @@ Sans `assetlinks.json` correct, Chrome n’affiche pas la TWA en plein écran (b
 
 ---
 
-## 2. Générer le package Android avec PWABuilder
+## 2. Chemin recommandé — Android Studio + projet `android-twa`
 
-1. Ouvrir [PWABuilder](https://www.pwabuilder.com).
-2. Entrer l’URL : `https://tutorsphere.gisebs.com`.
-3. Lancer le scan ; corriger les alertes bloquantes (manifest, icônes, SW) si besoin.
-4. Choisir **Package for stores** → **Android** → package type **TWA** (Trusted Web Activity).
-5. Renseigner notamment :
-   - **Package ID** : `com.gisebs.tutorsphere` (doit correspondre à `assetlinks.json` ; changeable si vous préférez un autre ID)
-   - Nom d’affichage, couleurs, icône (PWABuilder peut dériver du manifest)
-6. Générer / télécharger le projet ou le **AAB** (Android App Bundle).
+### 2.1 Ouvrir le projet
 
-Gardez le même `package_name` partout : Play Console, PWABuilder, et `assetlinks.json`.
+1. Lancer **Android Studio**.
+2. **File → Open…** → sélectionner le dossier  
+   `TutorSphere-/android-twa/`
+3. Laisser Gradle synchroniser (JDK JBR d’Android Studio suffit).
+
+Détails keystore / CLI : [`../android-twa/README.md`](../android-twa/README.md).
+
+### 2.2 Créer le keystore d’upload (une seule fois)
+
+Si vous n’avez pas encore de keystore :
+
+```bat
+set JAVA_HOME=C:\Program Files\Android\Android Studio\jbr
+"%JAVA_HOME%\bin\keytool" -genkeypair -v -keystore upload-keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias tutorsphere
+```
+
+Conservez le fichier et les mots de passe en lieu sûr. **Ne pas committer** `*.jks` / `*.keystore`.
+
+Sur Play Console, activez **Play App Signing** : Google signe l’app pour les utilisateurs ; vous uploadez avec ce keystore d’upload.
+
+### 2.3 Générer l’AAB (Android App Bundle)
+
+1. **Build → Generate Signed Bundle / APK…**
+2. Choisir **Android App Bundle** → Next
+3. Sélectionner (ou créer) le keystore → alias `tutorsphere` → Next
+4. Build variant : **release** → Create
+5. Noter le chemin de `app-release.aab` (souvent sous `android-twa/app/release/` ou `app/build/outputs/bundle/release/`)
+
+### 2.4 Upload Play Console
+
+1. [Play Console](https://play.google.com/console) → créer l’app **TutorSphere** si besoin (package `com.gisebs.tutorsphere`).
+2. Piste **Internal testing** (recommandé d’abord) → créer une version → uploader l’AAB.
+3. Compléter la fiche store (voir § 6).
+
+### 2.5 Aligner package + assetlinks
+
+Après le premier upload (Play App Signing actif) :
+
+1. Récupérer le SHA-256 **App signing** (§ 4).
+2. Mettre à jour `assetlinks.json` et déployer en prod.
+3. Vérifier le plein écran TWA sur un appareil de test.
 
 ---
 
-## 3. Récupérer le SHA-256 (Play App Signing)
+## 3. Alternative — PWABuilder (sans projet local)
 
-Google signe l’app avec sa clé **Play App Signing**. C’est **cette** empreinte (pas seulement votre keystore local de upload) qu’il faut mettre dans `assetlinks.json`.
+1. Ouvrir [PWABuilder](https://www.pwabuilder.com).
+2. Entrer `https://tutorsphere.gisebs.com` → scanner.
+3. **Package for stores** → **Android** → type **TWA**.
+4. **Package ID** : `com.gisebs.tutorsphere` (identique à `assetlinks.json`).
+5. Générer / télécharger l’**AAB** (ou le projet), puis uploader comme ci-dessus.
+
+Gardez le même `package_name` partout : Play Console, PWABuilder / `android-twa`, et `assetlinks.json`.
+
+---
+
+## 4. Récupérer le SHA-256 (Play App Signing)
+
+Google signe l’app avec sa clé **Play App Signing**. C’est **cette** empreinte (pas seulement votre keystore local d’upload) qu’il faut mettre dans `assetlinks.json`.
 
 1. [Play Console](https://play.google.com/console) → votre app TutorSphere.
 2. **Configuration** (Setup) → **Intégrité de l'application** / **App integrity** → **Signature de l'application** (App signing).
@@ -46,9 +95,15 @@ Google signe l’app avec sa clé **Play App Signing**. C’est **cette** emprei
 
 Si vous testez encore avec un APK/AAB signé localement (avant Play App Signing), vous pouvez temporairement ajouter aussi le SHA-256 de votre keystore d’upload — en prod, priorisez celui de **Play App Signing**.
 
+Empreinte du keystore local :
+
+```bat
+"%JAVA_HOME%\bin\keytool" -list -v -keystore upload-keystore.jks -alias tutorsphere
+```
+
 ---
 
-## 4. Compléter et déployer `assetlinks.json`
+## 5. Compléter et déployer `assetlinks.json`
 
 Fichier source (template) :
 
@@ -72,7 +127,7 @@ Exemple une fois rempli :
 ```
 
 1. Remplacer `REPLACE_WITH_PLAY_APP_SIGNING_SHA256` par l’empreinte SHA-256.
-2. Vérifier que `package_name` = ID Android Play / PWABuilder (`com.gisebs.tutorsphere` par défaut).
+2. Vérifier que `package_name` = ID Android Play (`com.gisebs.tutorsphere`).
 3. Commit + déploiement prod (push `main` / Deploy Production).
 4. Vérifier :
 
@@ -88,22 +143,21 @@ Outil Google (optionnel) :
 
 ---
 
-## 5. Upload Play Console et fiche store
+## 6. Fiche store Play Console
 
-1. Play Console → **Production** (ou piste **Internal testing** / **Closed** d’abord) → créer une version.
-2. Uploader l’**AAB** généré par PWABuilder.
-3. Compléter la fiche store (minimum) :
-   - Titre, description courte / longue
-   - Icône 512×512, feature graphic, captures d’écran téléphone
-   - Catégorie, contact, politique de confidentialité (URL HTTPS)
-   - Questionnaire contenu / public cible
-4. Soumettre pour **examen** (review). Prévoir un délai Google (souvent quelques jours pour une première app).
+Minimum à prévoir :
+
+- Titre, description courte / longue
+- Icône 512×512, feature graphic, captures d’écran téléphone
+- Catégorie, contact, politique de confidentialité (URL HTTPS)
+- Questionnaire contenu / public cible
+- Soumettre pour **examen** (souvent quelques jours pour une première app)
 
 Conseil : valider d’abord en **test interne** avec le même `assetlinks.json` en prod, pour confirmer l’affichage plein écran TWA.
 
 ---
 
-## 6. Limites importantes (TutorSphere)
+## 7. Limites importantes (TutorSphere)
 
 | Point | Impact |
 |-------|--------|
@@ -115,7 +169,7 @@ Conseil : valider d’abord en **test interne** avec le même `assetlinks.json` 
 
 ---
 
-## 7. Cloudflare — chemins à ne pas challenger
+## 8. Cloudflare — chemins à ne pas challenger
 
 En plus de `/_blazor`, inclure dans une règle WAF **Skip** (voir détail dans [nginx/NPM.md](nginx/NPM.md)) :
 
@@ -129,7 +183,8 @@ Sans cela, Google et les appareils Android peuvent échouer à vérifier le lien
 
 ## Références
 
-- [PWABuilder](https://www.pwabuilder.com)
+- Projet Android TWA : [`../android-twa/README.md`](../android-twa/README.md)
+- [PWABuilder](https://www.pwabuilder.com) (alternative)
 - Template Asset Links : `src/TutorSphere.Web/wwwroot/.well-known/assetlinks.json`
 - Reverse proxy / Cloudflare : [nginx/NPM.md](nginx/NPM.md)
 - Déploiement général : [README.md](README.md)
