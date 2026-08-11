@@ -1317,12 +1317,16 @@
     border-color: var(--cc-border) !important;
     color: var(--cc-text) !important;
 }
-/* Bootstrap/app.css .form-label uses --ts-text (#0f172a) — invisible on dark CC surfaces */
-.cc-shell .form-label {
-    color: var(--cc-text-secondary);
-}
-.cc-shell .form-check-label {
-    color: var(--cc-text-secondary);
+/*
+ * Bootstrap/app.css .form-label uses --ts-text (#0f172a) — invisible on dark CC.
+ * Use !important + light --cc-text so we always beat app.css / Bootstrap body color.
+ */
+.cc-shell .form-label,
+.cc-shell .form-check-label,
+.cc-shell .form-text,
+.cc-shell .form-hint,
+.cc-shell label:not(.btn) {
+    color: var(--cc-text) !important;
 }
 .cc-shell .form-control::placeholder,
 .cc-shell .form-select::placeholder {
@@ -1333,6 +1337,57 @@
 .cc-shell .form-select:disabled {
     color: var(--cc-text-muted) !important;
     opacity: 0.85;
+}
+.cc-shell input[type="file"] {
+    color: var(--cc-text) !important;
+    max-width: 100%;
+}
+/* Expert Groups — page-scoped overrides (edit + create form) */
+.cc-shell .cc-expert-groups .form-label,
+.cc-shell .cc-expert-groups .form-check-label,
+.cc-shell .cc-expert-groups .form-text,
+.cc-shell .cc-expert-groups label:not(.btn) {
+    color: var(--cc-text) !important;
+}
+.cc-shell .cc-expert-groups .form-control,
+.cc-shell .cc-expert-groups .form-select {
+    color: var(--cc-text) !important;
+    background: var(--cc-surface) !important;
+    border-color: var(--cc-border) !important;
+}
+.cc-shell .cc-expert-groups .cc-logo-preview {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background: var(--cc-surface-2);
+    border: 1px solid var(--cc-border);
+    border-radius: var(--cc-radius-sm);
+}
+.cc-shell .cc-expert-groups .cc-logo-preview img {
+    display: block;
+    max-height: 48px;
+    max-width: 140px;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    background: #fff;
+    border-radius: 4px;
+    padding: 2px;
+}
+.cc-shell .cc-expert-groups .cc-logo-preview-caption {
+    color: var(--cc-text) !important;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+.cc-shell .cc-expert-groups .cc-group-logo-thumb {
+    width: 32px;
+    height: 32px;
+    object-fit: contain;
+    border-radius: 4px;
+    background: #fff;
+    padding: 1px;
 }
 .cc-shell .nav-tabs { border-color: var(--cc-border); }
 .cc-shell .nav-tabs .nav-link { color: var(--cc-text-muted); }
@@ -1358,7 +1413,7 @@
     box-shadow: 0 0 0 1px rgba(124, 92, 255, 0.15), var(--cc-shadow);
 }
 .cc-promo-create .form-label {
-    color: var(--cc-text-secondary);
+    color: var(--cc-text) !important;
     font-size: 0.8rem;
 }
 .cc-promo-create .form-text { font-size: 0.72rem; }

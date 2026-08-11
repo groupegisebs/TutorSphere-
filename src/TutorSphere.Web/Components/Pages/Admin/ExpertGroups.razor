@@ -4,11 +4,14 @@
 @inject AdminService AdminSvc
 @inject AuthService Auth
 @inject ApiClient Api
+@inject IConfiguration Config
+@inject NavigationManager Navigation
 
 <PageTitle>Groupes d'experts — Control Center</PageTitle>
 
 <AuthorizeView Roles="SuperAdmin,PlatformAdmin">
     <Authorized>
+        <div class="cc-expert-groups">
         <div class="cc-toolbar">
             <div>
                 <h1 class="cc-page-title">Groupes d'experts</h1>
@@ -78,10 +81,14 @@
                         </div>
                         <div class="col-12 mb-3">
                             <label class="form-label">Logo</label>
-                            <InputFile OnChange="UploadLogoAsync" accept="image/*" />
+                            <InputFile OnChange="UploadLogoAsync" accept="image/*" class="form-control" />
+                            <div class="form-text">PNG, JPG ou SVG — max. 5 Mo. Affiché sur les fiches enseignants.</div>
                             @if (!string.IsNullOrWhiteSpace(_formLogo))
                             {
-                                <div class="mt-2"><img src="@_formLogo" alt="Logo" style="max-height:48px;" /></div>
+                                <div class="cc-logo-preview">
+                                    <img src="@ResolveMediaUrl(_formLogo)" alt="Aperçu logo" />
+                                    <span class="cc-logo-preview-caption">Logo</span>
+                                </div>
                             }
                         </div>
                     }
@@ -127,7 +134,7 @@
                                         <div class="cc-user-cell">
                                             @if (!string.IsNullOrWhiteSpace(g.LogoUrl))
                                             {
-                                                <img src="@g.LogoUrl" alt="" style="width:32px;height:32px;object-fit:contain;border-radius:4px;" />
+                                                <img class="cc-group-logo-thumb" src="@ResolveMediaUrl(g.LogoUrl)" alt="" />
                                             }
                                             else
                                             {
@@ -206,6 +213,7 @@
                 }
             </div>
         }
+        </div>
     </Authorized>
 </AuthorizeView>
 
@@ -226,6 +234,29 @@
     private string? _formLogo;
     private bool _formInternational;
     private bool _formActive = true;
+
+    /// <summary>
+    /// Logos are stored as API-relative paths (/uploads/...). The Blazor host does not serve them —
+    /// prefix with public ApiBaseUrl so &lt;img&gt; hits api.tutorsphere… not the web origin.
+    /// </summary>
+    private string ResolveMediaUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return "";
+        var trimmed = url.Trim();
+        if (trimmed.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+            || trimmed.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+            || trimmed.StartsWith("data:", StringComparison.OrdinalIgnoreCase)
+            || trimmed.StartsWith("blob:", StringComparison.OrdinalIgnoreCase))
+            return trimmed;
+
+        var apiBase = NonEmpty(Config["ApiBaseUrl"])
+            ?? NonEmpty(Config["InternalApiBaseUrl"])
+            ?? Navigation.BaseUri.TrimEnd('/');
+        return $"{apiBase.TrimEnd('/')}/{trimmed.TrimStart('/')}";
+    }
+
+    private static string? NonEmpty(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     protected override async Task OnInitializedAsync()
     {
