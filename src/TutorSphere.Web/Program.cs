@@ -23,6 +23,7 @@ builder.Services.Configure<RequestLocalizationOptions>(options =>
 });
 
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<CircuitCultureState>();
 builder.Services.AddScoped<Microsoft.AspNetCore.Components.Server.Circuits.CircuitHandler,
     CultureCircuitHandler>();
 builder.Services.AddAuthorizationCore();

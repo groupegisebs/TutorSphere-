@@ -2,10 +2,10 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Localization
 @using TutorSphere.Application.Common
+@using TutorSphere.Web.Services
 @inject IHttpContextAccessor HttpContextAccessor
 @{
-    var culture = HttpContextAccessor.HttpContext?.Features.Get<IRequestCultureFeature>()?.RequestCulture.UICulture
-        ?? CultureInfo.GetCultureInfo(SupportedLanguageCodes.Default);
+    var culture = CultureRequestHelper.Resolve(HttpContextAccessor.HttpContext);
     var lang = culture.Name;
     var dir = culture.TextInfo.IsRightToLeft ? "rtl" : "ltr";
 }
@@ -84,3 +84,30 @@
 </body>
 
 </html>
+
+@code {
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
+
+    protected override void OnInitialized()
+    {
+        // Persist the resolved request culture so InteractiveServer circuits
+        // (WebSocket) receive the same cookie as the initial SSR document.
+        var ctx = HttpContext ?? HttpContextAccessor.HttpContext;
+        if (ctx is null || ctx.Response.HasStarted)
+            return;
+
+        var culture = CultureRequestHelper.Resolve(ctx);
+        ctx.Response.Cookies.Append(
+            CookieRequestCultureProvider.DefaultCookieName,
+            CookieRequestCultureProvider.MakeCookieValue(new RequestCulture(culture, culture)),
+            new CookieOptions
+            {
+                Expires = DateTimeOffset.UtcNow.AddYears(1),
+                IsEssential = true,
+                Path = "/",
+                SameSite = SameSiteMode.Lax,
+                Secure = ctx.Request.IsHttps
+            });
+    }
+}

@@ -11,6 +11,9 @@ public partial class LanguageSelector : ComponentBase
     private IHttpContextAccessor HttpContextAccessor { get; set; } = default!;
 
     [Inject]
+    private CircuitCultureState CircuitCulture { get; set; } = default!;
+
+    [Inject]
     private NavigationManager Navigation { get; set; } = default!;
 
     private string CurrentCulture { get; set; } = SupportedLanguageCodes.Default;
@@ -32,8 +35,9 @@ public partial class LanguageSelector : ComponentBase
 
     private void SyncCurrentCulture()
     {
+        CultureRequestHelper.ApplyForUi(HttpContextAccessor.HttpContext, CircuitCulture);
         CurrentCulture = SupportedLanguageCodes.Normalize(
-            CultureRequestHelper.Resolve(HttpContextAccessor.HttpContext).Name);
+            CultureRequestHelper.ResolveForUi(HttpContextAccessor.HttpContext, CircuitCulture).Name);
     }
 
     private void OnCultureChanged(ChangeEventArgs e)
