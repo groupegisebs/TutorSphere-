@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Localization;
-using Microsoft.JSInterop;
 using System.Globalization;
 using TutorSphere.Application.Common;
 
@@ -13,7 +12,7 @@ public partial class LanguageSelector : ComponentBase
     private IHttpContextAccessor HttpContextAccessor { get; set; } = default!;
 
     [Inject]
-    private IJSRuntime Js { get; set; } = default!;
+    private NavigationManager Navigation { get; set; } = default!;
 
     private string CurrentCulture { get; set; } = SupportedLanguageCodes.Default;
 
@@ -28,20 +27,35 @@ public partial class LanguageSelector : ComponentBase
         new(SupportedLanguageCodes.Arabic, "العربية", "🇸🇦")
     ];
 
-    protected override void OnInitialized()
+    protected override void OnInitialized() => SyncCurrentCulture();
+
+    protected override void OnParametersSet() => SyncCurrentCulture();
+
+    private void SyncCurrentCulture()
     {
-        var culture = HttpContextAccessor.HttpContext?.Features.Get<IRequestCultureFeature>()?.RequestCulture.UICulture
-            ?? CultureInfo.GetCultureInfo(SupportedLanguageCodes.Default);
-        CurrentCulture = culture.Name;
+        var fromRequest = HttpContextAccessor.HttpContext?
+            .Features.Get<IRequestCultureFeature>()?
+            .RequestCulture.UICulture.Name;
+
+        CurrentCulture = SupportedLanguageCodes.Normalize(
+            fromRequest ?? CultureInfo.CurrentUICulture.Name);
     }
 
-    private async Task OnCultureChanged(ChangeEventArgs e)
+    private void OnCultureChanged(ChangeEventArgs e)
     {
-        var culture = e.Value?.ToString();
-        if (string.IsNullOrWhiteSpace(culture) || culture == CurrentCulture)
+        var culture = SupportedLanguageCodes.Normalize(e.Value?.ToString());
+        if (culture == CurrentCulture)
             return;
 
-        await Js.InvokeVoidAsync("tutorSphereCulture.setCulture", culture);
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        var redirectPath = uri.PathAndQuery;
+        if (string.IsNullOrWhiteSpace(redirectPath) || !redirectPath.StartsWith('/'))
+            redirectPath = "/";
+
+        // Full HTTP round-trip so UseRequestLocalization applies the new cookie.
+        Navigation.NavigateTo(
+            $"culture/set?culture={Uri.EscapeDataString(culture)}&redirectUri={Uri.EscapeDataString(redirectPath)}",
+            forceLoad: true);
     }
 
     protected internal sealed record LanguageOption(string Code, string Label, string Flag);

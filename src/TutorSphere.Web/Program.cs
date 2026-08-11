@@ -141,6 +141,28 @@ app.UseStaticFiles(new StaticFileOptions
 
 MapAuthBffEndpoints(app);
 
+app.MapGet("/culture/set", (HttpContext ctx, string culture, string? redirectUri) =>
+{
+    var code = SupportedLanguageCodes.Normalize(culture);
+    ctx.Response.Cookies.Append(
+        CookieRequestCultureProvider.DefaultCookieName,
+        CookieRequestCultureProvider.MakeCookieValue(new RequestCulture(code, code)),
+        new CookieOptions
+        {
+            Expires = DateTimeOffset.UtcNow.AddYears(1),
+            IsEssential = true,
+            Path = "/",
+            SameSite = SameSiteMode.Lax,
+            Secure = ctx.Request.IsHttps
+        });
+
+    var target = string.IsNullOrWhiteSpace(redirectUri) ? "/" : redirectUri.Trim();
+    if (!target.StartsWith('/') || target.StartsWith("//", StringComparison.Ordinal))
+        target = "/";
+
+    return Results.LocalRedirect(target);
+});
+
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
