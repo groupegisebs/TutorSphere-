@@ -66,4 +66,13 @@ public interface IEmailService
 
     /// <summary>Notifie le tuteur qu'un paiement parent a été reçu pour un cours.</summary>
     Task SendTutorStudentPaymentReceivedAsync(string to, string tutorName, string studentName, string courseTitle, decimal amount, CancellationToken ct = default);
+
+    /// <summary>Notifie un expert qu'un enseignant est en attente de validation.</summary>
+    Task SendExpertTeacherPendingReviewAsync(
+        string to,
+        string expertFirstName,
+        string schoolName,
+        string? country,
+        string reviewUrl,
+        CancellationToken ct = default);
 }

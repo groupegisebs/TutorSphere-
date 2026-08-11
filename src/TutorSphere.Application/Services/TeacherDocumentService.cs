@@ -21,7 +21,9 @@ public interface ITeacherDocumentService
     Task DeleteForOwnerAsync(string ownerUserId, Guid documentId, CancellationToken ct = default);
 }
 
-public class TeacherDocumentService(IApplicationDbContext db) : ITeacherDocumentService
+public class TeacherDocumentService(
+    IApplicationDbContext db,
+    IExpertReviewNotificationService expertNotify) : ITeacherDocumentService
 {
     public Task<IReadOnlyList<TeacherDocumentDto>> ListForOwnerAsync(string ownerUserId, CancellationToken ct = default)
     {
@@ -51,6 +53,8 @@ public class TeacherDocumentService(IApplicationDbContext db) : ITeacherDocument
         if (string.IsNullOrWhiteSpace(fileUrl))
             throw new InvalidOperationException("URL du fichier requise.");
 
+        var isFirstDocument = !db.TeacherDocuments.Any(d => d.TenantId == tenant.Id);
+
         var entity = new TeacherDocument
         {
             TenantId = tenant.Id,
@@ -64,6 +68,10 @@ public class TeacherDocumentService(IApplicationDbContext db) : ITeacherDocument
         };
         db.Add(entity);
         await db.SaveChangesAsync(ct);
+
+        // Si l'inscription n'a pas encore notifié (ou a échoué), le 1er document déclenche l'alerte.
+        if (isFirstDocument)
+            await expertNotify.NotifyExpertsIfNeededAsync(tenant.Id, ct);
 
         return new TeacherDocumentDto(
             entity.Id, entity.TenantId, entity.DocumentType, entity.FileName, entity.FileUrl,

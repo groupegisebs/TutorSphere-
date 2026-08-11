@@ -20,15 +20,18 @@ public class TenantService : ITenantService
 {
     private readonly IApplicationDbContext _db;
     private readonly IEmailService _email;
+    private readonly IExpertReviewNotificationService _expertNotify;
     private readonly ILogger<TenantService> _logger;
 
     public TenantService(
         IApplicationDbContext db,
         IEmailService email,
+        IExpertReviewNotificationService expertNotify,
         ILogger<TenantService> logger)
     {
         _db = db;
         _email = email;
+        _expertNotify = expertNotify;
         _logger = logger;
     }
 
@@ -119,6 +122,8 @@ public class TenantService : ITenantService
                 schoolName: tenant.Name,
                 ct: ct);
         }
+
+        await _expertNotify.NotifyExpertsIfNeededAsync(tenant.Id, ct);
 
         return MapToDto(tenant);
     }

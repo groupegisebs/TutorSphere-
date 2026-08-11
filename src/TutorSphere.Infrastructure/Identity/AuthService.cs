@@ -8,6 +8,7 @@ using Microsoft.IdentityModel.Tokens;
 using TutorSphere.Application.Common;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.Auth;
+using TutorSphere.Application.Services;
 using TutorSphere.Domain.Entities;
 using TutorSphere.Domain.Enums;
 using TutorSphere.Infrastructure.Identity;
@@ -41,19 +42,22 @@ public class AuthService : IAuthService
     private readonly IEmailService _email;
     private readonly IApplicationDbContext _db;
     private readonly IAppUrlProvider _urls;
+    private readonly IExpertReviewNotificationService _expertNotify;
 
     public AuthService(
         UserManager<ApplicationUser> userManager,
         IConfiguration configuration,
         IEmailService email,
         IApplicationDbContext db,
-        IAppUrlProvider urls)
+        IAppUrlProvider urls,
+        IExpertReviewNotificationService expertNotify)
     {
         _userManager = userManager;
         _configuration = configuration;
         _email = email;
         _db = db;
         _urls = urls;
+        _expertNotify = expertNotify;
     }
 
     public async Task<AuthResponse> RegisterAsync(RegisterRequest request, CancellationToken ct = default)
@@ -386,6 +390,8 @@ public class AuthService : IAuthService
         var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
         var confirmUrl = _urls.BuildEmailConfirmUrl(user.Id, token);
         await _email.SendEmailConfirmationAsync(user.Email!, user.FirstName, confirmUrl, ct);
+
+        await _expertNotify.NotifyExpertsIfNeededAsync(tenant.Id, ct);
 
         return new RegisterSchoolResponse(tenant.Id, tenant.Slug, user.Email!);
     }

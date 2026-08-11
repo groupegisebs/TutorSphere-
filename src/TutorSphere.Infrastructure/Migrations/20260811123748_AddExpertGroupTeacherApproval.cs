@@ -44,6 +44,16 @@ namespace TutorSphere.Infrastructure.Migrations
                 type: "timestamp with time zone",
                 nullable: true);
 
+            // Backfill : écoles déjà publiques / actives restent considérées approuvées.
+            migrationBuilder.Sql("""
+                UPDATE "TenantsSet"
+                SET "ExpertApprovalStatus" = 1,
+                    "ExpertApprovedAt" = COALESCE("OnboardingCompletedAt", "CreatedAt", NOW() AT TIME ZONE 'UTC'),
+                    "ExpertApprovalNotes" = 'Approuvé (migration — compte existant).'
+                WHERE "IsPublicProfile" = TRUE
+                   OR ("Status" = 1 AND "OnboardingCompletedAt" IS NOT NULL);
+                """);
+
             migrationBuilder.CreateTable(
                 name: "ExpertGroupsSet",
                 columns: table => new

@@ -54,6 +54,11 @@ public class Tenant : BaseEntity
     /// <summary>Commentaire optionnel de l'expert (approbation ou rejet).</summary>
     public string? ExpertApprovalNotes { get; set; }
 
+    /// <summary>
+    /// Dernier e-mail « fiche en attente » envoyé aux experts du groupe responsable (anti-spam).
+    /// </summary>
+    public DateTime? ExpertReviewNotifiedAt { get; set; }
+
     public ExpertGroup? ApprovedByExpertGroup { get; set; }
 
     public ICollection<TeacherDocument> TeacherDocuments { get; set; } = [];

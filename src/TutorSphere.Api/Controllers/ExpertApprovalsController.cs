@@ -35,11 +35,6 @@ public class ExpertApprovalsController : ControllerBase
         {
             string? email = null;
             string? name = null;
-            if (!string.IsNullOrWhiteSpace(item.OwnerEmail) || item.TenantId != Guid.Empty)
-            {
-                // Owner contact filled below if we can resolve from review detail owner id later.
-            }
-
             var detail = await _approvals.GetReviewDetailAsync(item.TenantId, ct);
             if (detail?.OwnerUserId is { } oid)
             {

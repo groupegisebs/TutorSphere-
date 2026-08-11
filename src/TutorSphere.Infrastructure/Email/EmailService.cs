@@ -42,6 +42,7 @@ internal static class EmailTemplates
     public const string CourseEnrollmentRequest = "COURSE_ENROLLMENT_REQUEST";
     public const string CourseEnrollmentAccepted = "COURSE_ENROLLMENT_ACCEPTED";
     public const string TutorStudentPaymentReceived = "TUTOR_STUDENT_PAYMENT_RECEIVED";
+    public const string ExpertTeacherPending = "EXPERT_TEACHER_PENDING";
 }
 
 public class EmailService : IEmailService
@@ -264,6 +265,21 @@ public class EmailService : IEmailService
             ["Amount"] = amount.ToString("C", culture)
         }, ct, culture.Name);
     }
+
+    public Task SendExpertTeacherPendingReviewAsync(
+        string to,
+        string expertFirstName,
+        string schoolName,
+        string? country,
+        string reviewUrl,
+        CancellationToken ct = default) =>
+        SendAsync(to, EmailTemplates.ExpertTeacherPending, new Dictionary<string, string>
+        {
+            ["ExpertFirstName"] = expertFirstName,
+            ["SchoolName"] = schoolName,
+            ["Country"] = string.IsNullOrWhiteSpace(country) ? "—" : country.Trim(),
+            ["ReviewUrl"] = reviewUrl
+        }, ct);
 
     private static Dictionary<string, string> LessonBody(
         string recipientName,

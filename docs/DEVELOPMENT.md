@@ -267,6 +267,8 @@ Après inscription + profil, un enseignant (`Tenant`) reste en `ExpertApprovalSt
 
 Contraintes : un seul groupe international ; un seul groupe par `CountryCode`. Le badge « Approuvé par {groupe} » apparaît sur le profil public une fois `ExpertApprovalStatus.Approved` et le profil public activé (licence + onboarding).
 
+**E-mails experts :** à l'inscription enseignant (`Pending`) et, si pas encore envoyé, au premier document téléversé — notification unique (`Tenant.ExpertReviewNotifiedAt`) aux membres du groupe responsable (pays ou international). Template Mail Gateway `EXPERT_TEACHER_PENDING` (variables : `ExpertFirstName`, `SchoolName`, `Country`, `ReviewUrl` → `/expert/teachers/{id}`). Langue = préférence de l'expert (FR/EN… côté gateway). Seed : `GiseMailSender` → `TutorSphereTemplates` / `tools/generate-tutorsphere-templates.mjs` (client `TUTORSPHERE`) — redéployer ou redémarrer Mail Sender pour appliquer le seed.
+
 ## Internationalisation (i18n)
 
 TutorSphere prend en charge **7 langues** pour l'interface Web (Blazor) :

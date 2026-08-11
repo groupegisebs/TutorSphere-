@@ -175,6 +175,7 @@ public class ExpertApprovalService(
         tenant.ApprovedByUserId = expertUserId;
         tenant.ExpertApprovedAt = DateTime.UtcNow;
         tenant.ExpertApprovalNotes = string.IsNullOrWhiteSpace(notes) ? null : notes.Trim();
+        tenant.ExpertReviewNotifiedAt = null; // permet une nouvelle alerte si repasse en Pending
         tenant.IsPublicProfile = false;
         tenant.UpdatedAt = DateTime.UtcNow;
 
