@@ -102,6 +102,11 @@ public record TeacherReviewDetailDto(
 
 public record ExpertDecisionRequest(string? Notes);
 
+public record InviteTeacherApplicationRequest(
+    string Email,
+    string? FirstName = null,
+    string? PersonalMessage = null);
+
 public record TeacherApprovalStatusDto(
     ExpertApprovalStatus Status,
     string? Notes,

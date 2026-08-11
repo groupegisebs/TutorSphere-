@@ -1,6 +1,8 @@
 @page "/expert/teachers/{TenantId:guid}"
 @layout ExpertLayout
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using System.Text.Json
+@using System.Text.Json.Serialization
 @inject AuthService Auth
 @inject ApiClient Api
 @inject NavigationManager Nav
@@ -21,12 +23,23 @@
         else
         {
             <div class="cc-toolbar">
-                <div>
-                    <a href="expert/dashboard" class="small text-muted">← @L["Expert_Queue"]</a>
-                    <h1 class="cc-page-title">@_detail.SchoolName</h1>
-                    <p class="cc-page-sub">
-                        @(_detail.City ?? "") @(_detail.Country ?? "") · @_detail.OwnerName @_detail.OwnerEmail
-                    </p>
+                <div class="d-flex gap-3 align-items-start">
+                    @if (!string.IsNullOrWhiteSpace(_detail.LogoUrl))
+                    {
+                        <img src="@_detail.LogoUrl" alt="" class="rounded-circle" style="width:56px;height:56px;object-fit:cover;border:2px solid rgba(124,92,255,.35);" />
+                    }
+                    <div>
+                        <a href="expert/dashboard" class="small text-muted">← @L["Expert_Queue"]</a>
+                        <h1 class="cc-page-title">@_detail.SchoolName</h1>
+                        <p class="cc-page-sub mb-1">
+                            @JoinMeta(_detail.City, _detail.Country)
+                            @if (!string.IsNullOrWhiteSpace(_detail.OwnerName) || !string.IsNullOrWhiteSpace(_detail.OwnerEmail))
+                            {
+                                <span> · @_detail.OwnerName @_detail.OwnerEmail</span>
+                            }
+                        </p>
+                        <span class="cc-pill @StatusPillClass(_detail.ApprovalStatus)">@StatusLabel(_detail.ApprovalStatus)</span>
+                    </div>
                 </div>
             </div>
 
@@ -34,21 +47,123 @@
             {
                 <div class="alert alert-danger mb-3">@_error</div>
             }
+            @if (!string.IsNullOrEmpty(_success))
+            {
+                <div class="alert alert-success mb-3">@_success</div>
+            }
 
             <div class="row g-3">
                 <div class="col-lg-8">
                     <div class="cc-card mb-3">
                         <h2 class="cc-card-title">@L["Expert_Profile"]</h2>
-                        <p>@(_detail.Description ?? "—")</p>
-                        @if (!string.IsNullOrWhiteSpace(_detail.Presentation))
+                        <p class="mb-0">@(string.IsNullOrWhiteSpace(_detail.Description) ? "—" : _detail.Description)</p>
+
+                        @if (!string.IsNullOrWhiteSpace(_detail.Presentation)
+                             && !string.Equals(_detail.Presentation.Trim(), _detail.Description?.Trim(), StringComparison.Ordinal))
                         {
                             <h3 class="h6 mt-3">@L["Profile_TabPresentation"]</h3>
                             <div class="small">@_detail.Presentation</div>
                         }
-                        @if (!string.IsNullOrWhiteSpace(_detail.Portfolio))
+                        else if (!string.IsNullOrWhiteSpace(_detail.Presentation) && string.IsNullOrWhiteSpace(_detail.Description))
+                        {
+                            <h3 class="h6 mt-3">@L["Profile_TabPresentation"]</h3>
+                            <div class="small">@_detail.Presentation</div>
+                        }
+
+                        @if (_portfolio is not null)
+                        {
+                            <div class="row g-3 mt-2">
+                                <div class="col-sm-4">
+                                    <div class="small text-muted">@L["Profile_YearsExp"]</div>
+                                    <div class="fw-semibold">@_portfolio.YearsExperience</div>
+                                </div>
+                                <div class="col-sm-4">
+                                    <div class="small text-muted">@L["Profile_HourlyRate"]</div>
+                                    <div class="fw-semibold">@(_portfolio.HourlyRate > 0 ? $"{_portfolio.HourlyRate:0.##} $" : "—")</div>
+                                </div>
+                                <div class="col-sm-4">
+                                    <div class="small text-muted">@L["Profile_Status"]</div>
+                                    <div class="fw-semibold">@(string.IsNullOrWhiteSpace(_portfolio.Status) ? "—" : _portfolio.Status)</div>
+                                </div>
+                            </div>
+
+                            @if (_portfolio.Subjects is { Count: > 0 })
+                            {
+                                <h3 class="h6 mt-3">@L["Profile_Subjects"]</h3>
+                                <div class="d-flex flex-wrap gap-2">
+                                    @foreach (var s in _portfolio.Subjects)
+                                    {
+                                        <span class="cc-pill cc-pill-type">@s</span>
+                                    }
+                                </div>
+                            }
+
+                            @if (_portfolio.Levels is { Count: > 0 })
+                            {
+                                <h3 class="h6 mt-3">@L["Expert_Levels"]</h3>
+                                <div class="d-flex flex-wrap gap-2">
+                                    @foreach (var lv in _portfolio.Levels)
+                                    {
+                                        <span class="cc-pill">@lv</span>
+                                    }
+                                </div>
+                            }
+
+                            @if (_portfolio.Availability is { Count: > 0 })
+                            {
+                                <h3 class="h6 mt-3">@L["Profile_TabAvailability"]</h3>
+                                <div class="d-flex flex-wrap gap-2">
+                                    @foreach (var slot in _portfolio.Availability)
+                                    {
+                                        <span class="cc-pill">@slot</span>
+                                    }
+                                </div>
+                            }
+
+                            <h3 class="h6 mt-3">@L["Profile_Diplomas"]</h3>
+                            @if (_portfolio.Diplomas is { Count: > 0 })
+                            {
+                                <ul class="list-unstyled mb-0">
+                                    @foreach (var d in _portfolio.Diplomas)
+                                    {
+                                        <li class="py-2 border-bottom">
+                                            <strong>@(d.Title ?? "—")</strong>
+                                            <div class="small text-muted">
+                                                @JoinMeta(d.Institution, d.Year)
+                                            </div>
+                                        </li>
+                                    }
+                                </ul>
+                            }
+                            else
+                            {
+                                <p class="text-muted small mb-0">@L["Expert_NoCredentials"]</p>
+                            }
+
+                            <h3 class="h6 mt-3">@L["Profile_Certifications"]</h3>
+                            @if (_portfolio.Certifications is { Count: > 0 })
+                            {
+                                <ul class="list-unstyled mb-0">
+                                    @foreach (var c in _portfolio.Certifications)
+                                    {
+                                        <li class="py-2 border-bottom">
+                                            <strong>@(c.Title ?? "—")</strong>
+                                            <div class="small text-muted">
+                                                @JoinMeta(c.Institution, c.Year)
+                                            </div>
+                                        </li>
+                                    }
+                                </ul>
+                            }
+                            else
+                            {
+                                <p class="text-muted small mb-0">@L["Expert_NoCredentials"]</p>
+                            }
+                        }
+                        else if (!string.IsNullOrWhiteSpace(_detail.Portfolio))
                         {
                             <h3 class="h6 mt-3">@L["Profile_TabCredentials"]</h3>
-                            <pre class="small" style="white-space:pre-wrap;">@_detail.Portfolio</pre>
+                            <p class="text-muted small">@L["Expert_PortfolioUnreadable"]</p>
                         }
                     </div>
 
@@ -65,7 +180,7 @@
                                 {
                                     <li class="d-flex justify-content-between align-items-center py-2 border-bottom">
                                         <div>
-                                            <span class="cc-pill cc-pill-type">@d.DocumentType</span>
+                                            <span class="cc-pill cc-pill-type">@DocumentTypeLabel(d.DocumentType)</span>
                                             <strong class="ms-2">@d.FileName</strong>
                                         </div>
                                         <a class="cc-btn btn-sm" href="@d.FileUrl" target="_blank" rel="noopener">@L["Common_Open"]</a>
@@ -78,19 +193,58 @@
                 <div class="col-lg-4">
                     <div class="cc-card">
                         <h2 class="cc-card-title">@L["Expert_Decision"]</h2>
-                        <p class="small text-muted">
+                        <p class="small text-muted mb-2">
                             @L["Expert_SuggestedGroup"]: @(_detail.SuggestedExpertGroupName ?? "—")
                         </p>
-                        <label class="form-label">@L["Expert_Notes"]</label>
-                        <textarea class="form-control mb-3" rows="4" @bind="_notes"></textarea>
-                        <div class="d-grid gap-2">
-                            <button type="button" class="cc-btn cc-btn-primary" disabled="@_busy" @onclick="ApproveAsync">
-                                <i class="bi bi-check2"></i> @L["Expert_Approve"]
-                            </button>
-                            <button type="button" class="cc-btn" disabled="@_busy" @onclick="RejectAsync">
-                                <i class="bi bi-x-lg"></i> @L["Expert_Reject"]
-                            </button>
-                        </div>
+                        <p class="small text-muted mb-3">@L["Expert_EmailHint"]</p>
+
+                        @if (_detail.ApprovalStatus != 0)
+                        {
+                            <div class="alert alert-secondary mb-0">
+                                @L["Expert_AlreadyDecided"]
+                                @if (!string.IsNullOrWhiteSpace(_detail.ExpertApprovalNotes))
+                                {
+                                    <div class="mt-2 small">@_detail.ExpertApprovalNotes</div>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <label class="form-label">@L["Expert_Notes"]</label>
+                            <textarea class="form-control mb-3" rows="4" @bind="_notes"
+                                      placeholder="@L["Expert_NotesPlaceholder"]"></textarea>
+                            <div class="d-grid gap-2">
+                                <button type="button" class="cc-btn cc-btn-primary" disabled="@_busy" @onclick="ApproveAsync">
+                                    <i class="bi bi-check2"></i> @L["Expert_Approve"]
+                                </button>
+                                <button type="button" class="cc-btn" disabled="@_busy" @onclick="RejectAsync">
+                                    <i class="bi bi-x-lg"></i> @L["Expert_Reject"]
+                                </button>
+                            </div>
+                        }
+                    </div>
+
+                    <div class="cc-card mt-3">
+                        <h2 class="cc-card-title">@L["Expert_InviteTitle"]</h2>
+                        <p class="small text-muted mb-3">@L["Expert_InviteSubtitle"]</p>
+                        @if (!string.IsNullOrEmpty(_inviteError))
+                        {
+                            <div class="alert alert-danger py-2">@_inviteError</div>
+                        }
+                        @if (!string.IsNullOrEmpty(_inviteSuccess))
+                        {
+                            <div class="alert alert-success py-2">@_inviteSuccess</div>
+                        }
+                        <label class="form-label">@L["Expert_InviteEmail"]</label>
+                        <input class="form-control mb-2" type="email" @bind="_inviteEmail" placeholder="enseignant@exemple.com" />
+                        <label class="form-label">@L["Expert_InviteFirstName"]</label>
+                        <input class="form-control mb-2" @bind="_inviteFirstName" />
+                        <label class="form-label">@L["Expert_InviteMessage"]</label>
+                        <textarea class="form-control mb-3" rows="3" @bind="_inviteMessage"
+                                  placeholder="@L["Expert_InviteMessagePlaceholder"]"></textarea>
+                        <button type="button" class="cc-btn cc-btn-primary w-100" disabled="@_inviteBusy" @onclick="InviteAsync">
+                            <i class="bi bi-envelope"></i> @L["Expert_InviteSend"]
+                        </button>
                     </div>
                 </div>
             </div>
@@ -102,10 +256,26 @@
     [Parameter] public Guid TenantId { get; set; }
 
     private TeacherReviewDetailItem? _detail;
+    private TutorShowcaseDto? _portfolio;
     private bool _loading = true;
     private bool _busy;
     private string? _error;
+    private string? _success;
     private string? _notes;
+
+    private string _inviteEmail = "";
+    private string _inviteFirstName = "";
+    private string _inviteMessage = "";
+    private bool _inviteBusy;
+    private string? _inviteError;
+    private string? _inviteSuccess;
+
+    private static readonly JsonSerializerOptions PortfolioJson = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
 
     protected override async Task OnInitializedAsync()
     {
@@ -113,6 +283,7 @@
         try
         {
             _detail = await Api.GetAsync<TeacherReviewDetailItem>($"api/expert/teachers/{TenantId}");
+            _portfolio = ParsePortfolio(_detail?.Portfolio);
         }
         catch (Exception ex) { _error = ex.Message; }
         finally { _loading = false; }
@@ -122,10 +293,13 @@
     {
         _busy = true;
         _error = null;
+        _success = null;
         try
         {
             var ok = await Api.PostAsync<object>($"api/expert/teachers/{TenantId}/approve", new { notes = _notes });
             if (ok is null) { _error = L["Expert_ActionFailed"]; return; }
+            _success = L["Expert_ApproveSuccess"];
+            await Task.Delay(700);
             Nav.NavigateTo("/expert/dashboard");
         }
         catch (Exception ex) { _error = ex.Message; }
@@ -134,15 +308,108 @@
 
     private async Task RejectAsync()
     {
+        if (string.IsNullOrWhiteSpace(_notes))
+        {
+            _error = L["Expert_RejectNotesRequired"];
+            return;
+        }
+
         _busy = true;
         _error = null;
+        _success = null;
         try
         {
             var ok = await Api.PostAsync<object>($"api/expert/teachers/{TenantId}/reject", new { notes = _notes });
             if (ok is null) { _error = L["Expert_ActionFailed"]; return; }
+            _success = L["Expert_RejectSuccess"];
+            await Task.Delay(700);
             Nav.NavigateTo("/expert/dashboard");
         }
         catch (Exception ex) { _error = ex.Message; }
         finally { _busy = false; }
     }
+
+    private async Task InviteAsync()
+    {
+        _inviteBusy = true;
+        _inviteError = null;
+        _inviteSuccess = null;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<object>("api/expert/invite-application", new
+            {
+                email = _inviteEmail,
+                firstName = string.IsNullOrWhiteSpace(_inviteFirstName) ? null : _inviteFirstName,
+                personalMessage = string.IsNullOrWhiteSpace(_inviteMessage) ? null : _inviteMessage
+            });
+            if (result.Error is not null)
+            {
+                _inviteError = result.Error;
+                return;
+            }
+
+            _inviteSuccess = L["Expert_InviteSuccess"];
+            _inviteEmail = "";
+            _inviteFirstName = "";
+            _inviteMessage = "";
+        }
+        catch (Exception ex)
+        {
+            _inviteError = ex.Message;
+        }
+        finally { _inviteBusy = false; }
+    }
+
+    private static TutorShowcaseDto? ParsePortfolio(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return null;
+        try
+        {
+            return JsonSerializer.Deserialize<TutorShowcaseDto>(json, PortfolioJson);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string JoinMeta(params string?[] parts) =>
+        string.Join(" · ", parts.Where(p => !string.IsNullOrWhiteSpace(p)));
+
+    private string DocumentTypeLabel(int type) => type switch
+    {
+        0 => L["TeacherDoc_Identification"],
+        1 => L["TeacherDoc_Diploma"],
+        2 => L["TeacherDoc_Cv"],
+        3 => L["TeacherDoc_CoverLetter"],
+        4 => L["TeacherDoc_PresentationVideo"],
+        _ => L["TeacherDoc_Other"]
+    };
+
+    private string StatusLabel(int status) => status switch
+    {
+        1 => L["Expert_StatusApproved"],
+        2 => L["Expert_StatusRejected"],
+        _ => L["Expert_StatusPending"]
+    };
+
+    private static string StatusPillClass(int status) => status switch
+    {
+        1 => "cc-pill-ok",
+        2 => "cc-pill-bad",
+        _ => "cc-pill-type"
+    };
+
+    private sealed record CredentialDto(string? Title, string? Institution, string? Year);
+
+    private sealed record TutorShowcaseDto(
+        int YearsExperience,
+        decimal HourlyRate,
+        string? Status,
+        List<CredentialDto>? Diplomas,
+        List<CredentialDto>? Certifications,
+        List<string>? Subjects,
+        List<string>? Levels,
+        List<string>? Availability);
 }

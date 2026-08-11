@@ -92,4 +92,34 @@ public interface IEmailService
         string loginUrl,
         string groupName,
         CancellationToken ct = default);
+
+    /// <summary>Notifie l'enseignant que son dossier a été approuvé par un groupe d'experts.</summary>
+    Task SendExpertTeacherApprovedAsync(
+        string to,
+        string firstName,
+        string schoolName,
+        string groupName,
+        string notes,
+        string loginUrl,
+        CancellationToken ct = default);
+
+    /// <summary>Notifie l'enseignant que son dossier a été rejeté par un groupe d'experts.</summary>
+    Task SendExpertTeacherRejectedAsync(
+        string to,
+        string firstName,
+        string schoolName,
+        string groupName,
+        string notes,
+        string loginUrl,
+        CancellationToken ct = default);
+
+    /// <summary>Invite un enseignant à déposer sa candidature (URL + bouton).</summary>
+    Task SendExpertTeacherApplyInviteAsync(
+        string to,
+        string firstName,
+        string expertName,
+        string groupName,
+        string personalMessage,
+        string applyUrl,
+        CancellationToken ct = default);
 }

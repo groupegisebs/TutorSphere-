@@ -45,6 +45,9 @@ internal static class EmailTemplates
     public const string ExpertTeacherPending = "EXPERT_TEACHER_PENDING";
     public const string ExpertInvite = "EXPERT_INVITE";
     public const string ExpertAddedToGroup = "EXPERT_ADDED_TO_GROUP";
+    public const string ExpertTeacherApproved = "EXPERT_TEACHER_APPROVED";
+    public const string ExpertTeacherRejected = "EXPERT_TEACHER_REJECTED";
+    public const string ExpertTeacherApplyInvite = "EXPERT_TEACHER_APPLY_INVITE";
 }
 
 public class EmailService : IEmailService
@@ -311,6 +314,59 @@ public class EmailService : IEmailService
             ["Email"] = to,
             ["LoginUrl"] = loginUrl,
             ["GroupName"] = groupName
+        }, ct);
+
+    public Task SendExpertTeacherApprovedAsync(
+        string to,
+        string firstName,
+        string schoolName,
+        string groupName,
+        string notes,
+        string loginUrl,
+        CancellationToken ct = default) =>
+        SendAsync(to, EmailTemplates.ExpertTeacherApproved, new Dictionary<string, string>
+        {
+            ["FirstName"] = firstName,
+            ["SchoolName"] = schoolName,
+            ["GroupName"] = groupName,
+            ["Notes"] = string.IsNullOrWhiteSpace(notes) ? "—" : notes.Trim(),
+            ["LoginUrl"] = loginUrl
+        }, ct);
+
+    public Task SendExpertTeacherRejectedAsync(
+        string to,
+        string firstName,
+        string schoolName,
+        string groupName,
+        string notes,
+        string loginUrl,
+        CancellationToken ct = default) =>
+        SendAsync(to, EmailTemplates.ExpertTeacherRejected, new Dictionary<string, string>
+        {
+            ["FirstName"] = firstName,
+            ["SchoolName"] = schoolName,
+            ["GroupName"] = groupName,
+            ["Notes"] = string.IsNullOrWhiteSpace(notes) ? "—" : notes.Trim(),
+            ["LoginUrl"] = loginUrl
+        }, ct);
+
+    public Task SendExpertTeacherApplyInviteAsync(
+        string to,
+        string firstName,
+        string expertName,
+        string groupName,
+        string personalMessage,
+        string applyUrl,
+        CancellationToken ct = default) =>
+        SendAsync(to, EmailTemplates.ExpertTeacherApplyInvite, new Dictionary<string, string>
+        {
+            ["FirstName"] = string.IsNullOrWhiteSpace(firstName) ? "enseignant" : firstName.Trim(),
+            ["ExpertName"] = string.IsNullOrWhiteSpace(expertName) ? "un expert TutorSphere" : expertName.Trim(),
+            ["GroupName"] = string.IsNullOrWhiteSpace(groupName) ? "TutorSphere" : groupName.Trim(),
+            ["PersonalMessage"] = string.IsNullOrWhiteSpace(personalMessage)
+                ? "Nous vous invitons à créer votre profil enseignant et à déposer votre candidature pour examen."
+                : personalMessage.Trim(),
+            ["ApplyUrl"] = applyUrl
         }, ct);
 
     private static Dictionary<string, string> LessonBody(

@@ -16,6 +16,40 @@
             </div>
         </div>
 
+        <div class="cc-card mb-3">
+            <h2 class="cc-card-title">@L["Expert_InviteTitle"]</h2>
+            <p class="small text-muted mb-3">@L["Expert_InviteSubtitle"]</p>
+
+            @if (!string.IsNullOrEmpty(_inviteError))
+            {
+                <div class="alert alert-danger py-2">@_inviteError</div>
+            }
+            @if (!string.IsNullOrEmpty(_inviteSuccess))
+            {
+                <div class="alert alert-success py-2">@_inviteSuccess</div>
+            }
+
+            <div class="row g-2 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label">@L["Expert_InviteEmail"]</label>
+                    <input class="form-control" type="email" @bind="_inviteEmail" placeholder="enseignant@exemple.com" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">@L["Expert_InviteFirstName"]</label>
+                    <input class="form-control" @bind="_inviteFirstName" />
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label">@L["Expert_InviteMessage"]</label>
+                    <input class="form-control" @bind="_inviteMessage" placeholder="@L["Expert_InviteMessagePlaceholder"]" />
+                </div>
+                <div class="col-12">
+                    <button type="button" class="cc-btn cc-btn-primary" disabled="@_inviteBusy" @onclick="InviteAsync">
+                        <i class="bi bi-envelope"></i> @L["Expert_InviteSend"]
+                    </button>
+                </div>
+            </div>
+        </div>
+
         @if (_loading)
         {
             <div class="cc-empty"><span class="spinner-border"></span></div>
@@ -80,6 +114,13 @@
     private bool _loading = true;
     private string? _error;
 
+    private string _inviteEmail = "";
+    private string _inviteFirstName = "";
+    private string _inviteMessage = "";
+    private bool _inviteBusy;
+    private string? _inviteError;
+    private string? _inviteSuccess;
+
     protected override async Task OnInitializedAsync()
     {
         try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
@@ -92,5 +133,36 @@
             _error = ex.Message;
         }
         finally { _loading = false; }
+    }
+
+    private async Task InviteAsync()
+    {
+        _inviteBusy = true;
+        _inviteError = null;
+        _inviteSuccess = null;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<object>("api/expert/invite-application", new
+            {
+                email = _inviteEmail,
+                firstName = string.IsNullOrWhiteSpace(_inviteFirstName) ? null : _inviteFirstName,
+                personalMessage = string.IsNullOrWhiteSpace(_inviteMessage) ? null : _inviteMessage
+            });
+            if (result.Error is not null)
+            {
+                _inviteError = result.Error;
+                return;
+            }
+
+            _inviteSuccess = L["Expert_InviteSuccess"];
+            _inviteEmail = "";
+            _inviteFirstName = "";
+            _inviteMessage = "";
+        }
+        catch (Exception ex)
+        {
+            _inviteError = ex.Message;
+        }
+        finally { _inviteBusy = false; }
     }
 }

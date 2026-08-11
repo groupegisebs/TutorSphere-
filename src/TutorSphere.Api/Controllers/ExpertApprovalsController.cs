@@ -97,4 +97,22 @@ public class ExpertApprovalsController : ControllerBase
             return BadRequest(new { error = ex.Message });
         }
     }
+
+    [HttpPost("invite-application")]
+    public async Task<IActionResult> InviteApplication([FromBody] InviteTeacherApplicationRequest? request, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        if (request is null)
+            return BadRequest(new { error = "Requête invalide." });
+
+        try
+        {
+            await _approvals.InviteTeacherApplicationAsync(UserId, request, ct);
+            return Ok(new { message = "Invitation envoyée." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
 }
