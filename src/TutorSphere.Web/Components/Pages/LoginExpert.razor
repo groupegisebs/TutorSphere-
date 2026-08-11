@@ -88,17 +88,27 @@
             var result = await AuthSvc.LoginAsync(_email.Trim(), _password);
             if (result.Success)
             {
+                // Autoriser si le rôle principal est Expert OU si le JWT contient Expert
+                // (ex. SuperAdmin aussi membre d'un groupe d'experts).
                 var role = result.Role ?? AuthSvc.PrimaryRole ?? "";
-                if (!string.Equals(role, "Expert", StringComparison.OrdinalIgnoreCase))
+                var hasExpert = string.Equals(role, "Expert", StringComparison.OrdinalIgnoreCase)
+                                || AuthSvc.IsInRole("Expert");
+                if (!hasExpert)
                 {
                     _errorMessage = L["Login_Expert_WrongRole"];
                     AuthSvc.Logout();
                     return;
                 }
-                Navigation.NavigateTo(result.RedirectTo ?? "/expert/dashboard");
+
+                // Toujours l'espace expert (pas le Control Center si SuperAdmin).
+                if (result.MustChangePassword)
+                    Navigation.NavigateTo("/change-password");
+                else
+                    Navigation.NavigateTo("/expert/dashboard");
                 return;
             }
-            _errorMessage = result.Error ?? L["Login_InvalidCredentials"].ToString();
+
+            _errorMessage = MapLoginError(result.ErrorCode, result.Error);
         }
         catch (Exception)
         {
@@ -106,4 +116,14 @@
         }
         finally { _isLoading = false; }
     }
+
+    private string MapLoginError(string? code, string? fallback) => code switch
+    {
+        "email_not_confirmed" => L["Login_EmailNotConfirmed"],
+        "account_disabled" => L["Login_Unavailable"],
+        "login_unavailable" => L["Login_Unavailable"],
+        "invalid_response" => L["Login_Unavailable"],
+        "invalid_credentials" => L["Login_InvalidCredentials"],
+        _ => fallback ?? L["Login_InvalidCredentials"].ToString()
+    };
 }

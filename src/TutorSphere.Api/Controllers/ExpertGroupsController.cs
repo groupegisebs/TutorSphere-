@@ -320,6 +320,7 @@ public class ExpertGroupsController : ControllerBase
         }
 
         user.MustChangePassword = true;
+        user.EmailConfirmed = true;
         await _userManager.UpdateAsync(user);
 
         var loginUrl = $"{_urls.WebBaseUrl.TrimEnd('/')}/login/expert";
@@ -333,13 +334,16 @@ public class ExpertGroupsController : ControllerBase
         return true;
     }
 
-    /// <summary>Mot de passe temporaire respectant la politique Identity (jamais journalisé).</summary>
+    /// <summary>
+    /// Mot de passe temporaire respectant Identity.
+    /// Évite $ et # (casse souvent le HTML e-mail / le copier-coller).
+    /// </summary>
     private static string GenerateTemporaryPassword()
     {
         const string upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
         const string lower = "abcdefghijkmnpqrstuvwxyz";
         const string digits = "23456789";
-        const string symbols = "!@#$%";
+        const string symbols = "!@%*?";
         Span<char> code = stackalloc char[12];
         code[0] = upper[RandomNumberGenerator.GetInt32(upper.Length)];
         code[1] = lower[RandomNumberGenerator.GetInt32(lower.Length)];

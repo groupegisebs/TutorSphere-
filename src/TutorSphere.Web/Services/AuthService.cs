@@ -50,6 +50,8 @@ public sealed class AuthService
     public string? SchoolName => _authProvider.SchoolName;
     public bool MustChangePassword => _authProvider.MustChangePassword;
 
+    public bool IsInRole(string role) => _authProvider.IsInRole(role);
+
     /// <summary>Updates the in-memory display name after a successful profile save (JWT claims stay until re-login).</summary>
     public async Task UpdateLocalDisplayNameAsync(string fullName)
     {
@@ -678,6 +680,12 @@ public sealed class CustomAuthenticationStateProvider : AuthenticationStateProvi
     public bool MustChangePassword =>
         string.Equals(_user.FindFirst("must_change_password")?.Value, "true", StringComparison.OrdinalIgnoreCase);
 
+    public bool IsInRole(string role) =>
+        !string.IsNullOrWhiteSpace(role)
+        && _user.Claims.Any(c =>
+            c.Type == ClaimTypes.Role
+            && string.Equals(c.Value, role, StringComparison.OrdinalIgnoreCase));
+
     public Guid? TenantId
     {
         get
@@ -722,9 +730,17 @@ public sealed class CustomAuthenticationStateProvider : AuthenticationStateProvi
                 claims.Add(new Claim("tenant_name", value));
             if (key is "must_change_password" && claims.All(c => c.Type != "must_change_password"))
                 claims.Add(new Claim("must_change_password", value));
-            if (key is "role" or "http://schemas.microsoft.com/ws/2008/06/identity/claims/role"
-                && claims.All(c => c.Type != ClaimTypes.Role))
-                claims.Add(new Claim(ClaimTypes.Role, value));
+
+            // Toutes les claims rôle du JWT (pas seulement la première).
+            if (key is "role" or "http://schemas.microsoft.com/ws/2008/06/identity/claims/role")
+            {
+                if (!string.IsNullOrWhiteSpace(value)
+                    && claims.All(c => c.Type != ClaimTypes.Role
+                                       || !string.Equals(c.Value, value, StringComparison.OrdinalIgnoreCase)))
+                {
+                    claims.Add(new Claim(ClaimTypes.Role, value));
+                }
+            }
         }
 
         _user = new ClaimsPrincipal(new ClaimsIdentity(claims, "TutorSphereJwt"));
