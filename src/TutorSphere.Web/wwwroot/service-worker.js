@@ -1,5 +1,15 @@
 /* TutorSphere PWA — shell cache only (Blazor Server stays online-first). */
-const CACHE_NAME = 'tutorsphere-v3';
+const CACHE_NAME = 'tutorsphere-v4';
+
+// Files that must always be revalidated against the network (logic can change
+// between deploys — e.g. culture.js — so cache-first would trap users on stale code).
+const NETWORK_FIRST_PATHS = new Set([
+  '/js/culture.js',
+  '/js/auth-storage.js',
+  '/js/page-assets.js',
+  '/js/pwa-install.js',
+  '/js/file-download.js'
+]);
 
 const PRECACHE_URLS = [
   '/offline.html',
@@ -87,6 +97,23 @@ self.addEventListener('fetch', (event) => {
           })
         )
       )
+    );
+    return;
+  }
+
+  // JS whose behavior can change between deploys: network-first, cache is just an
+  // offline fallback, and gets refreshed on every successful online fetch.
+  if (NETWORK_FIRST_PATHS.has(url.pathname)) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response && response.status === 200 && response.type === 'basic') {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(request))
     );
     return;
   }
