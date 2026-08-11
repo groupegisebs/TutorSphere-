@@ -1,7 +1,5 @@
-// Auto-detect browser language on first visit (no culture cookie present).
-// Maps navigator.language to a supported TutorSphere language code and sets
-// the ASP.NET Core culture cookie, then reloads once so the server picks it up.
-// On subsequent visits the cookie is already set, so this is a no-op.
+// Persist browser / selected language via the ASP.NET Core culture cookie.
+// InteractiveServer circuits read this cookie on connect — query-string culture alone is not enough.
 (function () {
     var cookieName = '.AspNetCore.Culture';
     var hasCookie = document.cookie.split(';').some(function (c) {
@@ -11,20 +9,22 @@
     if (!hasCookie) {
         var raw = (navigator.languages && navigator.languages[0]) || navigator.language || 'fr';
         var code = raw.split('-')[0].toLowerCase();
-        // zh-* variants map to zh-Hans
         if (raw.toLowerCase().startsWith('zh')) { code = 'zh-Hans'; }
         var supported = ['fr', 'en', 'es', 'de', 'pt', 'zh-Hans', 'ar'];
-        if (!supported.includes(code)) { code = 'fr'; }
+        if (supported.indexOf(code) < 0) { code = 'fr'; }
+        // Do not encodeURIComponent the whole value — CookieRequestCultureProvider expects "c=xx|uic=xx".
         var val = 'c=' + code + '|uic=' + code;
-        document.cookie = cookieName + '=' + encodeURIComponent(val) + ';path=/;max-age=31536000;SameSite=Lax';
+        var secure = window.location.protocol === 'https:' ? ';Secure' : '';
+        document.cookie = cookieName + '=' + val + ';path=/;max-age=31536000;SameSite=Lax' + secure;
         window.location.reload();
     }
 })();
 
 window.tutorSphereCulture = {
     setCulture: function (culture) {
-        var cookieValue = 'c=' + culture + '|uic=' + culture;
-        document.cookie = '.AspNetCore.Culture=' + encodeURIComponent(cookieValue) + ';path=/;max-age=31536000;SameSite=Lax';
+        var val = 'c=' + culture + '|uic=' + culture;
+        var secure = window.location.protocol === 'https:' ? ';Secure' : '';
+        document.cookie = '.AspNetCore.Culture=' + val + ';path=/;max-age=31536000;SameSite=Lax' + secure;
         window.location.reload();
     }
 };

@@ -1,8 +1,7 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Localization;
-using System.Globalization;
 using TutorSphere.Application.Common;
+using TutorSphere.Web.Services;
 
 namespace TutorSphere.Web.Components.Layout;
 
@@ -33,12 +32,8 @@ public partial class LanguageSelector : ComponentBase
 
     private void SyncCurrentCulture()
     {
-        var fromRequest = HttpContextAccessor.HttpContext?
-            .Features.Get<IRequestCultureFeature>()?
-            .RequestCulture.UICulture.Name;
-
         CurrentCulture = SupportedLanguageCodes.Normalize(
-            fromRequest ?? CultureInfo.CurrentUICulture.Name);
+            CultureRequestHelper.Resolve(HttpContextAccessor.HttpContext).Name);
     }
 
     private void OnCultureChanged(ChangeEventArgs e)

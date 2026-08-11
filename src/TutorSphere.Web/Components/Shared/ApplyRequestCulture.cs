@@ -1,14 +1,13 @@
 using System.Globalization;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Localization;
-using TutorSphere.Application.Common;
+using TutorSphere.Web.Services;
 
 namespace TutorSphere.Web.Components.Shared;
 
 /// <summary>
-/// Applique la culture HTTP (cookie) au thread du circuit InteractiveServer,
-/// sinon IStringLocalizer reste bloqué sur la culture du premier rendu.
+/// Applique la culture HTTP (cookie) au thread courant.
+/// Requis pour le SSR et en complément du <see cref="CultureCircuitHandler"/> InteractiveServer.
 /// </summary>
 public sealed class ApplyRequestCulture : ComponentBase
 {
@@ -19,15 +18,5 @@ public sealed class ApplyRequestCulture : ComponentBase
 
     protected override void OnParametersSet() => Apply();
 
-    private void Apply()
-    {
-        var feature = HttpContextAccessor.HttpContext?.Features.Get<IRequestCultureFeature>();
-        var culture = feature?.RequestCulture.UICulture
-            ?? CultureInfo.GetCultureInfo(SupportedLanguageCodes.Default);
-
-        CultureInfo.CurrentCulture = culture;
-        CultureInfo.CurrentUICulture = culture;
-        CultureInfo.DefaultThreadCurrentCulture = culture;
-        CultureInfo.DefaultThreadCurrentUICulture = culture;
-    }
+    private void Apply() => CultureRequestHelper.ApplyToCurrentThread(HttpContextAccessor.HttpContext);
 }

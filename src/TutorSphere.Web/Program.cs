@@ -18,10 +18,13 @@ builder.Services.Configure<RequestLocalizationOptions>(options =>
     options.SupportedCultures = localization.SupportedCultures;
     options.SupportedUICultures = localization.SupportedUICultures;
     options.ApplyCurrentCultureToResponseHeaders = localization.ApplyCurrentCultureToResponseHeaders;
-    options.RequestCultureProviders.Insert(0, new CookieRequestCultureProvider());
+    options.RequestCultureProviders.Clear();
+    options.RequestCultureProviders.Add(new CookieRequestCultureProvider());
 });
 
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<Microsoft.AspNetCore.Components.Server.Circuits.CircuitHandler,
+    CultureCircuitHandler>();
 builder.Services.AddAuthorizationCore();
 // Requis pour AuthorizeView sous @rendermode InteractiveServer
 // (CascadingAuthenticationState dans App.razor ne traverse pas les frontières de rendu).
@@ -90,6 +93,9 @@ var supportedCultureNames = SupportedLanguageCodes.All
     .Select(c => CultureInfo.GetCultureInfo(c).Name)
     .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
+// Cookie / Accept-Language → IRequestCultureFeature (must run before Blazor circuits).
+app.UseRequestLocalization();
+
 app.Use(async (context, next) =>
 {
     var cultureFeature = context.Features.Get<IRequestCultureFeature>();
@@ -102,10 +108,12 @@ app.Use(async (context, next) =>
             new RequestCultureFeature(new RequestCulture(fallback), cultureFeature!.Provider));
     }
 
+    // Ensure CurrentUICulture is set for this HTTP request (SSR + Blazor negotiate).
+    CultureRequestHelper.ApplyToCurrentThread(context);
+
     await next();
 });
 
-app.UseRequestLocalization();
 app.UseAntiforgery();
 
 // PWA: keep SW + manifest + Digital Asset Links fresh; ensure MIME types.
