@@ -15,6 +15,9 @@
         <p class="ts-page-subtitle">@L["Profile_Subtitle"]</p>
     </div>
     <div class="d-flex gap-2">
+        <a href="/tutor/verification" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-patch-check me-1"></i>@L["Nav_TeacherVerification"]
+        </a>
         <a href="/tutor/school" class="btn btn-outline-secondary btn-sm">
             <i class="bi bi-building me-1"></i>@L["Profile_MySchool"]
         </a>
@@ -24,6 +27,17 @@
         </button>
     </div>
 </div>
+
+@if (_approvalBanner is not null)
+{
+    <div class="alert @_approvalBanner.CssClass mb-4 d-flex align-items-center gap-2">
+        @if (!string.IsNullOrWhiteSpace(_approvalBanner.LogoUrl))
+        {
+            <img src="@_approvalBanner.LogoUrl" alt="" style="height:28px;object-fit:contain;" />
+        }
+        <span>@_approvalBanner.Text</span>
+    </div>
+}
 
 @if (!string.IsNullOrEmpty(_error))
 {
@@ -272,6 +286,7 @@ else if (_tab == "availability")
     private bool _saving, _saved;
     private string? _error;
     private string? _photoDataUrl;
+    private ApprovalBannerVm? _approvalBanner;
     private bool _showDiplomaForm;
     private bool _showCertForm;
     private string? _credentialFormError;
@@ -343,6 +358,30 @@ else if (_tab == "availability")
         }
 
         await LoadShowcaseAsync();
+        await LoadApprovalBannerAsync();
+    }
+
+    private async Task LoadApprovalBannerAsync()
+    {
+        try
+        {
+            var status = await Api.GetAsync<ApprovalStatusDto>("api/teacher-documents/approval-status");
+            if (status is null) return;
+            _approvalBanner = status.Status switch
+            {
+                0 => new ApprovalBannerVm("alert-warning", L["ExpertApproval_PendingBanner"].Value, null),
+                1 => new ApprovalBannerVm("alert-success",
+                    L["ExpertApproval_ApprovedBy", status.ExpertGroupName ?? ""].Value,
+                    status.ExpertGroupLogoUrl),
+                2 => new ApprovalBannerVm("alert-danger",
+                    string.IsNullOrWhiteSpace(status.Notes)
+                        ? L["ExpertApproval_RejectedBanner"].Value
+                        : $"{L["ExpertApproval_RejectedBanner"]} — {status.Notes}",
+                    null),
+                _ => null
+            };
+        }
+        catch { /* ignore */ }
     }
 
     private async Task LoadShowcaseAsync()
@@ -569,4 +608,13 @@ else if (_tab == "availability")
         public HashSet<string> Availability{get;set;}=[];
     }
     private ProfileVM _p = new();
+
+    private sealed record ApprovalBannerVm(string CssClass, string Text, string? LogoUrl);
+    private sealed record ApprovalStatusDto(
+        int Status,
+        string? Notes,
+        DateTime? ApprovedAt,
+        Guid? ExpertGroupId,
+        string? ExpertGroupName,
+        string? ExpertGroupLogoUrl);
 }

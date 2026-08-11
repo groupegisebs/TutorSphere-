@@ -253,6 +253,20 @@ Fichiers utiles :
 | `deploy/env.example` | Modèle variables d'environnement |
 | `deploy/GITHUB-SECRETS.md` | Liste des secrets GitHub |
 
+## Validation enseignants par groupes d'experts
+
+Après inscription + profil, un enseignant (`Tenant`) reste en `ExpertApprovalStatus.Pending` jusqu'à validation.
+
+**Routage de revue :** groupe du pays de l'enseignant s'il existe, sinon le **groupe international** unique (`ExpertGroup.IsInternational`).
+
+| Acteur | Routes Web | API |
+|--------|------------|-----|
+| Admin | `/admin/expert-groups`, `/admin/expert-groups/{id}` | `api/admin/expert-groups*` |
+| Expert | `/login/expert`, `/expert/dashboard`, `/expert/teachers/{tenantId}` | `api/expert/*` |
+| Enseignant | `/tutor/verification`, bannière sur `/tutor/profile` | `api/teacher-documents*` |
+
+Contraintes : un seul groupe international ; un seul groupe par `CountryCode`. Le badge « Approuvé par {groupe} » apparaît sur le profil public une fois `ExpertApprovalStatus.Approved` et le profil public activé (licence + onboarding).
+
 ## Internationalisation (i18n)
 
 TutorSphere prend en charge **7 langues** pour l'interface Web (Blazor) :

@@ -8,6 +8,8 @@ public static class UserRoles
     public const string TeachingAssistant = "TeachingAssistant";
     public const string Parent = "Parent";
     public const string Student = "Student";
+    /// <summary>Expert éducatif — valide les fiches enseignants via un groupe d'experts.</summary>
+    public const string Expert = "Expert";
 
     public static readonly string[] All =
     [
@@ -16,7 +18,8 @@ public static class UserRoles
         Tutor,
         TeachingAssistant,
         Parent,
-        Student
+        Student,
+        Expert
     ];
 
     /// <summary>Roles allowed to use the parent portal API and UI (pas les admins plateforme).</summary>

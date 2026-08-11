@@ -77,7 +77,8 @@ public class TutorOnboardingService(
         {
             tenant.OnboardingCompletedAt = DateTime.UtcNow;
             tenant.Status = TenantStatus.Active;
-            tenant.IsPublicProfile = true;
+            // Profil public seulement après validation par un groupe d'experts.
+            tenant.IsPublicProfile = tenant.ExpertApprovalStatus == ExpertApprovalStatus.Approved;
             tenant.UpdatedAt = DateTime.UtcNow;
             await db.SaveChangesAsync(ct);
 
@@ -86,15 +87,19 @@ public class TutorOnboardingService(
             {
                 var firstName = c.DisplayName.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()
                                 ?? c.DisplayName;
-                await email.SendSchoolApprovedAsync(
-                    c.Email,
-                    firstName,
-                    tenant.Name,
-                    $"{urls.WebBaseUrl.TrimEnd('/')}/login/tuteur",
-                    ct);
+                // E-mail « école active » uniquement si déjà validée par un expert (sinon reste privée).
+                if (tenant.IsPublicProfile)
+                {
+                    await email.SendSchoolApprovedAsync(
+                        c.Email,
+                        firstName,
+                        tenant.Name,
+                        $"{urls.WebBaseUrl.TrimEnd('/')}/login/tuteur",
+                        ct);
+                }
             }
 
-            return new CompleteOnboardingModuleResult(module.Id, true, true, true, null);
+            return new CompleteOnboardingModuleResult(module.Id, true, true, tenant.HasValidLicense() && tenant.IsPublicProfile, null);
         }
 
         tenant.UpdatedAt = DateTime.UtcNow;

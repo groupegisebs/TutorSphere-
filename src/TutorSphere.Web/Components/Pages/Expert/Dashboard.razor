@@ -1,0 +1,96 @@
+@page "/expert/dashboard"
+@layout ExpertLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService Auth
+@inject ApiClient Api
+@inject IStringLocalizer<SharedResources> L
+
+<PageTitle>@L["Expert_Queue"] — TutorSphere</PageTitle>
+
+<AuthorizeView Roles="Expert">
+    <Authorized>
+        <div class="cc-toolbar">
+            <div>
+                <h1 class="cc-page-title">@L["Expert_Queue"]</h1>
+                <p class="cc-page-sub">@L["Expert_QueueSubtitle"]</p>
+            </div>
+        </div>
+
+        @if (_loading)
+        {
+            <div class="cc-empty"><span class="spinner-border"></span></div>
+        }
+        else if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger">@_error</div>
+        }
+        else if (_queue.Count == 0)
+        {
+            <div class="cc-card cc-empty">
+                <i class="bi bi-inbox"></i>
+                <p>@L["Expert_QueueEmpty"]</p>
+            </div>
+        }
+        else
+        {
+            <div class="cc-card">
+                <table class="cc-table">
+                    <thead>
+                        <tr>
+                            <th>@L["Expert_ColSchool"]</th>
+                            <th>@L["Expert_ColCountry"]</th>
+                            <th>@L["Expert_ColDocs"]</th>
+                            <th>@L["Expert_ColDate"]</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in _queue)
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@item.SchoolName</strong>
+                                    <div class="small text-muted">@(item.OwnerName ?? item.OwnerEmail)</div>
+                                </td>
+                                <td>@(item.Country ?? "—")</td>
+                                <td>@item.DocumentCount</td>
+                                <td>@item.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</td>
+                                <td class="text-end">
+                                    <a class="cc-btn cc-btn-primary btn-sm" href="@($"expert/teachers/{item.TenantId}")">
+                                        @L["Expert_Review"]
+                                    </a>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </Authorized>
+    <NotAuthorized>
+        <div class="cc-card cc-empty">
+            <p>@L["Expert_LoginRequired"]</p>
+            <a class="cc-btn cc-btn-primary" href="/login/expert">@L["Nav_Login"]</a>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private List<PendingTeacherItem> _queue = [];
+    private bool _loading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        try
+        {
+            _queue = await Api.GetAsync<List<PendingTeacherItem>>("api/expert/queue") ?? [];
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally { _loading = false; }
+    }
+}

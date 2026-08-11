@@ -36,6 +36,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     public DbSet<TutorPayoutAccount> TutorPayoutAccountsSet => Set<TutorPayoutAccount>();
     public DbSet<PlatformLicensePayment> PlatformLicensePaymentsSet => Set<PlatformLicensePayment>();
     public DbSet<PlatformPromoCode> PlatformPromoCodesSet => Set<PlatformPromoCode>();
+    public DbSet<ExpertGroup> ExpertGroupsSet => Set<ExpertGroup>();
+    public DbSet<ExpertGroupMember> ExpertGroupMembersSet => Set<ExpertGroupMember>();
+    public DbSet<TeacherDocument> TeacherDocumentsSet => Set<TeacherDocument>();
 
     IQueryable<Tenant> IApplicationDbContext.Tenants => TenantsSet;
     IQueryable<TenantBranding> IApplicationDbContext.TenantBrandings => TenantBrandingsSet;
@@ -78,6 +81,11 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     IQueryable<PlatformLicensePayment> IApplicationDbContext.PlatformLicensePaymentsForAnyTenant =>
         PlatformLicensePaymentsSet.IgnoreQueryFilters();
     IQueryable<PlatformPromoCode> IApplicationDbContext.PlatformPromoCodes => PlatformPromoCodesSet;
+    IQueryable<ExpertGroup> IApplicationDbContext.ExpertGroups => ExpertGroupsSet;
+    IQueryable<ExpertGroupMember> IApplicationDbContext.ExpertGroupMembers => ExpertGroupMembersSet;
+    IQueryable<TeacherDocument> IApplicationDbContext.TeacherDocuments => TeacherDocumentsSet;
+    IQueryable<TeacherDocument> IApplicationDbContext.TeacherDocumentsForAnyTenant =>
+        TeacherDocumentsSet.IgnoreQueryFilters();
 
     public new void Add<T>(T entity) where T : class => Set<T>().Add(entity);
     public new void Remove<T>(T entity) where T : class => Set<T>().Remove(entity);
@@ -92,6 +100,13 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             e.HasIndex(t => t.Subdomain).IsUnique();
             e.Property(t => t.PlatformCommissionPercent).HasPrecision(5, 2);
             e.HasOne(t => t.Branding).WithOne(b => b.Tenant).HasForeignKey<TenantBranding>(b => b.TenantId);
+            e.HasOne(t => t.ApprovedByExpertGroup)
+                .WithMany()
+                .HasForeignKey(t => t.ApprovedByExpertGroupId)
+                .OnDelete(DeleteBehavior.SetNull);
+            e.Property(t => t.ApprovedByUserId).HasMaxLength(450);
+            e.Property(t => t.ExpertApprovalNotes).HasMaxLength(2000);
+            e.HasIndex(t => t.ExpertApprovalStatus);
         });
 
         builder.Entity<SubscriptionOffering>(e =>
@@ -152,6 +167,44 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             e.HasIndex(p => p.Code).IsUnique();
             e.HasIndex(p => p.RedeemedAt);
             e.HasIndex(p => p.IsActive);
+        });
+
+        builder.Entity<ExpertGroup>(e =>
+        {
+            e.Property(g => g.Name).HasMaxLength(200).IsRequired();
+            e.Property(g => g.LogoUrl).HasMaxLength(500);
+            e.Property(g => g.ContactEmail).HasMaxLength(256);
+            e.Property(g => g.ContactPhone).HasMaxLength(50);
+            e.Property(g => g.CountryCode).HasMaxLength(8);
+            e.HasIndex(g => g.IsInternational);
+            e.HasIndex(g => g.CountryCode);
+            // Unicité logique : un international + un par pays (appliquée aussi en service).
+            e.HasIndex(g => g.CountryCode)
+                .IsUnique()
+                .HasFilter("\"IsInternational\" = FALSE AND \"CountryCode\" IS NOT NULL");
+            e.HasIndex(g => g.IsInternational)
+                .IsUnique()
+                .HasFilter("\"IsInternational\" = TRUE");
+        });
+
+        builder.Entity<ExpertGroupMember>(e =>
+        {
+            e.Property(m => m.UserId).HasMaxLength(450).IsRequired();
+            e.HasIndex(m => new { m.ExpertGroupId, m.UserId }).IsUnique();
+            e.HasOne(m => m.ExpertGroup).WithMany(g => g.Members).HasForeignKey(m => m.ExpertGroupId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<TeacherDocument>(e =>
+        {
+            e.Property(d => d.FileName).HasMaxLength(260).IsRequired();
+            e.Property(d => d.FileUrl).HasMaxLength(500).IsRequired();
+            e.Property(d => d.ContentType).HasMaxLength(120);
+            e.Property(d => d.UploadedByUserId).HasMaxLength(450).IsRequired();
+            e.Property(d => d.Notes).HasMaxLength(500);
+            e.HasIndex(d => d.TenantId);
+            e.HasOne(d => d.Tenant).WithMany(t => t.TeacherDocuments).HasForeignKey(d => d.TenantId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         builder.Entity<Homework>(e =>

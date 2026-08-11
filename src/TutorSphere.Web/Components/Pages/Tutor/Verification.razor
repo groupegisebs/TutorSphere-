@@ -1,0 +1,192 @@
+@page "/tutor/verification"
+@layout TutorLayout
+@rendermode InteractiveServer
+@inject IStringLocalizer<SharedResources> L
+@inject ApiClient Api
+@inject AuthService Auth
+
+<PageTitle>@L["TeacherVerification_Title"] – TutorSphere</PageTitle>
+
+<div class="ts-page-header">
+    <div>
+        <h1><i class="bi bi-shield-check me-2"></i>@L["TeacherVerification_Title"]</h1>
+        <p class="ts-page-subtitle">@L["TeacherVerification_Subtitle"]</p>
+    </div>
+</div>
+
+@if (_status is not null)
+{
+    @if (_status.Status == 0)
+    {
+        <div class="alert alert-warning mb-4">
+            <i class="bi bi-hourglass-split me-2"></i>@L["ExpertApproval_PendingBanner"]
+        </div>
+    }
+    else if (_status.Status == 1)
+    {
+        <div class="alert alert-success mb-4 d-flex align-items-center gap-2">
+            @if (!string.IsNullOrWhiteSpace(_status.ExpertGroupLogoUrl))
+            {
+                <img src="@_status.ExpertGroupLogoUrl" alt="" style="height:32px;object-fit:contain;" />
+            }
+            else
+            {
+                <i class="bi bi-patch-check-fill"></i>
+            }
+            <span>@L["ExpertApproval_ApprovedBy", _status.ExpertGroupName ?? ""]</span>
+        </div>
+    }
+    else if (_status.Status == 2)
+    {
+        <div class="alert alert-danger mb-4">
+            <i class="bi bi-x-circle me-2"></i>@L["ExpertApproval_RejectedBanner"]
+            @if (!string.IsNullOrWhiteSpace(_status.Notes))
+            {
+                <div class="mt-1 small">@_status.Notes</div>
+            }
+        </div>
+    }
+}
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-danger">@_error</div>
+}
+@if (!string.IsNullOrEmpty(_flash))
+{
+    <div class="alert alert-success">@_flash</div>
+}
+
+<div class="section-card p-4 mb-4">
+    <h5>@L["TeacherVerification_Upload"]</h5>
+    <div class="row g-3 align-items-end">
+        <div class="col-md-4">
+            <label class="form-label">@L["TeacherVerification_DocType"]</label>
+            <select class="form-select" @bind="_docType">
+                <option value="Identification">@L["TeacherDoc_Identification"]</option>
+                <option value="Diploma">@L["TeacherDoc_Diploma"]</option>
+                <option value="Cv">@L["TeacherDoc_Cv"]</option>
+                <option value="CoverLetter">@L["TeacherDoc_CoverLetter"]</option>
+                <option value="PresentationVideo">@L["TeacherDoc_PresentationVideo"]</option>
+                <option value="Other">@L["TeacherDoc_Other"]</option>
+            </select>
+        </div>
+        <div class="col-md-5">
+            <label class="form-label">@L["TeacherVerification_File"]</label>
+            <InputFile OnChange="OnFileSelected" />
+        </div>
+        <div class="col-md-3">
+            <button class="btn btn-primary w-100" disabled="@(_uploading || _pendingFile is null)" @onclick="UploadAsync">
+                @if (_uploading) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                @L["Documents_Upload"]
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="section-card p-4">
+    <h5>@L["TeacherVerification_MyDocs"]</h5>
+    @if (_docs.Count == 0)
+    {
+        <p class="text-muted mb-0">@L["TeacherVerification_NoDocs"]</p>
+    }
+    else
+    {
+        <ul class="list-group list-group-flush">
+            @foreach (var d in _docs)
+            {
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    <div>
+                        <span class="badge bg-secondary me-2">@d.DocumentType</span>
+                        <a href="@d.FileUrl" target="_blank" rel="noopener">@d.FileName</a>
+                        <span class="text-muted small ms-2">@d.UploadedAt.ToLocalTime().ToString("dd MMM yyyy")</span>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(d.Id)">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    private TeacherApprovalStatusItem? _status;
+    private List<TeacherDocumentItem> _docs = [];
+    private string _docType = "Identification";
+    private IBrowserFile? _pendingFile;
+    private bool _uploading;
+    private string? _error;
+    private string? _flash;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.EnsureSessionRestoredAsync();
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _error = null;
+        try
+        {
+            _status = await Api.GetAsync<TeacherApprovalStatusItem>("api/teacher-documents/approval-status");
+            _docs = await Api.GetAsync<List<TeacherDocumentItem>>("api/teacher-documents") ?? [];
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private void OnFileSelected(InputFileChangeEventArgs e) => _pendingFile = e.File;
+
+    private async Task UploadAsync()
+    {
+        if (_pendingFile is null) return;
+        _uploading = true;
+        _error = null;
+        _flash = null;
+        try
+        {
+            await using var stream = _pendingFile.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024);
+            using var content = new MultipartFormDataContent();
+            content.Add(new StreamContent(stream), "file", _pendingFile.Name);
+            content.Add(new StringContent(_docType), "documentType");
+            var result = await Api.PostMultipartAsync<TeacherDocumentItem>("api/teacher-documents", content);
+            if (!result.IsSuccess)
+            {
+                _error = result.Error ?? L["TeacherVerification_UploadFailed"];
+                return;
+            }
+            _flash = L["TeacherVerification_UploadOk"];
+            _pendingFile = null;
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _uploading = false; }
+    }
+
+    private async Task DeleteAsync(Guid id)
+    {
+        var result = await Api.DeleteAsync($"api/teacher-documents/{id}");
+        if (!result) { _error = L["TeacherVerification_DeleteFailed"]; return; }
+        await ReloadAsync();
+    }
+
+    private sealed record TeacherApprovalStatusItem(
+        int Status,
+        string? Notes,
+        DateTime? ApprovedAt,
+        Guid? ExpertGroupId,
+        string? ExpertGroupName,
+        string? ExpertGroupLogoUrl);
+
+    private sealed record TeacherDocumentItem(
+        Guid Id,
+        Guid TenantId,
+        int DocumentType,
+        string FileName,
+        string FileUrl,
+        string ContentType,
+        long FileSizeBytes,
+        DateTime UploadedAt,
+        string? Notes);
+}

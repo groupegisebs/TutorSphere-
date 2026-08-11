@@ -49,6 +49,11 @@ public interface IApplicationDbContext
     IQueryable<PlatformLicensePayment> PlatformLicensePayments { get; }
     IQueryable<PlatformLicensePayment> PlatformLicensePaymentsForAnyTenant { get; }
     IQueryable<PlatformPromoCode> PlatformPromoCodes { get; }
+    IQueryable<ExpertGroup> ExpertGroups { get; }
+    IQueryable<ExpertGroupMember> ExpertGroupMembers { get; }
+    IQueryable<TeacherDocument> TeacherDocuments { get; }
+    /// <summary>Teacher verification documents without tenant query filter (expert / admin review).</summary>
+    IQueryable<TeacherDocument> TeacherDocumentsForAnyTenant { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     void Add<T>(T entity) where T : class;

@@ -71,4 +71,6 @@ public record PublicTutorDetailDto(
     IReadOnlyList<string> Subjects,
     IReadOnlyList<string> Levels,
     IReadOnlyList<string> Availability,
-    IReadOnlyList<PublicOfferingDto> Offerings);
+    IReadOnlyList<PublicOfferingDto> Offerings,
+    string? ApprovedByExpertGroupName = null,
+    string? ApprovedByExpertGroupLogoUrl = null);

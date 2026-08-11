@@ -1,0 +1,109 @@
+@page "/login/expert"
+@layout LoginLayout
+@rendermode InteractiveServer
+@using Microsoft.Extensions.Localization
+@inject NavigationManager Navigation
+@inject AuthService AuthSvc
+@inject IJSRuntime Js
+@inject IStringLocalizer<SharedResources> L
+
+<PageTitle>@L["Login_Expert_Space"] — TutorSphere</PageTitle>
+
+<div class="login-admin-page login-theme-admin">
+    <div class="login-admin-inner">
+        <div class="login-admin-brand">
+            <img src="images/tutorsphere-logo-full.png" alt="TutorSphere" class="app-logo-full login-logo" />
+        </div>
+        <div class="login-admin-icon">
+            <i class="bi bi-award-fill"></i>
+        </div>
+        <h1>@L["Login_Expert_Space"]</h1>
+        <p class="login-subtitle">@L["Login_Expert_Subtitle"]</p>
+
+        @if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <div class="alert alert-danger mb-3" role="alert">
+                <i class="bi bi-exclamation-circle me-2"></i>@_errorMessage
+            </div>
+        }
+
+        <form class="login-form w-100" @onsubmit="LoginAsync" @onsubmit:preventDefault="true">
+            <div class="mb-3">
+                <label class="form-label" for="login-email">@L["Login_Email"]</label>
+                <div class="form-field-icon">
+                    <i class="bi bi-envelope field-icon" aria-hidden="true"></i>
+                    <input type="email" id="login-email" class="form-control"
+                           autocomplete="username"
+                           @bind="_email" @bind:event="oninput" />
+                </div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label" for="login-password">@L["Login_Password"]</label>
+                <div class="form-field-icon">
+                    <i class="bi bi-lock field-icon" aria-hidden="true"></i>
+                    <input type="@(_showPassword ? "text" : "password")" id="login-password"
+                           class="form-control" autocomplete="current-password"
+                           @bind="_password" @bind:event="oninput"
+                           style="padding-right: 2.5rem;" />
+                    <button type="button" class="password-toggle" @onclick="() => _showPassword = !_showPassword"
+                            aria-label="@L["Label_TogglePassword"]">
+                        <i class="bi @(_showPassword ? "bi-eye-slash" : "bi-eye")" aria-hidden="true"></i>
+                    </button>
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary btn-lg w-100 mb-3 login-submit-btn" disabled="@_isLoading">
+                @if (_isLoading)
+                {
+                    <span class="spinner-border spinner-border-sm me-2"></span>@L["Login_Loading"]
+                }
+                else
+                {
+                    <i class="bi bi-award me-2"></i>@L["Login_Submit"]
+                }
+            </button>
+        </form>
+        <a href="/login" class="login-back-link mt-2" data-enhance-nav="false">@L["Login_Back"]</a>
+    </div>
+</div>
+
+@code {
+    private string _email = "";
+    private string _password = "";
+    private bool _showPassword;
+    private bool _isLoading;
+    private string? _errorMessage;
+
+    private async Task LoginAsync()
+    {
+        _errorMessage = null;
+        if (string.IsNullOrWhiteSpace(_email) || string.IsNullOrWhiteSpace(_password))
+        {
+            _errorMessage = L["Error_FillAllFields"];
+            return;
+        }
+
+        _isLoading = true;
+        try
+        {
+            var result = await AuthSvc.LoginAsync(_email.Trim(), _password);
+            if (result.Success)
+            {
+                var role = result.Role ?? AuthSvc.PrimaryRole ?? "";
+                if (!string.Equals(role, "Expert", StringComparison.OrdinalIgnoreCase))
+                {
+                    _errorMessage = L["Login_Expert_WrongRole"];
+                    AuthSvc.Logout();
+                    return;
+                }
+                Navigation.NavigateTo(result.RedirectTo ?? "/expert/dashboard");
+                return;
+            }
+            _errorMessage = result.Error ?? L["Login_InvalidCredentials"].ToString();
+        }
+        catch (Exception)
+        {
+            _errorMessage = L["Login_Unavailable"];
+        }
+        finally { _isLoading = false; }
+    }
+}

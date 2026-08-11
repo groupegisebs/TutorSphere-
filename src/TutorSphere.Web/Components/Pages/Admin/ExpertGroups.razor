@@ -1,0 +1,345 @@
+@page "/admin/expert-groups"
+@layout AdminLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AdminService AdminSvc
+@inject AuthService Auth
+@inject ApiClient Api
+
+<PageTitle>Groupes d'experts — Control Center</PageTitle>
+
+<AuthorizeView Roles="SuperAdmin,PlatformAdmin">
+    <Authorized>
+        <div class="cc-toolbar">
+            <div>
+                <h1 class="cc-page-title">Groupes d'experts</h1>
+                <p class="cc-page-sub">
+                    Un groupe par pays + un seul groupe international. Les experts valident les fiches enseignants.
+                </p>
+            </div>
+            <button type="button" class="cc-btn cc-btn-primary" @onclick="OpenCreate">
+                <i class="bi bi-plus-lg"></i> Nouveau groupe
+            </button>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_flash))
+        {
+            <div class="alert alert-success mb-3">@_flash</div>
+        }
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger mb-3">@_error</div>
+        }
+
+        @if (_showForm)
+        {
+            <div class="cc-card mb-3">
+                <div class="cc-card-header">
+                    <h2 class="cc-card-title">@(_editId is null ? "Créer un groupe" : "Modifier le groupe")</h2>
+                    <button type="button" class="cc-btn" @onclick="CloseForm"><i class="bi bi-x-lg"></i></button>
+                </div>
+                @if (!string.IsNullOrEmpty(_formError))
+                {
+                    <div class="alert alert-danger">@_formError</div>
+                }
+                <div class="row g-2">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Nom *</label>
+                        <input class="form-control" @bind="_formName" />
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">E-mail contact</label>
+                        <input class="form-control" @bind="_formEmail" />
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Téléphone</label>
+                        <input class="form-control" @bind="_formPhone" />
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">Code pays (ISO)</label>
+                        <input class="form-control" @bind="_formCountry" disabled="@_formInternational"
+                               placeholder="CA, FR, SN…" />
+                    </div>
+                    <div class="col-12 mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="intl"
+                                   checked="@_formInternational"
+                                   disabled="@(_editId is not null)"
+                                   @onchange="OnInternationalChanged" />
+                            <label class="form-check-label" for="intl">Groupe international (unique)</label>
+                        </div>
+                    </div>
+                    @if (_editId is not null)
+                    {
+                        <div class="col-12 mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" @bind="_formActive" id="active" />
+                                <label class="form-check-label" for="active">Actif</label>
+                            </div>
+                        </div>
+                        <div class="col-12 mb-3">
+                            <label class="form-label">Logo</label>
+                            <InputFile OnChange="UploadLogoAsync" accept="image/*" />
+                            @if (!string.IsNullOrWhiteSpace(_formLogo))
+                            {
+                                <div class="mt-2"><img src="@_formLogo" alt="Logo" style="max-height:48px;" /></div>
+                            }
+                        </div>
+                    }
+                </div>
+                <div class="d-flex gap-2 justify-content-end">
+                    <button type="button" class="cc-btn" @onclick="CloseForm">Annuler</button>
+                    <button type="button" class="cc-btn cc-btn-primary" disabled="@_saving" @onclick="SaveAsync">
+                        @if (_saving) { <span class="spinner-border spinner-border-sm"></span> }
+                        Enregistrer
+                    </button>
+                </div>
+            </div>
+        }
+
+        @if (_loading)
+        {
+            <div class="cc-empty"><span class="spinner-border"></span></div>
+        }
+        else
+        {
+            <div class="cc-card">
+                <div class="cc-table-wrap">
+                    <table class="cc-table">
+                        <thead>
+                            <tr>
+                                <th>Groupe</th>
+                                <th>Portée</th>
+                                <th>Contact</th>
+                                <th>Membres</th>
+                                <th>Statut</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (_groups.Count == 0)
+                            {
+                                <tr><td colspan="6" class="text-muted">Aucun groupe. Créez d'abord le groupe international.</td></tr>
+                            }
+                            @foreach (var g in _groups)
+                            {
+                                <tr>
+                                    <td>
+                                        <div class="cc-user-cell">
+                                            @if (!string.IsNullOrWhiteSpace(g.LogoUrl))
+                                            {
+                                                <img src="@g.LogoUrl" alt="" style="width:32px;height:32px;object-fit:contain;border-radius:4px;" />
+                                            }
+                                            else
+                                            {
+                                                <span class="cc-rank-icon"><i class="bi bi-award"></i></span>
+                                            }
+                                            <strong>@g.Name</strong>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        @if (g.IsInternational)
+                                        {
+                                            <span class="cc-pill cc-pill-type">International</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="cc-pill">@(g.CountryCode ?? "—")</span>
+                                        }
+                                    </td>
+                                    <td>
+                                        <div>@(g.ContactEmail ?? "—")</div>
+                                        <div class="small text-muted">@(g.ContactPhone ?? "")</div>
+                                    </td>
+                                    <td>@g.MemberCount</td>
+                                    <td>
+                                        <span class="cc-pill @(g.IsActive ? "cc-pill-ok" : "cc-pill-bad")">
+                                            @(g.IsActive ? "Actif" : "Inactif")
+                                        </span>
+                                    </td>
+                                    <td class="text-end">
+                                        <a class="cc-btn btn-sm" href="@($"admin/expert-groups/{g.Id}")">Membres</a>
+                                        <button type="button" class="cc-btn btn-sm" @onclick="() => OpenEdit(g)">Modifier</button>
+                                        <button type="button" class="cc-btn btn-sm" @onclick="() => DeleteAsync(g)">Supprimer</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="cc-card mt-3">
+                <div class="cc-card-header">
+                    <h2 class="cc-card-title">Enseignants en attente (tous pays)</h2>
+                </div>
+                @if (_pending.Count == 0)
+                {
+                    <p class="text-muted mb-0">Aucune fiche en attente.</p>
+                }
+                else
+                {
+                    <div class="cc-table-wrap">
+                        <table class="cc-table">
+                            <thead>
+                                <tr>
+                                    <th>École</th>
+                                    <th>Pays</th>
+                                    <th>Groupe suggéré</th>
+                                    <th>Docs</th>
+                                    <th>Inscrit</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var p in _pending)
+                                {
+                                    <tr>
+                                        <td><strong>@p.SchoolName</strong></td>
+                                        <td>@(p.Country ?? "—")</td>
+                                        <td>@(p.AssignedExpertGroupName ?? "—")</td>
+                                        <td>@p.DocumentCount</td>
+                                        <td>@p.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        }
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    private List<ExpertGroupItem> _groups = [];
+    private List<PendingTeacherItem> _pending = [];
+    private bool _loading = true;
+    private bool _showForm;
+    private bool _saving;
+    private Guid? _editId;
+    private string? _flash;
+    private string? _error;
+    private string? _formError;
+    private string _formName = "";
+    private string? _formEmail;
+    private string? _formPhone;
+    private string? _formCountry;
+    private string? _formLogo;
+    private bool _formInternational;
+    private bool _formActive = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _groups = await AdminSvc.GetExpertGroupsAsync();
+            _pending = await AdminSvc.GetPendingTeacherApprovalsAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _groups = [];
+            _pending = [];
+        }
+        finally { _loading = false; }
+    }
+
+    private void OpenCreate()
+    {
+        _editId = null;
+        _formName = "";
+        _formEmail = _formPhone = _formCountry = _formLogo = null;
+        _formInternational = !_groups.Any(g => g.IsInternational);
+        _formActive = true;
+        _formError = null;
+        _showForm = true;
+    }
+
+    private void OpenEdit(ExpertGroupItem g)
+    {
+        _editId = g.Id;
+        _formName = g.Name;
+        _formEmail = g.ContactEmail;
+        _formPhone = g.ContactPhone;
+        _formCountry = g.CountryCode;
+        _formLogo = g.LogoUrl;
+        _formInternational = g.IsInternational;
+        _formActive = g.IsActive;
+        _formError = null;
+        _showForm = true;
+    }
+
+    private void CloseForm() => _showForm = false;
+
+    private void OnInternationalChanged(ChangeEventArgs e)
+    {
+        _formInternational = e.Value is bool b && b || string.Equals(e.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+        if (_formInternational) _formCountry = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        _saving = true;
+        _formError = null;
+        try
+        {
+            if (_editId is null)
+            {
+                var created = await AdminSvc.CreateExpertGroupAsync(
+                    _formName, _formEmail, _formPhone, _formCountry, _formInternational);
+                if (created is null) { _formError = "Échec de création."; return; }
+                _flash = "Groupe créé.";
+            }
+            else
+            {
+                var updated = await AdminSvc.UpdateExpertGroupAsync(
+                    _editId.Value, _formName, _formEmail, _formPhone, _formLogo, _formActive);
+                if (updated is null) { _formError = "Échec de mise à jour."; return; }
+                _flash = "Groupe mis à jour.";
+            }
+            _showForm = false;
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _formError = ex.Message; }
+        finally { _saving = false; }
+    }
+
+    private async Task UploadLogoAsync(InputFileChangeEventArgs e)
+    {
+        if (_editId is null) return;
+        try
+        {
+            await using var stream = e.File.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
+            using var content = new MultipartFormDataContent();
+            content.Add(new StreamContent(stream), "file", e.File.Name);
+            var result = await Api.PostMultipartAsync<LogoUploadResult>(
+                $"api/admin/expert-groups/{_editId}/logo", content);
+            if (result.IsSuccess && result.Value is not null)
+            {
+                _formLogo = result.Value.LogoUrl;
+                _flash = "Logo téléversé.";
+                await ReloadAsync();
+            }
+            else _formError = result.Error ?? "Échec upload logo.";
+        }
+        catch (Exception ex) { _formError = ex.Message; }
+    }
+
+    private async Task DeleteAsync(ExpertGroupItem g)
+    {
+        _error = null;
+        var ok = await AdminSvc.DeleteExpertGroupAsync(g.Id);
+        if (!ok) { _error = "Suppression impossible."; return; }
+        _flash = "Groupe supprimé.";
+        await ReloadAsync();
+    }
+
+    private sealed record LogoUploadResult(string? LogoUrl);
+}

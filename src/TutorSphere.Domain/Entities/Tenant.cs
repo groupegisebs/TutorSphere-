@@ -40,6 +40,24 @@ public class Tenant : BaseEntity
     /// <summary>Date UTC d'acceptation du code de conduite enseignant.</summary>
     public DateTime? TeacherConductAcceptedAt { get; set; }
 
+    /// <summary>Validation par un groupe d'experts (indépendante licence / onboarding).</summary>
+    public ExpertApprovalStatus ExpertApprovalStatus { get; set; } = ExpertApprovalStatus.Pending;
+
+    /// <summary>Groupe d'experts ayant approuvé (ou rejeté) la fiche.</summary>
+    public Guid? ApprovedByExpertGroupId { get; set; }
+
+    /// <summary>Utilisateur expert ayant pris la décision.</summary>
+    public string? ApprovedByUserId { get; set; }
+
+    public DateTime? ExpertApprovedAt { get; set; }
+
+    /// <summary>Commentaire optionnel de l'expert (approbation ou rejet).</summary>
+    public string? ExpertApprovalNotes { get; set; }
+
+    public ExpertGroup? ApprovedByExpertGroup { get; set; }
+
+    public ICollection<TeacherDocument> TeacherDocuments { get; set; } = [];
+
     public decimal PlatformCommissionPercent { get; set; } = 10m;
     public string? StripeAccountId { get; set; }
     public string? StripeCustomerId { get; set; }

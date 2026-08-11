@@ -29,6 +29,9 @@ public static class DependencyInjection
         services.AddScoped<IPlatformBillingService, PlatformBillingService>();
         services.AddScoped<IPlatformPromoService, PlatformPromoService>();
         services.AddScoped<ITutorOnboardingService, TutorOnboardingService>();
+        services.AddScoped<IExpertGroupService, ExpertGroupService>();
+        services.AddScoped<IExpertApprovalService, ExpertApprovalService>();
+        services.AddScoped<ITeacherDocumentService, TeacherDocumentService>();
         return services;
     }
 }

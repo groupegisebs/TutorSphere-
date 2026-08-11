@@ -1,0 +1,39 @@
+@inject IStringLocalizer<SharedResources> L
+@inject AuthService Auth
+@inject NavigationManager Nav
+
+<div class="cc-sidebar-brand">
+    <a class="cc-sidebar-brand-link" href="expert/dashboard">
+        <img class="cc-sidebar-logo" src="images/tutorsphere-logo-full.png" alt="TutorSphere" />
+        <div class="cc-sidebar-brand-text">
+            <span class="cc-sidebar-brand-name">TutorSphere</span>
+            <span class="cc-sidebar-brand-badge">Expert</span>
+        </div>
+    </a>
+</div>
+
+<div class="cc-nav-scroll">
+    <nav>
+        <div class="cc-nav-section">
+            <NavLink class="cc-nav-link" href="expert/dashboard" Match="NavLinkMatch.All">
+                <i class="bi bi-inbox" aria-hidden="true"></i>
+                <span>@L["Expert_Queue"]</span>
+            </NavLink>
+        </div>
+    </nav>
+</div>
+
+<div class="cc-sidebar-footer">
+    <button type="button" class="cc-btn w-100" @onclick="LogoutAsync">
+        <i class="bi bi-box-arrow-right"></i> @L["Nav_Logout"]
+    </button>
+</div>
+
+@code {
+    private Task LogoutAsync()
+    {
+        Auth.Logout();
+        Nav.NavigateTo("/login/expert", forceLoad: true);
+        return Task.CompletedTask;
+    }
+}

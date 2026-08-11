@@ -68,6 +68,7 @@ public class BrandingService : IBrandingService
             .Where(t => (t.Slug == normalizedSlug || t.Subdomain == normalizedSlug)
                         && t.IsPublicProfile
                         && t.Status == TenantStatus.Active
+                        && t.ExpertApprovalStatus == ExpertApprovalStatus.Approved
                         && t.OnboardingCompletedAt != null
                         && t.LicenseExpiresAt != null
                         && t.LicenseExpiresAt > now)
@@ -124,6 +125,7 @@ public class BrandingService : IBrandingService
             .Where(t => (t.Slug == normalizedSlug || t.Subdomain == normalizedSlug)
                         && t.IsPublicProfile
                         && t.Status == TenantStatus.Active
+                        && t.ExpertApprovalStatus == ExpertApprovalStatus.Approved
                         && t.OnboardingCompletedAt != null
                         && t.LicenseExpiresAt != null
                         && t.LicenseExpiresAt > now)
@@ -138,7 +140,8 @@ public class BrandingService : IBrandingService
                 t.Language,
                 t.Currency,
                 t.IsPublicProfile,
-                t.OwnerUserId
+                t.OwnerUserId,
+                t.ApprovedByExpertGroupId
             })
             .FirstOrDefault();
 
@@ -146,6 +149,9 @@ public class BrandingService : IBrandingService
             return Task.FromResult<PublicTutorDetailDto?>(null);
 
         var branding = _db.TenantBrandings.FirstOrDefault(b => b.TenantId == tenant.Id);
+        ExpertGroup? approvedGroup = null;
+        if (tenant.ApprovedByExpertGroupId is Guid gid)
+            approvedGroup = _db.ExpertGroups.FirstOrDefault(g => g.Id == gid);
         var offerings = _db.SubscriptionOfferingsForAnyTenant
             .Where(o => o.TenantId == tenant.Id && o.IsActive)
             .OrderBy(o => o.Title)
@@ -238,7 +244,9 @@ public class BrandingService : IBrandingService
             subjects,
             levels,
             availability,
-            publicOfferings);
+            publicOfferings,
+            approvedGroup?.Name,
+            approvedGroup?.LogoUrl);
 
         return Task.FromResult<PublicTutorDetailDto?>(detail);
     }

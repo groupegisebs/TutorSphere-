@@ -249,9 +249,12 @@ public class AdminController : ControllerBase
 
         tenant.Status = TenantStatus.Active;
         tenant.IsPublicProfile = true;
-        // Ops override : licence + formation considérées complètes.
+        // Ops override : licence + formation + validation expert considérées complètes.
         tenant.LicenseExpiresAt = DateTime.UtcNow.AddYears(1);
         tenant.OnboardingCompletedAt ??= DateTime.UtcNow;
+        tenant.ExpertApprovalStatus = ExpertApprovalStatus.Approved;
+        tenant.ExpertApprovedAt ??= DateTime.UtcNow;
+        tenant.ExpertApprovalNotes ??= "Approuvé par un administrateur plateforme.";
         await _db.SaveChangesAsync(ct);
 
         var ownerUser = string.IsNullOrWhiteSpace(tenant.OwnerUserId)

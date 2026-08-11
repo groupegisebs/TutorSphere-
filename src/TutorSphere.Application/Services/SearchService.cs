@@ -56,6 +56,7 @@ public class SearchService : ISearchService
         var query = _db.Tenants
             .Where(t => t.Status == TenantStatus.Active
                         && t.IsPublicProfile
+                        && t.ExpertApprovalStatus == ExpertApprovalStatus.Approved
                         && t.OnboardingCompletedAt != null
                         && t.LicenseExpiresAt != null
                         && t.LicenseExpiresAt > DateTime.UtcNow

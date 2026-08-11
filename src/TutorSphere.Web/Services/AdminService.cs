@@ -56,7 +56,115 @@ public sealed class AdminService
 
     public async Task<AdminPromoCodeItem?> SetPromoCodeActiveAsync(Guid id, bool isActive)
         => await _api.PutAsync<AdminPromoCodeItem>($"api/admin/promo-codes/{id}", new { isActive });
+
+    public async Task<List<ExpertGroupItem>> GetExpertGroupsAsync()
+        => await _api.GetAsync<List<ExpertGroupItem>>("api/admin/expert-groups") ?? [];
+
+    public async Task<ExpertGroupItem?> CreateExpertGroupAsync(
+        string name, string? contactEmail, string? contactPhone, string? countryCode, bool isInternational)
+        => await _api.PostAsync<ExpertGroupItem>("api/admin/expert-groups", new
+        {
+            name,
+            contactEmail,
+            contactPhone,
+            countryCode,
+            isInternational
+        });
+
+    public async Task<ExpertGroupItem?> UpdateExpertGroupAsync(
+        Guid id, string name, string? contactEmail, string? contactPhone, string? logoUrl, bool isActive)
+        => await _api.PutAsync<ExpertGroupItem>($"api/admin/expert-groups/{id}", new
+        {
+            name,
+            contactEmail,
+            contactPhone,
+            logoUrl,
+            isActive
+        });
+
+    public async Task<bool> DeleteExpertGroupAsync(Guid id)
+        => await _api.DeleteAsync($"api/admin/expert-groups/{id}");
+
+    public async Task<List<ExpertMemberItem>> GetExpertGroupMembersAsync(Guid groupId)
+        => await _api.GetAsync<List<ExpertMemberItem>>($"api/admin/expert-groups/{groupId}/members") ?? [];
+
+    public async Task<ExpertMemberItem?> AddExpertByEmailAsync(Guid groupId, string email)
+        => await _api.PostAsync<ExpertMemberItem>($"api/admin/expert-groups/{groupId}/members/by-email", new { email });
+
+    public async Task<bool> RemoveExpertMemberAsync(Guid groupId, string userId)
+        => await _api.DeleteAsync($"api/admin/expert-groups/{groupId}/members/{Uri.EscapeDataString(userId)}");
+
+    public async Task<List<PendingTeacherItem>> GetPendingTeacherApprovalsAsync()
+        => await _api.GetAsync<List<PendingTeacherItem>>("api/admin/pending-teacher-approvals") ?? [];
 }
+
+public sealed record ExpertGroupItem(
+    Guid Id,
+    string Name,
+    string? LogoUrl,
+    string? ContactEmail,
+    string? ContactPhone,
+    string? CountryCode,
+    bool IsInternational,
+    bool IsActive,
+    int MemberCount,
+    DateTime CreatedAt);
+
+public sealed record ExpertMemberItem(
+    Guid Id,
+    Guid ExpertGroupId,
+    string UserId,
+    string Email,
+    string FullName);
+
+public sealed record PendingTeacherItem(
+    Guid TenantId,
+    string SchoolName,
+    string Slug,
+    string? Country,
+    string? City,
+    int ApprovalStatus,
+    DateTime CreatedAt,
+    string? OwnerEmail,
+    string? OwnerName,
+    int DocumentCount,
+    Guid? AssignedExpertGroupId,
+    string? AssignedExpertGroupName);
+
+public sealed record TeacherReviewDetailItem(
+    Guid TenantId,
+    string SchoolName,
+    string Slug,
+    string? Description,
+    string? Country,
+    string? City,
+    string Language,
+    int ApprovalStatus,
+    string? ExpertApprovalNotes,
+    DateTime? ExpertApprovedAt,
+    Guid? ApprovedByExpertGroupId,
+    string? ApprovedByExpertGroupName,
+    string? ApprovedByExpertGroupLogoUrl,
+    string? OwnerUserId,
+    string? OwnerEmail,
+    string? OwnerName,
+    string? Presentation,
+    string? Portfolio,
+    string? LogoUrl,
+    List<TeacherReviewDocumentItem> Documents,
+    Guid? SuggestedExpertGroupId,
+    string? SuggestedExpertGroupName);
+
+public sealed record TeacherReviewDocumentItem(
+    Guid Id,
+    Guid TenantId,
+    int DocumentType,
+    string FileName,
+    string FileUrl,
+    string ContentType,
+    long FileSizeBytes,
+    DateTime UploadedAt,
+    string? Notes);
 
 public sealed record AdminPromoCodeItem(
     Guid Id,

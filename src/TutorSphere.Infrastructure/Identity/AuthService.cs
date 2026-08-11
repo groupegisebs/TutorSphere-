@@ -514,13 +514,15 @@ public class AuthService : IAuthService
             isPlatformAdmin ? null : tenantName);
     }
 
-    /// <summary>Priorité : SuperAdmin → PlatformAdmin → premier autre rôle.</summary>
+    /// <summary>Priorité : SuperAdmin → PlatformAdmin → Expert → premier autre rôle.</summary>
     private static string ResolvePrimaryRole(IList<string> roles)
     {
         if (roles.Contains(UserRoles.SuperAdmin))
             return UserRoles.SuperAdmin;
         if (roles.Contains(UserRoles.PlatformAdmin))
             return UserRoles.PlatformAdmin;
+        if (roles.Contains(UserRoles.Expert))
+            return UserRoles.Expert;
         return roles.FirstOrDefault() ?? UserRoles.Parent;
     }
 

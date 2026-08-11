@@ -1,0 +1,148 @@
+@page "/expert/teachers/{TenantId:guid}"
+@layout ExpertLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService Auth
+@inject ApiClient Api
+@inject NavigationManager Nav
+@inject IStringLocalizer<SharedResources> L
+
+<PageTitle>@L["Expert_Review"] — TutorSphere</PageTitle>
+
+<AuthorizeView Roles="Expert">
+    <Authorized>
+        @if (_loading)
+        {
+            <div class="cc-empty"><span class="spinner-border"></span></div>
+        }
+        else if (_detail is null)
+        {
+            <div class="alert alert-danger">@(_error ?? L["Expert_NotFound"])</div>
+        }
+        else
+        {
+            <div class="cc-toolbar">
+                <div>
+                    <a href="expert/dashboard" class="small text-muted">← @L["Expert_Queue"]</a>
+                    <h1 class="cc-page-title">@_detail.SchoolName</h1>
+                    <p class="cc-page-sub">
+                        @(_detail.City ?? "") @(_detail.Country ?? "") · @_detail.OwnerName @_detail.OwnerEmail
+                    </p>
+                </div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <div class="alert alert-danger mb-3">@_error</div>
+            }
+
+            <div class="row g-3">
+                <div class="col-lg-8">
+                    <div class="cc-card mb-3">
+                        <h2 class="cc-card-title">@L["Expert_Profile"]</h2>
+                        <p>@(_detail.Description ?? "—")</p>
+                        @if (!string.IsNullOrWhiteSpace(_detail.Presentation))
+                        {
+                            <h3 class="h6 mt-3">@L["Profile_TabPresentation"]</h3>
+                            <div class="small">@_detail.Presentation</div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(_detail.Portfolio))
+                        {
+                            <h3 class="h6 mt-3">@L["Profile_TabCredentials"]</h3>
+                            <pre class="small" style="white-space:pre-wrap;">@_detail.Portfolio</pre>
+                        }
+                    </div>
+
+                    <div class="cc-card">
+                        <h2 class="cc-card-title">@L["Expert_Documents"]</h2>
+                        @if (_detail.Documents.Count == 0)
+                        {
+                            <p class="text-muted">@L["Expert_NoDocuments"]</p>
+                        }
+                        else
+                        {
+                            <ul class="list-unstyled mb-0">
+                                @foreach (var d in _detail.Documents)
+                                {
+                                    <li class="d-flex justify-content-between align-items-center py-2 border-bottom">
+                                        <div>
+                                            <span class="cc-pill cc-pill-type">@d.DocumentType</span>
+                                            <strong class="ms-2">@d.FileName</strong>
+                                        </div>
+                                        <a class="cc-btn btn-sm" href="@d.FileUrl" target="_blank" rel="noopener">@L["Common_Open"]</a>
+                                    </li>
+                                }
+                            </ul>
+                        }
+                    </div>
+                </div>
+                <div class="col-lg-4">
+                    <div class="cc-card">
+                        <h2 class="cc-card-title">@L["Expert_Decision"]</h2>
+                        <p class="small text-muted">
+                            @L["Expert_SuggestedGroup"]: @(_detail.SuggestedExpertGroupName ?? "—")
+                        </p>
+                        <label class="form-label">@L["Expert_Notes"]</label>
+                        <textarea class="form-control mb-3" rows="4" @bind="_notes"></textarea>
+                        <div class="d-grid gap-2">
+                            <button type="button" class="cc-btn cc-btn-primary" disabled="@_busy" @onclick="ApproveAsync">
+                                <i class="bi bi-check2"></i> @L["Expert_Approve"]
+                            </button>
+                            <button type="button" class="cc-btn" disabled="@_busy" @onclick="RejectAsync">
+                                <i class="bi bi-x-lg"></i> @L["Expert_Reject"]
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    [Parameter] public Guid TenantId { get; set; }
+
+    private TeacherReviewDetailItem? _detail;
+    private bool _loading = true;
+    private bool _busy;
+    private string? _error;
+    private string? _notes;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        try
+        {
+            _detail = await Api.GetAsync<TeacherReviewDetailItem>($"api/expert/teachers/{TenantId}");
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task ApproveAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            var ok = await Api.PostAsync<object>($"api/expert/teachers/{TenantId}/approve", new { notes = _notes });
+            if (ok is null) { _error = L["Expert_ActionFailed"]; return; }
+            Nav.NavigateTo("/expert/dashboard");
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task RejectAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            var ok = await Api.PostAsync<object>($"api/expert/teachers/{TenantId}/reject", new { notes = _notes });
+            if (ok is null) { _error = L["Expert_ActionFailed"]; return; }
+            Nav.NavigateTo("/expert/dashboard");
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+}
