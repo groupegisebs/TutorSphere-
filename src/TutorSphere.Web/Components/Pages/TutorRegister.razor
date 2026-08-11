@@ -314,16 +314,6 @@
     private string LastName { get; set; } = "";
     private string Email { get; set; } = "";
     private string? _inviteToken;
-
-    protected override void OnInitialized()
-    {
-        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
-        if (QueryHelpers.ParseQuery(uri.Query).TryGetValue("invite", out var invite)
-            && !string.IsNullOrWhiteSpace(invite))
-        {
-            _inviteToken = invite.ToString();
-        }
-    }
     private string Password { get; set; } = "";
     private string ConfirmPassword { get; set; } = "";
     private string? ErrorMessage { get; set; }
@@ -355,7 +345,17 @@
         _ => L["Password_Strong"]
     };
 
-    protected override void OnInitialized() => RefreshSteps();
+    protected override void OnInitialized()
+    {
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        if (QueryHelpers.ParseQuery(uri.Query).TryGetValue("invite", out var invite)
+            && !string.IsNullOrWhiteSpace(invite))
+        {
+            _inviteToken = invite.ToString();
+        }
+
+        RefreshSteps();
+    }
 
     protected override void OnParametersSet() => RefreshSteps();
 
@@ -464,7 +464,8 @@
                 Country: "CA",
                 PreferredLanguage: System.Globalization.CultureInfo.CurrentUICulture.Name,
                 AcceptedTeacherConductPolicy: true,
-                TeacherConductPolicyVersion: TeacherConductPolicy.CurrentVersion);
+                TeacherConductPolicyVersion: TeacherConductPolicy.CurrentVersion,
+                InviteToken: _inviteToken);
 
             var response = await Http.PostAsJsonAsync("api/auth/register-school", request);
 
