@@ -157,12 +157,13 @@ public class ExpertGroupsController : ControllerBase
                 await _userManager.AddToRoleAsync(user, UserRoles.Expert);
 
             var member = await _groups.AddMemberAsync(id, user.Id, ct);
-            var notificationSent = await TryNotifyExistingExpertAsync(user, group.Name, ct);
+            var credentialsSent = await SendExpertLoginCredentialsAsync(user, group.Name, ct);
             return Ok(member with
             {
                 Email = user.Email ?? string.Empty,
                 FullName = user.FullName,
-                NotificationSent = notificationSent
+                CredentialsSent = credentialsSent,
+                NotificationSent = credentialsSent
             });
         }
         catch (InvalidOperationException ex)
@@ -172,9 +173,10 @@ public class ExpertGroupsController : ControllerBase
     }
 
     /// <summary>
-    /// Ajoute un expert par e-mail.
-    /// Invite=false : compte existant uniquement (+ notification sans MDP).
-    /// Invite=true : crée le compte si besoin, génère un MDP temporaire et envoie EXPERT_INVITE.
+    /// Ajoute un expert par e-mail. Dans tous les cas, envoie EXPERT_INVITE avec
+    /// URL /login/expert, e-mail et mot de passe temporaire (changement obligatoire).
+    /// Invite=true : crée le compte si besoin (prénom/nom requis).
+    /// Invite=false : compte existant uniquement.
     /// </summary>
     [HttpPost("{id:guid}/members/by-email")]
     public async Task<ActionResult<ExpertGroupMemberDto>> AddMemberByEmail(
@@ -190,15 +192,11 @@ public class ExpertGroupsController : ControllerBase
         var email = request.Email.Trim();
         var user = await _userManager.FindByEmailAsync(email);
         var accountCreated = false;
-        var credentialsSent = false;
-        var notificationSent = false;
 
         try
         {
             if (request.Invite)
             {
-                string? temporaryPassword = null;
-
                 if (user is null)
                 {
                     var firstName = (request.FirstName ?? string.Empty).Trim();
@@ -206,7 +204,7 @@ public class ExpertGroupsController : ControllerBase
                     if (string.IsNullOrWhiteSpace(firstName) || string.IsNullOrWhiteSpace(lastName))
                         return BadRequest(new { error = "Prénom et nom requis pour créer un compte expert." });
 
-                    temporaryPassword = GenerateTemporaryPassword();
+                    var createPassword = GenerateTemporaryPassword();
                     user = new ApplicationUser
                     {
                         UserName = email,
@@ -217,74 +215,43 @@ public class ExpertGroupsController : ControllerBase
                         MustChangePassword = true
                     };
 
-                    var create = await _userManager.CreateAsync(user, temporaryPassword);
+                    var create = await _userManager.CreateAsync(user, createPassword);
                     if (!create.Succeeded)
                         return BadRequest(new { error = string.Join("; ", create.Errors.Select(e => e.Description)) });
 
                     accountCreated = true;
+                    // Mot de passe déjà défini à la création — envoi ci-dessous après reset unifié.
                     _logger.LogInformation(
                         "Compte expert créé pour invitation (userId={UserId}, groupId={GroupId}).",
                         user.Id, id);
                 }
-                else
+                else if (!string.IsNullOrWhiteSpace(request.FirstName) || !string.IsNullOrWhiteSpace(request.LastName))
                 {
-                    // Compte existant : nouvelle invitation = MDP temporaire + changement obligatoire.
-                    temporaryPassword = GenerateTemporaryPassword();
-                    var token = await _userManager.GeneratePasswordResetTokenAsync(user);
-                    var reset = await _userManager.ResetPasswordAsync(user, token, temporaryPassword);
-                    if (!reset.Succeeded)
-                        return BadRequest(new { error = string.Join("; ", reset.Errors.Select(e => e.Description)) });
-
-                    user.MustChangePassword = true;
                     if (!string.IsNullOrWhiteSpace(request.FirstName))
                         user.FirstName = request.FirstName.Trim();
                     if (!string.IsNullOrWhiteSpace(request.LastName))
                         user.LastName = request.LastName.Trim();
                     await _userManager.UpdateAsync(user);
-
-                    _logger.LogInformation(
-                        "Invitation expert : mot de passe temporaire régénéré (userId={UserId}, groupId={GroupId}).",
-                        user.Id, id);
                 }
-
-                if (!await _userManager.IsInRoleAsync(user, UserRoles.Expert))
-                    await _userManager.AddToRoleAsync(user, UserRoles.Expert);
-
-                var member = await _groups.AddMemberAsync(id, user.Id, ct);
-                var loginUrl = $"{_urls.WebBaseUrl.TrimEnd('/')}/login/expert";
-                await _email.SendExpertInviteAsync(
-                    user.Email ?? email,
-                    string.IsNullOrWhiteSpace(user.FirstName) ? email : user.FirstName,
-                    temporaryPassword!,
-                    loginUrl,
-                    group.Name,
-                    ct);
-                credentialsSent = true;
-
-                return Ok(member with
-                {
-                    Email = user.Email ?? email,
-                    FullName = user.FullName,
-                    AccountCreated = accountCreated,
-                    CredentialsSent = credentialsSent
-                });
             }
-
-            // Mode ajout compte existant (sans régénérer le mot de passe).
-            if (user is null)
+            else if (user is null)
+            {
                 return NotFound(new { error = "Aucun compte avec cet e-mail. Utilisez « Inviter » pour créer le compte." });
+            }
 
             if (!await _userManager.IsInRoleAsync(user, UserRoles.Expert))
                 await _userManager.AddToRoleAsync(user, UserRoles.Expert);
 
-            var added = await _groups.AddMemberAsync(id, user.Id, ct);
-            notificationSent = await TryNotifyExistingExpertAsync(user, group.Name, ct);
+            var member = await _groups.AddMemberAsync(id, user.Id, ct);
+            var credentialsSent = await SendExpertLoginCredentialsAsync(user, group.Name, ct);
 
-            return Ok(added with
+            return Ok(member with
             {
                 Email = user.Email ?? email,
                 FullName = user.FullName,
-                NotificationSent = notificationSent
+                AccountCreated = accountCreated,
+                CredentialsSent = credentialsSent,
+                NotificationSent = credentialsSent
             });
         }
         catch (InvalidOperationException ex)
@@ -332,15 +299,34 @@ public class ExpertGroupsController : ControllerBase
         [FromServices] IExpertApprovalService approvals, CancellationToken ct)
         => Ok(await approvals.ListAllPendingAsync(ct));
 
-    private async Task<bool> TryNotifyExistingExpertAsync(ApplicationUser user, string groupName, CancellationToken ct)
+    /// <summary>
+    /// Régénère un MDP temporaire et envoie EXPERT_INVITE (URL expert + e-mail + MDP).
+    /// </summary>
+    private async Task<bool> SendExpertLoginCredentialsAsync(
+        ApplicationUser user, string groupName, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(user.Email))
             return false;
 
+        var temporaryPassword = GenerateTemporaryPassword();
+        var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+        var reset = await _userManager.ResetPasswordAsync(user, token, temporaryPassword);
+        if (!reset.Succeeded)
+        {
+            _logger.LogWarning(
+                "Impossible de régénérer le MDP temporaire pour l'expert {UserId}: {Errors}",
+                user.Id, string.Join("; ", reset.Errors.Select(e => e.Description)));
+            return false;
+        }
+
+        user.MustChangePassword = true;
+        await _userManager.UpdateAsync(user);
+
         var loginUrl = $"{_urls.WebBaseUrl.TrimEnd('/')}/login/expert";
-        await _email.SendExpertAddedToGroupAsync(
+        await _email.SendExpertInviteAsync(
             user.Email,
             string.IsNullOrWhiteSpace(user.FirstName) ? user.Email : user.FirstName,
+            temporaryPassword,
             loginUrl,
             groupName,
             ct);
@@ -363,7 +349,6 @@ public class ExpertGroupsController : ControllerBase
         for (var i = 4; i < code.Length; i++)
             code[i] = all[RandomNumberGenerator.GetInt32(all.Length)];
 
-        // Shuffle
         for (var i = code.Length - 1; i > 0; i--)
         {
             var j = RandomNumberGenerator.GetInt32(i + 1);
