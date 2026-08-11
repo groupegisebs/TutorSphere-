@@ -2,6 +2,7 @@ using System.Globalization;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.StaticFiles;
+using Microsoft.Extensions.Localization;
 using TutorSphere.Application.Common;
 using TutorSphere.Web.Components;
 using TutorSphere.Web.Services;
@@ -26,6 +27,11 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<CircuitCultureState>();
 builder.Services.AddScoped<Microsoft.AspNetCore.Components.Server.Circuits.CircuitHandler,
     CultureCircuitHandler>();
+
+// Replace default IStringLocalizer<> so every L["key"] uses cookie/circuit culture.
+foreach (var d in builder.Services.Where(d => d.ServiceType == typeof(IStringLocalizer<>)).ToList())
+    builder.Services.Remove(d);
+builder.Services.AddScoped(typeof(IStringLocalizer<>), typeof(CircuitCultureStringLocalizer<>));
 builder.Services.AddAuthorizationCore();
 // Requis pour AuthorizeView sous @rendermode InteractiveServer
 // (CascadingAuthenticationState dans App.razor ne traverse pas les frontières de rendu).
@@ -170,6 +176,23 @@ app.MapGet("/culture/set", (HttpContext ctx, string culture, string? redirectUri
         target = "/";
 
     return Results.LocalRedirect(target);
+});
+
+app.MapGet("/culture/debug", (HttpContext ctx) =>
+{
+    ctx.Request.Cookies.TryGetValue(CookieRequestCultureProvider.DefaultCookieName, out var cookie);
+    var feature = ctx.Features.Get<IRequestCultureFeature>();
+    var resolved = CultureRequestHelper.Resolve(ctx);
+    return Results.Json(new
+    {
+        cookie,
+        featureCulture = feature?.RequestCulture.Culture.Name,
+        featureUiCulture = feature?.RequestCulture.UICulture.Name,
+        resolved = resolved.Name,
+        threadCulture = CultureInfo.CurrentCulture.Name,
+        threadUiCulture = CultureInfo.CurrentUICulture.Name,
+        sampleFrKeyWouldNeedLocalizer = true
+    });
 });
 
 app.MapStaticAssets();
