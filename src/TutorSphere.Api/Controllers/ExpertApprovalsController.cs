@@ -115,4 +115,12 @@ public class ExpertApprovalsController : ControllerBase
             return BadRequest(new { error = ex.Message });
         }
     }
+
+    [HttpGet("invitations")]
+    public async Task<ActionResult<IReadOnlyList<TeacherApplicationInviteDto>>> Invitations(CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        var list = await _approvals.ListInvitesForExpertAsync(UserId, ct);
+        return Ok(list);
+    }
 }

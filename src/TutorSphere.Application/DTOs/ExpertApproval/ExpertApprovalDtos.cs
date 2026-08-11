@@ -107,6 +107,21 @@ public record InviteTeacherApplicationRequest(
     string? FirstName = null,
     string? PersonalMessage = null);
 
+public record TeacherApplicationInviteDto(
+    Guid Id,
+    string Email,
+    string? FirstName,
+    TeacherApplicationInviteStatus Status,
+    DateTime SentAt,
+    DateTime? ExpiresAt,
+    DateTime? AcceptedAt,
+    Guid? AcceptedTenantId,
+    string? InvitedByUserId,
+    string? InvitedByName,
+    Guid ExpertGroupId,
+    string? ExpertGroupName,
+    string? SchoolName);
+
 public record TeacherApprovalStatusDto(
     ExpertApprovalStatus Status,
     string? Notes,

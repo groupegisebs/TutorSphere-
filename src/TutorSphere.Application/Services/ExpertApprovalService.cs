@@ -14,6 +14,9 @@ public interface IExpertApprovalService
     Task ApproveAsync(Guid tenantId, string expertUserId, string? notes, CancellationToken ct = default);
     Task RejectAsync(Guid tenantId, string expertUserId, string? notes, CancellationToken ct = default);
     Task InviteTeacherApplicationAsync(string expertUserId, InviteTeacherApplicationRequest request, CancellationToken ct = default);
+    Task<IReadOnlyList<TeacherApplicationInviteDto>> ListInvitesForExpertAsync(string expertUserId, CancellationToken ct = default);
+    Task MarkInviteAcceptedAsync(string email, Guid tenantId, string? inviteToken = null, CancellationToken ct = default);
+    Task SyncInviteStatusForTenantAsync(Guid tenantId, CancellationToken ct = default);
     Task<TeacherApprovalStatusDto> GetStatusForOwnerAsync(string ownerUserId, CancellationToken ct = default);
     Task<IReadOnlyList<Guid>> GetExpertGroupIdsAsync(string expertUserId, CancellationToken ct = default);
 }
@@ -165,6 +168,7 @@ public class ExpertApprovalService(
             tenant.IsPublicProfile = true;
 
         await db.SaveChangesAsync(ct);
+        await SyncInviteStatusForTenantAsync(tenant.Id, ct);
         await NotifyTeacherDecisionAsync(tenant, group.Name, approved: true, ct);
     }
 
@@ -190,6 +194,7 @@ public class ExpertApprovalService(
         tenant.UpdatedAt = DateTime.UtcNow;
 
         await db.SaveChangesAsync(ct);
+        await SyncInviteStatusForTenantAsync(tenant.Id, ct);
         await NotifyTeacherDecisionAsync(tenant, group.Name, approved: false, ct);
     }
 
@@ -198,7 +203,7 @@ public class ExpertApprovalService(
         InviteTeacherApplicationRequest request,
         CancellationToken ct = default)
     {
-        var toEmail = (request.Email ?? "").Trim();
+        var toEmail = (request.Email ?? "").Trim().ToLowerInvariant();
         if (string.IsNullOrWhiteSpace(toEmail) || !toEmail.Contains('@', StringComparison.Ordinal))
             throw new InvalidOperationException("Adresse e-mail invalide.");
 
@@ -222,7 +227,25 @@ public class ExpertApprovalService(
             ? toEmail.Split('@')[0]
             : request.FirstName.Trim();
 
-        var applyUrl = $"{urls.WebBaseUrl.TrimEnd('/')}/tutor/register";
+        var token = Guid.NewGuid().ToString("N");
+        var invite = new TeacherApplicationInvite
+        {
+            Email = toEmail,
+            FirstName = string.IsNullOrWhiteSpace(request.FirstName) ? null : request.FirstName.Trim(),
+            PersonalMessage = string.IsNullOrWhiteSpace(request.PersonalMessage)
+                ? null
+                : request.PersonalMessage.Trim(),
+            InvitedByUserId = expertUserId,
+            ExpertGroupId = group.Id,
+            Token = token,
+            SentAt = DateTime.UtcNow,
+            ExpiresAt = DateTime.UtcNow.AddDays(30),
+            Status = TeacherApplicationInviteStatus.Sent
+        };
+        db.Add(invite);
+        await db.SaveChangesAsync(ct);
+
+        var applyUrl = $"{urls.WebBaseUrl.TrimEnd('/')}/tutor/register?invite={Uri.EscapeDataString(token)}";
 
         await email.SendExpertTeacherApplyInviteAsync(
             toEmail,
@@ -232,6 +255,175 @@ public class ExpertApprovalService(
             request.PersonalMessage ?? "",
             applyUrl,
             ct);
+    }
+
+    public async Task<IReadOnlyList<TeacherApplicationInviteDto>> ListInvitesForExpertAsync(
+        string expertUserId,
+        CancellationToken ct = default)
+    {
+        var groupIds = db.ExpertGroupMembers
+            .Where(m => m.UserId == expertUserId)
+            .Select(m => m.ExpertGroupId)
+            .Distinct()
+            .ToList();
+
+        if (groupIds.Count == 0)
+            return [];
+
+        var invites = db.TeacherApplicationInvites
+            .Where(i => groupIds.Contains(i.ExpertGroupId))
+            .OrderByDescending(i => i.SentAt)
+            .Take(200)
+            .ToList();
+
+        await RefreshInviteStatusesAsync(invites, ct);
+
+        var groupNames = db.ExpertGroups
+            .Where(g => groupIds.Contains(g.Id))
+            .ToDictionary(g => g.Id, g => g.Name);
+
+        var tenantIds = invites
+            .Where(i => i.AcceptedTenantId is not null)
+            .Select(i => i.AcceptedTenantId!.Value)
+            .Distinct()
+            .ToList();
+        var tenants = tenantIds.Count == 0
+            ? new Dictionary<Guid, Tenant>()
+            : db.Tenants.Where(t => tenantIds.Contains(t.Id)).ToDictionary(t => t.Id);
+
+        var result = new List<TeacherApplicationInviteDto>(invites.Count);
+        foreach (var invite in invites)
+        {
+            string? schoolName = null;
+            if (invite.AcceptedTenantId is Guid tid && tenants.TryGetValue(tid, out var tenant))
+                schoolName = tenant.Name;
+
+            var inviter = await contacts.GetAsync(invite.InvitedByUserId, ct);
+            result.Add(new TeacherApplicationInviteDto(
+                invite.Id,
+                invite.Email,
+                invite.FirstName,
+                invite.Status,
+                invite.SentAt,
+                invite.ExpiresAt,
+                invite.AcceptedAt,
+                invite.AcceptedTenantId,
+                invite.InvitedByUserId,
+                inviter?.DisplayName,
+                invite.ExpertGroupId,
+                groupNames.GetValueOrDefault(invite.ExpertGroupId),
+                schoolName));
+        }
+
+        return result;
+    }
+
+    public async Task MarkInviteAcceptedAsync(
+        string email,
+        Guid tenantId,
+        string? inviteToken = null,
+        CancellationToken ct = default)
+    {
+        var normalized = (email ?? "").Trim().ToLowerInvariant();
+        TeacherApplicationInvite? invite = null;
+
+        if (!string.IsNullOrWhiteSpace(inviteToken))
+        {
+            invite = db.TeacherApplicationInvites
+                .FirstOrDefault(i => i.Token == inviteToken.Trim());
+        }
+
+        if (invite is null && !string.IsNullOrWhiteSpace(normalized))
+        {
+            invite = db.TeacherApplicationInvites
+                .Where(i => i.Email == normalized
+                            && i.Status == TeacherApplicationInviteStatus.Sent)
+                .OrderByDescending(i => i.SentAt)
+                .FirstOrDefault();
+        }
+
+        if (invite is null)
+            return;
+
+        invite.AcceptedTenantId = tenantId;
+        invite.AcceptedAt = DateTime.UtcNow;
+        invite.Status = TeacherApplicationInviteStatus.Registered;
+        invite.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task SyncInviteStatusForTenantAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        var tenant = db.Tenants.FirstOrDefault(t => t.Id == tenantId);
+        if (tenant is null) return;
+
+        var invites = db.TeacherApplicationInvites
+            .Where(i => i.AcceptedTenantId == tenantId)
+            .ToList();
+
+        if (invites.Count == 0)
+            return;
+
+        var status = tenant.ExpertApprovalStatus switch
+        {
+            ExpertApprovalStatus.Approved => TeacherApplicationInviteStatus.Approved,
+            ExpertApprovalStatus.Rejected => TeacherApplicationInviteStatus.Rejected,
+            _ => TeacherApplicationInviteStatus.Registered
+        };
+
+        var changed = false;
+        foreach (var invite in invites)
+        {
+            if (invite.Status == status) continue;
+            invite.Status = status;
+            invite.UpdatedAt = DateTime.UtcNow;
+            changed = true;
+        }
+
+        if (changed)
+            await db.SaveChangesAsync(ct);
+    }
+
+    private async Task RefreshInviteStatusesAsync(
+        List<TeacherApplicationInvite> invites,
+        CancellationToken ct)
+    {
+        var now = DateTime.UtcNow;
+        var changed = false;
+
+        foreach (var invite in invites)
+        {
+            if (invite.Status == TeacherApplicationInviteStatus.Sent
+                && invite.ExpiresAt is DateTime exp
+                && exp < now)
+            {
+                invite.Status = TeacherApplicationInviteStatus.Expired;
+                invite.UpdatedAt = now;
+                changed = true;
+                continue;
+            }
+
+            if (invite.AcceptedTenantId is Guid tid)
+            {
+                var tenant = db.Tenants.FirstOrDefault(t => t.Id == tid);
+                if (tenant is null) continue;
+                var mapped = tenant.ExpertApprovalStatus switch
+                {
+                    ExpertApprovalStatus.Approved => TeacherApplicationInviteStatus.Approved,
+                    ExpertApprovalStatus.Rejected => TeacherApplicationInviteStatus.Rejected,
+                    _ => TeacherApplicationInviteStatus.Registered
+                };
+                if (invite.Status != mapped)
+                {
+                    invite.Status = mapped;
+                    invite.UpdatedAt = now;
+                    changed = true;
+                }
+            }
+        }
+
+        if (changed)
+            await db.SaveChangesAsync(ct);
     }
 
     public Task<TeacherApprovalStatusDto> GetStatusForOwnerAsync(string ownerUserId, CancellationToken ct = default)

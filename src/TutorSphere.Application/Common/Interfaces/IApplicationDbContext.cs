@@ -54,6 +54,7 @@ public interface IApplicationDbContext
     IQueryable<TeacherDocument> TeacherDocuments { get; }
     /// <summary>Teacher verification documents without tenant query filter (expert / admin review).</summary>
     IQueryable<TeacherDocument> TeacherDocumentsForAnyTenant { get; }
+    IQueryable<TeacherApplicationInvite> TeacherApplicationInvites { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     void Add<T>(T entity) where T : class;

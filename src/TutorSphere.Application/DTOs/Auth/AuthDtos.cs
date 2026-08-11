@@ -20,7 +20,8 @@ public record RegisterSchoolRequest(
     string? Country = null,
     string? PreferredLanguage = null,
     bool AcceptedTeacherConductPolicy = false,
-    string? TeacherConductPolicyVersion = null);
+    string? TeacherConductPolicyVersion = null,
+    string? InviteToken = null);
 
 public record RegisterSchoolResponse(
     Guid TenantId,

@@ -39,6 +39,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     public DbSet<ExpertGroup> ExpertGroupsSet => Set<ExpertGroup>();
     public DbSet<ExpertGroupMember> ExpertGroupMembersSet => Set<ExpertGroupMember>();
     public DbSet<TeacherDocument> TeacherDocumentsSet => Set<TeacherDocument>();
+    public DbSet<TeacherApplicationInvite> TeacherApplicationInvitesSet => Set<TeacherApplicationInvite>();
 
     IQueryable<Tenant> IApplicationDbContext.Tenants => TenantsSet;
     IQueryable<TenantBranding> IApplicationDbContext.TenantBrandings => TenantBrandingsSet;
@@ -86,6 +87,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     IQueryable<TeacherDocument> IApplicationDbContext.TeacherDocuments => TeacherDocumentsSet;
     IQueryable<TeacherDocument> IApplicationDbContext.TeacherDocumentsForAnyTenant =>
         TeacherDocumentsSet.IgnoreQueryFilters();
+    IQueryable<TeacherApplicationInvite> IApplicationDbContext.TeacherApplicationInvites =>
+        TeacherApplicationInvitesSet;
 
     public new void Add<T>(T entity) where T : class => Set<T>().Add(entity);
     public new void Remove<T>(T entity) where T : class => Set<T>().Remove(entity);
@@ -204,6 +207,21 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             e.Property(d => d.Notes).HasMaxLength(500);
             e.HasIndex(d => d.TenantId);
             e.HasOne(d => d.Tenant).WithMany(t => t.TeacherDocuments).HasForeignKey(d => d.TenantId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<TeacherApplicationInvite>(e =>
+        {
+            e.Property(i => i.Email).HasMaxLength(256).IsRequired();
+            e.Property(i => i.FirstName).HasMaxLength(120);
+            e.Property(i => i.PersonalMessage).HasMaxLength(2000);
+            e.Property(i => i.InvitedByUserId).HasMaxLength(450).IsRequired();
+            e.Property(i => i.Token).HasMaxLength(64).IsRequired();
+            e.HasIndex(i => i.Token).IsUnique();
+            e.HasIndex(i => i.ExpertGroupId);
+            e.HasIndex(i => i.Email);
+            e.HasIndex(i => i.SentAt);
+            e.HasOne(i => i.ExpertGroup).WithMany().HasForeignKey(i => i.ExpertGroupId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

@@ -385,6 +385,8 @@ public class AuthService : IAuthService
         _db.Add(tenant);
         await _db.SaveChangesAsync(ct);
 
+        await MarkInviteAcceptedIfAnyAsync(request.Email, tenant.Id, request.InviteToken, ct);
+
         user.TenantId = tenant.Id;
         await _userManager.UpdateAsync(user);
 
@@ -395,6 +397,40 @@ public class AuthService : IAuthService
         await _expertNotify.NotifyExpertsIfNeededAsync(tenant.Id, ct);
 
         return new RegisterSchoolResponse(tenant.Id, tenant.Slug, user.Email!);
+    }
+
+    private async Task MarkInviteAcceptedIfAnyAsync(
+        string email,
+        Guid tenantId,
+        string? inviteToken,
+        CancellationToken ct)
+    {
+        var normalized = (email ?? "").Trim().ToLowerInvariant();
+        TeacherApplicationInvite? invite = null;
+
+        if (!string.IsNullOrWhiteSpace(inviteToken))
+        {
+            invite = _db.TeacherApplicationInvites
+                .FirstOrDefault(i => i.Token == inviteToken.Trim());
+        }
+
+        if (invite is null && !string.IsNullOrWhiteSpace(normalized))
+        {
+            invite = _db.TeacherApplicationInvites
+                .Where(i => i.Email == normalized
+                            && i.Status == TeacherApplicationInviteStatus.Sent)
+                .OrderByDescending(i => i.SentAt)
+                .FirstOrDefault();
+        }
+
+        if (invite is null)
+            return;
+
+        invite.AcceptedTenantId = tenantId;
+        invite.AcceptedAt = DateTime.UtcNow;
+        invite.Status = TeacherApplicationInviteStatus.Registered;
+        invite.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
     }
 
     public async Task ConfirmEmailAsync(string userId, string token, CancellationToken ct = default)

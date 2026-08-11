@@ -50,6 +50,68 @@
             </div>
         </div>
 
+        <div class="cc-card mb-3">
+            <h2 class="cc-card-title">@L["Expert_InvitesListTitle"]</h2>
+            <p class="small text-muted mb-3">@L["Expert_InvitesListSubtitle"]</p>
+
+            @if (_invitesLoading)
+            {
+                <div class="cc-empty py-3"><span class="spinner-border spinner-border-sm"></span></div>
+            }
+            else if (_invites.Count == 0)
+            {
+                <div class="cc-empty py-3">
+                    <i class="bi bi-envelope-open"></i>
+                    <p>@L["Expert_InvitesEmpty"]</p>
+                </div>
+            }
+            else
+            {
+                <table class="cc-table">
+                    <thead>
+                        <tr>
+                            <th>@L["Expert_InviteEmail"]</th>
+                            <th>@L["Expert_InviteColInvitedBy"]</th>
+                            <th>@L["Expert_ColDate"]</th>
+                            <th>@L["Expert_InviteColStatus"]</th>
+                            <th>@L["Expert_ColSchool"]</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var inv in _invites)
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@inv.Email</strong>
+                                    @if (!string.IsNullOrWhiteSpace(inv.FirstName))
+                                    {
+                                        <div class="small text-muted">@inv.FirstName</div>
+                                    }
+                                </td>
+                                <td>@(inv.InvitedByName ?? "—")</td>
+                                <td>@inv.SentAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")</td>
+                                <td>
+                                    <span class="cc-pill @InviteStatusPill(inv.Status)">@InviteStatusLabel(inv.Status)</span>
+                                </td>
+                                <td>
+                                    @if (inv.AcceptedTenantId is Guid tid && !string.IsNullOrWhiteSpace(inv.SchoolName))
+                                    {
+                                        <a href="@($"expert/teachers/{tid}")">@inv.SchoolName</a>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted">—</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+
+        <h2 class="cc-card-title mb-2">@L["Expert_Queue"]</h2>
+
         @if (_loading)
         {
             <div class="cc-empty"><span class="spinner-border"></span></div>
@@ -111,7 +173,9 @@
 
 @code {
     private List<PendingTeacherItem> _queue = [];
+    private List<TeacherInviteItem> _invites = [];
     private bool _loading = true;
+    private bool _invitesLoading = true;
     private string? _error;
 
     private string _inviteEmail = "";
@@ -124,6 +188,11 @@
     protected override async Task OnInitializedAsync()
     {
         try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        await Task.WhenAll(LoadQueueAsync(), LoadInvitesAsync());
+    }
+
+    private async Task LoadQueueAsync()
+    {
         try
         {
             _queue = await Api.GetAsync<List<PendingTeacherItem>>("api/expert/queue") ?? [];
@@ -133,6 +202,19 @@
             _error = ex.Message;
         }
         finally { _loading = false; }
+    }
+
+    private async Task LoadInvitesAsync()
+    {
+        try
+        {
+            _invites = await Api.GetAsync<List<TeacherInviteItem>>("api/expert/invitations") ?? [];
+        }
+        catch
+        {
+            _invites = [];
+        }
+        finally { _invitesLoading = false; }
     }
 
     private async Task InviteAsync()
@@ -158,6 +240,7 @@
             _inviteEmail = "";
             _inviteFirstName = "";
             _inviteMessage = "";
+            await LoadInvitesAsync();
         }
         catch (Exception ex)
         {
@@ -165,4 +248,37 @@
         }
         finally { _inviteBusy = false; }
     }
+
+    private string InviteStatusLabel(int status) => status switch
+    {
+        1 => L["Expert_InviteStatus_Registered"],
+        2 => L["Expert_InviteStatus_Approved"],
+        3 => L["Expert_InviteStatus_Rejected"],
+        4 => L["Expert_InviteStatus_Expired"],
+        _ => L["Expert_InviteStatus_Sent"]
+    };
+
+    private static string InviteStatusPill(int status) => status switch
+    {
+        1 => "cc-pill-type teacher",
+        2 => "cc-pill-ok",
+        3 => "cc-pill-bad",
+        4 => "cc-pill-type",
+        _ => "cc-pill-type"
+    };
+
+    private sealed record TeacherInviteItem(
+        Guid Id,
+        string Email,
+        string? FirstName,
+        int Status,
+        DateTime SentAt,
+        DateTime? ExpiresAt,
+        DateTime? AcceptedAt,
+        Guid? AcceptedTenantId,
+        string? InvitedByUserId,
+        string? InvitedByName,
+        Guid ExpertGroupId,
+        string? ExpertGroupName,
+        string? SchoolName);
 }

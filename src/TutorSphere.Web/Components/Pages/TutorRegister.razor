@@ -3,6 +3,7 @@
 @rendermode InteractiveServer
 @using TutorSphere.Application.DTOs.Auth
 @using TutorSphere.Domain.Policies
+@using Microsoft.AspNetCore.WebUtilities
 @inject HttpClient Http
 @inject NavigationManager Navigation
 @inject IStringLocalizer<SharedResources> L
@@ -312,6 +313,17 @@
     private string FirstName { get; set; } = "";
     private string LastName { get; set; } = "";
     private string Email { get; set; } = "";
+    private string? _inviteToken;
+
+    protected override void OnInitialized()
+    {
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        if (QueryHelpers.ParseQuery(uri.Query).TryGetValue("invite", out var invite)
+            && !string.IsNullOrWhiteSpace(invite))
+        {
+            _inviteToken = invite.ToString();
+        }
+    }
     private string Password { get; set; } = "";
     private string ConfirmPassword { get; set; } = "";
     private string? ErrorMessage { get; set; }
