@@ -8,14 +8,15 @@ public class UserRolesTests
     [InlineData("Tutor")]
     [InlineData("Parent")]
     [InlineData("Student")]
+    [InlineData("Expert")]
     public void All_roles_include_expected_values(string role)
     {
         Assert.Contains(role, UserRoles.All);
     }
 
     [Fact]
-    public void All_roles_has_six_entries()
+    public void All_roles_has_seven_entries()
     {
-        Assert.Equal(6, UserRoles.All.Length);
+        Assert.Equal(7, UserRoles.All.Length);
     }
 }
