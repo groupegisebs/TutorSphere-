@@ -1319,14 +1319,15 @@
 }
 /*
  * Bootstrap/app.css .form-label uses --ts-text (#0f172a) — invisible on dark CC.
- * Use !important + light --cc-text so we always beat app.css / Bootstrap body color.
+ * Hard-code #f3f4f6 (not var(--cc-text)) so a missing custom-property never falls back to dark text.
  */
 .cc-shell .form-label,
 .cc-shell .form-check-label,
 .cc-shell .form-text,
 .cc-shell .form-hint,
-.cc-shell label:not(.btn) {
-    color: var(--cc-text) !important;
+.cc-shell label:not(.btn),
+.cc-shell .cc-label-light {
+    color: #f3f4f6 !important;
 }
 .cc-shell .form-control::placeholder,
 .cc-shell .form-select::placeholder {
@@ -1339,15 +1340,16 @@
     opacity: 0.85;
 }
 .cc-shell input[type="file"] {
-    color: var(--cc-text) !important;
+    color: #f3f4f6 !important;
     max-width: 100%;
 }
-/* Expert Groups — page-scoped overrides (edit + create form) */
-.cc-shell .cc-expert-groups .form-label,
-.cc-shell .cc-expert-groups .form-check-label,
-.cc-shell .cc-expert-groups .form-text,
-.cc-shell .cc-expert-groups label:not(.btn) {
-    color: var(--cc-text) !important;
+/* Expert Groups — max specificity (create + edit share the same form) */
+html body .cc-shell .cc-expert-groups label.form-label,
+html body .cc-shell .cc-expert-groups label.form-check-label,
+html body .cc-shell .cc-expert-groups .form-text,
+html body .cc-shell .cc-expert-groups label:not(.btn),
+html body .cc-shell .cc-expert-groups .cc-label-light {
+    color: #fff !important;
 }
 .cc-shell .cc-expert-groups .form-control,
 .cc-shell .cc-expert-groups .form-select {
@@ -1377,7 +1379,7 @@
     padding: 2px;
 }
 .cc-shell .cc-expert-groups .cc-logo-preview-caption {
-    color: var(--cc-text) !important;
+    color: #f3f4f6 !important;
     font-size: 0.8rem;
     font-weight: 500;
 }
@@ -1413,7 +1415,7 @@
     box-shadow: 0 0 0 1px rgba(124, 92, 255, 0.15), var(--cc-shadow);
 }
 .cc-promo-create .form-label {
-    color: var(--cc-text) !important;
+    color: #f3f4f6 !important;
     font-size: 0.8rem;
 }
 .cc-promo-create .form-text { font-size: 0.72rem; }
