@@ -75,4 +75,21 @@ public interface IEmailService
         string? country,
         string reviewUrl,
         CancellationToken ct = default);
+
+    /// <summary>Invitation expert : identifiants + mot de passe temporaire à changer.</summary>
+    Task SendExpertInviteAsync(
+        string to,
+        string firstName,
+        string temporaryPassword,
+        string loginUrl,
+        string groupName,
+        CancellationToken ct = default);
+
+    /// <summary>Notification : expert existant ajouté à un groupe (sans mot de passe).</summary>
+    Task SendExpertAddedToGroupAsync(
+        string to,
+        string firstName,
+        string loginUrl,
+        string groupName,
+        CancellationToken ct = default);
 }

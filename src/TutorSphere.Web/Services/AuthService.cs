@@ -48,6 +48,7 @@ public sealed class AuthService
     public string? Token => _authProvider.Token;
     public Guid? TenantId => _authProvider.TenantId;
     public string? SchoolName => _authProvider.SchoolName;
+    public bool MustChangePassword => _authProvider.MustChangePassword;
 
     /// <summary>Updates the in-memory display name after a successful profile save (JWT claims stay until re-login).</summary>
     public async Task UpdateLocalDisplayNameAsync(string fullName)
@@ -120,12 +121,47 @@ public sealed class AuthService
 
             ApplyAuthenticatedSession(result);
             await PersistSessionAsync(result);
-            return new LoginResult(true, null, await ResolvePostLoginRouteAsync(result.Role ?? ""), null, result.Role);
+            return new LoginResult(true, null, await ResolvePostLoginRouteAsync(result.Role ?? "", result.MustChangePassword), null, result.Role, result.MustChangePassword);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Login failed");
             return new LoginResult(false, null, null, "login_unavailable");
+        }
+    }
+
+    /// <summary>Change le mot de passe de l'utilisateur connecté et rafraîchit la session JWT.</summary>
+    public async Task<(bool Ok, string? Error, string? RedirectTo)> ChangePasswordAsync(
+        string currentPassword,
+        string newPassword)
+    {
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Post, "api/auth/change-password");
+            if (!string.IsNullOrEmpty(Token))
+                req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", Token);
+            req.Content = JsonContent.Create(new { currentPassword, newPassword });
+
+            using var resp = await _http.SendAsync(req);
+            if (!resp.IsSuccessStatusCode)
+            {
+                var body = await resp.Content.ReadAsStringAsync();
+                return (false, TryExtractError(body) ?? "change_password_failed", null);
+            }
+
+            var result = await resp.Content.ReadFromJsonAsync<AuthResponse>(JsonOpts);
+            if (result is null || string.IsNullOrWhiteSpace(result.Token))
+                return (false, "invalid_response", null);
+
+            ApplyAuthenticatedSession(result);
+            await PersistSessionAsync(result);
+            var route = await ResolvePostLoginRouteAsync(result.Role ?? "", result.MustChangePassword);
+            return (true, null, route);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Change password failed");
+            return (false, "change_password_failed", null);
         }
     }
 
@@ -172,7 +208,7 @@ public sealed class AuthService
 
             ApplyAuthenticatedSession(result);
             await PersistSessionAsync(result);
-            return new LoginResult(true, null, await ResolvePostLoginRouteAsync(result.Role ?? ""));
+            return new LoginResult(true, null, await ResolvePostLoginRouteAsync(result.Role ?? "", result.MustChangePassword), null, result.Role, result.MustChangePassword);
         }
         catch (Exception ex)
         {
@@ -467,7 +503,11 @@ public sealed class AuthService
             var tenantName = GetClaim(doc, "tenant_name");
 
             var expiresAt = TryGetJwtExpiry(token)?.UtcDateTime ?? DateTime.UtcNow.AddHours(24);
-            return new AuthResponse(token, email, name, role, tenantId, expiresAt, tenantName);
+            var mustChange = string.Equals(
+                GetClaim(doc, "must_change_password"),
+                "true",
+                StringComparison.OrdinalIgnoreCase);
+            return new AuthResponse(token, email, name, role, tenantId, expiresAt, tenantName, mustChange);
         }
         catch
         {
@@ -528,8 +568,11 @@ public sealed class AuthService
         }
     }
 
-    private async Task<string> ResolvePostLoginRouteAsync(string role)
+    private async Task<string> ResolvePostLoginRouteAsync(string role, bool mustChangePassword = false)
     {
+        if (mustChangePassword)
+            return "/change-password";
+
         if (string.Equals(role, "Tutor", StringComparison.OrdinalIgnoreCase))
         {
             try
@@ -607,7 +650,8 @@ public sealed record LoginResult(
     string? Error,
     string? RedirectTo,
     string? ErrorCode = null,
-    string? Role = null);
+    string? Role = null,
+    bool MustChangePassword = false);
 
 internal sealed record AuthResponse(
     string Token,
@@ -616,7 +660,8 @@ internal sealed record AuthResponse(
     string Role,
     Guid? TenantId,
     DateTime ExpiresAt,
-    string? TenantName = null);
+    string? TenantName = null,
+    bool MustChangePassword = false);
 
 /// <summary>
 /// Circuit-scoped authentication state.
@@ -630,6 +675,8 @@ public sealed class CustomAuthenticationStateProvider : AuthenticationStateProvi
     public string? UserName => _user.FindFirst(ClaimTypes.Name)?.Value;
     public string? PrimaryRole => _user.FindFirst(ClaimTypes.Role)?.Value;
     public string? SchoolName => _user.FindFirst("tenant_name")?.Value;
+    public bool MustChangePassword =>
+        string.Equals(_user.FindFirst("must_change_password")?.Value, "true", StringComparison.OrdinalIgnoreCase);
 
     public Guid? TenantId
     {
@@ -664,12 +711,17 @@ public sealed class CustomAuthenticationStateProvider : AuthenticationStateProvi
         if (!string.IsNullOrWhiteSpace(auth.TenantName))
             claims.Add(new Claim("tenant_name", auth.TenantName));
 
+        if (auth.MustChangePassword)
+            claims.Add(new Claim("must_change_password", "true"));
+
         foreach (var (key, value) in ParseJwtPayloadClaims(auth.Token))
         {
             if (key is "tenant_id" && claims.All(c => c.Type != "tenant_id"))
                 claims.Add(new Claim("tenant_id", value));
             if (key is "tenant_name" && claims.All(c => c.Type != "tenant_name"))
                 claims.Add(new Claim("tenant_name", value));
+            if (key is "must_change_password" && claims.All(c => c.Type != "must_change_password"))
+                claims.Add(new Claim("must_change_password", value));
             if (key is "role" or "http://schemas.microsoft.com/ws/2008/06/identity/claims/role"
                 && claims.All(c => c.Type != ClaimTypes.Role))
                 claims.Add(new Claim(ClaimTypes.Role, value));

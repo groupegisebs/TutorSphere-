@@ -19,7 +19,10 @@ public record ExpertGroupMemberDto(
     Guid ExpertGroupId,
     string UserId,
     string Email,
-    string FullName);
+    string FullName,
+    bool AccountCreated = false,
+    bool CredentialsSent = false,
+    bool NotificationSent = false);
 
 public record CreateExpertGroupRequest(
     string Name,
@@ -37,6 +40,16 @@ public record UpdateExpertGroupRequest(
     bool IsActive);
 
 public record AddExpertMemberRequest(string UserId);
+
+/// <summary>
+/// <paramref name="Invite"/> = true crée le compte si besoin et envoie un mot de passe temporaire.
+/// <paramref name="Invite"/> = false ajoute uniquement un compte existant (notification sans MDP).
+/// </summary>
+public record AddExpertByEmailRequest(
+    string Email,
+    bool Invite = false,
+    string? FirstName = null,
+    string? LastName = null);
 
 public record TeacherDocumentDto(
     Guid Id,

@@ -45,7 +45,8 @@ public record AuthResponse(
     string Role,
     Guid? TenantId,
     DateTime ExpiresAt,
-    string? TenantName = null);
+    string? TenantName = null,
+    bool MustChangePassword = false);
 
 public record ForgotPasswordRequest(string Email);
 
@@ -54,3 +55,5 @@ public record ResendEmailConfirmationRequest(string Email);
 public record ConfirmEmailRequest(string UserId, string Token);
 
 public record ResetPasswordRequest(string UserId, string Token, string NewPassword);
+
+public record ChangePasswordRequest(string CurrentPassword, string NewPassword);

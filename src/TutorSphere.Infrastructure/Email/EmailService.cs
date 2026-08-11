@@ -43,6 +43,8 @@ internal static class EmailTemplates
     public const string CourseEnrollmentAccepted = "COURSE_ENROLLMENT_ACCEPTED";
     public const string TutorStudentPaymentReceived = "TUTOR_STUDENT_PAYMENT_RECEIVED";
     public const string ExpertTeacherPending = "EXPERT_TEACHER_PENDING";
+    public const string ExpertInvite = "EXPERT_INVITE";
+    public const string ExpertAddedToGroup = "EXPERT_ADDED_TO_GROUP";
 }
 
 public class EmailService : IEmailService
@@ -279,6 +281,36 @@ public class EmailService : IEmailService
             ["SchoolName"] = schoolName,
             ["Country"] = string.IsNullOrWhiteSpace(country) ? "—" : country.Trim(),
             ["ReviewUrl"] = reviewUrl
+        }, ct);
+
+    public Task SendExpertInviteAsync(
+        string to,
+        string firstName,
+        string temporaryPassword,
+        string loginUrl,
+        string groupName,
+        CancellationToken ct = default) =>
+        SendAsync(to, EmailTemplates.ExpertInvite, new Dictionary<string, string>
+        {
+            ["FirstName"] = firstName,
+            ["Email"] = to,
+            ["TemporaryPassword"] = temporaryPassword,
+            ["LoginUrl"] = loginUrl,
+            ["GroupName"] = groupName
+        }, ct);
+
+    public Task SendExpertAddedToGroupAsync(
+        string to,
+        string firstName,
+        string loginUrl,
+        string groupName,
+        CancellationToken ct = default) =>
+        SendAsync(to, EmailTemplates.ExpertAddedToGroup, new Dictionary<string, string>
+        {
+            ["FirstName"] = firstName,
+            ["Email"] = to,
+            ["LoginUrl"] = loginUrl,
+            ["GroupName"] = groupName
         }, ct);
 
     private static Dictionary<string, string> LessonBody(

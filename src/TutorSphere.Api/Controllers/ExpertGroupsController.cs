@@ -1,7 +1,9 @@
+using System.Security.Cryptography;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.ExpertApproval;
 using TutorSphere.Application.Services;
 using TutorSphere.Domain.Enums;
@@ -16,16 +18,25 @@ public class ExpertGroupsController : ControllerBase
 {
     private readonly IExpertGroupService _groups;
     private readonly UserManager<ApplicationUser> _userManager;
+    private readonly IEmailService _email;
+    private readonly IAppUrlProvider _urls;
     private readonly IWebHostEnvironment _env;
+    private readonly ILogger<ExpertGroupsController> _logger;
 
     public ExpertGroupsController(
         IExpertGroupService groups,
         UserManager<ApplicationUser> userManager,
-        IWebHostEnvironment env)
+        IEmailService email,
+        IAppUrlProvider urls,
+        IWebHostEnvironment env,
+        ILogger<ExpertGroupsController> logger)
     {
         _groups = groups;
         _userManager = userManager;
+        _email = email;
+        _urls = urls;
         _env = env;
+        _logger = logger;
     }
 
     [HttpGet]
@@ -138,14 +149,20 @@ public class ExpertGroupsController : ControllerBase
             if (user is null)
                 return NotFound(new { error = "Utilisateur introuvable." });
 
+            var group = await _groups.GetByIdAsync(id, ct);
+            if (group is null)
+                return NotFound(new { error = "Groupe introuvable." });
+
             if (!await _userManager.IsInRoleAsync(user, UserRoles.Expert))
                 await _userManager.AddToRoleAsync(user, UserRoles.Expert);
 
             var member = await _groups.AddMemberAsync(id, user.Id, ct);
+            var notificationSent = await TryNotifyExistingExpertAsync(user, group.Name, ct);
             return Ok(member with
             {
                 Email = user.Email ?? string.Empty,
-                FullName = user.FullName
+                FullName = user.FullName,
+                NotificationSent = notificationSent
             });
         }
         catch (InvalidOperationException ex)
@@ -154,6 +171,11 @@ public class ExpertGroupsController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Ajoute un expert par e-mail.
+    /// Invite=false : compte existant uniquement (+ notification sans MDP).
+    /// Invite=true : crée le compte si besoin, génère un MDP temporaire et envoie EXPERT_INVITE.
+    /// </summary>
     [HttpPost("{id:guid}/members/by-email")]
     public async Task<ActionResult<ExpertGroupMemberDto>> AddMemberByEmail(
         Guid id, [FromBody] AddExpertByEmailRequest request, CancellationToken ct)
@@ -161,11 +183,114 @@ public class ExpertGroupsController : ControllerBase
         if (string.IsNullOrWhiteSpace(request.Email))
             return BadRequest(new { error = "E-mail requis." });
 
-        var user = await _userManager.FindByEmailAsync(request.Email.Trim());
-        if (user is null)
-            return NotFound(new { error = "Aucun compte avec cet e-mail. Créez d'abord l'utilisateur." });
+        var group = await _groups.GetByIdAsync(id, ct);
+        if (group is null)
+            return NotFound(new { error = "Groupe introuvable." });
 
-        return await AddMember(id, new AddExpertMemberRequest(user.Id), ct);
+        var email = request.Email.Trim();
+        var user = await _userManager.FindByEmailAsync(email);
+        var accountCreated = false;
+        var credentialsSent = false;
+        var notificationSent = false;
+
+        try
+        {
+            if (request.Invite)
+            {
+                string? temporaryPassword = null;
+
+                if (user is null)
+                {
+                    var firstName = (request.FirstName ?? string.Empty).Trim();
+                    var lastName = (request.LastName ?? string.Empty).Trim();
+                    if (string.IsNullOrWhiteSpace(firstName) || string.IsNullOrWhiteSpace(lastName))
+                        return BadRequest(new { error = "Prénom et nom requis pour créer un compte expert." });
+
+                    temporaryPassword = GenerateTemporaryPassword();
+                    user = new ApplicationUser
+                    {
+                        UserName = email,
+                        Email = email,
+                        FirstName = firstName,
+                        LastName = lastName,
+                        EmailConfirmed = true,
+                        MustChangePassword = true
+                    };
+
+                    var create = await _userManager.CreateAsync(user, temporaryPassword);
+                    if (!create.Succeeded)
+                        return BadRequest(new { error = string.Join("; ", create.Errors.Select(e => e.Description)) });
+
+                    accountCreated = true;
+                    _logger.LogInformation(
+                        "Compte expert créé pour invitation (userId={UserId}, groupId={GroupId}).",
+                        user.Id, id);
+                }
+                else
+                {
+                    // Compte existant : nouvelle invitation = MDP temporaire + changement obligatoire.
+                    temporaryPassword = GenerateTemporaryPassword();
+                    var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+                    var reset = await _userManager.ResetPasswordAsync(user, token, temporaryPassword);
+                    if (!reset.Succeeded)
+                        return BadRequest(new { error = string.Join("; ", reset.Errors.Select(e => e.Description)) });
+
+                    user.MustChangePassword = true;
+                    if (!string.IsNullOrWhiteSpace(request.FirstName))
+                        user.FirstName = request.FirstName.Trim();
+                    if (!string.IsNullOrWhiteSpace(request.LastName))
+                        user.LastName = request.LastName.Trim();
+                    await _userManager.UpdateAsync(user);
+
+                    _logger.LogInformation(
+                        "Invitation expert : mot de passe temporaire régénéré (userId={UserId}, groupId={GroupId}).",
+                        user.Id, id);
+                }
+
+                if (!await _userManager.IsInRoleAsync(user, UserRoles.Expert))
+                    await _userManager.AddToRoleAsync(user, UserRoles.Expert);
+
+                var member = await _groups.AddMemberAsync(id, user.Id, ct);
+                var loginUrl = $"{_urls.WebBaseUrl.TrimEnd('/')}/login/expert";
+                await _email.SendExpertInviteAsync(
+                    user.Email ?? email,
+                    string.IsNullOrWhiteSpace(user.FirstName) ? email : user.FirstName,
+                    temporaryPassword!,
+                    loginUrl,
+                    group.Name,
+                    ct);
+                credentialsSent = true;
+
+                return Ok(member with
+                {
+                    Email = user.Email ?? email,
+                    FullName = user.FullName,
+                    AccountCreated = accountCreated,
+                    CredentialsSent = credentialsSent
+                });
+            }
+
+            // Mode ajout compte existant (sans régénérer le mot de passe).
+            if (user is null)
+                return NotFound(new { error = "Aucun compte avec cet e-mail. Utilisez « Inviter » pour créer le compte." });
+
+            if (!await _userManager.IsInRoleAsync(user, UserRoles.Expert))
+                await _userManager.AddToRoleAsync(user, UserRoles.Expert);
+
+            var added = await _groups.AddMemberAsync(id, user.Id, ct);
+            notificationSent = await TryNotifyExistingExpertAsync(user, group.Name, ct);
+
+            return Ok(added with
+            {
+                Email = user.Email ?? email,
+                FullName = user.FullName,
+                NotificationSent = notificationSent
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 
     [HttpDelete("{id:guid}/members/{userId}")]
@@ -206,6 +331,45 @@ public class ExpertGroupsController : ControllerBase
     public async Task<ActionResult<IReadOnlyList<PendingTeacherDto>>> PendingTeachers(
         [FromServices] IExpertApprovalService approvals, CancellationToken ct)
         => Ok(await approvals.ListAllPendingAsync(ct));
-}
 
-public record AddExpertByEmailRequest(string Email);
+    private async Task<bool> TryNotifyExistingExpertAsync(ApplicationUser user, string groupName, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(user.Email))
+            return false;
+
+        var loginUrl = $"{_urls.WebBaseUrl.TrimEnd('/')}/login/expert";
+        await _email.SendExpertAddedToGroupAsync(
+            user.Email,
+            string.IsNullOrWhiteSpace(user.FirstName) ? user.Email : user.FirstName,
+            loginUrl,
+            groupName,
+            ct);
+        return true;
+    }
+
+    /// <summary>Mot de passe temporaire respectant la politique Identity (jamais journalisé).</summary>
+    private static string GenerateTemporaryPassword()
+    {
+        const string upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+        const string lower = "abcdefghijkmnpqrstuvwxyz";
+        const string digits = "23456789";
+        const string symbols = "!@#$%";
+        Span<char> code = stackalloc char[12];
+        code[0] = upper[RandomNumberGenerator.GetInt32(upper.Length)];
+        code[1] = lower[RandomNumberGenerator.GetInt32(lower.Length)];
+        code[2] = digits[RandomNumberGenerator.GetInt32(digits.Length)];
+        code[3] = symbols[RandomNumberGenerator.GetInt32(symbols.Length)];
+        const string all = upper + lower + digits + symbols;
+        for (var i = 4; i < code.Length; i++)
+            code[i] = all[RandomNumberGenerator.GetInt32(all.Length)];
+
+        // Shuffle
+        for (var i = code.Length - 1; i > 0; i--)
+        {
+            var j = RandomNumberGenerator.GetInt32(i + 1);
+            (code[i], code[j]) = (code[j], code[i]);
+        }
+
+        return new string(code);
+    }
+}

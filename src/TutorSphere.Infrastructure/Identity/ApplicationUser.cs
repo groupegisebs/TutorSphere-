@@ -16,5 +16,8 @@ public class ApplicationUser : IdentityUser
     /// <summary>Secret token for ICS calendar subscription (webcal / Google / Outlook).</summary>
     public string? CalendarFeedToken { get; set; }
 
+    /// <summary>When true, user must change password after login (e.g. expert invite with temporary password).</summary>
+    public bool MustChangePassword { get; set; }
+
     public string FullName => $"{FirstName} {LastName}".Trim();
 }

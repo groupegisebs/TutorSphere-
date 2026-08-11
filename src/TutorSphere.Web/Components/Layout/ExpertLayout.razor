@@ -1,4 +1,6 @@
 @inherits LayoutComponentBase
+@inject AuthService Auth
+@inject NavigationManager Nav
 
 <link rel="stylesheet" href="css/admin-control-center.css" />
 
@@ -16,3 +18,16 @@
         </div>
     </div>
 </div>
+
+@code {
+    protected override void OnParametersSet()
+    {
+        // Force password change before any expert page (except the change-password route itself).
+        if (Auth.IsAuthenticated && Auth.MustChangePassword)
+        {
+            var path = Nav.ToBaseRelativePath(Nav.Uri);
+            if (!path.StartsWith("change-password", StringComparison.OrdinalIgnoreCase))
+                Nav.NavigateTo("/change-password");
+        }
+    }
+}

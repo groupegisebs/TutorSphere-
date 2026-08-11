@@ -1,18 +1,20 @@
 @page "/admin/expert-groups/{GroupId:guid}"
 @layout AdminLayout
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Microsoft.Extensions.Localization
 @inject AdminService AdminSvc
 @inject AuthService Auth
+@inject IStringLocalizer<SharedResources> L
 
-<PageTitle>Membres du groupe — Control Center</PageTitle>
+<PageTitle>@L["ExpertMembers_Title"] — Control Center</PageTitle>
 
 <AuthorizeView Roles="SuperAdmin,PlatformAdmin">
     <Authorized>
         <div class="cc-toolbar">
             <div>
-                <a href="admin/expert-groups" class="small text-muted">← Groupes</a>
-                <h1 class="cc-page-title">@(_group?.Name ?? "Groupe")</h1>
-                <p class="cc-page-sub">Assignez des comptes experts à ce groupe (rôle Expert ajouté automatiquement).</p>
+                <a href="admin/expert-groups" class="small text-muted">← @L["ExpertMembers_Back"]</a>
+                <h1 class="cc-page-title">@(_group?.Name ?? L["ExpertMembers_Group"].ToString())</h1>
+                <p class="cc-page-sub">@L["ExpertMembers_Subtitle"]</p>
             </div>
         </div>
 
@@ -26,14 +28,43 @@
         }
 
         <div class="cc-card mb-3">
+            <div class="mb-3">
+                <label class="form-label">@L["ExpertMembers_Mode"]</label>
+                <div class="d-flex flex-wrap gap-3">
+                    <label class="form-check">
+                        <input class="form-check-input" type="radio" name="expert-mode" checked="@(!_invite)"
+                               @onchange="() => _invite = false" />
+                        <span class="form-check-label">@L["ExpertMembers_ModeAdd"]</span>
+                    </label>
+                    <label class="form-check">
+                        <input class="form-check-input" type="radio" name="expert-mode" checked="@_invite"
+                               @onchange="() => _invite = true" />
+                        <span class="form-check-label">@L["ExpertMembers_ModeInvite"]</span>
+                    </label>
+                </div>
+                <p class="form-text mb-0">
+                    @(_invite ? L["ExpertMembers_ModeInviteHelp"] : L["ExpertMembers_ModeAddHelp"])
+                </p>
+            </div>
             <div class="row g-2 align-items-end">
-                <div class="col-md-8">
-                    <label class="form-label">E-mail du compte expert</label>
+                <div class="@(_invite ? "col-md-4" : "col-md-8")">
+                    <label class="form-label">@L["ExpertMembers_Email"]</label>
                     <input class="form-control" @bind="_email" placeholder="expert@example.com" />
                 </div>
+                @if (_invite)
+                {
+                    <div class="col-md-2">
+                        <label class="form-label">@L["ExpertMembers_FirstName"]</label>
+                        <input class="form-control" @bind="_firstName" />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">@L["ExpertMembers_LastName"]</label>
+                        <input class="form-control" @bind="_lastName" />
+                    </div>
+                }
                 <div class="col-md-4">
                     <button type="button" class="cc-btn cc-btn-primary w-100" disabled="@_adding" @onclick="AddAsync">
-                        Ajouter
+                        @(_invite ? L["ExpertMembers_InviteBtn"] : L["ExpertMembers_AddBtn"])
                     </button>
                 </div>
             </div>
@@ -46,13 +77,13 @@
             }
             else if (_members.Count == 0)
             {
-                <p class="text-muted mb-0">Aucun membre pour l’instant.</p>
+                <p class="text-muted mb-0">@L["ExpertMembers_Empty"]</p>
             }
             else
             {
                 <table class="cc-table">
                     <thead>
-                        <tr><th>Nom</th><th>E-mail</th><th></th></tr>
+                        <tr><th>@L["ExpertMembers_ColName"]</th><th>@L["ExpertMembers_ColEmail"]</th><th></th></tr>
                     </thead>
                     <tbody>
                         @foreach (var m in _members)
@@ -61,7 +92,7 @@
                                 <td>@m.FullName</td>
                                 <td>@m.Email</td>
                                 <td class="text-end">
-                                    <button type="button" class="cc-btn btn-sm" @onclick="() => RemoveAsync(m)">Retirer</button>
+                                    <button type="button" class="cc-btn btn-sm" @onclick="() => RemoveAsync(m)">@L["ExpertMembers_Remove"]</button>
                                 </td>
                             </tr>
                         }
@@ -79,7 +110,10 @@
     private List<ExpertMemberItem> _members = [];
     private bool _loading = true;
     private bool _adding;
+    private bool _invite;
     private string _email = "";
+    private string _firstName = "";
+    private string _lastName = "";
     private string? _error;
     private string? _flash;
 
@@ -106,12 +140,25 @@
     {
         _adding = true;
         _error = null;
+        _flash = null;
         try
         {
-            var m = await AdminSvc.AddExpertByEmailAsync(GroupId, _email);
-            if (m is null) { _error = "Ajout impossible (compte introuvable ?)."; return; }
-            _flash = "Expert ajouté.";
+            var m = await AdminSvc.AddExpertByEmailAsync(
+                GroupId, _email, _invite, _firstName, _lastName);
+            if (m is null) { _error = L["ExpertMembers_AddFailed"]; return; }
+
+            if (m.CredentialsSent)
+                _flash = m.AccountCreated
+                    ? L["ExpertMembers_FlashInviteCreated"]
+                    : L["ExpertMembers_FlashInviteSent"];
+            else if (m.NotificationSent)
+                _flash = L["ExpertMembers_FlashAddedNotified"];
+            else
+                _flash = L["ExpertMembers_FlashAdded"];
+
             _email = "";
+            _firstName = "";
+            _lastName = "";
             await ReloadAsync();
         }
         catch (Exception ex) { _error = ex.Message; }
@@ -121,8 +168,8 @@
     private async Task RemoveAsync(ExpertMemberItem m)
     {
         var ok = await AdminSvc.RemoveExpertMemberAsync(GroupId, m.UserId);
-        if (!ok) { _error = "Retrait impossible."; return; }
-        _flash = "Membre retiré.";
+        if (!ok) { _error = L["ExpertMembers_RemoveFailed"]; return; }
+        _flash = L["ExpertMembers_FlashRemoved"];
         await ReloadAsync();
     }
 }

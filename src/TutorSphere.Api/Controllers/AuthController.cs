@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -259,6 +260,27 @@ public class AuthController : ControllerBase
         {
             await _authService.ResetPasswordAsync(request.UserId, request.Token, request.NewPassword, ct);
             return Ok(new { message = "Mot de passe réinitialisé avec succès." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("change-password")]
+    [Authorize]
+    public async Task<ActionResult<AuthResponse>> ChangePassword(
+        [FromBody] ChangePasswordRequest request,
+        CancellationToken ct)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(userId))
+            return Unauthorized();
+
+        try
+        {
+            return Ok(await _authService.ChangePasswordAsync(
+                userId, request.CurrentPassword, request.NewPassword, ct));
         }
         catch (InvalidOperationException ex)
         {

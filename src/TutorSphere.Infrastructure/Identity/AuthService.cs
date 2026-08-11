@@ -29,6 +29,7 @@ public interface IAuthService
     Task ResendEmailConfirmationAsync(string email, CancellationToken ct = default);
     Task ForgotPasswordAsync(string email, CancellationToken ct = default);
     Task ResetPasswordAsync(string userId, string token, string newPassword, CancellationToken ct = default);
+    Task<AuthResponse> ChangePasswordAsync(string userId, string currentPassword, string newPassword, CancellationToken ct = default);
     Task EnsureParentProfileForUserAsync(string userId, CancellationToken ct = default);
 }
 
@@ -457,7 +458,43 @@ public class AuthService : IAuthService
         if (!result.Succeeded)
             throw new InvalidOperationException(string.Join("; ", result.Errors.Select(e => e.Description)));
 
+        if (user.MustChangePassword)
+        {
+            user.MustChangePassword = false;
+            await _userManager.UpdateAsync(user);
+        }
+
         await _email.SendPasswordChangedAsync(user.Email!, user.FirstName, ct);
+    }
+
+    public async Task<AuthResponse> ChangePasswordAsync(
+        string userId,
+        string currentPassword,
+        string newPassword,
+        CancellationToken ct = default)
+    {
+        var user = await _userManager.FindByIdAsync(userId)
+            ?? throw new InvalidOperationException("Utilisateur introuvable.");
+
+        if (string.IsNullOrWhiteSpace(currentPassword) || string.IsNullOrWhiteSpace(newPassword))
+            throw new InvalidOperationException("Mot de passe actuel et nouveau mot de passe requis.");
+
+        var result = await _userManager.ChangePasswordAsync(user, currentPassword, newPassword);
+        if (!result.Succeeded)
+            throw new InvalidOperationException(string.Join("; ", result.Errors.Select(e => e.Description)));
+
+        if (user.MustChangePassword)
+        {
+            user.MustChangePassword = false;
+            await _userManager.UpdateAsync(user);
+        }
+
+        if (!string.IsNullOrWhiteSpace(user.Email))
+            await _email.SendPasswordChangedAsync(user.Email, user.FirstName, ct);
+
+        var roles = await _userManager.GetRolesAsync(user);
+        var role = ResolvePrimaryRole(roles);
+        return await BuildAuthResponse(user, role, roles);
     }
 
     private async Task<AuthResponse> BuildAuthResponse(
@@ -501,6 +538,9 @@ public class AuthService : IAuthService
         if (!isPlatformAdmin && !string.IsNullOrWhiteSpace(tenantName))
             claims.Add(new Claim("tenant_name", tenantName));
 
+        if (user.MustChangePassword)
+            claims.Add(new Claim("must_change_password", "true"));
+
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
         var token = new JwtSecurityToken(
             issuer: jwtSection["Issuer"],
@@ -517,7 +557,8 @@ public class AuthService : IAuthService
             role,
             isPlatformAdmin ? null : user.TenantId,
             expires,
-            isPlatformAdmin ? null : tenantName);
+            isPlatformAdmin ? null : tenantName,
+            user.MustChangePassword);
     }
 
     /// <summary>Priorité : SuperAdmin → PlatformAdmin → Expert → premier autre rôle.</summary>
