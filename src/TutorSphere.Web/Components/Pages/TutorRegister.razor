@@ -135,33 +135,15 @@
                 }
 
                 <div class="mb-3">
-                    <label class="form-label">@L["Label_SchoolName"] <span class="text-danger">*</span></label>
+                    <label class="form-label">@L["Label_ExpertGroupName"] <span class="text-danger">*</span></label>
                     <div class="form-field-icon">
-                        <i class="bi bi-building field-icon" aria-hidden="true"></i>
-                        <input class="form-control" @bind="SchoolName" placeholder="@L["Placeholder_SchoolName"]" />
+                        <i class="bi bi-people field-icon" aria-hidden="true"></i>
+                        <input class="form-control" value="@SchoolName" disabled readonly
+                               placeholder="@(_loadingInvite ? L["Label_Loading"] : L["Placeholder_ExpertGroupName"])" />
                     </div>
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label">@L["Label_SubdomainFull"] <span class="text-danger">*</span></label>
-                    <div class="subdomain-field">
-                        <span class="subdomain-prefix">https://</span>
-                        <input @bind="Slug" @bind:event="oninput" @bind:after="AfterSlugChanged" placeholder="jean" aria-label="@L["Label_Subdomain"]" />
-                        <span class="subdomain-suffix">.tutorsphere.com</span>
-                        @if (_checkingSlug)
-                        {
-                            <span class="subdomain-status"><span class="spinner-border spinner-border-sm" role="status"></span></span>
-                        }
-                        else if (!string.IsNullOrWhiteSpace(Slug) && IsSlugFormatValid)
-                        {
-                            <span class="subdomain-status @(_slugAvailable == true ? "" : "unavailable")">
-                                <i class="bi @(_slugAvailable == true ? "bi-check-circle-fill" : "bi-x-circle-fill")" aria-hidden="true"></i>
-                            </span>
-                        }
-                    </div>
-                    @if (_slugAvailable == false && !string.IsNullOrWhiteSpace(Slug))
+                    @if (!string.IsNullOrEmpty(_inviteInfoError))
                     {
-                        <small class="text-danger">@L["Error_SlugTaken"]</small>
+                        <small class="text-danger">@_inviteInfoError</small>
                     }
                 </div>
 
@@ -170,14 +152,16 @@
                         <label class="form-label">@L["Label_FirstName"] <span class="text-danger">*</span></label>
                         <div class="form-field-icon">
                             <i class="bi bi-person field-icon" aria-hidden="true"></i>
-                            <input class="form-control" @bind="FirstName" placeholder="@L["Label_FirstName"]" autocomplete="given-name" />
+                            <input class="form-control" @bind="FirstName" @bind:event="oninput" @bind:after="OnNameChanged"
+                                   placeholder="@L["Label_FirstName"]" autocomplete="given-name" />
                         </div>
                     </div>
                     <div class="col-12 col-sm-6 mb-3">
                         <label class="form-label">@L["Label_LastName"] <span class="text-danger">*</span></label>
                         <div class="form-field-icon">
                             <i class="bi bi-person field-icon" aria-hidden="true"></i>
-                            <input class="form-control" @bind="LastName" placeholder="@L["Label_LastName"]" autocomplete="family-name" />
+                            <input class="form-control" @bind="LastName" @bind:event="oninput" @bind:after="OnNameChanged"
+                                   placeholder="@L["Label_LastName"]" autocomplete="family-name" />
                         </div>
                     </div>
                 </div>
@@ -276,6 +260,30 @@
                     </div>
                 </div>
 
+                <div class="mb-4">
+                    <label class="form-label">@L["Label_SubdomainFull"] <span class="text-danger">*</span></label>
+                    <div class="subdomain-field">
+                        <span class="subdomain-prefix">https://</span>
+                        <input @bind="Slug" @bind:event="oninput" @bind:after="AfterSlugChanged" placeholder="jean" aria-label="@L["Label_Subdomain"]" />
+                        <span class="subdomain-suffix">.tutorsphere.com</span>
+                        @if (_checkingSlug)
+                        {
+                            <span class="subdomain-status"><span class="spinner-border spinner-border-sm" role="status"></span></span>
+                        }
+                        else if (!string.IsNullOrWhiteSpace(Slug) && IsSlugFormatValid)
+                        {
+                            <span class="subdomain-status @(_slugAvailable == true ? "" : "unavailable")">
+                                <i class="bi @(_slugAvailable == true ? "bi-check-circle-fill" : "bi-x-circle-fill")" aria-hidden="true"></i>
+                            </span>
+                        }
+                    </div>
+                    <small class="text-muted">@L["Hint_SubdomainAutoFilled"]</small>
+                    @if (_slugAvailable == false && !string.IsNullOrWhiteSpace(Slug))
+                    {
+                        <small class="text-danger d-block">@L["Error_SlugTaken"]</small>
+                    }
+                </div>
+
                 <button class="btn btn-primary w-100 py-2" @onclick="CreateSchoolAsync"
                         disabled="@(IsSubmitting || !AcceptedTeacherConduct)">
                     @if (IsSubmitting)
@@ -309,6 +317,9 @@
     private bool? _slugAvailable = null;
     private bool _checkingSlug;
     private System.Threading.CancellationTokenSource? _slugCts;
+    private bool _loadingInvite;
+    private string? _inviteInfoError;
+    private string? _autoSlugValue;
 
     private string SchoolName { get; set; } = "";
     private string Slug { get; set; } = "";
@@ -347,7 +358,7 @@
         _ => L["Password_Strong"]
     };
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
         if (QueryHelpers.ParseQuery(uri.Query).TryGetValue("invite", out var invite)
@@ -357,9 +368,89 @@
         }
 
         RefreshSteps();
+        await LoadInviteInfoAsync();
     }
 
     protected override void OnParametersSet() => RefreshSteps();
+
+    private async Task LoadInviteInfoAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_inviteToken))
+        {
+            _inviteInfoError = L["Error_InviteRequired"];
+            return;
+        }
+
+        _loadingInvite = true;
+        _inviteInfoError = null;
+        try
+        {
+            var response = await Http.GetAsync($"api/auth/teacher-invite/{Uri.EscapeDataString(_inviteToken)}");
+            if (response.IsSuccessStatusCode)
+            {
+                var info = await response.Content.ReadFromJsonAsync<TeacherInviteInfoResponse>();
+                if (info is not null)
+                {
+                    SchoolName = info.ExpertGroupName;
+                    if (string.IsNullOrWhiteSpace(Email) && !string.IsNullOrWhiteSpace(info.Email))
+                        Email = info.Email!;
+                    if (string.IsNullOrWhiteSpace(FirstName) && !string.IsNullOrWhiteSpace(info.FirstName))
+                    {
+                        FirstName = info.FirstName!;
+                        await OnNameChanged();
+                    }
+                }
+            }
+            else
+            {
+                _inviteInfoError = L["Error_InviteRequired"];
+            }
+        }
+        catch
+        {
+            _inviteInfoError = L["Error_InviteRequired"];
+        }
+        finally
+        {
+            _loadingInvite = false;
+        }
+    }
+
+    private async Task OnNameChanged()
+    {
+        if (!string.IsNullOrWhiteSpace(Slug) && Slug != _autoSlugValue)
+            return;
+
+        var generated = SlugifyName(FirstName, LastName);
+        if (generated == _autoSlugValue)
+            return;
+
+        _autoSlugValue = generated;
+        Slug = generated;
+        await AfterSlugChanged();
+    }
+
+    private static string SlugifyName(string firstName, string lastName)
+    {
+        var combined = $"{firstName} {lastName}".Trim();
+        if (string.IsNullOrWhiteSpace(combined))
+            return "";
+
+        var normalized = combined.Normalize(System.Text.NormalizationForm.FormD);
+        var sb = new System.Text.StringBuilder();
+        foreach (var c in normalized)
+        {
+            if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c)
+                != System.Globalization.UnicodeCategory.NonSpacingMark)
+            {
+                sb.Append(c);
+            }
+        }
+
+        var ascii = sb.ToString().Normalize(System.Text.NormalizationForm.FormC);
+        var slug = System.Text.RegularExpressions.Regex.Replace(ascii.ToLowerInvariant(), @"[^a-z0-9]+", "-").Trim('-');
+        return slug.Length > 40 ? slug[..40].Trim('-') : slug;
+    }
 
     private void RefreshSteps()
     {
@@ -413,7 +504,13 @@
     {
         ErrorMessage = null;
 
-        if (string.IsNullOrWhiteSpace(SchoolName) || string.IsNullOrWhiteSpace(Slug)
+        if (string.IsNullOrWhiteSpace(SchoolName))
+        {
+            ErrorMessage = L["Error_InviteRequired"];
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(Slug)
             || string.IsNullOrWhiteSpace(FirstName) || string.IsNullOrWhiteSpace(LastName)
             || string.IsNullOrWhiteSpace(Email) || string.IsNullOrWhiteSpace(Password)
             || string.IsNullOrWhiteSpace(ConfirmPassword))
