@@ -105,6 +105,28 @@
                         @if (PaymentMethodCodes.IsMobileMoney(_method))
                         {
                             <div class="mb-3">
+                                <label class="form-label" for="mm-country">Pays du payeur (taxe)</label>
+                                <select id="mm-country"
+                                        class="form-select"
+                                        disabled="@_busy"
+                                        @bind="_billingCountry"
+                                        @bind:after="OnBillingCountryChangedAsync">
+                                    @if (_africaRates.Count == 0)
+                                    {
+                                        <option value="CM">Cameroun (TVA 19,25 %)</option>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var rate in _africaRates)
+                                        {
+                                            <option value="@rate.CountryCode">
+                                                @rate.CountryName — @rate.TaxName @rate.RatePercent.ToString("0.##") %
+                                            </option>
+                                        }
+                                    }
+                                </select>
+                            </div>
+                            <div class="mb-3">
                                 <label class="form-label" for="mm-phone">@L["PayMethod_PhoneLabel"]</label>
                                 <div class="input-group">
                                     <span class="input-group-text">+237</span>
@@ -186,6 +208,7 @@
     private string _idempotencyKey = Guid.NewGuid().ToString("N");
     private string _billingCountry = "CM";
     private TaxQuoteVm? _taxQuote;
+    private List<AfricaRateVm> _africaRates = [];
 
     private bool ShowMobileMoney =>
         !IsPlatformLicense
@@ -202,9 +225,34 @@
         _method = method;
         _error = null;
         if (PaymentMethodCodes.IsMobileMoney(method))
+        {
+            await EnsureAfricaRatesAsync();
             await RefreshTaxQuoteAsync();
+        }
         else
             _taxQuote = null;
+    }
+
+    private async Task OnBillingCountryChangedAsync()
+    {
+        if (PaymentMethodCodes.IsMobileMoney(_method))
+            await RefreshTaxQuoteAsync();
+    }
+
+    private async Task EnsureAfricaRatesAsync()
+    {
+        if (_africaRates.Count > 0)
+            return;
+        try
+        {
+            var result = await Api.GetWithErrorAsync<List<AfricaRateVm>>("api/payments/tax/africa/rates");
+            if (result.Value is { Count: > 0 } rates)
+                _africaRates = rates;
+        }
+        catch
+        {
+            // Fallback : liste vide → option Cameroun seule dans le markup
+        }
     }
 
     private async Task RefreshTaxQuoteAsync()
@@ -489,4 +537,10 @@
         decimal TaxAmount,
         decimal AmountInclusive,
         string Currency);
+    private sealed record AfricaRateVm(
+        string CountryCode,
+        string CountryName,
+        string TaxName,
+        decimal RatePercent,
+        string? Notes);
 }

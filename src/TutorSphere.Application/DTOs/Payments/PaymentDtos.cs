@@ -67,6 +67,13 @@ public record AfricanTaxQuoteDto(
     decimal AmountInclusive,
     string Currency);
 
+public record AfricanTaxRateDto(
+    string CountryCode,
+    string CountryName,
+    string TaxName,
+    decimal RatePercent,
+    string? Notes);
+
 public record ParentCustomerResponse(Guid ParentProfileId, string CustomerCode);
 
 public record SubscriptionCheckoutResponse(

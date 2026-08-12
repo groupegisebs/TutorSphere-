@@ -65,4 +65,6 @@ public interface IPaymentGatewayService
         string currency,
         string countryCode,
         CancellationToken ct = default);
+
+    Task<IReadOnlyList<AfricanTaxRateDto>> ListAfricanTaxRatesAsync(CancellationToken ct = default);
 }

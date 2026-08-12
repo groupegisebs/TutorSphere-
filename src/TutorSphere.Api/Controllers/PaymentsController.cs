@@ -227,4 +227,10 @@ public class PaymentsController : ControllerBase
             return BadRequest(new { error = ex.Message });
         }
     }
+
+    /// <summary>Liste complète des taux TVA/GST des pays d'Afrique.</summary>
+    [HttpGet("tax/africa/rates")]
+    [Authorize(Roles = $"{UserRoles.Parent},{UserRoles.Student},{UserRoles.Tutor},{UserRoles.SuperAdmin}")]
+    public async Task<ActionResult<IReadOnlyList<AfricanTaxRateDto>>> ListAfricanTaxRates(CancellationToken ct) =>
+        Ok(await _paymentGateway.ListAfricanTaxRatesAsync(ct));
 }

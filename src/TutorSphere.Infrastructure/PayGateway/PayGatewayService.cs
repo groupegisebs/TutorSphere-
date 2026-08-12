@@ -981,4 +981,12 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             quote.AmountInclusive,
             quote.Currency);
     }
+
+    public async Task<IReadOnlyList<AfricanTaxRateDto>> ListAfricanTaxRatesAsync(CancellationToken ct = default)
+    {
+        var rates = await _gateway.ListAfricanTaxRatesAsync(ct);
+        return rates
+            .Select(r => new AfricanTaxRateDto(r.CountryCode, r.CountryName, r.TaxName, r.RatePercent, r.Notes))
+            .ToList();
+    }
 }

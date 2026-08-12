@@ -82,3 +82,15 @@
 Aucun secret CamPay côté TutorSphere. Configuration existante `PayGateway` (BaseUrl, AppCode, ApiKey) suffit.
 
 Offres / abonnements doivent être en **XAF** pour afficher Orange/MTN dans le checkout.
+
+## Taxes Afrique (TTC obligatoire)
+
+- Catalogue : `GiseBsPayGateway` → `Services/Tax/AfricanTaxRates.cs` (tous les pays d’Afrique, taux standard TVA/GST/VAT).
+- Calcul : `TTC = HT + taxe` (arrondi monétaire AwayFromZero ; XAF sans décimales).
+- Exemple Cameroun : HT 5 000 XAF × 19,25 % → taxe 963 → **TTC 5 963**.
+- APIs Gateway : `GET /api/tax/africa/rates`, `POST /api/tax/africa/quote`.
+- APIs TutorSphere : `GET /api/payments/tax/africa/rates`, `GET /api/payments/tax/africa/quote`.
+- Checkout MM : le payeur choisit son pays ; le montant encaissé est toujours le **TTC**. La commission plateforme reste calculée sur le **HT**.
+- Défaut pays : `CM` (Cameroun) pour CamPay.
+
+Les taux sont des standards publiés — à confirmer juridiquement avant production.
