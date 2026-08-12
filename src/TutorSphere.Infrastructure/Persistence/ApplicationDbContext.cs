@@ -40,6 +40,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     public DbSet<ExpertGroupMember> ExpertGroupMembersSet => Set<ExpertGroupMember>();
     public DbSet<TeacherDocument> TeacherDocumentsSet => Set<TeacherDocument>();
     public DbSet<TeacherApplicationInvite> TeacherApplicationInvitesSet => Set<TeacherApplicationInvite>();
+    public DbSet<ExpertRemark> ExpertRemarksSet => Set<ExpertRemark>();
 
     IQueryable<Tenant> IApplicationDbContext.Tenants => TenantsSet;
     IQueryable<TenantBranding> IApplicationDbContext.TenantBrandings => TenantBrandingsSet;
@@ -89,6 +90,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
         TeacherDocumentsSet.IgnoreQueryFilters();
     IQueryable<TeacherApplicationInvite> IApplicationDbContext.TeacherApplicationInvites =>
         TeacherApplicationInvitesSet;
+    IQueryable<ExpertRemark> IApplicationDbContext.ExpertRemarks => ExpertRemarksSet;
+    IQueryable<ExpertRemark> IApplicationDbContext.ExpertRemarksForAnyTenant =>
+        ExpertRemarksSet.IgnoreQueryFilters();
 
     public new void Add<T>(T entity) where T : class => Set<T>().Add(entity);
     public new void Remove<T>(T entity) where T : class => Set<T>().Remove(entity);
@@ -224,6 +228,22 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             e.HasIndex(i => i.SentAt);
             e.HasOne(i => i.ExpertGroup).WithMany().HasForeignKey(i => i.ExpertGroupId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<ExpertRemark>(e =>
+        {
+            e.Property(r => r.AuthorUserId).HasMaxLength(450).IsRequired();
+            e.Property(r => r.Message).HasMaxLength(2000).IsRequired();
+            e.HasIndex(r => r.TenantId);
+            e.HasIndex(r => r.CreatedAt);
+            e.HasOne(r => r.Tenant).WithMany().HasForeignKey(r => r.TenantId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<ExpertGroup>().WithMany().HasForeignKey(r => r.ExpertGroupId)
+                .OnDelete(DeleteBehavior.SetNull);
+            e.HasOne<Homework>().WithMany().HasForeignKey(r => r.RelatedHomeworkId)
+                .OnDelete(DeleteBehavior.SetNull);
+            e.HasOne<Document>().WithMany().HasForeignKey(r => r.RelatedDocumentId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         builder.Entity<Homework>(e =>

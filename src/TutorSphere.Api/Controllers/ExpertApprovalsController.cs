@@ -15,11 +15,16 @@ namespace TutorSphere.Api.Controllers;
 public class ExpertApprovalsController : ControllerBase
 {
     private readonly IExpertApprovalService _approvals;
+    private readonly IExpertMonitoringService _monitoring;
     private readonly UserManager<ApplicationUser> _userManager;
 
-    public ExpertApprovalsController(IExpertApprovalService approvals, UserManager<ApplicationUser> userManager)
+    public ExpertApprovalsController(
+        IExpertApprovalService approvals,
+        IExpertMonitoringService monitoring,
+        UserManager<ApplicationUser> userManager)
     {
         _approvals = approvals;
+        _monitoring = monitoring;
         _userManager = userManager;
     }
 
@@ -122,5 +127,77 @@ public class ExpertApprovalsController : ControllerBase
         if (UserId is null) return Unauthorized();
         var list = await _approvals.ListInvitesForExpertAsync(UserId, ct);
         return Ok(list);
+    }
+
+    [HttpGet("teachers")]
+    public async Task<ActionResult<IReadOnlyList<MonitoredTeacherDto>>> MonitoredTeachers(CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        var list = await _monitoring.ListMonitoredTeachersAsync(UserId, ct);
+
+        var enriched = new List<MonitoredTeacherDto>(list.Count);
+        foreach (var item in list)
+        {
+            var detail = await _approvals.GetReviewDetailAsync(item.TenantId, ct);
+            string? email = null;
+            string? name = null;
+            if (!string.IsNullOrWhiteSpace(detail?.OwnerUserId))
+            {
+                var user = await _userManager.FindByIdAsync(detail!.OwnerUserId);
+                email = user?.Email;
+                name = user?.FullName;
+            }
+            enriched.Add(item with { OwnerEmail = email, OwnerName = name });
+        }
+
+        return Ok(enriched);
+    }
+
+    [HttpGet("teachers/{tenantId:guid}/materials")]
+    public async Task<ActionResult<IReadOnlyList<TeacherMaterialItemDto>>> Materials(Guid tenantId, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        try
+        {
+            var list = await _monitoring.GetTeacherMaterialsAsync(tenantId, UserId, ct);
+            return Ok(list);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpGet("teachers/{tenantId:guid}/remarks")]
+    public async Task<ActionResult<IReadOnlyList<ExpertRemarkDto>>> Remarks(Guid tenantId, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        try
+        {
+            var list = await _monitoring.ListRemarksAsync(tenantId, UserId, ct);
+            return Ok(list);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("teachers/{tenantId:guid}/remarks")]
+    public async Task<ActionResult<ExpertRemarkDto>> AddRemark(
+        Guid tenantId, [FromBody] CreateExpertRemarkRequest? request, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        if (request is null) return BadRequest(new { error = "Requête invalide." });
+
+        try
+        {
+            var dto = await _monitoring.AddRemarkAsync(UserId, tenantId, request, ct);
+            return Ok(dto);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 }

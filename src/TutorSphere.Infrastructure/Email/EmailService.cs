@@ -48,6 +48,7 @@ internal static class EmailTemplates
     public const string ExpertTeacherApproved = "EXPERT_TEACHER_APPROVED";
     public const string ExpertTeacherRejected = "EXPERT_TEACHER_REJECTED";
     public const string ExpertTeacherApplyInvite = "EXPERT_TEACHER_APPLY_INVITE";
+    public const string ExpertRemarkNotification = "EXPERT_REMARK_NOTIFICATION";
 }
 
 public class EmailService : IEmailService
@@ -367,6 +368,23 @@ public class EmailService : IEmailService
                 ? "Nous vous invitons à créer votre profil enseignant et à déposer votre candidature pour examen."
                 : personalMessage.Trim(),
             ["ApplyUrl"] = applyUrl
+        }, ct);
+
+    public Task SendExpertRemarkNotificationAsync(
+        string to,
+        string firstName,
+        string schoolName,
+        string category,
+        string excerpt,
+        string remarksUrl,
+        CancellationToken ct = default) =>
+        SendAsync(to, EmailTemplates.ExpertRemarkNotification, new Dictionary<string, string>
+        {
+            ["FirstName"] = firstName,
+            ["SchoolName"] = schoolName,
+            ["Category"] = category,
+            ["Excerpt"] = excerpt,
+            ["RemarksUrl"] = remarksUrl
         }, ct);
 
     private static Dictionary<string, string> LessonBody(

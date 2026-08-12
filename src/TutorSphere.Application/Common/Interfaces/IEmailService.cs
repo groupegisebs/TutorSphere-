@@ -122,4 +122,14 @@ public interface IEmailService
         string personalMessage,
         string applyUrl,
         CancellationToken ct = default);
+
+    /// <summary>Notifie l'enseignant qu'un expert a laissé une nouvelle remarque de suivi qualité.</summary>
+    Task SendExpertRemarkNotificationAsync(
+        string to,
+        string firstName,
+        string schoolName,
+        string category,
+        string excerpt,
+        string remarksUrl,
+        CancellationToken ct = default);
 }
