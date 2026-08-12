@@ -128,6 +128,9 @@ public class AuthService : IAuthService
         if (!await _userManager.CheckPasswordAsync(user, password))
             throw new UnauthorizedAccessException("Identifiants invalides.");
 
+        if (role == UserRoles.Expert)
+            EnsureExpertGroupIsActive(user.Id);
+
         // Les admins plateforme n'utilisent que le Control Center (pas de profil parent auto).
         if (role is not (UserRoles.SuperAdmin or UserRoles.PlatformAdmin)
             && UserRoles.ParentPortalRoles.Contains(role))
@@ -612,6 +615,26 @@ public class AuthService : IAuthService
     private static string NormalizeRole(string role) =>
         UserRoles.All.FirstOrDefault(r => r.Equals(role, StringComparison.OrdinalIgnoreCase))
         ?? UserRoles.Parent;
+
+    /// <summary>
+    /// Un expert ne peut se connecter que si le groupe d'experts auquel il appartient est actif.
+    /// Un compte sans groupe (cas transitoire) est laissé passer.
+    /// </summary>
+    private void EnsureExpertGroupIsActive(string userId)
+    {
+        var groupIds = _db.ExpertGroupMembers
+            .Where(m => m.UserId == userId)
+            .Select(m => m.ExpertGroupId)
+            .ToList();
+
+        if (groupIds.Count == 0)
+            return;
+
+        var hasActiveGroup = _db.ExpertGroups.Any(g => groupIds.Contains(g.Id) && g.IsActive);
+        if (!hasActiveGroup)
+            throw new UnauthorizedAccessException(
+                "Votre groupe d'experts a été désactivé. Contactez l'administrateur de la plateforme.");
+    }
 
     private async Task EnsureParentProfileAsync(ApplicationUser user, CancellationToken ct)
     {

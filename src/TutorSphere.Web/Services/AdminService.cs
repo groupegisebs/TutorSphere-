@@ -90,9 +90,9 @@ public sealed class AdminService
     public async Task<List<ExpertMemberItem>> GetExpertGroupMembersAsync(Guid groupId)
         => await _api.GetAsync<List<ExpertMemberItem>>($"api/admin/expert-groups/{groupId}/members") ?? [];
 
-    public async Task<ExpertMemberItem?> AddExpertByEmailAsync(
+    public async Task<ApiResult<ExpertMemberItem>> AddExpertByEmailAsync(
         Guid groupId, string email, bool invite = false, string? firstName = null, string? lastName = null)
-        => await _api.PostAsync<ExpertMemberItem>($"api/admin/expert-groups/{groupId}/members/by-email", new
+        => await _api.PostWithErrorAsync<ExpertMemberItem>($"api/admin/expert-groups/{groupId}/members/by-email", new
         {
             email,
             invite,

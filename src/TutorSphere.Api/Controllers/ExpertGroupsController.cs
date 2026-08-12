@@ -164,10 +164,14 @@ public class ExpertGroupsController : ControllerBase
             if (group is null)
                 return NotFound(new { error = "Groupe introuvable." });
 
+            // Ajout de l'appartenance au groupe avant l'attribution du rôle Expert : si l'utilisateur
+            // appartient déjà à un autre groupe (règle « un seul groupe par expert »), on échoue sans
+            // avoir touché à ses rôles.
+            var member = await _groups.AddMemberAsync(id, user.Id, ct);
+
             if (!await _userManager.IsInRoleAsync(user, UserRoles.Expert))
                 await _userManager.AddToRoleAsync(user, UserRoles.Expert);
 
-            var member = await _groups.AddMemberAsync(id, user.Id, ct);
             var credentialsSent = await SendExpertLoginCredentialsAsync(user, group.Name, ct);
             return Ok(member with
             {
@@ -250,10 +254,14 @@ public class ExpertGroupsController : ControllerBase
                 return NotFound(new { error = "Aucun compte avec cet e-mail. Utilisez « Inviter » pour créer le compte." });
             }
 
+            // Ajout de l'appartenance au groupe avant l'attribution du rôle Expert : si l'utilisateur
+            // appartient déjà à un autre groupe (règle « un seul groupe par expert »), on échoue sans
+            // avoir touché à ses rôles.
+            var member = await _groups.AddMemberAsync(id, user.Id, ct);
+
             if (!await _userManager.IsInRoleAsync(user, UserRoles.Expert))
                 await _userManager.AddToRoleAsync(user, UserRoles.Expert);
 
-            var member = await _groups.AddMemberAsync(id, user.Id, ct);
             var credentialsSent = await SendExpertLoginCredentialsAsync(user, group.Name, ct);
 
             return Ok(member with

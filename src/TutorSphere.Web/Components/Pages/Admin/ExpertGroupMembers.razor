@@ -45,6 +45,9 @@
                 <p class="form-text mb-0" style="color:#d1d5db">
                     @(_invite ? L["ExpertMembers_ModeInviteHelp"] : L["ExpertMembers_ModeAddHelp"])
                 </p>
+                <p class="form-text mb-0" style="color:#d1d5db">
+                    <i class="bi bi-info-circle"></i> @L["ExpertMembers_SingleGroupHint"]
+                </p>
             </div>
             <div class="row g-2 align-items-end">
                 <div class="@(_invite ? "col-md-4" : "col-md-8")">
@@ -143,9 +146,14 @@
         _flash = null;
         try
         {
-            var m = await AdminSvc.AddExpertByEmailAsync(
+            var result = await AdminSvc.AddExpertByEmailAsync(
                 GroupId, _email, _invite, _firstName, _lastName);
-            if (m is null) { _error = L["ExpertMembers_AddFailed"]; return; }
+            if (!result.IsSuccess || result.Value is null)
+            {
+                _error = result.Error ?? L["ExpertMembers_AddFailed"].Value;
+                return;
+            }
+            var m = result.Value;
 
             if (m.CredentialsSent)
                 _flash = m.AccountCreated

@@ -145,13 +145,28 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
         if (string.IsNullOrWhiteSpace(userId))
             throw new InvalidOperationException("Utilisateur requis.");
 
-        if (db.ExpertGroupMembers.Any(m => m.ExpertGroupId == groupId && m.UserId == userId))
+        var trimmedUserId = userId.Trim();
+
+        if (db.ExpertGroupMembers.Any(m => m.ExpertGroupId == groupId && m.UserId == trimmedUserId))
             throw new InvalidOperationException("Cet utilisateur est déjà membre du groupe.");
+
+        // Règle produit : un expert ne peut appartenir qu'à un seul groupe à la fois.
+        var otherGroupId = db.ExpertGroupMembers
+            .Where(m => m.UserId == trimmedUserId && m.ExpertGroupId != groupId)
+            .Select(m => m.ExpertGroupId)
+            .FirstOrDefault();
+        if (otherGroupId != Guid.Empty)
+        {
+            var otherGroupName = db.ExpertGroups.FirstOrDefault(g => g.Id == otherGroupId)?.Name ?? "un autre groupe";
+            throw new InvalidOperationException(
+                $"Cet utilisateur appartient déjà au groupe « {otherGroupName} ». " +
+                "Un expert ne peut appartenir qu'à un seul groupe : retirez-le de son groupe actuel avant de l'ajouter ici.");
+        }
 
         var member = new ExpertGroupMember
         {
             ExpertGroupId = groupId,
-            UserId = userId.Trim()
+            UserId = trimmedUserId
         };
         db.Add(member);
         await db.SaveChangesAsync(ct);
