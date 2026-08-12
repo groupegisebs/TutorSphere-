@@ -58,55 +58,6 @@ internal sealed class PayGatewayService : IPaymentGatewayService
 
     public PaymentGatewayConfigDto GetConfig() => new(_cachedPublishableKey);
 
-    public async Task<IReadOnlyList<MobileMoneyCountryDto>> ListMobileMoneyCountriesAsync(
-        CancellationToken ct = default)
-    {
-        var countries = await _gateway.ListMobileMoneyCountriesAsync(ct);
-        return countries
-            .Select(c => new MobileMoneyCountryDto(
-                c.CountryCode,
-                c.CountryName,
-                c.Currency,
-                c.PhoneCountryCode,
-                (c.Networks ?? [])
-                    .Select(n => new MobileMoneyNetworkOptionDto(n.Network, n.NetworkLabel))
-                    .ToList(),
-                c.AmountFor10Usd))
-            .ToList();
-    }
-
-    public async Task<IReadOnlyList<MobileMoneyNetworkDto>> ListMobileMoneyNetworksAsync(
-        string? countryCode = null,
-        CancellationToken ct = default)
-    {
-        var networks = await _gateway.ListMobileMoneyNetworksAsync(countryCode, ct);
-        return networks
-            .Select(n => new MobileMoneyNetworkDto(
-                n.CountryCode,
-                n.CountryName,
-                n.Currency,
-                n.Network,
-                n.NetworkLabel,
-                n.PhoneCountryCode))
-            .ToList();
-    }
-
-    public async Task<MobileMoneyQuoteDto> QuoteMobileMoneyAsync(
-        decimal amount,
-        string currency,
-        string countryCode,
-        CancellationToken ct = default)
-    {
-        var quote = await _gateway.QuoteMobileMoneyAsync(amount, currency, countryCode, ct);
-        return new MobileMoneyQuoteDto(
-            quote.OriginalAmount,
-            quote.OriginalCurrency,
-            quote.Amount,
-            quote.Currency,
-            quote.CountryCode,
-            quote.CountryName);
-    }
-
     public async Task<ParentCustomerResponse> CreateOrGetParentCustomerAsync(
         Guid parentProfileId,
         CancellationToken ct = default)
@@ -188,56 +139,6 @@ internal sealed class PayGatewayService : IPaymentGatewayService
         await _db.SaveChangesAsync(ct);
 
         var fullName = $"{parent.FirstName} {parent.LastName}".Trim();
-
-        if (paymentMethod == PaymentMethodCodes.MobileMoney)
-        {
-            if (string.IsNullOrWhiteSpace(request.CountryCode)
-                || string.IsNullOrWhiteSpace(request.Network)
-                || string.IsNullOrWhiteSpace(request.PhoneNumber))
-            {
-                throw new InvalidOperationException(
-                    "Mobile Money : pays, opérateur et numéro de téléphone sont requis.");
-            }
-
-            var mm = await _gateway.ChargeMobileMoneyAsync(new GatewayMobileMoneyChargeRequest(
-                customer.CustomerCode,
-                parent.Email,
-                fullName,
-                parent.UserId,
-                productCode,
-                planCode,
-                request.CountryCode.Trim().ToUpperInvariant(),
-                request.Network.Trim().ToUpperInvariant(),
-                request.PhoneNumber.Trim(),
-                amount,
-                offering.Currency), ct);
-
-            payment.StripePaymentIntentId = mm.PaymentCode;
-            payment.Amount = mm.Amount;
-            payment.Currency = mm.Currency;
-            await _db.SaveChangesAsync(ct);
-
-            _logger.LogInformation(
-                "Mobile Money initié pour l'abonnement {SubscriptionId} (paymentCode={PaymentCode}, network={Network})",
-                subscription.Id,
-                mm.PaymentCode,
-                mm.Network);
-
-            return new SubscriptionCheckoutResponse(
-                payment.Id,
-                mm.PaymentCode,
-                CheckoutUrl: null,
-                SessionId: null,
-                ClientSecret: null,
-                mm.Amount,
-                platformFee,
-                tutorAmount,
-                mm.Currency,
-                paymentMethod,
-                mm.Instruction,
-                mm.RedirectUrl,
-                mm.Message);
-        }
 
         var metadata = JsonSerializer.Serialize(new
         {
@@ -687,48 +588,6 @@ internal sealed class PayGatewayService : IPaymentGatewayService
 
         var successUrl = AppendQuery(request.SuccessUrl, "paymentId", licensePayment.Id.ToString("D"));
         var paymentMethod = PaymentMethodCodes.Normalize(request.PaymentMethod);
-
-        if (paymentMethod == PaymentMethodCodes.MobileMoney)
-        {
-            if (string.IsNullOrWhiteSpace(request.CountryCode)
-                || string.IsNullOrWhiteSpace(request.Network)
-                || string.IsNullOrWhiteSpace(request.PhoneNumber))
-            {
-                throw new InvalidOperationException(
-                    "Mobile Money : pays, opérateur et numéro de téléphone sont requis.");
-            }
-
-            var mm = await _gateway.ChargeMobileMoneyAsync(new GatewayMobileMoneyChargeRequest(
-                customerCode,
-                contact.Email,
-                contact.DisplayName,
-                tenant.OwnerUserId,
-                productCode,
-                planCode,
-                request.CountryCode.Trim().ToUpperInvariant(),
-                request.Network.Trim().ToUpperInvariant(),
-                request.PhoneNumber.Trim(),
-                amount,
-                currency), ct);
-
-            licensePayment.GatewayPaymentCode = mm.PaymentCode;
-            licensePayment.Amount = mm.Amount;
-            licensePayment.Currency = mm.Currency;
-            await _db.SaveChangesAsync(ct);
-
-            return new PlatformLicenseCheckoutResponse(
-                licensePayment.Id,
-                mm.PaymentCode,
-                CheckoutUrl: null,
-                SessionId: null,
-                ClientSecret: null,
-                mm.Amount,
-                mm.Currency,
-                paymentMethod,
-                mm.Instruction,
-                mm.RedirectUrl,
-                mm.Message);
-        }
 
         IReadOnlyList<string> paymentMethodTypes = paymentMethod == PaymentMethodCodes.PayPal
             ? ["paypal"]

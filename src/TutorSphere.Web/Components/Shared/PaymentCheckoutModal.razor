@@ -14,17 +14,7 @@
                 </div>
                 <div class="modal-body">
                     <p class="mb-3">
-                        @if (_method == PaymentMethodCodes.MobileMoney && _quote is not null)
-                        {
-                            <strong>@FormatQuoteAmount(_quote) @_quote.Currency</strong>
-                            <span class="text-muted small ms-2">
-                                (@Amount.ToString("N2") @Currency)
-                            </span>
-                        }
-                        else
-                        {
-                            <strong class="text-muted">@Amount.ToString("N2") @Currency</strong>
-                        }
+                        <strong class="text-muted">@Amount.ToString("N2") @Currency</strong>
                     </p>
 
                     @if (!string.IsNullOrEmpty(_error))
@@ -63,116 +53,7 @@
                                 <span class="pay-method-icon pay-method-icon--paypal" aria-hidden="true">@PayPalIcon</span>
                                 <span class="pay-method-label">@L["PayMethod_PayPal"]</span>
                             </button>
-                            <button type="button"
-                                    class="pay-method-option @SelectedClass(PaymentMethodCodes.MobileMoney)"
-                                    disabled="@_busy"
-                                    role="radio"
-                                    aria-checked="@(_method == PaymentMethodCodes.MobileMoney ? "true" : "false")"
-                                    @onclick='async () => await SelectMethod(PaymentMethodCodes.MobileMoney)'>
-                                <span class="pay-method-icon pay-method-icon--momo" aria-hidden="true">@MobileMoneyIcon</span>
-                                <span class="pay-method-label">@L["PayMethod_MobileMoney"]</span>
-                            </button>
                         </div>
-
-                        @if (_method == PaymentMethodCodes.MobileMoney)
-                        {
-                            @if (_loadingCountries)
-                            {
-                                <div class="text-muted small mb-2">
-                                    <span class="spinner-border spinner-border-sm me-2"></span>@L["Common_Loading"]
-                                </div>
-                            }
-                            else
-                            {
-                                <div class="mb-2">
-                                    <label class="form-label" id="pay-country-label">@L["PayMethod_Country"]</label>
-                                    <div class="pay-country-picker">
-                                        <button type="button"
-                                                class="pay-country-trigger form-select text-start"
-                                                disabled="@_busy"
-                                                aria-expanded="@_countryMenuOpen"
-                                                aria-labelledby="pay-country-label"
-                                                @onclick="ToggleCountryMenu">
-                                            @if (SelectedCountry is { } selected)
-                                            {
-                                                <span class="pay-country-option-inner">
-                                                    <img class="pay-country-flag"
-                                                         src="@FlagUrl(selected.CountryCode)"
-                                                         alt=""
-                                                         width="20"
-                                                         height="15"
-                                                         loading="lazy" />
-                                                    <span>@selected.CountryName (@selected.Currency@(selected.AmountFor10Usd > 0 ? $" · {FormatFixed10(selected)}" : ""))</span>
-                                                </span>
-                                            }
-                                            else
-                                            {
-                                                <span class="text-muted">@L["PayMethod_SelectCountry"]</span>
-                                            }
-                                        </button>
-                                        @if (_countryMenuOpen && !_busy)
-                                        {
-                                            <ul class="pay-country-menu" role="listbox">
-                                                @foreach (var c in _countries)
-                                                {
-                                                    <li>
-                                                        <button type="button"
-                                                                class="pay-country-item @(_countryCode == c.CountryCode ? "is-selected" : "")"
-                                                                role="option"
-                                                                aria-selected="@(_countryCode == c.CountryCode ? "true" : "false")"
-                                                                @onclick="() => SelectCountryAsync(c.CountryCode)">
-                                                            <img class="pay-country-flag"
-                                                                 src="@FlagUrl(c.CountryCode)"
-                                                                 alt=""
-                                                                 width="20"
-                                                                 height="15"
-                                                                 loading="lazy" />
-                                                            <span>@c.CountryName</span>
-                                                            <span class="pay-country-currency">
-                                                                @(c.AmountFor10Usd > 0 ? FormatFixed10(c) : c.Currency)
-                                                            </span>
-                                                        </button>
-                                                    </li>
-                                                }
-                                            </ul>
-                                        }
-                                    </div>
-                                </div>
-                                @if (_quoting)
-                                {
-                                    <div class="text-muted small mb-2">
-                                        <span class="spinner-border spinner-border-sm me-1"></span>@L["Common_Loading"]
-                                    </div>
-                                }
-
-                                <div class="mb-2">
-                                    <label class="form-label">@L["PayMethod_Network"]</label>
-                                    <select class="form-select" @bind="_network" disabled="@(_busy || string.IsNullOrEmpty(_countryCode))">
-                                        <option value="">@L["PayMethod_SelectNetwork"]</option>
-                                        @foreach (var n in SelectedNetworks)
-                                        {
-                                            <option value="@n.Network">@n.NetworkLabel</option>
-                                        }
-                                    </select>
-                                </div>
-                                <div class="mb-0">
-                                    <label class="form-label">@L["PayMethod_Phone"]</label>
-                                    <div class="input-group">
-                                        @if (!string.IsNullOrEmpty(SelectedDial))
-                                        {
-                                            <span class="input-group-text">+@SelectedDial</span>
-                                        }
-                                        <input class="form-control"
-                                               type="tel"
-                                               inputmode="tel"
-                                               autocomplete="tel"
-                                               placeholder="@L["PayMethod_PhonePlaceholder"]"
-                                               @bind="_phone"
-                                               disabled="@_busy" />
-                                    </div>
-                                </div>
-                            }
-                        }
                     }
                 </div>
                 <div class="modal-footer">

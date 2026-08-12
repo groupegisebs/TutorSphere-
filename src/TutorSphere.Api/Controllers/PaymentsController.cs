@@ -35,55 +35,6 @@ public class PaymentsController : ControllerBase
     [AllowAnonymous]
     public ActionResult<PaymentGatewayConfigDto> GetConfig() => Ok(_paymentGateway.GetConfig());
 
-    [HttpGet("mobile-money/countries")]
-    [Authorize(Roles = $"{UserRoles.Parent},{UserRoles.Student},{UserRoles.Tutor},{UserRoles.SuperAdmin}")]
-    public async Task<ActionResult<IReadOnlyList<MobileMoneyCountryDto>>> MobileMoneyCountries(CancellationToken ct)
-    {
-        try
-        {
-            return Ok(await _paymentGateway.ListMobileMoneyCountriesAsync(ct));
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
-    }
-
-    [HttpGet("mobile-money/networks")]
-    [Authorize(Roles = $"{UserRoles.Parent},{UserRoles.Student},{UserRoles.Tutor},{UserRoles.SuperAdmin}")]
-    public async Task<ActionResult<IReadOnlyList<MobileMoneyNetworkDto>>> MobileMoneyNetworks(
-        [FromQuery] string? country,
-        CancellationToken ct)
-    {
-        try
-        {
-            return Ok(await _paymentGateway.ListMobileMoneyNetworksAsync(country, ct));
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
-    }
-
-    /// <summary>Montant catalogue converti dans la devise Mobile Money du pays.</summary>
-    [HttpGet("mobile-money/quote")]
-    [Authorize(Roles = $"{UserRoles.Parent},{UserRoles.Student},{UserRoles.Tutor},{UserRoles.SuperAdmin}")]
-    public async Task<ActionResult<MobileMoneyQuoteDto>> MobileMoneyQuote(
-        [FromQuery] decimal amount,
-        [FromQuery] string currency,
-        [FromQuery] string countryCode,
-        CancellationToken ct)
-    {
-        try
-        {
-            return Ok(await _paymentGateway.QuoteMobileMoneyAsync(amount, currency, countryCode, ct));
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(new { error = ex.Message });
-        }
-    }
-
     [HttpPost("customers/parents/{parentProfileId:guid}")]
     [Authorize(Roles = $"{UserRoles.Tutor},{UserRoles.Parent},{UserRoles.SuperAdmin}")]
     public async Task<ActionResult<ParentCustomerResponse>> CreateParentCustomer(

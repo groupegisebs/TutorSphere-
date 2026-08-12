@@ -18,10 +18,7 @@ public record PlatformLicenseStatusDto(
 public record CreatePlatformLicenseCheckoutRequest(
     string SuccessUrl,
     string CancelUrl,
-    string? PaymentMethod = "card",
-    string? CountryCode = null,
-    string? Network = null,
-    string? PhoneNumber = null);
+    string? PaymentMethod = "card");
 
 public record PlatformLicenseCheckoutResponse(
     Guid PaymentId,
@@ -31,10 +28,7 @@ public record PlatformLicenseCheckoutResponse(
     string? ClientSecret,
     decimal Amount,
     string Currency,
-    string PaymentMethod = "card",
-    string? Instruction = null,
-    string? RedirectUrl = null,
-    string? Message = null);
+    string PaymentMethod = "card");
 
 public record PlatformLicensePaymentStatusDto(
     Guid PaymentId,

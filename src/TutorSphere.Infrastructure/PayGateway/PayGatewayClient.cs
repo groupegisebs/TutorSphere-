@@ -42,46 +42,6 @@ internal sealed class PayGatewayClient
         return await ReadSuccessAsync<GatewayCheckoutSessionResponse>(response, ct);
     }
 
-    public async Task<IReadOnlyList<GatewayMobileMoneyCountryResponse>> ListMobileMoneyCountriesAsync(
-        CancellationToken ct = default)
-    {
-        using var response = await SendAsync(HttpMethod.Get, "api/mobile-money/countries", null, ct);
-        return await ReadSuccessAsync<IReadOnlyList<GatewayMobileMoneyCountryResponse>>(response, ct) ?? [];
-    }
-
-    public async Task<IReadOnlyList<GatewayMobileMoneyNetworkResponse>> ListMobileMoneyNetworksAsync(
-        string? countryCode = null,
-        CancellationToken ct = default)
-    {
-        var path = string.IsNullOrWhiteSpace(countryCode)
-            ? "api/mobile-money/networks"
-            : $"api/mobile-money/networks?country={Uri.EscapeDataString(countryCode.Trim())}";
-        using var response = await SendAsync(HttpMethod.Get, path, null, ct);
-        return await ReadSuccessAsync<IReadOnlyList<GatewayMobileMoneyNetworkResponse>>(response, ct) ?? [];
-    }
-
-    public async Task<GatewayMobileMoneyChargeResponse> ChargeMobileMoneyAsync(
-        GatewayMobileMoneyChargeRequest request,
-        CancellationToken ct = default)
-    {
-        using var response = await SendAsync(HttpMethod.Post, "api/mobile-money/charge", request, ct);
-        return await ReadSuccessAsync<GatewayMobileMoneyChargeResponse>(response, ct);
-    }
-
-    public async Task<GatewayMobileMoneyQuoteResponse> QuoteMobileMoneyAsync(
-        decimal amount,
-        string currency,
-        string countryCode,
-        CancellationToken ct = default)
-    {
-        var path =
-            $"api/mobile-money/quote?amount={amount.ToString(System.Globalization.CultureInfo.InvariantCulture)}" +
-            $"&currency={Uri.EscapeDataString(currency)}" +
-            $"&countryCode={Uri.EscapeDataString(countryCode)}";
-        using var response = await SendAsync(HttpMethod.Get, path, null, ct);
-        return await ReadSuccessAsync<GatewayMobileMoneyQuoteResponse>(response, ct);
-    }
-
     public async Task<GatewayPaymentResponse?> GetPaymentAsync(string paymentCode, CancellationToken ct = default)
     {
         using var response = await SendAsync(HttpMethod.Get, $"api/payments/{Uri.EscapeDataString(paymentCode)}", null, ct);

@@ -16,61 +16,6 @@ internal sealed record GatewayCheckoutSessionRequest(
     bool Embedded = false,
     IReadOnlyList<string>? PaymentMethodTypes = null);
 
-internal sealed record GatewayMobileMoneyChargeRequest(
-    string CustomerCode,
-    string Email,
-    string? FullName,
-    string? ExternalUserId,
-    string ProductCode,
-    string PlanCode,
-    string CountryCode,
-    string Network,
-    string PhoneNumber,
-    decimal? Amount = null,
-    string? SourceCurrency = null,
-    string? ScenarioKey = null);
-
-internal sealed record GatewayMobileMoneyQuoteResponse(
-    decimal OriginalAmount,
-    string OriginalCurrency,
-    decimal Amount,
-    string Currency,
-    string CountryCode,
-    string CountryName);
-
-internal sealed record GatewayMobileMoneyChargeResponse(
-    string PaymentCode,
-    string Status,
-    string Provider,
-    string TxRef,
-    string? FlutterwaveTransactionId,
-    decimal Amount,
-    string Currency,
-    string CountryCode,
-    string Network,
-    string PhoneNumber,
-    string? Instruction,
-    string? RedirectUrl,
-    string? Message);
-
-internal sealed record GatewayMobileMoneyCountryResponse(
-    string CountryCode,
-    string CountryName,
-    string Currency,
-    string PhoneCountryCode,
-    IReadOnlyList<GatewayMobileMoneyNetworkOption>? Networks,
-    decimal AmountFor10Usd = 0);
-
-internal sealed record GatewayMobileMoneyNetworkOption(string Network, string NetworkLabel);
-
-internal sealed record GatewayMobileMoneyNetworkResponse(
-    string CountryCode,
-    string CountryName,
-    string Currency,
-    string Network,
-    string NetworkLabel,
-    string PhoneCountryCode);
-
 internal sealed record GatewayCheckoutSessionResponse(
     string PaymentCode,
     string CheckoutUrl,

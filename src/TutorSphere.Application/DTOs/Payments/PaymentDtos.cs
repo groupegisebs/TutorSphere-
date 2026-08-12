@@ -4,13 +4,11 @@ public static class PaymentMethodCodes
 {
     public const string Card = "card";
     public const string PayPal = "paypal";
-    public const string MobileMoney = "mobile_money";
 
     public static string Normalize(string? value) =>
         (value ?? Card).Trim().ToLowerInvariant() switch
         {
             "paypal" or "pp" => PayPal,
-            "mobile_money" or "mobilemoney" or "momo" or "flutterwave" => MobileMoney,
             _ => Card
         };
 }
@@ -20,10 +18,7 @@ public record PaymentGatewayConfigDto(string? PublishableKey);
 public record CreateSubscriptionCheckoutRequest(
     string SuccessUrl,
     string CancelUrl,
-    string? PaymentMethod = PaymentMethodCodes.Card,
-    string? CountryCode = null,
-    string? Network = null,
-    string? PhoneNumber = null);
+    string? PaymentMethod = PaymentMethodCodes.Card);
 
 public record ParentCustomerResponse(Guid ParentProfileId, string CustomerCode);
 
@@ -37,10 +32,7 @@ public record SubscriptionCheckoutResponse(
     decimal PlatformFee,
     decimal TutorAmount,
     string Currency,
-    string PaymentMethod,
-    string? Instruction = null,
-    string? RedirectUrl = null,
-    string? Message = null);
+    string PaymentMethod);
 
 public record PaymentStatusResponse(
     Guid PaymentId,
@@ -78,28 +70,3 @@ public record ParentPaymentDto(
     DateTime? PaidAt,
     bool CanDownloadInvoice);
 
-public record MobileMoneyCountryDto(
-    string CountryCode,
-    string CountryName,
-    string Currency,
-    string PhoneCountryCode,
-    IReadOnlyList<MobileMoneyNetworkOptionDto> Networks,
-    decimal AmountFor10Usd = 0);
-
-public record MobileMoneyNetworkOptionDto(string Network, string NetworkLabel);
-
-public record MobileMoneyNetworkDto(
-    string CountryCode,
-    string CountryName,
-    string Currency,
-    string Network,
-    string NetworkLabel,
-    string PhoneCountryCode);
-
-public record MobileMoneyQuoteDto(
-    decimal OriginalAmount,
-    string OriginalCurrency,
-    decimal Amount,
-    string Currency,
-    string CountryCode,
-    string CountryName);
