@@ -25,6 +25,7 @@ public interface IAuthService
     Task<ChildLoginAccessDto> GetChildLoginAccessAsync(string parentUserId, Guid studentId, CancellationToken ct = default);
     Task RevokeChildLoginAccessAsync(string parentUserId, Guid studentId, CancellationToken ct = default);
     Task<RegisterSchoolResponse> RegisterSchoolAsync(RegisterSchoolRequest request, CancellationToken ct = default);
+    Task<TeacherInviteInfoResponse?> GetTeacherInviteInfoAsync(string token, CancellationToken ct = default);
     Task ConfirmEmailAsync(string userId, string token, CancellationToken ct = default);
     Task ResendEmailConfirmationAsync(string email, CancellationToken ct = default);
     Task ForgotPasswordAsync(string email, CancellationToken ct = default);
@@ -400,6 +401,27 @@ public class AuthService : IAuthService
         await _expertNotify.NotifyExpertsIfNeededAsync(tenant.Id, ct);
 
         return new RegisterSchoolResponse(tenant.Id, tenant.Slug, user.Email!);
+    }
+
+    public Task<TeacherInviteInfoResponse?> GetTeacherInviteInfoAsync(string token, CancellationToken ct = default)
+    {
+        var trimmed = (token ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
+            return Task.FromResult<TeacherInviteInfoResponse?>(null);
+
+        var invite = _db.TeacherApplicationInvites.FirstOrDefault(i => i.Token == trimmed);
+        if (invite is null)
+            return Task.FromResult<TeacherInviteInfoResponse?>(null);
+
+        var group = _db.ExpertGroups.FirstOrDefault(g => g.Id == invite.ExpertGroupId);
+        if (group is null)
+            return Task.FromResult<TeacherInviteInfoResponse?>(null);
+
+        return Task.FromResult<TeacherInviteInfoResponse?>(new TeacherInviteInfoResponse(
+            group.Id,
+            group.Name,
+            invite.Email,
+            invite.FirstName));
     }
 
     private async Task MarkInviteAcceptedIfAnyAsync(

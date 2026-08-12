@@ -28,6 +28,13 @@ public record RegisterSchoolResponse(
     string TenantSlug,
     string Email);
 
+/// <summary>Infos publiques d'une invitation enseignant, utilisées pour préremplir le formulaire d'inscription.</summary>
+public record TeacherInviteInfoResponse(
+    Guid ExpertGroupId,
+    string ExpertGroupName,
+    string? Email,
+    string? FirstName);
+
 public record LoginRequest(string Email, string Password);
 
 /// <summary>Connexion élève sans e-mail propre : e-mail du parent + code généré.</summary>

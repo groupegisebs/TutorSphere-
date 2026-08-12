@@ -1,9 +1,11 @@
 @using TutorSphere.Application.DTOs.Branding
 @using TutorSphere.Application.DTOs.ExpertApproval
 @using Microsoft.JSInterop
+@using TutorSphere.Web.Services
 @inject NavigationManager Navigation
 @inject ApiClient Api
 @inject IJSRuntime JS
+@inject IConfiguration Config
 
 @if (Profile is null)
 {
@@ -47,7 +49,7 @@
                     <div class="tutor-expert-badge mt-2 d-inline-flex align-items-center gap-2">
                         @if (!string.IsNullOrWhiteSpace(Profile.ApprovedByExpertGroupLogoUrl))
                         {
-                            <img src="@Profile.ApprovedByExpertGroupLogoUrl" alt=""
+                            <img src="@MediaUrlHelper.Resolve(Profile.ApprovedByExpertGroupLogoUrl, Config, Navigation)" alt=""
                                  style="width:28px;height:28px;object-fit:contain;border-radius:4px;" />
                         }
                         else

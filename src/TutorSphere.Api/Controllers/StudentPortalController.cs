@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
+using TutorSphere.Api;
 using TutorSphere.Application.Common;
 using TutorSphere.Application.DTOs.Documents;
 using TutorSphere.Application.DTOs.Homework;
@@ -185,8 +186,7 @@ public class StudentPortalController : ControllerBase
 
         try
         {
-            var uploadsRoot = Path.Combine(_env.WebRootPath ?? _env.ContentRootPath, "uploads");
-            Directory.CreateDirectory(uploadsRoot);
+            var uploadsRoot = UploadsPaths.GetRoot(_env);
 
             var safeFileName = $"{Guid.NewGuid():N}{Path.GetExtension(file.FileName)}";
             var filePath = Path.Combine(uploadsRoot, safeFileName);
@@ -224,13 +224,9 @@ public class StudentPortalController : ControllerBase
         var doc = await _portal.GetDocumentForStudentAsync(userId, id, ct);
         if (doc is null) return NotFound();
 
-        var uploadsRoot = Path.Combine(_env.WebRootPath ?? _env.ContentRootPath, "uploads");
         var fileName = Path.GetFileName(doc.Url.Replace('\\', '/'));
-        if (string.IsNullOrWhiteSpace(fileName))
-            return NotFound();
-
-        var filePath = Path.Combine(uploadsRoot, fileName);
-        if (!System.IO.File.Exists(filePath))
+        var filePath = UploadsPaths.FindExistingFile(_env, fileName);
+        if (filePath is null)
             return NotFound();
 
         var contentType = string.IsNullOrWhiteSpace(doc.ContentType)

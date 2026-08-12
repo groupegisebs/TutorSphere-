@@ -18,6 +18,8 @@ services:
       PAYGATEWAY__USESANDBOX: ${PAYGATEWAY__USESANDBOX:-true}
       Cors__AllowedOrigins__0: https://tutorsphere.gisebs.com
       Cors__AllowedOrigins__1: https://api.tutorsphere.gisebs.com
+    volumes:
+      - tutorsphere_uploads:/app/uploads
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:${API_PORT:-55099}/health || exit 1"]
       interval: 15s
@@ -42,3 +44,6 @@ services:
     depends_on:
       api:
         condition: service_healthy
+
+volumes:
+  tutorsphere_uploads:

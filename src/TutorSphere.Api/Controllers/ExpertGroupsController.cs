@@ -8,6 +8,7 @@ using TutorSphere.Application.DTOs.ExpertApproval;
 using TutorSphere.Application.Services;
 using TutorSphere.Domain.Enums;
 using TutorSphere.Infrastructure.Identity;
+using TutorSphere.Api;
 
 namespace TutorSphere.Api.Controllers;
 
@@ -102,20 +103,47 @@ public class ExpertGroupsController : ControllerBase
         }
     }
 
+    private static readonly HashSet<string> AllowedLogoExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"
+    };
+
     [HttpPost("{id:guid}/logo")]
     [Consumes("multipart/form-data")]
+    [RequestSizeLimit(5 * 1024 * 1024)]
     public async Task<ActionResult<object>> UploadLogo(Guid id, IFormFile file, CancellationToken ct)
     {
         if (file is null || file.Length == 0)
             return BadRequest(new { error = "Fichier requis." });
 
+        if (file.Length > 5 * 1024 * 1024)
+            return BadRequest(new { error = "Logo trop volumineux (max. 5 Mo)." });
+
         var group = await _groups.GetByIdAsync(id, ct);
         if (group is null)
             return NotFound(new { error = "Groupe introuvable." });
 
-        var uploadsRoot = Path.Combine(_env.WebRootPath ?? _env.ContentRootPath, "uploads");
-        Directory.CreateDirectory(uploadsRoot);
-        var safeFileName = $"expert-group-{id:N}{Path.GetExtension(file.FileName)}";
+        var extension = Path.GetExtension(file.FileName);
+        if (string.IsNullOrWhiteSpace(extension) || !AllowedLogoExtensions.Contains(extension))
+        {
+            // Infer from Content-Type when the browser omits an extension (common with some PNGs).
+            extension = file.ContentType?.ToLowerInvariant() switch
+            {
+                "image/png" => ".png",
+                "image/jpeg" or "image/jpg" => ".jpg",
+                "image/gif" => ".gif",
+                "image/webp" => ".webp",
+                "image/svg+xml" => ".svg",
+                _ => ""
+            };
+        }
+
+        if (string.IsNullOrWhiteSpace(extension) || !AllowedLogoExtensions.Contains(extension))
+            return BadRequest(new { error = "Format non supporté. Utilisez PNG, JPG, GIF, WebP ou SVG." });
+
+        var uploadsRoot = UploadsPaths.GetRoot(_env);
+        // Stable name per group so re-uploads overwrite; keep a real image extension for MIME mapping.
+        var safeFileName = $"expert-group-{id:N}{extension.ToLowerInvariant()}";
         var filePath = Path.Combine(uploadsRoot, safeFileName);
         await using (var stream = System.IO.File.Create(filePath))
             await file.CopyToAsync(stream, ct);

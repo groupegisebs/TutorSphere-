@@ -3,7 +3,8 @@ using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Localization;
-using Microsoft.Extensions.FileProviders;
+using Microsoft.AspNetCore.StaticFiles;
+using TutorSphere.Api;
 using TutorSphere.Application.Common;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.IdentityModel.Tokens;
@@ -164,14 +165,29 @@ app.UseRequestLocalization();
 app.UseCors();
 if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
-// Vidéos / fichiers uploadés (présentation d'offre, etc.) — même dossier que DocumentsController
+// Vidéos / fichiers uploadés (présentation d'offre, logos groupes, etc.).
+// Served anonymously (before auth) so <img> from the Web origin / uploads BFF proxy can load them.
+// Path MUST match the Docker volume mount (/app/uploads = ContentRoot/uploads).
 {
-    var uploadsRoot = Path.Combine(app.Environment.WebRootPath ?? app.Environment.ContentRootPath, "uploads");
-    Directory.CreateDirectory(uploadsRoot);
+    var contentTypes = new FileExtensionContentTypeProvider();
+    // Ensure common image types (incl. SVG logos) are never served as octet-stream.
+    contentTypes.Mappings[".png"] = "image/png";
+    contentTypes.Mappings[".jpg"] = "image/jpeg";
+    contentTypes.Mappings[".jpeg"] = "image/jpeg";
+    contentTypes.Mappings[".gif"] = "image/gif";
+    contentTypes.Mappings[".webp"] = "image/webp";
+    contentTypes.Mappings[".svg"] = "image/svg+xml";
     app.UseStaticFiles(new StaticFileOptions
     {
-        FileProvider = new PhysicalFileProvider(uploadsRoot),
-        RequestPath = "/uploads"
+        FileProvider = UploadsPaths.CreateFileProvider(app.Environment),
+        RequestPath = UploadsPaths.RequestPath,
+        ContentTypeProvider = contentTypes,
+        OnPrepareResponse = ctx =>
+        {
+            // Allow cross-origin <img> from tutorsphere.gisebs.com → api.tutorsphere…
+            ctx.Context.Response.Headers.CacheControl = "public,max-age=86400";
+            ctx.Context.Response.Headers.Append("Access-Control-Allow-Origin", "*");
+        }
     });
 }
 app.UseAuthentication();

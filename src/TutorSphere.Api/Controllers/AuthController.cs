@@ -63,6 +63,18 @@ public class AuthController : ControllerBase
         }
     }
 
+    /// <summary>Infos publiques d'une invitation enseignant (nom du groupe d'experts), pour préremplir /tutor/register.</summary>
+    [HttpGet("teacher-invite/{token}")]
+    [AllowAnonymous]
+    public async Task<ActionResult<TeacherInviteInfoResponse>> GetTeacherInviteInfo(string token, CancellationToken ct)
+    {
+        var info = await _authService.GetTeacherInviteInfoAsync(token, ct);
+        if (info is null)
+            return NotFound(new { error = "Invitation invalide ou introuvable." });
+
+        return Ok(info);
+    }
+
     /// <summary>Confirmation JSON (appelée par le site Web /confirm-email).</summary>
     [HttpPost("confirm-email")]
     [AllowAnonymous]

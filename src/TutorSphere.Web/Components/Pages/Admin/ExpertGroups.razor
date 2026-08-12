@@ -271,27 +271,11 @@
     private bool _formActive = true;
 
     /// <summary>
-    /// Logos are stored as API-relative paths (/uploads/...). The Blazor host does not serve them —
-    /// prefix with public ApiBaseUrl so &lt;img&gt; hits api.tutorsphere… not the web origin.
+    /// Logos are stored as API-relative paths (/uploads/...). Served via the Web /uploads proxy
+    /// (same origin) so the browser never hits InternalApiBaseUrl / loopback.
     /// </summary>
-    private string ResolveMediaUrl(string? url)
-    {
-        if (string.IsNullOrWhiteSpace(url)) return "";
-        var trimmed = url.Trim();
-        if (trimmed.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
-            || trimmed.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
-            || trimmed.StartsWith("data:", StringComparison.OrdinalIgnoreCase)
-            || trimmed.StartsWith("blob:", StringComparison.OrdinalIgnoreCase))
-            return trimmed;
-
-        var apiBase = NonEmpty(Config["ApiBaseUrl"])
-            ?? NonEmpty(Config["InternalApiBaseUrl"])
-            ?? Navigation.BaseUri.TrimEnd('/');
-        return $"{apiBase.TrimEnd('/')}/{trimmed.TrimStart('/')}";
-    }
-
-    private static string? NonEmpty(string? value) =>
-        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    private string ResolveMediaUrl(string? url) =>
+        MediaUrlHelper.Resolve(url, Config, Navigation);
 
     protected override async Task OnInitializedAsync()
     {
@@ -392,7 +376,13 @@
         {
             await using var stream = e.File.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024);
             using var content = new MultipartFormDataContent();
-            content.Add(new StreamContent(stream), "file", e.File.Name);
+            var fileContent = new StreamContent(stream);
+            var mime = string.IsNullOrWhiteSpace(e.File.ContentType)
+                       || e.File.ContentType.Equals("application/octet-stream", StringComparison.OrdinalIgnoreCase)
+                ? GuessImageMime(e.File.Name)
+                : e.File.ContentType;
+            fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(mime);
+            content.Add(fileContent, "file", e.File.Name);
             var result = await Api.PostMultipartAsync<LogoUploadResult>(
                 $"api/admin/expert-groups/{_editId}/logo", content);
             if (result.IsSuccess && result.Value is not null)
@@ -405,6 +395,17 @@
         }
         catch (Exception ex) { _formError = ex.Message; }
     }
+
+    private static string GuessImageMime(string fileName) =>
+        Path.GetExtension(fileName).ToLowerInvariant() switch
+        {
+            ".png" => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".gif" => "image/gif",
+            ".webp" => "image/webp",
+            ".svg" => "image/svg+xml",
+            _ => "image/png"
+        };
 
     private async Task DeleteAsync(ExpertGroupItem g)
     {

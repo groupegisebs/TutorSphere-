@@ -155,6 +155,7 @@ app.UseStaticFiles(new StaticFileOptions
 });
 
 MapAuthBffEndpoints(app);
+MapUploadsProxy(app);
 
 app.MapGet("/culture/set", (HttpContext ctx, string culture, string? redirectUri) =>
 {
@@ -226,6 +227,61 @@ static void MapAuthBffEndpoints(WebApplication app)
         ctx.Response.Cookies.Delete(AuthCookieConstants.CookieName, new CookieOptions { Path = "/" });
         return Results.Ok();
     }).DisableAntiforgery();
+}
+
+/// <summary>
+/// Browser &lt;img&gt; tags load from the Web origin. Uploaded files live on the API,
+/// so proxy /uploads/* → InternalApiBaseUrl (loopback) without exposing that URL to clients.
+/// </summary>
+static void MapUploadsProxy(WebApplication app)
+{
+    app.MapGet("/uploads/{*filePath}", async (
+        string filePath,
+        HttpContext httpContext,
+        IHttpClientFactory httpClientFactory,
+        CancellationToken ct) =>
+    {
+        if (string.IsNullOrWhiteSpace(filePath)
+            || filePath.Contains("..", StringComparison.Ordinal)
+            || filePath.Contains('\\', StringComparison.Ordinal)
+            || Path.IsPathRooted(filePath))
+        {
+            httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
+        var safePath = string.Join('/',
+            filePath.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        if (string.IsNullOrWhiteSpace(safePath))
+        {
+            httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
+            return;
+        }
+
+        var client = httpClientFactory.CreateClient("TutorSphereApi");
+        using var response = await client.GetAsync(
+            $"uploads/{safePath}",
+            HttpCompletionOption.ResponseHeadersRead,
+            ct);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            httpContext.Response.StatusCode = (int)response.StatusCode;
+            return;
+        }
+
+        var contentType = response.Content.Headers.ContentType?.MediaType;
+        if (string.IsNullOrWhiteSpace(contentType))
+        {
+            var provider = new FileExtensionContentTypeProvider();
+            if (!provider.TryGetContentType(safePath, out contentType))
+                contentType = "application/octet-stream";
+        }
+
+        httpContext.Response.ContentType = contentType;
+        httpContext.Response.Headers.CacheControl = "public,max-age=86400";
+        await response.Content.CopyToAsync(httpContext.Response.Body, ct);
+    }).AllowAnonymous();
 }
 
 internal sealed record EstablishAuthRequest(string Token, DateTime? ExpiresAt);

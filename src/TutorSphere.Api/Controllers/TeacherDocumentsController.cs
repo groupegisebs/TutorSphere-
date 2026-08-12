@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc;
+using TutorSphere.Api;
 using TutorSphere.Application.DTOs.ExpertApproval;
 using TutorSphere.Application.Services;
 using TutorSphere.Domain.Enums;
@@ -72,8 +73,7 @@ public class TeacherDocumentsController : ControllerBase
 
         try
         {
-            var uploadsRoot = Path.Combine(_env.WebRootPath ?? _env.ContentRootPath, "uploads");
-            Directory.CreateDirectory(uploadsRoot);
+            var uploadsRoot = UploadsPaths.GetRoot(_env);
             var safeFileName = $"{Guid.NewGuid():N}{Path.GetExtension(file.FileName)}";
             var filePath = Path.Combine(uploadsRoot, safeFileName);
             await using (var stream = System.IO.File.Create(filePath))

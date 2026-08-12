@@ -86,6 +86,14 @@ location /hubs/ {
 }
 ```
 
+> **Logos / uploads** : les chemins `/uploads/...` (logos de groupes d’experts, documents, vidéos)
+> sont aussi exposés **via le Web** (`https://tutorsphere.gisebs.com/uploads/...`), qui proxifie
+> vers l’API en loopback. Le sous-domaine API continue de servir `/uploads` directement
+> (pas besoin de location NPM dédiée si le Proxy Host API forward déjà tout le trafic).
+>
+> **Volume Docker** : le dossier physique côté API est `/app/uploads` (`ContentRoot/uploads`),
+> monté via le volume `tutorsphere_uploads`. Ne pas écrire sous `wwwroot/uploads`.
+
 ---
 
 ## 4. Secret GitHub `TUTORSPHERE_API_BASE_URL`
@@ -108,6 +116,9 @@ curl -s http://127.0.0.1:55010/health   # → Healthy
 curl -s http://127.0.0.1:55099/health   # → Healthy
 curl -sI https://tutorsphere.gisebs.com
 curl -sI https://api.tutorsphere.gisebs.com/health
+# Logos groupes d'experts (après upload admin) — doit renvoyer 200 + Content-Type: image/png
+# curl -sI "https://tutorsphere.gisebs.com/uploads/expert-group-<guid>.png"
+# curl -sI "https://api.tutorsphere.gisebs.com/uploads/expert-group-<guid>.png"
 ```
 
 ---

@@ -6,6 +6,7 @@
 @inject ApiClient Api
 @inject IJSRuntime JS
 @inject IConfiguration Config
+@inject NavigationManager Navigation
 
 <PageTitle>@L["Offers_Title"] – TutorSphere</PageTitle>
 
@@ -373,17 +374,8 @@
 
     private void ToggleGuide() => _showGuide = !_showGuide;
 
-    private string OfferVideoPlaybackUrl(string? url)
-    {
-        if (string.IsNullOrWhiteSpace(url)) return "";
-        if (url.StartsWith("http", StringComparison.OrdinalIgnoreCase)) return url;
-        var api = string.IsNullOrWhiteSpace(Config["ApiBaseUrl"])
-            ? Config["InternalApiBaseUrl"]
-            : Config["ApiBaseUrl"];
-        return string.IsNullOrWhiteSpace(api)
-            ? url
-            : $"{api.TrimEnd('/')}/{url.TrimStart('/')}";
-    }
+    private string OfferVideoPlaybackUrl(string? url) =>
+        MediaUrlHelper.Resolve(url, Config, Navigation);
 
     private Task OnOfferVideoSaved(string url)
     {

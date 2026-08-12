@@ -4,6 +4,8 @@
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
 @inject AuthService Auth
+@inject IConfiguration Config
+@inject NavigationManager Navigation
 
 <PageTitle>@L["TeacherVerification_Title"] – TutorSphere</PageTitle>
 
@@ -27,7 +29,7 @@
         <div class="alert alert-success mb-4 d-flex align-items-center gap-2">
             @if (!string.IsNullOrWhiteSpace(_status.ExpertGroupLogoUrl))
             {
-                <img src="@_status.ExpertGroupLogoUrl" alt="" style="height:32px;object-fit:contain;" />
+                <img src="@MediaUrlHelper.Resolve(_status.ExpertGroupLogoUrl, Config, Navigation)" alt="" style="height:32px;object-fit:contain;" />
             }
             else
             {
