@@ -16,7 +16,14 @@
                         @if (_taxQuote is not null && PaymentMethodCodes.IsMobileMoney(_method))
                         {
                             <span class="d-block text-muted small">HT : @_taxQuote.AmountExclusive.ToString("N0") @_taxQuote.Currency</span>
-                            <span class="d-block text-muted small">@_taxQuote.TaxName (@_taxQuote.TaxRatePercent.ToString("0.##") %) : @_taxQuote.TaxAmount.ToString("N0") @_taxQuote.Currency</span>
+                            @if (_taxQuote.TaxRatePercent == 0)
+                            {
+                                <span class="d-block text-muted small">@_taxQuote.TaxName : exonéré (0 %)</span>
+                            }
+                            else
+                            {
+                                <span class="d-block text-muted small">@_taxQuote.TaxName (@_taxQuote.TaxRatePercent.ToString("0.##") %) : @_taxQuote.TaxAmount.ToString("N0") @_taxQuote.Currency</span>
+                            }
                             <strong>TTC : @_taxQuote.AmountInclusive.ToString("N0") @_taxQuote.Currency</strong>
                         }
                         else

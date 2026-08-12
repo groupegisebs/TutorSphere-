@@ -85,12 +85,13 @@ Offres / abonnements doivent être en **XAF** pour afficher Orange/MTN dans le c
 
 ## Taxes Afrique (TTC obligatoire)
 
-- Catalogue : `GiseBsPayGateway` → `Services/Tax/AfricanTaxRates.cs` (tous les pays d’Afrique, taux standard TVA/GST/VAT).
-- Calcul : `TTC = HT + taxe` (arrondi monétaire AwayFromZero ; XAF sans décimales).
-- Exemple Cameroun : HT 5 000 XAF × 19,25 % → taxe 963 → **TTC 5 963**.
+- Catalogue seed : `AfricanTaxRates` → table `AfricanTaxRateSettings` (tous les pays d’Afrique).
+- **Admin** : `/Admin/TaxRates` — ajuster le taux, exonérer (0 %), restaurer le taux standard publié.
+- Calcul : `TTC = HT + taxe` (arrondi AwayFromZero ; XAF sans décimales). **0 % = exonéré** (TTC = HT).
+- **Cameroun (CM)** : exonération éducation par défaut (0 %). Taux standard publié 19,25 % restaurable en admin.
 - APIs Gateway : `GET /api/tax/africa/rates`, `POST /api/tax/africa/quote`.
 - APIs TutorSphere : `GET /api/payments/tax/africa/rates`, `GET /api/payments/tax/africa/quote`.
-- Checkout MM : le payeur choisit son pays ; le montant encaissé est toujours le **TTC**. La commission plateforme reste calculée sur le **HT**.
-- Défaut pays : `CM` (Cameroun) pour CamPay.
+- Checkout MM : le payeur choisit son pays ; montant encaissé = **TTC**. Commission plateforme calculée sur le **HT**.
+- Défaut pays payeur : `CM` (Cameroun) pour CamPay.
 
-Les taux sont des standards publiés — à confirmer juridiquement avant production.
+Les taux seedés sont des standards publiés — à confirmer juridiquement avant production.
