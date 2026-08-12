@@ -41,6 +41,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     public DbSet<TeacherDocument> TeacherDocumentsSet => Set<TeacherDocument>();
     public DbSet<TeacherApplicationInvite> TeacherApplicationInvitesSet => Set<TeacherApplicationInvite>();
     public DbSet<ExpertRemark> ExpertRemarksSet => Set<ExpertRemark>();
+    public DbSet<Discipline> DisciplinesSet => Set<Discipline>();
+    public DbSet<DisciplineServiceItem> DisciplineServiceItemsSet => Set<DisciplineServiceItem>();
+    public DbSet<TeacherDisciplineAssignment> TeacherDisciplineAssignmentsSet => Set<TeacherDisciplineAssignment>();
 
     IQueryable<Tenant> IApplicationDbContext.Tenants => TenantsSet;
     IQueryable<TenantBranding> IApplicationDbContext.TenantBrandings => TenantBrandingsSet;
@@ -93,6 +96,10 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     IQueryable<ExpertRemark> IApplicationDbContext.ExpertRemarks => ExpertRemarksSet;
     IQueryable<ExpertRemark> IApplicationDbContext.ExpertRemarksForAnyTenant =>
         ExpertRemarksSet.IgnoreQueryFilters();
+    IQueryable<Discipline> IApplicationDbContext.Disciplines => DisciplinesSet;
+    IQueryable<DisciplineServiceItem> IApplicationDbContext.DisciplineServiceItems => DisciplineServiceItemsSet;
+    IQueryable<TeacherDisciplineAssignment> IApplicationDbContext.TeacherDisciplineAssignments =>
+        TeacherDisciplineAssignmentsSet;
 
     public new void Add<T>(T entity) where T : class => Set<T>().Add(entity);
     public new void Remove<T>(T entity) where T : class => Set<T>().Remove(entity);
@@ -244,6 +251,35 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
                 .OnDelete(DeleteBehavior.SetNull);
             e.HasOne<Document>().WithMany().HasForeignKey(r => r.RelatedDocumentId)
                 .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        builder.Entity<Discipline>(e =>
+        {
+            e.Property(d => d.Name).HasMaxLength(200).IsRequired();
+            e.HasIndex(d => d.ExpertGroupId);
+            e.HasIndex(d => new { d.ExpertGroupId, d.Name }).IsUnique();
+            e.HasOne(d => d.ExpertGroup).WithMany().HasForeignKey(d => d.ExpertGroupId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<DisciplineServiceItem>(e =>
+        {
+            e.Property(s => s.Title).HasMaxLength(200).IsRequired();
+            e.Property(s => s.Description).HasMaxLength(2000);
+            e.HasIndex(s => s.DisciplineId);
+            e.HasOne(s => s.Discipline).WithMany(d => d.Services).HasForeignKey(s => s.DisciplineId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<TeacherDisciplineAssignment>(e =>
+        {
+            e.Property(a => a.AssignedByUserId).HasMaxLength(450).IsRequired();
+            e.HasIndex(a => new { a.DisciplineId, a.TenantId }).IsUnique();
+            e.HasIndex(a => a.TenantId);
+            e.HasOne(a => a.Discipline).WithMany(d => d.Assignments).HasForeignKey(a => a.DisciplineId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(a => a.Tenant).WithMany().HasForeignKey(a => a.TenantId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         builder.Entity<Homework>(e =>

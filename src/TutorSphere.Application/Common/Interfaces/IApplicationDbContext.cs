@@ -58,6 +58,9 @@ public interface IApplicationDbContext
     IQueryable<ExpertRemark> ExpertRemarks { get; }
     /// <summary>Remarques expert sans filtre tenant (portail expert / enseignant).</summary>
     IQueryable<ExpertRemark> ExpertRemarksForAnyTenant { get; }
+    IQueryable<Discipline> Disciplines { get; }
+    IQueryable<DisciplineServiceItem> DisciplineServiceItems { get; }
+    IQueryable<TeacherDisciplineAssignment> TeacherDisciplineAssignments { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     void Add<T>(T entity) where T : class;
