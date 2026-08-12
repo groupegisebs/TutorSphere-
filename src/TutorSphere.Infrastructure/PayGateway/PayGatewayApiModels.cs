@@ -174,10 +174,12 @@ internal sealed record GatewayMobileMoneyChargeRequest(
     string ProductCode,
     string PlanCode,
     string Channel,
-    string PhoneNumber,
+    string? PhoneNumber = null,
     string? BillingCountryCode = null,
     string? MetadataJson = null,
-    string? Description = null);
+    string? Description = null,
+    string? ReturnUrl = null,
+    string? CancelUrl = null);
 
 internal sealed record GatewayMobileMoneyChargeResponse(
     string PaymentCode,
@@ -194,7 +196,8 @@ internal sealed record GatewayMobileMoneyChargeResponse(
     decimal TaxAmount = 0,
     decimal TaxRatePercent = 0,
     string? TaxName = null,
-    string? BillingCountryCode = null);
+    string? BillingCountryCode = null,
+    string? PaymentUrl = null);
 
 internal sealed record GatewayMobileMoneyStatusResponse(
     string PaymentCode,

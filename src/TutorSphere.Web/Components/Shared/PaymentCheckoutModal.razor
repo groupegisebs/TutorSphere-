@@ -133,22 +133,31 @@
                                     }
                                 </select>
                             </div>
-                            <div class="mb-3">
-                                <label class="form-label" for="mm-phone">@L["PayMethod_PhoneLabel"]</label>
-                                <div class="input-group">
-                                    <span class="input-group-text">+237</span>
-                                    <input id="mm-phone"
-                                           class="form-control"
-                                           type="tel"
-                                           inputmode="numeric"
-                                           maxlength="9"
-                                           placeholder="6XXXXXXXX"
-                                           disabled="@_busy"
-                                           @bind="_phoneLocal"
-                                           @bind:event="oninput" />
+                            @if (_method == PaymentMethodCodes.MtnMomo)
+                            {
+                                <div class="mb-3">
+                                    <label class="form-label" for="mm-phone">@L["PayMethod_PhoneLabel"]</label>
+                                    <div class="input-group">
+                                        <span class="input-group-text">+237</span>
+                                        <input id="mm-phone"
+                                               class="form-control"
+                                               type="tel"
+                                               inputmode="numeric"
+                                               maxlength="9"
+                                               placeholder="6XXXXXXXX"
+                                               disabled="@_busy"
+                                               @bind="_phoneLocal"
+                                               @bind:event="oninput" />
+                                    </div>
+                                    <div class="form-text">@L["PayMethod_PhoneHint"]</div>
                                 </div>
-                                <div class="form-text">@L["PayMethod_PhoneHint"]</div>
-                            </div>
+                            }
+                            else if (_method == PaymentMethodCodes.OrangeMoney)
+                            {
+                                <p class="small text-muted mb-3">
+                                    Orange Money : vous serez redirigé vers la page sécurisée Orange pour payer.
+                                </p>
+                            }
                         }
                     }
                 </div>
@@ -411,7 +420,8 @@
         }
 
         var digits = new string((_phoneLocal ?? "").Where(char.IsDigit).ToArray());
-        if (digits.Length != 9 || digits[0] != '6')
+        var isMtn = _method == PaymentMethodCodes.MtnMomo;
+        if (isMtn && (digits.Length != 9 || digits[0] != '6'))
         {
             _error = L["PayMethod_PhoneInvalid"];
             return;
@@ -424,9 +434,11 @@
             {
                 subscriptionId = SubscriptionId.Value,
                 channel = _method,
-                phoneNumber = "+237" + digits,
+                phoneNumber = isMtn ? "+237" + digits : null,
                 idempotencyKey = _idempotencyKey,
-                billingCountryCode = _billingCountry
+                billingCountryCode = _billingCountry,
+                returnUrl = SuccessUrl,
+                cancelUrl = CancelUrl
             };
 
             var result = await Api.PostWithErrorAsync<MobileMoneyVm>("api/payments/mobile-money", body);
@@ -446,6 +458,12 @@
             {
                 _phase = Phase.Failed;
                 _error = L["PayMethod_MmFailed"];
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(result.Value.PaymentUrl))
+            {
+                await JS.InvokeVoidAsync("open", result.Value.PaymentUrl, "_self");
                 return;
             }
 
@@ -533,7 +551,8 @@
         decimal AmountExclusive,
         decimal TaxAmount,
         decimal TaxRatePercent,
-        string? TaxName);
+        string? TaxName,
+        string? PaymentUrl);
     private sealed record StatusVm(string? GatewayStatus, string? LocalStatus);
     private sealed record TaxQuoteVm(
         string CountryCode,

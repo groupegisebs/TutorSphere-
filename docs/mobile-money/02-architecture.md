@@ -11,10 +11,10 @@ GiseBsPayGateway
                                 │
                     ┌───────────┼───────────┐
                     ▼           ▼           ▼
-               CamPay      OrangeDirect  MtnDirect
-             (actif)        (stub)        (stub)
-                    │
-              LocalSimulated (Environment=Local)
+              Orange WebPay  MTN MoMo   CamPay (legacy off)
+                 (CM)      Collections
+                    │           │
+              LocalSimulated si Environment=Local
 ```
 
 Stripe reste derrière `IPaymentService` / `IStripeService` — séparé.
@@ -32,9 +32,10 @@ Stripe reste derrière `IPaymentService` / `IStripeService` — séparé.
 
 | Condition | Connecteur |
 |-----------|------------|
-| CM + Orange/MTN, CamPay Enabled | CamPay (ou Local si Environment=Local) |
+| CM + Orange | Orange Money WebPay CM (ou Local) |
+| CM + MTN | MTN MoMo Collections (ou Local) |
 | Cartes / international | Stripe |
-| OrangeDirect / MtnDirect Enabled | Futur — stubs désactivés |
+| CamPay Enabled + DefaultProvider=CamPay | Legacy agrégateur |
 
 Ne jamais rerouter une tentative déjà initiée vers un autre fournisseur sous la même référence.
 

@@ -33,10 +33,12 @@ public record CreateSubscriptionCheckoutRequest(
 public record CreateMobileMoneyChargeRequest(
     Guid SubscriptionId,
     string Channel,
-    string PhoneNumber,
+    string? PhoneNumber = null,
     string? IdempotencyKey = null,
     /// <summary>Code ISO pays du payeur (ex. CM). Défaut CM pour Mobile Money Cameroun.</summary>
-    string? BillingCountryCode = null);
+    string? BillingCountryCode = null,
+    string? ReturnUrl = null,
+    string? CancelUrl = null);
 
 public record MobileMoneyChargeResponse(
     Guid PaymentId,
@@ -55,7 +57,9 @@ public record MobileMoneyChargeResponse(
     decimal TaxAmount = 0,
     decimal TaxRatePercent = 0,
     string? TaxName = null,
-    string? BillingCountryCode = null);
+    string? BillingCountryCode = null,
+    /// <summary>URL Orange WebPay — redirection navigateur.</summary>
+    string? PaymentUrl = null);
 
 public record AfricanTaxQuoteDto(
     string CountryCode,

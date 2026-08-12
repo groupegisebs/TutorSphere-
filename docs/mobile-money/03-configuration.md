@@ -1,97 +1,97 @@
 # 03 — Configuration Mobile Money
 
+## Architecture active
+
+- **MTN** → API MoMo Collections (`requesttopay`) directe
+- **Orange** → API Web Payment Cameroun (redirection `payment_url`)
+- **CamPay** → désactivé par défaut (legacy)
+
 ## appsettings (GiseBsPayGateway)
 
 ```json
 {
   "MobileMoney": {
-    "DefaultProvider": "CamPay",
+    "DefaultProvider": "Direct",
     "Country": "CM",
     "Currency": "XAF",
     "ChargeExpiryMinutes": 15,
     "Providers": {
-      "CamPay": {
+      "CamPay": { "Enabled": false, "Environment": "Local" },
+      "OrangeDirect": {
         "Enabled": true,
         "Environment": "Local",
-        "BaseUrl": "",
-        "WebhookSecretReference": "MobileMoney:CamPay:WebhookSecret",
-        "UsernameReference": "MobileMoney:CamPay:Username",
-        "PasswordReference": "MobileMoney:CamPay:Password"
-      },
-      "OrangeDirect": {
-        "Enabled": false,
-        "Environment": "Sandbox",
-        "BaseUrl": "",
-        "MerchantCode": "",
-        "SecretReference": ""
+        "WebPaymentPath": "orange-money-webpay/cm/v1/webpayment",
+        "ReturnUrl": "",
+        "CancelUrl": "",
+        "NotifUrl": ""
       },
       "MtnDirect": {
-        "Enabled": false,
-        "Environment": "Sandbox",
-        "BaseUrl": "",
-        "SecretReference": ""
+        "Enabled": true,
+        "Environment": "Local",
+        "TargetEnvironment": "",
+        "CallbackUrl": ""
       }
     }
   }
 }
 ```
 
-### Environnements CamPay
+### Environnements
 
-| Environment | Comportement |
-|-------------|--------------|
-| `Local` | `LocalSimulatedMobileMoneyGateway` — aucun appel réseau |
-| `Sandbox` | API CamPay démo (`https://demo.campay.net/api`) — nécessite secrets |
-| `Production` | API CamPay prod (`https://campay.net/api`) — nécessite secrets + validation juridique |
+| Environment | Effet |
+|-------------|--------|
+| `Local` | Simulateur interne (aucun appel réseau) |
+| `Sandbox` | APIs sandbox Orange / MTN — secrets requis |
+| `Production` | APIs prod — secrets + KYC marchand |
 
-## secrets.example.json (placeholders)
+MTN prod : `X-Target-Environment: mtncameroon`  
+Orange prod : `https://api.orange.com/orange-money-webpay/cm/v1/webpayment`
+
+## secrets.json (serveur)
 
 ```json
 {
   "MobileMoney": {
-    "CamPay": {
-      "Username": "PLACEHOLDER_CAMPAY_USERNAME",
-      "Password": "PLACEHOLDER_CAMPAY_PASSWORD",
-      "WebhookSecret": "PLACEHOLDER_CAMPAY_WEBHOOK_SECRET"
+    "Orange": {
+      "ClientId": "...",
+      "ClientSecret": "...",
+      "AuthorizationHeader": "",
+      "MerchantKey": "..."
+    },
+    "Mtn": {
+      "SubscriptionKey": "...",
+      "ApiUserId": "...",
+      "ApiKey": "..."
     }
   }
 }
 ```
 
-**Ne jamais committer de vraies clés.**
+Fichier : `/opt/apps/gisebs-pay-gateway/secrets.json` (`chmod 600`). Ne jamais committer.
 
-## Endpoints CamPay utilisés (documentation publique)
+## Webhooks
 
-| Méthode | Chemin | Usage |
-|---------|--------|-------|
-| POST | `/token/` | Obtenir un jeton |
-| POST | `/collect/` | Initier un paiement (idempotent via `external_reference`) |
-| GET | `/transaction/{reference}/` | Consulter le statut |
+| Provider | URL |
+|----------|-----|
+| Orange | `{PublicBaseUrl}/api/webhooks/orange` |
+| MTN | `{PublicBaseUrl}/api/webhooks/mtn` |
+
+Configurer ces URLs dans les consoles Orange (notif_url) et MTN (callback host / X-Callback-Url).
 
 ## Activation sandbox → production
 
-1. Obtenir compte entreprise CamPay + KYC.
-2. Remplir `secrets.json` (Username/Password/WebhookSecret).
-3. Passer `Environment` à `Sandbox`, tester T01–T12.
-4. Validation juridique du modèle marchand (CDC §4.1 / §23).
-5. Passer `Environment` à `Production`.
-6. Feature flag : `Providers:CamPay:Enabled` pour coupure d’urgence.
+1. Comptes marchands **Orange Money WebPay CM** + **MTN MoMo Collections**.
+2. Remplir `secrets.json`.
+3. Passer `OrangeDirect` / `MtnDirect` `Environment` à `Sandbox`, tester.
+4. Validation juridique / KYC.
+5. Passer à `Production` + `TargetEnvironment=mtncameroon` pour MTN.
 
 ## TutorSphere
 
-Aucun secret CamPay côté TutorSphere. Configuration existante `PayGateway` (BaseUrl, AppCode, ApiKey) suffit.
+Aucun secret MM côté TutorSphere (`PayGateway` suffit).  
+Offres en **XAF**.  
+Orange → redirection WebPay ; MTN → saisie téléphone + push USSD.
 
-Offres / abonnements doivent être en **XAF** pour afficher Orange/MTN dans le checkout.
+## Taxes Afrique
 
-## Taxes Afrique (TTC obligatoire)
-
-- Catalogue seed : `AfricanTaxRates` → table `AfricanTaxRateSettings` (tous les pays d’Afrique).
-- **Admin** : `/Admin/TaxRates` — ajuster le taux, exonérer (0 %), restaurer le taux standard publié.
-- Calcul : `TTC = HT + taxe` (arrondi AwayFromZero ; XAF sans décimales). **0 % = exonéré** (TTC = HT).
-- **Cameroun (CM)** : exonération éducation par défaut (0 %). Taux standard publié 19,25 % restaurable en admin.
-- APIs Gateway : `GET /api/tax/africa/rates`, `POST /api/tax/africa/quote`.
-- APIs TutorSphere : `GET /api/payments/tax/africa/rates`, `GET /api/payments/tax/africa/quote`.
-- Checkout MM : le payeur choisit son pays ; montant encaissé = **TTC**. Commission plateforme calculée sur le **HT**.
-- Défaut pays payeur : `CM` (Cameroun) pour CamPay.
-
-Les taux seedés sont des standards publiés — à confirmer juridiquement avant production.
+Voir section admin `/Admin/TaxRates`. Cameroun éducation = 0 % par défaut.

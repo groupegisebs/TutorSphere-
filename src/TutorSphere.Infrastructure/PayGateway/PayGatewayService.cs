@@ -925,7 +925,9 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             request.PhoneNumber,
             billingCountry,
             metadata,
-            $"Abonnement {offering.Title}"), idempotencyKey, ct);
+            $"Abonnement {offering.Title}",
+            request.ReturnUrl,
+            request.CancelUrl), idempotencyKey, ct);
 
         payment.StripePaymentIntentId = charge.PaymentCode;
         payment.PhoneMasked = charge.PhoneMasked;
@@ -959,7 +961,8 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             charge.TaxAmount,
             charge.TaxRatePercent,
             charge.TaxName,
-            charge.BillingCountryCode);
+            charge.BillingCountryCode,
+            charge.PaymentUrl);
     }
 
     public async Task<AfricanTaxQuoteDto> QuoteAfricanTaxAsync(
