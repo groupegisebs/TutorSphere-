@@ -1,6 +1,7 @@
 using System.Text.Json;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.Branding;
+using TutorSphere.Application.DTOs.ExpertApproval;
 using TutorSphere.Domain.Entities;
 using TutorSphere.Domain.Enums;
 
@@ -152,6 +153,34 @@ public class BrandingService : IBrandingService
         ExpertGroup? approvedGroup = null;
         if (tenant.ApprovedByExpertGroupId is Guid gid)
             approvedGroup = _db.ExpertGroups.FirstOrDefault(g => g.Id == gid);
+
+        var assignedDisciplineIds = _db.TeacherDisciplineAssignments
+            .Where(a => a.TenantId == tenant.Id)
+            .Select(a => a.DisciplineId)
+            .ToList();
+        var publicDisciplines = new List<PublicDisciplineDto>();
+        if (assignedDisciplineIds.Count > 0)
+        {
+            var disciplineRows = _db.Disciplines
+                .Where(d => assignedDisciplineIds.Contains(d.Id) && d.IsActive)
+                .OrderBy(d => d.Cycle).ThenBy(d => d.Name)
+                .ToList();
+            var disciplineIds = disciplineRows.Select(d => d.Id).ToList();
+            var serviceRows = disciplineIds.Count == 0
+                ? []
+                : _db.DisciplineServiceItems
+                    .Where(s => disciplineIds.Contains(s.DisciplineId))
+                    .OrderBy(s => s.SortOrder)
+                    .ToList();
+            publicDisciplines = disciplineRows.Select(d => new PublicDisciplineDto(
+                d.Id,
+                d.Name,
+                CycleLabel(d.Cycle),
+                d.WorkMethod,
+                serviceRows.Where(s => s.DisciplineId == d.Id)
+                    .Select(s => new PublicDisciplineServiceDto(s.Title, s.Description))
+                    .ToList())).ToList();
+        }
         var offerings = _db.SubscriptionOfferingsForAnyTenant
             .Where(o => o.TenantId == tenant.Id && o.IsActive)
             .OrderBy(o => o.Title)
@@ -246,10 +275,20 @@ public class BrandingService : IBrandingService
             availability,
             publicOfferings,
             approvedGroup?.Name,
-            approvedGroup?.LogoUrl);
+            approvedGroup?.LogoUrl,
+            publicDisciplines);
 
         return Task.FromResult<PublicTutorDetailDto?>(detail);
     }
+
+    private static string CycleLabel(SchoolCycle cycle) => cycle switch
+    {
+        SchoolCycle.Primary => "Primaire",
+        SchoolCycle.Secondary => "Secondaire",
+        SchoolCycle.University => "Universitaire",
+        SchoolCycle.AdultEducation => "Formation pour adultes",
+        _ => cycle.ToString()
+    };
 
     private static string? FirstNonEmpty(params string?[] values) =>
         values.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v))?.Trim();

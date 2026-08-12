@@ -1,4 +1,5 @@
 @using TutorSphere.Application.DTOs.Branding
+@using TutorSphere.Application.DTOs.ExpertApproval
 @using Microsoft.JSInterop
 @inject NavigationManager Navigation
 @inject ApiClient Api
@@ -286,6 +287,52 @@
                     }
                 </section>
             }
+            else if (_activeTab == "disciplines")
+            {
+                @if (Profile.Disciplines is null || Profile.Disciplines.Count == 0)
+                {
+                    <section class="section-card">
+                        <p class="text-muted mb-0">@L["PublicProfile_NoDisciplines"]</p>
+                    </section>
+                }
+                else
+                {
+                    <div class="row g-3">
+                        @foreach (var discipline in Profile.Disciplines)
+                        {
+                            <div class="col-md-6">
+                                <section class="section-card h-100">
+                                    <div class="d-flex align-items-center justify-content-between mb-2">
+                                        <h2 class="h6 mb-0">@discipline.Name</h2>
+                                        <span class="badge bg-light text-dark border">@discipline.Cycle</span>
+                                    </div>
+                                    @if (discipline.Services.Count > 0)
+                                    {
+                                        <h3 class="h6 text-muted mt-3">@L["PublicProfile_DisciplineServices"]</h3>
+                                        <ul class="tutor-detail-list mb-2">
+                                            @foreach (var svc in discipline.Services)
+                                            {
+                                                <li>
+                                                    <strong>@svc.Title</strong>
+                                                    @if (!string.IsNullOrWhiteSpace(svc.Description))
+                                                    {
+                                                        <span>— @svc.Description</span>
+                                                    }
+                                                </li>
+                                            }
+                                        </ul>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(discipline.WorkMethod))
+                                    {
+                                        <h3 class="h6 text-muted mt-3">@L["PublicProfile_DisciplineWorkMethod"]</h3>
+                                        <p class="mb-0">@discipline.WorkMethod</p>
+                                    }
+                                </section>
+                            </div>
+                        }
+                    </div>
+                }
+            }
             else if (_activeTab == "offers")
             {
                 @if (Profile.Offerings.Count == 0)
@@ -461,14 +508,23 @@
         _subscribing
         || (!AllowSelfSubscribe && (string.IsNullOrEmpty(_selectedChildId) || _children.Count == 0));
 
-    private (string Key, string Label)[] _tabs =>
-    [
-        ("about", "Présentation"),
-        ("credentials", "Diplômes"),
-        ("subjects", L["PublicProfile_Tab_Subjects"]),
-        ("offers", L["PublicProfile_Tab_Offers"]),
-        ("availability", "Disponibilités"),
-    ];
+    private (string Key, string Label)[] _tabs
+    {
+        get
+        {
+            var tabs = new List<(string Key, string Label)>
+            {
+                ("about", "Présentation"),
+                ("credentials", "Diplômes"),
+                ("subjects", L["PublicProfile_Tab_Subjects"]),
+            };
+            if (Profile.Disciplines is { Count: > 0 })
+                tabs.Add(("disciplines", L["PublicProfile_Tab_Disciplines"]));
+            tabs.Add(("offers", L["PublicProfile_Tab_Offers"]));
+            tabs.Add(("availability", "Disponibilités"));
+            return tabs.ToArray();
+        }
+    }
 
     private string DisplayName =>
         !string.IsNullOrWhiteSpace(Profile.TutorFullName) ? Profile.TutorFullName! : Profile.SchoolName;

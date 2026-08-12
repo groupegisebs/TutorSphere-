@@ -1,0 +1,435 @@
+@page "/expert/disciplines"
+@layout ExpertLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService Auth
+@inject ApiClient Api
+@inject IJSRuntime JS
+@inject IStringLocalizer<SharedResources> L
+
+<ApplyRequestCulture />
+
+<PageTitle>@L["ExpertDisciplines_Title"] — TutorSphere</PageTitle>
+
+<AuthorizeView Roles="Expert">
+    <Authorized>
+        <div class="cc-toolbar">
+            <div>
+                <h1 class="cc-page-title">@L["ExpertDisciplines_Title"]</h1>
+                <p class="cc-page-sub">@L["ExpertDisciplines_Subtitle"]</p>
+            </div>
+            <button type="button" class="cc-btn cc-btn-primary" @onclick="OpenCreate">
+                <i class="bi bi-plus-lg"></i> @L["ExpertDisciplines_New"]
+            </button>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_flash))
+        {
+            <div class="alert alert-success mb-3">@_flash</div>
+        }
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger mb-3">@_error</div>
+        }
+
+        @if (_showForm)
+        {
+            <div class="cc-card mb-3">
+                <div class="cc-card-header">
+                    <h2 class="cc-card-title">@(_editId is null ? L["ExpertDisciplines_CreateTitle"] : L["ExpertDisciplines_EditTitle"])</h2>
+                    <button type="button" class="cc-btn" @onclick="CloseForm"><i class="bi bi-x-lg"></i></button>
+                </div>
+                @if (!string.IsNullOrEmpty(_formError))
+                {
+                    <div class="alert alert-danger">@_formError</div>
+                }
+                <div class="row g-2">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">@L["ExpertDisciplines_Name"] *</label>
+                        <input class="form-control" @bind="_formName" placeholder="@L["ExpertDisciplines_NamePlaceholder"]" />
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label">@L["ExpertDisciplines_Cycle"] *</label>
+                        <select class="form-select" @bind="_formCycle">
+                            <option value="0">@L["SchoolCycle_Primary"]</option>
+                            <option value="1">@L["SchoolCycle_Secondary"]</option>
+                            <option value="2">@L["SchoolCycle_University"]</option>
+                            <option value="3">@L["SchoolCycle_AdultEducation"]</option>
+                        </select>
+                    </div>
+                    <div class="col-12 mb-3">
+                        <label class="form-label">@L["ExpertDisciplines_WorkMethod"]</label>
+                        <div class="form-text mb-1">@L["ExpertDisciplines_WorkMethodHint"]</div>
+                        <textarea class="form-control" rows="4" @bind="_formWorkMethod"
+                                  placeholder="@L["ExpertDisciplines_WorkMethodPlaceholder"]"></textarea>
+                    </div>
+                    @if (_editId is not null)
+                    {
+                        <div class="col-12 mb-2">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" @bind="_formActive" id="discActive" />
+                                <label class="form-check-label" for="discActive">@L["Common_Active"]</label>
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <hr class="my-3" />
+
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div>
+                        <label class="form-label mb-0">@L["ExpertDisciplines_Services"]</label>
+                        <div class="form-text">@L["ExpertDisciplines_ServicesHint"]</div>
+                    </div>
+                    <button type="button" class="cc-btn btn-sm" @onclick="AddServiceRow">
+                        <i class="bi bi-plus-lg"></i> @L["ExpertDisciplines_AddService"]
+                    </button>
+                </div>
+                @if (_formServices.Count == 0)
+                {
+                    <p class="text-muted small">@L["ExpertDisciplines_NoServicesYet"]</p>
+                }
+                else
+                {
+                    @foreach (var row in _formServices)
+                    {
+                        <div class="d-flex gap-2 align-items-start mb-2" @key="row">
+                            <div class="flex-grow-1">
+                                <input class="form-control mb-1" placeholder="@L["ExpertDisciplines_ServiceTitlePlaceholder"]" @bind="row.Title" />
+                                <textarea class="form-control" rows="2" placeholder="@L["ExpertDisciplines_ServiceDescPlaceholder"]" @bind="row.Description"></textarea>
+                            </div>
+                            <button type="button" class="cc-btn btn-sm" @onclick="() => RemoveServiceRow(row)" title="@L["Common_Delete"]">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </div>
+                    }
+                }
+
+                <div class="d-flex gap-2 justify-content-end mt-3">
+                    <button type="button" class="cc-btn" @onclick="CloseForm">@L["Common_Cancel"]</button>
+                    <button type="button" class="cc-btn cc-btn-primary" disabled="@_saving" @onclick="SaveAsync">
+                        @if (_saving) { <span class="spinner-border spinner-border-sm"></span> }
+                        @L["Common_Save"]
+                    </button>
+                </div>
+            </div>
+        }
+
+        @if (_loading)
+        {
+            <div class="cc-empty"><span class="spinner-border"></span></div>
+        }
+        else if (_disciplines.Count == 0)
+        {
+            <div class="cc-card cc-empty">
+                <i class="bi bi-book"></i>
+                <p>@L["ExpertDisciplines_Empty"]</p>
+            </div>
+        }
+        else
+        {
+            <div class="cc-card">
+                <div class="cc-table-wrap">
+                    <table class="cc-table">
+                        <thead>
+                            <tr>
+                                <th>@L["ExpertDisciplines_Name"]</th>
+                                <th>@L["ExpertDisciplines_Cycle"]</th>
+                                <th>@L["ExpertDisciplines_Services"]</th>
+                                <th>@L["ExpertDisciplines_ColTeachers"]</th>
+                                <th>@L["Common_Status"]</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var d in _disciplines)
+                            {
+                                <tr class="@(_selectedForTeachers == d.Id ? "table-active" : "")">
+                                    <td><strong>@d.Name</strong></td>
+                                    <td><span class="cc-pill cc-pill-type">@CycleLabel(d.Cycle)</span></td>
+                                    <td>@d.Services.Count</td>
+                                    <td>@d.AssignedTeacherCount</td>
+                                    <td>
+                                        <span class="cc-pill @(d.IsActive ? "cc-pill-ok" : "cc-pill-bad")">
+                                            @(d.IsActive ? L["Common_Active"] : L["Common_Inactive"])
+                                        </span>
+                                    </td>
+                                    <td class="text-end">
+                                        <button type="button" class="cc-btn btn-sm" @onclick="() => ToggleTeachersAsync(d.Id)">
+                                            @L["ExpertDisciplines_ManageTeachers"]
+                                        </button>
+                                        <button type="button" class="cc-btn btn-sm" @onclick="() => OpenEdit(d)">@L["Common_Edit"]</button>
+                                        <button type="button" class="cc-btn btn-sm" @onclick="() => DeleteAsync(d)">@L["Common_Delete"]</button>
+                                    </td>
+                                </tr>
+                                @if (_selectedForTeachers == d.Id)
+                                {
+                                    <tr>
+                                        <td colspan="6">
+                                            <div class="cc-card mb-2">
+                                                <h3 class="h6">@L["ExpertDisciplines_TeachersFor"] — @d.Name</h3>
+                                                @if (_teachersLoading)
+                                                {
+                                                    <div class="cc-empty py-2"><span class="spinner-border spinner-border-sm"></span></div>
+                                                }
+                                                else if (_groupTeachers.Count == 0)
+                                                {
+                                                    <p class="text-muted small mb-0">@L["ExpertDisciplines_NoApprovedTeachers"]</p>
+                                                }
+                                                else
+                                                {
+                                                    <ul class="list-unstyled mb-0">
+                                                        @foreach (var t in _groupTeachers)
+                                                        {
+                                                            <li class="py-2 border-bottom">
+                                                                <div class="form-check mb-0">
+                                                                    <input class="form-check-input" type="checkbox"
+                                                                           checked="@t.IsAssigned"
+                                                                           @onchange="e => ToggleAssignmentAsync(d.Id, t, e)" />
+                                                                    <label class="form-check-label">
+                                                                        <strong>@t.SchoolName</strong>
+                                                                        <span class="small text-muted ms-1">@(t.OwnerName ?? t.OwnerEmail)</span>
+                                                                    </label>
+                                                                </div>
+                                                            </li>
+                                                        }
+                                                    </ul>
+                                                }
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+    </Authorized>
+    <NotAuthorized>
+        <div class="cc-card cc-empty">
+            <p>@L["Expert_LoginRequired"]</p>
+            <a class="cc-btn cc-btn-primary" href="/login/expert">@L["Nav_Login"]</a>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private List<DisciplineItem> _disciplines = [];
+    private bool _loading = true;
+    private string? _error;
+    private string? _flash;
+
+    private bool _showForm;
+    private bool _saving;
+    private Guid? _editId;
+    private string? _formError;
+    private string _formName = "";
+    private int _formCycle;
+    private string? _formWorkMethod;
+    private bool _formActive = true;
+    private List<ServiceRow> _formServices = [];
+
+    private Guid? _selectedForTeachers;
+    private bool _teachersLoading;
+    private List<GroupTeacherItem> _groupTeachers = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _disciplines = await Api.GetAsync<List<DisciplineItem>>("api/expert/disciplines") ?? [];
+        }
+        catch (Exception ex) { _error = ex.Message; _disciplines = []; }
+        finally { _loading = false; }
+    }
+
+    private void OpenCreate()
+    {
+        _editId = null;
+        _formName = "";
+        _formCycle = 0;
+        _formWorkMethod = null;
+        _formActive = true;
+        _formServices = [];
+        _formError = null;
+        _showForm = true;
+    }
+
+    private void OpenEdit(DisciplineItem d)
+    {
+        _editId = d.Id;
+        _formName = d.Name;
+        _formCycle = d.Cycle;
+        _formWorkMethod = d.WorkMethod;
+        _formActive = d.IsActive;
+        _formServices = d.Services
+            .OrderBy(s => s.SortOrder)
+            .Select(s => new ServiceRow { Id = s.Id, Title = s.Title, Description = s.Description })
+            .ToList();
+        _formError = null;
+        _showForm = true;
+    }
+
+    private void CloseForm() => _showForm = false;
+
+    private void AddServiceRow() => _formServices.Add(new ServiceRow());
+
+    private void RemoveServiceRow(ServiceRow row) => _formServices.Remove(row);
+
+    private async Task SaveAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_formName))
+        {
+            _formError = L["ExpertDisciplines_NameRequired"];
+            return;
+        }
+
+        _saving = true;
+        _formError = null;
+        try
+        {
+            var services = _formServices
+                .Where(s => !string.IsNullOrWhiteSpace(s.Title))
+                .Select((s, i) => new { id = s.Id, title = s.Title.Trim(), description = s.Description, sortOrder = i })
+                .ToList();
+
+            if (_editId is null)
+            {
+                var result = await Api.PostWithErrorAsync<DisciplineItem>("api/expert/disciplines", new
+                {
+                    name = _formName.Trim(),
+                    cycle = _formCycle,
+                    workMethod = _formWorkMethod,
+                    services
+                });
+                if (!result.IsSuccess) { _formError = result.Error ?? L["ExpertDisciplines_SaveFailed"].Value; return; }
+                _flash = L["ExpertDisciplines_Created"];
+            }
+            else
+            {
+                var result = await Api.PutWithErrorAsync<DisciplineItem>($"api/expert/disciplines/{_editId}", new
+                {
+                    name = _formName.Trim(),
+                    cycle = _formCycle,
+                    workMethod = _formWorkMethod,
+                    isActive = _formActive,
+                    services
+                });
+                if (!result.IsSuccess) { _formError = result.Error ?? L["ExpertDisciplines_SaveFailed"].Value; return; }
+                _flash = L["ExpertDisciplines_Updated"];
+            }
+
+            _showForm = false;
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _formError = ex.Message; }
+        finally { _saving = false; }
+    }
+
+    private async Task DeleteAsync(DisciplineItem d)
+    {
+        var confirmed = await JS.InvokeAsync<bool>(
+            "confirm", string.Format(L["ExpertDisciplines_ConfirmDelete"].Value, d.Name));
+        if (!confirmed) return;
+
+        _error = null;
+        _flash = null;
+        var result = await Api.DeleteWithErrorAsync($"api/expert/disciplines/{d.Id}");
+        if (!result.IsSuccess)
+        {
+            _error = result.Error ?? L["ExpertDisciplines_DeleteFailed"];
+            return;
+        }
+        _flash = L["ExpertDisciplines_Deleted"];
+        if (_selectedForTeachers == d.Id) { _selectedForTeachers = null; _groupTeachers = []; }
+        await ReloadAsync();
+    }
+
+    private async Task ToggleTeachersAsync(Guid disciplineId)
+    {
+        if (_selectedForTeachers == disciplineId)
+        {
+            _selectedForTeachers = null;
+            _groupTeachers = [];
+            return;
+        }
+
+        _selectedForTeachers = disciplineId;
+        _teachersLoading = true;
+        _groupTeachers = [];
+        StateHasChanged();
+        try
+        {
+            _groupTeachers = await Api.GetAsync<List<GroupTeacherItem>>($"api/expert/disciplines/{disciplineId}/teachers") ?? [];
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _teachersLoading = false; }
+    }
+
+    private async Task ToggleAssignmentAsync(Guid disciplineId, GroupTeacherItem teacher, ChangeEventArgs e)
+    {
+        var assign = e.Value is bool b && b;
+        try
+        {
+            if (assign)
+                await Api.PostWithErrorAsync<object>($"api/expert/disciplines/{disciplineId}/teachers/{teacher.TenantId}", new { });
+            else
+                await Api.DeleteWithErrorAsync($"api/expert/disciplines/{disciplineId}/teachers/{teacher.TenantId}");
+
+            teacher.IsAssigned = assign;
+            var idx = _disciplines.FindIndex(x => x.Id == disciplineId);
+            if (idx >= 0)
+            {
+                var count = _groupTeachers.Count(x => x.IsAssigned);
+                _disciplines[idx] = _disciplines[idx] with { AssignedTeacherCount = count };
+            }
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private string CycleLabel(int cycle) => cycle switch
+    {
+        0 => L["SchoolCycle_Primary"],
+        1 => L["SchoolCycle_Secondary"],
+        2 => L["SchoolCycle_University"],
+        3 => L["SchoolCycle_AdultEducation"],
+        _ => "—"
+    };
+
+    private sealed class ServiceRow
+    {
+        public Guid? Id { get; set; }
+        public string Title { get; set; } = "";
+        public string? Description { get; set; }
+    }
+
+    private sealed record DisciplineServiceItemView(Guid Id, string Title, string? Description, int SortOrder);
+
+    private sealed record DisciplineItem(
+        Guid Id,
+        Guid ExpertGroupId,
+        string Name,
+        int Cycle,
+        string? WorkMethod,
+        bool IsActive,
+        List<DisciplineServiceItemView> Services,
+        int AssignedTeacherCount,
+        DateTime CreatedAt);
+
+    private sealed class GroupTeacherItem
+    {
+        public Guid TenantId { get; set; }
+        public string SchoolName { get; set; } = "";
+        public string? OwnerEmail { get; set; }
+        public string? OwnerName { get; set; }
+        public bool IsAssigned { get; set; }
+    }
+}

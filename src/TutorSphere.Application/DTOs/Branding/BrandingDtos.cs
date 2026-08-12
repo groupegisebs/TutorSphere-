@@ -1,3 +1,5 @@
+using TutorSphere.Application.DTOs.ExpertApproval;
+
 namespace TutorSphere.Application.DTOs.Branding;
 
 public record TenantBrandingDto(
@@ -73,4 +75,5 @@ public record PublicTutorDetailDto(
     IReadOnlyList<string> Availability,
     IReadOnlyList<PublicOfferingDto> Offerings,
     string? ApprovedByExpertGroupName = null,
-    string? ApprovedByExpertGroupLogoUrl = null);
+    string? ApprovedByExpertGroupLogoUrl = null,
+    IReadOnlyList<PublicDisciplineDto>? Disciplines = null);
