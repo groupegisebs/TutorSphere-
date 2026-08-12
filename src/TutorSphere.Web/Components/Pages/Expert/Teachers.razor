@@ -1,0 +1,389 @@
+@page "/expert/teachers"
+@layout ExpertLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService Auth
+@inject ApiClient Api
+@inject IStringLocalizer<SharedResources> L
+
+<ApplyRequestCulture />
+
+<PageTitle>@L["ExpertTeachers_Title"] — TutorSphere</PageTitle>
+
+<AuthorizeView Roles="Expert">
+    <Authorized>
+        <div class="cc-toolbar">
+            <div>
+                <h1 class="cc-page-title">@L["ExpertTeachers_Title"]</h1>
+                <p class="cc-page-sub">@L["ExpertTeachers_Subtitle"]</p>
+            </div>
+        </div>
+
+        @if (_loading)
+        {
+            <div class="cc-empty"><span class="spinner-border"></span></div>
+        }
+        else if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger">@_error</div>
+        }
+        else if (_teachers.Count == 0)
+        {
+            <div class="cc-card cc-empty">
+                <i class="bi bi-mortarboard"></i>
+                <p>@L["ExpertTeachers_Empty"]</p>
+            </div>
+        }
+        else
+        {
+            <div class="cc-card mb-3">
+                <table class="cc-table">
+                    <thead>
+                        <tr>
+                            <th>@L["Expert_ColSchool"]</th>
+                            <th>@L["Expert_ColCountry"]</th>
+                            <th>@L["ExpertTeachers_ColLessons"]</th>
+                            <th>@L["ExpertTeachers_ColCancelled"]</th>
+                            <th>@L["ExpertTeachers_ColNoShow"]</th>
+                            <th>@L["ExpertTeachers_ColLastActivity"]</th>
+                            <th>@L["ExpertTeachers_ColRemarks"]</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var t in _teachers)
+                        {
+                            <tr class="@(_selectedTenantId == t.TenantId ? "table-active" : "")">
+                                <td>
+                                    <strong>@t.SchoolName</strong>
+                                    <div class="small text-muted">@(t.OwnerName ?? t.OwnerEmail)</div>
+                                </td>
+                                <td>@JoinMeta(t.City, t.Country)</td>
+                                <td>@t.TotalLessons</td>
+                                <td>@t.CancelledLessons</td>
+                                <td>
+                                    @if (t.NoShowIncidents > 0)
+                                    {
+                                        <span class="cc-pill cc-pill-bad">@t.NoShowIncidents</span>
+                                    }
+                                    else
+                                    {
+                                        <span>0</span>
+                                    }
+                                </td>
+                                <td>@(t.LastActivityAt is { } la ? la.ToLocalTime().ToString("dd MMM yyyy") : "—")</td>
+                                <td>@t.RemarkCount</td>
+                                <td class="text-end">
+                                    <button type="button" class="cc-btn btn-sm" @onclick="() => SelectTeacherAsync(t.TenantId)">
+                                        @L["ExpertTeachers_Manage"]
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            @if (_selectedTenantId is Guid selected)
+            {
+                var selectedTeacher = _teachers.FirstOrDefault(x => x.TenantId == selected);
+                <div class="cc-card mb-3">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <h2 class="cc-card-title mb-0">@(selectedTeacher?.SchoolName ?? "—")</h2>
+                        <button type="button" class="cc-btn btn-sm" @onclick="CloseDetail">
+                            <i class="bi bi-x-lg"></i> @L["ExpertTeachers_Close"]
+                        </button>
+                    </div>
+
+                    @if (_detailLoading)
+                    {
+                        <div class="cc-empty py-3"><span class="spinner-border spinner-border-sm"></span></div>
+                    }
+                    else
+                    {
+                        <div class="row g-3 mt-2">
+                            <div class="col-lg-6">
+                                <h3 class="h6">@L["ExpertTeachers_MaterialsTitle"]</h3>
+                                @if (_materials.Count == 0)
+                                {
+                                    <p class="text-muted small">@L["ExpertTeachers_MaterialsEmpty"]</p>
+                                }
+                                else
+                                {
+                                    <ul class="list-unstyled mb-0">
+                                        @foreach (var m in _materials)
+                                        {
+                                            <li class="d-flex justify-content-between align-items-center py-2 border-bottom">
+                                                <div>
+                                                    <span class="cc-pill cc-pill-type">@MaterialKindLabel(m.Kind)</span>
+                                                    <strong class="ms-2">@m.Title</strong>
+                                                    @if (m.RemarkCount > 0)
+                                                    {
+                                                        <span class="small text-muted ms-2">(@m.RemarkCount)</span>
+                                                    }
+                                                </div>
+                                                <div class="d-flex gap-2">
+                                                    @if (!string.IsNullOrWhiteSpace(m.FileUrl))
+                                                    {
+                                                        <a class="cc-btn btn-sm" href="@m.FileUrl" target="_blank" rel="noopener">@L["Common_Open"]</a>
+                                                    }
+                                                    <button type="button" class="cc-btn btn-sm cc-btn-primary" @onclick="() => PrepareRemarkFor(m)">
+                                                        @L["ExpertTeachers_AddRemarkTitle"]
+                                                    </button>
+                                                </div>
+                                            </li>
+                                        }
+                                    </ul>
+                                }
+
+                                <h3 class="h6 mt-4">@L["ExpertTeachers_RemarksTitle"]</h3>
+                                @if (_remarks.Count == 0)
+                                {
+                                    <p class="text-muted small">@L["ExpertTeachers_RemarksEmpty"]</p>
+                                }
+                                else
+                                {
+                                    <ul class="list-unstyled mb-0">
+                                        @foreach (var r in _remarks)
+                                        {
+                                            <li class="py-2 border-bottom">
+                                                <span class="cc-pill cc-pill-type">@CategoryLabel(r.Category)</span>
+                                                <span class="small text-muted ms-2">@r.CreatedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")</span>
+                                                @if (r.ReadByTeacherAt is not null)
+                                                {
+                                                    <span class="small text-muted ms-2"><i class="bi bi-check2-all"></i></span>
+                                                }
+                                                <div class="mt-1">@r.Message</div>
+                                                <div class="small text-muted">@(r.AuthorName ?? "—")</div>
+                                            </li>
+                                        }
+                                    </ul>
+                                }
+                            </div>
+
+                            <div class="col-lg-6">
+                                <h3 class="h6">@L["ExpertTeachers_AddRemarkTitle"]</h3>
+
+                                @if (!string.IsNullOrEmpty(_remarkError))
+                                {
+                                    <div class="alert alert-danger py-2">@_remarkError</div>
+                                }
+                                @if (!string.IsNullOrEmpty(_remarkSuccess))
+                                {
+                                    <div class="alert alert-success py-2">@_remarkSuccess</div>
+                                }
+
+                                <label class="form-label">@L["ExpertTeachers_RemarkCategory"]</label>
+                                <select class="form-select mb-2" @bind="_formCategory">
+                                    <option value="0">@L["ExpertTeachers_RemarkCategory_General"]</option>
+                                    <option value="1">@L["ExpertTeachers_RemarkCategory_Activity"]</option>
+                                    <option value="2">@L["ExpertTeachers_RemarkCategory_CourseMaterial"]</option>
+                                </select>
+
+                                <label class="form-label">@L["ExpertTeachers_RelatedMaterial"]</label>
+                                <select class="form-select mb-2" @bind="_formRelatedKey">
+                                    <option value="">@L["ExpertTeachers_RelatedMaterialNone"]</option>
+                                    @foreach (var m in _materials)
+                                    {
+                                        <option value="@MaterialKey(m)">@MaterialKindLabel(m.Kind) — @m.Title</option>
+                                    }
+                                </select>
+
+                                <label class="form-label">@L["ExpertTeachers_RemarkMessage"]</label>
+                                <textarea class="form-control mb-3" rows="4" @bind="_formMessage"
+                                          placeholder="@L["ExpertTeachers_RemarkMessagePlaceholder"]"></textarea>
+
+                                <button type="button" class="cc-btn cc-btn-primary" disabled="@_remarkBusy" @onclick="SendRemarkAsync">
+                                    @if (_remarkBusy) { <span class="spinner-border spinner-border-sm"></span> }
+                                    <i class="bi bi-chat-left-text"></i> @L["ExpertTeachers_SendRemark"]
+                                </button>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        }
+    </Authorized>
+    <NotAuthorized>
+        <div class="cc-card cc-empty">
+            <p>@L["Expert_LoginRequired"]</p>
+            <a class="cc-btn cc-btn-primary" href="/login/expert">@L["Nav_Login"]</a>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private List<MonitoredTeacherItem> _teachers = [];
+    private bool _loading = true;
+    private string? _error;
+
+    private Guid? _selectedTenantId;
+    private bool _detailLoading;
+    private List<TeacherMaterialItem> _materials = [];
+    private List<ExpertRemarkItem> _remarks = [];
+
+    private int _formCategory;
+    private string _formRelatedKey = "";
+    private string _formMessage = "";
+    private bool _remarkBusy;
+    private string? _remarkError;
+    private string? _remarkSuccess;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        await LoadTeachersAsync();
+    }
+
+    private async Task LoadTeachersAsync()
+    {
+        try
+        {
+            _teachers = await Api.GetAsync<List<MonitoredTeacherItem>>("api/expert/teachers") ?? [];
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task SelectTeacherAsync(Guid tenantId)
+    {
+        if (_selectedTenantId == tenantId) { CloseDetail(); return; }
+
+        _selectedTenantId = tenantId;
+        _detailLoading = true;
+        _remarkError = null;
+        _remarkSuccess = null;
+        _formCategory = 0;
+        _formRelatedKey = "";
+        _formMessage = "";
+        StateHasChanged();
+
+        try
+        {
+            _materials = await Api.GetAsync<List<TeacherMaterialItem>>($"api/expert/teachers/{tenantId}/materials") ?? [];
+            _remarks = await Api.GetAsync<List<ExpertRemarkItem>>($"api/expert/teachers/{tenantId}/remarks") ?? [];
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _detailLoading = false; }
+    }
+
+    private void CloseDetail()
+    {
+        _selectedTenantId = null;
+        _materials = [];
+        _remarks = [];
+    }
+
+    private void PrepareRemarkFor(TeacherMaterialItem m)
+    {
+        _formCategory = 2; // CourseMaterial
+        _formRelatedKey = MaterialKey(m);
+        _remarkError = null;
+        _remarkSuccess = null;
+    }
+
+    private async Task SendRemarkAsync()
+    {
+        if (_selectedTenantId is not Guid tenantId) return;
+        if (string.IsNullOrWhiteSpace(_formMessage))
+        {
+            _remarkError = L["ExpertTeachers_RemarkMessageRequired"];
+            return;
+        }
+
+        _remarkBusy = true;
+        _remarkError = null;
+        _remarkSuccess = null;
+        try
+        {
+            Guid? homeworkId = null;
+            Guid? documentId = null;
+            if (!string.IsNullOrWhiteSpace(_formRelatedKey))
+            {
+                var parts = _formRelatedKey.Split(':', 2);
+                if (parts.Length == 2 && Guid.TryParse(parts[1], out var relId))
+                {
+                    if (parts[0] == "Homework") homeworkId = relId;
+                    else if (parts[0] == "Document") documentId = relId;
+                }
+            }
+
+            var result = await Api.PostWithErrorAsync<ExpertRemarkItem>($"api/expert/teachers/{tenantId}/remarks", new
+            {
+                category = _formCategory,
+                message = _formMessage,
+                relatedHomeworkId = homeworkId,
+                relatedDocumentId = documentId
+            });
+
+            if (!result.IsSuccess)
+            {
+                _remarkError = result.Error ?? L["ExpertTeachers_RemarkFailed"].Value;
+                return;
+            }
+
+            _remarkSuccess = L["ExpertTeachers_RemarkSent"];
+            _formMessage = "";
+            _formRelatedKey = "";
+            _formCategory = 0;
+
+            _remarks = await Api.GetAsync<List<ExpertRemarkItem>>($"api/expert/teachers/{tenantId}/remarks") ?? [];
+            _teachers = await Api.GetAsync<List<MonitoredTeacherItem>>("api/expert/teachers") ?? _teachers;
+        }
+        catch (Exception ex) { _remarkError = ex.Message; }
+        finally { _remarkBusy = false; }
+    }
+
+    private static string MaterialKey(TeacherMaterialItem m) => $"{m.Kind}:{m.Id}";
+
+    private string MaterialKindLabel(string kind) => kind switch
+    {
+        "Homework" => L["ExpertTeachers_MaterialKind_Homework"],
+        "Document" => L["ExpertTeachers_MaterialKind_Document"],
+        _ => kind
+    };
+
+    private string CategoryLabel(int category) => category switch
+    {
+        1 => L["ExpertTeachers_RemarkCategory_Activity"],
+        2 => L["ExpertTeachers_RemarkCategory_CourseMaterial"],
+        _ => L["ExpertTeachers_RemarkCategory_General"]
+    };
+
+    private static string JoinMeta(params string?[] parts) =>
+        string.Join(" · ", parts.Where(p => !string.IsNullOrWhiteSpace(p)));
+
+    private sealed record MonitoredTeacherItem(
+        Guid TenantId,
+        string SchoolName,
+        string? Country,
+        string? City,
+        string? OwnerEmail,
+        string? OwnerName,
+        int TotalLessons,
+        int CancelledLessons,
+        int NoShowIncidents,
+        DateTime? LastActivityAt,
+        int RemarkCount,
+        DateTime? LastRemarkAt);
+
+    private sealed record TeacherMaterialItem(
+        Guid Id,
+        string Kind,
+        string Title,
+        string? Subject,
+        string? FileUrl,
+        DateTime CreatedAt,
+        int RemarkCount);
+
+    private sealed record ExpertRemarkItem(
+        Guid Id,
+        Guid TenantId,
+        int Category,
+        string Message,
+        Guid? RelatedHomeworkId,
+        Guid? RelatedDocumentId,
+        string AuthorUserId,
+        string? AuthorName,
+        DateTime CreatedAt,
+        DateTime? ReadByTeacherAt);
+}

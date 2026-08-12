@@ -1,0 +1,103 @@
+@page "/tutor/expert-remarks"
+@layout TutorLayout
+@rendermode InteractiveServer
+@inject ApiClient Api
+@inject IStringLocalizer<SharedResources> L
+
+<PageTitle>@L["TutorExpertRemarks_Title"] — TutorSphere</PageTitle>
+
+<div class="cc-toolbar">
+    <div>
+        <h1 class="cc-page-title">@L["TutorExpertRemarks_Title"]</h1>
+        <p class="cc-page-sub">@L["TutorExpertRemarks_Subtitle"]</p>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="ts-loading-state" style="padding: 1.5rem;">
+        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+        <span class="ms-2 text-muted">@L["Common_Loading"]</span>
+    </div>
+}
+else if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-danger">@_error</div>
+}
+else if (_remarks.Count == 0)
+{
+    <div class="section-card cc-empty">
+        <i class="bi bi-chat-left-text"></i>
+        <p>@L["TutorExpertRemarks_Empty"]</p>
+    </div>
+}
+else
+{
+    <div class="section-card">
+        <ul class="list-unstyled mb-0">
+            @foreach (var r in _remarks)
+            {
+                <li class="py-3 border-bottom">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <span class="cc-pill cc-pill-type">@CategoryLabel(r.Category)</span>
+                            @if (r.ReadByTeacherAt is null)
+                            {
+                                <span class="cc-pill cc-pill-ok ms-2">@L["TutorExpertRemarks_New"]</span>
+                            }
+                        </div>
+                        <span class="small text-muted">@r.CreatedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")</span>
+                    </div>
+                    <p class="mt-2 mb-1">@r.Message</p>
+                    <div class="small text-muted">@(r.AuthorName ?? "—")</div>
+                </li>
+            }
+        </ul>
+    </div>
+}
+
+@code {
+    private List<ExpertRemarkItem> _remarks = [];
+    private bool _loading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _remarks = await Api.GetAsync<List<ExpertRemarkItem>>("api/tutor/expert-remarks") ?? [];
+            await MarkAllReadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task MarkAllReadAsync()
+    {
+        var unread = _remarks.Where(r => r.ReadByTeacherAt is null).ToList();
+        foreach (var r in unread)
+        {
+            try { await Api.PostAsync<object>($"api/tutor/expert-remarks/{r.Id}/read", new { }); }
+            catch { /* best-effort */ }
+        }
+    }
+
+    private string CategoryLabel(int category) => category switch
+    {
+        1 => L["ExpertTeachers_RemarkCategory_Activity"],
+        2 => L["ExpertTeachers_RemarkCategory_CourseMaterial"],
+        _ => L["ExpertTeachers_RemarkCategory_General"]
+    };
+
+    private sealed record ExpertRemarkItem(
+        Guid Id,
+        Guid TenantId,
+        int Category,
+        string Message,
+        Guid? RelatedHomeworkId,
+        Guid? RelatedDocumentId,
+        string AuthorUserId,
+        string? AuthorName,
+        DateTime CreatedAt,
+        DateTime? ReadByTeacherAt);
+}

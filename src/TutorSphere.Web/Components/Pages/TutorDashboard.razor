@@ -131,20 +131,73 @@
     </div>
 </div>
 
+<div class="row g-4 mt-1">
+    <div class="col-12">
+        <div class="section-card">
+            <div class="section-card-header">
+                <h2>
+                    @L["TutorDashboard_ExpertRemarksTitle"]
+                    @if (_unreadRemarks > 0)
+                    {
+                        <span class="sidebar-badge ms-2">@_unreadRemarks</span>
+                    }
+                </h2>
+                <a href="tutor/expert-remarks" class="btn btn-sm btn-link">@L["Button_ViewAll"]</a>
+            </div>
+            @if (_remarksLoading)
+            {
+                <div class="ts-loading-state" style="padding: 1.5rem;">
+                    <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                    <span class="ms-2 text-muted">@L["Common_Loading"]</span>
+                </div>
+            }
+            else if (RecentRemarks.Count == 0)
+            {
+                <p class="ts-empty-inline px-3 py-3">@L["TutorDashboard_ExpertRemarksEmpty"]</p>
+            }
+            else
+            {
+                <ul class="activity-feed">
+                    @foreach (var r in RecentRemarks)
+                    {
+                        <li class="activity-item">
+                            <div class="activity-icon activity-icon--primary">
+                                <i class="bi bi-chat-left-text" aria-hidden="true"></i>
+                            </div>
+                            <div class="activity-content">
+                                <strong class="activity-title">@r.CategoryLabel</strong>
+                                <span class="activity-description">@r.Excerpt</span>
+                            </div>
+                            <span class="activity-time">@r.Time</span>
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+    </div>
+</div>
+
 @code {
     private record LessonItem(string Student, string Subject, string Time, string Initials, string Mode, string ModeClass);
     private record ActivityItem(string Title, string Description, string Time, string Icon, string IconVariant);
     private record DashboardDto(decimal MonthlyRevenue, int ActiveStudents, int ActiveSubscriptions, int UpcomingLessons, int PendingPayments);
+    private record RemarkItem(string CategoryLabel, string Excerpt, string Time);
+    private sealed record ExpertRemarkDto(
+        Guid Id, Guid TenantId, int Category, string Message, Guid? RelatedHomeworkId,
+        Guid? RelatedDocumentId, string AuthorUserId, string? AuthorName, DateTime CreatedAt, DateTime? ReadByTeacherAt);
 
     private bool _lessonsLoading = true;
+    private bool _remarksLoading = true;
     private decimal _monthlyRevenue;
     private int _activeStudents;
     private int _activeSubscriptions;
     private int _upcomingLessonsCount;
     private decimal _pendingPayments;
     private int _unreadMessages;
+    private int _unreadRemarks;
     private List<LessonItem> UpcomingLessons = [];
     private List<ActivityItem> RecentActivity = [];
+    private List<RemarkItem> RecentRemarks = [];
 
     private string DisplayName
     {
@@ -222,5 +275,28 @@
         }
         catch { /* empty until API available */ }
         finally { _lessonsLoading = false; }
+
+        try
+        {
+            var remarks = await Api.GetAsync<List<ExpertRemarkDto>>("api/tutor/expert-remarks") ?? [];
+            _unreadRemarks = remarks.Count(r => r.ReadByTeacherAt is null);
+            RecentRemarks = remarks
+                .OrderByDescending(r => r.CreatedAt)
+                .Take(5)
+                .Select(r => new RemarkItem(
+                    CategoryLabel(r.Category),
+                    r.Message.Length > 140 ? r.Message[..140] + "…" : r.Message,
+                    r.CreatedAt.ToLocalTime().ToString("dd/MM HH:mm")))
+                .ToList();
+        }
+        catch { /* empty until API available */ }
+        finally { _remarksLoading = false; }
     }
+
+    private string CategoryLabel(int category) => category switch
+    {
+        1 => L["ExpertTeachers_RemarkCategory_Activity"],
+        2 => L["ExpertTeachers_RemarkCategory_CourseMaterial"],
+        _ => L["ExpertTeachers_RemarkCategory_General"]
+    };
 }

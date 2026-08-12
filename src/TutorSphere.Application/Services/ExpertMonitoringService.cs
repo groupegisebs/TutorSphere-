@@ -32,7 +32,8 @@ public class ExpertMonitoringService(
 
         var tenants = db.Tenants
             .Where(t => t.ExpertApprovalStatus == ExpertApprovalStatus.Approved
-                        && t.ApprovedByExpertGroupId is Guid gid && groupIds.Contains(gid))
+                        && t.ApprovedByExpertGroupId.HasValue
+                        && groupIds.Contains(t.ApprovedByExpertGroupId.Value))
             .OrderBy(t => t.Name)
             .ToList();
         if (tenants.Count == 0)
