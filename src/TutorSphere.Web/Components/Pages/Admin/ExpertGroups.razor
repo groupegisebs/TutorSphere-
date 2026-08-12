@@ -1,6 +1,8 @@
 @page "/admin/expert-groups"
 @layout AdminLayout
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using TutorSphere.Web.Common
+@using TutorSphere.Web.Components.Shared
 @inject AdminService AdminSvc
 @inject AuthService Auth
 @inject ApiClient Api
@@ -58,9 +60,8 @@
                         <input class="form-control" @bind="_formPhone" />
                     </div>
                     <div class="col-md-6 mb-3">
-                        <label class="form-label cc-label-light" style="color:#f3f4f6">Code pays (ISO)</label>
-                        <input class="form-control" @bind="_formCountry" disabled="@_formInternational"
-                               placeholder="CA, FR, SN…" />
+                        <label class="form-label cc-label-light" style="color:#f3f4f6">Pays</label>
+                        <CountrySelect Value="_formCountry" ValueChanged="OnCountryChanged" Disabled="_formInternational" />
                     </div>
                     <div class="col-12 mb-3">
                         <div class="form-check">
@@ -148,9 +149,16 @@
                                         {
                                             <span class="cc-pill cc-pill-type">International</span>
                                         }
+                                        else if (!string.IsNullOrWhiteSpace(g.CountryCode))
+                                        {
+                                            <span class="cc-pill">
+                                                <span aria-hidden="true">@CountryCatalog.FlagEmoji(g.CountryCode)</span>
+                                                @(CountryCatalog.Find(g.CountryCode)?.Name ?? g.CountryCode)
+                                            </span>
+                                        }
                                         else
                                         {
-                                            <span class="cc-pill">@(g.CountryCode ?? "—")</span>
+                                            <span class="cc-pill">—</span>
                                         }
                                     </td>
                                     <td>
@@ -201,7 +209,16 @@
                                 {
                                     <tr>
                                         <td><strong>@p.SchoolName</strong></td>
-                                        <td>@(p.Country ?? "—")</td>
+                                        <td>
+                                            @if (!string.IsNullOrWhiteSpace(p.Country) && CountryCatalog.Find(p.Country) is { } pc)
+                                            {
+                                                <span aria-hidden="true">@pc.Flag</span> @pc.Name
+                                            }
+                                            else
+                                            {
+                                                @(p.Country ?? "—")
+                                            }
+                                        </td>
                                         <td>@(p.AssignedExpertGroupName ?? "—")</td>
                                         <td>@p.DocumentCount</td>
                                         <td>@p.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</td>
@@ -314,6 +331,8 @@
         _formInternational = e.Value is bool b && b || string.Equals(e.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
         if (_formInternational) _formCountry = null;
     }
+
+    private void OnCountryChanged(string? code) => _formCountry = code;
 
     private async Task SaveAsync()
     {
