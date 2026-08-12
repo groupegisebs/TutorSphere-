@@ -59,4 +59,10 @@ public interface IPaymentGatewayService
     Task<MobileMoneyChargeResponse> CreateMobileMoneyChargeAsync(
         CreateMobileMoneyChargeRequest request,
         CancellationToken ct = default);
+
+    Task<AfricanTaxQuoteDto> QuoteAfricanTaxAsync(
+        decimal amountExclusive,
+        string currency,
+        string countryCode,
+        CancellationToken ct = default);
 }

@@ -13,7 +13,16 @@
                 </div>
                 <div class="modal-body">
                     <p class="mb-3">
-                        <strong class="text-muted">@FormatAmount()</strong>
+                        @if (_taxQuote is not null && PaymentMethodCodes.IsMobileMoney(_method))
+                        {
+                            <span class="d-block text-muted small">HT : @_taxQuote.AmountExclusive.ToString("N0") @_taxQuote.Currency</span>
+                            <span class="d-block text-muted small">@_taxQuote.TaxName (@_taxQuote.TaxRatePercent.ToString("0.##") %) : @_taxQuote.TaxAmount.ToString("N0") @_taxQuote.Currency</span>
+                            <strong>TTC : @_taxQuote.AmountInclusive.ToString("N0") @_taxQuote.Currency</strong>
+                        }
+                        else
+                        {
+                            <strong class="text-muted">@FormatAmount()</strong>
+                        }
                     </p>
 
                     @if (!string.IsNullOrEmpty(_error))
@@ -175,6 +184,8 @@
     private string? _instruction;
     private string? _ussdHint;
     private string _idempotencyKey = Guid.NewGuid().ToString("N");
+    private string _billingCountry = "CM";
+    private TaxQuoteVm? _taxQuote;
 
     private bool ShowMobileMoney =>
         !IsPlatformLicense
@@ -186,11 +197,29 @@
             ? $"{Amount:N0} {Currency}"
             : $"{Amount:N2} {Currency}";
 
-    private Task SelectMethod(string method)
+    private async Task SelectMethod(string method)
     {
         _method = method;
         _error = null;
-        return Task.CompletedTask;
+        if (PaymentMethodCodes.IsMobileMoney(method))
+            await RefreshTaxQuoteAsync();
+        else
+            _taxQuote = null;
+    }
+
+    private async Task RefreshTaxQuoteAsync()
+    {
+        try
+        {
+            var url =
+                $"api/payments/tax/africa/quote?amountExclusive={Amount.ToString(System.Globalization.CultureInfo.InvariantCulture)}&currency={Uri.EscapeDataString(Currency)}&countryCode={Uri.EscapeDataString(_billingCountry)}";
+            var result = await Api.GetWithErrorAsync<TaxQuoteVm>(url);
+            _taxQuote = result.Value;
+        }
+        catch
+        {
+            _taxQuote = null;
+        }
     }
 
     private string SelectedClass(string method) =>
@@ -251,6 +280,7 @@
         _instruction = null;
         _ussdHint = null;
         _idempotencyKey = Guid.NewGuid().ToString("N");
+        _taxQuote = null;
     }
 
     private Task RetryAsync()
@@ -340,7 +370,8 @@
                 subscriptionId = SubscriptionId.Value,
                 channel = _method,
                 phoneNumber = "+237" + digits,
-                idempotencyKey = _idempotencyKey
+                idempotencyKey = _idempotencyKey,
+                billingCountryCode = _billingCountry
             };
 
             var result = await Api.PostWithErrorAsync<MobileMoneyVm>("api/payments/mobile-money", body);
@@ -442,6 +473,20 @@
         string PaymentCode,
         string Status,
         string? Instruction,
-        string? UssdHint);
+        string? UssdHint,
+        decimal Amount,
+        decimal AmountExclusive,
+        decimal TaxAmount,
+        decimal TaxRatePercent,
+        string? TaxName);
     private sealed record StatusVm(string? GatewayStatus, string? LocalStatus);
+    private sealed record TaxQuoteVm(
+        string CountryCode,
+        string CountryName,
+        string TaxName,
+        decimal TaxRatePercent,
+        decimal AmountExclusive,
+        decimal TaxAmount,
+        decimal AmountInclusive,
+        string Currency);
 }

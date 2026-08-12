@@ -874,9 +874,12 @@ internal sealed class PayGatewayService : IPaymentGatewayService
 
         var customer = await CreateOrGetParentCustomerAsync(parent.Id, ct);
         var commissionPercent = ClampCommission(tenant.PlatformCommissionPercent);
-        var amount = offering.Price; // montant serveur uniquement (BR-002)
-        var platformFee = Math.Round(amount * commissionPercent / 100m, 2, MidpointRounding.AwayFromZero);
-        var tutorAmount = amount - platformFee;
+        var amountExclusive = offering.Price; // HT catalogue (BR-002)
+        var platformFee = Math.Round(amountExclusive * commissionPercent / 100m, 2, MidpointRounding.AwayFromZero);
+        var tutorAmount = amountExclusive - platformFee;
+        var billingCountry = string.IsNullOrWhiteSpace(request.BillingCountryCode)
+            ? "CM"
+            : request.BillingCountryCode.Trim().ToUpperInvariant();
 
         var productCode = ToProductCode(offering.Id);
         var planCode = ResolvePlanCode(offering.DurationDays);
@@ -886,7 +889,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
         {
             TenantId = subscription.TenantId,
             SubscriptionId = subscription.Id,
-            Amount = amount,
+            Amount = amountExclusive, // mis à jour au TTC après charge
             PlatformFee = platformFee,
             TutorAmount = tutorAmount,
             Currency = offering.Currency,
@@ -903,7 +906,8 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             subscription_id = subscription.Id,
             tenant_id = tenant.Id,
             commission_percent = commissionPercent.ToString("0.##"),
-            payment_method = channel
+            payment_method = channel,
+            billing_country = billingCountry
         });
 
         var idempotencyKey = string.IsNullOrWhiteSpace(request.IdempotencyKey)
@@ -919,19 +923,25 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             planCode,
             channel.ToUpperInvariant(),
             request.PhoneNumber,
+            billingCountry,
             metadata,
             $"Abonnement {offering.Title}"), idempotencyKey, ct);
 
         payment.StripePaymentIntentId = charge.PaymentCode;
         payment.PhoneMasked = charge.PhoneMasked;
         payment.Channel = charge.Channel;
+        payment.Amount = charge.Amount; // TTC réellement encaissé
         await _db.SaveChangesAsync(ct);
 
         _logger.LogInformation(
-            "Charge Mobile Money créée pour l'abonnement {SubscriptionId} (paymentCode={PaymentCode}, channel={Channel})",
+            "Charge Mobile Money créée pour l'abonnement {SubscriptionId} (paymentCode={PaymentCode}, channel={Channel}, HT={Exclusive}, Tax={Tax}, TTC={Inclusive}, country={Country})",
             subscription.Id,
             charge.PaymentCode,
-            charge.Channel);
+            charge.Channel,
+            charge.AmountExclusive,
+            charge.TaxAmount,
+            charge.Amount,
+            charge.BillingCountryCode);
 
         return new MobileMoneyChargeResponse(
             payment.Id,
@@ -944,6 +954,31 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             charge.ProviderReference,
             charge.ExpiresAtUtc,
             charge.Instruction,
-            charge.UssdHint);
+            charge.UssdHint,
+            charge.AmountExclusive,
+            charge.TaxAmount,
+            charge.TaxRatePercent,
+            charge.TaxName,
+            charge.BillingCountryCode);
+    }
+
+    public async Task<AfricanTaxQuoteDto> QuoteAfricanTaxAsync(
+        decimal amountExclusive,
+        string currency,
+        string countryCode,
+        CancellationToken ct = default)
+    {
+        var quote = await _gateway.QuoteAfricanTaxAsync(
+            new GatewayAfricanTaxQuoteRequest(amountExclusive, currency, countryCode),
+            ct);
+        return new AfricanTaxQuoteDto(
+            quote.CountryCode,
+            quote.CountryName,
+            quote.TaxName,
+            quote.TaxRatePercent,
+            quote.AmountExclusive,
+            quote.TaxAmount,
+            quote.AmountInclusive,
+            quote.Currency);
     }
 }

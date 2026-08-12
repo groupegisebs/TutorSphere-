@@ -208,4 +208,23 @@ public class PaymentsController : ControllerBase
             return BadRequest(new { error = ex.Message });
         }
     }
+
+    /// <summary>Devis taxe Afrique (HT → TTC) pour le pays du payeur.</summary>
+    [HttpGet("tax/africa/quote")]
+    [Authorize(Roles = $"{UserRoles.Parent},{UserRoles.Student},{UserRoles.Tutor},{UserRoles.SuperAdmin}")]
+    public async Task<ActionResult<AfricanTaxQuoteDto>> QuoteAfricanTax(
+        [FromQuery] decimal amountExclusive,
+        [FromQuery] string currency = "XAF",
+        [FromQuery] string countryCode = "CM",
+        CancellationToken ct = default)
+    {
+        try
+        {
+            return Ok(await _paymentGateway.QuoteAfricanTaxAsync(amountExclusive, currency, countryCode, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
 }

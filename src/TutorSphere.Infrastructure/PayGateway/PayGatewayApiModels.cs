@@ -175,6 +175,7 @@ internal sealed record GatewayMobileMoneyChargeRequest(
     string PlanCode,
     string Channel,
     string PhoneNumber,
+    string? BillingCountryCode = null,
     string? MetadataJson = null,
     string? Description = null);
 
@@ -188,7 +189,12 @@ internal sealed record GatewayMobileMoneyChargeResponse(
     string? ProviderReference,
     DateTime? ExpiresAtUtc,
     string? Instruction,
-    string? UssdHint);
+    string? UssdHint,
+    decimal AmountExclusive = 0,
+    decimal TaxAmount = 0,
+    decimal TaxRatePercent = 0,
+    string? TaxName = null,
+    string? BillingCountryCode = null);
 
 internal sealed record GatewayMobileMoneyStatusResponse(
     string PaymentCode,
@@ -202,4 +208,31 @@ internal sealed record GatewayMobileMoneyStatusResponse(
     DateTime? PaidAt,
     DateTime? ExpiresAtUtc,
     string? FailureCode,
-    string? FailureReason);
+    string? FailureReason,
+    decimal? AmountExclusive = null,
+    decimal? TaxAmount = null,
+    decimal? TaxRatePercent = null,
+    string? TaxName = null,
+    string? BillingCountryCode = null);
+
+internal sealed record GatewayAfricanTaxQuoteRequest(
+    decimal AmountExclusive,
+    string Currency,
+    string CountryCode);
+
+internal sealed record GatewayAfricanTaxQuoteResponse(
+    string CountryCode,
+    string CountryName,
+    string TaxName,
+    decimal TaxRatePercent,
+    decimal AmountExclusive,
+    decimal TaxAmount,
+    decimal AmountInclusive,
+    string Currency);
+
+internal sealed record AfricanTaxRateDtoLite(
+    string CountryCode,
+    string CountryName,
+    string TaxName,
+    decimal RatePercent,
+    string? Notes);

@@ -34,12 +34,15 @@ public record CreateMobileMoneyChargeRequest(
     Guid SubscriptionId,
     string Channel,
     string PhoneNumber,
-    string? IdempotencyKey = null);
+    string? IdempotencyKey = null,
+    /// <summary>Code ISO pays du payeur (ex. CM). Défaut CM pour Mobile Money Cameroun.</summary>
+    string? BillingCountryCode = null);
 
 public record MobileMoneyChargeResponse(
     Guid PaymentId,
     string PaymentCode,
     string Status,
+    /// <summary>Montant TTC encaissé.</summary>
     decimal Amount,
     string Currency,
     string Channel,
@@ -47,7 +50,22 @@ public record MobileMoneyChargeResponse(
     string? ProviderReference,
     DateTime? ExpiresAtUtc,
     string? Instruction,
-    string? UssdHint);
+    string? UssdHint,
+    decimal AmountExclusive = 0,
+    decimal TaxAmount = 0,
+    decimal TaxRatePercent = 0,
+    string? TaxName = null,
+    string? BillingCountryCode = null);
+
+public record AfricanTaxQuoteDto(
+    string CountryCode,
+    string CountryName,
+    string TaxName,
+    decimal TaxRatePercent,
+    decimal AmountExclusive,
+    decimal TaxAmount,
+    decimal AmountInclusive,
+    string Currency);
 
 public record ParentCustomerResponse(Guid ParentProfileId, string CustomerCode);
 

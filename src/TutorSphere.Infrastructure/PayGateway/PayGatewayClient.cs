@@ -179,6 +179,20 @@ internal sealed class PayGatewayClient
         return await ReadSuccessAsync<GatewayMobileMoneyStatusResponse>(response, ct);
     }
 
+    public async Task<GatewayAfricanTaxQuoteResponse> QuoteAfricanTaxAsync(
+        GatewayAfricanTaxQuoteRequest request,
+        CancellationToken ct = default)
+    {
+        using var response = await SendAsync(HttpMethod.Post, "api/tax/africa/quote", request, ct);
+        return await ReadSuccessAsync<GatewayAfricanTaxQuoteResponse>(response, ct);
+    }
+
+    public async Task<IReadOnlyList<AfricanTaxRateDtoLite>> ListAfricanTaxRatesAsync(CancellationToken ct = default)
+    {
+        using var response = await SendAsync(HttpMethod.Get, "api/tax/africa/rates", null, ct);
+        return await ReadSuccessAsync<IReadOnlyList<AfricanTaxRateDtoLite>>(response, ct) ?? [];
+    }
+
     private async Task<HttpResponseMessage> SendAsync(
         HttpMethod method,
         string path,
