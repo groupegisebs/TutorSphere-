@@ -84,8 +84,8 @@ public sealed class AdminService
             isActive
         });
 
-    public async Task<bool> DeleteExpertGroupAsync(Guid id)
-        => await _api.DeleteAsync($"api/admin/expert-groups/{id}");
+    public async Task<ApiResult<bool>> DeleteExpertGroupAsync(Guid id)
+        => await _api.DeleteWithErrorAsync($"api/admin/expert-groups/{id}");
 
     public async Task<List<ExpertMemberItem>> GetExpertGroupMembersAsync(Guid groupId)
         => await _api.GetAsync<List<ExpertMemberItem>>($"api/admin/expert-groups/{groupId}/members") ?? [];

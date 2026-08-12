@@ -89,6 +89,17 @@ public class ExpertGroupsController : ControllerBase
         {
             return BadRequest(new { error = ex.Message });
         }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException ex)
+        {
+            // Contrainte FK inattendue (ex. nouvelle relation ajoutée sans ON DELETE CASCADE/SET NULL) :
+            // on log les détails, mais on renvoie un message exploitable côté admin plutôt qu'un 500 muet.
+            _logger.LogError(ex, "Échec suppression groupe d'experts {GroupId} : contrainte base de données.", id);
+            return BadRequest(new
+            {
+                error = "Impossible de supprimer ce groupe : des données (enseignants, invitations, écoles…) y sont encore liées. " +
+                         "Vous pouvez le désactiver à la place."
+            });
+        }
     }
 
     [HttpPost("{id:guid}/logo")]

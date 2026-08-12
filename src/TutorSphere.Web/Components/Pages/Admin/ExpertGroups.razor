@@ -8,6 +8,7 @@
 @inject ApiClient Api
 @inject IConfiguration Config
 @inject NavigationManager Navigation
+@inject IJSRuntime Js
 
 <PageTitle>Groupes d'experts — Control Center</PageTitle>
 
@@ -407,9 +408,18 @@
 
     private async Task DeleteAsync(ExpertGroupItem g)
     {
+        var confirmed = await Js.InvokeAsync<bool>(
+            "confirm", $"Supprimer définitivement le groupe « {g.Name} » ? Cette action est irréversible.");
+        if (!confirmed) return;
+
         _error = null;
-        var ok = await AdminSvc.DeleteExpertGroupAsync(g.Id);
-        if (!ok) { _error = "Suppression impossible."; return; }
+        _flash = null;
+        var result = await AdminSvc.DeleteExpertGroupAsync(g.Id);
+        if (!result.IsSuccess)
+        {
+            _error = result.Error ?? "Suppression impossible.";
+            return;
+        }
         _flash = "Groupe supprimé.";
         await ReloadAsync();
     }
