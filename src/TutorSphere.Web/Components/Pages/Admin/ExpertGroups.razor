@@ -52,6 +52,10 @@
                         <input class="form-control" @bind="_formName" />
                     </div>
                     <div class="col-md-6 mb-3">
+                        <label class="form-label cc-label-light" style="color:#f3f4f6">Premier contact à appeler</label>
+                        <input class="form-control" placeholder="Nom de la personne à contacter" @bind="_formContactName" />
+                    </div>
+                    <div class="col-md-6 mb-3">
                         <label class="form-label cc-label-light" style="color:#f3f4f6">E-mail contact</label>
                         <input class="form-control" @bind="_formEmail" />
                     </div>
@@ -93,9 +97,17 @@
                             }
                         </div>
                     }
+                    else
+                    {
+                        <div class="col-12 mb-3">
+                            <div class="form-text cc-label-light" style="color:#d1d5db">
+                                <i class="bi bi-info-circle"></i> Enregistrez d'abord le groupe pour pouvoir ajouter son logo.
+                            </div>
+                        </div>
+                    }
                 </div>
                 <div class="d-flex gap-2 justify-content-end">
-                    <button type="button" class="cc-btn" @onclick="CloseForm">Annuler</button>
+                    <button type="button" class="cc-btn" @onclick="CloseForm">@(_editId is null ? "Annuler" : "Fermer")</button>
                     <button type="button" class="cc-btn cc-btn-primary" disabled="@_saving" @onclick="SaveAsync">
                         @if (_saving) { <span class="spinner-border spinner-border-sm"></span> }
                         Enregistrer
@@ -162,6 +174,10 @@
                                         }
                                     </td>
                                     <td>
+                                        @if (!string.IsNullOrWhiteSpace(g.ContactName))
+                                        {
+                                            <div><strong>@g.ContactName</strong></div>
+                                        }
                                         <div>@(g.ContactEmail ?? "—")</div>
                                         <div class="small text-muted">@(g.ContactPhone ?? "")</div>
                                     </td>
@@ -245,6 +261,7 @@
     private string? _error;
     private string? _formError;
     private string _formName = "";
+    private string? _formContactName;
     private string? _formEmail;
     private string? _formPhone;
     private string? _formCountry;
@@ -303,7 +320,7 @@
     {
         _editId = null;
         _formName = "";
-        _formEmail = _formPhone = _formCountry = _formLogo = null;
+        _formContactName = _formEmail = _formPhone = _formCountry = _formLogo = null;
         _formInternational = !_groups.Any(g => g.IsInternational);
         _formActive = true;
         _formError = null;
@@ -314,6 +331,7 @@
     {
         _editId = g.Id;
         _formName = g.Name;
+        _formContactName = g.ContactName;
         _formEmail = g.ContactEmail;
         _formPhone = g.ContactPhone;
         _formCountry = g.CountryCode;
@@ -343,18 +361,23 @@
             if (_editId is null)
             {
                 var created = await AdminSvc.CreateExpertGroupAsync(
-                    _formName, _formEmail, _formPhone, _formCountry, _formInternational);
+                    _formName, _formContactName, _formEmail, _formPhone, _formCountry, _formInternational);
                 if (created is null) { _formError = "Échec de création."; return; }
-                _flash = "Groupe créé.";
+                // On reste sur le formulaire (passé en mode édition) pour permettre
+                // d'ajouter tout de suite le logo, sans repasser par "Modifier".
+                _editId = created.Id;
+                _formLogo = created.LogoUrl;
+                _formActive = created.IsActive;
+                _flash = "Groupe créé. Vous pouvez maintenant ajouter un logo.";
             }
             else
             {
                 var updated = await AdminSvc.UpdateExpertGroupAsync(
-                    _editId.Value, _formName, _formEmail, _formPhone, _formLogo, _formActive);
+                    _editId.Value, _formName, _formContactName, _formEmail, _formPhone, _formLogo, _formActive);
                 if (updated is null) { _formError = "Échec de mise à jour."; return; }
                 _flash = "Groupe mis à jour.";
+                _showForm = false;
             }
-            _showForm = false;
             await ReloadAsync();
         }
         catch (Exception ex) { _formError = ex.Message; }

@@ -176,6 +176,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
         {
             e.Property(g => g.Name).HasMaxLength(200).IsRequired();
             e.Property(g => g.LogoUrl).HasMaxLength(500);
+            e.Property(g => g.ContactName).HasMaxLength(200);
             e.Property(g => g.ContactEmail).HasMaxLength(256);
             e.Property(g => g.ContactPhone).HasMaxLength(50);
             e.Property(g => g.CountryCode).HasMaxLength(8);

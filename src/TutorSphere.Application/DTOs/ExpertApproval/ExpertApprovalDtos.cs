@@ -6,6 +6,7 @@ public record ExpertGroupDto(
     Guid Id,
     string Name,
     string? LogoUrl,
+    string? ContactName,
     string? ContactEmail,
     string? ContactPhone,
     string? CountryCode,
@@ -30,14 +31,16 @@ public record CreateExpertGroupRequest(
     string? ContactPhone,
     string? CountryCode,
     bool IsInternational,
-    string? LogoUrl = null);
+    string? LogoUrl = null,
+    string? ContactName = null);
 
 public record UpdateExpertGroupRequest(
     string Name,
     string? ContactEmail,
     string? ContactPhone,
     string? LogoUrl,
-    bool IsActive);
+    bool IsActive,
+    string? ContactName = null);
 
 public record AddExpertMemberRequest(string UserId);
 

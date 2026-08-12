@@ -12,6 +12,9 @@ public class ExpertGroup : BaseEntity
 {
     public string Name { get; set; } = string.Empty;
     public string? LogoUrl { get; set; }
+
+    /// <summary>Nom du premier contact à appeler pour ce groupe (ex. responsable du pays).</summary>
+    public string? ContactName { get; set; }
     public string? ContactEmail { get; set; }
     public string? ContactPhone { get; set; }
 

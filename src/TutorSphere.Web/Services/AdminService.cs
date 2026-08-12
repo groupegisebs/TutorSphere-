@@ -61,10 +61,11 @@ public sealed class AdminService
         => await _api.GetAsync<List<ExpertGroupItem>>("api/admin/expert-groups") ?? [];
 
     public async Task<ExpertGroupItem?> CreateExpertGroupAsync(
-        string name, string? contactEmail, string? contactPhone, string? countryCode, bool isInternational)
+        string name, string? contactName, string? contactEmail, string? contactPhone, string? countryCode, bool isInternational)
         => await _api.PostAsync<ExpertGroupItem>("api/admin/expert-groups", new
         {
             name,
+            contactName,
             contactEmail,
             contactPhone,
             countryCode,
@@ -72,10 +73,11 @@ public sealed class AdminService
         });
 
     public async Task<ExpertGroupItem?> UpdateExpertGroupAsync(
-        Guid id, string name, string? contactEmail, string? contactPhone, string? logoUrl, bool isActive)
+        Guid id, string name, string? contactName, string? contactEmail, string? contactPhone, string? logoUrl, bool isActive)
         => await _api.PutAsync<ExpertGroupItem>($"api/admin/expert-groups/{id}", new
         {
             name,
+            contactName,
             contactEmail,
             contactPhone,
             logoUrl,
@@ -109,6 +111,7 @@ public sealed record ExpertGroupItem(
     Guid Id,
     string Name,
     string? LogoUrl,
+    string? ContactName,
     string? ContactEmail,
     string? ContactPhone,
     string? CountryCode,

@@ -77,6 +77,7 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
         {
             Name = name,
             LogoUrl = TrimOrNull(request.LogoUrl),
+            ContactName = TrimOrNull(request.ContactName),
             ContactEmail = TrimOrNull(request.ContactEmail),
             ContactPhone = TrimOrNull(request.ContactPhone),
             CountryCode = country,
@@ -98,6 +99,7 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
             throw new InvalidOperationException("Le nom du groupe est requis.");
 
         entity.Name = name;
+        entity.ContactName = TrimOrNull(request.ContactName);
         entity.ContactEmail = TrimOrNull(request.ContactEmail);
         entity.ContactPhone = TrimOrNull(request.ContactPhone);
         entity.LogoUrl = TrimOrNull(request.LogoUrl);
@@ -179,7 +181,7 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
     }
 
     private static ExpertGroupDto Map(ExpertGroup g, int memberCount) =>
-        new(g.Id, g.Name, g.LogoUrl, g.ContactEmail, g.ContactPhone,
+        new(g.Id, g.Name, g.LogoUrl, g.ContactName, g.ContactEmail, g.ContactPhone,
             g.CountryCode, g.IsInternational, g.IsActive, memberCount, g.CreatedAt);
 
     private static string? NormalizeCountry(string? code)

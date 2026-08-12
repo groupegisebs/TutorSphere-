@@ -111,7 +111,7 @@ public class ExpertGroupsController : ControllerBase
 
         var url = $"/uploads/{safeFileName}";
         var updated = await _groups.UpdateAsync(id, new UpdateExpertGroupRequest(
-            group.Name, group.ContactEmail, group.ContactPhone, url, group.IsActive), ct);
+            group.Name, group.ContactEmail, group.ContactPhone, url, group.IsActive, group.ContactName), ct);
         return Ok(new { logoUrl = updated.LogoUrl });
     }
 
