@@ -64,7 +64,6 @@ public class PaymentsController : ControllerBase
 
             // Lien de paiement (INVOICE_READY) — le reçu part uniquement après succès.
             var payLink = response.CheckoutUrl
-                ?? response.RedirectUrl
                 ?? $"{Request.Scheme}://{Request.Host}/parent/subscriptions?sub={subscriptionId}";
             await _billingEmail.NotifyPaymentLinkReadyAsync(
                 subscriptionId,
