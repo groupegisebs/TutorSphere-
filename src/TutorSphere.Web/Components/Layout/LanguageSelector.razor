@@ -1,16 +1,21 @@
-@* Pas de @rendermode : hérite du parent (évite circuit crash si imbriqué dans une page InteractiveServer). *@
+@* Pas de @rendermode : hérite du parent. Beaucoup de layouts (PublicLayout, etc.) ne
+   sont pas @rendermode InteractiveServer, donc ce composant peut rendre en SSR statique
+   pur — pas de circuit pour recevoir un @onchange Blazor. D'où le <form> HTML natif
+   ci-dessous : un GET classique vers /culture/set, qui fonctionne dans tous les cas. *@
 @inject IStringLocalizer<SharedResources> L
 
-<div class="language-selector">
+<form method="get" action="culture/set" class="language-selector" data-enhance-nav="false">
+    <input type="hidden" name="redirectUri" value="@RedirectPath" />
     <i class="bi bi-globe2 language-selector-icon" aria-hidden="true"></i>
     <label class="language-selector-label visually-hidden" for="culture-select">@L["Language_Select"]</label>
     <select id="culture-select"
+            name="culture"
             class="form-select form-select-sm culture-select"
             value="@CurrentCulture"
-            @onchange="OnCultureChanged">
+            onchange="this.form.submit()">
         @foreach (var language in Languages)
         {
             <option value="@language.Code">@language.Flag @language.Label</option>
         }
     </select>
-</div>
+</form>

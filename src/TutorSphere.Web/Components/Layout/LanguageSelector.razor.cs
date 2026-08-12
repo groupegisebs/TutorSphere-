@@ -29,6 +29,14 @@ public partial class LanguageSelector : ComponentBase
         new(SupportedLanguageCodes.Arabic, "العربية", "🇸🇦")
     ];
 
+    // Absolute path (+ query) of the current page, used as the ?redirectUri= for /culture/set.
+    // Many layouts that host this component (PublicLayout, etc.) are NOT @rendermode
+    // InteractiveServer, so this component itself renders statically — there is no
+    // live circuit to dispatch a C# @onchange event to. The <select> below is therefore
+    // a plain HTML <form method="get"> with a native onchange="this.form.submit()",
+    // which works identically whether the surrounding render is static or interactive.
+    private string RedirectPath { get; set; } = "/";
+
     protected override void OnInitialized() => SyncCurrentCulture();
 
     protected override void OnParametersSet() => SyncCurrentCulture();
@@ -38,23 +46,12 @@ public partial class LanguageSelector : ComponentBase
         CultureRequestHelper.ApplyForUi(HttpContextAccessor.HttpContext, CircuitCulture);
         CurrentCulture = SupportedLanguageCodes.Normalize(
             CultureRequestHelper.ResolveForUi(HttpContextAccessor.HttpContext, CircuitCulture).Name);
-    }
-
-    private void OnCultureChanged(ChangeEventArgs e)
-    {
-        var culture = SupportedLanguageCodes.Normalize(e.Value?.ToString());
-        if (culture == CurrentCulture)
-            return;
 
         var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
         var redirectPath = uri.PathAndQuery;
-        if (string.IsNullOrWhiteSpace(redirectPath) || !redirectPath.StartsWith('/'))
-            redirectPath = "/";
-
-        // Full HTTP round-trip so UseRequestLocalization applies the new cookie.
-        Navigation.NavigateTo(
-            $"culture/set?culture={Uri.EscapeDataString(culture)}&redirectUri={Uri.EscapeDataString(redirectPath)}",
-            forceLoad: true);
+        RedirectPath = string.IsNullOrWhiteSpace(redirectPath) || !redirectPath.StartsWith('/')
+            ? "/"
+            : redirectPath;
     }
 
     protected internal sealed record LanguageOption(string Code, string Label, string Flag);
