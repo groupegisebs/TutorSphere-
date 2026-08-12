@@ -139,6 +139,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             e.Property(p => p.Amount).HasPrecision(18, 2);
             e.Property(p => p.PlatformFee).HasPrecision(18, 2);
             e.Property(p => p.TutorAmount).HasPrecision(18, 2);
+            e.Property(p => p.Channel).HasMaxLength(20);
+            e.Property(p => p.PhoneMasked).HasMaxLength(40);
         });
 
         builder.Entity<TutorPayout>(e =>

@@ -125,6 +125,10 @@ internal sealed class PayGatewayService : IPaymentGatewayService
         await EnsureCatalogItemAsync(offering, productCode, planCode, ct);
 
         var paymentMethod = PaymentMethodCodes.Normalize(request.PaymentMethod);
+        if (PaymentMethodCodes.IsMobileMoney(paymentMethod))
+            throw new InvalidOperationException(
+                "Utilisez POST /api/payments/mobile-money pour Orange Money / MTN MoMo.");
+
         var payment = new Payment
         {
             TenantId = subscription.TenantId,
@@ -198,6 +202,35 @@ internal sealed class PayGatewayService : IPaymentGatewayService
 
         if (string.IsNullOrEmpty(payment.StripePaymentIntentId))
             throw new InvalidOperationException("Aucun code de paiement passerelle associé.");
+
+        // Mobile Money : rafraîchir via endpoint dédié (poll fournisseur) avant lecture générique.
+        if (!string.IsNullOrWhiteSpace(payment.Channel))
+        {
+            var mmStatus = await _gateway.GetMobileMoneyStatusAsync(payment.StripePaymentIntentId, ct);
+            if (mmStatus is not null)
+            {
+                var mappedMm = new GatewayPaymentResponse(
+                    mmStatus.PaymentCode,
+                    mmStatus.Status,
+                    mmStatus.Amount,
+                    mmStatus.Currency,
+                    "",
+                    "",
+                    "",
+                    DateTime.UtcNow,
+                    mmStatus.PaidAt,
+                    mmStatus.FailureReason,
+                    null,
+                    null);
+                await ApplyGatewayPaymentStatusAsync(payment, mappedMm, ct);
+                return new PaymentStatusResponse(
+                    payment.Id,
+                    mmStatus.PaymentCode,
+                    mmStatus.Status,
+                    payment.Status.ToString(),
+                    payment.CompletedAt);
+            }
+        }
 
         var gatewayPayment = await _gateway.GetPaymentAsync(payment.StripePaymentIntentId, ct)
             ?? throw new InvalidOperationException("Paiement introuvable dans la passerelle.");
@@ -325,6 +358,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
         string planCode,
         CancellationToken ct)
     {
+        var isXaf = offering.Currency.Equals("XAF", StringComparison.OrdinalIgnoreCase);
         await _gateway.CreateCatalogItemAsync(new GatewayCreateCatalogItemRequest(
             productCode,
             offering.Title,
@@ -334,7 +368,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             offering.Price,
             offering.Currency.ToLowerInvariant(),
             ResolveBillingInterval(offering.DurationDays),
-            SyncToStripe: true), ct);
+            SyncToStripe: !isXaf), ct);
 
         _logger.LogInformation(
             "Offre {OfferingId} synchronisée vers Pay Gateway/Stripe ({ProductCode}/{PlanCode}, {Amount} {Currency})",
@@ -516,8 +550,9 @@ internal sealed class PayGatewayService : IPaymentGatewayService
         gatewayStatus.ToUpperInvariant() switch
         {
             "SUCCEEDED" => PaymentStatus.Completed,
-            "FAILED" or "CANCELLED" => PaymentStatus.Failed,
-            "REFUNDED" => PaymentStatus.Refunded,
+            "FAILED" or "CANCELLED" or "EXPIRED" => PaymentStatus.Failed,
+            "REFUNDED" or "PARTIALLYREFUNDED" => PaymentStatus.Refunded,
+            // PendingCustomerConfirmation / Processing / RequiresReview → Pending local
             _ => PaymentStatus.Pending
         };
 
@@ -804,5 +839,111 @@ internal sealed class PayGatewayService : IPaymentGatewayService
 
         var separator = url.Contains('?', StringComparison.Ordinal) ? "&" : "?";
         return $"{url}{separator}{Uri.EscapeDataString(key)}={Uri.EscapeDataString(value)}";
+    }
+
+    public async Task<MobileMoneyChargeResponse> CreateMobileMoneyChargeAsync(
+        CreateMobileMoneyChargeRequest request,
+        CancellationToken ct = default)
+    {
+        var channel = PaymentMethodCodes.Normalize(request.Channel);
+        if (!PaymentMethodCodes.IsMobileMoney(channel))
+            throw new InvalidOperationException("Canal invalide. Utilisez ORANGE ou MTN.");
+
+        var subscription = await _db.StudentSubscriptionsForAnyTenant
+            .FirstOrDefaultAsync(s => s.Id == request.SubscriptionId, ct)
+            ?? throw new InvalidOperationException("Abonnement introuvable.");
+
+        var offering = await _db.SubscriptionOfferingsForAnyTenant
+            .FirstOrDefaultAsync(o => o.Id == subscription.OfferingId, ct)
+            ?? throw new InvalidOperationException("Offre d'abonnement introuvable.");
+
+        if (!offering.Currency.Equals("XAF", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Le paiement Mobile Money Cameroun exige une offre en XAF.");
+
+        EnsureSubscriptionPayable(subscription, offering);
+
+        var student = await _db.StudentsForAnyTenant
+            .FirstOrDefaultAsync(s => s.Id == subscription.StudentId, ct)
+            ?? throw new InvalidOperationException("Étudiant introuvable.");
+
+        var tenant = await _db.Tenants.FirstOrDefaultAsync(t => t.Id == subscription.TenantId, ct)
+            ?? throw new InvalidOperationException("Tuteur introuvable.");
+
+        var parent = await _db.ParentProfilesForAnyTenant.FirstOrDefaultAsync(p => p.Id == student.ParentProfileId, ct)
+            ?? throw new InvalidOperationException("Profil parent introuvable.");
+
+        var customer = await CreateOrGetParentCustomerAsync(parent.Id, ct);
+        var commissionPercent = ClampCommission(tenant.PlatformCommissionPercent);
+        var amount = offering.Price; // montant serveur uniquement (BR-002)
+        var platformFee = Math.Round(amount * commissionPercent / 100m, 2, MidpointRounding.AwayFromZero);
+        var tutorAmount = amount - platformFee;
+
+        var productCode = ToProductCode(offering.Id);
+        var planCode = ResolvePlanCode(offering.DurationDays);
+        await EnsureCatalogItemAsync(offering, productCode, planCode, ct);
+
+        var payment = new Payment
+        {
+            TenantId = subscription.TenantId,
+            SubscriptionId = subscription.Id,
+            Amount = amount,
+            PlatformFee = platformFee,
+            TutorAmount = tutorAmount,
+            Currency = offering.Currency,
+            Status = PaymentStatus.Pending,
+            Channel = channel.ToUpperInvariant()
+        };
+        _db.Add(payment);
+        await _db.SaveChangesAsync(ct);
+
+        var fullName = $"{parent.FirstName} {parent.LastName}".Trim();
+        var metadata = JsonSerializer.Serialize(new
+        {
+            payment_id = payment.Id,
+            subscription_id = subscription.Id,
+            tenant_id = tenant.Id,
+            commission_percent = commissionPercent.ToString("0.##"),
+            payment_method = channel
+        });
+
+        var idempotencyKey = string.IsNullOrWhiteSpace(request.IdempotencyKey)
+            ? $"mm-{payment.Id:N}"
+            : request.IdempotencyKey.Trim();
+
+        var charge = await _gateway.ChargeMobileMoneyAsync(new GatewayMobileMoneyChargeRequest(
+            customer.CustomerCode,
+            parent.Email,
+            fullName,
+            parent.UserId,
+            productCode,
+            planCode,
+            channel.ToUpperInvariant(),
+            request.PhoneNumber,
+            metadata,
+            $"Abonnement {offering.Title}"), idempotencyKey, ct);
+
+        payment.StripePaymentIntentId = charge.PaymentCode;
+        payment.PhoneMasked = charge.PhoneMasked;
+        payment.Channel = charge.Channel;
+        await _db.SaveChangesAsync(ct);
+
+        _logger.LogInformation(
+            "Charge Mobile Money créée pour l'abonnement {SubscriptionId} (paymentCode={PaymentCode}, channel={Channel})",
+            subscription.Id,
+            charge.PaymentCode,
+            charge.Channel);
+
+        return new MobileMoneyChargeResponse(
+            payment.Id,
+            charge.PaymentCode,
+            charge.Status,
+            charge.Amount,
+            charge.Currency,
+            charge.Channel,
+            charge.PhoneMasked,
+            charge.ProviderReference,
+            charge.ExpiresAtUtc,
+            charge.Instruction,
+            charge.UssdHint);
     }
 }

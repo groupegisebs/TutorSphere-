@@ -151,17 +151,49 @@ internal sealed class PayGatewayClient
         await EnsureSuccessAsync(response, ct);
     }
 
+    public async Task<GatewayMobileMoneyChargeResponse> ChargeMobileMoneyAsync(
+        GatewayMobileMoneyChargeRequest request,
+        string? idempotencyKey,
+        CancellationToken ct = default)
+    {
+        using var response = await SendAsync(
+            HttpMethod.Post,
+            "api/mobile-money/charge",
+            request,
+            ct,
+            idempotencyKey);
+        return await ReadSuccessAsync<GatewayMobileMoneyChargeResponse>(response, ct);
+    }
+
+    public async Task<GatewayMobileMoneyStatusResponse?> GetMobileMoneyStatusAsync(
+        string paymentCode,
+        CancellationToken ct = default)
+    {
+        using var response = await SendAsync(
+            HttpMethod.Get,
+            $"api/mobile-money/{Uri.EscapeDataString(paymentCode)}/status",
+            null,
+            ct);
+        if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            return null;
+        return await ReadSuccessAsync<GatewayMobileMoneyStatusResponse>(response, ct);
+    }
+
     private async Task<HttpResponseMessage> SendAsync(
         HttpMethod method,
         string path,
         object? body,
-        CancellationToken ct)
+        CancellationToken ct,
+        string? idempotencyKey = null)
     {
         EnsureConfigured();
 
         using var request = new HttpRequestMessage(method, path);
         request.Headers.TryAddWithoutValidation("X-App-Code", _settings.AppCode);
         request.Headers.TryAddWithoutValidation("X-Api-Key", _settings.ApiKey);
+
+        if (!string.IsNullOrWhiteSpace(idempotencyKey))
+            request.Headers.TryAddWithoutValidation("Idempotency-Key", idempotencyKey);
 
         // Pay Gateway : sans header → Stripe Live ; X-Stripe-Env: DEV → Stripe Test.
         // Ne jamais envoyer DEV en production utilisateurs (règle Pay Gateway).

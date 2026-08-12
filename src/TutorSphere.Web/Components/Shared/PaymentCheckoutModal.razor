@@ -13,7 +13,7 @@
                 </div>
                 <div class="modal-body">
                     <p class="mb-3">
-                        <strong class="text-muted">@Amount.ToString("N2") @Currency</strong>
+                        <strong class="text-muted">@FormatAmount()</strong>
                     </p>
 
                     @if (!string.IsNullOrEmpty(_error))
@@ -21,38 +21,130 @@
                         <div class="alert alert-danger py-2">@_error</div>
                     }
 
-                    <div class="pay-method-list mb-3" role="radiogroup" aria-label="@L["PayMethod_Title"]">
-                        <button type="button"
-                                class="pay-method-option @SelectedClass(PaymentMethodCodes.Card)"
-                                disabled="@_busy"
-                                role="radio"
-                                aria-checked="@(_method == PaymentMethodCodes.Card ? "true" : "false")"
-                                @onclick='async () => await SelectMethod(PaymentMethodCodes.Card)'>
-                            <span class="pay-method-icon pay-method-icon--card" aria-hidden="true">@CardIcon</span>
-                            <span class="pay-method-label">@L["PayMethod_Card"]</span>
-                        </button>
-                        <button type="button"
-                                class="pay-method-option @SelectedClass(PaymentMethodCodes.PayPal)"
-                                disabled="@_busy"
-                                role="radio"
-                                aria-checked="@(_method == PaymentMethodCodes.PayPal ? "true" : "false")"
-                                @onclick='async () => await SelectMethod(PaymentMethodCodes.PayPal)'>
-                            <span class="pay-method-icon pay-method-icon--paypal" aria-hidden="true">@PayPalIcon</span>
-                            <span class="pay-method-label">@L["PayMethod_PayPal"]</span>
-                        </button>
-                    </div>
+                    @if (_phase == Phase.Waiting)
+                    {
+                        <div class="alert alert-info" role="status" aria-live="polite">
+                            <div class="d-flex align-items-start gap-2">
+                                <span class="spinner-border spinner-border-sm mt-1" aria-hidden="true"></span>
+                                <div>
+                                    <p class="mb-1">@(_instruction ?? L["PayMethod_MmInstruction"])</p>
+                                    @if (!string.IsNullOrWhiteSpace(_ussdHint))
+                                    {
+                                        <p class="small mb-0 text-muted">USSD : @_ussdHint</p>
+                                    }
+                                    <p class="small mb-0 mt-2 text-muted">@L["PayMethod_MmNeverSharePin"]</p>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    else if (_phase == Phase.Success)
+                    {
+                        <div class="alert alert-success" role="status">
+                            @L["PayMethod_MmSuccess"]
+                        </div>
+                    }
+                    else if (_phase == Phase.Failed)
+                    {
+                        <div class="alert alert-warning" role="status">
+                            @(_error ?? L["PayMethod_MmFailed"])
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="pay-method-list mb-3" role="radiogroup" aria-label="@L["PayMethod_Title"]">
+                            <button type="button"
+                                    class="pay-method-option @SelectedClass(PaymentMethodCodes.Card)"
+                                    disabled="@_busy"
+                                    role="radio"
+                                    aria-checked="@(_method == PaymentMethodCodes.Card ? "true" : "false")"
+                                    @onclick='() => SelectMethod(PaymentMethodCodes.Card)'>
+                                <span class="pay-method-icon pay-method-icon--card" aria-hidden="true">@CardIcon</span>
+                                <span class="pay-method-label">@L["PayMethod_Card"]</span>
+                            </button>
+                            <button type="button"
+                                    class="pay-method-option @SelectedClass(PaymentMethodCodes.PayPal)"
+                                    disabled="@_busy"
+                                    role="radio"
+                                    aria-checked="@(_method == PaymentMethodCodes.PayPal ? "true" : "false")"
+                                    @onclick='() => SelectMethod(PaymentMethodCodes.PayPal)'>
+                                <span class="pay-method-icon pay-method-icon--paypal" aria-hidden="true">@PayPalIcon</span>
+                                <span class="pay-method-label">@L["PayMethod_PayPal"]</span>
+                            </button>
+                            @if (ShowMobileMoney)
+                            {
+                                <button type="button"
+                                        class="pay-method-option @SelectedClass(PaymentMethodCodes.OrangeMoney)"
+                                        disabled="@_busy"
+                                        role="radio"
+                                        aria-checked="@(_method == PaymentMethodCodes.OrangeMoney ? "true" : "false")"
+                                        @onclick='() => SelectMethod(PaymentMethodCodes.OrangeMoney)'>
+                                    <span class="pay-method-icon pay-method-icon--momo" aria-hidden="true">@OrangeIcon</span>
+                                    <span class="pay-method-label">@L["PayMethod_OrangeMoney"]</span>
+                                </button>
+                                <button type="button"
+                                        class="pay-method-option @SelectedClass(PaymentMethodCodes.MtnMomo)"
+                                        disabled="@_busy"
+                                        role="radio"
+                                        aria-checked="@(_method == PaymentMethodCodes.MtnMomo ? "true" : "false")"
+                                        @onclick='() => SelectMethod(PaymentMethodCodes.MtnMomo)'>
+                                    <span class="pay-method-icon pay-method-icon--momo" aria-hidden="true">@MtnIcon</span>
+                                    <span class="pay-method-label">@L["PayMethod_MtnMomo"]</span>
+                                </button>
+                            }
+                        </div>
+
+                        @if (PaymentMethodCodes.IsMobileMoney(_method))
+                        {
+                            <div class="mb-3">
+                                <label class="form-label" for="mm-phone">@L["PayMethod_PhoneLabel"]</label>
+                                <div class="input-group">
+                                    <span class="input-group-text">+237</span>
+                                    <input id="mm-phone"
+                                           class="form-control"
+                                           type="tel"
+                                           inputmode="numeric"
+                                           maxlength="9"
+                                           placeholder="6XXXXXXXX"
+                                           disabled="@_busy"
+                                           @bind="_phoneLocal"
+                                           @bind:event="oninput" />
+                                </div>
+                                <div class="form-text">@L["PayMethod_PhoneHint"]</div>
+                            </div>
+                        }
+                    }
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" disabled="@_busy" @onclick="CloseAsync">
                         @L["PayMethod_Cancel"]
                     </button>
-                    <button type="button" class="btn btn-primary" disabled="@_busy" @onclick="PayAsync">
-                        @if (_busy)
-                        {
-                            <span class="spinner-border spinner-border-sm me-1"></span>
-                        }
-                        @L["PayMethod_Continue"]
-                    </button>
+
+                    @if (_phase == Phase.Waiting)
+                    {
+                        <button type="button" class="btn btn-primary" disabled="@_busy" @onclick="VerifyAsync">
+                            @if (_busy)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            @L["PayMethod_Verify"]
+                        </button>
+                    }
+                    else if (_phase == Phase.Failed)
+                    {
+                        <button type="button" class="btn btn-outline-primary" disabled="@_busy" @onclick="RetryAsync">
+                            @L["PayMethod_Retry"]
+                        </button>
+                    }
+                    else if (_phase == Phase.Select)
+                    {
+                        <button type="button" class="btn btn-primary" disabled="@_busy" @onclick="PayAsync">
+                            @if (_busy)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            @L["PayMethod_Continue"]
+                        </button>
+                    }
                 </div>
             </div>
         </div>
@@ -61,6 +153,8 @@
 }
 
 @code {
+    private enum Phase { Select, Waiting, Success, Failed }
+
     [Parameter] public bool Visible { get; set; }
     [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
     [Parameter] public Guid? SubscriptionId { get; set; }
@@ -75,6 +169,22 @@
     private string _method = PaymentMethodCodes.Card;
     private bool _busy;
     private string? _error;
+    private Phase _phase = Phase.Select;
+    private string _phoneLocal = "";
+    private Guid? _paymentId;
+    private string? _instruction;
+    private string? _ussdHint;
+    private string _idempotencyKey = Guid.NewGuid().ToString("N");
+
+    private bool ShowMobileMoney =>
+        !IsPlatformLicense
+        && SubscriptionId.HasValue
+        && Currency.Equals("XAF", StringComparison.OrdinalIgnoreCase);
+
+    private string FormatAmount() =>
+        Currency.Equals("XAF", StringComparison.OrdinalIgnoreCase)
+            ? $"{Amount:N0} {Currency}"
+            : $"{Amount:N2} {Currency}";
 
     private Task SelectMethod(string method)
     {
@@ -107,6 +217,22 @@
         </svg>
         """);
 
+    private static readonly MarkupString OrangeIcon = new(
+        """
+        <svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" focusable="false">
+          <circle cx="20" cy="20" r="16" fill="#ff7900"/>
+          <text x="20" y="25" text-anchor="middle" fill="#fff" font-size="12" font-weight="700">OM</text>
+        </svg>
+        """);
+
+    private static readonly MarkupString MtnIcon = new(
+        """
+        <svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" focusable="false">
+          <rect x="4" y="4" width="32" height="32" rx="8" fill="#ffcc00"/>
+          <text x="20" y="25" text-anchor="middle" fill="#000" font-size="11" font-weight="700">MTN</text>
+        </svg>
+        """);
+
     private async Task CloseAsync()
     {
         if (_busy) return;
@@ -119,6 +245,23 @@
         _method = PaymentMethodCodes.Card;
         _error = null;
         _busy = false;
+        _phase = Phase.Select;
+        _phoneLocal = "";
+        _paymentId = null;
+        _instruction = null;
+        _ussdHint = null;
+        _idempotencyKey = Guid.NewGuid().ToString("N");
+    }
+
+    private Task RetryAsync()
+    {
+        _phase = Phase.Select;
+        _error = null;
+        _paymentId = null;
+        _instruction = null;
+        _ussdHint = null;
+        _idempotencyKey = Guid.NewGuid().ToString("N");
+        return Task.CompletedTask;
     }
 
     private async Task PayAsync()
@@ -127,6 +270,12 @@
         if (string.IsNullOrWhiteSpace(_method))
         {
             _error = L["PayMethod_SelectRequired"];
+            return;
+        }
+
+        if (PaymentMethodCodes.IsMobileMoney(_method))
+        {
+            await PayMobileMoneyAsync();
             return;
         }
 
@@ -168,6 +317,113 @@
         }
     }
 
+    private async Task PayMobileMoneyAsync()
+    {
+        if (!SubscriptionId.HasValue)
+        {
+            _error = L["PayMethod_PayUnavailable"];
+            return;
+        }
+
+        var digits = new string((_phoneLocal ?? "").Where(char.IsDigit).ToArray());
+        if (digits.Length != 9 || digits[0] != '6')
+        {
+            _error = L["PayMethod_PhoneInvalid"];
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var body = new
+            {
+                subscriptionId = SubscriptionId.Value,
+                channel = _method,
+                phoneNumber = "+237" + digits,
+                idempotencyKey = _idempotencyKey
+            };
+
+            var result = await Api.PostWithErrorAsync<MobileMoneyVm>("api/payments/mobile-money", body);
+            if (result.Value is null)
+            {
+                _error = result.Error ?? L["PayMethod_PayUnavailable"];
+                await OnError.InvokeAsync(_error);
+                return;
+            }
+
+            _paymentId = result.Value.PaymentId;
+            _instruction = result.Value.Instruction;
+            _ussdHint = result.Value.UssdHint;
+
+            if (string.Equals(result.Value.Status, "Failed", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(result.Value.Status, "Expired", StringComparison.OrdinalIgnoreCase))
+            {
+                _phase = Phase.Failed;
+                _error = L["PayMethod_MmFailed"];
+                return;
+            }
+
+            _phase = Phase.Waiting;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            await OnError.InvokeAsync(ex.Message);
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task VerifyAsync()
+    {
+        if (!_paymentId.HasValue) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            var result = await Api.GetWithErrorAsync<StatusVm>($"api/payments/mobile-money/{_paymentId}/status");
+            if (result.Value is null)
+            {
+                _error = result.Error ?? L["PayMethod_PayUnavailable"];
+                return;
+            }
+
+            var gateway = result.Value.GatewayStatus ?? "";
+            var local = result.Value.LocalStatus ?? "";
+
+            if (gateway.Equals("Succeeded", StringComparison.OrdinalIgnoreCase)
+                || local.Equals("Completed", StringComparison.OrdinalIgnoreCase))
+            {
+                _phase = Phase.Success;
+                await OnPaid.InvokeAsync();
+                if (!string.IsNullOrWhiteSpace(SuccessUrl))
+                    await JS.InvokeVoidAsync("open", SuccessUrl, "_self");
+                return;
+            }
+
+            if (gateway is "Failed" or "Expired" or "Cancelled"
+                || local.Equals("Failed", StringComparison.OrdinalIgnoreCase))
+            {
+                _phase = Phase.Failed;
+                _error = L["PayMethod_MmFailed"];
+                return;
+            }
+
+            // toujours en attente
+            _error = null;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
     private async Task HandleCheckoutResultAsync(CheckoutVm? checkout, string? error)
     {
         if (checkout is null || string.IsNullOrWhiteSpace(checkout.CheckoutUrl))
@@ -181,4 +437,11 @@
     }
 
     private sealed record CheckoutVm(Guid PaymentId, string? CheckoutUrl);
+    private sealed record MobileMoneyVm(
+        Guid PaymentId,
+        string PaymentCode,
+        string Status,
+        string? Instruction,
+        string? UssdHint);
+    private sealed record StatusVm(string? GatewayStatus, string? LocalStatus);
 }

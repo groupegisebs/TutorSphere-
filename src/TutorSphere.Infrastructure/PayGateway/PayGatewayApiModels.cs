@@ -163,3 +163,43 @@ internal sealed record GatewayRegisterMobileMoneyRequest(
     string OperatorCode,
     string PhoneNumber,
     string AccountHolderName);
+
+// ── Collecte Mobile Money ────────────────────────────────────────────────────
+
+internal sealed record GatewayMobileMoneyChargeRequest(
+    string CustomerCode,
+    string Email,
+    string? FullName,
+    string? ExternalUserId,
+    string ProductCode,
+    string PlanCode,
+    string Channel,
+    string PhoneNumber,
+    string? MetadataJson = null,
+    string? Description = null);
+
+internal sealed record GatewayMobileMoneyChargeResponse(
+    string PaymentCode,
+    string Status,
+    decimal Amount,
+    string Currency,
+    string Channel,
+    string PhoneMasked,
+    string? ProviderReference,
+    DateTime? ExpiresAtUtc,
+    string? Instruction,
+    string? UssdHint);
+
+internal sealed record GatewayMobileMoneyStatusResponse(
+    string PaymentCode,
+    string Status,
+    string? RawProviderStatus,
+    decimal Amount,
+    string Currency,
+    string? Channel,
+    string? PhoneMasked,
+    string? ProviderReference,
+    DateTime? PaidAt,
+    DateTime? ExpiresAtUtc,
+    string? FailureCode,
+    string? FailureReason);

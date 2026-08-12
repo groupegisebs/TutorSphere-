@@ -55,4 +55,8 @@ public interface IPaymentGatewayService
         int maxAttempts = 5,
         int retryDelayMs = 2000,
         CancellationToken ct = default);
+
+    Task<MobileMoneyChargeResponse> CreateMobileMoneyChargeAsync(
+        CreateMobileMoneyChargeRequest request,
+        CancellationToken ct = default);
 }

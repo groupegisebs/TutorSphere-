@@ -167,4 +167,45 @@ public class PaymentsController : ControllerBase
             return BadRequest(new { error = ex.Message });
         }
     }
+
+    /// <summary>Initie un paiement Orange Money / MTN MoMo (Cameroun, XAF) via CamPay.</summary>
+    [HttpPost("mobile-money")]
+    [Authorize(Roles = $"{UserRoles.Parent},{UserRoles.Student},{UserRoles.Tutor},{UserRoles.SuperAdmin}")]
+    public async Task<ActionResult<MobileMoneyChargeResponse>> CreateMobileMoneyCharge(
+        [FromBody] CreateMobileMoneyChargeRequest request,
+        CancellationToken ct)
+    {
+        try
+        {
+            var idempotencyKey = Request.Headers.TryGetValue("Idempotency-Key", out var key)
+                ? key.ToString()
+                : request.IdempotencyKey;
+
+            var response = await _paymentGateway.CreateMobileMoneyChargeAsync(
+                request with { IdempotencyKey = idempotencyKey },
+                ct);
+            return Ok(response);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>Statut normalisé d'un paiement Mobile Money (poll serveur).</summary>
+    [HttpGet("mobile-money/{paymentId:guid}/status")]
+    [Authorize(Roles = $"{UserRoles.Parent},{UserRoles.Student},{UserRoles.Tutor},{UserRoles.SuperAdmin}")]
+    public async Task<ActionResult<PaymentStatusResponse>> GetMobileMoneyStatus(
+        Guid paymentId,
+        CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _paymentGateway.SyncPaymentStatusAsync(paymentId, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
 }
