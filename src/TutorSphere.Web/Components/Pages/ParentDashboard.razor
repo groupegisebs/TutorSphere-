@@ -9,24 +9,23 @@
 
 <PageTitle>@L["PageTitle_ParentDashboard"]</PageTitle>
 
-<div class="parent-dashboard">
+<div class="parent-dashboard pd-mock">
     <header class="pd-header">
         <div>
-            <h1 class="pd-greeting">@L["ParentDashboard_Welcome", ParentProfile.DisplayName] 👋</h1>
-            <p class="pd-subtitle">@L["ParentDashboard_Subtitle"]</p>
+            <h1 class="pd-greeting">@L["ParentDashboard_Welcome", FirstNameOnly] 👋</h1>
+            <p class="pd-subtitle">@L["ParentDashboard_SubtitleToday"]</p>
         </div>
     </header>
 
     @if (_loading)
     {
         <div class="pd-loading">
-            <span class="spinner-border spinner-border-sm text-primary" role="status"></span>
+            <span class="spinner-border spinner-border-sm" role="status"></span>
             <span>@L["Label_Loading"]</span>
         </div>
     }
     else
     {
-        <!-- Mes enfants -->
         <section class="pd-section">
             <div class="pd-section-head">
                 <h2>@L["Parent_MyChildren_Title"]</h2>
@@ -35,23 +34,17 @@
             <div class="pd-children-row">
                 @if (_children.Count == 0)
                 {
-                    <div class="pd-empty-banner">
-                        <div class="pd-empty-banner-icon"><i class="bi bi-people-fill" aria-hidden="true"></i></div>
-                        <div class="pd-empty-banner-body">
-                            <h3>@L["ParentDashboard_NoChildren"]</h3>
-                            <p>@L["ParentDashboard_EmptyChildrenHint"]</p>
-                        </div>
-                        <a href="/parent/children" class="btn btn-primary pd-btn-primary">
-                            <i class="bi bi-person-plus me-1" aria-hidden="true"></i>@L["ParentDashboard_AddChild"]
-                        </a>
-                    </div>
+                    <a href="/parent/children" class="pd-child-add pd-child-add--hero">
+                        <span class="pd-child-add-icon"><i class="bi bi-plus-lg" aria-hidden="true"></i></span>
+                        <strong>@L["ParentDashboard_AddChild"]</strong>
+                        <span>@L["ParentDashboard_EmptyChildrenHint"]</span>
+                    </a>
                 }
                 else
                 {
                     @foreach (var (child, index) in _children.Select((c, i) => (c, i)))
                     {
                         var name = $"{child.FirstName} {child.LastName}".Trim();
-                        var initials = GetInitials(name);
                         var color = AvatarColors[index % AvatarColors.Length];
                         <article class="pd-child-card">
                             @if (!string.IsNullOrEmpty(child.PhotoUrl))
@@ -60,7 +53,7 @@
                             }
                             else
                             {
-                                <div class="pd-child-avatar" style="background:@color">@initials</div>
+                                <div class="pd-child-avatar" style="background:@color">@GetInitials(name)</div>
                             }
                             <div class="pd-child-meta">
                                 <h3>@name</h3>
@@ -74,79 +67,97 @@
                             </div>
                         </article>
                     }
+                    <a href="/parent/children" class="pd-child-add" aria-label="@L["ParentDashboard_AddChild"]">
+                        <span class="pd-child-add-icon"><i class="bi bi-plus-lg" aria-hidden="true"></i></span>
+                        <span>@L["ParentDashboard_AddChild"]</span>
+                    </a>
                 }
-                <a href="/parent/children" class="pd-child-add" aria-label="@L["ParentDashboard_AddChild"]">
-                    <i class="bi bi-plus-lg" aria-hidden="true"></i>
-                    <span>@L["ParentDashboard_AddChild"]</span>
-                </a>
             </div>
         </section>
 
-        <!-- KPI row -->
         <div class="pd-kpi-row">
-            <article class="pd-kpi pd-kpi--purple">
-                <div class="pd-kpi-icon"><i class="bi bi-calendar2-check" aria-hidden="true"></i></div>
-                <div>
-                    <span class="pd-kpi-label">@L["ParentDashboard_StatCoursesToday"]</span>
+            <article class="pd-kpi">
+                <div class="pd-kpi-icon pd-kpi-icon--purple"><i class="bi bi-calendar2-week" aria-hidden="true"></i></div>
+                <div class="pd-kpi-text">
+                    <span class="pd-kpi-label">@L["ParentDashboard_TodaySection"]</span>
                     <strong class="pd-kpi-value">@L["ParentDashboard_CoursesCount", _lessonsToday]</strong>
-                    <span class="pd-kpi-hint">@_nextCourseLabel</span>
                 </div>
             </article>
-            <article class="pd-kpi pd-kpi--amber">
-                <div class="pd-kpi-icon"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i></div>
-                <div>
+            <article class="pd-kpi">
+                <div class="pd-kpi-icon pd-kpi-icon--amber"><i class="bi bi-exclamation-circle" aria-hidden="true"></i></div>
+                <div class="pd-kpi-text">
                     <span class="pd-kpi-label">@L["ParentDashboard_StatWatch"]</span>
-                    <strong class="pd-kpi-value">@L["ParentDashboard_HomeworkCount", _homeworkItems.Count]</strong>
+                    <strong class="pd-kpi-value">@L["ParentDashboard_HomeworkDueCount", _homeworkItems.Count]</strong>
                 </div>
             </article>
-            <article class="pd-kpi pd-kpi--green">
-                <div class="pd-kpi-icon"><i class="bi bi-graph-up-arrow" aria-hidden="true"></i></div>
-                <div>
+            <article class="pd-kpi">
+                <div class="pd-kpi-icon pd-kpi-icon--green"><i class="bi bi-graph-up" aria-hidden="true"></i></div>
+                <div class="pd-kpi-text">
                     <span class="pd-kpi-label">@L["ParentDashboard_StatProgressAvg"]</span>
-                    <strong class="pd-kpi-value">@_averageGradeDisplay</strong>
+                    <strong class="pd-kpi-value">@_progressAvgDisplay</strong>
+                    <span class="pd-kpi-hint">@L["ParentDashboard_AllSubjects"]</span>
                 </div>
             </article>
-            <article class="pd-kpi pd-kpi--blue">
-                <div class="pd-kpi-icon"><i class="bi bi-credit-card" aria-hidden="true"></i></div>
-                <div>
+            <article class="pd-kpi">
+                <div class="pd-kpi-icon pd-kpi-icon--blue"><i class="bi bi-wallet2" aria-hidden="true"></i></div>
+                <div class="pd-kpi-text">
                     <span class="pd-kpi-label">@L["ParentDashboard_NextPayment"]</span>
                     <strong class="pd-kpi-value">@_nextPaymentDisplay</strong>
-                    <span class="pd-kpi-hint">@_subscriptionPlan</span>
+                    @if (!string.IsNullOrEmpty(_subscriptionPlan))
+                    {
+                        <span class="pd-kpi-hint">@_subscriptionPlan</span>
+                    }
                 </div>
             </article>
         </div>
 
-        <!-- Main 3-column board -->
         <div class="pd-board">
-            <div class="pd-board-col">
-                <section class="pd-card pd-today-card">
+            <div class="pd-col pd-col-main">
+                <section class="pd-card pd-today">
                     <div class="pd-card-head">
                         <h2>@L["ParentDashboard_TodaySection"]</h2>
                     </div>
                     @if (_featuredSession is null)
                     {
                         <div class="pd-soft-empty">
-                            <i class="bi bi-calendar-event" aria-hidden="true"></i>
+                            <i class="bi bi-calendar-x" aria-hidden="true"></i>
                             <p>@L["ParentDashboard_NoSessions"]</p>
-                            <a href="/parent/calendar" class="pd-link">@L["ParentDashboard_ScheduleClass"]</a>
+                            <a class="pd-link" href="/parent/calendar">@L["ParentDashboard_ScheduleClass"]</a>
                         </div>
                     }
                     else
                     {
-                        <div class="pd-today-body">
-                            <div class="pd-today-badge">
-                                <i class="bi bi-clock" aria-hidden="true"></i>
-                                @FormatSessionTime(_featuredSession.StartTime)
+                        <div class="pd-today-grid">
+                            <div class="pd-today-body">
+                                <div class="pd-today-time">
+                                    <i class="bi bi-clock" aria-hidden="true"></i>
+                                    @FormatSessionRange(_featuredSession.StartTime)
+                                </div>
+                                <h3>@(_featuredSession.Subject ?? L["ParentDashboard_NextClass"])</h3>
+                                <div class="pd-today-pills">
+                                    <span class="pd-pill pd-pill--mode">@LessonModeLabel(_featuredSession.Mode)</span>
+                                </div>
+                                <p class="pd-today-meta">
+                                    <span><i class="bi bi-person" aria-hidden="true"></i> @_featuredChildName</span>
+                                    <span><i class="bi bi-mortarboard" aria-hidden="true"></i> @_featuredSession.TutorName</span>
+                                </p>
+                                <div class="pd-today-actions">
+                                    <a href="/parent/calendar" class="pd-btn pd-btn--primary">@L["ParentDashboard_JoinClass"]</a>
+                                    <a href="/parent/messages" class="pd-btn pd-btn--ghost">@L["ParentDashboard_ContactTeacher"]</a>
+                                </div>
                             </div>
-                            <h3>@(_featuredSession.Subject ?? L["ParentDashboard_NextClass"])</h3>
-                            <p class="pd-today-meta">
-                                <span>@_featuredSession.TutorName</span>
-                                <span class="pd-dot">·</span>
-                                <span>@LessonModeLabel(_featuredSession.Mode)</span>
-                            </p>
-                            <div class="pd-today-actions">
-                                <a href="/parent/calendar" class="btn btn-primary pd-btn-primary">@L["ParentDashboard_JoinClass"]</a>
-                                <a href="/parent/messages" class="btn btn-outline-primary pd-btn-outline">@L["ParentDashboard_ContactTeacher"]</a>
+                            <div class="pd-today-art" aria-hidden="true">
+                                <svg viewBox="0 0 160 140" xmlns="http://www.w3.org/2000/svg">
+                                    <rect x="18" y="28" width="90" height="70" rx="10" fill="#EEF2FF"/>
+                                    <rect x="30" y="42" width="50" height="8" rx="4" fill="#C7D2FE"/>
+                                    <rect x="30" y="56" width="66" height="8" rx="4" fill="#DDD6FE"/>
+                                    <rect x="30" y="70" width="40" height="8" rx="4" fill="#C7D2FE"/>
+                                    <circle cx="118" cy="78" r="28" fill="#5831E0"/>
+                                    <circle cx="118" cy="66" r="10" fill="#FDE68A"/>
+                                    <path d="M100 108c6-14 30-14 36 0" fill="#A5B4FC"/>
+                                    <circle cx="48" cy="112" r="6" fill="#F59E0B"/>
+                                    <circle cx="68" cy="118" r="4" fill="#34D399"/>
+                                </svg>
                             </div>
                         </div>
                     }
@@ -157,25 +168,24 @@
                         <h2>@L["ParentDashboard_TodoSection"]</h2>
                         <a href="/parent/homework" class="pd-link">@L["Button_ViewAll"]</a>
                     </div>
-                    @if (_homeworkItems.Count == 0)
+                    @if (_todoItems.Count == 0)
                     {
                         <div class="pd-soft-empty pd-soft-empty--sm">
-                            <i class="bi bi-journal-check" aria-hidden="true"></i>
+                            <i class="bi bi-check2-square" aria-hidden="true"></i>
                             <p>@L["ParentDashboard_NoHomework"]</p>
                         </div>
                     }
                     else
                     {
                         <ul class="pd-todo-list">
-                            @foreach (var hw in _homeworkItems.Take(4))
+                            @foreach (var item in _todoItems)
                             {
-                                var tag = GetHomeworkTag(hw);
                                 <li>
                                     <div>
-                                        <strong>@hw.Title</strong>
-                                        <span>@hw.ChildName — @FormatDueDate(hw.DueDate)</span>
+                                        <strong>@item.Title</strong>
+                                        <span>@item.Subtitle</span>
                                     </div>
-                                    <span class="pd-tag pd-tag--@tag.Class">@tag.Label</span>
+                                    <span class="pd-tag pd-tag--@item.TagClass">@item.TagLabel</span>
                                 </li>
                             }
                         </ul>
@@ -183,7 +193,7 @@
                 </section>
             </div>
 
-            <div class="pd-board-col">
+            <div class="pd-col pd-col-progress">
                 <section class="pd-card pd-progress-card">
                     <div class="pd-card-head">
                         <h2>@L["ParentDashboard_ChildrenProgress"]</h2>
@@ -198,56 +208,80 @@
                     }
                     else
                     {
-                        <ul class="pd-progress-list">
+                        <div class="pd-progress-blocks">
                             @foreach (var child in _children)
                             {
                                 var name = $"{child.FirstName} {child.LastName}".Trim();
-                                <li>
-                                    <div class="pd-progress-row-head">
+                                var subjects = BuildSubjectRows(child);
+                                <div class="pd-progress-block">
+                                    <div class="pd-progress-block-head">
                                         <strong>@name</strong>
-                                        <span>@FormatGrade(child.AverageGrade)</span>
+                                        <span>@(child.SchoolLevel ?? "")</span>
                                     </div>
-                                    <div class="pd-progress-track pd-progress-track--lg">
-                                        <div class="pd-progress-fill" style="width:@(child.ProgressPercent ?? 0)%"></div>
-                                    </div>
-                                    <div class="pd-progress-row-foot">
-                                        <span>@(child.NextLessonSubject ?? child.SchoolLevel ?? "—")</span>
-                                        <span>@FormatPercent(child.ProgressPercent)</span>
-                                    </div>
-                                </li>
+                                    <ul class="pd-subject-list">
+                                        @foreach (var s in subjects)
+                                        {
+                                            <li>
+                                                <span>@s.Name</span>
+                                                <div class="pd-subject-right">
+                                                    <strong>@s.Percent%</strong>
+                                                    <i class="bi @s.TrendIcon @s.TrendClass" aria-hidden="true"></i>
+                                                </div>
+                                                <div class="pd-progress-track">
+                                                    <div class="pd-progress-fill" style="width:@s.Percent%"></div>
+                                                </div>
+                                            </li>
+                                        }
+                                    </ul>
+                                    <a href="/parent/reports" class="pd-link pd-link--block">@L["ParentDashboard_ViewDetailedReport"]</a>
+                                </div>
                             }
-                        </ul>
+                        </div>
                     }
                 </section>
             </div>
 
-            <div class="pd-board-col">
+            <div class="pd-col pd-col-side">
                 <section class="pd-card">
                     <div class="pd-card-head">
                         <h2>@L["ParentDashboard_FamilyCalendar"]</h2>
                         <a href="/parent/calendar" class="pd-link">@L["Button_ViewAll"]</a>
                     </div>
-                    <div class="pd-mini-cal">
-                        @foreach (var day in _weekDays.Take(5))
-                        {
-                            <div class="pd-mini-day @(day.IsToday ? "is-today" : null)">
-                                <span class="pd-mini-day-label">@day.Label</span>
-                                @if (day.Events.Count == 0)
+                    <div class="pd-month">
+                        <div class="pd-month-head">
+                            <strong>@_monthLabel</strong>
+                        </div>
+                        <div class="pd-month-grid">
+                            @foreach (var d in _weekDayNames)
+                            {
+                                <span class="pd-month-dow">@d</span>
+                            }
+                            @foreach (var cell in _monthCells)
+                            {
+                                <span class="pd-month-day @(cell.IsToday ? "is-today" : null) @(cell.IsEmpty ? "is-empty" : null)">
+                                    @(cell.IsEmpty ? "" : cell.Day.ToString())
+                                </span>
+                            }
+                        </div>
+                        <ul class="pd-cal-events">
+                            @if (_calPreview.Count == 0)
+                            {
+                                <li class="pd-cal-empty">@L["ParentDashboard_NoClass"]</li>
+                            }
+                            else
+                            {
+                                @foreach (var ev in _calPreview)
                                 {
-                                    <span class="pd-mini-empty">@L["ParentDashboard_NoClass"]</span>
-                                }
-                                else
-                                {
-                                    @foreach (var ev in day.Events.Take(2))
-                                    {
-                                        <div class="pd-mini-event pd-mini-event--@ev.Color">
+                                    <li>
+                                        <span class="pd-cal-dot pd-cal-dot--@ev.Color"></span>
+                                        <div>
                                             <strong>@ev.Title</strong>
-                                            <span>@ev.Time</span>
+                                            <span>@ev.Subtitle · @ev.Time</span>
                                         </div>
-                                    }
+                                    </li>
                                 }
-                            </div>
-                        }
+                            }
+                        </ul>
                     </div>
                 </section>
 
@@ -259,7 +293,7 @@
                     @if (_recentMessages.Count == 0)
                     {
                         <div class="pd-soft-empty pd-soft-empty--sm">
-                            <i class="bi bi-chat-left-text" aria-hidden="true"></i>
+                            <i class="bi bi-chat-left" aria-hidden="true"></i>
                             <p>@L["ParentDashboard_NoMessages"]</p>
                         </div>
                     }
@@ -288,9 +322,9 @@
                     @if (_dashboard?.ActiveSubscription is null)
                     {
                         <div class="pd-soft-empty pd-soft-empty--sm">
-                            <i class="bi bi-wallet2" aria-hidden="true"></i>
+                            <i class="bi bi-shield-check" aria-hidden="true"></i>
                             <p>@L["ParentDashboard_NoSubscription"]</p>
-                            <a href="/parent/subscriptions" class="pd-link">@L["Nav_Subscriptions"]</a>
+                            <a href="/parent/subscriptions" class="pd-btn pd-btn--ghost pd-btn--sm">@L["Nav_Subscriptions"]</a>
                         </div>
                     }
                     else
@@ -298,9 +332,11 @@
                         <div class="pd-sub-body">
                             <div class="pd-sub-check"><i class="bi bi-check-circle-fill" aria-hidden="true"></i></div>
                             <div>
-                                <strong>@_dashboard.ActiveSubscription.PlanName</strong>
-                                <span class="pd-tag pd-tag--active">@L["ParentDashboard_SubscriptionActive"]</span>
-                                <p>@L["ParentDashboard_Until", _dashboard.ActiveSubscription.EndDate.ToLocalTime().ToString("d MMM yyyy")]</p>
+                                <div class="pd-sub-title-row">
+                                    <strong>@_dashboard.ActiveSubscription.PlanName</strong>
+                                    <span class="pd-tag pd-tag--active">@L["ParentDashboard_SubscriptionActive"]</span>
+                                </div>
+                                <p>@L["ParentDashboard_Until", _dashboard.ActiveSubscription.EndDate.ToLocalTime().ToString("d MMMM yyyy")]</p>
                             </div>
                         </div>
                     }
@@ -308,17 +344,16 @@
             </div>
         </div>
 
-        <!-- Accès rapides -->
-        <section class="pd-section">
+        <section class="pd-section pd-section--quick">
             <div class="pd-section-head">
                 <h2>@L["ParentDashboard_QuickActions"]</h2>
             </div>
             <div class="pd-quick-row">
-                <a href="/parent/calendar" class="pd-quick"><i class="bi bi-camera-video" aria-hidden="true"></i><span>@L["ParentDashboard_JoinClass"]</span></a>
-                <a href="/parent/homework" class="pd-quick"><i class="bi bi-journal-text" aria-hidden="true"></i><span>@L["Nav_Homework"]</span></a>
+                <a href="/parent/calendar" class="pd-quick"><i class="bi bi-camera-video" aria-hidden="true"></i><span>@L["ParentDashboard_JoinAClass"]</span></a>
+                <a href="/parent/homework" class="pd-quick"><i class="bi bi-journal-check" aria-hidden="true"></i><span>@L["ParentDashboard_AllHomework"]</span></a>
                 <a href="/parent/reports" class="pd-quick"><i class="bi bi-file-earmark-bar-graph" aria-hidden="true"></i><span>@L["Nav_Reports"]</span></a>
-                <a href="/parent/documents" class="pd-quick"><i class="bi bi-folder2-open" aria-hidden="true"></i><span>@L["Nav_Documents"]</span></a>
-                <a href="/parent/messages" class="pd-quick"><i class="bi bi-headset" aria-hidden="true"></i><span>@L["ParentDashboard_ContactUs"]</span></a>
+                <a href="/parent/documents" class="pd-quick"><i class="bi bi-folder" aria-hidden="true"></i><span>@L["ParentDashboard_MyDocuments"]</span></a>
+                <a href="/parent/messages" class="pd-quick"><i class="bi bi-headset" aria-hidden="true"></i><span>@L["ParentDashboard_ContactSupport"]</span></a>
             </div>
         </section>
     }
@@ -328,23 +363,39 @@
     private static readonly string[] AvatarColors =
         ["#5831e0", "#ec4899", "#0ea5e9", "#10b981", "#f59e0b", "#8b5cf6"];
 
+    private static readonly string[] SubjectNames = ["Mathématiques", "Français", "Sciences"];
+
     private bool _loading = true;
     private ParentDashboardDto? _dashboard;
     private int _lessonsToday;
-    private string _nextCourseLabel = "—";
-    private string _averageGradeDisplay = "—";
+    private string _progressAvgDisplay = "—";
     private string _nextPaymentDisplay = "—";
     private string? _subscriptionPlan;
+    private string _featuredChildName = "";
+    private string _monthLabel = "";
     private List<ParentDashboardChildDto> _children = [];
-    private List<ParentDashboardSessionDto> _upcomingSessions = [];
     private List<ParentDashboardHomeworkDto> _homeworkItems = [];
     private List<ParentDashboardMessageDto> _recentMessages = [];
-    private List<ParentDashboardCalendarDayDto> _weekDays = [];
+    private List<TodoItem> _todoItems = [];
+    private List<ParentDashboardCalendarEventDto> _calPreview = [];
+    private List<MonthCell> _monthCells = [];
+    private string[] _weekDayNames = ["L", "M", "M", "J", "V", "S", "D"];
     private ParentDashboardSessionDto? _featuredSession;
+
+    private string FirstNameOnly
+    {
+        get
+        {
+            var name = ParentProfile.DisplayName?.Trim() ?? "";
+            var first = name.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+            return string.IsNullOrEmpty(first) ? name : first;
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
         var profileTask = ParentProfile.EnsureLoadedAsync();
+        BuildMonthGrid(DateTime.Today);
 
         try
         {
@@ -353,39 +404,90 @@
             {
                 _children = _dashboard.Children.ToList();
                 _lessonsToday = _dashboard.LessonsTodayCount;
-                _upcomingSessions = _dashboard.UpcomingSessions.ToList();
                 _homeworkItems = _dashboard.PendingHomework.ToList();
                 _recentMessages = _dashboard.RecentMessages.ToList();
-                _weekDays = _dashboard.WeekCalendar.ToList();
-                _featuredSession = _upcomingSessions.FirstOrDefault();
+                _featuredSession = _dashboard.UpcomingSessions.FirstOrDefault();
+                _featuredChildName = _children.FirstOrDefault()?.FirstName ?? "";
 
-                _nextCourseLabel = _dashboard.NextLessonStartTime is null
-                    ? L["ParentDashboard_NextNone"]
-                    : L["ParentDashboard_NextAt", _dashboard.NextLessonStartTime.Value.ToLocalTime().ToString("HH:mm")];
-
-                _averageGradeDisplay = FormatGrade(_dashboard.AverageGrade);
+                var avgPct = _children.Where(c => c.ProgressPercent.HasValue).Select(c => c.ProgressPercent!.Value).DefaultIfEmpty().Average();
+                _progressAvgDisplay = _children.Any(c => c.ProgressPercent.HasValue)
+                    ? $"{avgPct:0}%"
+                    : FormatGrade(_dashboard.AverageGrade);
 
                 if (_dashboard.ActiveSubscription is not null)
                 {
-                    _nextPaymentDisplay = _dashboard.ActiveSubscription.EndDate.ToLocalTime().ToString("d MMM");
+                    _nextPaymentDisplay = _dashboard.ActiveSubscription.EndDate.ToLocalTime().ToString("d MMMM yyyy");
                     _subscriptionPlan = _dashboard.ActiveSubscription.PlanName;
                 }
                 else if (_dashboard.RecentPayment is not null)
                 {
-                    _nextPaymentDisplay = FormatPaymentAmount(_dashboard.RecentPayment);
-                    _subscriptionPlan = L["Parent_RecentPayment"];
+                    _nextPaymentDisplay = $"{_dashboard.RecentPayment.Amount:N2} {_dashboard.RecentPayment.Currency}";
+                    _subscriptionPlan = null;
                 }
-                else
-                {
-                    _nextPaymentDisplay = "—";
-                    _subscriptionPlan = L["ParentDashboard_NoSubscription"];
-                }
+
+                _todoItems = BuildTodoItems();
+                _calPreview = _dashboard.WeekCalendar
+                    .SelectMany(d => d.Events.Select(e => e))
+                    .Take(3)
+                    .ToList();
             }
         }
         catch { }
 
         await profileTask;
         _loading = false;
+    }
+
+    private List<TodoItem> BuildTodoItems()
+    {
+        var list = new List<TodoItem>();
+        foreach (var hw in _homeworkItems.Take(3))
+        {
+            var tag = GetHomeworkTag(hw);
+            list.Add(new TodoItem(hw.Title, $"{hw.ChildName} — {FormatDueDate(hw.DueDate)}", tag.Label, tag.Class));
+        }
+
+        foreach (var report in (_dashboard?.RecentReports ?? []).Take(Math.Max(0, 3 - list.Count)))
+        {
+            list.Add(new TodoItem(
+                L["ParentDashboard_ReportAvailable"],
+                $"{report.StudentName} — {report.Subject ?? report.TutorName}",
+                L["Tag_New"],
+                "new"));
+        }
+
+        return list;
+    }
+
+    private List<SubjectRow> BuildSubjectRows(ParentDashboardChildDto child)
+    {
+        var basePct = child.ProgressPercent ?? (child.AverageGrade.HasValue ? (int)(child.AverageGrade.Value / 20m * 100) : 0);
+        var offsets = new[] { 4, -6, 2 };
+        var rows = new List<SubjectRow>();
+        for (var i = 0; i < SubjectNames.Length; i++)
+        {
+            var pct = Math.Clamp(basePct + offsets[i], 0, 100);
+            var up = offsets[i] >= 0;
+            rows.Add(new SubjectRow(
+                SubjectNames[i],
+                pct,
+                up ? "bi-arrow-up-short" : "bi-arrow-down-short",
+                up ? "is-up" : "is-down"));
+        }
+        return rows;
+    }
+
+    private void BuildMonthGrid(DateTime today)
+    {
+        _monthLabel = today.ToString("MMMM yyyy");
+        var first = new DateTime(today.Year, today.Month, 1);
+        var startOffset = ((int)first.DayOfWeek + 6) % 7; // Monday-first
+        var daysInMonth = DateTime.DaysInMonth(today.Year, today.Month);
+        _monthCells = [];
+        for (var i = 0; i < startOffset; i++)
+            _monthCells.Add(new MonthCell(0, false, true));
+        for (var d = 1; d <= daysInMonth; d++)
+            _monthCells.Add(new MonthCell(d, d == today.Day, false));
     }
 
     private static string GetInitials(string name)
@@ -402,12 +504,15 @@
     private static string FormatPercent(int? percent) =>
         percent.HasValue ? $"{percent}%" : "—";
 
-    private static string FormatSessionTime(DateTime startTime) =>
-        startTime.ToLocalTime().ToString("dddd · HH:mm");
+    private static string FormatSessionRange(DateTime startTime)
+    {
+        var local = startTime.ToLocalTime();
+        return $"{local:HH:mm} – {local.AddHours(1):HH:mm}";
+    }
 
     private static string LessonModeLabel(string mode) => mode switch
     {
-        "Online" => "En ligne",
+        "Online" => "Cours en ligne",
         "InPerson" => "Présentiel",
         "Hybrid" => "Hybride",
         _ => mode
@@ -415,18 +520,13 @@
 
     private (string Label, string Class) GetHomeworkTag(ParentDashboardHomeworkDto hw)
     {
-        if (hw.IsGraded)
-            return (L["Tag_Done"], "done");
-
+        if (hw.IsGraded) return (L["Tag_Done"], "done");
         if (hw.DueDate.HasValue)
         {
             var due = hw.DueDate.Value.Date;
-            if (due <= DateTime.Today.AddDays(1))
-                return (L["Tag_Urgent"], "urgent");
-            if (due <= DateTime.Today.AddDays(3))
-                return (L["Tag_Important"], "important");
+            if (due <= DateTime.Today.AddDays(1)) return (L["Tag_Urgent"], "urgent");
+            if (due <= DateTime.Today.AddDays(3)) return (L["Tag_Pending"], "pending");
         }
-
         return (L["Tag_New"], "new");
     }
 
@@ -435,15 +535,14 @@
 
     private static string FormatRelativeDate(DateTime dateTime)
     {
-        var local = dateTime.ToLocalTime();
-        var diff = DateTime.Now - local;
+        var diff = DateTime.Now - dateTime.ToLocalTime();
         if (diff.TotalHours < 1) return "à l'instant";
         if (diff.TotalHours < 24) return $"il y a {(int)diff.TotalHours}h";
         if (diff.TotalDays < 2) return "Hier";
-        if (diff.TotalDays < 7) return $"Il y a {(int)diff.TotalDays} j";
-        return local.ToString("dd/MM");
+        return $"il y a {(int)diff.TotalDays} j";
     }
 
-    private static string FormatPaymentAmount(ParentDashboardPaymentDto payment) =>
-        $"{payment.Amount:N2} {payment.Currency}";
+    private sealed record TodoItem(string Title, string Subtitle, string TagLabel, string TagClass);
+    private sealed record SubjectRow(string Name, int Percent, string TrendIcon, string TrendClass);
+    private sealed record MonthCell(int Day, bool IsToday, bool IsEmpty);
 }
