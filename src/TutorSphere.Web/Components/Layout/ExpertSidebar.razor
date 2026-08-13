@@ -16,8 +16,7 @@
 
 <div class="cc-nav-scroll">
     <nav>
-        <div class="cc-nav-section">
-            <div class="cc-nav-section-label">Pilotage</div>
+        <CollapsibleNavSection Title="Pilotage" SectionKey="pilotage" DefaultOpen="true">
             <NavLink class="cc-nav-link" href="expert/dashboard" Match="NavLinkMatch.All">
                 <i class="bi bi-speedometer2" aria-hidden="true"></i>
                 <span>Tableau de bord</span>
@@ -29,10 +28,9 @@
                     <span>Espace Responsable</span>
                 </NavLink>
             }
-        </div>
+        </CollapsibleNavSection>
 
-        <div class="cc-nav-section">
-            <div class="cc-nav-section-label">Enseignants</div>
+        <CollapsibleNavSection Title="Enseignants" SectionKey="enseignants" DefaultOpen="true">
             <NavLink class="cc-nav-link" href="expert/approvals" Match="NavLinkMatch.Prefix">
                 <i class="bi bi-inbox" aria-hidden="true"></i>
                 <span>File d'attente</span>
@@ -41,23 +39,35 @@
                 <i class="bi bi-mortarboard" aria-hidden="true"></i>
                 <span>Approuvés</span>
             </NavLink>
+            @if (_isManager)
+            {
+                <NavLink class="cc-nav-link" href="group-admin/tasks" Match="NavLinkMatch.Prefix">
+                    <i class="bi bi-list-check" aria-hidden="true"></i>
+                    <span>Tâches déléguées</span>
+                </NavLink>
+            }
+            else
+            {
+                <NavLink class="cc-nav-link" href="expert/my-tasks" Match="NavLinkMatch.Prefix">
+                    <i class="bi bi-list-check" aria-hidden="true"></i>
+                    <span>Mes tâches</span>
+                </NavLink>
+            }
             <FrozenNavItem Icon="bi-camera-video" Label="Entretiens" />
             <FrozenNavItem Icon="bi-easel" Label="Démonstrations" />
             <FrozenNavItem Icon="bi-file-earmark-text" Label="Documents" />
             <FrozenNavItem Icon="bi-arrow-repeat" Label="Réévaluations" />
-        </div>
+        </CollapsibleNavSection>
 
-        <div class="cc-nav-section">
-            <div class="cc-nav-section-label">Qualité</div>
+        <CollapsibleNavSection Title="Qualité" SectionKey="qualite" DefaultOpen="false">
             <FrozenNavItem Icon="bi-graph-up" Label="Suivi qualité" />
             <FrozenNavItem Icon="bi-eye" Label="Observations" />
             <FrozenNavItem Icon="bi-folder2-open" Label="Supports" />
             <FrozenNavItem Icon="bi-chat-left-text" Label="Remarques" />
             <FrozenNavItem Icon="bi-exclamation-triangle" Label="Incidents" />
-        </div>
+        </CollapsibleNavSection>
 
-        <div class="cc-nav-section">
-            <div class="cc-nav-section-label">Organisation</div>
+        <CollapsibleNavSection Title="Organisation" SectionKey="organisation" DefaultOpen="false">
             <NavLink class="cc-nav-link" href="expert/disciplines" Match="NavLinkMatch.Prefix">
                 <i class="bi bi-book" aria-hidden="true"></i>
                 <span>Disciplines</span>
@@ -69,10 +79,9 @@
             <FrozenNavItem Icon="bi-journal-bookmark" Label="Bibliothèque" />
             <FrozenNavItem Icon="bi-mortarboard-fill" Label="Formations" />
             <FrozenNavItem Icon="bi-globe2" Label="Visibilité" />
-        </div>
+        </CollapsibleNavSection>
 
-        <div class="cc-nav-section">
-            <div class="cc-nav-section-label">Groupe</div>
+        <CollapsibleNavSection Title="Groupe" SectionKey="groupe" DefaultOpen="false">
             <NavLink class="cc-nav-link" href="expert/members" Match="NavLinkMatch.All">
                 <i class="bi bi-people" aria-hidden="true"></i>
                 <span>Membres</span>
@@ -83,30 +92,32 @@
             </NavLink>
             <FrozenNavItem Icon="bi-calendar-event" Label="Réunions" />
             <FrozenNavItem Icon="bi-ui-checks" Label="Décisions" />
-        </div>
+        </CollapsibleNavSection>
 
         @if (_isManager)
         {
-            <div class="cc-nav-section">
-                <div class="cc-nav-section-label">Administration</div>
+            <CollapsibleNavSection Title="Administration" SectionKey="administration" DefaultOpen="true">
                 <NavLink class="cc-nav-link" href="expert/admin-chat" Match="NavLinkMatch.Prefix">
                     <i class="bi bi-chat-dots" aria-hidden="true"></i>
                     <span>Chat avec TutorSphere</span>
                 </NavLink>
+                <NavLink class="cc-nav-link" href="group-admin/members" Match="NavLinkMatch.Prefix">
+                    <i class="bi bi-people" aria-hidden="true"></i>
+                    <span>Membres (Responsable)</span>
+                </NavLink>
                 <FrozenNavItem Icon="bi-file-earmark-bar-graph" Label="Rapports" />
                 <FrozenNavItem Icon="bi-activity" Label="Journal d'activité" />
-            </div>
+            </CollapsibleNavSection>
         }
 
-        <div class="cc-nav-section">
-            <div class="cc-nav-section-label">Outils</div>
+        <CollapsibleNavSection Title="Outils" SectionKey="outils" DefaultOpen="false">
             @if (!_isManager)
             {
                 <FrozenNavItem Icon="bi-file-earmark-bar-graph" Label="Rapports" />
             }
             <FrozenNavItem Icon="bi-bell" Label="Notifications" />
             <FrozenNavItem Icon="bi-person-gear" Label="Mon profil" />
-        </div>
+        </CollapsibleNavSection>
     </nav>
 </div>
 

@@ -41,6 +41,7 @@ public static class DependencyInjection
         services.AddScoped<IGroupOfferService, GroupOfferService>();
         services.AddScoped<IGroupAdminChatService, GroupAdminChatService>();
         services.AddScoped<ITeacherInterestService, TeacherInterestService>();
+        services.AddScoped<IExpertDelegatedTaskService, ExpertDelegatedTaskService>();
         services.AddScoped<IExpertModuleFeatureService, ExpertModuleFeatureService>();
         services.AddScoped<IExpertApprovalService, ExpertApprovalService>();
         services.AddScoped<IExpertMonitoringService, ExpertMonitoringService>();

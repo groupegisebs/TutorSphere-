@@ -57,6 +57,7 @@ public interface IApplicationDbContext
     IQueryable<GroupAdminConversation> GroupAdminConversations { get; }
     IQueryable<GroupAdminMessage> GroupAdminMessages { get; }
     IQueryable<TeacherInterestRequest> TeacherInterestRequests { get; }
+    IQueryable<ExpertDelegatedTask> ExpertDelegatedTasks { get; }
     IQueryable<TeacherDocument> TeacherDocuments { get; }
     /// <summary>Teacher verification documents without tenant query filter (expert / admin review).</summary>
     IQueryable<TeacherDocument> TeacherDocumentsForAnyTenant { get; }

@@ -44,6 +44,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     public DbSet<GroupAdminConversation> GroupAdminConversationsSet => Set<GroupAdminConversation>();
     public DbSet<GroupAdminMessage> GroupAdminMessagesSet => Set<GroupAdminMessage>();
     public DbSet<TeacherInterestRequest> TeacherInterestRequestsSet => Set<TeacherInterestRequest>();
+    public DbSet<ExpertDelegatedTask> ExpertDelegatedTasksSet => Set<ExpertDelegatedTask>();
     public DbSet<TeacherDocument> TeacherDocumentsSet => Set<TeacherDocument>();
     public DbSet<TeacherApplicationInvite> TeacherApplicationInvitesSet => Set<TeacherApplicationInvite>();
     public DbSet<ExpertMembershipInvite> ExpertMembershipInvitesSet => Set<ExpertMembershipInvite>();
@@ -105,6 +106,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     IQueryable<GroupAdminMessage> IApplicationDbContext.GroupAdminMessages => GroupAdminMessagesSet;
     IQueryable<TeacherInterestRequest> IApplicationDbContext.TeacherInterestRequests =>
         TeacherInterestRequestsSet;
+    IQueryable<ExpertDelegatedTask> IApplicationDbContext.ExpertDelegatedTasks => ExpertDelegatedTasksSet;
     IQueryable<TeacherDocument> IApplicationDbContext.TeacherDocuments => TeacherDocumentsSet;
     IQueryable<TeacherDocument> IApplicationDbContext.TeacherDocumentsForAnyTenant =>
         TeacherDocumentsSet.IgnoreQueryFilters();
