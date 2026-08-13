@@ -9,5 +9,5 @@ public interface IAppUrlProvider
     string ApiPublicBaseUrl { get; }
 
     /// <summary>Lien de confirmation e-mail (passe par le site Web, SSL NPM).</summary>
-    string BuildEmailConfirmUrl(string userId, string token);
+    string BuildEmailConfirmUrl(string userId, string token, string? returnPath = null);
 }

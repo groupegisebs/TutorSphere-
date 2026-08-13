@@ -19,7 +19,7 @@
         else if (!string.IsNullOrEmpty(_error))
         {
             <div class="alert alert-danger mb-3">@_error</div>
-            <a href="/login" class="btn btn-primary px-4">@L["Nav_Login"]</a>
+            <a href="@_loginHref" class="btn btn-primary px-4">@L["Nav_Login"]</a>
         }
     </div>
 </div>
@@ -31,11 +31,17 @@
     [SupplyParameterFromQuery(Name = "token")]
     public string? Token { get; set; }
 
+    [SupplyParameterFromQuery(Name = "returnUrl")]
+    public string? ReturnUrl { get; set; }
+
     private bool _loading = true;
     private string? _error;
+    private string _loginHref = "/login";
 
     protected override async Task OnInitializedAsync()
     {
+        _loginHref = SanitizeReturnUrl(ReturnUrl) ?? "/login";
+
         if (string.IsNullOrWhiteSpace(UserId) || string.IsNullOrWhiteSpace(Token))
         {
             _error = L["Error_FillAllFields"];
@@ -51,7 +57,7 @@
 
             if (resp.IsSuccessStatusCode)
             {
-                Navigation.NavigateTo("/login/tuteur?confirmed=true", forceLoad: true);
+                Navigation.NavigateTo(_loginHref, forceLoad: true);
                 return;
             }
 
@@ -66,6 +72,18 @@
         {
             _loading = false;
         }
+    }
+
+    /// <summary>Only allow local login paths (open-redirect safe).</summary>
+    private static string? SanitizeReturnUrl(string? returnUrl)
+    {
+        if (string.IsNullOrWhiteSpace(returnUrl)) return null;
+        var path = returnUrl.Trim();
+        if (!path.StartsWith('/') || path.StartsWith("//") || path.Contains('\\'))
+            return null;
+        if (path.StartsWith("/login", StringComparison.OrdinalIgnoreCase))
+            return path;
+        return null;
     }
 
     private static string? TryParseError(string body)

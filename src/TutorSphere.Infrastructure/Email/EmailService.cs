@@ -16,6 +16,7 @@ internal static class EmailTemplates
     public const string SchoolCreated = "SCHOOL_CREATED";
 
     public const string ConfirmEmailSimple = "CONFIRM_EMAIL_SIMPLE";
+    public const string ParentConfirmAccess = "PARENT_CONFIRM_ACCESS";
     public const string ResetPassword = "RESET_PASSWORD";
     public const string PasswordChanged = "PASSWORD_CHANGED";
 
@@ -113,6 +114,13 @@ public class EmailService : IEmailService
 
     public Task SendEmailConfirmationSimpleAsync(string to, string firstName, string confirmUrl, CancellationToken ct = default) =>
         SendAsync(to, EmailTemplates.ConfirmEmailSimple, new Dictionary<string, string>
+        {
+            ["FirstName"] = firstName,
+            ["ConfirmationUrl"] = confirmUrl
+        }, ct);
+
+    public Task SendParentAccessConfirmationAsync(string to, string firstName, string confirmUrl, CancellationToken ct = default) =>
+        SendAsync(to, EmailTemplates.ParentConfirmAccess, new Dictionary<string, string>
         {
             ["FirstName"] = firstName,
             ["ConfirmationUrl"] = confirmUrl

@@ -78,6 +78,13 @@
             <h1>@L["Login_Parent_Space"]</h1>
             <p class="login-subtitle">@L["Login_Parent_Subtitle"]</p>
 
+            @if (Confirmed)
+            {
+                <div class="alert alert-success mb-3" role="status">
+                    <i class="bi bi-check-circle me-2"></i>@L["Login_Parent_EmailConfirmed"]
+                </div>
+            }
+
             @if (!string.IsNullOrEmpty(_successMessage))
             {
                 <div class="alert alert-success mb-3" role="status">
@@ -169,6 +176,9 @@
 </div>
 
 @code {
+    [SupplyParameterFromQuery(Name = "confirmed")]
+    public bool Confirmed { get; set; }
+
     private string _email = "";
     private string _password = "";
     private bool _rememberMe;

@@ -25,6 +25,8 @@ public interface IEmailService
 
     // Auth
     Task SendEmailConfirmationSimpleAsync(string to, string firstName, string confirmUrl, CancellationToken ct = default);
+    /// <summary>Invitation parent : valider l'e-mail pour activer l'espace parent (pas de WELCOME générique).</summary>
+    Task SendParentAccessConfirmationAsync(string to, string firstName, string confirmUrl, CancellationToken ct = default);
     Task SendResetPasswordAsync(string to, string firstName, string resetUrl, CancellationToken ct = default);
     Task SendPasswordChangedAsync(string to, string firstName, CancellationToken ct = default);
 

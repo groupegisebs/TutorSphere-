@@ -99,11 +99,20 @@ public class AuthService : IAuthService
         if (role == UserRoles.Student)
             await EnsureStudentProfileOnRegisterAsync(user, studentDob, ct);
 
-        await _email.SendWelcomeAsync(user.Email!, user.FirstName, ct);
-
         var confirmToken = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-        var confirmUrl = _urls.BuildEmailConfirmUrl(user.Id, confirmToken);
-        await _email.SendEmailConfirmationSimpleAsync(user.Email!, user.FirstName, confirmUrl, ct);
+
+        if (role == UserRoles.Parent)
+        {
+            // Espace parent : un seul e-mail d'invitation à valider le compte (pas de WELCOME « compte prêt »).
+            var parentConfirmUrl = _urls.BuildEmailConfirmUrl(user.Id, confirmToken, "/login/parent?confirmed=true");
+            await _email.SendParentAccessConfirmationAsync(user.Email!, user.FirstName, parentConfirmUrl, ct);
+        }
+        else
+        {
+            await _email.SendWelcomeAsync(user.Email!, user.FirstName, ct);
+            var confirmUrl = _urls.BuildEmailConfirmUrl(user.Id, confirmToken);
+            await _email.SendEmailConfirmationSimpleAsync(user.Email!, user.FirstName, confirmUrl, ct);
+        }
 
         // Pas de JWT tant que l'e-mail n'est pas confirmé (évite un accès API avant validation).
         return new AuthResponse(
@@ -666,17 +675,28 @@ public class AuthService : IAuthService
             return;
 
         var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-        var confirmUrl = _urls.BuildEmailConfirmUrl(user.Id, token);
 
         var roles = await _userManager.GetRolesAsync(user);
+        var isParent = roles.Any(r => r.Equals(UserRoles.Parent, StringComparison.OrdinalIgnoreCase));
         var isTutor = roles.Any(r =>
             r.Equals(UserRoles.Tutor, StringComparison.OrdinalIgnoreCase)
             || r.Equals(UserRoles.TeachingAssistant, StringComparison.OrdinalIgnoreCase));
 
-        if (isTutor)
+        if (isParent)
+        {
+            var parentConfirmUrl = _urls.BuildEmailConfirmUrl(user.Id, token, "/login/parent?confirmed=true");
+            await _email.SendParentAccessConfirmationAsync(user.Email!, user.FirstName, parentConfirmUrl, ct);
+        }
+        else if (isTutor)
+        {
+            var confirmUrl = _urls.BuildEmailConfirmUrl(user.Id, token);
             await _email.SendEmailConfirmationAsync(user.Email!, user.FirstName, confirmUrl, ct);
+        }
         else
+        {
+            var confirmUrl = _urls.BuildEmailConfirmUrl(user.Id, token);
             await _email.SendEmailConfirmationSimpleAsync(user.Email!, user.FirstName, confirmUrl, ct);
+        }
 
         ConfirmResendCooldown[key] = DateTime.UtcNow;
     }
@@ -687,8 +707,7 @@ public class AuthService : IAuthService
         if (user is null) return; // silent — don't reveal whether email exists
 
         var token = await _userManager.GeneratePasswordResetTokenAsync(user);
-        var webBase = (_configuration["WebBaseUrl"] ?? "https://app.tutorsphere.gisebs.com").TrimEnd('/');
-        var resetUrl = $"{webBase}/reset-password?userId={Uri.EscapeDataString(user.Id)}&token={Uri.EscapeDataString(token)}";
+        var resetUrl = $"{_urls.WebBaseUrl}/reset-password?userId={Uri.EscapeDataString(user.Id)}&token={Uri.EscapeDataString(token)}";
         await _email.SendResetPasswordAsync(user.Email!, user.FirstName, resetUrl, ct);
     }
 

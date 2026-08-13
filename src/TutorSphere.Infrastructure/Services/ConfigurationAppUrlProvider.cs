@@ -18,8 +18,14 @@ public sealed class ConfigurationAppUrlProvider : IAppUrlProvider
     public string WebBaseUrl { get; }
     public string ApiPublicBaseUrl { get; }
 
-    public string BuildEmailConfirmUrl(string userId, string token) =>
-        $"{WebBaseUrl}/confirm-email?userId={Uri.EscapeDataString(userId)}&token={Uri.EscapeDataString(token)}";
+    public string BuildEmailConfirmUrl(string userId, string token, string? returnPath = null)
+    {
+        var url =
+            $"{WebBaseUrl}/confirm-email?userId={Uri.EscapeDataString(userId)}&token={Uri.EscapeDataString(token)}";
+        if (!string.IsNullOrWhiteSpace(returnPath) && returnPath.StartsWith('/') && !returnPath.StartsWith("//"))
+            url += $"&returnUrl={Uri.EscapeDataString(returnPath)}";
+        return url;
+    }
 
     /// <summary>
     /// Corrige les fautes de frappe fréquentes (qisebs / qiscbs → gisebs)
