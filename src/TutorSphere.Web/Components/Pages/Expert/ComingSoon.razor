@@ -1,0 +1,52 @@
+@page "/expert/coming-soon/{Feature}"
+@layout ExpertLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject IStringLocalizer<SharedResources> L
+
+<ApplyRequestCulture />
+
+<PageTitle>@Title — TutorSphere</PageTitle>
+
+<AuthorizeView Roles="Expert">
+    <Authorized>
+        <div class="cc-card cc-empty py-5">
+            <i class="bi bi-hourglass-split" style="font-size:2rem"></i>
+            <h1 class="cc-page-title mt-3">@Title</h1>
+            <p class="cc-page-sub mb-3">Module en cours de déploiement dans le centre de gouvernance Expert.</p>
+            <a class="cc-btn cc-btn-primary" href="expert/dashboard">Retour au tableau de bord</a>
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <div class="cc-card cc-empty">
+            <p>@L["Expert_LoginRequired"]</p>
+            <a class="cc-btn cc-btn-primary" href="/login/expert">@L["Nav_Login"]</a>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    [Parameter] public string Feature { get; set; } = "";
+
+    private string Title => Feature?.ToLowerInvariant() switch
+    {
+        "interviews" => "Entretiens",
+        "demonstrations" => "Démonstrations pédagogiques",
+        "documents" => "Documents & échéances",
+        "renewals" => "Réévaluations",
+        "quality" => "Suivi qualité",
+        "observations" => "Observations de cours",
+        "resources" => "Supports pédagogiques",
+        "feedback" => "Remarques & plans",
+        "incidents" => "Signalements & incidents",
+        "library" => "Bibliothèque du groupe",
+        "training" => "Formations",
+        "visibility" => "Visibilité géographique",
+        "meetings" => "Réunions du groupe",
+        "decisions" => "Décisions collégiales",
+        "reports" => "Rapports",
+        "notifications" => "Notifications",
+        "activity" => "Journal d'activité",
+        "profile" => "Mon profil",
+        _ => "Bientôt disponible"
+    };
+}

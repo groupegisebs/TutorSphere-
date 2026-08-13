@@ -16,22 +16,83 @@ public class ExpertApprovalsController : ControllerBase
 {
     private readonly IExpertApprovalService _approvals;
     private readonly IExpertMonitoringService _monitoring;
+    private readonly IExpertDashboardService _dashboard;
     private readonly IAuthService _authService;
     private readonly UserManager<ApplicationUser> _userManager;
 
     public ExpertApprovalsController(
         IExpertApprovalService approvals,
         IExpertMonitoringService monitoring,
+        IExpertDashboardService dashboard,
         IAuthService authService,
         UserManager<ApplicationUser> userManager)
     {
         _approvals = approvals;
         _monitoring = monitoring;
+        _dashboard = dashboard;
         _authService = authService;
         _userManager = userManager;
     }
 
     private string? UserId => User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+    [HttpGet("dashboard-summary")]
+    public async Task<ActionResult<ExpertDashboardSummaryDto>> DashboardSummary(CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        try
+        {
+            return Ok(await _dashboard.GetSummaryAsync(UserId, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpGet("approvals-queue")]
+    public async Task<ActionResult<IReadOnlyList<ExpertApprovalQueueItemDto>>> ApprovalsQueue(
+        [FromQuery] string? country,
+        [FromQuery] string? city,
+        [FromQuery] ExpertApprovalStatus? status,
+        [FromQuery] int? minDocuments,
+        [FromQuery] bool? incompleteOnly,
+        [FromQuery] bool? urgentOnly,
+        [FromQuery] string? assignedToUserId,
+        [FromQuery] int? olderThanDays,
+        CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        var filter = new ExpertApprovalQueueFilter(
+            country, city, status, minDocuments, incompleteOnly, urgentOnly, assignedToUserId, olderThanDays);
+        var list = await _approvals.ListQueueForExpertAsync(UserId, filter, ct);
+        var enriched = new List<ExpertApprovalQueueItemDto>();
+        foreach (var item in list)
+        {
+            string? email = null;
+            string? name = null;
+            string? assigneeName = null;
+            var detail = await _approvals.GetReviewDetailAsync(item.TenantId, ct);
+            if (detail?.OwnerUserId is { } oid)
+            {
+                var user = await _userManager.FindByIdAsync(oid);
+                email = user?.Email;
+                name = user?.FullName;
+            }
+            if (!string.IsNullOrWhiteSpace(item.ReviewAssignedToUserId))
+            {
+                var a = await _userManager.FindByIdAsync(item.ReviewAssignedToUserId);
+                assigneeName = a?.FullName;
+            }
+            enriched.Add(item with
+            {
+                OwnerEmail = email,
+                OwnerName = name,
+                ReviewAssignedToName = assigneeName
+            });
+        }
+        return Ok(enriched);
+    }
 
     [HttpGet("queue")]
     public async Task<ActionResult<IReadOnlyList<PendingTeacherDto>>> Queue(CancellationToken ct)
@@ -99,6 +160,51 @@ public class ExpertApprovalsController : ControllerBase
         {
             await _approvals.RejectAsync(tenantId, UserId, request?.Notes, ct);
             return Ok(new { message = "Enseignant rejeté." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("teachers/{tenantId:guid}/request-changes")]
+    public async Task<IActionResult> RequestChanges(Guid tenantId, [FromBody] RequestChangesRequest? request, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        try
+        {
+            await _approvals.RequestChangesAsync(tenantId, UserId, request?.Notes ?? "", ct);
+            return Ok(new { message = "Modifications demandées." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("teachers/{tenantId:guid}/assign")]
+    public async Task<IActionResult> Assign(Guid tenantId, [FromBody] AssignReviewRequest? request, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        try
+        {
+            await _approvals.AssignReviewAsync(tenantId, UserId, request ?? new AssignReviewRequest(null), ct);
+            return Ok(new { message = "Dossier attribué." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("teachers/{tenantId:guid}/start-review")]
+    public async Task<IActionResult> StartReview(Guid tenantId, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        try
+        {
+            await _approvals.StartReviewAsync(tenantId, UserId, ct);
+            return Ok(new { message = "Revue démarrée." });
         }
         catch (InvalidOperationException ex)
         {

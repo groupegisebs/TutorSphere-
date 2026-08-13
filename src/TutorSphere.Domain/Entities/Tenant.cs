@@ -66,6 +66,17 @@ public class Tenant : BaseEntity
     /// </summary>
     public DateTime? ExpertReviewNotifiedAt { get; set; }
 
+    /// <summary>Expert actuellement responsable du dossier (revue).</summary>
+    public string? ReviewAssignedToUserId { get; set; }
+
+    /// <summary>0 = normal, 1 = urgent.</summary>
+    public int ReviewPriority { get; set; }
+
+    /// <summary>Dernière demande de modifications / notes de revue en cours.</summary>
+    public string? ReviewRequestNotes { get; set; }
+
+    public DateTime? ReviewAssignedAt { get; set; }
+
     public ExpertGroup? ApprovedByExpertGroup { get; set; }
 
     public ICollection<TeacherDocument> TeacherDocuments { get; set; } = [];

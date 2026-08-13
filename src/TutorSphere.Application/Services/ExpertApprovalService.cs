@@ -10,9 +10,16 @@ public interface IExpertApprovalService
 {
     Task<IReadOnlyList<PendingTeacherDto>> ListPendingForExpertAsync(string expertUserId, CancellationToken ct = default);
     Task<IReadOnlyList<PendingTeacherDto>> ListAllPendingAsync(CancellationToken ct = default);
+    Task<IReadOnlyList<ExpertApprovalQueueItemDto>> ListQueueForExpertAsync(
+        string expertUserId,
+        ExpertApprovalQueueFilter? filter = null,
+        CancellationToken ct = default);
     Task<TeacherReviewDetailDto?> GetReviewDetailAsync(Guid tenantId, CancellationToken ct = default);
     Task ApproveAsync(Guid tenantId, string expertUserId, string? notes, CancellationToken ct = default);
     Task RejectAsync(Guid tenantId, string expertUserId, string? notes, CancellationToken ct = default);
+    Task RequestChangesAsync(Guid tenantId, string expertUserId, string notes, CancellationToken ct = default);
+    Task AssignReviewAsync(Guid tenantId, string expertUserId, AssignReviewRequest request, CancellationToken ct = default);
+    Task StartReviewAsync(Guid tenantId, string expertUserId, CancellationToken ct = default);
     Task InviteTeacherApplicationAsync(string expertUserId, InviteTeacherApplicationRequest request, CancellationToken ct = default);
     Task<IReadOnlyList<TeacherApplicationInviteDto>> ListInvitesForExpertAsync(string expertUserId, CancellationToken ct = default);
     Task MarkInviteAcceptedAsync(string email, Guid tenantId, string? inviteToken = null, CancellationToken ct = default);
@@ -76,8 +83,12 @@ public class ExpertApprovalService(
             return Task.FromResult<IReadOnlyList<PendingTeacherDto>>([]);
 
         var pending = db.Tenants
-            .Where(t => t.ExpertApprovalStatus == ExpertApprovalStatus.Pending)
-            .OrderBy(t => t.CreatedAt)
+            .Where(t => t.ExpertApprovalStatus == ExpertApprovalStatus.Pending
+                        || t.ExpertApprovalStatus == ExpertApprovalStatus.Assigned
+                        || t.ExpertApprovalStatus == ExpertApprovalStatus.UnderReview
+                        || t.ExpertApprovalStatus == ExpertApprovalStatus.ChangesRequested)
+            .OrderByDescending(t => t.ReviewPriority)
+            .ThenBy(t => t.CreatedAt)
             .ToList();
 
         var docCounts = db.TeacherDocumentsForAnyTenant
@@ -102,8 +113,12 @@ public class ExpertApprovalService(
     public Task<IReadOnlyList<PendingTeacherDto>> ListAllPendingAsync(CancellationToken ct = default)
     {
         var pending = db.Tenants
-            .Where(t => t.ExpertApprovalStatus == ExpertApprovalStatus.Pending)
-            .OrderBy(t => t.CreatedAt)
+            .Where(t => t.ExpertApprovalStatus == ExpertApprovalStatus.Pending
+                        || t.ExpertApprovalStatus == ExpertApprovalStatus.Assigned
+                        || t.ExpertApprovalStatus == ExpertApprovalStatus.UnderReview
+                        || t.ExpertApprovalStatus == ExpertApprovalStatus.ChangesRequested)
+            .OrderByDescending(t => t.ReviewPriority)
+            .ThenBy(t => t.CreatedAt)
             .ToList();
 
         var docCounts = db.TeacherDocumentsForAnyTenant
@@ -167,7 +182,7 @@ public class ExpertApprovalService(
 
     public async Task ApproveAsync(Guid tenantId, string expertUserId, string? notes, CancellationToken ct = default)
     {
-        var tenant = await RequirePendingForExpertAsync(tenantId, expertUserId, ct);
+        var tenant = await RequireReviewableForExpertAsync(tenantId, expertUserId, ct);
         var group = expertGroups.ResolveReviewerGroup(tenant.Country)
             ?? throw new InvalidOperationException(
                 "Aucun groupe d'experts disponible pour ce pays (ni groupe international).");
@@ -192,7 +207,7 @@ public class ExpertApprovalService(
 
     public async Task RejectAsync(Guid tenantId, string expertUserId, string? notes, CancellationToken ct = default)
     {
-        var tenant = await RequirePendingForExpertAsync(tenantId, expertUserId, ct);
+        var tenant = await RequireReviewableForExpertAsync(tenantId, expertUserId, ct);
         var group = expertGroups.ResolveReviewerGroup(tenant.Country)
             ?? throw new InvalidOperationException(
                 "Aucun groupe d'experts disponible pour ce pays (ni groupe international).");
@@ -214,6 +229,126 @@ public class ExpertApprovalService(
         await db.SaveChangesAsync(ct);
         await SyncInviteStatusForTenantAsync(tenant.Id, ct);
         await NotifyTeacherDecisionAsync(tenant, group.Name, approved: false, ct);
+    }
+
+    public async Task RequestChangesAsync(Guid tenantId, string expertUserId, string notes, CancellationToken ct = default)
+    {
+        var tenant = await RequireReviewableForExpertAsync(tenantId, expertUserId, ct);
+        if (string.IsNullOrWhiteSpace(notes))
+            throw new InvalidOperationException("Précisez les modifications demandées.");
+
+        tenant.ExpertApprovalStatus = ExpertApprovalStatus.ChangesRequested;
+        tenant.ReviewRequestNotes = notes.Trim();
+        tenant.ExpertApprovalNotes = notes.Trim();
+        tenant.ApprovedByUserId = expertUserId;
+        tenant.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task AssignReviewAsync(Guid tenantId, string expertUserId, AssignReviewRequest request, CancellationToken ct = default)
+    {
+        var tenant = await RequireReviewableForExpertAsync(tenantId, expertUserId, ct);
+        var assignee = string.IsNullOrWhiteSpace(request.AssigneeUserId)
+            ? expertUserId
+            : request.AssigneeUserId.Trim();
+
+        var group = expertGroups.ResolveReviewerGroup(tenant.Country)
+            ?? throw new InvalidOperationException("Aucun groupe d'experts pour ce dossier.");
+        EnsureExpertInGroup(assignee, group.Id);
+
+        tenant.ReviewAssignedToUserId = assignee;
+        tenant.ReviewAssignedAt = DateTime.UtcNow;
+        tenant.ReviewPriority = request.Urgent ? 1 : tenant.ReviewPriority;
+        if (tenant.ExpertApprovalStatus == ExpertApprovalStatus.Pending)
+            tenant.ExpertApprovalStatus = ExpertApprovalStatus.Assigned;
+        tenant.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+    }
+
+    public async Task StartReviewAsync(Guid tenantId, string expertUserId, CancellationToken ct = default)
+    {
+        var tenant = await RequireReviewableForExpertAsync(tenantId, expertUserId, ct);
+        tenant.ReviewAssignedToUserId ??= expertUserId;
+        tenant.ReviewAssignedAt ??= DateTime.UtcNow;
+        tenant.ExpertApprovalStatus = ExpertApprovalStatus.UnderReview;
+        tenant.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+    }
+
+    public Task<IReadOnlyList<ExpertApprovalQueueItemDto>> ListQueueForExpertAsync(
+        string expertUserId,
+        ExpertApprovalQueueFilter? filter = null,
+        CancellationToken ct = default)
+    {
+        filter ??= new ExpertApprovalQueueFilter();
+        var groupIds = db.ExpertGroupMembers
+            .Where(m => m.UserId == expertUserId && m.Status == ExpertMembershipStatus.Active)
+            .Select(m => m.ExpertGroupId)
+            .Distinct()
+            .ToHashSet();
+        if (groupIds.Count == 0)
+            return Task.FromResult<IReadOnlyList<ExpertApprovalQueueItemDto>>([]);
+
+        var statuses = filter.Status is ExpertApprovalStatus s
+            ? new HashSet<ExpertApprovalStatus> { s }
+            : new HashSet<ExpertApprovalStatus>
+            {
+                ExpertApprovalStatus.Pending,
+                ExpertApprovalStatus.Assigned,
+                ExpertApprovalStatus.UnderReview,
+                ExpertApprovalStatus.ChangesRequested
+            };
+
+        var tenants = db.Tenants
+            .Where(t => statuses.Contains(t.ExpertApprovalStatus))
+            .OrderByDescending(t => t.ReviewPriority)
+            .ThenBy(t => t.CreatedAt)
+            .ToList();
+
+        var docCounts = db.TeacherDocumentsForAnyTenant
+            .Where(d => tenants.Select(t => t.Id).Contains(d.TenantId))
+            .GroupBy(d => d.TenantId)
+            .Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionary(x => x.Key, x => x.Count);
+
+        var now = DateTime.UtcNow;
+        var result = new List<ExpertApprovalQueueItemDto>();
+        foreach (var t in tenants)
+        {
+            var suggested = expertGroups.ResolveReviewerGroup(t.Country);
+            if (suggested is null || !groupIds.Contains(suggested.Id))
+                continue;
+
+            if (!string.IsNullOrWhiteSpace(filter.Country)
+                && !string.Equals(t.Country, filter.Country, StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (!string.IsNullOrWhiteSpace(filter.City)
+                && (t.City is null || !t.City.Contains(filter.City, StringComparison.OrdinalIgnoreCase)))
+                continue;
+            if (!string.IsNullOrWhiteSpace(filter.AssignedToUserId)
+                && !string.Equals(t.ReviewAssignedToUserId, filter.AssignedToUserId, StringComparison.Ordinal))
+                continue;
+            if (filter.UrgentOnly == true && t.ReviewPriority < 1)
+                continue;
+
+            var docs = docCounts.GetValueOrDefault(t.Id);
+            if (filter.MinDocuments is int min && docs < min)
+                continue;
+            var complete = docs >= 1;
+            if (filter.IncompleteOnly == true && complete)
+                continue;
+
+            var age = (int)(now - t.CreatedAt).TotalDays;
+            if (filter.OlderThanDays is int days && age < days)
+                continue;
+
+            result.Add(new ExpertApprovalQueueItemDto(
+                t.Id, t.Name, t.Slug, t.Country, t.City, t.ExpertApprovalStatus, t.CreatedAt, age,
+                null, null, docs, complete, t.ReviewPriority, t.ReviewAssignedToUserId, null,
+                t.ReviewRequestNotes));
+        }
+
+        return Task.FromResult<IReadOnlyList<ExpertApprovalQueueItemDto>>(result);
     }
 
     public async Task InviteTeacherApplicationAsync(
@@ -520,16 +655,20 @@ public class ExpertApprovalService(
         }
     }
 
-    private Task<Tenant> RequirePendingForExpertAsync(Guid tenantId, string expertUserId, CancellationToken ct)
+    private Task<Tenant> RequireReviewableForExpertAsync(Guid tenantId, string expertUserId, CancellationToken ct)
     {
         var tenant = db.Tenants.FirstOrDefault(t => t.Id == tenantId)
             ?? throw new InvalidOperationException("École introuvable.");
 
-        if (tenant.ExpertApprovalStatus != ExpertApprovalStatus.Pending)
-            throw new InvalidOperationException("Cette fiche n'est plus en attente d'approbation.");
+        if (tenant.ExpertApprovalStatus is not (
+            ExpertApprovalStatus.Pending
+            or ExpertApprovalStatus.Assigned
+            or ExpertApprovalStatus.UnderReview
+            or ExpertApprovalStatus.ChangesRequested))
+            throw new InvalidOperationException("Cette fiche n'est plus en cours de revue.");
 
         var groupIds = db.ExpertGroupMembers
-            .Where(m => m.UserId == expertUserId)
+            .Where(m => m.UserId == expertUserId && m.Status == ExpertMembershipStatus.Active)
             .Select(m => m.ExpertGroupId)
             .ToHashSet();
         if (groupIds.Count == 0)
@@ -544,7 +683,10 @@ public class ExpertApprovalService(
 
     private void EnsureExpertInGroup(string expertUserId, Guid groupId)
     {
-        if (!db.ExpertGroupMembers.Any(m => m.UserId == expertUserId && m.ExpertGroupId == groupId))
+        if (!db.ExpertGroupMembers.Any(m =>
+                m.UserId == expertUserId
+                && m.ExpertGroupId == groupId
+                && m.Status == ExpertMembershipStatus.Active))
             throw new InvalidOperationException("Vous n'êtes pas membre du groupe d'experts assigné.");
     }
 

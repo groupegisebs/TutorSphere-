@@ -126,7 +126,10 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
                 .OnDelete(DeleteBehavior.SetNull);
             e.Property(t => t.ApprovedByUserId).HasMaxLength(450);
             e.Property(t => t.ExpertApprovalNotes).HasMaxLength(2000);
+            e.Property(t => t.ReviewAssignedToUserId).HasMaxLength(450);
+            e.Property(t => t.ReviewRequestNotes).HasMaxLength(2000);
             e.HasIndex(t => t.ExpertApprovalStatus);
+            e.HasIndex(t => t.ReviewAssignedToUserId);
         });
 
         builder.Entity<SubscriptionOffering>(e =>

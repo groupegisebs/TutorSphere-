@@ -199,7 +199,7 @@
                         </p>
                         <p class="small text-muted mb-3">@L["Expert_EmailHint"]</p>
 
-                        @if (_detail.ApprovalStatus != 0)
+                        @if (!CanDecide(_detail.ApprovalStatus))
                         {
                             <div class="alert alert-secondary mb-0">
                                 @L["Expert_AlreadyDecided"]
@@ -217,6 +217,9 @@
                             <div class="d-grid gap-2">
                                 <button type="button" class="cc-btn cc-btn-primary" disabled="@_busy" @onclick="ApproveAsync">
                                     <i class="bi bi-check2"></i> @L["Expert_Approve"]
+                                </button>
+                                <button type="button" class="cc-btn" disabled="@_busy" @onclick="RequestChangesAsync">
+                                    <i class="bi bi-pencil-square"></i> Demander des modifications
                                 </button>
                                 <button type="button" class="cc-btn" disabled="@_busy" @onclick="RejectAsync">
                                     <i class="bi bi-x-lg"></i> @L["Expert_Reject"]
@@ -301,7 +304,30 @@
             if (ok is null) { _error = L["Expert_ActionFailed"]; return; }
             _success = L["Expert_ApproveSuccess"];
             await Task.Delay(700);
-            Nav.NavigateTo("/expert/dashboard");
+            Nav.NavigateTo("/expert/approvals");
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task RequestChangesAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_notes))
+        {
+            _error = "Indiquez les modifications demandées dans les notes.";
+            return;
+        }
+
+        _busy = true;
+        _error = null;
+        _success = null;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<object>($"api/expert/teachers/{TenantId}/request-changes", new { notes = _notes });
+            if (result.Error is not null) { _error = result.Error; return; }
+            _success = "Modifications demandées.";
+            await Task.Delay(700);
+            Nav.NavigateTo("/expert/approvals");
         }
         catch (Exception ex) { _error = ex.Message; }
         finally { _busy = false; }
@@ -324,7 +350,7 @@
             if (ok is null) { _error = L["Expert_ActionFailed"]; return; }
             _success = L["Expert_RejectSuccess"];
             await Task.Delay(700);
-            Nav.NavigateTo("/expert/dashboard");
+            Nav.NavigateTo("/expert/approvals");
         }
         catch (Exception ex) { _error = ex.Message; }
         finally { _busy = false; }
@@ -388,17 +414,24 @@
         _ => L["TeacherDoc_Other"]
     };
 
+    private static bool CanDecide(int status) => status is 0 or 3 or 4 or 5;
+
     private string StatusLabel(int status) => status switch
     {
         1 => L["Expert_StatusApproved"],
         2 => L["Expert_StatusRejected"],
+        3 => "Modifications demandées",
+        4 => "En revue",
+        5 => "Attribué",
+        6 => "Suspendu",
         _ => L["Expert_StatusPending"]
     };
 
     private static string StatusPillClass(int status) => status switch
     {
         1 => "cc-pill-ok",
-        2 => "cc-pill-bad",
+        2 or 6 => "cc-pill-bad",
+        3 => "cc-pill-type",
         _ => "cc-pill-type"
     };
 
