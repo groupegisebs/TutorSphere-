@@ -1,0 +1,199 @@
+@page "/expert/join"
+@layout LoginLayout
+@rendermode InteractiveServer
+@using Microsoft.AspNetCore.WebUtilities
+@inject NavigationManager Navigation
+@inject HttpClient Http
+@inject IStringLocalizer<SharedResources> L
+
+<PageTitle>Rejoindre un groupe d'experts — TutorSphere</PageTitle>
+
+<div class="login-admin-page login-theme-admin">
+    <div class="login-admin-inner" style="max-width:560px">
+        <h1>Invitation Expert</h1>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger">@_error</div>
+        }
+        @if (_done)
+        {
+            <div class="alert alert-success">
+                Candidature soumise. L'accès Expert sera ouvert après le vote des membres (75&nbsp;%).
+            </div>
+            <a class="btn btn-primary" href="/">Retour</a>
+        }
+        else if (_loading)
+        {
+            <div class="text-center py-4"><span class="spinner-border"></span></div>
+        }
+        else if (_invite is not null)
+        {
+            <p class="login-subtitle">
+                @_invite.InviterName vous invite à rejoindre <strong>@_invite.GroupName</strong>
+                @if (!string.IsNullOrWhiteSpace(_invite.GroupCountryCode))
+                {
+                    <span> (@_invite.GroupCountryCode)</span>
+                }
+                .
+            </p>
+
+            <div class="mb-3">
+                <label class="form-label">Prénom</label>
+                <input class="form-control" @bind="_firstName" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Nom</label>
+                <input class="form-control" @bind="_lastName" />
+            </div>
+            @if (_invite.RequiresAccountCreation)
+            {
+                <div class="mb-3">
+                    <label class="form-label">Mot de passe *</label>
+                    <input class="form-control" type="password" @bind="_password" />
+                    <small class="text-muted">8 caractères, un chiffre et un caractère spécial.</small>
+                </div>
+            }
+            <div class="mb-3">
+                <label class="form-label">Spécialité</label>
+                <input class="form-control" @bind="_specialty" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Présentation</label>
+                <textarea class="form-control" rows="3" @bind="_presentation"></textarea>
+            </div>
+            <div class="form-check mb-2">
+                <input class="form-check-input" type="checkbox" id="conduct" @bind="_conduct" />
+                <label class="form-check-label" for="conduct">J'accepte le code de conduite des Experts</label>
+            </div>
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" id="privacy" @bind="_privacy" />
+                <label class="form-check-label" for="privacy">J'accepte la politique de confidentialité</label>
+            </div>
+
+            <div class="d-flex gap-2">
+                <button type="button" class="btn btn-primary" disabled="@_busy" @onclick="SubmitAsync">Soumettre ma candidature</button>
+                <button type="button" class="btn btn-outline-secondary" disabled="@_busy" @onclick="DeclineAsync">Refuser</button>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private string? _token;
+    private bool _loading = true;
+    private bool _busy;
+    private bool _done;
+    private string? _error;
+    private PublicInvite? _invite;
+
+    private string _firstName = "";
+    private string _lastName = "";
+    private string _password = "";
+    private string _specialty = "";
+    private string _presentation = "";
+    private bool _conduct;
+    private bool _privacy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        if (QueryHelpers.ParseQuery(uri.Query).TryGetValue("invite", out var invite))
+            _token = invite.ToString();
+
+        if (string.IsNullOrWhiteSpace(_token))
+        {
+            _error = "Lien d'invitation invalide.";
+            _loading = false;
+            return;
+        }
+
+        try
+        {
+            var response = await Http.GetAsync($"api/expert/membership/public/{Uri.EscapeDataString(_token)}");
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync();
+                _error = TryError(body) ?? "Invitation introuvable.";
+                return;
+            }
+            _invite = await response.Content.ReadFromJsonAsync<PublicInvite>();
+            if (_invite is not null)
+            {
+                _firstName = _invite.FirstName;
+                _lastName = _invite.LastName;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally { _loading = false; }
+    }
+
+    private async Task SubmitAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            var response = await Http.PostAsJsonAsync("api/expert/membership/public/submit", new
+            {
+                token = _token,
+                password = string.IsNullOrWhiteSpace(_password) ? null : _password,
+                firstName = _firstName,
+                lastName = _lastName,
+                specialty = string.IsNullOrWhiteSpace(_specialty) ? null : _specialty,
+                presentation = string.IsNullOrWhiteSpace(_presentation) ? null : _presentation,
+                acceptedConduct = _conduct,
+                acceptedPrivacy = _privacy
+            });
+            if (!response.IsSuccessStatusCode)
+            {
+                _error = TryError(await response.Content.ReadAsStringAsync()) ?? "Échec de la soumission.";
+                return;
+            }
+            _done = true;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task DeclineAsync()
+    {
+        _busy = true;
+        try
+        {
+            await Http.PostAsJsonAsync("api/expert/membership/public/decline", new { token = _token });
+            Navigation.NavigateTo("/");
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private static string? TryError(string body)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("error", out var e))
+                return e.GetString();
+        }
+        catch { }
+        return null;
+    }
+
+    private sealed class PublicInvite
+    {
+        public Guid Id { get; set; }
+        public string GroupName { get; set; } = "";
+        public string? GroupCountryCode { get; set; }
+        public string InviterName { get; set; } = "";
+        public string Email { get; set; } = "";
+        public string FirstName { get; set; } = "";
+        public string LastName { get; set; } = "";
+        public int Status { get; set; }
+        public DateTime InviteExpiresAtUtc { get; set; }
+        public bool RequiresAccountCreation { get; set; }
+    }
+}

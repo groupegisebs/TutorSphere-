@@ -1,0 +1,96 @@
+@page "/expert/members"
+@layout ExpertLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService Auth
+@inject ApiClient Api
+@inject IStringLocalizer<SharedResources> L
+
+<ApplyRequestCulture />
+
+<PageTitle>Membres du groupe — TutorSphere</PageTitle>
+
+<AuthorizeView Roles="Expert">
+    <Authorized>
+        <div class="cc-toolbar">
+            <div>
+                <h1 class="cc-page-title">Membres du groupe</h1>
+                <p class="cc-page-sub">Liste en lecture seule. Pour proposer un nouveau membre, utilisez Admissions des Experts.</p>
+            </div>
+        </div>
+
+        <div class="cc-card">
+            @if (_loading)
+            {
+                <div class="cc-empty"><span class="spinner-border"></span></div>
+            }
+            else if (!string.IsNullOrEmpty(_error))
+            {
+                <div class="alert alert-danger">@_error</div>
+            }
+            else if (_members.Count == 0)
+            {
+                <div class="cc-empty py-3"><p>Aucun membre.</p></div>
+            }
+            else
+            {
+                <table class="cc-table">
+                    <thead>
+                        <tr>
+                            <th>Nom</th>
+                            <th>E-mail</th>
+                            <th>Statut</th>
+                            <th>Admission</th>
+                            <th>Spécialité</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var m in _members)
+                        {
+                            <tr>
+                                <td>@m.FullName</td>
+                                <td>@m.Email</td>
+                                <td>@(m.Status == 0 ? "Actif" : m.Status == 1 ? "Suspendu" : "Retiré")</td>
+                                <td>@(m.AdmissionMethod == 0 ? "Admin" : "Vote")</td>
+                                <td>@(m.Specialty ?? "—")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <div class="cc-card cc-empty">
+            <p>@L["Expert_LoginRequired"]</p>
+            <a class="cc-btn cc-btn-primary" href="/login/expert">@L["Nav_Login"]</a>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private List<MemberItem> _members = [];
+    private bool _loading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        try
+        {
+            _members = await Api.GetAsync<List<MemberItem>>("api/expert/membership/members") ?? [];
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private sealed record MemberItem(
+        Guid Id,
+        Guid ExpertGroupId,
+        string UserId,
+        string Email,
+        string FullName,
+        int Status,
+        int AdmissionMethod,
+        string? Specialty,
+        DateTime? AdmittedAtUtc);
+}

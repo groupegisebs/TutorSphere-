@@ -73,7 +73,7 @@
             </div>
         </div>
 
-        <div class="cc-card">
+        <div class="cc-card mb-3">
             @if (_loading)
             {
                 <div class="cc-empty"><span class="spinner-border"></span></div>
@@ -103,6 +103,42 @@
                 </table>
             }
         </div>
+
+        <div class="cc-card">
+            <h2 class="cc-card-title">Candidatures (vote 75 %)</h2>
+            <p class="small text-muted mb-3">Invitations communautaires en cours. L'ajout ci-dessus reste immédiat (AdminDirect).</p>
+            @if (_invites.Count == 0)
+            {
+                <p class="text-muted mb-0">Aucune candidature.</p>
+            }
+            else
+            {
+                @foreach (var inv in _invites)
+                {
+                    <div class="border-bottom border-secondary py-3">
+                        <div class="d-flex justify-content-between flex-wrap gap-2">
+                            <div>
+                                <strong>@inv.FirstName @inv.LastName</strong> — @inv.Email
+                                <div class="small text-muted">Statut @inv.Status · @inv.ApprovalCount/@inv.RequiredApprovalCount · par @(inv.InvitedByName ?? "—")</div>
+                            </div>
+                            <div class="d-flex flex-wrap gap-1">
+                                @if (inv.Status == 7)
+                                {
+                                    <button type="button" class="cc-btn cc-btn-primary btn-sm" @onclick="() => ValidateAsync(inv.Id)">Valider</button>
+                                }
+                                @if (inv.Status is 0 or 1 or 2 or 7)
+                                {
+                                    <button type="button" class="cc-btn cc-btn-primary btn-sm" @onclick="() => ForceApproveAsync(inv.Id)">Admettre</button>
+                                    <button type="button" class="cc-btn btn-sm" @onclick="() => ForceRejectAsync(inv.Id)">Rejeter</button>
+                                    <button type="button" class="cc-btn btn-sm" @onclick="() => ExtendAsync(inv.Id)">+7 j</button>
+                                    <button type="button" class="cc-btn btn-sm" @onclick="() => CancelAsync(inv.Id)">Annuler</button>
+                                }
+                            </div>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
     </Authorized>
 </AuthorizeView>
 
@@ -111,6 +147,7 @@
 
     private ExpertGroupItem? _group;
     private List<ExpertMemberItem> _members = [];
+    private List<ExpertMembershipInviteItem> _invites = [];
     private bool _loading = true;
     private bool _adding;
     private bool _invite = true;
@@ -134,6 +171,7 @@
         {
             _group = (await AdminSvc.GetExpertGroupsAsync()).FirstOrDefault(g => g.Id == GroupId);
             _members = await AdminSvc.GetExpertGroupMembersAsync(GroupId);
+            _invites = await AdminSvc.GetExpertMembershipInvitesAsync(GroupId);
         }
         catch (Exception ex) { _error = ex.Message; }
         finally { _loading = false; }
@@ -173,11 +211,45 @@
         finally { _adding = false; }
     }
 
+    private async Task ForceApproveAsync(Guid id)
+    {
+        var r = await AdminSvc.ForceApproveMembershipAsync(id);
+        if (!r.IsSuccess) _error = r.Error; else { _flash = "Candidat admis."; await ReloadAsync(); }
+    }
+
+    private async Task ForceRejectAsync(Guid id)
+    {
+        var r = await AdminSvc.ForceRejectMembershipAsync(id, "Rejet administratif");
+        if (!r.IsSuccess) _error = r.Error; else { _flash = "Candidature rejetée."; await ReloadAsync(); }
+    }
+
+    private async Task CancelAsync(Guid id)
+    {
+        var r = await AdminSvc.CancelMembershipInviteAsync(id);
+        if (!r.IsSuccess) _error = r.Error; else { _flash = "Invitation annulée."; await ReloadAsync(); }
+    }
+
+    private async Task ExtendAsync(Guid id)
+    {
+        var r = await AdminSvc.ExtendMembershipInviteAsync(id, extendInviteDays: 7, extendVoteDays: 7);
+        if (!r.IsSuccess) _error = r.Error; else { _flash = "Délai prolongé de 7 jours."; await ReloadAsync(); }
+    }
+
+    private async Task ValidateAsync(Guid id)
+    {
+        var r = await AdminSvc.ValidateMembershipInviteAsync(id);
+        if (!r.IsSuccess) _error = r.Error; else { _flash = "Validation admin effectuée."; await ReloadAsync(); }
+    }
+
     private async Task RemoveAsync(ExpertMemberItem m)
     {
-        var ok = await AdminSvc.RemoveExpertMemberAsync(GroupId, m.UserId);
-        if (!ok) { _error = L["ExpertMembers_RemoveFailed"]; return; }
-        _flash = L["ExpertMembers_FlashRemoved"];
-        await ReloadAsync();
+        try
+        {
+            var ok = await AdminSvc.RemoveExpertMemberAsync(GroupId, m.UserId);
+            if (!ok) { _error = L["ExpertMembers_RemoveFailed"]; return; }
+            _flash = L["ExpertMembers_FlashRemoved"];
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
     }
 }

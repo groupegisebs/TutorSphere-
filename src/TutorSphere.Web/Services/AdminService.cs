@@ -103,6 +103,36 @@ public sealed class AdminService
     public async Task<bool> RemoveExpertMemberAsync(Guid groupId, string userId)
         => await _api.DeleteAsync($"api/admin/expert-groups/{groupId}/members/{Uri.EscapeDataString(userId)}");
 
+    public async Task<List<ExpertMembershipInviteItem>> GetExpertMembershipInvitesAsync(Guid? groupId = null)
+    {
+        var url = groupId is Guid g
+            ? $"api/admin/expert-membership-invites?groupId={g}"
+            : "api/admin/expert-membership-invites";
+        return await _api.GetAsync<List<ExpertMembershipInviteItem>>(url) ?? [];
+    }
+
+    public Task<ApiResult<ExpertMembershipInviteItem>> ForceApproveMembershipAsync(Guid inviteId, string? notes = null)
+        => _api.PostWithErrorAsync<ExpertMembershipInviteItem>(
+            $"api/admin/expert-membership-invites/{inviteId}/force-approve", new { notes });
+
+    public Task<ApiResult<ExpertMembershipInviteItem>> ForceRejectMembershipAsync(Guid inviteId, string? notes = null)
+        => _api.PostWithErrorAsync<ExpertMembershipInviteItem>(
+            $"api/admin/expert-membership-invites/{inviteId}/force-reject", new { notes });
+
+    public Task<ApiResult<ExpertMembershipInviteItem>> CancelMembershipInviteAsync(Guid inviteId, string? notes = null)
+        => _api.PostWithErrorAsync<ExpertMembershipInviteItem>(
+            $"api/admin/expert-membership-invites/{inviteId}/cancel", new { notes });
+
+    public Task<ApiResult<ExpertMembershipInviteItem>> ValidateMembershipInviteAsync(Guid inviteId, string? notes = null)
+        => _api.PostWithErrorAsync<ExpertMembershipInviteItem>(
+            $"api/admin/expert-membership-invites/{inviteId}/validate", new { notes });
+
+    public Task<ApiResult<ExpertMembershipInviteItem>> ExtendMembershipInviteAsync(
+        Guid inviteId, int? extendInviteDays = null, int? extendVoteDays = null, string? notes = null)
+        => _api.PostWithErrorAsync<ExpertMembershipInviteItem>(
+            $"api/admin/expert-membership-invites/{inviteId}/extend",
+            new { notes, extendInviteDays, extendVoteDays });
+
     public async Task<List<PendingTeacherItem>> GetPendingTeacherApprovalsAsync()
         => await _api.GetAsync<List<PendingTeacherItem>>("api/admin/pending-teacher-approvals") ?? [];
 }
@@ -129,6 +159,36 @@ public sealed record ExpertMemberItem(
     bool AccountCreated = false,
     bool CredentialsSent = false,
     bool NotificationSent = false);
+
+public sealed record ExpertMembershipInviteItem(
+    Guid Id,
+    Guid ExpertGroupId,
+    string GroupName,
+    string Email,
+    string FirstName,
+    string LastName,
+    string? Phone,
+    string? Specialty,
+    string? IntendedRole,
+    string? Presentation,
+    string? Justification,
+    string InvitedByUserId,
+    string? InvitedByName,
+    int Status,
+    DateTime SentAtUtc,
+    DateTime InviteExpiresAtUtc,
+    DateTime? VoteOpenedAtUtc,
+    DateTime? VoteExpiresAtUtc,
+    int EligibleVoterCount,
+    int RequiredApprovalCount,
+    int ApprovalCount,
+    int RejectCount,
+    int AbstainCount,
+    int? MyVote,
+    object? Votes,
+    string? CandidateUserId,
+    DateTime? DecisionAtUtc,
+    string? AdminNotes);
 
 public sealed record PendingTeacherItem(
     Guid TenantId,

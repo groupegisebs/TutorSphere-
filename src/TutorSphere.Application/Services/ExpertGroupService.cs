@@ -38,6 +38,7 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
             .ToList();
 
         var memberCounts = db.ExpertGroupMembers
+            .Where(m => m.Status != ExpertMembershipStatus.Removed)
             .GroupBy(m => m.ExpertGroupId)
             .Select(g => new { g.Key, Count = g.Count() })
             .ToDictionary(x => x.Key, x => x.Count);

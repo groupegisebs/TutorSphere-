@@ -1,0 +1,248 @@
+@page "/expert/admissions"
+@layout ExpertLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService Auth
+@inject ApiClient Api
+@inject IStringLocalizer<SharedResources> L
+
+<ApplyRequestCulture />
+
+<PageTitle>Admissions Experts — TutorSphere</PageTitle>
+
+<AuthorizeView Roles="Expert">
+    <Authorized>
+        <div class="cc-toolbar">
+            <div>
+                <h1 class="cc-page-title">Admissions des Experts</h1>
+                <p class="cc-page-sub">Invitez un candidat ; l'admission exige 75&nbsp;% des autres membres actifs (initiateur exclu).</p>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger mb-3">@_error</div>
+        }
+        @if (!string.IsNullOrEmpty(_success))
+        {
+            <div class="alert alert-success mb-3">@_success</div>
+        }
+
+        <div class="cc-card mb-3">
+            <h2 class="cc-card-title">Inviter un candidat</h2>
+            <div class="row g-2">
+                <div class="col-md-4">
+                    <label class="form-label">E-mail *</label>
+                    <input class="form-control" type="email" @bind="_email" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Prénom *</label>
+                    <input class="form-control" @bind="_firstName" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Nom *</label>
+                    <input class="form-control" @bind="_lastName" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Téléphone</label>
+                    <input class="form-control" @bind="_phone" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Spécialité</label>
+                    <input class="form-control" @bind="_specialty" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Fonction envisagée</label>
+                    <input class="form-control" @bind="_role" />
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Justification *</label>
+                    <textarea class="form-control" rows="2" @bind="_justification"></textarea>
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Message personnel</label>
+                    <textarea class="form-control" rows="2" @bind="_message"></textarea>
+                </div>
+                <div class="col-12">
+                    <button type="button" class="cc-btn cc-btn-primary" disabled="@_busy" @onclick="InviteAsync">
+                        <i class="bi bi-envelope"></i> Envoyer l'invitation
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="cc-card">
+            <h2 class="cc-card-title">Candidatures</h2>
+            @if (_loading)
+            {
+                <div class="cc-empty"><span class="spinner-border"></span></div>
+            }
+            else if (_invites.Count == 0)
+            {
+                <div class="cc-empty py-3"><p>Aucune candidature pour le moment.</p></div>
+            }
+            else
+            {
+                @foreach (var inv in _invites)
+                {
+                    <div class="border-bottom border-secondary py-3">
+                        <div class="d-flex justify-content-between flex-wrap gap-2">
+                            <div>
+                                <strong>@inv.FirstName @inv.LastName</strong>
+                                <div class="small text-muted">@inv.Email · @StatusLabel(inv.Status)</div>
+                                <div class="small">Approbations : @inv.ApprovalCount / @inv.RequiredApprovalCount
+                                    (éligibles : @inv.EligibleVoterCount · rejets : @inv.RejectCount · abst. : @inv.AbstainCount)</div>
+                            </div>
+                            @if (inv.Status is 2 or 7)
+                            {
+                                <div class="d-flex gap-2 align-items-start">
+                                    <button type="button" class="cc-btn cc-btn-primary btn-sm" disabled="@_busy"
+                                            @onclick="() => VoteAsync(inv.Id, 0)">Approuver</button>
+                                    <button type="button" class="cc-btn btn-sm" disabled="@_busy"
+                                            @onclick="() => VoteAsync(inv.Id, 1)">Rejeter</button>
+                                    <button type="button" class="cc-btn btn-sm" disabled="@_busy"
+                                            @onclick="() => VoteAsync(inv.Id, 2)">S'abstenir</button>
+                                </div>
+                            }
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(inv.Justification))
+                        {
+                            <p class="small mb-0 mt-2">@inv.Justification</p>
+                        }
+                    </div>
+                }
+            }
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <div class="cc-card cc-empty">
+            <p>@L["Expert_LoginRequired"]</p>
+            <a class="cc-btn cc-btn-primary" href="/login/expert">@L["Nav_Login"]</a>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private List<InviteItem> _invites = [];
+    private bool _loading = true;
+    private bool _busy;
+    private string? _error;
+    private string? _success;
+
+    private string _email = "";
+    private string _firstName = "";
+    private string _lastName = "";
+    private string _phone = "";
+    private string _specialty = "";
+    private string _role = "";
+    private string _justification = "";
+    private string _message = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _invites = await Api.GetAsync<List<InviteItem>>("api/expert/membership/invites") ?? [];
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally { _loading = false; }
+    }
+
+    private async Task InviteAsync()
+    {
+        _busy = true;
+        _error = _success = null;
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_justification))
+            {
+                _error = "La justification est requise.";
+                return;
+            }
+            var result = await Api.PostWithErrorAsync<InviteItem>("api/expert/membership/invites", new
+            {
+                email = _email,
+                firstName = _firstName,
+                lastName = _lastName,
+                phone = string.IsNullOrWhiteSpace(_phone) ? null : _phone,
+                specialty = string.IsNullOrWhiteSpace(_specialty) ? null : _specialty,
+                intendedRole = string.IsNullOrWhiteSpace(_role) ? null : _role,
+                justification = _justification,
+                personalMessage = string.IsNullOrWhiteSpace(_message) ? null : _message
+            });
+            if (result.Error is not null) { _error = result.Error; return; }
+            _success = "Invitation envoyée.";
+            _email = _firstName = _lastName = _phone = _specialty = _role = _justification = _message = "";
+            await LoadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task VoteAsync(Guid id, int choice)
+    {
+        _busy = true;
+        _error = _success = null;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<InviteItem>($"api/expert/membership/invites/{id}/vote", new { choice });
+            if (result.Error is not null) { _error = result.Error; return; }
+            _success = "Vote enregistré.";
+            await LoadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private static string StatusLabel(int status) => status switch
+    {
+        0 => "Envoyée",
+        1 => "Acceptée par le candidat",
+        2 => "En vote",
+        3 => "Approuvée",
+        4 => "Rejetée",
+        5 => "Expirée",
+        6 => "Annulée",
+        7 => "Validation admin",
+        _ => status.ToString()
+    };
+
+    private sealed record InviteItem(
+        Guid Id,
+        Guid ExpertGroupId,
+        string GroupName,
+        string Email,
+        string FirstName,
+        string LastName,
+        string? Phone,
+        string? Specialty,
+        string? IntendedRole,
+        string? Presentation,
+        string? Justification,
+        string InvitedByUserId,
+        string? InvitedByName,
+        int Status,
+        DateTime SentAtUtc,
+        DateTime InviteExpiresAtUtc,
+        DateTime? VoteOpenedAtUtc,
+        DateTime? VoteExpiresAtUtc,
+        int EligibleVoterCount,
+        int RequiredApprovalCount,
+        int ApprovalCount,
+        int RejectCount,
+        int AbstainCount,
+        int? MyVote,
+        object? Votes,
+        string? CandidateUserId,
+        DateTime? DecisionAtUtc,
+        string? AdminNotes);
+}
