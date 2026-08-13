@@ -47,13 +47,6 @@
                 <i class="bi bi-mortarboard" aria-hidden="true"></i>
                 <span>Approuvés</span>
             </NavLink>
-            @if (_isManager)
-            {
-                <NavLink class="cc-nav-link" href="group-admin/tasks" Match="NavLinkMatch.Prefix">
-                    <i class="bi bi-list-check" aria-hidden="true"></i>
-                    <span>Tâches déléguées</span>
-                </NavLink>
-            }
             <NavLink class="cc-nav-link" href="expert/my-tasks" Match="NavLinkMatch.Prefix">
                 <i class="bi bi-clipboard-check" aria-hidden="true"></i>
                 <span>Mes tâches</span>
@@ -75,6 +68,40 @@
                 <span>Réévaluations</span>
             </NavLink>
         </CollapsibleNavSection>
+
+        @if (_isManager)
+        {
+            <CollapsibleNavSection Title="Responsable" SectionKey="responsable" DefaultOpen="true">
+                <NavLink class="cc-nav-link" href="expert/approvals" Match="NavLinkMatch.Prefix">
+                    <i class="bi bi-inbox" aria-hidden="true"></i>
+                    <span>File d'attente</span>
+                </NavLink>
+                <NavLink class="cc-nav-link" href="group-admin/tasks" Match="NavLinkMatch.Prefix">
+                    <i class="bi bi-list-check" aria-hidden="true"></i>
+                    <span>Déléguer des tâches</span>
+                </NavLink>
+                <NavLink class="cc-nav-link" href="expert/offers" Match="NavLinkMatch.Prefix">
+                    <i class="bi bi-tags" aria-hidden="true"></i>
+                    <span>Offres du groupe</span>
+                </NavLink>
+                <NavLink class="cc-nav-link" href="group-admin/members" Match="NavLinkMatch.Prefix">
+                    <i class="bi bi-people" aria-hidden="true"></i>
+                    <span>Membres</span>
+                </NavLink>
+                <NavLink class="cc-nav-link" href="expert/admissions" Match="NavLinkMatch.Prefix">
+                    <i class="bi bi-person-check" aria-hidden="true"></i>
+                    <span>Admissions</span>
+                </NavLink>
+                <NavLink class="cc-nav-link" href="expert/admin-chat" Match="NavLinkMatch.Prefix">
+                    <i class="bi bi-chat-dots" aria-hidden="true"></i>
+                    <span>Chat TutorSphere</span>
+                </NavLink>
+                <NavLink class="cc-nav-link" href="group-admin/settings" Match="NavLinkMatch.Prefix">
+                    <i class="bi bi-gear" aria-hidden="true"></i>
+                    <span>Paramètres</span>
+                </NavLink>
+            </CollapsibleNavSection>
+        }
 
         <CollapsibleNavSection Title="Qualité" SectionKey="qualite" DefaultOpen="false">
             <NavLink class="cc-nav-link" href="expert/quality" Match="NavLinkMatch.Prefix">
@@ -141,20 +168,6 @@
             </NavLink>
         </CollapsibleNavSection>
 
-        @if (_isManager)
-        {
-            <CollapsibleNavSection Title="Administration" SectionKey="administration" DefaultOpen="true">
-                <NavLink class="cc-nav-link" href="expert/admin-chat" Match="NavLinkMatch.Prefix">
-                    <i class="bi bi-chat-dots" aria-hidden="true"></i>
-                    <span>Chat avec TutorSphere</span>
-                </NavLink>
-                <NavLink class="cc-nav-link" href="group-admin/members" Match="NavLinkMatch.Prefix">
-                    <i class="bi bi-people" aria-hidden="true"></i>
-                    <span>Membres (Responsable)</span>
-                </NavLink>
-            </CollapsibleNavSection>
-        }
-
         <CollapsibleNavSection Title="Outils" SectionKey="outils" DefaultOpen="false">
             <NavLink class="cc-nav-link" href="expert/notifications" Match="NavLinkMatch.Prefix">
                 <i class="bi bi-bell" aria-hidden="true"></i>
@@ -183,7 +196,7 @@
         {
             await Auth.EnsureSessionRestoredAsync(forceJs: true);
             var ctx = await Api.GetAsync<MeContext>("api/expert/me-context");
-            _isManager = ctx?.IsGroupManager == true;
+            _isManager = ctx?.IsGroupManager == true || Auth.IsActingAsGroupAdmin;
         }
         catch { }
     }

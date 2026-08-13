@@ -16,30 +16,78 @@
                 <h1 class="cc-page-title">Catalogue — Offres du groupe</h1>
                 <p class="cc-page-sub">Brouillons et publications gérées par le Responsable.</p>
             </div>
+            @if (!string.IsNullOrWhiteSpace(_groupCurrencyLabel))
+            {
+                <div class="text-end">
+                    <div class="small text-muted">Devise du groupe</div>
+                    <strong>@_groupCurrencyLabel</strong>
+                    @if (!string.IsNullOrWhiteSpace(_groupCountryCode))
+                    {
+                        <div class="small text-muted">@_groupCountryCode</div>
+                    }
+                </div>
+            }
         </div>
 
         @if (!string.IsNullOrEmpty(_error))
         {
             <div class="alert alert-danger">@_error</div>
         }
+        @if (!string.IsNullOrEmpty(_info))
+        {
+            <div class="alert alert-success">@_info</div>
+        }
 
         <div class="cc-card mb-3">
-            <h2 class="cc-card-title">Nouvelle offre (brouillon)</h2>
+            <h2 class="cc-card-title">@(_editId is null ? "Nouvelle offre (brouillon)" : "Modifier l'offre")</h2>
             <div class="row g-2">
                 <div class="col-md-6">
-                    <input class="form-control" placeholder="Nom *" @bind="_name" />
+                    <label class="form-label">Nom *</label>
+                    <input class="form-control" @bind="_name" />
                 </div>
                 <div class="col-md-3">
-                    <input class="form-control" placeholder="Code" @bind="_code" />
+                    <label class="form-label">Code</label>
+                    <input class="form-control" @bind="_code" />
                 </div>
                 <div class="col-md-3">
-                    <input class="form-control" type="number" placeholder="Prix recommandé" @bind="_price" />
+                    <label class="form-label">Prix recommandé (@PreviewCurrencyLabel)</label>
+                    <input class="form-control" type="number" @bind="_price" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Portée *</label>
+                    <select class="form-select" @bind="_scope" @bind:after="OnScopeChanged">
+                        <option value="local">Locale (pays du groupe)</option>
+                        <option value="international">Internationale</option>
+                    </select>
+                </div>
+                @if (IsInternational)
+                {
+                    <div class="col-md-4">
+                        <label class="form-label">Pays de marché *</label>
+                        <CountrySelect Value="@_marketCountry" ValueChanged="OnMarketCountryChanged" Placeholder="Pays cible" />
+                    </div>
+                }
+                <div class="col-md-4">
+                    <label class="form-label">Devise (automatique)</label>
+                    <input class="form-control" value="@PreviewCurrencyLabel" disabled readonly />
                 </div>
                 <div class="col-12">
-                    <input class="form-control" placeholder="Description courte" @bind="_short" />
+                    <label class="form-label">Description courte</label>
+                    <input class="form-control" @bind="_short" />
                 </div>
             </div>
-            <button type="button" class="cc-btn cc-btn-primary mt-2" disabled="@_busy" @onclick="CreateAsync">Créer</button>
+            <div class="d-flex gap-2 mt-2">
+                <button type="button" class="cc-btn cc-btn-primary" disabled="@_busy" @onclick="SaveAsync">
+                    @(_editId is null ? "Créer" : "Enregistrer")
+                </button>
+                @if (_editId is not null)
+                {
+                    <button type="button" class="cc-btn" disabled="@_busy" @onclick="CancelEdit">Annuler</button>
+                }
+            </div>
+            <p class="small text-muted mt-2 mb-0">
+                Devise internationale : Europe → EUR · Canada → $CAD · USA → $USD · Cameroun / Afrique → XAF.
+            </p>
         </div>
 
         <div class="cc-card">
@@ -57,6 +105,7 @@
                     <thead>
                         <tr>
                             <th>Nom</th>
+                            <th>Portée</th>
                             <th>Statut</th>
                             <th>Prix</th>
                             <th></th>
@@ -66,10 +115,22 @@
                         @foreach (var o in _offers)
                         {
                             <tr>
-                                <td><strong>@o.Name</strong> <span class="small text-muted">@o.Code</span></td>
+                                <td>
+                                    <strong>@o.Name</strong>
+                                    <span class="small text-muted">@o.Code</span>
+                                </td>
+                                <td>
+                                    @(o.IsInternational ? "Internationale" : "Locale")
+                                    @if (!string.IsNullOrWhiteSpace(o.MarketCountryCode))
+                                    {
+                                        <span class="small text-muted">· @o.MarketCountryCode</span>
+                                    }
+                                </td>
                                 <td>@StatusName(o.Status)</td>
-                                <td>@(o.RecommendedPrice?.ToString("N0") ?? "—") @o.Currency</td>
-                                <td class="text-end">
+                                <td>@(o.RecommendedPrice?.ToString("N0") ?? "—") @GroupOfferCurrencyRules.FormatCurrencyLabel(o.Currency)</td>
+                                <td class="text-end text-nowrap">
+                                    <button type="button" class="cc-btn btn-sm" @onclick="() => BeginEdit(o)">Modifier</button>
+                                    <button type="button" class="cc-btn btn-sm" @onclick="() => DeleteAsync(o)">Supprimer</button>
                                     @if (o.Status is 0 or 1 or 2)
                                     {
                                         <button type="button" class="cc-btn btn-sm" @onclick="() => PublishAsync(o.Id)">Publier</button>
@@ -88,11 +149,24 @@
     private bool _loading = true;
     private bool _busy;
     private string? _error;
+    private string? _info;
     private string _name = "";
     private string? _code;
     private string? _short;
     private decimal? _price;
+    private string _scope = "local";
+    private string? _marketCountry;
+    private Guid? _editId;
+    private string _groupCurrency = "XAF";
+    private string? _groupCountryCode;
     private List<OfferItem> _offers = [];
+
+    private bool IsInternational => string.Equals(_scope, "international", StringComparison.OrdinalIgnoreCase);
+    private string _groupCurrencyLabel => GroupOfferCurrencyRules.FormatCurrencyLabel(_groupCurrency);
+    private string PreviewCurrencyLabel => GroupOfferCurrencyRules.FormatCurrencyLabel(
+        IsInternational
+            ? GroupOfferCurrencyRules.ResolveCurrency(_marketCountry)
+            : GroupOfferCurrencyRules.ResolveCurrency(_groupCountryCode));
 
     protected override async Task OnInitializedAsync()
     {
@@ -100,48 +174,129 @@
         await ReloadAsync();
     }
 
+    private Task OnScopeChanged()
+    {
+        if (!IsInternational)
+            _marketCountry = null;
+        return Task.CompletedTask;
+    }
+
+    private Task OnMarketCountryChanged(string? code)
+    {
+        _marketCountry = code;
+        return Task.CompletedTask;
+    }
+
     private async Task ReloadAsync()
     {
         _loading = true;
         try
         {
-            var result = await Api.GetWithErrorAsync<List<OfferItem>>("api/expert/group-offers");
+            var result = await Api.GetWithErrorAsync<CatalogDto>("api/expert/group-offers");
             if (result.Error is not null)
             {
                 _error = result.Error;
                 _offers = [];
                 return;
             }
-            _offers = result.Value ?? [];
+
+            var catalog = result.Value;
+            _offers = catalog?.Offers?.ToList() ?? [];
+            _groupCurrency = string.IsNullOrWhiteSpace(catalog?.GroupCurrency) ? "XAF" : catalog!.GroupCurrency;
+            _groupCountryCode = catalog?.GroupCountryCode;
             _error = null;
         }
         catch (Exception ex) { _error = ex.Message; }
         finally { _loading = false; }
     }
 
-    private async Task CreateAsync()
+    private void BeginEdit(OfferItem o)
+    {
+        _editId = o.Id;
+        _name = o.Name;
+        _code = o.Code;
+        _short = o.ShortDescription;
+        _price = o.RecommendedPrice;
+        _scope = o.IsInternational ? "international" : "local";
+        _marketCountry = o.MarketCountryCode;
+        _info = null;
+        _error = null;
+    }
+
+    private void CancelEdit()
+    {
+        _editId = null;
+        ResetForm();
+    }
+
+    private void ResetForm()
+    {
+        _name = "";
+        _code = _short = null;
+        _price = null;
+        _scope = "local";
+        _marketCountry = null;
+    }
+
+    private async Task SaveAsync()
     {
         _busy = true;
+        _info = null;
         try
         {
-            var result = await Api.PostWithErrorAsync<OfferItem>("api/expert/group-offers", new
+            if (IsInternational && string.IsNullOrWhiteSpace(_marketCountry))
+            {
+                _error = "Sélectionnez un pays de marché pour une offre internationale.";
+                return;
+            }
+
+            var payload = new
             {
                 name = _name,
                 code = _code,
                 shortDescription = _short,
                 pricingModel = 0,
-                currency = "XAF",
                 fixedPrice = _price,
-                recommendedPrice = _price
-            });
-            if (result.Error is not null) { _error = result.Error; return; }
-            _name = "";
-            _code = _short = null;
-            _price = null;
+                recommendedPrice = _price,
+                isInternational = IsInternational,
+                marketCountryCode = IsInternational ? _marketCountry : null
+            };
+
+            if (_editId is Guid id)
+            {
+                var result = await Api.PutWithErrorAsync<OfferItem>($"api/expert/group-offers/{id}", payload);
+                if (result.Error is not null) { _error = result.Error; return; }
+                _info = "Offre mise à jour.";
+            }
+            else
+            {
+                var result = await Api.PostWithErrorAsync<OfferItem>("api/expert/group-offers", payload);
+                if (result.Error is not null) { _error = result.Error; return; }
+                _info = "Offre créée.";
+            }
+
+            _editId = null;
+            ResetForm();
             await ReloadAsync();
         }
         catch (Exception ex) { _error = ex.Message; }
         finally { _busy = false; }
+    }
+
+    private async Task DeleteAsync(OfferItem o)
+    {
+        if (!await JsConfirm($"Supprimer l'offre « {o.Name} » ?"))
+            return;
+
+        try
+        {
+            var result = await Api.DeleteWithErrorAsync($"api/expert/group-offers/{o.Id}");
+            if (result.Error is not null) { _error = result.Error; return; }
+            if (_editId == o.Id) CancelEdit();
+            _info = "Offre supprimée.";
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
     }
 
     private async Task PublishAsync(Guid id)
@@ -150,9 +305,18 @@
         {
             var result = await Api.PostWithErrorAsync<object>($"api/expert/group-offers/{id}/publish", new { });
             if (result.Error is not null) { _error = result.Error; return; }
+            _info = "Offre publiée.";
             await ReloadAsync();
         }
         catch (Exception ex) { _error = ex.Message; }
+    }
+
+    [Inject] private IJSRuntime Js { get; set; } = default!;
+
+    private async Task<bool> JsConfirm(string message)
+    {
+        try { return await Js.InvokeAsync<bool>("confirm", message); }
+        catch { return true; }
     }
 
     private static string StatusName(int s) => s switch
@@ -166,7 +330,26 @@
         _ => s.ToString()
     };
 
+    private sealed record CatalogDto(
+        Guid ExpertGroupId,
+        string GroupName,
+        string? GroupCountryCode,
+        string GroupCurrency,
+        bool GroupIsInternational,
+        List<OfferItem>? Offers);
+
     private sealed record OfferItem(
-        Guid Id, Guid ExpertGroupId, string Name, string? Code, int Status, int PricingModel,
-        string Currency, decimal? RecommendedPrice, DateTime CreatedAt, DateTime? PublishedAtUtc);
+        Guid Id,
+        Guid ExpertGroupId,
+        string Name,
+        string? Code,
+        int Status,
+        int PricingModel,
+        string Currency,
+        decimal? RecommendedPrice,
+        DateTime CreatedAt,
+        DateTime? PublishedAtUtc,
+        string? ShortDescription = null,
+        bool IsInternational = false,
+        string? MarketCountryCode = null);
 }

@@ -46,7 +46,10 @@ public record GroupOfferListItemDto(
     string Currency,
     decimal? RecommendedPrice,
     DateTime CreatedAt,
-    DateTime? PublishedAtUtc);
+    DateTime? PublishedAtUtc,
+    string? ShortDescription = null,
+    bool IsInternational = false,
+    string? MarketCountryCode = null);
 
 public record CreateGroupOfferRequest(
     string Name,
@@ -54,11 +57,35 @@ public record CreateGroupOfferRequest(
     string? ShortDescription = null,
     Guid? DisciplineId = null,
     GroupOfferPricingModel PricingModel = GroupOfferPricingModel.Fixed,
-    string Currency = "XAF",
+    string? Currency = null,
     decimal? FixedPrice = null,
     decimal? MinimumPrice = null,
     decimal? RecommendedPrice = null,
-    decimal? MaximumPrice = null);
+    decimal? MaximumPrice = null,
+    bool IsInternational = false,
+    string? MarketCountryCode = null);
+
+public record UpdateGroupOfferRequest(
+    string Name,
+    string? Code = null,
+    string? ShortDescription = null,
+    Guid? DisciplineId = null,
+    GroupOfferPricingModel PricingModel = GroupOfferPricingModel.Fixed,
+    string? Currency = null,
+    decimal? FixedPrice = null,
+    decimal? MinimumPrice = null,
+    decimal? RecommendedPrice = null,
+    decimal? MaximumPrice = null,
+    bool IsInternational = false,
+    string? MarketCountryCode = null);
+
+public record GroupOffersCatalogDto(
+    Guid ExpertGroupId,
+    string GroupName,
+    string? GroupCountryCode,
+    string GroupCurrency,
+    bool GroupIsInternational,
+    IReadOnlyList<GroupOfferListItemDto> Offers);
 
 public record GroupAdminConversationDto(
     Guid Id,

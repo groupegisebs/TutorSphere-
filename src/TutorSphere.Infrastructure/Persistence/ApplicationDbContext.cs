@@ -280,6 +280,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             e.Property(o => o.LanguagesCsv).HasMaxLength(200);
             e.Property(o => o.VisibleCountryCodes).HasMaxLength(500);
             e.Property(o => o.Currency).HasMaxLength(8).IsRequired();
+            e.Property(o => o.MarketCountryCode).HasMaxLength(2);
             e.Property(o => o.CreatedByUserId).HasMaxLength(450).IsRequired();
             e.Property(o => o.ApprovedByManagerUserId).HasMaxLength(450);
             e.HasIndex(o => o.ExpertGroupId);

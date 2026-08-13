@@ -61,14 +61,21 @@ public class GroupGovernanceController : ControllerBase
 
     [HttpGet("expert/group-offers")]
     [Authorize(Roles = ExpertOrManagerOrPlatform)]
-    public async Task<ActionResult<IReadOnlyList<GroupOfferListItemDto>>> ListOffers(CancellationToken ct)
+    public async Task<ActionResult<GroupOffersCatalogDto>> ListOffers(CancellationToken ct)
     {
         if (UserId is null) return Unauthorized();
         try
         {
             var groupId = await ResolveCallerGroupIdAsync(ct);
-            if (groupId is null) return Ok(Array.Empty<GroupOfferListItemDto>());
-            return Ok(await _offers.ListForGroupAsync(groupId.Value, ct));
+            if (groupId is null)
+            {
+                return Ok(new GroupOffersCatalogDto(
+                    Guid.Empty, "", null, "XAF", false, Array.Empty<GroupOfferListItemDto>()));
+            }
+
+            var catalog = await _offers.GetCatalogAsync(groupId.Value, ct);
+            return Ok(catalog ?? new GroupOffersCatalogDto(
+                groupId.Value, "", null, "XAF", false, Array.Empty<GroupOfferListItemDto>()));
         }
         catch (InvalidOperationException ex)
         {
@@ -90,6 +97,44 @@ public class GroupGovernanceController : ControllerBase
                 ?? throw new InvalidOperationException(
                     "Aucun groupe associé. Passez en mode « Administrer » depuis le Control Center.");
             return Ok(await _offers.CreateDraftAsync(groupId, UserId, request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPut("expert/group-offers/{offerId:guid}")]
+    [Authorize(Roles = ExpertOrManagerOrPlatform)]
+    public async Task<ActionResult<GroupOfferListItemDto>> UpdateOffer(
+        Guid offerId,
+        [FromBody] UpdateGroupOfferRequest? request,
+        CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        if (request is null) return BadRequest(new { error = "Requête invalide." });
+        try
+        {
+            var asPlatform = _groupAccess.IsPlatformAdmin(User) && ActAsGroupId.HasValue;
+            return Ok(await _offers.UpdateDraftAsync(
+                offerId, UserId, request, ct, asPlatformAdmin: asPlatform, actAsGroupId: ActAsGroupId));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpDelete("expert/group-offers/{offerId:guid}")]
+    [Authorize(Roles = ExpertOrManagerOrPlatform)]
+    public async Task<IActionResult> DeleteOffer(Guid offerId, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        try
+        {
+            var asPlatform = _groupAccess.IsPlatformAdmin(User) && ActAsGroupId.HasValue;
+            await _offers.DeleteAsync(offerId, UserId, ct, asPlatformAdmin: asPlatform, actAsGroupId: ActAsGroupId);
+            return Ok(new { message = "Offre supprimée." });
         }
         catch (InvalidOperationException ex)
         {

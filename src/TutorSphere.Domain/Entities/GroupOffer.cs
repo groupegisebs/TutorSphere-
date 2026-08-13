@@ -27,6 +27,12 @@ public class GroupOffer : BaseEntity
     public decimal? RecommendedPrice { get; set; }
     public decimal? MaximumPrice { get; set; }
 
+    /// <summary>False = offre locale (pays du groupe) ; true = offre internationale (marché cible).</summary>
+    public bool IsInternational { get; set; }
+
+    /// <summary>Pays de marché (ISO). Local = pays du groupe ; International = pays cible pour la devise.</summary>
+    public string? MarketCountryCode { get; set; }
+
     public GroupOfferStatus Status { get; set; } = GroupOfferStatus.Draft;
 
     public string CreatedByUserId { get; set; } = string.Empty;
