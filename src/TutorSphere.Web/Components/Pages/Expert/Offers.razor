@@ -105,7 +105,14 @@
         _loading = true;
         try
         {
-            _offers = await Api.GetAsync<List<OfferItem>>("api/expert/group-offers") ?? [];
+            var result = await Api.GetWithErrorAsync<List<OfferItem>>("api/expert/group-offers");
+            if (result.Error is not null)
+            {
+                _error = result.Error;
+                _offers = [];
+                return;
+            }
+            _offers = result.Value ?? [];
             _error = null;
         }
         catch (Exception ex) { _error = ex.Message; }

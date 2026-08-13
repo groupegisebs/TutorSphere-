@@ -9,7 +9,12 @@ public interface IGroupOfferService
 {
     Task<IReadOnlyList<GroupOfferListItemDto>> ListForGroupAsync(Guid groupId, CancellationToken ct = default);
     Task<GroupOfferListItemDto> CreateDraftAsync(Guid groupId, string userId, CreateGroupOfferRequest request, CancellationToken ct = default);
-    Task PublishAsync(Guid offerId, string managerUserId, CancellationToken ct = default);
+    Task PublishAsync(
+        Guid offerId,
+        string managerUserId,
+        CancellationToken ct = default,
+        bool asPlatformAdmin = false,
+        Guid? actAsGroupId = null);
 }
 
 public class GroupOfferService(IApplicationDbContext db, IExpertGroupManagerService managers) : IGroupOfferService
@@ -57,12 +62,23 @@ public class GroupOfferService(IApplicationDbContext db, IExpertGroupManagerServ
             offer.Currency, offer.RecommendedPrice ?? offer.FixedPrice, offer.CreatedAt, offer.PublishedAtUtc);
     }
 
-    public async Task PublishAsync(Guid offerId, string managerUserId, CancellationToken ct = default)
+    public async Task PublishAsync(
+        Guid offerId,
+        string managerUserId,
+        CancellationToken ct = default,
+        bool asPlatformAdmin = false,
+        Guid? actAsGroupId = null)
     {
         var offer = db.GroupOffers.FirstOrDefault(o => o.Id == offerId)
             ?? throw new InvalidOperationException("Offre introuvable.");
-        if (!managers.IsActiveManager(managerUserId, offer.ExpertGroupId))
-            throw new InvalidOperationException("Seul le Responsable du groupe peut publier une offre.");
+
+        var allowedAsPlatform = asPlatformAdmin
+            && actAsGroupId is Guid gid
+            && gid == offer.ExpertGroupId;
+
+        if (!allowedAsPlatform && !managers.IsActiveManager(managerUserId, offer.ExpertGroupId))
+            throw new InvalidOperationException(
+                "Seul le Responsable du groupe (ou un admin plateforme en mode suppléant) peut publier une offre.");
 
         if (offer.Status is not (GroupOfferStatus.Draft or GroupOfferStatus.Approved or GroupOfferStatus.UnderReview))
             throw new InvalidOperationException("Cette offre ne peut pas être publiée dans son état actuel.");

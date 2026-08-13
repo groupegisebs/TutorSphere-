@@ -15,20 +15,33 @@ public class GroupGovernanceController : ControllerBase
     private readonly IGroupAdminChatService _chat;
     private readonly ITeacherInterestService _interest;
     private readonly IExpertGroupManagerService _managers;
+    private readonly IGroupAdminAccessService _groupAccess;
+    private readonly IExpertGroupService _groups;
+
+    private const string ExpertOrManagerOrPlatform =
+        $"{UserRoles.Expert},{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}";
+
+    private const string ManagerOrPlatform =
+        $"{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}";
 
     public GroupGovernanceController(
         IGroupOfferService offers,
         IGroupAdminChatService chat,
         ITeacherInterestService interest,
-        IExpertGroupManagerService managers)
+        IExpertGroupManagerService managers,
+        IGroupAdminAccessService groupAccess,
+        IExpertGroupService groups)
     {
         _offers = offers;
         _chat = chat;
         _interest = interest;
         _managers = managers;
+        _groupAccess = groupAccess;
+        _groups = groups;
     }
 
     private string? UserId => User.FindFirstValue(ClaimTypes.NameIdentifier);
+    private Guid? ActAsGroupId => GroupAdminActAs.ReadGroupId(Request);
 
     [HttpPost("public/teacher-interest")]
     [AllowAnonymous]
@@ -47,46 +60,35 @@ public class GroupGovernanceController : ControllerBase
     }
 
     [HttpGet("expert/group-offers")]
-    [Authorize(Roles = UserRoles.Expert)]
-    public async Task<ActionResult<IReadOnlyList<GroupOfferListItemDto>>> ListOffers(
-        [FromServices] IExpertGroupService groups, CancellationToken ct)
+    [Authorize(Roles = ExpertOrManagerOrPlatform)]
+    public async Task<ActionResult<IReadOnlyList<GroupOfferListItemDto>>> ListOffers(CancellationToken ct)
     {
         if (UserId is null) return Unauthorized();
-        var membership = groups; // resolve via manager / member group
-        var all = await groups.ListAsync(ct);
-        // Find the caller's group via active membership in manager or list members — use mandates first
-        Guid? groupId = null;
-        foreach (var g in all)
+        try
         {
-            if (_managers.IsActiveManager(UserId, g.Id))
-            {
-                groupId = g.Id;
-                break;
-            }
-            var members = await groups.ListMembersAsync(g.Id, ct);
-            if (members.Any(m => m.UserId == UserId))
-            {
-                groupId = g.Id;
-                break;
-            }
+            var groupId = await ResolveCallerGroupIdAsync(ct);
+            if (groupId is null) return Ok(Array.Empty<GroupOfferListItemDto>());
+            return Ok(await _offers.ListForGroupAsync(groupId.Value, ct));
         }
-        if (groupId is null) return Ok(Array.Empty<GroupOfferListItemDto>());
-        return Ok(await _offers.ListForGroupAsync(groupId.Value, ct));
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 
     [HttpPost("expert/group-offers")]
-    [Authorize(Roles = UserRoles.Expert)]
+    [Authorize(Roles = ExpertOrManagerOrPlatform)]
     public async Task<ActionResult<GroupOfferListItemDto>> CreateOffer(
         [FromBody] CreateGroupOfferRequest? request,
-        [FromServices] IExpertGroupService groups,
         CancellationToken ct)
     {
         if (UserId is null) return Unauthorized();
         if (request is null) return BadRequest(new { error = "Requête invalide." });
         try
         {
-            var groupId = await ResolveCallerGroupIdAsync(groups, ct)
-                ?? throw new InvalidOperationException("Aucun groupe associé.");
+            var groupId = await ResolveCallerGroupIdAsync(ct)
+                ?? throw new InvalidOperationException(
+                    "Aucun groupe associé. Passez en mode « Administrer » depuis le Control Center.");
             return Ok(await _offers.CreateDraftAsync(groupId, UserId, request, ct));
         }
         catch (InvalidOperationException ex)
@@ -96,13 +98,14 @@ public class GroupGovernanceController : ControllerBase
     }
 
     [HttpPost("expert/group-offers/{offerId:guid}/publish")]
-    [Authorize(Roles = UserRoles.Expert)]
+    [Authorize(Roles = ExpertOrManagerOrPlatform)]
     public async Task<IActionResult> PublishOffer(Guid offerId, CancellationToken ct)
     {
         if (UserId is null) return Unauthorized();
         try
         {
-            await _offers.PublishAsync(offerId, UserId, ct);
+            var asPlatform = _groupAccess.IsPlatformAdmin(User) && ActAsGroupId.HasValue;
+            await _offers.PublishAsync(offerId, UserId, ct, asPlatformAdmin: asPlatform, actAsGroupId: ActAsGroupId);
             return Ok(new { message = "Offre publiée." });
         }
         catch (InvalidOperationException ex)
@@ -112,7 +115,7 @@ public class GroupGovernanceController : ControllerBase
     }
 
     [HttpGet("expert/admin-chat")]
-    [Authorize(Roles = $"{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
+    [Authorize(Roles = ManagerOrPlatform)]
     public async Task<ActionResult<IReadOnlyList<GroupAdminConversationDto>>> ManagerConversations(CancellationToken ct)
     {
         if (UserId is null) return Unauthorized();
@@ -120,17 +123,16 @@ public class GroupGovernanceController : ControllerBase
     }
 
     [HttpPost("expert/admin-chat")]
-    [Authorize(Roles = $"{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
+    [Authorize(Roles = ManagerOrPlatform)]
     public async Task<ActionResult<GroupAdminConversationDto>> OpenConversation(
         [FromBody] CreateGroupAdminConversationRequest? request,
-        [FromServices] IExpertGroupService groups,
         CancellationToken ct)
     {
         if (UserId is null) return Unauthorized();
         if (request is null) return BadRequest(new { error = "Requête invalide." });
         try
         {
-            var groupId = await ResolveCallerGroupIdAsync(groups, ct)
+            var groupId = await ResolveCallerGroupIdAsync(ct)
                 ?? throw new InvalidOperationException("Aucun groupe associé.");
             return Ok(await _chat.OpenOrCreateForGroupAsync(groupId, UserId, request, ct));
         }
@@ -141,7 +143,7 @@ public class GroupGovernanceController : ControllerBase
     }
 
     [HttpGet("expert/admin-chat/{conversationId:guid}/messages")]
-    [Authorize(Roles = $"{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
+    [Authorize(Roles = ManagerOrPlatform)]
     public async Task<ActionResult<IReadOnlyList<GroupAdminMessageDto>>> ManagerMessages(Guid conversationId, CancellationToken ct)
     {
         if (UserId is null) return Unauthorized();
@@ -149,7 +151,7 @@ public class GroupGovernanceController : ControllerBase
     }
 
     [HttpPost("expert/admin-chat/{conversationId:guid}/messages")]
-    [Authorize(Roles = $"{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
+    [Authorize(Roles = ManagerOrPlatform)]
     public async Task<ActionResult<GroupAdminMessageDto>> ManagerPostMessage(
         Guid conversationId, [FromBody] PostGroupAdminMessageRequest? request, CancellationToken ct)
     {
@@ -192,18 +194,28 @@ public class GroupGovernanceController : ControllerBase
         }
     }
 
-    private async Task<Guid?> ResolveCallerGroupIdAsync(IExpertGroupService groups, CancellationToken ct)
+    /// <summary>
+    /// Groupe du Responsable, ou groupe ciblé via header X-Act-As-Expert-Group-Id (SuperAdmin / PlatformAdmin).
+    /// </summary>
+    private async Task<Guid?> ResolveCallerGroupIdAsync(CancellationToken ct)
     {
         if (UserId is null) return null;
-        var all = await groups.ListAsync(ct);
+
+        var managed = await _groupAccess.ResolveManagedGroupAsync(User, ActAsGroupId, ct);
+        if (managed is not null)
+            return managed.Id;
+
+        // Expert membre (pas Responsable) : premier groupe d'appartenance.
+        var all = await _groups.ListAsync(ct);
         foreach (var g in all)
         {
             if (_managers.IsActiveManager(UserId, g.Id))
                 return g.Id;
-            var members = await groups.ListMembersAsync(g.Id, ct);
+            var members = await _groups.ListMembersAsync(g.Id, ct);
             if (members.Any(m => m.UserId == UserId))
                 return g.Id;
         }
+
         return null;
     }
 }

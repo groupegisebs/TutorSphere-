@@ -75,12 +75,17 @@ public sealed class ApiClient
         new(null, SessionExpiredMessage);
 
     private static ApiResult<T> ForbiddenResult<T>() where T : class =>
-        new(null, "Accès refusé. Connectez-vous avec un compte parent.");
+        new(null, "Accès refusé. Vérifiez vos droits ou le mode administrateur du groupe.");
 
     private ApiResult<T> FailFromResponse<T>(HttpResponseMessage resp, string responseBody) where T : class
     {
         if (resp.StatusCode == HttpStatusCode.Forbidden)
-            return ForbiddenResult<T>();
+        {
+            var detail = ExtractError(responseBody);
+            return string.IsNullOrWhiteSpace(detail)
+                ? ForbiddenResult<T>()
+                : new ApiResult<T>(null, detail);
+        }
 
         if (resp.StatusCode == HttpStatusCode.PaymentRequired)
         {
@@ -281,7 +286,13 @@ public sealed class ApiClient
             }
 
             if (resp.StatusCode == HttpStatusCode.Forbidden)
-                return new ApiResult<bool>(false, "Accès refusé. Connectez-vous avec un compte parent.");
+            {
+                var detail = ExtractError(responseBody);
+                return new ApiResult<bool>(false,
+                    string.IsNullOrWhiteSpace(detail)
+                        ? "Accès refusé. Vérifiez vos droits ou le mode administrateur du groupe."
+                        : detail);
+            }
 
             if (resp.StatusCode == HttpStatusCode.PaymentRequired)
             {
