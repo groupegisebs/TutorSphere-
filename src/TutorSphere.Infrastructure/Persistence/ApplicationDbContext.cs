@@ -40,6 +40,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     public DbSet<ExpertGroupMember> ExpertGroupMembersSet => Set<ExpertGroupMember>();
     public DbSet<TeacherDocument> TeacherDocumentsSet => Set<TeacherDocument>();
     public DbSet<TeacherApplicationInvite> TeacherApplicationInvitesSet => Set<TeacherApplicationInvite>();
+    public DbSet<ExpertMembershipInvite> ExpertMembershipInvitesSet => Set<ExpertMembershipInvite>();
+    public DbSet<ExpertMembershipVote> ExpertMembershipVotesSet => Set<ExpertMembershipVote>();
     public DbSet<ExpertRemark> ExpertRemarksSet => Set<ExpertRemark>();
     public DbSet<Discipline> DisciplinesSet => Set<Discipline>();
     public DbSet<DisciplineServiceItem> DisciplineServiceItemsSet => Set<DisciplineServiceItem>();
@@ -93,6 +95,10 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
         TeacherDocumentsSet.IgnoreQueryFilters();
     IQueryable<TeacherApplicationInvite> IApplicationDbContext.TeacherApplicationInvites =>
         TeacherApplicationInvitesSet;
+    IQueryable<ExpertMembershipInvite> IApplicationDbContext.ExpertMembershipInvites =>
+        ExpertMembershipInvitesSet;
+    IQueryable<ExpertMembershipVote> IApplicationDbContext.ExpertMembershipVotes =>
+        ExpertMembershipVotesSet;
     IQueryable<ExpertRemark> IApplicationDbContext.ExpertRemarks => ExpertRemarksSet;
     IQueryable<ExpertRemark> IApplicationDbContext.ExpertRemarksForAnyTenant =>
         ExpertRemarksSet.IgnoreQueryFilters();
@@ -207,8 +213,44 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
         builder.Entity<ExpertGroupMember>(e =>
         {
             e.Property(m => m.UserId).HasMaxLength(450).IsRequired();
+            e.Property(m => m.Specialty).HasMaxLength(200);
+            e.Property(m => m.ApprovedByAdminId).HasMaxLength(450);
             e.HasIndex(m => new { m.ExpertGroupId, m.UserId }).IsUnique();
             e.HasOne(m => m.ExpertGroup).WithMany(g => g.Members).HasForeignKey(m => m.ExpertGroupId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<ExpertMembershipInvite>(e =>
+        {
+            e.Property(i => i.InvitedByUserId).HasMaxLength(450).IsRequired();
+            e.Property(i => i.Email).HasMaxLength(256).IsRequired();
+            e.Property(i => i.FirstName).HasMaxLength(120).IsRequired();
+            e.Property(i => i.LastName).HasMaxLength(120).IsRequired();
+            e.Property(i => i.Phone).HasMaxLength(40);
+            e.Property(i => i.Specialty).HasMaxLength(200);
+            e.Property(i => i.IntendedRole).HasMaxLength(200);
+            e.Property(i => i.Presentation).HasMaxLength(4000);
+            e.Property(i => i.Justification).HasMaxLength(2000);
+            e.Property(i => i.PersonalMessage).HasMaxLength(2000);
+            e.Property(i => i.Token).HasMaxLength(64).IsRequired();
+            e.Property(i => i.CandidateUserId).HasMaxLength(450);
+            e.Property(i => i.EligibleVoterUserIdsCsv).HasMaxLength(8000);
+            e.Property(i => i.AdminClosedByUserId).HasMaxLength(450);
+            e.Property(i => i.AdminNotes).HasMaxLength(2000);
+            e.HasIndex(i => i.Token).IsUnique();
+            e.HasIndex(i => i.ExpertGroupId);
+            e.HasIndex(i => i.Email);
+            e.HasIndex(i => i.Status);
+            e.HasOne(i => i.ExpertGroup).WithMany().HasForeignKey(i => i.ExpertGroupId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<ExpertMembershipVote>(e =>
+        {
+            e.Property(v => v.VoterUserId).HasMaxLength(450).IsRequired();
+            e.Property(v => v.Comment).HasMaxLength(2000);
+            e.HasIndex(v => new { v.InviteId, v.VoterUserId }).IsUnique();
+            e.HasOne(v => v.Invite).WithMany(i => i.Votes).HasForeignKey(v => v.InviteId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

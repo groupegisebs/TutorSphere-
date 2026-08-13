@@ -55,6 +55,8 @@ public interface IApplicationDbContext
     /// <summary>Teacher verification documents without tenant query filter (expert / admin review).</summary>
     IQueryable<TeacherDocument> TeacherDocumentsForAnyTenant { get; }
     IQueryable<TeacherApplicationInvite> TeacherApplicationInvites { get; }
+    IQueryable<ExpertMembershipInvite> ExpertMembershipInvites { get; }
+    IQueryable<ExpertMembershipVote> ExpertMembershipVotes { get; }
     IQueryable<ExpertRemark> ExpertRemarks { get; }
     /// <summary>Remarques expert sans filtre tenant (portail expert / enseignant).</summary>
     IQueryable<ExpertRemark> ExpertRemarksForAnyTenant { get; }

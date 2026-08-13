@@ -49,6 +49,9 @@ internal static class EmailTemplates
     public const string ExpertTeacherRejected = "EXPERT_TEACHER_REJECTED";
     public const string ExpertTeacherApplyInvite = "EXPERT_TEACHER_APPLY_INVITE";
     public const string ExpertRemarkNotification = "EXPERT_REMARK_NOTIFICATION";
+    public const string ExpertMembershipInvite = "EXPERT_MEMBERSHIP_INVITE";
+    public const string ExpertMembershipVoteOpened = "EXPERT_MEMBERSHIP_VOTE_OPENED";
+    public const string ExpertMembershipRejected = "EXPERT_MEMBERSHIP_REJECTED";
 }
 
 public class EmailService : IEmailService
@@ -385,6 +388,51 @@ public class EmailService : IEmailService
             ["Category"] = category,
             ["Excerpt"] = excerpt,
             ["RemarksUrl"] = remarksUrl
+        }, ct);
+
+    public Task SendExpertMembershipInviteAsync(
+        string to,
+        string firstName,
+        string inviterName,
+        string groupName,
+        string personalMessage,
+        string joinUrl,
+        CancellationToken ct = default) =>
+        SendAsync(to, EmailTemplates.ExpertMembershipInvite, new Dictionary<string, string>
+        {
+            ["FirstName"] = string.IsNullOrWhiteSpace(firstName) ? "candidat" : firstName.Trim(),
+            ["InviterName"] = string.IsNullOrWhiteSpace(inviterName) ? "un expert" : inviterName.Trim(),
+            ["GroupName"] = groupName,
+            ["PersonalMessage"] = string.IsNullOrWhiteSpace(personalMessage)
+                ? "Vous êtes invité(e) à rejoindre le groupe d'experts TutorSphere."
+                : personalMessage.Trim(),
+            ["JoinUrl"] = joinUrl
+        }, ct);
+
+    public Task SendExpertMembershipVoteOpenedAsync(
+        string to,
+        string voterName,
+        string candidateName,
+        string groupName,
+        string voteUrl,
+        CancellationToken ct = default) =>
+        SendAsync(to, EmailTemplates.ExpertMembershipVoteOpened, new Dictionary<string, string>
+        {
+            ["FirstName"] = string.IsNullOrWhiteSpace(voterName) ? "expert" : voterName.Trim(),
+            ["CandidateName"] = candidateName,
+            ["GroupName"] = groupName,
+            ["VoteUrl"] = voteUrl
+        }, ct);
+
+    public Task SendExpertMembershipRejectedAsync(
+        string to,
+        string firstName,
+        string reason,
+        CancellationToken ct = default) =>
+        SendAsync(to, EmailTemplates.ExpertMembershipRejected, new Dictionary<string, string>
+        {
+            ["FirstName"] = firstName,
+            ["Reason"] = string.IsNullOrWhiteSpace(reason) ? "Candidature non retenue." : reason.Trim()
         }, ct);
 
     private static Dictionary<string, string> LessonBody(

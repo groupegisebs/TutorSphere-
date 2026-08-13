@@ -1,6 +1,7 @@
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.ExpertApproval;
 using TutorSphere.Domain.Entities;
+using TutorSphere.Domain.Enums;
 
 namespace TutorSphere.Application.Services;
 
@@ -12,7 +13,12 @@ public interface IExpertGroupService
     Task<ExpertGroupDto> UpdateAsync(Guid id, UpdateExpertGroupRequest request, CancellationToken ct = default);
     Task DeleteAsync(Guid id, CancellationToken ct = default);
     Task<IReadOnlyList<ExpertGroupMemberDto>> ListMembersAsync(Guid groupId, CancellationToken ct = default);
-    Task<ExpertGroupMemberDto> AddMemberAsync(Guid groupId, string userId, CancellationToken ct = default);
+    Task<ExpertGroupMemberDto> AddMemberAsync(
+        Guid groupId,
+        string userId,
+        string? adminUserId = null,
+        string? specialty = null,
+        CancellationToken ct = default);
     Task RemoveMemberAsync(Guid groupId, string userId, CancellationToken ct = default);
 
     /// <summary>
@@ -131,14 +137,19 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
 
         // Email/name résolus côté API via UserManager.
         IReadOnlyList<ExpertGroupMemberDto> result = db.ExpertGroupMembers
-            .Where(m => m.ExpertGroupId == groupId)
+            .Where(m => m.ExpertGroupId == groupId && m.Status != ExpertMembershipStatus.Removed)
             .OrderBy(m => m.CreatedAt)
             .Select(m => new ExpertGroupMemberDto(m.Id, m.ExpertGroupId, m.UserId, string.Empty, string.Empty))
             .ToList();
         return Task.FromResult(result);
     }
 
-    public async Task<ExpertGroupMemberDto> AddMemberAsync(Guid groupId, string userId, CancellationToken ct = default)
+    public async Task<ExpertGroupMemberDto> AddMemberAsync(
+        Guid groupId,
+        string userId,
+        string? adminUserId = null,
+        string? specialty = null,
+        CancellationToken ct = default)
     {
         if (!db.ExpertGroups.Any(g => g.Id == groupId))
             throw new InvalidOperationException("Groupe d'experts introuvable.");
@@ -147,12 +158,17 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
 
         var trimmedUserId = userId.Trim();
 
-        if (db.ExpertGroupMembers.Any(m => m.ExpertGroupId == groupId && m.UserId == trimmedUserId))
+        if (db.ExpertGroupMembers.Any(m =>
+                m.ExpertGroupId == groupId
+                && m.UserId == trimmedUserId
+                && m.Status != ExpertMembershipStatus.Removed))
             throw new InvalidOperationException("Cet utilisateur est déjà membre du groupe.");
 
         // Règle produit : un expert ne peut appartenir qu'à un seul groupe à la fois.
         var otherGroupId = db.ExpertGroupMembers
-            .Where(m => m.UserId == trimmedUserId && m.ExpertGroupId != groupId)
+            .Where(m => m.UserId == trimmedUserId
+                        && m.ExpertGroupId != groupId
+                        && m.Status != ExpertMembershipStatus.Removed)
             .Select(m => m.ExpertGroupId)
             .FirstOrDefault();
         if (otherGroupId != Guid.Empty)
@@ -163,10 +179,29 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
                 "Un expert ne peut appartenir qu'à un seul groupe : retirez-le de son groupe actuel avant de l'ajouter ici.");
         }
 
+        var existingRemoved = db.ExpertGroupMembers.FirstOrDefault(m =>
+            m.ExpertGroupId == groupId && m.UserId == trimmedUserId);
+        if (existingRemoved is not null)
+        {
+            existingRemoved.Status = ExpertMembershipStatus.Active;
+            existingRemoved.AdmissionMethod = ExpertAdmissionMethod.AdminDirect;
+            existingRemoved.Specialty = string.IsNullOrWhiteSpace(specialty) ? null : specialty.Trim();
+            existingRemoved.AdmittedAtUtc = DateTime.UtcNow;
+            existingRemoved.ApprovedByAdminId = adminUserId;
+            existingRemoved.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+            return new ExpertGroupMemberDto(existingRemoved.Id, groupId, existingRemoved.UserId, string.Empty, string.Empty);
+        }
+
         var member = new ExpertGroupMember
         {
             ExpertGroupId = groupId,
-            UserId = trimmedUserId
+            UserId = trimmedUserId,
+            Status = ExpertMembershipStatus.Active,
+            AdmissionMethod = ExpertAdmissionMethod.AdminDirect,
+            Specialty = string.IsNullOrWhiteSpace(specialty) ? null : specialty.Trim(),
+            AdmittedAtUtc = DateTime.UtcNow,
+            ApprovedByAdminId = adminUserId
         };
         db.Add(member);
         await db.SaveChangesAsync(ct);
@@ -177,7 +212,8 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
     {
         var member = db.ExpertGroupMembers.FirstOrDefault(m => m.ExpertGroupId == groupId && m.UserId == userId)
             ?? throw new InvalidOperationException("Membre introuvable.");
-        db.Remove(member);
+        member.Status = ExpertMembershipStatus.Removed;
+        member.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
     }
 

@@ -132,4 +132,27 @@ public interface IEmailService
         string excerpt,
         string remarksUrl,
         CancellationToken ct = default);
+
+    Task SendExpertMembershipInviteAsync(
+        string to,
+        string firstName,
+        string inviterName,
+        string groupName,
+        string personalMessage,
+        string joinUrl,
+        CancellationToken ct = default);
+
+    Task SendExpertMembershipVoteOpenedAsync(
+        string to,
+        string voterName,
+        string candidateName,
+        string groupName,
+        string voteUrl,
+        CancellationToken ct = default);
+
+    Task SendExpertMembershipRejectedAsync(
+        string to,
+        string firstName,
+        string reason,
+        CancellationToken ct = default);
 }

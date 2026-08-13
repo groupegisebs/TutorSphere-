@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Security.Cryptography;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
@@ -18,6 +19,7 @@ namespace TutorSphere.Api.Controllers;
 public class ExpertGroupsController : ControllerBase
 {
     private readonly IExpertGroupService _groups;
+    private readonly IExpertMembershipGovernanceService _membership;
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly IEmailService _email;
     private readonly IAppUrlProvider _urls;
@@ -26,6 +28,7 @@ public class ExpertGroupsController : ControllerBase
 
     public ExpertGroupsController(
         IExpertGroupService groups,
+        IExpertMembershipGovernanceService membership,
         UserManager<ApplicationUser> userManager,
         IEmailService email,
         IAppUrlProvider urls,
@@ -33,12 +36,15 @@ public class ExpertGroupsController : ControllerBase
         ILogger<ExpertGroupsController> logger)
     {
         _groups = groups;
+        _membership = membership;
         _userManager = userManager;
         _email = email;
         _urls = urls;
         _env = env;
         _logger = logger;
     }
+
+    private string? AdminUserId => User.FindFirstValue(ClaimTypes.NameIdentifier);
 
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<ExpertGroupDto>>> List(CancellationToken ct)
@@ -195,7 +201,7 @@ public class ExpertGroupsController : ControllerBase
             // Ajout de l'appartenance au groupe avant l'attribution du rôle Expert : si l'utilisateur
             // appartient déjà à un autre groupe (règle « un seul groupe par expert »), on échoue sans
             // avoir touché à ses rôles.
-            var member = await _groups.AddMemberAsync(id, user.Id, ct);
+            var member = await _groups.AddMemberAsync(id, user.Id, AdminUserId, ct: ct);
 
             if (!await _userManager.IsInRoleAsync(user, UserRoles.Expert))
                 await _userManager.AddToRoleAsync(user, UserRoles.Expert);
@@ -285,7 +291,7 @@ public class ExpertGroupsController : ControllerBase
             // Ajout de l'appartenance au groupe avant l'attribution du rôle Expert : si l'utilisateur
             // appartient déjà à un autre groupe (règle « un seul groupe par expert »), on échoue sans
             // avoir touché à ses rôles.
-            var member = await _groups.AddMemberAsync(id, user.Id, ct);
+            var member = await _groups.AddMemberAsync(id, user.Id, AdminUserId, ct: ct);
 
             if (!await _userManager.IsInRoleAsync(user, UserRoles.Expert))
                 await _userManager.AddToRoleAsync(user, UserRoles.Expert);
@@ -379,6 +385,90 @@ public class ExpertGroupsController : ControllerBase
             groupName,
             ct);
         return true;
+    }
+
+    [HttpGet("~/api/admin/expert-membership-invites")]
+    public async Task<ActionResult<IReadOnlyList<ExpertMembershipInviteDto>>> ListMembershipInvites(
+        [FromQuery] Guid? groupId,
+        CancellationToken ct)
+    {
+        var list = await _membership.ListForAdminAsync(groupId, ct);
+        return Ok(list);
+    }
+
+    [HttpPost("~/api/admin/expert-membership-invites/{inviteId:guid}/force-approve")]
+    public async Task<ActionResult<ExpertMembershipInviteDto>> ForceApprove(
+        Guid inviteId, [FromBody] AdminExpertMembershipActionRequest? request, CancellationToken ct)
+    {
+        if (AdminUserId is null) return Unauthorized();
+        try
+        {
+            return Ok(await _membership.AdminForceApproveAsync(AdminUserId, inviteId, request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("~/api/admin/expert-membership-invites/{inviteId:guid}/force-reject")]
+    public async Task<ActionResult<ExpertMembershipInviteDto>> ForceReject(
+        Guid inviteId, [FromBody] AdminExpertMembershipActionRequest? request, CancellationToken ct)
+    {
+        if (AdminUserId is null) return Unauthorized();
+        try
+        {
+            return Ok(await _membership.AdminForceRejectAsync(AdminUserId, inviteId, request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("~/api/admin/expert-membership-invites/{inviteId:guid}/cancel")]
+    public async Task<ActionResult<ExpertMembershipInviteDto>> CancelInvite(
+        Guid inviteId, [FromBody] AdminExpertMembershipActionRequest? request, CancellationToken ct)
+    {
+        if (AdminUserId is null) return Unauthorized();
+        try
+        {
+            return Ok(await _membership.AdminCancelAsync(AdminUserId, inviteId, request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("~/api/admin/expert-membership-invites/{inviteId:guid}/extend")]
+    public async Task<ActionResult<ExpertMembershipInviteDto>> ExtendInvite(
+        Guid inviteId, [FromBody] AdminExpertMembershipActionRequest request, CancellationToken ct)
+    {
+        if (AdminUserId is null) return Unauthorized();
+        try
+        {
+            return Ok(await _membership.AdminExtendAsync(AdminUserId, inviteId, request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("~/api/admin/expert-membership-invites/{inviteId:guid}/validate")]
+    public async Task<ActionResult<ExpertMembershipInviteDto>> ValidateSmallGroup(
+        Guid inviteId, [FromBody] AdminExpertMembershipActionRequest? request, CancellationToken ct)
+    {
+        if (AdminUserId is null) return Unauthorized();
+        try
+        {
+            return Ok(await _membership.AdminValidateSmallGroupAsync(AdminUserId, inviteId, request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 
     /// <summary>

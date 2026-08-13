@@ -816,21 +816,19 @@ public class AuthService : IAuthService
         UserRoles.All.FirstOrDefault(r => r.Equals(role, StringComparison.OrdinalIgnoreCase))
         ?? UserRoles.Parent;
 
-    /// <summary>
-    /// Un expert ne peut se connecter que si le groupe d'experts auquel il appartient est actif.
-    /// Un compte sans groupe (cas transitoire) est laissé passer.
-    /// </summary>
+    /// <summary>Un expert ne peut se connecter que s'il a une adhésion Active à un groupe actif.</summary>
     private void EnsureExpertGroupIsActive(string userId)
     {
-        var groupIds = _db.ExpertGroupMembers
-            .Where(m => m.UserId == userId)
+        var activeMembership = _db.ExpertGroupMembers
+            .Where(m => m.UserId == userId && m.Status == ExpertMembershipStatus.Active)
             .Select(m => m.ExpertGroupId)
             .ToList();
 
-        if (groupIds.Count == 0)
-            return;
+        if (activeMembership.Count == 0)
+            throw new UnauthorizedAccessException(
+                "Votre adhésion au groupe d'experts n'est pas active. Contactez l'administrateur.");
 
-        var hasActiveGroup = _db.ExpertGroups.Any(g => groupIds.Contains(g.Id) && g.IsActive);
+        var hasActiveGroup = _db.ExpertGroups.Any(g => activeMembership.Contains(g.Id) && g.IsActive);
         if (!hasActiveGroup)
             throw new UnauthorizedAccessException(
                 "Votre groupe d'experts a été désactivé. Contactez l'administrateur de la plateforme.");
