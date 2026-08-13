@@ -7,14 +7,33 @@
 
 <PageTitle>Espace Responsable — TutorSphere</PageTitle>
 
-<AuthorizeView Roles="GroupManager">
+<AuthorizeView Roles="GroupManager,SuperAdmin,PlatformAdmin">
     <Authorized>
+        @if (Auth.IsActingAsGroupAdmin)
+        {
+            <div class="alert alert-warning d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                <span>
+                    <i class="bi bi-person-gear me-1"></i>
+                    Mode administrateur suppléant — <strong>@(Auth.ActingAsExpertGroupName ?? "groupe")</strong>
+                </span>
+                <button type="button" class="cc-btn btn-sm" @onclick="ExitActAsAsync">
+                    Quitter et retour Control Center
+                </button>
+            </div>
+        }
         <div class="cc-toolbar">
             <div>
                 <h1 class="cc-page-title">Tableau de bord Responsable</h1>
                 <p class="cc-page-sub">@_groupName — coordination du groupe d'experts.</p>
             </div>
-            <a class="cc-btn" href="expert/dashboard">Vue Expert</a>
+            @if (!Auth.IsActingAsGroupAdmin)
+            {
+                <a class="cc-btn" href="expert/dashboard">Vue Expert</a>
+            }
+            else
+            {
+                <a class="cc-btn" href="admin/expert-groups">Groupes (admin)</a>
+            }
         </div>
 
         @if (_loading)
@@ -50,7 +69,7 @@
     <NotAuthorized>
         <div class="cc-card cc-empty">
             <p>Accès réservé au Responsable du groupe.</p>
-            <a class="cc-btn cc-btn-primary" href="expert/dashboard">Retour</a>
+            <a class="cc-btn cc-btn-primary" href="admin/expert-groups">Retour</a>
         </div>
     </NotAuthorized>
 </AuthorizeView>
@@ -64,28 +83,38 @@
     protected override async Task OnInitializedAsync()
     {
         try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        try { await Auth.RestoreActAsGroupAsync(); } catch { }
         try
         {
             var ctx = await Api.GetAsync<MeContext>("api/expert/me-context");
             if (ctx is null || !ctx.IsGroupManager)
             {
-                _error = "Vous n'êtes pas Responsable actif d'un groupe.";
+                _error = Auth.IsActingAsGroupAdmin
+                    ? "Impossible de résoudre le groupe en mode suppléant."
+                    : "Vous n'êtes pas Responsable actif d'un groupe.";
                 return;
             }
-            _groupName = ctx.GroupName ?? "";
+            _groupName = ctx.GroupName ?? Auth.ActingAsExpertGroupName ?? "";
             _summary = await Api.GetAsync<SummaryDto>("api/expert/dashboard-summary");
         }
         catch (Exception ex) { _error = ex.Message; }
         finally { _loading = false; }
     }
 
-    private sealed record MeContext(bool IsGroupManager, Guid? GroupId, string? GroupName);
+    private async Task ExitActAsAsync()
+    {
+        await Auth.StopActingAsGroupAdminAsync();
+        Nav.NavigateTo("/admin/expert-groups");
+    }
+
+    private sealed record MeContext(bool IsGroupManager, Guid? GroupId, string? GroupName, bool IsPlatformActAs = false);
     private sealed record SummaryDto(
         string GroupName, string? CountryCode,
         int TeachersPending, int TeachersUnderReview, int TeachersChangesRequested,
-        int TeachersApproved, int TeachersSuspended, int ExpertVotesOpen,
-        int ExpertInvitesPending, int TeacherInvitesSent, int UnreadRemarksForTeachers,
-        int CancelledLessonsRecent, int DisciplinesWithoutTeacher, int TeachersInactive,
-        int ActiveGroupMembers, Guid? NextPendingTenantId, Guid? NextOpenExpertVoteId,
-        List<object> Alerts);
+        int TeachersApproved, int TeachersSuspended,
+        int ExpertVotesOpen, int ExpertInvitesPending, int TeacherInvitesSent,
+        int UnreadRemarks, int CancelledLessonsRecent, int DisciplinesWithoutTeacher,
+        int InactiveTeachers, int ActiveGroupMembers,
+        Guid? NextPendingTeacherId, Guid? NextExpertVoteInviteId,
+        List<object>? Alerts);
 }

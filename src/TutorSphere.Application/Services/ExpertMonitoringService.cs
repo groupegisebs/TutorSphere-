@@ -9,7 +9,7 @@ namespace TutorSphere.Application.Services;
 /// <summary>Suivi post-approbation des enseignants par les experts : activité, supports de cours, remarques.</summary>
 public interface IExpertMonitoringService
 {
-    Task<IReadOnlyList<MonitoredTeacherDto>> ListMonitoredTeachersAsync(string expertUserId, CancellationToken ct = default);
+    Task<IReadOnlyList<MonitoredTeacherDto>> ListMonitoredTeachersAsync(string expertUserId, CancellationToken ct = default, Guid? overrideGroupId = null);
     Task<IReadOnlyList<TeacherMaterialItemDto>> GetTeacherMaterialsAsync(Guid tenantId, string expertUserId, CancellationToken ct = default);
     Task<IReadOnlyList<ExpertRemarkDto>> ListRemarksAsync(Guid tenantId, string expertUserId, CancellationToken ct = default);
     Task<ExpertRemarkDto> AddRemarkAsync(string expertUserId, Guid tenantId, CreateExpertRemarkRequest request, CancellationToken ct = default);
@@ -26,9 +26,12 @@ public class ExpertMonitoringService(
     IAppUrlProvider urls,
     ILogger<ExpertMonitoringService> logger) : IExpertMonitoringService
 {
-    public Task<IReadOnlyList<MonitoredTeacherDto>> ListMonitoredTeachersAsync(string expertUserId, CancellationToken ct = default)
+    public Task<IReadOnlyList<MonitoredTeacherDto>> ListMonitoredTeachersAsync(
+        string expertUserId, CancellationToken ct = default, Guid? overrideGroupId = null)
     {
-        var groupIds = GetExpertGroupIds(expertUserId);
+        var groupIds = overrideGroupId is Guid og
+            ? new HashSet<Guid> { og }
+            : GetExpertGroupIds(expertUserId);
         if (groupIds.Count == 0)
             return Task.FromResult<IReadOnlyList<MonitoredTeacherDto>>([]);
 
@@ -122,7 +125,7 @@ public class ExpertMonitoringService(
             throw new InvalidOperationException("Le message de la remarque est requis.");
 
         var tenant = db.Tenants.FirstOrDefault(t => t.Id == tenantId)
-            ?? throw new InvalidOperationException("École introuvable.");
+            ?? throw new InvalidOperationException("Profil introuvable.");
 
         var groupId = EnsureCanMonitor(tenantId, expertUserId, tenant);
 
@@ -201,7 +204,7 @@ public class ExpertMonitoringService(
     private Guid EnsureCanMonitor(Guid tenantId, string expertUserId, Tenant? tenant = null)
     {
         tenant ??= db.Tenants.FirstOrDefault(t => t.Id == tenantId)
-            ?? throw new InvalidOperationException("École introuvable.");
+            ?? throw new InvalidOperationException("Profil introuvable.");
 
         if (tenant.ExpertApprovalStatus != ExpertApprovalStatus.Approved || tenant.ApprovedByExpertGroupId is not Guid groupId)
             throw new InvalidOperationException("Cet enseignant n'est pas (ou plus) approuvé par un groupe d'experts.");

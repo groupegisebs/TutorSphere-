@@ -13,7 +13,8 @@ public interface IExpertApprovalService
     Task<IReadOnlyList<ExpertApprovalQueueItemDto>> ListQueueForExpertAsync(
         string expertUserId,
         ExpertApprovalQueueFilter? filter = null,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        Guid? overrideGroupId = null);
     Task<TeacherReviewDetailDto?> GetReviewDetailAsync(Guid tenantId, CancellationToken ct = default);
     Task ApproveAsync(Guid tenantId, string expertUserId, string? notes, CancellationToken ct = default);
     Task RejectAsync(Guid tenantId, string expertUserId, string? notes, CancellationToken ct = default);
@@ -29,6 +30,7 @@ public interface IExpertApprovalService
     Task<ExpertMyGroupDto?> GetMyGroupAsync(string expertUserId, CancellationToken ct = default);
     Task<ExpertMyGroupDto> GetMyGroupSettingsAsync(string managerUserId, CancellationToken ct = default);
     Task<ExpertMyGroupDto> UpdateMyGroupSettingsAsync(string managerUserId, string? description, CancellationToken ct = default);
+    Task<ExpertMyGroupDto> UpdateGroupSettingsAsAdminAsync(Guid groupId, string? description, CancellationToken ct = default);
 }
 
 public class ExpertApprovalService(
@@ -78,6 +80,20 @@ public class ExpertApprovalService(
         string managerUserId, string? description, CancellationToken ct = default)
     {
         var group = RequireManagedGroup(managerUserId);
+        return await UpdateGroupSettingsCoreAsync(group, description, ct);
+    }
+
+    public async Task<ExpertMyGroupDto> UpdateGroupSettingsAsAdminAsync(
+        Guid groupId, string? description, CancellationToken ct = default)
+    {
+        var group = db.ExpertGroups.FirstOrDefault(g => g.Id == groupId && g.IsActive)
+            ?? throw new InvalidOperationException("Groupe introuvable ou inactif.");
+        return await UpdateGroupSettingsCoreAsync(group, description, ct);
+    }
+
+    private async Task<ExpertMyGroupDto> UpdateGroupSettingsCoreAsync(
+        ExpertGroup group, string? description, CancellationToken ct)
+    {
         group.Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
         group.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
@@ -319,14 +335,21 @@ public class ExpertApprovalService(
     public Task<IReadOnlyList<ExpertApprovalQueueItemDto>> ListQueueForExpertAsync(
         string expertUserId,
         ExpertApprovalQueueFilter? filter = null,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        Guid? overrideGroupId = null)
     {
         filter ??= new ExpertApprovalQueueFilter();
-        var groupIds = db.ExpertGroupMembers
-            .Where(m => m.UserId == expertUserId && m.Status == ExpertMembershipStatus.Active)
-            .Select(m => m.ExpertGroupId)
-            .Distinct()
-            .ToHashSet();
+        HashSet<Guid> groupIds;
+        if (overrideGroupId is Guid og)
+            groupIds = [og];
+        else
+        {
+            groupIds = db.ExpertGroupMembers
+                .Where(m => m.UserId == expertUserId && m.Status == ExpertMembershipStatus.Active)
+                .Select(m => m.ExpertGroupId)
+                .Distinct()
+                .ToHashSet();
+        }
         if (groupIds.Count == 0)
             return Task.FromResult<IReadOnlyList<ExpertApprovalQueueItemDto>>([]);
 
@@ -699,7 +722,7 @@ public class ExpertApprovalService(
     private Task<Tenant> RequireReviewableForExpertAsync(Guid tenantId, string expertUserId, CancellationToken ct)
     {
         var tenant = db.Tenants.FirstOrDefault(t => t.Id == tenantId)
-            ?? throw new InvalidOperationException("École introuvable.");
+            ?? throw new InvalidOperationException("Profil introuvable.");
 
         if (tenant.ExpertApprovalStatus is not (
             ExpertApprovalStatus.Pending

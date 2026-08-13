@@ -35,7 +35,7 @@ public class BrandingService : IBrandingService
     {
         var tenantExists = _db.Tenants.Any(t => t.Id == tenantId);
         if (!tenantExists)
-            throw new InvalidOperationException("École introuvable.");
+            throw new InvalidOperationException("Profil introuvable.");
 
         var branding = _db.TenantBrandings.FirstOrDefault(b => b.TenantId == tenantId);
         if (branding is null)

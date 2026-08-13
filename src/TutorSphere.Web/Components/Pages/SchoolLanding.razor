@@ -1,18 +1,20 @@
+@page "/profil/{Slug}"
 @page "/school/{Slug}"
 @layout SchoolLayout
+@rendermode InteractiveServer
 @using TutorSphere.Application.DTOs.Branding
-@inject HttpClient Http
 @inject IStringLocalizer<SharedResources> L
+@inject ApiClient Api
 
-<PageTitle>@L["PageTitle_School", Site?.Name ?? L["School_DefaultName"]]</PageTitle>
+<PageTitle>@L["PageTitle_School", Profile?.SchoolName ?? Profile?.TutorFullName ?? L["School_DefaultName"]]</PageTitle>
 
-@if (Loading)
+@if (_loading)
 {
     <div class="school-loading">
         <p>@L["Loading"]</p>
     </div>
 }
-else if (NotFound || Site is null)
+else if (_notFound || Profile is null)
 {
     <div class="school-not-found">
         <h1>@L["School_NotFound_Title"]</h1>
@@ -20,109 +22,16 @@ else if (NotFound || Site is null)
         <a class="btn btn-primary" href="/">@L["BackToHome"]</a>
     </div>
 }
+else if (!string.IsNullOrEmpty(_error))
+{
+    <div class="container py-5">
+        <div class="alert alert-danger">@_error</div>
+    </div>
+}
 else
 {
-    <div class="school-site"
-         style="--ts-primary: @Site.Branding.PrimaryColor; --ts-primary-dark: @Site.Branding.SecondaryColor;">
-        @if (!string.IsNullOrEmpty(Site.Branding.BannerUrl))
-        {
-            <div class="school-banner">
-                <img src="@Site.Branding.BannerUrl" alt="@L["School_BannerAlt", Site.Name]" />
-            </div>
-        }
-        else
-        {
-            <div class="school-banner school-banner-default">
-                <div class="school-banner-overlay">
-                    @if (!string.IsNullOrEmpty(Site.Branding.LogoUrl))
-                    {
-                        <img class="school-logo" src="@Site.Branding.LogoUrl" alt="@L["School_LogoAlt", Site.Name]" />
-                    }
-                    else
-                    {
-                        <img class="school-logo school-logo--default app-logo-compact" src="images/tutorsphere-logo-full.png" alt="@L["AppName"]" />
-                    }
-                    <h1>@Site.Name</h1>
-                    @if (!string.IsNullOrEmpty(Site.City))
-                    {
-                        <p class="school-location">@Site.City@(Site.Country is not null ? $", {Site.Country}" : "")</p>
-                    }
-                </div>
-            </div>
-        }
-
-        <div class="school-content container py-5">
-            @if (!string.IsNullOrEmpty(Site.Branding.BannerUrl))
-            {
-                <header class="school-header mb-4">
-                    @if (!string.IsNullOrEmpty(Site.Branding.LogoUrl))
-                    {
-                        <img class="school-logo-inline" src="@Site.Branding.LogoUrl" alt="@L["School_LogoAlt", Site.Name]" />
-                    }
-                    <div>
-                        <h1>@Site.Name</h1>
-                        @if (!string.IsNullOrEmpty(Site.City))
-                        {
-                            <p class="school-location">@Site.City@(Site.Country is not null ? $", {Site.Country}" : "")</p>
-                        }
-                    </div>
-                </header>
-            }
-
-            @if (!string.IsNullOrWhiteSpace(Site.Branding.Presentation))
-            {
-                <section class="school-presentation mb-5">
-                    <h2>@L["School_Presentation"]</h2>
-                    <div class="presentation-body">@Site.Branding.Presentation</div>
-                </section>
-            }
-            else if (!string.IsNullOrWhiteSpace(Site.Description))
-            {
-                <section class="school-presentation mb-5">
-                    <h2>@L["School_About"]</h2>
-                    <div class="presentation-body">@Site.Description</div>
-                </section>
-            }
-
-            <section class="school-offerings">
-                <h2>@L["School_OurOfferings"]</h2>
-                @if (Site.Offerings.Count == 0)
-                {
-                    <p class="text-muted">@L["School_NoOfferings"]</p>
-                }
-                else
-                {
-                    <div class="row g-4">
-                        @foreach (var offering in Site.Offerings)
-                        {
-                            <div class="col-md-6 col-lg-4">
-                                <div class="offering-card">
-                                    @if (!string.IsNullOrEmpty(offering.Subject))
-                                    {
-                                        <span class="offering-subject">@offering.Subject</span>
-                                    }
-                                    <h3>@offering.Title</h3>
-                                    @if (!string.IsNullOrEmpty(offering.Description))
-                                    {
-                                        <p class="offering-description">@offering.Description</p>
-                                    }
-                                    <p class="offering-price">@offering.Price.ToString("N2") @offering.Currency</p>
-                                    <ul class="offering-meta">
-                                        <li>@L["School_Sessions", offering.SessionCount]</li>
-                                        <li>@L["School_Days", offering.DurationDays]</li>
-                                        @if (!string.IsNullOrEmpty(offering.Frequency))
-                                        {
-                                            <li>@offering.Frequency</li>
-                                        }
-                                        <li>@offering.Mode</li>
-                                    </ul>
-                                </div>
-                            </div>
-                        }
-                    </div>
-                }
-            </section>
-        </div>
+    <div class="container py-4 public-profile-content tutor-detail-public">
+        <TutorDetailView Profile="Profile" SubscribeHref="/login/parent" />
     </div>
 }
 
@@ -130,24 +39,31 @@ else
     [Parameter]
     public string Slug { get; set; } = "";
 
-    private PublicTenantSiteDto? Site { get; set; }
-    private bool Loading { get; set; } = true;
-    private bool NotFound { get; set; }
+    private PublicTutorDetailDto? Profile { get; set; }
+    private bool _loading = true;
+    private bool _notFound;
+    private string? _error;
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnParametersSetAsync()
     {
+        _loading = true;
+        _error = null;
+        _notFound = false;
+        Profile = null;
+
         try
         {
-            Site = await Http.GetFromJsonAsync<PublicTenantSiteDto>($"api/branding/{Slug}");
-            NotFound = Site is null;
+            // Fiche riche (enseignant + badge groupe d'experts + offres), pas la landing minimale.
+            Profile = await Api.GetAsync<PublicTutorDetailDto>($"api/branding/{Uri.EscapeDataString(Slug)}/tutor");
+            _notFound = Profile is null;
         }
-        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        catch
         {
-            NotFound = true;
+            _error = L["Search_Error_Load"];
         }
         finally
         {
-            Loading = false;
+            _loading = false;
         }
     }
 }

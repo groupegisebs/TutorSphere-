@@ -6,7 +6,7 @@ namespace TutorSphere.Application.Services;
 
 public interface IExpertDashboardService
 {
-    Task<ExpertDashboardSummaryDto> GetSummaryAsync(string expertUserId, CancellationToken ct = default);
+    Task<ExpertDashboardSummaryDto> GetSummaryAsync(string expertUserId, CancellationToken ct = default, Guid? overrideGroupId = null);
 }
 
 public class ExpertDashboardService(
@@ -21,14 +21,24 @@ public class ExpertDashboardService(
         ExpertApprovalStatus.ChangesRequested
     ];
 
-    public Task<ExpertDashboardSummaryDto> GetSummaryAsync(string expertUserId, CancellationToken ct = default)
+    public Task<ExpertDashboardSummaryDto> GetSummaryAsync(
+        string expertUserId, CancellationToken ct = default, Guid? overrideGroupId = null)
     {
-        var membership = db.ExpertGroupMembers
-            .FirstOrDefault(m => m.UserId == expertUserId && m.Status == ExpertMembershipStatus.Active)
-            ?? throw new InvalidOperationException("Vous n'êtes pas membre actif d'un groupe d'experts.");
+        Domain.Entities.ExpertGroup group;
+        if (overrideGroupId is Guid gid)
+        {
+            group = db.ExpertGroups.FirstOrDefault(g => g.Id == gid && g.IsActive)
+                ?? throw new InvalidOperationException("Groupe introuvable ou inactif.");
+        }
+        else
+        {
+            var membership = db.ExpertGroupMembers
+                .FirstOrDefault(m => m.UserId == expertUserId && m.Status == ExpertMembershipStatus.Active)
+                ?? throw new InvalidOperationException("Vous n'êtes pas membre actif d'un groupe d'experts.");
 
-        var group = db.ExpertGroups.FirstOrDefault(g => g.Id == membership.ExpertGroupId && g.IsActive)
-            ?? throw new InvalidOperationException("Votre groupe d'experts est inactif.");
+            group = db.ExpertGroups.FirstOrDefault(g => g.Id == membership.ExpertGroupId && g.IsActive)
+                ?? throw new InvalidOperationException("Votre groupe d'experts est inactif.");
+        }
 
         var groupId = group.Id;
         var now = DateTime.UtcNow;

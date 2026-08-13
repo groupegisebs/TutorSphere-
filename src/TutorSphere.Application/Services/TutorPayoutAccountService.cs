@@ -479,6 +479,6 @@ public class TutorPayoutAccountService : ITutorPayoutAccountService
     {
         var id = RequireTenantId();
         return _db.Tenants.FirstOrDefault(t => t.Id == id)
-            ?? throw new InvalidOperationException("École introuvable.");
+            ?? throw new InvalidOperationException("Profil introuvable.");
     }
 }

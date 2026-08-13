@@ -15,23 +15,35 @@ public class ExpertDelegatedTasksController : ControllerBase
 {
     private readonly IExpertDelegatedTaskService _tasks;
     private readonly UserManager<ApplicationUser> _users;
+    private readonly IGroupAdminAccessService _groupAccess;
 
-    public ExpertDelegatedTasksController(IExpertDelegatedTaskService tasks, UserManager<ApplicationUser> users)
+    public ExpertDelegatedTasksController(
+        IExpertDelegatedTaskService tasks,
+        UserManager<ApplicationUser> users,
+        IGroupAdminAccessService groupAccess)
     {
         _tasks = tasks;
         _users = users;
+        _groupAccess = groupAccess;
     }
 
     private string? UserId => User.FindFirstValue(ClaimTypes.NameIdentifier);
+    private Guid? ActAsGroupId => GroupAdminActAs.ReadGroupId(Request);
+
+    private const string ManagerOrPlatform =
+        $"{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}";
 
     [HttpGet("group-admin/tasks")]
-    [Authorize(Roles = UserRoles.GroupManager)]
+    [Authorize(Roles = ManagerOrPlatform)]
     public async Task<ActionResult<IReadOnlyList<ExpertDelegatedTaskDto>>> ListManager(CancellationToken ct)
     {
         if (UserId is null) return Unauthorized();
         try
         {
-            return Ok(await EnrichAsync(await _tasks.ListForManagerAsync(UserId, ct)));
+            Guid? overrideGroup = null;
+            if (_groupAccess.IsPlatformAdmin(User))
+                overrideGroup = await _groupAccess.RequireManagedGroupIdAsync(User, ActAsGroupId, ct);
+            return Ok(await EnrichAsync(await _tasks.ListForManagerAsync(UserId, ct, overrideGroup)));
         }
         catch (InvalidOperationException ex)
         {
@@ -40,7 +52,7 @@ public class ExpertDelegatedTasksController : ControllerBase
     }
 
     [HttpPost("group-admin/tasks")]
-    [Authorize(Roles = UserRoles.GroupManager)]
+    [Authorize(Roles = ManagerOrPlatform)]
     public async Task<ActionResult<ExpertDelegatedTaskDto>> Create(
         [FromBody] CreateExpertDelegatedTaskRequest? request, CancellationToken ct)
     {
@@ -48,7 +60,10 @@ public class ExpertDelegatedTasksController : ControllerBase
         if (request is null) return BadRequest(new { error = "Requête invalide." });
         try
         {
-            var created = await _tasks.CreateAsync(UserId, request, ct);
+            Guid? overrideGroup = null;
+            if (_groupAccess.IsPlatformAdmin(User))
+                overrideGroup = await _groupAccess.RequireManagedGroupIdAsync(User, ActAsGroupId, ct);
+            var created = await _tasks.CreateAsync(UserId, request, ct, overrideGroup);
             return Ok((await EnrichAsync([created])).First());
         }
         catch (InvalidOperationException ex)
@@ -58,13 +73,16 @@ public class ExpertDelegatedTasksController : ControllerBase
     }
 
     [HttpPost("group-admin/tasks/{taskId:guid}/cancel")]
-    [Authorize(Roles = UserRoles.GroupManager)]
+    [Authorize(Roles = ManagerOrPlatform)]
     public async Task<IActionResult> Cancel(Guid taskId, CancellationToken ct)
     {
         if (UserId is null) return Unauthorized();
         try
         {
-            await _tasks.CancelAsync(taskId, UserId, ct);
+            Guid? overrideGroup = null;
+            if (_groupAccess.IsPlatformAdmin(User))
+                overrideGroup = await _groupAccess.RequireManagedGroupIdAsync(User, ActAsGroupId, ct);
+            await _tasks.CancelAsync(taskId, UserId, ct, overrideGroup);
             return Ok(new { message = "Tâche annulée." });
         }
         catch (InvalidOperationException ex)

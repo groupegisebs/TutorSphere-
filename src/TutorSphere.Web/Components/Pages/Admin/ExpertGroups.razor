@@ -259,6 +259,11 @@
                                     <td class="text-end">
                                         <div class="d-flex flex-wrap gap-1 justify-content-end">
                                             <a class="cc-btn btn-sm" href="@($"admin/expert-groups/{g.Id}")">Membres</a>
+                                            <button type="button" class="cc-btn btn-sm cc-btn-primary"
+                                                    disabled="@_actAsBusy"
+                                                    @onclick="() => ActAsGroupAdminAsync(g)">
+                                                <i class="bi bi-person-gear"></i> Administrer
+                                            </button>
                                             <AuthorizeView Roles="SuperAdmin" Context="saAuth">
                                                 <Authorized>
                                                     <a class="cc-btn btn-sm" href="@($"admin/expert-groups/{g.Id}/manager")">Changer le responsable</a>
@@ -300,7 +305,7 @@
                         <table class="cc-table">
                             <thead>
                                 <tr>
-                                    <th>École</th>
+                                    <th>Profil</th>
                                     <th>Pays</th>
                                     <th>Groupe suggéré</th>
                                     <th>Docs</th>
@@ -343,6 +348,7 @@
     private bool _loading = true;
     private bool _showForm;
     private bool _saving;
+    private bool _actAsBusy;
     private Guid? _editId;
     private string? _flash;
     private string? _error;
@@ -548,6 +554,30 @@
         _flash = "Conversation ouverte avec le Responsable.";
         Navigation.NavigateTo("admin/expert-groups/messages");
     }
+
+    private async Task ActAsGroupAdminAsync(ExpertGroupItem g)
+    {
+        _error = null;
+        _flash = null;
+        _actAsBusy = true;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<ActAsResult>($"api/admin/expert-groups/{g.Id}/act-as", new { });
+            if (!result.IsSuccess || result.Value is null)
+            {
+                _error = result.Error ?? "Impossible d'ouvrir l'espace Responsable.";
+                return;
+            }
+
+            await Auth.StartActingAsGroupAdminAsync(result.Value.GroupId, result.Value.GroupName);
+            _flash = $"Mode suppléant : {result.Value.GroupName}";
+            Navigation.NavigateTo(result.Value.PortalPath ?? "/group-admin/dashboard");
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _actAsBusy = false; }
+    }
+
+    private sealed record ActAsResult(Guid GroupId, string GroupName, string? CountryCode, bool IsInternational, string? PortalPath);
 
     private async Task ToggleActiveAsync(ExpertGroupItem g)
     {

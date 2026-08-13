@@ -112,7 +112,7 @@ public class GroupGovernanceController : ControllerBase
     }
 
     [HttpGet("expert/admin-chat")]
-    [Authorize(Roles = UserRoles.GroupManager)]
+    [Authorize(Roles = $"{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
     public async Task<ActionResult<IReadOnlyList<GroupAdminConversationDto>>> ManagerConversations(CancellationToken ct)
     {
         if (UserId is null) return Unauthorized();
@@ -120,7 +120,7 @@ public class GroupGovernanceController : ControllerBase
     }
 
     [HttpPost("expert/admin-chat")]
-    [Authorize(Roles = UserRoles.GroupManager)]
+    [Authorize(Roles = $"{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
     public async Task<ActionResult<GroupAdminConversationDto>> OpenConversation(
         [FromBody] CreateGroupAdminConversationRequest? request,
         [FromServices] IExpertGroupService groups,
@@ -141,7 +141,7 @@ public class GroupGovernanceController : ControllerBase
     }
 
     [HttpGet("expert/admin-chat/{conversationId:guid}/messages")]
-    [Authorize(Roles = UserRoles.GroupManager)]
+    [Authorize(Roles = $"{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
     public async Task<ActionResult<IReadOnlyList<GroupAdminMessageDto>>> ManagerMessages(Guid conversationId, CancellationToken ct)
     {
         if (UserId is null) return Unauthorized();
@@ -149,7 +149,7 @@ public class GroupGovernanceController : ControllerBase
     }
 
     [HttpPost("expert/admin-chat/{conversationId:guid}/messages")]
-    [Authorize(Roles = UserRoles.GroupManager)]
+    [Authorize(Roles = $"{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
     public async Task<ActionResult<GroupAdminMessageDto>> ManagerPostMessage(
         Guid conversationId, [FromBody] PostGroupAdminMessageRequest? request, CancellationToken ct)
     {

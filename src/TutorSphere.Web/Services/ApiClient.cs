@@ -37,9 +37,12 @@ public sealed class ApiClient
     private async Task<HttpRequestMessage> BuildRequestAsync(HttpMethod method, string url)
     {
         await _auth.EnsureSessionRestoredAsync();
+        try { await _auth.RestoreActAsGroupAsync(); } catch { }
         var req = new HttpRequestMessage(method, url);
         if (!string.IsNullOrEmpty(_auth.Token))
             req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _auth.Token);
+        if (_auth.ActingAsExpertGroupId is Guid actAs)
+            req.Headers.TryAddWithoutValidation("X-Act-As-Expert-Group-Id", actAs.ToString());
         return req;
     }
 

@@ -11,7 +11,7 @@ public record TeacherSchoolRecordDto(
     string SchoolName,
     string Slug,
     string? Description,
-    /// <summary>Texte d'accueil affiché sur /school/{slug} (TenantBranding.Presentation).</summary>
+    /// <summary>Texte d'accueil affiché sur /profil/{slug} (TenantBranding.Presentation).</summary>
     string? Presentation,
     string? City,
     string? Country,

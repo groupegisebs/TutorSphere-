@@ -33,9 +33,13 @@
 
             <div class="tutor-detail-info">
                 <h1>@DisplayName</h1>
-                <p class="tutor-detail-school">
-                    <i class="bi bi-building"></i> @Profile.SchoolName
-                </p>
+                @if (!string.IsNullOrWhiteSpace(Profile.SchoolName) &&
+                    !string.Equals(Profile.SchoolName, DisplayName, StringComparison.OrdinalIgnoreCase))
+                {
+                    <p class="tutor-detail-school">
+                        <i class="bi bi-person-badge"></i> @Profile.SchoolName
+                    </p>
+                }
                 @if (!string.IsNullOrWhiteSpace(Location))
                 {
                     <p class="tutor-detail-location"><i class="bi bi-geo-alt"></i> @Location</p>

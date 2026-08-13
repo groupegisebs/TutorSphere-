@@ -789,4 +789,23 @@ public class ExpertGroupsController : ControllerBase
 
         return new string(code);
     }
+
+    /// <summary>Active le mode administrateur suppléant pour ce groupe (Control Center → Espace Responsable).</summary>
+    [HttpPost("{id:guid}/act-as")]
+    public async Task<ActionResult<object>> ActAsGroupAdmin(Guid id, CancellationToken ct)
+    {
+        var group = await _groups.GetByIdAsync(id, ct);
+        if (group is null) return NotFound(new { error = "Groupe introuvable." });
+        if (!group.IsActive)
+            return BadRequest(new { error = "Le groupe est inactif." });
+
+        return Ok(new
+        {
+            groupId = group.Id,
+            groupName = group.Name,
+            countryCode = group.CountryCode,
+            isInternational = group.IsInternational,
+            portalPath = "/group-admin/dashboard"
+        });
+    }
 }

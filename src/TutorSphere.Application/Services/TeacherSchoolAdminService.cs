@@ -18,7 +18,7 @@ public interface ITeacherSchoolAdminService
         CancellationToken ct = default);
 
     /// <summary>
-    /// Publie la fiche publique (même critères que la recherche / page /school/{slug}) :
+    /// Publie la fiche publique (même critères que la recherche / page /profil/{slug}) :
     /// Active + IsPublicProfile + Approuvé + Onboarding + Licence.
     /// </summary>
     Task<PublishTeacherPublicProfileResult> PublishPublicProfileAsync(
@@ -59,7 +59,7 @@ public sealed class TeacherSchoolAdminService(
         CancellationToken ct = default)
     {
         var tenant = db.Tenants.FirstOrDefault(t => t.Id == tenantId)
-            ?? throw new InvalidOperationException("École / enseignant introuvable.");
+            ?? throw new InvalidOperationException("Profil enseignant introuvable.");
 
         if (!string.IsNullOrWhiteSpace(request.SchoolName))
             tenant.Name = request.SchoolName.Trim();
@@ -84,7 +84,7 @@ public sealed class TeacherSchoolAdminService(
         else if (request.Country is not null && string.IsNullOrWhiteSpace(tenant.VisibleCountryCodes))
             tenant.VisibleCountryCodes = ProfileVisibility.ToCsv(null, tenant.Country);
 
-        // Page publique /school/{slug} affiche Branding.Presentation en priorité, sinon Description.
+        // Page publique /profil/{slug} affiche Branding.Presentation en priorité, sinon Description.
         if (request.Presentation is not null || request.Description is not null)
         {
             var branding = db.TenantBrandings.FirstOrDefault(b => b.TenantId == tenant.Id);
@@ -124,7 +124,7 @@ public sealed class TeacherSchoolAdminService(
         CancellationToken ct = default)
     {
         var tenant = db.Tenants.FirstOrDefault(t => t.Id == tenantId)
-            ?? throw new InvalidOperationException("École / enseignant introuvable.");
+            ?? throw new InvalidOperationException("Profil enseignant introuvable.");
 
         if (!asPlatformAdmin)
             EnsureExpertCanManageTeacher(tenantId, actorUserId);
@@ -150,14 +150,30 @@ public sealed class TeacherSchoolAdminService(
                 : "Fiche publique publiée par un expert du groupe.";
         }
 
-        if (!asPlatformAdmin && tenant.ApprovedByExpertGroupId is null)
+        if (tenant.ApprovedByExpertGroupId is null)
         {
-            var groupId = db.ExpertGroupMembers
-                .Where(m => m.UserId == actorUserId && m.Status == ExpertMembershipStatus.Active)
-                .Select(m => m.ExpertGroupId)
-                .FirstOrDefault();
-            if (groupId != Guid.Empty)
-                tenant.ApprovedByExpertGroupId = groupId;
+            if (!asPlatformAdmin)
+            {
+                var groupId = db.ExpertGroupMembers
+                    .Where(m => m.UserId == actorUserId && m.Status == ExpertMembershipStatus.Active)
+                    .Select(m => m.ExpertGroupId)
+                    .FirstOrDefault();
+                if (groupId != Guid.Empty)
+                    tenant.ApprovedByExpertGroupId = groupId;
+            }
+            else
+            {
+                // Rattacher au groupe pays (ou international) pour le badge fiche publique.
+                var home = ProfileVisibility.NormalizeCode(tenant.Country);
+                var byCountry = string.IsNullOrEmpty(home)
+                    ? null
+                    : db.ExpertGroups.FirstOrDefault(g =>
+                        g.IsActive && !g.IsInternational
+                        && g.CountryCode != null
+                        && g.CountryCode.ToUpper() == home);
+                tenant.ApprovedByExpertGroupId = byCountry?.Id
+                    ?? db.ExpertGroups.Where(g => g.IsActive && g.IsInternational).Select(g => (Guid?)g.Id).FirstOrDefault();
+            }
         }
 
         tenant.UpdatedAt = now;
@@ -167,7 +183,7 @@ public sealed class TeacherSchoolAdminService(
             tenant.Id,
             tenant.Slug,
             tenant.IsPublicProfile,
-            $"/school/{tenant.Slug}");
+            $"/profil/{tenant.Slug}");
     }
 
     public async Task<PublishTeacherPublicProfileResult> UnpublishPublicProfileAsync(
@@ -177,7 +193,7 @@ public sealed class TeacherSchoolAdminService(
         CancellationToken ct = default)
     {
         var tenant = db.Tenants.FirstOrDefault(t => t.Id == tenantId)
-            ?? throw new InvalidOperationException("École / enseignant introuvable.");
+            ?? throw new InvalidOperationException("Profil enseignant introuvable.");
 
         if (!asPlatformAdmin)
             EnsureExpertCanManageTeacher(tenantId, actorUserId);
@@ -190,13 +206,13 @@ public sealed class TeacherSchoolAdminService(
             tenant.Id,
             tenant.Slug,
             tenant.IsPublicProfile,
-            $"/school/{tenant.Slug}");
+            $"/profil/{tenant.Slug}");
     }
 
     public void EnsureExpertCanManageTeacher(Guid tenantId, string expertUserId)
     {
         var tenant = db.Tenants.FirstOrDefault(t => t.Id == tenantId)
-            ?? throw new InvalidOperationException("École / enseignant introuvable.");
+            ?? throw new InvalidOperationException("Profil enseignant introuvable.");
 
         var groupIds = db.ExpertGroupMembers
             .Where(m => m.UserId == expertUserId && m.Status == ExpertMembershipStatus.Active)

@@ -39,6 +39,11 @@ public sealed class AuthService
     public bool IsAuthenticated => _authProvider.IsAuthenticated;
     public bool IsSessionExpired { get; private set; }
 
+    /// <summary>Groupe administré en mode suppléant (SuperAdmin / PlatformAdmin).</summary>
+    public Guid? ActingAsExpertGroupId { get; private set; }
+    public string? ActingAsExpertGroupName { get; private set; }
+    public bool IsActingAsGroupAdmin => ActingAsExpertGroupId.HasValue;
+
     /// <summary>True once cookie and/or sessionStorage restore has been attempted.</summary>
     public bool SessionRestoreCompleted { get; private set; }
 
@@ -54,6 +59,50 @@ public sealed class AuthService
     public bool IsParentManagedStudent => _authProvider.IsParentManagedStudent;
 
     public bool IsInRole(string role) => _authProvider.IsInRole(role);
+
+    public async Task StartActingAsGroupAdminAsync(Guid groupId, string groupName)
+    {
+        ActingAsExpertGroupId = groupId;
+        ActingAsExpertGroupName = groupName;
+        try
+        {
+            await _js.InvokeVoidAsync("tsAuth.saveActAsGroup", groupId.ToString(), groupName ?? "");
+        }
+        catch (InvalidOperationException) { }
+        catch (JSException) { }
+    }
+
+    public async Task StopActingAsGroupAdminAsync()
+    {
+        ActingAsExpertGroupId = null;
+        ActingAsExpertGroupName = null;
+        try
+        {
+            await _js.InvokeVoidAsync("tsAuth.clearActAsGroup");
+        }
+        catch (InvalidOperationException) { }
+        catch (JSException) { }
+    }
+
+    public async Task RestoreActAsGroupAsync()
+    {
+        if (ActingAsExpertGroupId.HasValue) return;
+        if (!IsInRole("SuperAdmin") && !IsInRole("PlatformAdmin")) return;
+        try
+        {
+            var raw = await _js.InvokeAsync<string?>("tsAuth.loadActAsGroup");
+            if (string.IsNullOrWhiteSpace(raw)) return;
+            using var doc = JsonDocument.Parse(raw);
+            if (!doc.RootElement.TryGetProperty("groupId", out var idEl)) return;
+            if (!Guid.TryParse(idEl.GetString(), out var gid)) return;
+            var name = doc.RootElement.TryGetProperty("groupName", out var nEl) ? nEl.GetString() : null;
+            ActingAsExpertGroupId = gid;
+            ActingAsExpertGroupName = name;
+        }
+        catch (InvalidOperationException) { }
+        catch (JSException) { }
+        catch (JsonException) { }
+    }
 
     /// <summary>Updates the in-memory display name after a successful profile save (JWT claims stay until re-login).</summary>
     public async Task UpdateLocalDisplayNameAsync(string fullName)
@@ -462,6 +511,8 @@ public sealed class AuthService
 
     private async Task ClearSessionAsync()
     {
+        ActingAsExpertGroupId = null;
+        ActingAsExpertGroupName = null;
         try { await _js.InvokeVoidAsync("tsAuth.clearAll"); }
         catch (InvalidOperationException) { }
         catch (JSException) { }

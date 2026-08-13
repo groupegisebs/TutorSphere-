@@ -7,21 +7,22 @@ namespace TutorSphere.Application.Services;
 
 public interface IExpertDelegatedTaskService
 {
-    Task<IReadOnlyList<ExpertDelegatedTaskDto>> ListForManagerAsync(string managerUserId, CancellationToken ct = default);
+    Task<IReadOnlyList<ExpertDelegatedTaskDto>> ListForManagerAsync(string managerUserId, CancellationToken ct = default, Guid? overrideGroupId = null);
     Task<IReadOnlyList<ExpertDelegatedTaskDto>> ListForAssigneeAsync(string expertUserId, CancellationToken ct = default);
-    Task<ExpertDelegatedTaskDto> CreateAsync(string managerUserId, CreateExpertDelegatedTaskRequest request, CancellationToken ct = default);
+    Task<ExpertDelegatedTaskDto> CreateAsync(string managerUserId, CreateExpertDelegatedTaskRequest request, CancellationToken ct = default, Guid? overrideGroupId = null);
     Task<ExpertDelegatedTaskDto> StartAsync(Guid taskId, string expertUserId, CancellationToken ct = default);
     Task<ExpertDelegatedTaskDto> CompleteAsync(Guid taskId, string expertUserId, CompleteExpertDelegatedTaskRequest request, CancellationToken ct = default);
-    Task CancelAsync(Guid taskId, string managerUserId, CancellationToken ct = default);
+    Task CancelAsync(Guid taskId, string managerUserId, CancellationToken ct = default, Guid? overrideGroupId = null);
 }
 
 public class ExpertDelegatedTaskService(
     IApplicationDbContext db,
     IExpertGroupManagerService managers) : IExpertDelegatedTaskService
 {
-    public Task<IReadOnlyList<ExpertDelegatedTaskDto>> ListForManagerAsync(string managerUserId, CancellationToken ct = default)
+    public Task<IReadOnlyList<ExpertDelegatedTaskDto>> ListForManagerAsync(
+        string managerUserId, CancellationToken ct = default, Guid? overrideGroupId = null)
     {
-        var groupId = RequireManagerGroupId(managerUserId);
+        var groupId = overrideGroupId ?? RequireManagerGroupId(managerUserId);
         return Task.FromResult(MapList(db.ExpertDelegatedTasks
             .Where(t => t.ExpertGroupId == groupId)
             .OrderByDescending(t => t.CreatedAt)
@@ -38,9 +39,12 @@ public class ExpertDelegatedTaskService(
     }
 
     public async Task<ExpertDelegatedTaskDto> CreateAsync(
-        string managerUserId, CreateExpertDelegatedTaskRequest request, CancellationToken ct = default)
+        string managerUserId,
+        CreateExpertDelegatedTaskRequest request,
+        CancellationToken ct = default,
+        Guid? overrideGroupId = null)
     {
-        var groupId = RequireManagerGroupId(managerUserId);
+        var groupId = overrideGroupId ?? RequireManagerGroupId(managerUserId);
 
         var assignee = db.ExpertGroupMembers.FirstOrDefault(m =>
             m.ExpertGroupId == groupId
@@ -129,9 +133,10 @@ public class ExpertDelegatedTaskService(
         return MapList([task]).First();
     }
 
-    public async Task CancelAsync(Guid taskId, string managerUserId, CancellationToken ct = default)
+    public async Task CancelAsync(
+        Guid taskId, string managerUserId, CancellationToken ct = default, Guid? overrideGroupId = null)
     {
-        var groupId = RequireManagerGroupId(managerUserId);
+        var groupId = overrideGroupId ?? RequireManagerGroupId(managerUserId);
         var task = db.ExpertDelegatedTasks.FirstOrDefault(t => t.Id == taskId && t.ExpertGroupId == groupId)
             ?? throw new InvalidOperationException("Tâche introuvable.");
         task.Status = ExpertDelegatedTaskStatus.Cancelled;

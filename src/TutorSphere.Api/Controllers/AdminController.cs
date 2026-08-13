@@ -316,7 +316,7 @@ public class AdminController : ControllerBase
         try
         {
             if (_db.Tenants.FirstOrDefault(t => t.Id == tenantId) is null)
-                return NotFound(new { error = "École introuvable." });
+                return NotFound(new { error = "Profil introuvable." });
             return Ok(await _offerings.CreateForTenantAsync(tenantId, request, ct));
         }
         catch (InvalidOperationException ex)
@@ -343,7 +343,7 @@ public class AdminController : ControllerBase
             return NotFound(new { error = "Aucune école associée à cet utilisateur." });
 
         var dto = await _teacherSchools.GetByTenantIdAsync(tenantId.Value, ct);
-        if (dto is null) return NotFound(new { error = "École introuvable." });
+        if (dto is null) return NotFound(new { error = "Profil introuvable." });
 
         return Ok(dto with
         {
@@ -411,7 +411,7 @@ public class AdminController : ControllerBase
         }
     }
 
-    /// <summary>Publie la fiche publique de l'enseignant (visible recherche / /school/{slug}).</summary>
+    /// <summary>Publie la fiche publique de l'enseignant (visible recherche / /profil/{slug}).</summary>
     [HttpPost("teachers/{tenantId:guid}/publish-profile")]
     [Authorize(Roles = "SuperAdmin,PlatformAdmin")]
     public async Task<ActionResult<PublishTeacherPublicProfileResult>> PublishTeacherProfile(
@@ -429,7 +429,7 @@ public class AdminController : ControllerBase
         }
     }
 
-    /// <summary>Dépublie la fiche publique (retirée de la recherche et de /school/{slug}).</summary>
+    /// <summary>Dépublie la fiche publique (retirée de la recherche et de /profil/{slug}).</summary>
     [HttpPost("teachers/{tenantId:guid}/unpublish-profile")]
     [Authorize(Roles = "SuperAdmin,PlatformAdmin")]
     public async Task<ActionResult<PublishTeacherPublicProfileResult>> UnpublishTeacherProfile(
@@ -658,7 +658,7 @@ public class AdminController : ControllerBase
             .Select(t => new { t.Name, t.CreatedAt })
             .ToListAsync(ct);
         foreach (var s in recentSchools)
-            activity.Add(new AdminActivityItemDto("École inscrite", s.Name, s.CreatedAt, "#7c5cff"));
+            activity.Add(new AdminActivityItemDto("Profil inscrit", s.Name, s.CreatedAt, "#7c5cff"));
 
         var recentPay = await _db.PaymentsForAnyTenant.AsNoTracking()
             .Where(p => p.Status == PaymentStatus.Completed)

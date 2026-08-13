@@ -11,7 +11,7 @@ namespace TutorSphere.Api.Controllers;
 
 [ApiController]
 [Route("api/expert")]
-[Authorize(Roles = UserRoles.Expert)]
+[Authorize(Roles = $"{UserRoles.Expert},{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
 public class ExpertApprovalsController : ControllerBase
 {
     private readonly IExpertApprovalService _approvals;
@@ -21,6 +21,7 @@ public class ExpertApprovalsController : ControllerBase
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly ISubscriptionOfferingService _offerings;
     private readonly ITeacherSchoolAdminService _teacherSchools;
+    private readonly IGroupAdminAccessService _groupAccess;
 
     public ExpertApprovalsController(
         IExpertApprovalService approvals,
@@ -29,7 +30,8 @@ public class ExpertApprovalsController : ControllerBase
         IAuthService authService,
         UserManager<ApplicationUser> userManager,
         ISubscriptionOfferingService offerings,
-        ITeacherSchoolAdminService teacherSchools)
+        ITeacherSchoolAdminService teacherSchools,
+        IGroupAdminAccessService groupAccess)
     {
         _approvals = approvals;
         _monitoring = monitoring;
@@ -38,9 +40,11 @@ public class ExpertApprovalsController : ControllerBase
         _userManager = userManager;
         _offerings = offerings;
         _teacherSchools = teacherSchools;
+        _groupAccess = groupAccess;
     }
 
     private string? UserId => User.FindFirstValue(ClaimTypes.NameIdentifier);
+    private Guid? ActAsGroupId => GroupAdminActAs.ReadGroupId(Request);
 
     [HttpGet("dashboard-summary")]
     public async Task<ActionResult<ExpertDashboardSummaryDto>> DashboardSummary(CancellationToken ct)
@@ -48,7 +52,10 @@ public class ExpertApprovalsController : ControllerBase
         if (UserId is null) return Unauthorized();
         try
         {
-            return Ok(await _dashboard.GetSummaryAsync(UserId, ct));
+            Guid? overrideGroup = null;
+            if (_groupAccess.IsPlatformAdmin(User) && ActAsGroupId is Guid gid)
+                overrideGroup = gid;
+            return Ok(await _dashboard.GetSummaryAsync(UserId, ct, overrideGroup));
         }
         catch (InvalidOperationException ex)
         {
@@ -71,7 +78,8 @@ public class ExpertApprovalsController : ControllerBase
         if (UserId is null) return Unauthorized();
         var filter = new ExpertApprovalQueueFilter(
             country, city, status, minDocuments, incompleteOnly, urgentOnly, assignedToUserId, olderThanDays);
-        var list = await _approvals.ListQueueForExpertAsync(UserId, filter, ct);
+        Guid? overrideGroup = _groupAccess.IsPlatformAdmin(User) ? ActAsGroupId : null;
+        var list = await _approvals.ListQueueForExpertAsync(UserId, filter, ct, overrideGroup);
         var enriched = new List<ExpertApprovalQueueItemDto>();
         foreach (var item in list)
         {
@@ -260,7 +268,8 @@ public class ExpertApprovalsController : ControllerBase
     public async Task<ActionResult<ExpertMyGroupDto>> MyGroup(CancellationToken ct)
     {
         if (UserId is null) return Unauthorized();
-        var group = await _approvals.GetMyGroupAsync(UserId, ct);
+        var group = await _groupAccess.ResolveManagedGroupAsync(User, ActAsGroupId, ct)
+            ?? await _approvals.GetMyGroupAsync(UserId, ct);
         return group is null ? NotFound() : Ok(group);
     }
 
@@ -270,6 +279,19 @@ public class ExpertApprovalsController : ControllerBase
         CancellationToken ct)
     {
         if (UserId is null) return Unauthorized();
+
+        var acting = await _groupAccess.ResolveManagedGroupAsync(User, ActAsGroupId, ct);
+        if (acting is not null)
+        {
+            return Ok(new
+            {
+                isGroupManager = true,
+                groupId = acting.Id,
+                groupName = acting.Name,
+                isPlatformActAs = _groupAccess.IsPlatformAdmin(User) && ActAsGroupId.HasValue
+            });
+        }
+
         var isManager = User.IsInRole(UserRoles.GroupManager) || managers.IsActiveManager(UserId);
         Guid? groupId = null;
         string? groupName = null;
@@ -279,28 +301,44 @@ public class ExpertApprovalsController : ControllerBase
             groupId = my.Id;
             groupName = my.Name;
         }
-        return Ok(new { isGroupManager = isManager, groupId, groupName });
+        return Ok(new { isGroupManager = isManager, groupId, groupName, isPlatformActAs = false });
     }
 
     [HttpGet("my-group/settings")]
-    [Authorize(Roles = UserRoles.GroupManager)]
+    [Authorize(Roles = $"{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
     public async Task<ActionResult<object>> GetMyGroupSettings(CancellationToken ct)
     {
         if (UserId is null) return Unauthorized();
-        var group = await _approvals.GetMyGroupAsync(UserId, ct);
-        if (group is null) return NotFound();
-        // Reload description from full entity via dashboard service path — use approvals GetMyGroup extended
-        return Ok(await _approvals.GetMyGroupSettingsAsync(UserId, ct));
+        try
+        {
+            if (_groupAccess.IsPlatformAdmin(User) && ActAsGroupId is Guid gid)
+            {
+                var g = await _groupAccess.ResolveManagedGroupAsync(User, gid, ct)
+                    ?? throw new InvalidOperationException("Groupe introuvable.");
+                return Ok(g);
+            }
+            return Ok(await _approvals.GetMyGroupSettingsAsync(UserId, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 
     [HttpPut("my-group/settings")]
-    [Authorize(Roles = UserRoles.GroupManager)]
+    [Authorize(Roles = $"{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
     public async Task<ActionResult<object>> UpdateMyGroupSettings(
         [FromBody] UpdateManagerGroupSettingsRequest? request, CancellationToken ct)
     {
         if (UserId is null) return Unauthorized();
         try
         {
+            if (_groupAccess.IsPlatformAdmin(User) && ActAsGroupId is Guid gid)
+            {
+                // Platform act-as: update via approvals using group resolution
+                var group = await _groupAccess.RequireManagedGroupIdAsync(User, gid, ct);
+                return Ok(await _approvals.UpdateGroupSettingsAsAdminAsync(group, request?.Description, ct));
+            }
             return Ok(await _approvals.UpdateMyGroupSettingsAsync(UserId, request?.Description, ct));
         }
         catch (InvalidOperationException ex)
@@ -321,7 +359,8 @@ public class ExpertApprovalsController : ControllerBase
     public async Task<ActionResult<IReadOnlyList<MonitoredTeacherDto>>> MonitoredTeachers(CancellationToken ct)
     {
         if (UserId is null) return Unauthorized();
-        var list = await _monitoring.ListMonitoredTeachersAsync(UserId, ct);
+        var list = await _monitoring.ListMonitoredTeachersAsync(
+            UserId, ct, _groupAccess.IsPlatformAdmin(User) ? ActAsGroupId : null);
 
         var enriched = new List<MonitoredTeacherDto>(list.Count);
         foreach (var item in list)
@@ -435,7 +474,7 @@ public class ExpertApprovalsController : ControllerBase
         {
             _teacherSchools.EnsureExpertCanManageTeacher(tenantId, UserId);
             var dto = await _teacherSchools.GetByTenantIdAsync(tenantId, ct);
-            if (dto is null) return NotFound(new { error = "École introuvable." });
+            if (dto is null) return NotFound(new { error = "Profil introuvable." });
 
             if (!string.IsNullOrWhiteSpace(dto.OwnerUserId))
             {
@@ -471,7 +510,7 @@ public class ExpertApprovalsController : ControllerBase
         {
             _teacherSchools.EnsureExpertCanManageTeacher(tenantId, UserId);
             var current = await _teacherSchools.GetByTenantIdAsync(tenantId, ct)
-                ?? throw new InvalidOperationException("École introuvable.");
+                ?? throw new InvalidOperationException("Profil introuvable.");
 
             if (!string.IsNullOrWhiteSpace(current.OwnerUserId))
             {

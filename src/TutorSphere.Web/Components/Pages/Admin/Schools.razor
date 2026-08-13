@@ -1,17 +1,18 @@
+@page "/admin/profils"
 @page "/admin/schools"
 @layout AdminLayout
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject AdminService AdminSvc
 @inject AuthService Auth
 
-<PageTitle>Écoles — Control Center</PageTitle>
+<PageTitle>Profils enseignants — Control Center</PageTitle>
 
 <AuthorizeView Roles="SuperAdmin,PlatformAdmin">
     <Authorized>
         <div class="cc-toolbar">
             <div>
-                <h1 class="cc-page-title">Écoles</h1>
-                <p class="cc-page-sub">Chaque école (tenant) possède sa fiche, son abonnement et ses métriques.</p>
+                <h1 class="cc-page-title">Profils enseignants</h1>
+                <p class="cc-page-sub">Chaque enseignant possède sa fiche publique, son abonnement et ses métriques.</p>
             </div>
         </div>
 
@@ -22,16 +23,16 @@
         else if (_schools.Count == 0)
         {
             <div class="cc-card cc-empty">
-                <i class="bi bi-building"></i>
-                <p>Aucune école enregistrée pour le moment.</p>
+                <i class="bi bi-person-badge"></i>
+                <p>Aucun profil enseignant enregistré pour le moment.</p>
             </div>
         }
         else
         {
             <div class="cc-stat-grid mb-3">
-                <div class="cc-kpi"><div class="cc-kpi-label">Écoles</div><div class="cc-kpi-value">@_schools.Count</div></div>
+                <div class="cc-kpi"><div class="cc-kpi-label">Profils</div><div class="cc-kpi-value">@_schools.Count</div></div>
                 <div class="cc-kpi"><div class="cc-kpi-label">Élèves (total)</div><div class="cc-kpi-value">@_schools.Sum(s => s.StudentCount).ToString("N0")</div></div>
-                <div class="cc-kpi"><div class="cc-kpi-label">Actives</div><div class="cc-kpi-value">@_schools.Count(s => s.Status == "Active")</div></div>
+                <div class="cc-kpi"><div class="cc-kpi-label">Actifs</div><div class="cc-kpi-value">@_schools.Count(s => s.Status == "Active")</div></div>
                 <div class="cc-kpi"><div class="cc-kpi-label">En validation</div><div class="cc-kpi-value">@_schools.Count(s => s.Status.Contains("Pending", StringComparison.OrdinalIgnoreCase))</div></div>
             </div>
 
@@ -40,13 +41,13 @@
                     <table class="cc-table">
                         <thead>
                             <tr>
-                                <th>École</th>
+                                <th>Profil</th>
                                 <th>Pays</th>
                                 <th>Ville</th>
                                 <th>Élèves</th>
                                 <th>Abonnement</th>
                                 <th>Statut</th>
-                                <th>Créée</th>
+                                <th>Créé</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -55,10 +56,10 @@
                                 <tr>
                                     <td>
                                         <div class="cc-user-cell">
-                                            <span class="cc-rank-icon"><i class="bi bi-building"></i></span>
+                                            <span class="cc-rank-icon"><i class="bi bi-person-badge"></i></span>
                                             <span class="cc-user-cell-text">
                                                 <strong>@s.Name</strong>
-                                                <span>/school/@s.Slug</span>
+                                                <span>/profil/@s.Slug</span>
                                             </span>
                                         </div>
                                     </td>

@@ -13,7 +13,7 @@
         <div class="dashboard-header">
             <div>
                 <h1 class="dashboard-greeting">@L["Nav_AdminTutors"]</h1>
-                <p class="dashboard-date">Gérez les enseignants et approuvez les écoles.</p>
+                <p class="dashboard-date">Gérez les enseignants et approuvez les profils.</p>
             </div>
         </div>
 
@@ -120,7 +120,7 @@
                                                     </button>
                                                 }
                                                 <button class="btn btn-sm btn-outline-primary"
-                                                        title="Approuver l'école"
+                                                        title="Approuver le profil"
                                                         disabled="@(_approvingTenant == tutor.Id)"
                                                         @onclick="() => ApproveSchoolAsync(tutor.Id)">
                                                     @if (_approvingTenant == tutor.Id)
@@ -131,7 +131,7 @@
                                                     {
                                                         <i class="bi bi-building-check me-1"></i>
                                                     }
-                                                    Approuver école
+                                                    Approuver profil
                                                 </button>
                                             </div>
                                         </td>
@@ -212,10 +212,10 @@
         try
         {
             var result = await Api.PostAsync<object>($"api/admin/tenants/{userId}/approve", new { });
-            if (result != null) _successMessage = "École approuvée avec succès.";
-            else _errorMessage = "Impossible d'approuver l'école. Vérifiez que le tenantId est correct.";
+            if (result != null) _successMessage = "Profil approuvé avec succès.";
+            else _errorMessage = "Impossible d'approuver le profil. Vérifiez que le tenantId est correct.";
         }
-        catch { _errorMessage = "Erreur lors de l'approbation de l'école."; }
+        catch { _errorMessage = "Erreur lors de l'approbation du profil."; }
         finally { _approvingTenant = null; }
     }
 

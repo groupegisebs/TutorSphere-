@@ -26,9 +26,21 @@ window.tsAuth = {
     /** Clears sessionStorage and HttpOnly auth cookie. */
     clearAll: async function () {
         this.clear();
+        this.clearActAsGroup();
         try {
             await fetch('/bff/auth/logout', { method: 'POST', credentials: 'same-origin' });
         } catch (_) { }
+    },
+    saveActAsGroup: function (groupId, groupName) {
+        try {
+            sessionStorage.setItem('ts_act_as_group', JSON.stringify({ groupId: groupId, groupName: groupName || '' }));
+        } catch (_) { }
+    },
+    loadActAsGroup: function () {
+        try { return sessionStorage.getItem('ts_act_as_group'); } catch (_) { return null; }
+    },
+    clearActAsGroup: function () {
+        try { sessionStorage.removeItem('ts_act_as_group'); } catch (_) { }
     },
     /** Navigate even when an extension broke window.location setter (fallback: <a> click). */
     go: function (url) {

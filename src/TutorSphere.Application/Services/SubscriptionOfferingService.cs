@@ -108,9 +108,9 @@ public class SubscriptionOfferingService : ISubscriptionOfferingService
         CancellationToken ct = default)
     {
         if (tenantId == Guid.Empty)
-            throw new InvalidOperationException("École introuvable.");
+            throw new InvalidOperationException("Profil introuvable.");
         if (_db.Tenants.FirstOrDefault(t => t.Id == tenantId) is null)
-            throw new InvalidOperationException("École introuvable.");
+            throw new InvalidOperationException("Profil introuvable.");
         if (string.IsNullOrWhiteSpace(request.Title))
             throw new InvalidOperationException("Le titre de l'offre est obligatoire.");
         if (request.Price < 0)
