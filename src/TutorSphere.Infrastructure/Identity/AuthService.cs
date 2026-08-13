@@ -440,23 +440,38 @@ public class AuthService : IAuthService
         var firstName = (request.FirstName ?? "").Trim();
         var lastName = (request.LastName ?? "").Trim();
         var schoolName = (request.SchoolName ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(schoolName))
+            schoolName = group.Name;
+        var password = request.Password ?? "";
         if (string.IsNullOrWhiteSpace(firstName) || string.IsNullOrWhiteSpace(lastName))
             throw new InvalidOperationException("Prénom et nom requis.");
         if (string.IsNullOrWhiteSpace(schoolName))
-            throw new InvalidOperationException("Nom de l'école / enseignant requis.");
+            throw new InvalidOperationException("Nom du groupe d'experts requis.");
+        if (string.IsNullOrWhiteSpace(password) || password.Length < 8
+            || !password.Any(char.IsDigit) || password.All(char.IsLetterOrDigit))
+            throw new InvalidOperationException("Mot de passe trop faible (8 caractères, un chiffre et un caractère spécial).");
+        if (!request.AcceptedTeacherConductPolicy)
+            throw new InvalidOperationException(
+                "Vous devez confirmer l'acceptation du Code de conduite enseignant pour créer le compte.");
 
         if (await _userManager.FindByEmailAsync(email) is not null)
             throw new InvalidOperationException("Un compte existe déjà avec cet e-mail.");
 
-        var country = ProfileVisibility.NormalizeCode(request.Country);
-        if (country.Length != 2)
-            country = ProfileVisibility.NormalizeCode(group.CountryCode);
+        // Pays enseignant = pays du groupe d'experts (non modifiable à la création).
+        var country = ProfileVisibility.NormalizeCode(group.CountryCode);
         if (country.Length != 2)
             country = "CM";
 
         var visibleCsv = ProfileVisibility.ToCsv(request.VisibleCountryCodes, country);
-        var slug = AllocateUniqueSlug(schoolName);
-        var temporaryPassword = GenerateTemporaryPassword();
+
+        var requestedSlug = (request.Slug ?? "").Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(requestedSlug))
+            throw new InvalidOperationException("Sous-domaine requis.");
+        if (!Regex.IsMatch(requestedSlug, @"^[a-z0-9]([a-z0-9-]{1,48}[a-z0-9])?$"))
+            throw new InvalidOperationException("Sous-domaine invalide.");
+        if (_db.Tenants.Any(t => t.Slug == requestedSlug))
+            throw new InvalidOperationException("Cette adresse est déjà utilisée par une autre école.");
+        var slug = requestedSlug;
 
         var user = new ApplicationUser
         {
@@ -465,10 +480,10 @@ public class AuthService : IAuthService
             FirstName = firstName,
             LastName = lastName,
             EmailConfirmed = true,
-            MustChangePassword = true
+            MustChangePassword = false
         };
 
-        var create = await _userManager.CreateAsync(user, temporaryPassword);
+        var create = await _userManager.CreateAsync(user, password);
         if (!create.Succeeded)
             throw new InvalidOperationException(string.Join("; ", create.Errors.Select(e => e.Description)));
 
@@ -517,25 +532,8 @@ public class AuthService : IAuthService
         user.TenantId = tenant.Id;
         await _userManager.UpdateAsync(user);
 
-        var loginUrl = $"{_urls.WebBaseUrl.TrimEnd('/')}/login/tuteur";
-        var credentialsSent = false;
-        try
-        {
-            await _email.SendExpertInviteAsync(
-                email,
-                firstName,
-                temporaryPassword,
-                loginUrl,
-                group.Name,
-                ct);
-            credentialsSent = true;
-        }
-        catch
-        {
-            // Compte créé même si l'e-mail échoue — l'expert pourra renvoyer un reset.
-        }
-
-        return new RegisterTeacherByExpertResponse(tenant.Id, tenant.Slug, email, credentialsSent);
+        // Pas d'envoi du mot de passe par e-mail : l'expert le communique à l'enseignant.
+        return new RegisterTeacherByExpertResponse(tenant.Id, tenant.Slug, email, CredentialsSent: false);
     }
 
     private string AllocateUniqueSlug(string schoolName)
@@ -942,3 +940,4 @@ public class AuthService : IAuthService
         await _db.SaveChangesAsync(ct);
     }
 }
+                  

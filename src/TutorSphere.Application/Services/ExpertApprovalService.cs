@@ -19,6 +19,7 @@ public interface IExpertApprovalService
     Task SyncInviteStatusForTenantAsync(Guid tenantId, CancellationToken ct = default);
     Task<TeacherApprovalStatusDto> GetStatusForOwnerAsync(string ownerUserId, CancellationToken ct = default);
     Task<IReadOnlyList<Guid>> GetExpertGroupIdsAsync(string expertUserId, CancellationToken ct = default);
+    Task<ExpertMyGroupDto?> GetMyGroupAsync(string expertUserId, CancellationToken ct = default);
 }
 
 public class ExpertApprovalService(
@@ -37,6 +38,23 @@ public class ExpertApprovalService(
             .Distinct()
             .ToList();
         return Task.FromResult(ids);
+    }
+
+    public Task<ExpertMyGroupDto?> GetMyGroupAsync(string expertUserId, CancellationToken ct = default)
+    {
+        var groupId = db.ExpertGroupMembers
+            .Where(m => m.UserId == expertUserId)
+            .Select(m => m.ExpertGroupId)
+            .FirstOrDefault();
+        if (groupId == Guid.Empty)
+            return Task.FromResult<ExpertMyGroupDto?>(null);
+
+        var group = db.ExpertGroups.FirstOrDefault(g => g.Id == groupId && g.IsActive);
+        if (group is null)
+            return Task.FromResult<ExpertMyGroupDto?>(null);
+
+        return Task.FromResult<ExpertMyGroupDto?>(
+            new ExpertMyGroupDto(group.Id, group.Name, group.CountryCode));
     }
 
     public Task<IReadOnlyList<PendingTeacherDto>> ListPendingForExpertAsync(string expertUserId, CancellationToken ct = default)

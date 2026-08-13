@@ -144,6 +144,14 @@ public class ExpertApprovalsController : ControllerBase
         }
     }
 
+    [HttpGet("my-group")]
+    public async Task<ActionResult<ExpertMyGroupDto>> MyGroup(CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        var group = await _approvals.GetMyGroupAsync(UserId, ct);
+        return group is null ? NotFound() : Ok(group);
+    }
+
     [HttpGet("invitations")]
     public async Task<ActionResult<IReadOnlyList<TeacherApplicationInviteDto>>> Invitations(CancellationToken ct)
     {

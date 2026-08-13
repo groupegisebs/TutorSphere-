@@ -1,6 +1,7 @@
 @page "/expert/dashboard"
 @layout ExpertLayout
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using TutorSphere.Domain.Policies
 @using TutorSphere.Web.Common
 @inject AuthService Auth
 @inject ApiClient Api
@@ -66,58 +67,200 @@
                 <div class="alert alert-success py-2">@_regSuccess</div>
             }
 
-            <div class="row g-2 align-items-end">
-                <div class="col-md-4">
-                    <label class="form-label">@L["Expert_InviteEmail"]</label>
-                    <input class="form-control" type="email" @bind="_regEmail" />
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">@L["Expert_InviteFirstName"]</label>
-                    <input class="form-control" @bind="_regFirstName" />
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">@L["Expert_RegisterLastName"]</label>
-                    <input class="form-control" @bind="_regLastName" />
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">@L["Expert_RegisterSchoolName"]</label>
-                    <input class="form-control" @bind="_regSchoolName" />
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">@L["Expert_RegisterCity"]</label>
-                    <input class="form-control" @bind="_regCity" />
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">@L["Expert_RegisterCountry"]</label>
-                    <CountrySelect Value="_regCountry" ValueChanged="OnRegCountryChanged" />
-                </div>
-                <div class="col-12">
-                    <label class="form-label">@L["School_VisibleCountries"]</label>
-                    <p class="small text-muted mb-2">@L["School_VisibleCountriesHint"]</p>
-                    <div class="d-flex flex-wrap gap-2 mb-2">
-                        @foreach (var code in _regVisibleCountries)
-                        {
-                            var info = CountryCatalog.Find(code);
-                            <span class="badge text-bg-light border d-inline-flex align-items-center gap-1 py-2 px-2">
-                                <span aria-hidden="true">@(info?.Flag ?? "")</span>
-                                @(info?.Name ?? code)
-                                @if (!string.Equals(code, _regCountry, StringComparison.OrdinalIgnoreCase))
-                                {
-                                    <button type="button" class="btn-close btn-close-sm ms-1" @onclick="() => RemoveRegVisible(code)"></button>
-                                }
-                            </span>
-                        }
-                    </div>
-                    <div class="col-md-6 px-0">
-                        <CountrySelect Value="@_regAddVisible" ValueChanged="OnRegAddVisibleChanged" Placeholder="@L["School_AddVisibleCountry"]" />
-                    </div>
-                </div>
-                <div class="col-12">
-                    <button type="button" class="cc-btn cc-btn-primary" disabled="@_regBusy" @onclick="RegisterTeacherAsync">
-                        <i class="bi bi-person-plus"></i> @L["Expert_RegisterTeacherSend"]
-                    </button>
+            <div class="mb-3">
+                <label class="form-label">@L["Label_ExpertGroupName"] <span class="text-danger">*</span></label>
+                <div class="form-field-icon">
+                    <i class="bi bi-people field-icon" aria-hidden="true"></i>
+                    <input class="form-control" value="@_regSchoolName" disabled readonly
+                           placeholder="@(_regGroupLoading ? L["Label_Loading"] : L["Placeholder_ExpertGroupName"])" />
                 </div>
             </div>
+
+            <div class="row g-2">
+                <div class="col-12 col-sm-6 mb-3">
+                    <label class="form-label">@L["Label_FirstName"] <span class="text-danger">*</span></label>
+                    <div class="form-field-icon">
+                        <i class="bi bi-person field-icon" aria-hidden="true"></i>
+                        <input class="form-control" @bind="_regFirstName" @bind:event="oninput" @bind:after="OnRegNameChanged"
+                               placeholder="@L["Label_FirstName"]" autocomplete="given-name" />
+                    </div>
+                </div>
+                <div class="col-12 col-sm-6 mb-3">
+                    <label class="form-label">@L["Label_LastName"] <span class="text-danger">*</span></label>
+                    <div class="form-field-icon">
+                        <i class="bi bi-person field-icon" aria-hidden="true"></i>
+                        <input class="form-control" @bind="_regLastName" @bind:event="oninput" @bind:after="OnRegNameChanged"
+                               placeholder="@L["Label_LastName"]" autocomplete="family-name" />
+                    </div>
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">@L["Label_Email"] <span class="text-danger">*</span></label>
+                <div class="form-field-icon">
+                    <i class="bi bi-envelope field-icon" aria-hidden="true"></i>
+                    <input type="email" class="form-control" @bind="_regEmail" placeholder="exemple@courriel.com" />
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">@L["Label_CreatePassword"] <span class="text-danger">*</span></label>
+                <div class="form-field-icon">
+                    <i class="bi bi-lock field-icon" aria-hidden="true"></i>
+                    <input type="@(_regShowPassword ? "text" : "password")" class="form-control" style="padding-right: 2.5rem;"
+                           @bind="_regPassword" @bind:event="oninput" />
+                    <button type="button" class="password-toggle" @onclick="() => _regShowPassword = !_regShowPassword" aria-label="@L["Label_TogglePassword"]">
+                        <i class="bi @(_regShowPassword ? "bi-eye-slash" : "bi-eye")" aria-hidden="true"></i>
+                    </button>
+                </div>
+                @if (!string.IsNullOrEmpty(_regPassword))
+                {
+                    <div class="password-strength">
+                        <div class="password-strength-label">
+                            @L["Password_Strength"]: <strong class="@RegPasswordStrengthClass">@RegPasswordStrengthLabel</strong>
+                        </div>
+                        <div class="password-strength-bars">
+                            @for (var i = 0; i < 4; i++)
+                            {
+                                <div class="password-strength-bar @(i < RegPasswordStrengthBars ? $"filled {RegPasswordStrengthClass}" : "")"></div>
+                            }
+                        </div>
+                        <ul class="password-requirements">
+                            <li class="@(RegHasMinLength ? "met" : "")">
+                                <i class="bi @(RegHasMinLength ? "bi-check-circle-fill" : "bi-circle")" aria-hidden="true"></i>
+                                @L["Password_Req_Length"]
+                            </li>
+                            <li class="@(RegHasNumber ? "met" : "")">
+                                <i class="bi @(RegHasNumber ? "bi-check-circle-fill" : "bi-circle")" aria-hidden="true"></i>
+                                @L["Password_Req_Number"]
+                            </li>
+                            <li class="@(RegHasSpecial ? "met" : "")">
+                                <i class="bi @(RegHasSpecial ? "bi-check-circle-fill" : "bi-circle")" aria-hidden="true"></i>
+                                @L["Password_Req_Special"]
+                            </li>
+                        </ul>
+                    </div>
+                }
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">@L["Label_ConfirmPassword"] <span class="text-danger">*</span></label>
+                <div class="form-field-icon">
+                    <i class="bi bi-lock-fill field-icon" aria-hidden="true"></i>
+                    <input type="@(_regShowConfirmPassword ? "text" : "password")" class="form-control @(RegConfirmPasswordMismatch ? "is-invalid" : "")"
+                           style="padding-right: 2.5rem;"
+                           @bind="_regConfirmPassword" @bind:event="oninput" placeholder="@L["Placeholder_ConfirmPassword"]" />
+                    <button type="button" class="password-toggle" @onclick="() => _regShowConfirmPassword = !_regShowConfirmPassword" aria-label="@L["Label_TogglePassword"]">
+                        <i class="bi @(_regShowConfirmPassword ? "bi-eye-slash" : "bi-eye")" aria-hidden="true"></i>
+                    </button>
+                </div>
+                @if (RegConfirmPasswordMismatch)
+                {
+                    <small class="text-danger">@L["Error_PasswordMismatch"]</small>
+                }
+            </div>
+
+            <div class="teacher-conduct-box mb-3">
+                <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+                    <strong>@L["TeacherConduct_Title"]</strong>
+                    <span class="badge text-bg-light">v@(TeacherConductPolicy.CurrentVersion)</span>
+                </div>
+                <div class="teacher-conduct-scroll" tabindex="0">
+                    <p class="small mb-2">@L["TeacherConduct_Intro"]</p>
+                    <ul class="small mb-2">
+                        <li>@L["TeacherConduct_Bullet_Trust"]</li>
+                        <li>@L["TeacherConduct_Bullet_Respect"]</li>
+                        <li>@L["TeacherConduct_Bullet_Safety"]</li>
+                        <li>@L["TeacherConduct_Bullet_Report"]</li>
+                        <li>@L["TeacherConduct_Bullet_Privacy"]</li>
+                        <li>@L["TeacherConduct_Bullet_Ethics"]</li>
+                    </ul>
+                    <p class="small text-muted mb-0">@L["TeacherConduct_LegalNote"]</p>
+                </div>
+                <a class="small d-inline-block mt-2" href="@TeacherConductPolicy.PublicPath" target="_blank" rel="noopener">
+                    @L["TeacherConduct_ReadFull"] <i class="bi bi-box-arrow-up-right" aria-hidden="true"></i>
+                </a>
+                <div class="form-check mt-3">
+                    <input class="form-check-input" type="checkbox" id="expert-accept-conduct"
+                           @bind="_regAcceptedConduct" />
+                    <label class="form-check-label" for="expert-accept-conduct">
+                        @L["TeacherConduct_AcceptCheckbox"]
+                    </label>
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">@L["Label_SubdomainFull"] <span class="text-danger">*</span></label>
+                <div class="subdomain-field">
+                    <span class="subdomain-prefix">https://</span>
+                    <input @bind="_regSlug" @bind:event="oninput" @bind:after="AfterRegSlugChanged" placeholder="jean" aria-label="@L["Label_Subdomain"]" />
+                    <span class="subdomain-suffix">.tutorsphere.com</span>
+                    @if (_regCheckingSlug)
+                    {
+                        <span class="subdomain-status"><span class="spinner-border spinner-border-sm" role="status"></span></span>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(_regSlug) && IsRegSlugFormatValid)
+                    {
+                        <span class="subdomain-status @(_regSlugAvailable == true ? "" : "unavailable")">
+                            <i class="bi @(_regSlugAvailable == true ? "bi-check-circle-fill" : "bi-x-circle-fill")" aria-hidden="true"></i>
+                        </span>
+                    }
+                </div>
+                <small class="text-muted">@L["Hint_SubdomainAutoFilled"]</small>
+                @if (_regSlugAvailable == false && !string.IsNullOrWhiteSpace(_regSlug))
+                {
+                    <small class="text-danger d-block">@L["Error_SlugTaken"]</small>
+                }
+            </div>
+
+            <div class="row g-2 mb-3">
+                <div class="col-md-6">
+                    <label class="form-label">@L["Expert_RegisterCity"]</label>
+                    <div class="form-field-icon">
+                        <i class="bi bi-geo-alt field-icon" aria-hidden="true"></i>
+                        <input class="form-control" @bind="_regCity" />
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">@L["Expert_RegisterCountry"] <span class="text-danger">*</span></label>
+                    <CountrySelect Value="_regCountry" ValueChanged="OnRegCountryChanged" />
+                </div>
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">@L["School_VisibleCountries"]</label>
+                <p class="small text-muted mb-2">@L["School_VisibleCountriesHint"]</p>
+                <div class="d-flex flex-wrap gap-2 mb-2">
+                    @foreach (var code in _regVisibleCountries)
+                    {
+                        var info = CountryCatalog.Find(code);
+                        <span class="badge text-bg-light border d-inline-flex align-items-center gap-1 py-2 px-2">
+                            <span aria-hidden="true">@(info?.Flag ?? "")</span>
+                            @(info?.Name ?? code)
+                            @if (!string.Equals(code, _regCountry, StringComparison.OrdinalIgnoreCase))
+                            {
+                                <button type="button" class="btn-close btn-close-sm ms-1" @onclick="() => RemoveRegVisible(code)"></button>
+                            }
+                        </span>
+                    }
+                </div>
+                <div class="col-md-6 px-0">
+                    <CountrySelect Value="@_regAddVisible" ValueChanged="OnRegAddVisibleChanged" Placeholder="@L["School_AddVisibleCountry"]" />
+                </div>
+            </div>
+
+            <button type="button" class="cc-btn cc-btn-primary"
+                    disabled="@(_regBusy || !_regAcceptedConduct)" @onclick="RegisterTeacherAsync">
+                @if (_regBusy)
+                {
+                    <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                    <span>@L["Button_Loading"]</span>
+                }
+                else
+                {
+                    <i class="bi bi-person-plus"></i> @L["Expert_RegisterTeacherSend"]
+                }
+            </button>
         </div>
 
         <div class="cc-card mb-3">
@@ -259,18 +402,71 @@
     private string _regFirstName = "";
     private string _regLastName = "";
     private string _regSchoolName = "";
+    private string _regPassword = "";
+    private string _regConfirmPassword = "";
+    private string _regSlug = "";
+    private string? _regAutoSlugValue;
     private string _regCity = "";
     private string? _regCountry = "CM";
     private List<string> _regVisibleCountries = ["CM"];
     private string? _regAddVisible;
+    private bool _regAcceptedConduct;
+    private bool _regShowPassword;
+    private bool _regShowConfirmPassword;
+    private bool? _regSlugAvailable;
+    private bool _regCheckingSlug;
+    private CancellationTokenSource? _regSlugCts;
+    private bool _regGroupLoading = true;
     private bool _regBusy;
     private string? _regError;
     private string? _regSuccess;
 
+    private bool IsRegSlugFormatValid => !string.IsNullOrWhiteSpace(_regSlug)
+        && System.Text.RegularExpressions.Regex.IsMatch(_regSlug, @"^[a-z0-9]([a-z0-9-]{1,48}[a-z0-9])?$");
+
+    private bool RegConfirmPasswordMismatch =>
+        !string.IsNullOrEmpty(_regConfirmPassword) && _regPassword != _regConfirmPassword;
+
+    private bool RegHasMinLength => _regPassword.Length >= 8;
+    private bool RegHasNumber => _regPassword.Any(char.IsDigit);
+    private bool RegHasSpecial => _regPassword.Any(c => !char.IsLetterOrDigit(c));
+
+    private int RegPasswordStrengthBars =>
+        (RegHasMinLength ? 1 : 0) + (RegHasNumber ? 1 : 0) + (RegHasSpecial ? 1 : 0) + (_regPassword.Length >= 12 ? 1 : 0);
+
+    private string RegPasswordStrengthClass => RegPasswordStrengthBars <= 1 ? "weak" : RegPasswordStrengthBars <= 2 ? "medium" : "";
+
+    private string RegPasswordStrengthLabel => RegPasswordStrengthBars switch
+    {
+        <= 1 => L["Password_Weak"],
+        2 => L["Password_Medium"],
+        3 => L["Password_Good"],
+        _ => L["Password_Strong"]
+    };
+
     protected override async Task OnInitializedAsync()
     {
         try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
-        await Task.WhenAll(LoadQueueAsync(), LoadInvitesAsync());
+        await Task.WhenAll(LoadQueueAsync(), LoadInvitesAsync(), LoadMyGroupAsync());
+    }
+
+    private async Task LoadMyGroupAsync()
+    {
+        try
+        {
+            var group = await Api.GetAsync<ExpertMyGroup>("api/expert/my-group");
+            if (group is not null)
+            {
+                _regSchoolName = group.Name;
+                if (!string.IsNullOrWhiteSpace(group.CountryCode))
+                {
+                    _regCountry = group.CountryCode.Trim().ToUpperInvariant();
+                    _regVisibleCountries = [_regCountry];
+                }
+            }
+        }
+        catch { }
+        finally { _regGroupLoading = false; }
     }
 
     private async Task LoadQueueAsync()
@@ -361,6 +557,74 @@
             _regVisibleCountries.Insert(0, _regCountry.Trim().ToUpperInvariant());
     }
 
+    private async Task OnRegNameChanged()
+    {
+        if (!string.IsNullOrWhiteSpace(_regSlug) && _regSlug != _regAutoSlugValue)
+            return;
+
+        var generated = SlugifyName(_regFirstName, _regLastName);
+        if (generated == _regAutoSlugValue)
+            return;
+
+        _regAutoSlugValue = generated;
+        _regSlug = generated;
+        await AfterRegSlugChanged();
+    }
+
+    private static string SlugifyName(string firstName, string lastName)
+    {
+        var combined = $"{firstName} {lastName}".Trim();
+        if (string.IsNullOrWhiteSpace(combined))
+            return "";
+
+        var normalized = combined.Normalize(System.Text.NormalizationForm.FormD);
+        var sb = new System.Text.StringBuilder();
+        foreach (var c in normalized)
+        {
+            if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c)
+                != System.Globalization.UnicodeCategory.NonSpacingMark)
+            {
+                sb.Append(c);
+            }
+        }
+
+        var ascii = sb.ToString().Normalize(System.Text.NormalizationForm.FormC);
+        var slug = System.Text.RegularExpressions.Regex.Replace(ascii.ToLowerInvariant(), @"[^a-z0-9]+", "-").Trim('-');
+        return slug.Length > 40 ? slug[..40].Trim('-') : slug;
+    }
+
+    private async Task AfterRegSlugChanged()
+    {
+        _regSlug = _regSlug.Trim().ToLowerInvariant();
+        _regSlugAvailable = null;
+
+        if (!IsRegSlugFormatValid) return;
+
+        _regSlugCts?.Cancel();
+        _regSlugCts = new CancellationTokenSource();
+        var token = _regSlugCts.Token;
+
+        _regCheckingSlug = true;
+        StateHasChanged();
+
+        try
+        {
+            await Task.Delay(500, token);
+            if (token.IsCancellationRequested) return;
+
+            var result = await Api.GetAsync<SlugCheckResult>($"api/tenants/check-slug/{Uri.EscapeDataString(_regSlug)}");
+            if (result is not null)
+                _regSlugAvailable = result.Available;
+        }
+        catch (OperationCanceledException) { }
+        catch { }
+        finally
+        {
+            _regCheckingSlug = false;
+            StateHasChanged();
+        }
+    }
+
     private async Task RegisterTeacherAsync()
     {
         _regBusy = true;
@@ -368,6 +632,46 @@
         _regSuccess = null;
         try
         {
+            if (string.IsNullOrWhiteSpace(_regSchoolName)
+                || string.IsNullOrWhiteSpace(_regSlug)
+                || string.IsNullOrWhiteSpace(_regFirstName) || string.IsNullOrWhiteSpace(_regLastName)
+                || string.IsNullOrWhiteSpace(_regEmail) || string.IsNullOrWhiteSpace(_regPassword)
+                || string.IsNullOrWhiteSpace(_regConfirmPassword))
+            {
+                _regError = L["Error_FillAllFields"];
+                return;
+            }
+
+            if (!IsRegSlugFormatValid)
+            {
+                _regError = L["Error_InvalidSubdomain"];
+                return;
+            }
+
+            if (_regSlugAvailable == false)
+            {
+                _regError = L["Error_SlugTaken"];
+                return;
+            }
+
+            if (_regPassword != _regConfirmPassword)
+            {
+                _regError = L["Error_PasswordMismatch"];
+                return;
+            }
+
+            if (!RegHasMinLength || !RegHasNumber || !RegHasSpecial)
+            {
+                _regError = L["Error_PasswordWeak"];
+                return;
+            }
+
+            if (!_regAcceptedConduct)
+            {
+                _regError = L["TeacherConduct_MustAccept"];
+                return;
+            }
+
             if (string.IsNullOrWhiteSpace(_regCountry))
             {
                 _regError = L["Expert_RegisterCountryRequired"];
@@ -379,10 +683,13 @@
                 email = _regEmail,
                 firstName = _regFirstName,
                 lastName = _regLastName,
+                password = _regPassword,
                 schoolName = _regSchoolName,
+                slug = _regSlug.Trim().ToLowerInvariant(),
                 city = string.IsNullOrWhiteSpace(_regCity) ? null : _regCity,
                 country = _regCountry,
-                visibleCountryCodes = _regVisibleCountries
+                visibleCountryCodes = _regVisibleCountries,
+                acceptedTeacherConductPolicy = true
             });
             if (result.Error is not null)
             {
@@ -391,7 +698,16 @@
             }
 
             _regSuccess = L["Expert_RegisterTeacherSuccess"];
-            _regEmail = _regFirstName = _regLastName = _regSchoolName = _regCity = "";
+            var keptGroupName = _regSchoolName;
+            var keptCountry = _regCountry;
+            _regEmail = _regFirstName = _regLastName = _regCity = "";
+            _regPassword = _regConfirmPassword = "";
+            _regSlug = _regAutoSlugValue = "";
+            _regSlugAvailable = null;
+            _regAcceptedConduct = false;
+            _regSchoolName = keptGroupName;
+            _regCountry = keptCountry;
+            _regVisibleCountries = string.IsNullOrWhiteSpace(keptCountry) ? ["CM"] : [keptCountry];
             await LoadInvitesAsync();
         }
         catch (Exception ex)
@@ -399,6 +715,13 @@
             _regError = ex.Message;
         }
         finally { _regBusy = false; }
+    }
+
+    private sealed record ExpertMyGroup(Guid Id, string Name, string? CountryCode);
+
+    private sealed class SlugCheckResult
+    {
+        public bool Available { get; set; }
     }
 
     private sealed record RegisterTeacherResult(

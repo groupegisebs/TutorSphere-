@@ -115,16 +115,25 @@ public record RegisterTeacherByExpertRequest(
     string Email,
     string FirstName,
     string LastName,
-    string SchoolName,
+    string Password,
+    string? SchoolName = null,
+    string? Slug = null,
     string? City = null,
     string? Country = null,
-    IReadOnlyList<string>? VisibleCountryCodes = null);
+    IReadOnlyList<string>? VisibleCountryCodes = null,
+    bool AcceptedTeacherConductPolicy = false);
 
 public record RegisterTeacherByExpertResponse(
     Guid TenantId,
     string TenantSlug,
     string Email,
     bool CredentialsSent);
+
+/// <summary>Groupe d'experts auquel l'utilisateur connecté appartient.</summary>
+public record ExpertMyGroupDto(
+    Guid Id,
+    string Name,
+    string? CountryCode);
 
 public record TeacherApplicationInviteDto(
     Guid Id,
