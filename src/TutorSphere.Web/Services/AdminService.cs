@@ -63,7 +63,7 @@ public sealed class AdminService
     public async Task<List<ExpertGroupItem>> GetExpertGroupsAsync()
         => await _api.GetAsync<List<ExpertGroupItem>>("api/admin/expert-groups") ?? [];
 
-    public async Task<ExpertGroupItem?> CreateExpertGroupAsync(
+    public Task<ApiResult<ExpertGroupItem>> CreateExpertGroupAsync(
         string name,
         string? contactName,
         string? contactEmail,
@@ -77,7 +77,7 @@ public sealed class AdminService
         string? managerPhone = null,
         string? managerFunctionTitle = null,
         DateTime? managerMandateStartsAtUtc = null)
-        => await _api.PostAsync<ExpertGroupItem>("api/admin/expert-groups", new
+        => _api.PostWithErrorAsync<ExpertGroupItem>("api/admin/expert-groups", new
         {
             name,
             contactName,

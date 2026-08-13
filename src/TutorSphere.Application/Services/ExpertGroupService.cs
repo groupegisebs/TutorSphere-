@@ -11,6 +11,8 @@ public interface IExpertGroupService
     Task<ExpertGroupDto?> GetByIdAsync(Guid id, CancellationToken ct = default);
     Task<ExpertGroupDto> CreateAsync(CreateExpertGroupRequest request, CancellationToken ct = default);
     Task<ExpertGroupDto> UpdateAsync(Guid id, UpdateExpertGroupRequest request, CancellationToken ct = default);
+    /// <summary>Met à jour uniquement le logo (évite les règles d'activation / pays).</summary>
+    Task<ExpertGroupDto> SetLogoUrlAsync(Guid id, string? logoUrl, CancellationToken ct = default);
     Task DeleteAsync(Guid id, CancellationToken ct = default);
     Task ArchiveAsync(Guid id, CancellationToken ct = default);
     Task<bool> CanHardDeleteAsync(Guid id, CancellationToken ct = default);
@@ -47,8 +49,11 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
 
         var mandates = db.ExpertGroupManagerMandates
             .Where(m => m.Status == ExpertGroupManagerMandateStatus.Active)
-            .ToList()
-            .ToDictionary(m => m.ExpertGroupId);
+            .AsEnumerable()
+            .GroupBy(m => m.ExpertGroupId)
+            .ToDictionary(
+                g => g.Key,
+                g => g.OrderByDescending(m => m.MandateStartsAtUtc).First());
 
         IReadOnlyList<ExpertGroupDto> result = groups
             .Select(g =>
@@ -125,27 +130,38 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
         if (string.IsNullOrWhiteSpace(name))
             throw new InvalidOperationException("Le nom du groupe est requis.");
 
-        if (request.IsActive && entity.ActiveManagerMandateId is null)
-        {
-            var hasActiveManager = db.ExpertGroupManagerMandates.Any(m =>
-                m.ExpertGroupId == id && m.Status == ExpertGroupManagerMandateStatus.Active);
-            if (!hasActiveManager)
-                throw new InvalidOperationException("Impossible d'activer un groupe sans Responsable actif.");
-        }
+        if (request.IsActive && entity.LifecycleStatus == ExpertGroupLifecycleStatus.Archived)
+            throw new InvalidOperationException("Impossible de réactiver un groupe archivé. Créez un nouveau groupe ou contactez le support.");
+
+        // Réconcilie le pointeur dénormalisé avec le mandat Active réel.
+        var activeMandate = db.ExpertGroupManagerMandates.FirstOrDefault(m =>
+            m.ExpertGroupId == id && m.Status == ExpertGroupManagerMandateStatus.Active);
+        entity.ActiveManagerMandateId = activeMandate?.Id;
+        entity.GroupManagerMembershipId = activeMandate?.MembershipId;
+
+        if (request.IsActive && activeMandate is null)
+            throw new InvalidOperationException("Impossible d'activer un groupe sans Responsable actif.");
 
         entity.Name = name;
         entity.Description = TrimOrNull(request.Description) ?? entity.Description;
-        entity.ContactName = TrimOrNull(request.ContactName);
-        entity.ContactEmail = TrimOrNull(request.ContactEmail);
-        entity.ContactPhone = TrimOrNull(request.ContactPhone);
-        entity.LogoUrl = TrimOrNull(request.LogoUrl);
+        if (request.ContactName is not null)
+            entity.ContactName = TrimOrNull(request.ContactName);
+        if (request.ContactEmail is not null)
+            entity.ContactEmail = TrimOrNull(request.ContactEmail);
+        if (request.ContactPhone is not null)
+            entity.ContactPhone = TrimOrNull(request.ContactPhone);
+        // LogoUrl: null = ne pas toucher ; "" = effacer ; valeur = remplacer.
+        if (request.LogoUrl is not null)
+            entity.LogoUrl = string.IsNullOrWhiteSpace(request.LogoUrl) ? null : request.LogoUrl.Trim();
         entity.IsActive = request.IsActive;
 
         // Country can change for national groups only (international stays without country).
         if (!entity.IsInternational && request.CountryCode is not null)
         {
             var country = NormalizeCountry(request.CountryCode);
-            if (country is not null && country != entity.CountryCode
+            if (country is null)
+                throw new InvalidOperationException("Le code pays est requis pour un groupe national.");
+            if (country != entity.CountryCode
                 && db.ExpertGroups.Any(g => g.Id != id && !g.IsInternational && g.CountryCode == country))
             {
                 throw new InvalidOperationException(
@@ -159,6 +175,19 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
             entity.LifecycleStatus = ExpertGroupLifecycleStatus.Active;
         else if (entity.LifecycleStatus == ExpertGroupLifecycleStatus.Active)
             entity.LifecycleStatus = ExpertGroupLifecycleStatus.Suspended;
+        entity.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+
+        var count = db.ExpertGroupMembers.Count(m => m.ExpertGroupId == id && m.Status != ExpertMembershipStatus.Removed);
+        return Map(entity, count, activeMandate, CanHardDelete(id));
+    }
+
+    public async Task<ExpertGroupDto> SetLogoUrlAsync(Guid id, string? logoUrl, CancellationToken ct = default)
+    {
+        var entity = db.ExpertGroups.FirstOrDefault(g => g.Id == id)
+            ?? throw new InvalidOperationException("Groupe d'experts introuvable.");
+
+        entity.LogoUrl = TrimOrNull(logoUrl);
         entity.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
 
@@ -193,8 +222,30 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
     {
         var entity = db.ExpertGroups.FirstOrDefault(g => g.Id == id)
             ?? throw new InvalidOperationException("Groupe d'experts introuvable.");
+
+        var active = db.ExpertGroupManagerMandates.FirstOrDefault(m =>
+            m.ExpertGroupId == id && m.Status == ExpertGroupManagerMandateStatus.Active);
+        if (active is not null)
+        {
+            active.Status = ExpertGroupManagerMandateStatus.Ended;
+            active.MandateEndsAtUtc = DateTime.UtcNow;
+            active.EndReason = "Groupe archivé";
+            active.UpdatedAt = DateTime.UtcNow;
+
+            var member = db.ExpertGroupMembers.FirstOrDefault(m => m.Id == active.MembershipId);
+            if (member is not null && member.MemberRole == ExpertGroupMemberRole.Manager)
+            {
+                member.MemberRole = ExpertGroupMemberRole.Expert;
+                member.UpdatedAt = DateTime.UtcNow;
+            }
+        }
+
         entity.LifecycleStatus = ExpertGroupLifecycleStatus.Archived;
         entity.IsActive = false;
+        entity.ActiveManagerMandateId = null;
+        entity.GroupManagerMembershipId = null;
+        entity.ManagerAssignedAtUtc = null;
+        entity.ManagerAssignedByAdminId = null;
         entity.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
     }
@@ -325,7 +376,11 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
 
     private bool CanHardDelete(Guid id)
     {
-        if (db.ExpertGroupMembers.Any(m => m.ExpertGroupId == id && m.Status != ExpertMembershipStatus.Removed))
+        var group = db.ExpertGroups.FirstOrDefault(g => g.Id == id);
+        var isDraft = group?.LifecycleStatus == ExpertGroupLifecycleStatus.Draft;
+
+        // Membres/mandats d'un brouillon (création partielle) n'empêchent pas la suppression compensatoire.
+        if (!isDraft && db.ExpertGroupMembers.Any(m => m.ExpertGroupId == id && m.Status != ExpertMembershipStatus.Removed))
             return false;
         if (db.TeacherApplicationInvites.Any(i => i.ExpertGroupId == id))
             return false;
@@ -339,6 +394,12 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
             return false;
         if (db.Tenants.Any(t => t.ApprovedByExpertGroupId == id))
             return false;
+        if (db.ExpertDelegatedTasks.Any(t => t.ExpertGroupId == id))
+            return false;
+        if (db.ExpertWorkspaceItems.Any(w => w.ExpertGroupId == id))
+            return false;
+        if (db.ExpertGovernanceEvents.Any(e => e.ExpertGroupId == id))
+            return false;
         return true;
     }
 
@@ -349,9 +410,12 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
         bool canHardDelete) =>
         new(g.Id, g.Name, g.LogoUrl, g.ContactName, g.ContactEmail, g.ContactPhone,
             g.CountryCode, g.IsInternational, g.IsActive, memberCount, g.CreatedAt,
-            g.Description, g.LifecycleStatus, g.ActiveManagerMandateId,
+            g.Description, g.LifecycleStatus,
+            ActiveManagerMandateId: mandate?.Id ?? g.ActiveManagerMandateId,
             ManagerPhone: mandate?.Phone ?? g.ContactPhone,
             ManagerUserId: mandate?.UserId,
+            ManagerFullName: g.ContactName,
+            ManagerEmail: g.ContactEmail,
             CanHardDelete: canHardDelete);
 
     private static string? NormalizeCountry(string? code)

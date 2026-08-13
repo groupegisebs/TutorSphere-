@@ -79,12 +79,17 @@ public class ExpertGroupsController : ControllerBase
     public async Task<ActionResult<ExpertGroupDto>> Create([FromBody] CreateExpertGroupRequest request, CancellationToken ct)
     {
         if (AdminUserId is null) return Unauthorized();
+        Guid? createdId = null;
         try
         {
             var created = await _groups.CreateAsync(request, ct);
+            createdId = created.Id;
             var managerUser = await ResolveOrCreateManagerUserAsync(request, ct);
             if (managerUser is null)
+            {
+                await TryCompensateCreateAsync(created.Id, ct);
                 return BadRequest(new { error = "Impossible de résoudre le Responsable (e-mail ou utilisateur requis)." });
+            }
 
             await _groups.AddMemberAsync(created.Id, managerUser.Id, AdminUserId, ct: ct);
             await _identity.EnsureGroupManagerRoleAsync(managerUser.Id, ct);
@@ -92,11 +97,13 @@ public class ExpertGroupsController : ControllerBase
             await _managers.AppointAsync(created.Id, AdminUserId, managerUser.Id, new AppointGroupManagerRequest(
                 ExistingUserId: managerUser.Id,
                 Email: managerUser.Email,
+                FirstName: request.ManagerFirstName ?? managerUser.FirstName,
+                LastName: request.ManagerLastName ?? managerUser.LastName,
                 Phone: request.ManagerPhone ?? request.ContactPhone,
                 FunctionTitle: request.ManagerFunctionTitle,
                 MandateStartsAtUtc: request.ManagerMandateStartsAtUtc), ct);
 
-            // Sync contact mirror + activate
+            // Sync contact mirror + activate (LogoUrl null = conserver)
             var group = await _groups.GetByIdAsync(created.Id, ct);
             if (group is not null)
             {
@@ -104,10 +111,11 @@ public class ExpertGroupsController : ControllerBase
                     group.Name,
                     managerUser.Email,
                     request.ManagerPhone ?? request.ContactPhone,
-                    group.LogoUrl,
+                    LogoUrl: null,
                     IsActive: true,
                     ContactName: managerUser.FullName,
-                    Description: request.Description));
+                    Description: request.Description,
+                    CountryCode: group.CountryCode), ct);
             }
 
             await SendExpertLoginCredentialsAsync(managerUser, created.Name, ct);
@@ -117,6 +125,8 @@ public class ExpertGroupsController : ControllerBase
         }
         catch (InvalidOperationException ex)
         {
+            if (createdId is Guid id)
+                await TryCompensateCreateAsync(id, ct);
             return BadRequest(new { error = ex.Message });
         }
     }
@@ -161,7 +171,10 @@ public class ExpertGroupsController : ControllerBase
     {
         try
         {
+            var previous = await _managers.GetActiveManagerAsync(id, ct);
             await _groups.ArchiveAsync(id, ct);
+            if (previous is not null)
+                await _identity.RemoveGroupManagerRoleAsync(previous.UserId, ct);
             return Ok(new { message = "Groupe archivé." });
         }
         catch (InvalidOperationException ex)
@@ -201,8 +214,8 @@ public class ExpertGroupsController : ControllerBase
             var group = await _groups.GetByIdAsync(id, ct)
                 ?? throw new InvalidOperationException("Groupe introuvable.");
             await _groups.UpdateAsync(id, new UpdateExpertGroupRequest(
-                group.Name, user.Email, request.Phone ?? group.ContactPhone, group.LogoUrl, true,
-                user.FullName, group.Description));
+                group.Name, user.Email, request.Phone ?? group.ContactPhone, LogoUrl: null, true,
+                user.FullName, group.Description, group.CountryCode));
 
             return Ok(await EnrichManagerAsync((await _groups.GetByIdAsync(id, ct))!, ct));
         }
@@ -271,17 +284,23 @@ public class ExpertGroupsController : ControllerBase
     {
         g = await SanitizeMissingLogoAsync(g, ct);
 
-        if (string.IsNullOrWhiteSpace(g.ManagerUserId))
+        ApplicationUser? user = null;
+        if (!string.IsNullOrWhiteSpace(g.ManagerUserId))
+            user = await _userManager.FindByIdAsync(g.ManagerUserId);
+
+        if (user is null && !string.IsNullOrWhiteSpace(g.ContactEmail))
+            user = await _userManager.FindByEmailAsync(g.ContactEmail.Trim());
+
+        if (user is null)
             return g;
 
-        var user = await _userManager.FindByIdAsync(g.ManagerUserId);
-        if (user is null) return g;
         return g with
         {
-            ManagerFullName = user.FullName,
-            ManagerEmail = user.Email,
+            ManagerUserId = g.ManagerUserId ?? user.Id,
+            ManagerFullName = string.IsNullOrWhiteSpace(user.FullName) ? g.ManagerFullName ?? g.ContactName : user.FullName,
+            ManagerEmail = user.Email ?? g.ManagerEmail ?? g.ContactEmail,
             ManagerPhone = g.ManagerPhone ?? g.ContactPhone,
-            ContactName = user.FullName,
+            ContactName = string.IsNullOrWhiteSpace(user.FullName) ? g.ContactName : user.FullName,
             ContactEmail = user.Email ?? g.ContactEmail,
             ContactPhone = g.ManagerPhone ?? g.ContactPhone
         };
@@ -309,8 +328,7 @@ public class ExpertGroupsController : ControllerBase
 
         try
         {
-            await _groups.UpdateAsync(g.Id, new UpdateExpertGroupRequest(
-                g.Name, g.ContactEmail, g.ContactPhone, LogoUrl: null, g.IsActive, g.ContactName, g.Description), ct);
+            await _groups.SetLogoUrlAsync(g.Id, null, ct);
         }
         catch (Exception ex)
         {
@@ -318,6 +336,23 @@ public class ExpertGroupsController : ControllerBase
         }
 
         return g with { LogoUrl = null };
+    }
+
+    private async Task TryCompensateCreateAsync(Guid groupId, CancellationToken ct)
+    {
+        try
+        {
+            var previous = await _managers.GetActiveManagerAsync(groupId, ct);
+            await _groups.DeleteAsync(groupId, ct);
+            if (previous is not null)
+                await _identity.RemoveGroupManagerRoleAsync(previous.UserId, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex,
+                "Compensation création groupe {GroupId} échouée — un brouillon orphelin peut rester.",
+                groupId);
+        }
     }
 
     private async Task<ApplicationUser?> ResolveOrCreateManagerUserAsync(
@@ -405,9 +440,15 @@ public class ExpertGroupsController : ControllerBase
             await file.CopyToAsync(stream, ct);
 
         var url = $"/uploads/{safeFileName}";
-        var updated = await _groups.UpdateAsync(id, new UpdateExpertGroupRequest(
-            group.Name, group.ContactEmail, group.ContactPhone, url, group.IsActive, group.ContactName, group.Description), ct);
-        return Ok(new { logoUrl = updated.LogoUrl });
+        try
+        {
+            var updated = await _groups.SetLogoUrlAsync(id, url, ct);
+            return Ok(new { logoUrl = updated.LogoUrl });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 
     [HttpGet("{id:guid}/members")]

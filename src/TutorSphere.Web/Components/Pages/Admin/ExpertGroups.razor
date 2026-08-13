@@ -258,9 +258,12 @@
                                     </td>
                                     <td class="text-end">
                                         <div class="d-flex flex-wrap gap-1 justify-content-end">
-                                            <a class="cc-btn btn-sm" href="@($"admin/expert-groups/{g.Id}")">Ouvrir</a>
                                             <a class="cc-btn btn-sm" href="@($"admin/expert-groups/{g.Id}")">Membres</a>
-                                            <a class="cc-btn btn-sm" href="@($"admin/expert-groups/{g.Id}/manager")">Changer le responsable</a>
+                                            <AuthorizeView Roles="SuperAdmin" Context="saAuth">
+                                                <Authorized>
+                                                    <a class="cc-btn btn-sm" href="@($"admin/expert-groups/{g.Id}/manager")">Changer le responsable</a>
+                                                </Authorized>
+                                            </AuthorizeView>
                                             <button type="button" class="cc-btn btn-sm" @onclick="() => ContactAsync(g)">Contacter</button>
                                             <button type="button" class="cc-btn btn-sm" @onclick="() => OpenEdit(g)">Modifier</button>
                                             <button type="button" class="cc-btn btn-sm" @onclick="() => ToggleActiveAsync(g)">
@@ -441,6 +444,12 @@
         _formError = null;
         try
         {
+            if (!_formInternational && string.IsNullOrWhiteSpace(_formCountry))
+            {
+                _formError = "Sélectionnez un pays (ou cochez Groupe international).";
+                return;
+            }
+
             if (_editId is null)
             {
                 if (string.IsNullOrWhiteSpace(_mgrEmail) || string.IsNullOrWhiteSpace(_mgrFirstName) || string.IsNullOrWhiteSpace(_mgrLastName))
@@ -453,13 +462,21 @@
                     _formName, null, _mgrEmail, _mgrPhone, _formCountry, _formInternational,
                     _formDescription, _mgrEmail, _mgrFirstName, _mgrLastName, _mgrPhone, _mgrFunction,
                     _mgrStartDate?.ToUniversalTime());
-                if (created is null) { _formError = "Échec de création."; return; }
-                _editId = created.Id;
-                _formLogo = created.LogoUrl;
-                _formActive = created.IsActive;
-                _formContactName = created.ManagerFullName ?? created.ContactName;
-                _formEmail = created.ManagerEmail ?? created.ContactEmail;
-                _formPhone = created.ManagerPhone ?? created.ContactPhone;
+                if (!created.IsSuccess || created.Value is null)
+                {
+                    _formError = string.IsNullOrWhiteSpace(created.Error) ? "Échec de création." : created.Error;
+                    return;
+                }
+
+                var g = created.Value;
+                _editId = g.Id;
+                _formLogo = g.LogoUrl;
+                _formActive = g.IsActive;
+                _formCountry = g.CountryCode;
+                _formInternational = g.IsInternational;
+                _formContactName = g.ManagerFullName ?? g.ContactName;
+                _formEmail = g.ManagerEmail ?? g.ContactEmail;
+                _formPhone = g.ManagerPhone ?? g.ContactPhone;
                 _flash = "Groupe créé avec son Responsable. Vous pouvez ajouter un logo.";
             }
             else

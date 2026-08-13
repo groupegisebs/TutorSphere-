@@ -97,8 +97,12 @@ public class ExpertGroupManagerService(IApplicationDbContext db) : IExpertGroupM
         group.GroupManagerMembershipId = member.Id;
         group.ManagerAssignedAtUtc = starts;
         group.ManagerAssignedByAdminId = adminUserId;
-        group.ContactName = null; // rempli côté API avec FullName
-        group.ContactPhone = mandate.Phone;
+        var contactName = string.Join(' ', new[] { extras.FirstName, extras.LastName }
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Select(s => s!.Trim()));
+        if (!string.IsNullOrWhiteSpace(contactName))
+            group.ContactName = contactName;
+        group.ContactPhone = mandate.Phone ?? group.ContactPhone;
         group.ContactEmail = string.IsNullOrWhiteSpace(extras.Email) ? group.ContactEmail : extras.Email.Trim();
         if (group.LifecycleStatus == ExpertGroupLifecycleStatus.Draft)
             group.LifecycleStatus = ExpertGroupLifecycleStatus.Active;
@@ -144,9 +148,17 @@ public class ExpertGroupManagerService(IApplicationDbContext db) : IExpertGroupM
             ?? throw new InvalidOperationException("Aucun Responsable actif.");
 
         active.Status = ExpertGroupManagerMandateStatus.Suspended;
+        active.MandateEndsAtUtc = DateTime.UtcNow;
         active.EndedByAdminId = adminUserId;
         active.EndReason = string.IsNullOrWhiteSpace(reason) ? "Suspension administrative" : reason.Trim();
         active.UpdatedAt = DateTime.UtcNow;
+
+        var member = db.ExpertGroupMembers.FirstOrDefault(m => m.Id == active.MembershipId);
+        if (member is not null && member.MemberRole == ExpertGroupMemberRole.Manager)
+        {
+            member.MemberRole = ExpertGroupMemberRole.Expert;
+            member.UpdatedAt = DateTime.UtcNow;
+        }
 
         var group = db.ExpertGroups.FirstOrDefault(g => g.Id == groupId);
         if (group is not null)
