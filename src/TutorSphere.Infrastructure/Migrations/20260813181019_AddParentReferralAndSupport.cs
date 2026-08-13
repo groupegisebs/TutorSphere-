@@ -61,7 +61,7 @@ namespace TutorSphere.Infrastructure.Migrations
                 table: "ParentProfilesSet",
                 column: "ReferralCode",
                 unique: true,
-                filter: "[ReferralCode] IS NOT NULL");
+                filter: "\"ReferralCode\" IS NOT NULL");
 
             migrationBuilder.CreateIndex(
                 name: "IX_ParentProfilesSet_ReferredByParentProfileId",

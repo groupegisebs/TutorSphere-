@@ -506,7 +506,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
         {
             e.Property(p => p.Country).HasMaxLength(2);
             e.Property(p => p.ReferralCode).HasMaxLength(32);
-            e.HasIndex(p => p.ReferralCode).IsUnique().HasFilter("[ReferralCode] IS NOT NULL");
+            e.HasIndex(p => p.ReferralCode).IsUnique().HasFilter("\"ReferralCode\" IS NOT NULL");
             e.HasOne(p => p.Tenant).WithMany().HasForeignKey(p => p.TenantId)
                 .OnDelete(DeleteBehavior.Restrict);
             e.HasOne(p => p.ReferredByParent).WithMany().HasForeignKey(p => p.ReferredByParentProfileId)

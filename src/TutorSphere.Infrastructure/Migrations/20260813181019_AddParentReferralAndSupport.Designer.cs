@@ -1566,7 +1566,7 @@ namespace TutorSphere.Infrastructure.Migrations
 
                     b.HasIndex("ReferralCode")
                         .IsUnique()
-                        .HasFilter("[ReferralCode] IS NOT NULL");
+                        .HasFilter("\"ReferralCode\" IS NOT NULL");
 
                     b.HasIndex("ReferredByParentProfileId");
 
