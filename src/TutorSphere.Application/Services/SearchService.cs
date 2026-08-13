@@ -32,39 +32,16 @@ public class SearchService : ISearchService
         TutorSearchFilters filters,
         CancellationToken ct = default)
     {
-        // Directory is cross-tenant: ignore JWT tenant scoping on offerings.
-        var offeringsQuery = _db.SubscriptionOfferingsForAnyTenant
-            .Where(o => o.IsActive);
+        var now = DateTime.UtcNow;
 
-        if (!string.IsNullOrWhiteSpace(filters.Subject))
-        {
-            var subject = filters.Subject.Trim();
-            offeringsQuery = offeringsQuery.Where(o =>
-                o.Subject != null && o.Subject.Contains(subject));
-        }
-
-        if (filters.MinPrice.HasValue)
-            offeringsQuery = offeringsQuery.Where(o => o.Price >= filters.MinPrice.Value);
-
-        if (filters.MaxPrice.HasValue)
-            offeringsQuery = offeringsQuery.Where(o => o.Price <= filters.MaxPrice.Value);
-
-        if (filters.Mode.HasValue)
-            offeringsQuery = offeringsQuery.Where(o => o.Mode == filters.Mode.Value);
-
-        var offerings = offeringsQuery.ToList();
-        var tenantIdsWithOffers = offerings.Select(o => o.TenantId).Distinct().ToList();
-        if (tenantIdsWithOffers.Count == 0)
-            return Task.FromResult<IReadOnlyList<TutorSearchResultDto>>([]);
-
+        // Annuaire = fiches publiques éligibles (pas seulement celles qui ont déjà une offre).
         var query = _db.Tenants
             .Where(t => t.Status == TenantStatus.Active
                         && t.IsPublicProfile
                         && t.ExpertApprovalStatus == ExpertApprovalStatus.Approved
                         && t.OnboardingCompletedAt != null
                         && t.LicenseExpiresAt != null
-                        && t.LicenseExpiresAt > DateTime.UtcNow
-                        && tenantIdsWithOffers.Contains(t.Id));
+                        && t.LicenseExpiresAt > now);
 
         if (filters.ExpertGroupId is Guid expertGroupId)
             query = query.Where(t => t.ApprovedByExpertGroupId == expertGroupId);
@@ -92,6 +69,49 @@ public class SearchService : ISearchService
                 .ToList();
         }
 
+        if (tenants.Count == 0)
+            return Task.FromResult<IReadOnlyList<TutorSearchResultDto>>([]);
+
+        var tenantIds = tenants.Select(t => t.Id).ToList();
+
+        var offeringsQuery = _db.SubscriptionOfferingsForAnyTenant
+            .Where(o => o.IsActive && tenantIds.Contains(o.TenantId));
+
+        if (!string.IsNullOrWhiteSpace(filters.Subject))
+        {
+            var subject = filters.Subject.Trim();
+            offeringsQuery = offeringsQuery.Where(o =>
+                o.Subject != null && o.Subject.Contains(subject));
+        }
+
+        if (filters.MinPrice.HasValue)
+            offeringsQuery = offeringsQuery.Where(o => o.Price >= filters.MinPrice.Value);
+
+        if (filters.MaxPrice.HasValue)
+            offeringsQuery = offeringsQuery.Where(o => o.Price <= filters.MaxPrice.Value);
+
+        if (filters.Mode.HasValue)
+            offeringsQuery = offeringsQuery.Where(o => o.Mode == filters.Mode.Value);
+
+        var offerings = offeringsQuery.ToList();
+        var offeringsByTenant = offerings
+            .GroupBy(o => o.TenantId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        // Filtres liés aux offres : ne garder que les enseignants qui matchent.
+        var offerFilterActive = !string.IsNullOrWhiteSpace(filters.Subject)
+            || filters.MinPrice.HasValue
+            || filters.MaxPrice.HasValue
+            || filters.Mode.HasValue;
+
+        if (offerFilterActive)
+        {
+            tenants = tenants.Where(t => offeringsByTenant.ContainsKey(t.Id)).ToList();
+            if (tenants.Count == 0)
+                return Task.FromResult<IReadOnlyList<TutorSearchResultDto>>([]);
+            tenantIds = tenants.Select(t => t.Id).ToList();
+        }
+
         var groupIds = tenants
             .Where(t => t.ApprovedByExpertGroupId.HasValue)
             .Select(t => t.ApprovedByExpertGroupId!.Value)
@@ -103,21 +123,20 @@ public class SearchService : ISearchService
             .ToList()
             .ToDictionary(g => g.Id, g => g.Name);
 
-        var offeringsByTenant = offerings
-            .GroupBy(o => o.TenantId)
-            .ToDictionary(g => g.Key, g => g.ToList());
-
-        var tenantIds = tenants.Select(t => t.Id).ToList();
-
         var brandings = _db.TenantBrandings
             .Where(b => tenantIds.Contains(b.TenantId))
-            .Select(b => new { b.TenantId, b.LogoUrl, b.Portfolio })
+            .Select(b => new { b.TenantId, b.LogoUrl, b.Portfolio, b.Presentation })
             .ToList();
 
         var logosByTenant = brandings
             .Where(b => !string.IsNullOrWhiteSpace(b.LogoUrl))
             .GroupBy(b => b.TenantId)
             .ToDictionary(g => g.Key, g => g.First().LogoUrl!.Trim());
+
+        var presentationByTenant = brandings
+            .Where(b => !string.IsNullOrWhiteSpace(b.Presentation))
+            .GroupBy(b => b.TenantId)
+            .ToDictionary(g => g.Key, g => g.First().Presentation!.Trim());
 
         var portfolioByTenant = brandings
             .GroupBy(b => b.TenantId)
@@ -149,17 +168,20 @@ public class SearchService : ISearchService
                     MidpointRounding.AwayFromZero));
 
         var levelFilter = filters.Level?.Trim();
+        var subjectFilter = filters.Subject?.Trim();
 
         var results = tenants
-            .Where(t => offeringsByTenant.ContainsKey(t.Id))
             .Select(t =>
             {
-                var tenantOfferings = offeringsByTenant[t.Id];
+                offeringsByTenant.TryGetValue(t.Id, out var tenantOfferings);
+                tenantOfferings ??= [];
+
                 studentCounts.TryGetValue(t.Id, out var studentCount);
                 weeklyHoursByTenant.TryGetValue(t.Id, out var weeklyHours);
                 logosByTenant.TryGetValue(t.Id, out var photoUrl);
                 portfolioByTenant.TryGetValue(t.Id, out var portfolio);
                 portfolio ??= PortfolioExtras.Empty;
+                presentationByTenant.TryGetValue(t.Id, out var presentation);
 
                 var offeringLevels = tenantOfferings
                     .Select(o => ExtractOfferingLevel(o.Conditions))
@@ -180,6 +202,16 @@ public class SearchService : ISearchService
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .Cast<string>()
                     .ToList();
+
+                // Sans filtre matière : enrichir avec le portfolio ; avec filtre : déjà restreint via offres.
+                if (string.IsNullOrWhiteSpace(subjectFilter))
+                {
+                    foreach (var s in portfolio.Subjects)
+                    {
+                        if (subjects.All(sub => !string.Equals(sub, s, StringComparison.OrdinalIgnoreCase)))
+                            subjects.Add(s);
+                    }
+                }
 
                 var specialties = portfolio.Subjects
                     .Where(s => subjects.All(sub => !string.Equals(sub, s, StringComparison.OrdinalIgnoreCase)))
@@ -213,17 +245,24 @@ public class SearchService : ISearchService
                         languages.Add(lang);
                 }
 
+                var blurb = !string.IsNullOrWhiteSpace(t.Description)
+                    ? t.Description
+                    : presentation;
+
+                decimal? minPrice = tenantOfferings.Count > 0 ? tenantOfferings.Min(o => o.Price) : null;
+                decimal? maxPrice = tenantOfferings.Count > 0 ? tenantOfferings.Max(o => o.Price) : null;
+
                 return new TutorSearchResultDto(
                     t.Id,
                     t.Name,
                     t.Slug,
                     t.City,
                     t.Country,
-                    t.Description,
+                    blurb,
                     t.Language,
                     t.Currency,
-                    tenantOfferings.Min(o => o.Price),
-                    tenantOfferings.Max(o => o.Price),
+                    minPrice,
+                    maxPrice,
                     subjects,
                     modes,
                     null,
@@ -240,8 +279,13 @@ public class SearchService : ISearchService
                     t.ApprovedByExpertGroupId is Guid gid && groupNames.TryGetValue(gid, out var gn) ? gn : null);
             })
             .Where(r => !filters.MinRating.HasValue || (r.Rating ?? 0) >= filters.MinRating.Value)
-            .Where(r => string.IsNullOrWhiteSpace(levelFilter)
-                        || MatchesLevelFilter(r.Levels ?? [], levelFilter!))
+            .Where(r =>
+            {
+                if (string.IsNullOrWhiteSpace(levelFilter))
+                    return true;
+                // Niveau renseigné : match ; sinon exclure seulement si le filtre est actif.
+                return MatchesLevelFilter(r.Levels ?? [], levelFilter!);
+            })
             .OrderBy(r => r.Name)
             .ToList();
 

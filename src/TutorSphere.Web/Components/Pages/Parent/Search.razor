@@ -81,6 +81,9 @@
                 <div class="empty-state-icon"><i class="bi bi-search"></i></div>
                 <h2 class="h5">@L["Search_NoResults_Title"]</h2>
                 <p class="text-muted mb-0">@L["Search_NoResults_Description"]</p>
+                <p class="text-muted small mt-2 mb-0">
+                    Seules les fiches <strong>publiées</strong> (actives, approuvées, licence valide) apparaissent ici.
+                </p>
             </div>
         }
         else
@@ -130,8 +133,8 @@
         try
         {
             var parts = new List<string>();
-            if (!string.IsNullOrWhiteSpace(ParentProfile.Country))
-                parts.Add($"viewerCountry={Uri.EscapeDataString(ParentProfile.Country.Trim())}");
+            // Les filtres UI (groupe, matière, ville, prix, niveau) suffisent —
+            // pas de filtre pays silencieux côté parent.
             if (Guid.TryParse(_expertGroupId, out var gid))
                 parts.Add($"expertGroupId={gid}");
             if (!string.IsNullOrWhiteSpace(_subject)) parts.Add($"subject={Uri.EscapeDataString(_subject.Trim())}");

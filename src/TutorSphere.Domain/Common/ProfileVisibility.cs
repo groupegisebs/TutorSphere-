@@ -51,7 +51,10 @@ public static class ProfileVisibility
         if (visible.Count == 0)
         {
             var home = NormalizeCode(homeCountry);
-            return home.Length == 2 && home.Equals(viewer, StringComparison.OrdinalIgnoreCase);
+            // Pays enseignant non renseigné : ne pas masquer la fiche publique.
+            if (home.Length != 2)
+                return true;
+            return home.Equals(viewer, StringComparison.OrdinalIgnoreCase);
         }
 
         return visible.Any(c => c.Equals(viewer, StringComparison.OrdinalIgnoreCase));

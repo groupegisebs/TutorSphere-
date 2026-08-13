@@ -136,6 +136,10 @@ public sealed class TeacherSchoolAdminService(
         if (tenant.LicenseExpiresAt is null || tenant.LicenseExpiresAt <= now)
             tenant.LicenseExpiresAt = now.AddYears(1);
 
+        // Assurer une zone de visibilité (pays d'origine) pour l'annuaire parent.
+        if (string.IsNullOrWhiteSpace(tenant.VisibleCountryCodes))
+            tenant.VisibleCountryCodes = ProfileVisibility.ToCsv(null, tenant.Country);
+
         if (tenant.ExpertApprovalStatus != ExpertApprovalStatus.Approved)
         {
             tenant.ExpertApprovalStatus = ExpertApprovalStatus.Approved;

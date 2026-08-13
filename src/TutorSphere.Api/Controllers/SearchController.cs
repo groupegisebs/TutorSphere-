@@ -13,16 +13,13 @@ namespace TutorSphere.Api.Controllers;
 public class SearchController : ControllerBase
 {
     private readonly ISearchService _searchService;
-    private readonly IParentService _parentService;
     private readonly IStudentPortalService _studentPortal;
 
     public SearchController(
         ISearchService searchService,
-        IParentService parentService,
         IStudentPortalService studentPortal)
     {
         _searchService = searchService;
-        _parentService = parentService;
         _studentPortal = studentPortal;
     }
 
@@ -56,21 +53,20 @@ public class SearchController : ControllerBase
         Ok(await _searchService.ListActiveExpertGroupsAsync(ct));
 
     /// <summary>
-    /// Parent / élève : le pays du profil prime (sécurité). Sinon le paramètre query.
+    /// Élève : pays du profil (ou query). Parent authentifié : pas de filtre pays
+    /// (l'annuaire suit les filtres UI — groupe, matière, ville, prix, niveau).
+    /// Anonyme : query optionnelle.
     /// </summary>
     private async Task<string?> ResolveViewerCountryAsync(string? requested, CancellationToken ct)
     {
         var userId = User.GetUserId();
         if (!string.IsNullOrEmpty(userId))
         {
+            // Annuaire parent = toutes les fiches publiques éligibles + filtres explicites.
             if (User.IsInRole(UserRoles.Parent))
-            {
-                var parent = await _parentService.GetByUserIdAsync(userId, ct);
-                var fromProfile = ProfileVisibility.NormalizeCode(parent?.Country);
-                if (fromProfile.Length == 2)
-                    return fromProfile;
-            }
-            else if (User.IsInRole(UserRoles.Student))
+                return null;
+
+            if (User.IsInRole(UserRoles.Student))
             {
                 var fromProfile = ProfileVisibility.NormalizeCode(
                     await _studentPortal.GetViewerCountryAsync(userId, ct));

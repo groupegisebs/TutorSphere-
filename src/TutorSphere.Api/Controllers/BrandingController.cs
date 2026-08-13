@@ -124,21 +124,18 @@ public class BrandingController : ControllerBase
     }
 
     private bool RequiresCountryFilter() =>
-        User.IsInRole(UserRoles.Parent) || User.IsInRole(UserRoles.Student);
+        User.IsInRole(UserRoles.Student);
 
     private async Task<string?> ResolveViewerCountryAsync(string? requested, CancellationToken ct)
     {
         var userId = User.GetUserId();
         if (!string.IsNullOrEmpty(userId))
         {
+            // Parent : accès aux fiches publiques sans filtre pays (aligné sur l'annuaire).
             if (User.IsInRole(UserRoles.Parent))
-            {
-                var parent = await _parentService.GetByUserIdAsync(userId, ct);
-                var fromProfile = ProfileVisibility.NormalizeCode(parent?.Country);
-                if (fromProfile.Length == 2)
-                    return fromProfile;
-            }
-            else if (User.IsInRole(UserRoles.Student))
+                return null;
+
+            if (User.IsInRole(UserRoles.Student))
             {
                 var fromProfile = ProfileVisibility.NormalizeCode(
                     await _studentPortal.GetViewerCountryAsync(userId, ct));
