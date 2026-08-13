@@ -148,13 +148,18 @@
                                                 <input class="form-control" @bind="_sCountry" maxlength="2" />
                                             </div>
                                             <div class="col-12">
-                                                <label class="form-label small">Description</label>
+                                                <label class="form-label small">Présentation publique</label>
+                                                <textarea class="form-control" rows="3" @bind="_sPresentation"
+                                                          placeholder="Texte visible sur /school/…"></textarea>
+                                            </div>
+                                            <div class="col-12">
+                                                <label class="form-label small">Description courte</label>
                                                 <textarea class="form-control" rows="2" @bind="_sDescription"></textarea>
                                             </div>
                                         </div>
                                         <div class="mt-2 d-flex gap-2 flex-wrap">
                                             <button type="button" class="cc-btn cc-btn-primary btn-sm" disabled="@_schoolBusy" @onclick="SaveSchoolAsync">
-                                                Enregistrer
+                                                @(_school.IsPublicProfile ? "Enregistrer les modifications" : "Enregistrer la fiche")
                                             </button>
                                             @if (!_school.IsPublicProfile)
                                             {
@@ -167,6 +172,9 @@
                                                 <a class="cc-btn btn-sm" href="@($"/school/{_school.Slug}")" target="_blank" rel="noopener">
                                                     Voir fiche publique
                                                 </a>
+                                                <button type="button" class="cc-btn btn-sm" disabled="@_schoolBusy" @onclick="UnpublishSchoolAsync">
+                                                    <i class="bi bi-eye-slash"></i> Dépublier
+                                                </button>
                                             }
                                         </div>
                                     }
@@ -383,6 +391,7 @@
     private string? _sPhone;
     private string _sSchoolName = "";
     private string? _sDescription;
+    private string? _sPresentation;
     private string? _sCity;
     private string? _sCountry;
     private bool _schoolBusy;
@@ -435,6 +444,9 @@
                 _sPhone = _school.Phone;
                 _sSchoolName = _school.SchoolName;
                 _sDescription = _school.Description;
+                _sPresentation = string.IsNullOrWhiteSpace(_school.Presentation)
+                    ? _school.Description
+                    : _school.Presentation;
                 _sCity = _school.City;
                 _sCountry = _school.Country;
             }
@@ -508,6 +520,7 @@
                 phone = _sPhone,
                 schoolName = _sSchoolName,
                 description = _sDescription,
+                presentation = _sPresentation,
                 city = _sCity,
                 country = _sCountry
             });
@@ -517,7 +530,12 @@
                 return;
             }
             _school = result.Value;
-            _schoolSuccess = "Fiche enseignant mise à jour.";
+            _sPresentation = string.IsNullOrWhiteSpace(_school.Presentation)
+                ? _school.Description
+                : _school.Presentation;
+            _schoolSuccess = _school.IsPublicProfile
+                ? "Fiche publique mise à jour."
+                : "Fiche enregistrée (brouillon).";
             _teachers = await Api.GetAsync<List<MonitoredTeacherItem>>("api/expert/teachers") ?? _teachers;
         }
         catch (Exception ex) { _schoolError = ex.Message; }
@@ -527,6 +545,9 @@
     private async Task PublishSchoolAsync()
     {
         if (_selectedTenantId is not Guid tenantId) return;
+        await SaveSchoolAsync();
+        if (!string.IsNullOrEmpty(_schoolError)) return;
+
         _schoolBusy = true;
         _schoolError = null;
         _schoolSuccess = null;
@@ -542,6 +563,27 @@
             _schoolSuccess = result.Value is not null
                 ? $"Fiche publique créée : {result.Value.PublicPath}"
                 : "Fiche publique publiée.";
+        }
+        catch (Exception ex) { _schoolError = ex.Message; }
+        finally { _schoolBusy = false; }
+    }
+
+    private async Task UnpublishSchoolAsync()
+    {
+        if (_selectedTenantId is not Guid tenantId) return;
+        _schoolBusy = true;
+        _schoolError = null;
+        _schoolSuccess = null;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<PublishSchoolResult>($"api/expert/teachers/{tenantId}/unpublish-profile", new { });
+            if (!result.IsSuccess)
+            {
+                _schoolError = result.Error ?? "Échec de la dépublication.";
+                return;
+            }
+            _school = await Api.GetAsync<TeacherSchoolVm>($"api/expert/teachers/{tenantId}/school") ?? _school;
+            _schoolSuccess = "Fiche dépubliée.";
         }
         catch (Exception ex) { _schoolError = ex.Message; }
         finally { _schoolBusy = false; }
@@ -684,6 +726,7 @@
         string SchoolName,
         string Slug,
         string? Description,
+        string? Presentation,
         string? City,
         string? Country,
         string Language,

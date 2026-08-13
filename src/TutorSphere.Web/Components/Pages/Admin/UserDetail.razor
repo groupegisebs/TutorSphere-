@@ -92,10 +92,21 @@
 
             @if (_tab == "info")
             {
-                @if (_teacher is not null && _isSuperAdmin)
+                @if (_teacher is not null && _canEditTeacher)
                 {
                     <div class="cc-card mb-3">
-                        <h2 class="cc-card-title">Modifier l'enregistrement enseignant</h2>
+                        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+                            <div>
+                                <h2 class="cc-card-title mb-1">Fiche publique de l'enseignant</h2>
+                                <p class="small text-muted mb-0">
+                                    Créez ou modifiez le contenu visible sur <code>/school/@_teacher.Slug</code>
+                                    et dans la recherche parents.
+                                </p>
+                            </div>
+                            <span class="cc-pill @(_teacher.IsPublicProfile ? "cc-pill-ok" : "cc-pill-type")">
+                                @(_teacher.IsPublicProfile ? "Publiée" : "Brouillon — non publiée")
+                            </span>
+                        </div>
                         <div class="row g-3">
                             <div class="col-md-4">
                                 <label class="form-label">Prénom</label>
@@ -110,7 +121,7 @@
                                 <input class="form-control" @bind="_editPhone" />
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label">Nom de l'école / profil</label>
+                                <label class="form-label">Nom affiché (école / profil)</label>
                                 <input class="form-control" @bind="_editSchoolName" />
                             </div>
                             <div class="col-md-3">
@@ -122,8 +133,15 @@
                                 <input class="form-control" @bind="_editCountry" maxlength="2" />
                             </div>
                             <div class="col-12">
-                                <label class="form-label">Description (fiche publique)</label>
-                                <textarea class="form-control" rows="3" @bind="_editDescription"></textarea>
+                                <label class="form-label">Présentation publique *</label>
+                                <textarea class="form-control" rows="4" @bind="_editPresentation"
+                                          placeholder="Texte d'accueil visible sur la fiche publique…"></textarea>
+                                <div class="form-text">Affiché en priorité sur la page publique.</div>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Description courte</label>
+                                <textarea class="form-control" rows="2" @bind="_editDescription"
+                                          placeholder="Résumé (recherche / à propos)…"></textarea>
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label">Langue</label>
@@ -140,16 +158,37 @@
                                     · Licence : @(_teacher.HasValidLicense ? "OK" : "à publier")
                                 </div>
                             </div>
+                            @if (!_teacher.IsPublicProfile)
+                            {
+                                <div class="col-12">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="pubAfterSave" @bind="_publishAfterSave" />
+                                        <label class="form-check-label" for="pubAfterSave">
+                                            Publier la fiche après enregistrement (visible recherche + /school/…)
+                                        </label>
+                                    </div>
+                                </div>
+                            }
                         </div>
                         <div class="mt-3 d-flex gap-2 flex-wrap">
                             <button type="button" class="cc-btn cc-btn-primary" disabled="@_busy" @onclick="SaveTeacherAsync">
                                 @if (_busy) { <span class="spinner-border spinner-border-sm me-1"></span> }
-                                Enregistrer les modifications
+                                <i class="bi bi-check-lg"></i>
+                                @(_teacher.IsPublicProfile ? "Enregistrer les modifications" : "Enregistrer la fiche")
                             </button>
                             @if (!_teacher.IsPublicProfile)
                             {
                                 <button type="button" class="cc-btn" disabled="@_busy" @onclick="PublishProfileAsync">
-                                    <i class="bi bi-globe2"></i> Créer / publier la fiche publique
+                                    <i class="bi bi-globe2"></i> Créer / publier maintenant
+                                </button>
+                            }
+                            else
+                            {
+                                <a class="cc-btn" href="@($"/school/{_teacher.Slug}")" target="_blank" rel="noopener">
+                                    <i class="bi bi-box-arrow-up-right"></i> Voir fiche publique
+                                </a>
+                                <button type="button" class="cc-btn" disabled="@_busy" @onclick="UnpublishProfileAsync">
+                                    <i class="bi bi-eye-slash"></i> Dépublier
                                 </button>
                             }
                         </div>
@@ -191,7 +230,9 @@
     private TeacherSchoolVm? _teacher;
     private bool _loading = true;
     private bool _isSuperAdmin;
+    private bool _canEditTeacher;
     private bool _busy;
+    private bool _publishAfterSave = true;
     private string _tab = "info";
     private string? _message;
     private string? _error;
@@ -201,6 +242,7 @@
     private string? _editPhone;
     private string _editSchoolName = "";
     private string? _editDescription;
+    private string? _editPresentation;
     private string? _editCity;
     private string? _editCountry;
     private string _editLanguage = "fr";
@@ -223,6 +265,7 @@
     {
         try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
         _isSuperAdmin = Auth.IsInRole("SuperAdmin");
+        _canEditTeacher = _isSuperAdmin || Auth.IsInRole("PlatformAdmin");
         var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
         if (uri.Query.Contains("tab=history", StringComparison.OrdinalIgnoreCase))
             _tab = "history";
@@ -256,13 +299,23 @@
         _editPhone = _teacher.Phone;
         _editSchoolName = _teacher.SchoolName;
         _editDescription = _teacher.Description;
+        _editPresentation = string.IsNullOrWhiteSpace(_teacher.Presentation)
+            ? _teacher.Description
+            : _teacher.Presentation;
         _editCity = _teacher.City;
         _editCountry = _teacher.Country;
         _editLanguage = string.IsNullOrWhiteSpace(_teacher.Language) ? "fr" : _teacher.Language;
         _editCurrency = string.IsNullOrWhiteSpace(_teacher.Currency) ? "XAF" : _teacher.Currency;
+        _publishAfterSave = !_teacher.IsPublicProfile;
     }
 
     private async Task SaveTeacherAsync()
+    {
+        if (_user is null || _teacher is null) return;
+        await SaveTeacherCoreAsync(publish: !_teacher.IsPublicProfile && _publishAfterSave);
+    }
+
+    private async Task SaveTeacherCoreAsync(bool publish)
     {
         if (_user is null || _teacher is null) return;
         _busy = true;
@@ -277,10 +330,12 @@
                 phone = _editPhone,
                 schoolName = _editSchoolName,
                 description = _editDescription,
+                presentation = _editPresentation,
                 city = _editCity,
                 country = _editCountry,
                 language = _editLanguage,
-                currency = _editCurrency
+                currency = _editCurrency,
+                publish
             });
             if (!result.IsSuccess || result.Value is null)
             {
@@ -300,7 +355,9 @@
                 City = _teacher.City,
                 Country = _teacher.Country
             };
-            _message = "Enregistrement enseignant mis à jour.";
+            _message = _teacher.IsPublicProfile
+                ? "Fiche publique mise à jour."
+                : "Fiche enregistrée (brouillon). Publiez-la pour la rendre visible.";
         }
         catch (Exception ex) { _error = ex.Message; }
         finally { _busy = false; }
@@ -309,6 +366,9 @@
     private async Task PublishProfileAsync()
     {
         if (_teacher is null) return;
+        await SaveTeacherCoreAsync(publish: false);
+        if (!string.IsNullOrEmpty(_error) || _teacher is null) return;
+
         _busy = true;
         _message = null;
         _error = null;
@@ -325,6 +385,28 @@
             _message = result.Value is not null
                 ? $"Fiche publique créée : {result.Value.PublicPath}"
                 : "Fiche publique publiée.";
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task UnpublishProfileAsync()
+    {
+        if (_teacher is null) return;
+        _busy = true;
+        _message = null;
+        _error = null;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<PublishResult>($"api/admin/teachers/{_teacher.TenantId}/unpublish-profile", new { });
+            if (!result.IsSuccess)
+            {
+                _error = result.Error ?? "Échec de la dépublication.";
+                return;
+            }
+
+            await LoadTeacherAsync();
+            _message = "Fiche dépubliée — retirée de la recherche et de la page publique.";
         }
         catch (Exception ex) { _error = ex.Message; }
         finally { _busy = false; }
@@ -417,6 +499,7 @@
         string SchoolName,
         string Slug,
         string? Description,
+        string? Presentation,
         string? City,
         string? Country,
         string Language,

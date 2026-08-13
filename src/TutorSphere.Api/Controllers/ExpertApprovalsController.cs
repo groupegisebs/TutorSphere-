@@ -491,6 +491,13 @@ public class ExpertApprovalsController : ControllerBase
             }
 
             var dto = await _teacherSchools.UpdateTenantProfileAsync(tenantId, request, ct);
+
+            if (request.Publish == true && !dto.IsPublicProfile)
+            {
+                await _teacherSchools.PublishPublicProfileAsync(tenantId, UserId, asPlatformAdmin: false, ct);
+                dto = (await _teacherSchools.GetByTenantIdAsync(tenantId, ct))!;
+            }
+
             if (!string.IsNullOrWhiteSpace(dto.OwnerUserId))
             {
                 var user = await _userManager.FindByIdAsync(dto.OwnerUserId);
@@ -521,6 +528,21 @@ public class ExpertApprovalsController : ControllerBase
         try
         {
             return Ok(await _teacherSchools.PublishPublicProfileAsync(tenantId, UserId, asPlatformAdmin: false, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("teachers/{tenantId:guid}/unpublish-profile")]
+    public async Task<ActionResult<TutorSphere.Application.DTOs.Admin.PublishTeacherPublicProfileResult>> UnpublishTeacherProfile(
+        Guid tenantId, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        try
+        {
+            return Ok(await _teacherSchools.UnpublishPublicProfileAsync(tenantId, UserId, asPlatformAdmin: false, ct));
         }
         catch (InvalidOperationException ex)
         {

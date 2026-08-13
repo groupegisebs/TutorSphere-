@@ -327,7 +327,7 @@ public class AdminController : ControllerBase
 
     /// <summary>Fiche école / enseignant (édition + statut publication).</summary>
     [HttpGet("teachers/by-user/{userId}")]
-    [Authorize(Roles = UserRoles.SuperAdmin)]
+    [Authorize(Roles = "SuperAdmin,PlatformAdmin")]
     public async Task<ActionResult<TeacherSchoolRecordDto>> GetTeacherSchoolByUser(string userId, CancellationToken ct)
     {
         var user = await _userManager.FindByIdAsync(userId);
@@ -354,9 +354,9 @@ public class AdminController : ControllerBase
         });
     }
 
-    /// <summary>Modifie l'enregistrement enseignant (compte + fiche école).</summary>
+    /// <summary>Modifie l'enregistrement enseignant (compte + fiche école / publique).</summary>
     [HttpPut("teachers/by-user/{userId}")]
-    [Authorize(Roles = UserRoles.SuperAdmin)]
+    [Authorize(Roles = "SuperAdmin,PlatformAdmin")]
     public async Task<ActionResult<TeacherSchoolRecordDto>> UpdateTeacherSchoolByUser(
         string userId,
         [FromBody] UpdateTeacherSchoolRecordRequest? request,
@@ -386,6 +386,17 @@ public class AdminController : ControllerBase
                 return BadRequest(new { error = string.Join("; ", updateUser.Errors.Select(e => e.Description)) });
 
             var dto = await _teacherSchools.UpdateTenantProfileAsync(tenantId.Value, request, ct);
+
+            if (request.Publish == true && !dto.IsPublicProfile)
+            {
+                var adminId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (!string.IsNullOrEmpty(adminId))
+                {
+                    await _teacherSchools.PublishPublicProfileAsync(tenantId.Value, adminId, asPlatformAdmin: true, ct);
+                    dto = (await _teacherSchools.GetByTenantIdAsync(tenantId.Value, ct))!;
+                }
+            }
+
             return Ok(dto with
             {
                 FirstName = user.FirstName,
@@ -402,7 +413,7 @@ public class AdminController : ControllerBase
 
     /// <summary>Publie la fiche publique de l'enseignant (visible recherche / /school/{slug}).</summary>
     [HttpPost("teachers/{tenantId:guid}/publish-profile")]
-    [Authorize(Roles = UserRoles.SuperAdmin)]
+    [Authorize(Roles = "SuperAdmin,PlatformAdmin")]
     public async Task<ActionResult<PublishTeacherPublicProfileResult>> PublishTeacherProfile(
         Guid tenantId, CancellationToken ct)
     {
@@ -411,6 +422,24 @@ public class AdminController : ControllerBase
         try
         {
             return Ok(await _teacherSchools.PublishPublicProfileAsync(tenantId, adminId, asPlatformAdmin: true, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>Dépublie la fiche publique (retirée de la recherche et de /school/{slug}).</summary>
+    [HttpPost("teachers/{tenantId:guid}/unpublish-profile")]
+    [Authorize(Roles = "SuperAdmin,PlatformAdmin")]
+    public async Task<ActionResult<PublishTeacherPublicProfileResult>> UnpublishTeacherProfile(
+        Guid tenantId, CancellationToken ct)
+    {
+        var adminId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(adminId)) return Unauthorized();
+        try
+        {
+            return Ok(await _teacherSchools.UnpublishPublicProfileAsync(tenantId, adminId, asPlatformAdmin: true, ct));
         }
         catch (InvalidOperationException ex)
         {

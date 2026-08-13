@@ -27,6 +27,13 @@ public interface ITeacherSchoolAdminService
         bool asPlatformAdmin,
         CancellationToken ct = default);
 
+    /// <summary>Retire la fiche de la recherche / page publique (IsPublicProfile = false).</summary>
+    Task<PublishTeacherPublicProfileResult> UnpublishPublicProfileAsync(
+        Guid tenantId,
+        string actorUserId,
+        bool asPlatformAdmin,
+        CancellationToken ct = default);
+
     void EnsureExpertCanManageTeacher(Guid tenantId, string expertUserId);
 }
 
@@ -77,6 +84,34 @@ public sealed class TeacherSchoolAdminService(
         else if (request.Country is not null && string.IsNullOrWhiteSpace(tenant.VisibleCountryCodes))
             tenant.VisibleCountryCodes = ProfileVisibility.ToCsv(null, tenant.Country);
 
+        // Page publique /school/{slug} affiche Branding.Presentation en priorité, sinon Description.
+        if (request.Presentation is not null || request.Description is not null)
+        {
+            var branding = db.TenantBrandings.FirstOrDefault(b => b.TenantId == tenant.Id);
+            if (branding is null)
+            {
+                branding = new TenantBranding { TenantId = tenant.Id };
+                db.Add(branding);
+            }
+
+            if (request.Presentation is not null)
+            {
+                branding.Presentation = string.IsNullOrWhiteSpace(request.Presentation)
+                    ? null
+                    : request.Presentation.Trim();
+            }
+            else if (request.Description is not null
+                     && string.IsNullOrWhiteSpace(branding.Presentation))
+            {
+                // Première rédaction : propager la description vers la présentation publique.
+                branding.Presentation = string.IsNullOrWhiteSpace(request.Description)
+                    ? null
+                    : request.Description.Trim();
+            }
+
+            branding.UpdatedAt = DateTime.UtcNow;
+        }
+
         tenant.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
         return (await MapAsync(tenant, ct))!;
@@ -122,6 +157,29 @@ public sealed class TeacherSchoolAdminService(
         }
 
         tenant.UpdatedAt = now;
+        await db.SaveChangesAsync(ct);
+
+        return new PublishTeacherPublicProfileResult(
+            tenant.Id,
+            tenant.Slug,
+            tenant.IsPublicProfile,
+            $"/school/{tenant.Slug}");
+    }
+
+    public async Task<PublishTeacherPublicProfileResult> UnpublishPublicProfileAsync(
+        Guid tenantId,
+        string actorUserId,
+        bool asPlatformAdmin,
+        CancellationToken ct = default)
+    {
+        var tenant = db.Tenants.FirstOrDefault(t => t.Id == tenantId)
+            ?? throw new InvalidOperationException("École / enseignant introuvable.");
+
+        if (!asPlatformAdmin)
+            EnsureExpertCanManageTeacher(tenantId, actorUserId);
+
+        tenant.IsPublicProfile = false;
+        tenant.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
 
         return new PublishTeacherPublicProfileResult(
@@ -197,6 +255,8 @@ public sealed class TeacherSchoolAdminService(
             if (home.Length == 2) visible = [home];
         }
 
+        var branding = db.TenantBrandings.FirstOrDefault(b => b.TenantId == tenant.Id);
+
         return new TeacherSchoolRecordDto(
             tenant.Id,
             tenant.OwnerUserId,
@@ -207,6 +267,7 @@ public sealed class TeacherSchoolAdminService(
             tenant.Name,
             tenant.Slug,
             tenant.Description,
+            branding?.Presentation,
             tenant.City,
             tenant.Country,
             tenant.Language,
