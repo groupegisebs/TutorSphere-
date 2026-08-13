@@ -11,10 +11,10 @@
 
 <AuthorizeView Roles="Expert">
     <Authorized>
-        <div class="cc-toolbar">
+        <div class="cc-toolbar ex-toolbar">
             <div>
-                <h1 class="cc-page-title">Tableau de bord</h1>
-                <p class="cc-page-sub">
+                <h1 class="ex-page-title">Tableau de bord</h1>
+                <p class="ex-page-sub">
                     @if (_summary is not null)
                     {
                         <text>@_summary.GroupName@(string.IsNullOrWhiteSpace(_summary.CountryCode) ? "" : $" · {_summary.CountryCode}") — pilotage pédagogique du groupe.</text>
@@ -26,8 +26,12 @@
                 </p>
             </div>
             <div class="d-flex gap-2 flex-wrap">
-                <a class="cc-btn cc-btn-primary btn-sm" href="expert/approvals">File d'attente</a>
-                <a class="cc-btn btn-sm" href="expert/admissions">Admissions Experts</a>
+                <a class="cc-btn cc-btn-primary btn-sm" href="expert/approvals">
+                    <i class="bi bi-inbox" aria-hidden="true"></i> File d'attente
+                </a>
+                <a class="cc-btn btn-sm" href="expert/admissions">
+                    <i class="bi bi-person-check" aria-hidden="true"></i> Admissions
+                </a>
             </div>
         </div>
 
@@ -41,99 +45,161 @@
         }
         else if (_summary is not null)
         {
-            <div class="cc-kpi-grid mb-3">
-                <div class="cc-kpi">
-                    <div class="cc-kpi-label">En attente</div>
-                    <div class="cc-kpi-value">@_summary.TeachersPending</div>
+            <div class="ex-kpi-grid">
+                <div class="ex-kpi" data-tone="amber">
+                    <i class="bi bi-hourglass-split ex-kpi-icon" aria-hidden="true"></i>
+                    <div>
+                        <div class="ex-kpi-value">@_summary.TeachersPending</div>
+                        <div class="ex-kpi-label">En attente</div>
+                    </div>
                 </div>
-                <div class="cc-kpi">
-                    <div class="cc-kpi-label">En revue</div>
-                    <div class="cc-kpi-value">@_summary.TeachersUnderReview</div>
+                <div class="ex-kpi" data-tone="sky">
+                    <i class="bi bi-eye ex-kpi-icon" aria-hidden="true"></i>
+                    <div>
+                        <div class="ex-kpi-value">@_summary.TeachersUnderReview</div>
+                        <div class="ex-kpi-label">En revue</div>
+                    </div>
                 </div>
-                <div class="cc-kpi">
-                    <div class="cc-kpi-label">Modifications demandées</div>
-                    <div class="cc-kpi-value">@_summary.TeachersChangesRequested</div>
+                <div class="ex-kpi" data-tone="rose">
+                    <i class="bi bi-pencil-square ex-kpi-icon" aria-hidden="true"></i>
+                    <div>
+                        <div class="ex-kpi-value">@_summary.TeachersChangesRequested</div>
+                        <div class="ex-kpi-label">Modifications</div>
+                    </div>
                 </div>
-                <div class="cc-kpi">
-                    <div class="cc-kpi-label">Approuvés</div>
-                    <div class="cc-kpi-value">@_summary.TeachersApproved</div>
+                <div class="ex-kpi" data-tone="emerald">
+                    <i class="bi bi-check2-circle ex-kpi-icon" aria-hidden="true"></i>
+                    <div>
+                        <div class="ex-kpi-value">@_summary.TeachersApproved</div>
+                        <div class="ex-kpi-label">Approuvés</div>
+                    </div>
                 </div>
-                <div class="cc-kpi">
-                    <div class="cc-kpi-label">Votes Expert ouverts</div>
-                    <div class="cc-kpi-value">@_summary.ExpertVotesOpen</div>
+                <div class="ex-kpi">
+                    <i class="bi bi-hand-thumbs-up ex-kpi-icon" aria-hidden="true"></i>
+                    <div>
+                        <div class="ex-kpi-value">@_summary.ExpertVotesOpen</div>
+                        <div class="ex-kpi-label">Votes ouverts</div>
+                    </div>
                 </div>
-                <div class="cc-kpi">
-                    <div class="cc-kpi-label">Membres actifs</div>
-                    <div class="cc-kpi-value">@_summary.ActiveGroupMembers</div>
+                <div class="ex-kpi">
+                    <i class="bi bi-people ex-kpi-icon" aria-hidden="true"></i>
+                    <div>
+                        <div class="ex-kpi-value">@_summary.ActiveGroupMembers</div>
+                        <div class="ex-kpi-label">Membres actifs</div>
+                    </div>
                 </div>
             </div>
 
-            <div class="row g-3 mb-3">
-                <div class="col-lg-7">
-                    <div class="cc-card h-100">
-                        <h2 class="cc-card-title">Alertes</h2>
-                        @if (_summary.Alerts.Count == 0)
+            <div class="ex-panel-grid">
+                <section class="ex-panel">
+                    <div class="ex-panel-head">
+                        <h2 class="ex-panel-title">Alertes</h2>
+                        <span class="ex-panel-meta">@_summary.Alerts.Count signalement(s)</span>
+                    </div>
+                    @if (_summary.Alerts.Count == 0)
+                    {
+                        <div class="ex-empty">
+                            <i class="bi bi-shield-check" aria-hidden="true"></i>
+                            <strong>Tout est calme</strong>
+                            <span>Aucune alerte pour le moment.</span>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="ex-alert-list">
+                            @foreach (var alert in _summary.Alerts)
+                            {
+                                <div class="ex-alert-item @alert.Severity">
+                                    <span class="ex-alert-dot" aria-hidden="true"></span>
+                                    <div class="ex-alert-msg">@alert.Message</div>
+                                    @if (!string.IsNullOrWhiteSpace(alert.ActionUrl))
+                                    {
+                                        <a class="cc-btn btn-sm" href="@alert.ActionUrl.TrimStart('/')">Ouvrir</a>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                </section>
+
+                <section class="ex-panel">
+                    <div class="ex-panel-head">
+                        <h2 class="ex-panel-title">Actions rapides</h2>
+                        <span class="ex-panel-meta">Raccourcis</span>
+                    </div>
+                    <div class="ex-action-stack">
+                        @if (_summary.NextPendingTenantId is Guid nextTid)
                         {
-                            <p class="small text-muted mb-0">Aucune alerte pour le moment.</p>
+                            <a class="ex-action is-primary" href="@($"expert/teachers/{nextTid}")">
+                                <i class="bi bi-folder2-open" aria-hidden="true"></i>
+                                <span>Revoir le prochain dossier</span>
+                                <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                            </a>
                         }
                         else
                         {
-                            <div class="cc-alert-list">
-                                @foreach (var alert in _summary.Alerts)
-                                {
-                                    <div class="cc-alert-item @alert.Severity">
-                                        <div class="flex-grow-1">@alert.Message</div>
-                                        @if (!string.IsNullOrWhiteSpace(alert.ActionUrl))
-                                        {
-                                            <a class="cc-btn btn-sm" href="@alert.ActionUrl.TrimStart('/')">Ouvrir</a>
-                                        }
-                                    </div>
-                                }
+                            <a class="ex-action is-primary" href="expert/approvals">
+                                <i class="bi bi-inbox" aria-hidden="true"></i>
+                                <span>Ouvrir la file d'attente</span>
+                                <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                            </a>
+                        }
+                        <a class="ex-action" href="expert/approvals">
+                            <i class="bi bi-person-plus" aria-hidden="true"></i>
+                            <span>Inviter / enregistrer un enseignant</span>
+                            <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                        </a>
+                        <a class="ex-action" href="expert/admissions">
+                            <i class="bi bi-person-check" aria-hidden="true"></i>
+                            <span>@(_summary.NextOpenExpertVoteId is not null ? "Voter sur une candidature" : "Admissions Experts")</span>
+                            <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                        </a>
+                        <a class="ex-action" href="expert/disciplines">
+                            <i class="bi bi-book" aria-hidden="true"></i>
+                            <span>Gérer les disciplines</span>
+                            <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                        </a>
+                        <a class="ex-action" href="expert/teachers">
+                            <i class="bi bi-mortarboard" aria-hidden="true"></i>
+                            <span>Enseignants approuvés</span>
+                            <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                        </a>
+                    </div>
+
+                    <div class="ex-stat-grid">
+                        <div class="ex-stat">
+                            <span class="ex-stat-val">@_summary.TeacherInvitesSent</span>
+                            <span class="ex-stat-lbl">Invitations enseignants</span>
+                        </div>
+                        <div class="ex-stat">
+                            <span class="ex-stat-val">@_summary.ExpertInvitesPending</span>
+                            <span class="ex-stat-lbl">Invitations Expert en attente</span>
+                        </div>
+                        <div class="ex-stat">
+                            <span class="ex-stat-val">@_summary.DisciplinesWithoutTeacher</span>
+                            <span class="ex-stat-lbl">Disciplines sans enseignant</span>
+                        </div>
+                        <div class="ex-stat">
+                            <span class="ex-stat-val">@_summary.TeachersInactive</span>
+                            <span class="ex-stat-lbl">Inactifs (45 j)</span>
+                        </div>
+                        <div class="ex-stat">
+                            <span class="ex-stat-val">@_summary.UnreadRemarksForTeachers</span>
+                            <span class="ex-stat-lbl">Remarques non lues</span>
+                        </div>
+                        <div class="ex-stat">
+                            <span class="ex-stat-val">@_summary.CancelledLessonsRecent</span>
+                            <span class="ex-stat-lbl">Cours annulés (30 j)</span>
+                        </div>
+                        @if (_summary.TeachersSuspended > 0)
+                        {
+                            <div class="ex-stat">
+                                <span class="ex-stat-val">@_summary.TeachersSuspended</span>
+                                <span class="ex-stat-lbl">Suspendus</span>
                             </div>
                         }
                     </div>
-                </div>
-                <div class="col-lg-5">
-                    <div class="cc-card h-100">
-                        <h2 class="cc-card-title">Actions rapides</h2>
-                        <div class="d-grid gap-2">
-                            @if (_summary.NextPendingTenantId is Guid nextTid)
-                            {
-                                <a class="cc-btn cc-btn-primary" href="@($"expert/teachers/{nextTid}")">
-                                    Revoir le prochain dossier
-                                </a>
-                            }
-                            else
-                            {
-                                <a class="cc-btn cc-btn-primary" href="expert/approvals">Ouvrir la file d'attente</a>
-                            }
-                            <a class="cc-btn" href="expert/approvals">Inviter / enregistrer un enseignant</a>
-                            @if (_summary.NextOpenExpertVoteId is not null)
-                            {
-                                <a class="cc-btn" href="expert/admissions">Voter sur une candidature Expert</a>
-                            }
-                            else
-                            {
-                                <a class="cc-btn" href="expert/admissions">Admissions Experts</a>
-                            }
-                            <a class="cc-btn" href="expert/disciplines">Gérer les disciplines</a>
-                            <a class="cc-btn" href="expert/teachers">Enseignants approuvés</a>
-                        </div>
-                        <hr class="my-3" />
-                        <div class="small text-muted">
-                            <div>Invitations enseignants envoyées : @_summary.TeacherInvitesSent</div>
-                            <div>Invitations Expert en attente : @_summary.ExpertInvitesPending</div>
-                            <div>Remarques non lues : @_summary.UnreadRemarksForTeachers</div>
-                            <div>Cours annulés (30 j) : @_summary.CancelledLessonsRecent</div>
-                            <div>Disciplines sans enseignant : @_summary.DisciplinesWithoutTeacher</div>
-                            <div>Enseignants inactifs (45 j) : @_summary.TeachersInactive</div>
-                            @if (_summary.TeachersSuspended > 0)
-                            {
-                                <div>Suspendus : @_summary.TeachersSuspended</div>
-                            }
-                        </div>
-                    </div>
-                </div>
+                </section>
             </div>
         }
     </Authorized>
