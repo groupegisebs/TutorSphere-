@@ -1,14 +1,22 @@
 @page "/parent/messages"
 @layout ParentLayout
 @rendermode InteractiveServer
+@implements IDisposable
+@using TutorSphere.Application.DTOs.Messages
 @inject IStringLocalizer<SharedResources> L
 @inject MessageService MessageSvc
 @inject AuthService Auth
+@inject ApiClient Api
+@inject RealtimeMessagingClient Realtime
+@inject MessagingNotificationState NotifyState
 
 <PageTitle>Messagerie – TutorSphere</PageTitle>
 
 <div class="ts-page-header">
-    <div><h1><i class="bi bi-chat-dots me-2"></i>Messagerie</h1></div>
+    <div>
+        <h1><i class="bi bi-chat-dots me-2"></i>Messagerie</h1>
+        <p class="ts-page-subtitle">Échangez avec les enseignants de vos enfants</p>
+    </div>
 </div>
 
 <div class="messages-layout">
@@ -26,6 +34,12 @@
                     <span class="ms-2 text-muted small">Chargement…</span>
                 </div>
             }
+            else if (!FilteredConversations.Any())
+            {
+                <div class="p-3 text-muted small">
+                    Aucun enseignant disponible. Inscrivez un enfant à un cours pour démarrer une conversation.
+                </div>
+            }
             @foreach (var c in FilteredConversations)
             {
                 <div class="conversation-item @(_active?.Id == c.Id ? "active" : "") @(c.Unread > 0 ? "unread" : "")"
@@ -33,7 +47,7 @@
                     <div class="conv-avatar" style="background:@c.Color">@c.Initials</div>
                     <div class="conv-info">
                         <div class="conv-name">@c.Name</div>
-                        <div class="conv-last">@c.LastMessage</div>
+                        <div class="conv-last">@(string.IsNullOrWhiteSpace(c.LastMessage) ? "Démarrer la conversation" : c.LastMessage)</div>
                     </div>
                     <div class="conv-meta">
                         <span class="conv-time">@c.LastTime</span>
@@ -55,6 +69,12 @@
                 </div>
             </div>
             <div class="chat-messages" id="chat-scroll">
+                @if (_active.Messages.Count == 0)
+                {
+                    <div class="text-center text-muted small py-4">
+                        Aucun message pour l’instant. Écrivez ci-dessous pour contacter l’enseignant.
+                    </div>
+                }
                 @foreach (var m in _active.Messages)
                 {
                     <div class="chat-msg @(m.FromMe ? "chat-msg--me" : "chat-msg--them")">
@@ -65,19 +85,23 @@
             </div>
             <div class="chat-input-area">
                 <input class="form-control" placeholder="Écrire un message…"
-                       @bind="_newMsg" @onkeydown="HandleKey" />
+                       @bind="_newMsg" @bind:event="oninput" @onkeydown="HandleKey" />
                 <button class="btn btn-primary btn-sm" @onclick="async () => await SendMessage()"
-                        disabled="@string.IsNullOrWhiteSpace(_newMsg)">
+                        disabled="@(_sending || string.IsNullOrWhiteSpace(_newMsg))">
                     <i class="bi bi-send-fill"></i>
                 </button>
             </div>
+            @if (!string.IsNullOrEmpty(_sendError))
+            {
+                <div class="text-danger small px-3 pb-2">@_sendError</div>
+            }
         </section>
     }
     else
     {
         <section class="messages-empty">
             <i class="bi bi-chat-dots messages-empty-icon"></i>
-            <p>Sélectionnez une conversation</p>
+            <p>Sélectionnez un enseignant pour démarrer</p>
         </section>
     }
 </div>
@@ -85,6 +109,8 @@
 @code {
     private string _msgSearch = "";
     private bool _loading = true;
+    private bool _sending;
+    private string? _sendError;
     private ConversationVM? _active;
     private string _newMsg = "";
     private List<ConversationVM> _convs = [];
@@ -95,14 +121,96 @@
 
     protected override async Task OnInitializedAsync()
     {
+        Realtime.MessageReceived += OnRealtimeMessage;
         try
         {
-            var dtos = await MessageSvc.GetConversationsAsync();
-            if (dtos.Count > 0)
-                _convs = dtos.Select((d, i) => MapConversation(d, i)).ToList();
+            await Auth.EnsureSessionRestoredAsync(forceJs: true);
+            await Realtime.EnsureConnectedAsync();
+
+            var teachers = await Api.GetAsync<List<ConversationDto>>("api/parent/teachers") ?? [];
+            var existing = await MessageSvc.GetConversationsAsync();
+
+            var byId = new Dictionary<string, ConversationDto>(StringComparer.Ordinal);
+            foreach (var t in teachers)
+                byId[t.OtherUserId] = t;
+            foreach (var c in existing)
+                byId[c.OtherUserId] = c;
+
+            _convs = byId.Values
+                .Select((d, i) => MapConversation(d, i))
+                .OrderByDescending(c => c.SortKey)
+                .ToList();
+            NotifyState.SetUnreadTotal(_convs.Sum(c => c.Unread));
         }
-        catch { }
+        catch
+        {
+            try
+            {
+                var existing = await MessageSvc.GetConversationsAsync();
+                _convs = existing.Select((d, i) => MapConversation(d, i)).ToList();
+            }
+            catch { /* empty */ }
+        }
         finally { _loading = false; }
+    }
+
+    private void OnRealtimeMessage(MessageDto message) =>
+        _ = InvokeAsync(() => ApplyIncomingMessage(message));
+
+    private async Task ApplyIncomingMessage(MessageDto message)
+    {
+        var peerId = message.SenderUserId;
+        var conv = _convs.FirstOrDefault(c => c.ApiUserId == peerId);
+        if (conv is null)
+        {
+            conv = new ConversationVM
+            {
+                ApiUserId = peerId,
+                Id = _convs.Count + 1,
+                Name = "Enseignant",
+                Initials = "EN",
+                Color = "#7c3aed",
+                LastMessage = message.Body,
+                LastTime = FormatTime(message.CreatedAt),
+                SortKey = message.CreatedAt,
+                Unread = 1
+            };
+            _convs.Insert(0, conv);
+        }
+        else
+        {
+            conv.LastMessage = message.Body;
+            conv.LastTime = FormatTime(message.CreatedAt);
+            conv.SortKey = message.CreatedAt;
+            _convs.Remove(conv);
+            _convs.Insert(0, conv);
+        }
+
+        var isActive = _active?.ApiUserId == peerId;
+        if (isActive)
+        {
+            if (conv.Messages.All(m => m.ApiId != message.Id))
+            {
+                conv.Messages.Add(new ChatMsg
+                {
+                    ApiId = message.Id,
+                    Text = message.Body,
+                    FromMe = false,
+                    Time = FormatTime(message.CreatedAt)
+                });
+            }
+            conv.Unread = 0;
+            await MessageSvc.MarkConversationReadAsync(peerId);
+        }
+        else
+        {
+            conv.Unread++;
+            if (!string.IsNullOrWhiteSpace(conv.Name))
+                NotifyState.ShowIncomingToast(conv.Name, message.Body);
+        }
+
+        NotifyState.SetUnreadTotal(_convs.Sum(c => c.Unread));
+        StateHasChanged();
     }
 
     private static ConversationVM MapConversation(ConversationDto d, int index)
@@ -115,21 +223,22 @@
 
         return new ConversationVM
         {
-            ApiUserId   = d.OtherUserId,
-            Id          = index + 1,
-            Name        = d.OtherUserName,
-            Initials    = initials.ToUpperInvariant(),
-            Color       = colors[index % colors.Length],
+            ApiUserId = d.OtherUserId,
+            Id = index + 1,
+            Name = d.OtherUserName,
+            Initials = initials.ToUpperInvariant(),
+            Color = colors[index % colors.Length],
             LastMessage = d.LastMessage?.Body ?? "",
-            LastTime    = FormatTime(d.LastMessage?.CreatedAt),
-            Unread      = d.UnreadCount
+            LastTime = FormatTime(d.LastMessage?.CreatedAt),
+            SortKey = d.LastMessage?.CreatedAt ?? DateTime.MinValue,
+            Unread = d.UnreadCount
         };
     }
 
     private static string FormatTime(DateTime? dt)
     {
         if (dt is null) return "";
-        var local = dt.Value.ToLocalTime();
+        var local = dt.Value.Kind == DateTimeKind.Utc ? dt.Value.ToLocalTime() : dt.Value;
         if (local.Date == DateTime.Today) return local.ToString("HH:mm");
         if (local.Date == DateTime.Today.AddDays(-1)) return "hier";
         return local.ToString("dd/MM");
@@ -138,20 +247,20 @@
     private async Task SelectConversation(ConversationVM c)
     {
         _active = c;
+        _sendError = null;
         c.Unread = 0;
+        NotifyState.SetUnreadTotal(_convs.Sum(x => x.Unread));
 
         if (!string.IsNullOrEmpty(c.ApiUserId) && c.Messages.Count == 0)
         {
             var msgs = await MessageSvc.GetMessagesAsync(c.ApiUserId);
-            if (msgs.Count > 0)
+            c.Messages = msgs.Select(m => new ChatMsg
             {
-                c.Messages = msgs.Select(m => new ChatMsg
-                {
-                    Text   = m.Body,
-                    FromMe = m.SenderUserId != c.ApiUserId,
-                    Time   = FormatTime(m.CreatedAt)
-                }).ToList();
-            }
+                ApiId = m.Id,
+                Text = m.Body,
+                FromMe = m.SenderUserId != c.ApiUserId,
+                Time = FormatTime(m.CreatedAt)
+            }).ToList();
         }
 
         if (!string.IsNullOrEmpty(c.ApiUserId))
@@ -160,26 +269,43 @@
 
     private async Task SendMessage()
     {
-        if (_active == null || string.IsNullOrWhiteSpace(_newMsg)) return;
-        var text = _newMsg;
-        _newMsg = "";
+        if (_active == null || string.IsNullOrWhiteSpace(_newMsg) || string.IsNullOrEmpty(_active.ApiUserId))
+            return;
 
-        if (!string.IsNullOrEmpty(_active.ApiUserId))
+        _sending = true;
+        _sendError = null;
+        var text = _newMsg.Trim();
+        _newMsg = "";
+        try
         {
             var dto = await MessageSvc.SendMessageAsync(
-                new SendMessageRequest(_active.ApiUserId, "(TutorSphere)", text));
-            if (dto != null)
+                new SendMessageRequest(_active.ApiUserId, "Message parent", text));
+            if (dto is null)
             {
-                _active.Messages.Add(new ChatMsg { Text = dto.Body, FromMe = true, Time = FormatTime(dto.CreatedAt) });
-                _active.LastMessage = dto.Body;
-                _active.LastTime    = FormatTime(dto.CreatedAt);
+                _sendError = "Envoi impossible. Réessayez.";
+                _newMsg = text;
                 return;
             }
-        }
 
-        _active.Messages.Add(new ChatMsg { Text = text, FromMe = true, Time = DateTime.Now.ToString("HH:mm") });
-        _active.LastMessage = text;
-        _active.LastTime    = DateTime.Now.ToString("HH:mm");
+            _active.Messages.Add(new ChatMsg
+            {
+                ApiId = dto.Id,
+                Text = dto.Body,
+                FromMe = true,
+                Time = FormatTime(dto.CreatedAt)
+            });
+            _active.LastMessage = dto.Body;
+            _active.LastTime = FormatTime(dto.CreatedAt);
+            _active.SortKey = dto.CreatedAt;
+            _convs.Remove(_active);
+            _convs.Insert(0, _active);
+        }
+        catch (Exception ex)
+        {
+            _sendError = ex.Message;
+            _newMsg = text;
+        }
+        finally { _sending = false; }
     }
 
     private async Task HandleKey(KeyboardEventArgs e)
@@ -187,18 +313,28 @@
         if (e.Key == "Enter" && !e.ShiftKey) await SendMessage();
     }
 
-    private class ChatMsg { public string Text { get; set; } = ""; public bool FromMe { get; set; } public string Time { get; set; } = ""; }
-    private class ConversationVM
+    public void Dispose() => Realtime.MessageReceived -= OnRealtimeMessage;
+
+    private sealed class ChatMsg
     {
-        public string? ApiUserId  { get; set; }
-        public int     Id         { get; set; }
-        public string  Name       { get; set; } = "";
-        public string  Role       { get; set; } = "Enseignant";
-        public string  Initials   { get; set; } = "";
-        public string  Color      { get; set; } = "#7c3aed";
-        public string  LastMessage{ get; set; } = "";
-        public string  LastTime   { get; set; } = "";
-        public int     Unread     { get; set; }
+        public Guid? ApiId { get; set; }
+        public string Text { get; set; } = "";
+        public bool FromMe { get; set; }
+        public string Time { get; set; } = "";
+    }
+
+    private sealed class ConversationVM
+    {
+        public string? ApiUserId { get; set; }
+        public int Id { get; set; }
+        public string Name { get; set; } = "";
+        public string Role { get; set; } = "Enseignant";
+        public string Initials { get; set; } = "";
+        public string Color { get; set; } = "#7c3aed";
+        public string LastMessage { get; set; } = "";
+        public string LastTime { get; set; } = "";
+        public DateTime SortKey { get; set; }
+        public int Unread { get; set; }
         public List<ChatMsg> Messages { get; set; } = [];
     }
 }

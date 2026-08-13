@@ -290,6 +290,17 @@ public class ParentPortalController : ControllerBase
         }
     }
 
+    [HttpGet("teachers")]
+    public async Task<ActionResult<IReadOnlyList<TutorSphere.Application.DTOs.Messages.ConversationDto>>> Teachers(
+        CancellationToken ct)
+    {
+        var userId = await ResolveParentUserIdAsync(ct);
+        if (userId is null)
+            return Unauthorized();
+
+        return Ok(await _parentService.GetTeacherContactsForUserAsync(userId, ct));
+    }
+
     [HttpGet("subscriptions")]
     public async Task<ActionResult<IReadOnlyList<StudentSubscriptionDto>>> ListSubscriptions(CancellationToken ct)
     {

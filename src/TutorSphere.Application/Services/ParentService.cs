@@ -1,5 +1,6 @@
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.Lessons;
+using TutorSphere.Application.DTOs.Messages;
 using TutorSphere.Application.DTOs.Parents;
 using TutorSphere.Application.DTOs.Payments;
 using TutorSphere.Application.DTOs.Students;
@@ -30,6 +31,9 @@ public interface IParentService
         DateTime end,
         CancellationToken ct = default);
     Task<IReadOnlyList<ParentPaymentDto>> GetPaymentsForUserAsync(
+        string userId,
+        CancellationToken ct = default);
+    Task<IReadOnlyList<ConversationDto>> GetTeacherContactsForUserAsync(
         string userId,
         CancellationToken ct = default);
 }
@@ -593,6 +597,120 @@ public class ParentService : IParentService
                 p.CompletedAt,
                 p.Status is PaymentStatus.Completed or PaymentStatus.Pending);
         }).ToList();
+    }
+
+    public Task<IReadOnlyList<ConversationDto>> GetTeacherContactsForUserAsync(
+        string userId,
+        CancellationToken ct = default)
+    {
+        var parent = _db.ParentProfilesForAnyTenant.FirstOrDefault(p => p.UserId == userId);
+        if (parent is null)
+            return Task.FromResult<IReadOnlyList<ConversationDto>>([]);
+
+        var children = _db.StudentsForAnyTenant
+            .Where(s => s.ParentProfileId == parent.Id && s.IsActive)
+            .Select(s => new { s.Id, s.TenantId })
+            .ToList();
+
+        var tenantIds = new HashSet<Guid>();
+        foreach (var child in children)
+            tenantIds.Add(child.TenantId);
+
+        var childIds = children.Select(c => c.Id).ToList();
+        if (childIds.Count > 0)
+        {
+            foreach (var tid in _db.StudentSubscriptionsForAnyTenant
+                         .Where(s => childIds.Contains(s.StudentId))
+                         .Select(s => s.TenantId)
+                         .Distinct())
+                tenantIds.Add(tid);
+        }
+
+        var owners = _db.Tenants
+            .Where(t => tenantIds.Contains(t.Id)
+                        && t.OwnerUserId != null
+                        && t.OwnerUserId != ""
+                        && t.Slug != "platform-parents")
+            .Select(t => new { t.OwnerUserId, t.Name })
+            .ToList();
+
+        var existingPartnerIds = _db.Messages
+            .Where(m => m.SenderUserId == userId || m.RecipientUserId == userId)
+            .AsEnumerable()
+            .Select(m => m.SenderUserId == userId ? m.RecipientUserId : m.SenderUserId)
+            .Distinct()
+            .ToHashSet();
+
+        var contacts = new List<ConversationDto>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var owner in owners)
+        {
+            if (string.IsNullOrWhiteSpace(owner.OwnerUserId) || owner.OwnerUserId == userId)
+                continue;
+            if (!seen.Add(owner.OwnerUserId))
+                continue;
+
+            var last = _db.Messages
+                .Where(m =>
+                    (m.SenderUserId == userId && m.RecipientUserId == owner.OwnerUserId) ||
+                    (m.SenderUserId == owner.OwnerUserId && m.RecipientUserId == userId))
+                .OrderByDescending(m => m.CreatedAt)
+                .FirstOrDefault();
+
+            var unread = _db.Messages.Count(m =>
+                m.SenderUserId == owner.OwnerUserId && m.RecipientUserId == userId && !m.IsRead);
+
+            contacts.Add(new ConversationDto(
+                owner.OwnerUserId,
+                string.IsNullOrWhiteSpace(owner.Name) ? "Enseignant" : $"Enseignant — {owner.Name}",
+                last is null
+                    ? null
+                    : new MessageDto(
+                        last.Id,
+                        last.SenderUserId,
+                        last.RecipientUserId,
+                        last.Subject,
+                        last.Body,
+                        last.IsRead,
+                        last.ReadAt,
+                        last.CreatedAt),
+                unread));
+        }
+
+        foreach (var partnerId in existingPartnerIds)
+        {
+            if (partnerId == userId || !seen.Add(partnerId))
+                continue;
+
+            var last = _db.Messages
+                .Where(m =>
+                    (m.SenderUserId == userId && m.RecipientUserId == partnerId) ||
+                    (m.SenderUserId == partnerId && m.RecipientUserId == userId))
+                .OrderByDescending(m => m.CreatedAt)
+                .FirstOrDefault();
+
+            var unread = _db.Messages.Count(m =>
+                m.SenderUserId == partnerId && m.RecipientUserId == userId && !m.IsRead);
+
+            contacts.Add(new ConversationDto(
+                partnerId,
+                "Contact",
+                last is null
+                    ? null
+                    : new MessageDto(
+                        last.Id,
+                        last.SenderUserId,
+                        last.RecipientUserId,
+                        last.Subject,
+                        last.Body,
+                        last.IsRead,
+                        last.ReadAt,
+                        last.CreatedAt),
+                unread));
+        }
+
+        return Task.FromResult<IReadOnlyList<ConversationDto>>(contacts);
     }
 
     private async Task EnsureInvoiceInlineAsync(Payment payment, Guid parentProfileId, CancellationToken ct)
