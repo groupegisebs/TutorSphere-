@@ -92,68 +92,21 @@
             </div>
 
             <div class="mb-3">
-                <label class="form-label">@L["Label_Email"] <span class="text-danger">*</span></label>
+                <label class="form-label">E-mail réel de l'enseignant <span class="text-muted">(optionnel)</span></label>
                 <div class="form-field-icon">
                     <i class="bi bi-envelope field-icon" aria-hidden="true"></i>
                     <input type="email" class="form-control" @bind="_regEmail" placeholder="exemple@courriel.com" />
                 </div>
+                <div class="form-text">
+                    Login généré automatiquement (e-mail du groupe + .XXXX).
+                    Avec e-mail réel : identifiants envoyés à l'enseignant, au Responsable et à admin@holotuto.com.
+                    Sans e-mail réel : uniquement Responsable + admin@holotuto.com.
+                </div>
             </div>
 
-            <div class="mb-3">
-                <label class="form-label">@L["Label_CreatePassword"] <span class="text-danger">*</span></label>
-                <div class="form-field-icon">
-                    <i class="bi bi-lock field-icon" aria-hidden="true"></i>
-                    <input type="@(_regShowPassword ? "text" : "password")" class="form-control" style="padding-right: 2.5rem;"
-                           @bind="_regPassword" @bind:event="oninput" />
-                    <button type="button" class="password-toggle" @onclick="() => _regShowPassword = !_regShowPassword" aria-label="@L["Label_TogglePassword"]">
-                        <i class="bi @(_regShowPassword ? "bi-eye-slash" : "bi-eye")" aria-hidden="true"></i>
-                    </button>
-                </div>
-                @if (!string.IsNullOrEmpty(_regPassword))
-                {
-                    <div class="password-strength">
-                        <div class="password-strength-label">
-                            @L["Password_Strength"]: <strong class="@RegPasswordStrengthClass">@RegPasswordStrengthLabel</strong>
-                        </div>
-                        <div class="password-strength-bars">
-                            @for (var i = 0; i < 4; i++)
-                            {
-                                <div class="password-strength-bar @(i < RegPasswordStrengthBars ? $"filled {RegPasswordStrengthClass}" : "")"></div>
-                            }
-                        </div>
-                        <ul class="password-requirements">
-                            <li class="@(RegHasMinLength ? "met" : "")">
-                                <i class="bi @(RegHasMinLength ? "bi-check-circle-fill" : "bi-circle")" aria-hidden="true"></i>
-                                @L["Password_Req_Length"]
-                            </li>
-                            <li class="@(RegHasNumber ? "met" : "")">
-                                <i class="bi @(RegHasNumber ? "bi-check-circle-fill" : "bi-circle")" aria-hidden="true"></i>
-                                @L["Password_Req_Number"]
-                            </li>
-                            <li class="@(RegHasSpecial ? "met" : "")">
-                                <i class="bi @(RegHasSpecial ? "bi-check-circle-fill" : "bi-circle")" aria-hidden="true"></i>
-                                @L["Password_Req_Special"]
-                            </li>
-                        </ul>
-                    </div>
-                }
-            </div>
-
-            <div class="mb-3">
-                <label class="form-label">@L["Label_ConfirmPassword"] <span class="text-danger">*</span></label>
-                <div class="form-field-icon">
-                    <i class="bi bi-lock-fill field-icon" aria-hidden="true"></i>
-                    <input type="@(_regShowConfirmPassword ? "text" : "password")" class="form-control @(RegConfirmPasswordMismatch ? "is-invalid" : "")"
-                           style="padding-right: 2.5rem;"
-                           @bind="_regConfirmPassword" @bind:event="oninput" placeholder="@L["Placeholder_ConfirmPassword"]" />
-                    <button type="button" class="password-toggle" @onclick="() => _regShowConfirmPassword = !_regShowConfirmPassword" aria-label="@L["Label_TogglePassword"]">
-                        <i class="bi @(_regShowConfirmPassword ? "bi-eye-slash" : "bi-eye")" aria-hidden="true"></i>
-                    </button>
-                </div>
-                @if (RegConfirmPasswordMismatch)
-                {
-                    <small class="text-danger">@L["Error_PasswordMismatch"]</small>
-                }
+            <div class="alert alert-info small mb-3">
+                <i class="bi bi-shield-lock me-1"></i>
+                Mot de passe temporaire généré automatiquement et envoyé par e-mail. Changement obligatoire à la première connexion.
             </div>
 
             <div class="teacher-conduct-box mb-3">
@@ -614,8 +567,6 @@
     private string _regFirstName = "";
     private string _regLastName = "";
     private string _regSchoolName = "";
-    private string _regPassword = "";
-    private string _regConfirmPassword = "";
     private string _regSlug = "";
     private string? _regAutoSlugValue;
     private string _regCity = "";
@@ -623,8 +574,6 @@
     private List<string> _regVisibleCountries = ["CM"];
     private string? _regAddVisible;
     private bool _regAcceptedConduct;
-    private bool _regShowPassword;
-    private bool _regShowConfirmPassword;
     private bool? _regSlugAvailable;
     private bool _regCheckingSlug;
     private CancellationTokenSource? _regSlugCts;
@@ -657,26 +606,6 @@
 
     private bool IsRegSlugFormatValid => !string.IsNullOrWhiteSpace(_regSlug)
         && System.Text.RegularExpressions.Regex.IsMatch(_regSlug, @"^[a-z0-9]([a-z0-9-]{1,48}[a-z0-9])?$");
-
-    private bool RegConfirmPasswordMismatch =>
-        !string.IsNullOrEmpty(_regConfirmPassword) && _regPassword != _regConfirmPassword;
-
-    private bool RegHasMinLength => _regPassword.Length >= 8;
-    private bool RegHasNumber => _regPassword.Any(char.IsDigit);
-    private bool RegHasSpecial => _regPassword.Any(c => !char.IsLetterOrDigit(c));
-
-    private int RegPasswordStrengthBars =>
-        (RegHasMinLength ? 1 : 0) + (RegHasNumber ? 1 : 0) + (RegHasSpecial ? 1 : 0) + (_regPassword.Length >= 12 ? 1 : 0);
-
-    private string RegPasswordStrengthClass => RegPasswordStrengthBars <= 1 ? "weak" : RegPasswordStrengthBars <= 2 ? "medium" : "";
-
-    private string RegPasswordStrengthLabel => RegPasswordStrengthBars switch
-    {
-        <= 1 => L["Password_Weak"],
-        2 => L["Password_Medium"],
-        3 => L["Password_Good"],
-        _ => L["Password_Strong"]
-    };
 
     private string RegCountryDisplay
     {
@@ -980,9 +909,7 @@
         {
             if (string.IsNullOrWhiteSpace(_regSchoolName)
                 || string.IsNullOrWhiteSpace(_regSlug)
-                || string.IsNullOrWhiteSpace(_regFirstName) || string.IsNullOrWhiteSpace(_regLastName)
-                || string.IsNullOrWhiteSpace(_regEmail) || string.IsNullOrWhiteSpace(_regPassword)
-                || string.IsNullOrWhiteSpace(_regConfirmPassword))
+                || string.IsNullOrWhiteSpace(_regFirstName) || string.IsNullOrWhiteSpace(_regLastName))
             {
                 _regError = L["Error_FillAllFields"];
                 return;
@@ -997,18 +924,6 @@
             if (_regSlugAvailable == false)
             {
                 _regError = L["Error_SlugTaken"];
-                return;
-            }
-
-            if (_regPassword != _regConfirmPassword)
-            {
-                _regError = L["Error_PasswordMismatch"];
-                return;
-            }
-
-            if (!RegHasMinLength || !RegHasNumber || !RegHasSpecial)
-            {
-                _regError = L["Error_PasswordWeak"];
                 return;
             }
 
@@ -1065,10 +980,9 @@
 
             var result = await Api.PostWithErrorAsync<RegisterTeacherResult>("api/expert/register-teacher", new
             {
-                email = _regEmail,
+                email = string.IsNullOrWhiteSpace(_regEmail) ? null : _regEmail.Trim(),
                 firstName = _regFirstName,
                 lastName = _regLastName,
-                password = _regPassword,
                 schoolName = _regSchoolName,
                 slug = _regSlug.Trim().ToLowerInvariant(),
                 city = string.IsNullOrWhiteSpace(_regCity) ? null : _regCity,
@@ -1082,14 +996,18 @@
                 return;
             }
 
-            _regSuccess = result.Value?.OfferingId is not null
-                ? $"{L["Expert_RegisterTeacherSuccess"]} Offre de service créée."
-                : L["Expert_RegisterTeacherSuccess"];
+            var created = result.Value;
+            _regSuccess = created is null
+                ? L["Expert_RegisterTeacherSuccess"]
+                : $"Compte créé. Login : {created.Email}"
+                  + (string.IsNullOrWhiteSpace(created.TemporaryPassword) ? "" : $" · MDP temporaire : {created.TemporaryPassword}")
+                  + (created.CredentialsSent ? " · identifiants envoyés par e-mail." : " · e-mail non envoyé (vérifier Mail Sender).")
+                  + (created.OfferingId is not null ? " Offre créée." : "");
 
-            if (_regPublishPublic && result.Value is not null)
+            if (_regPublishPublic && created is not null)
             {
                 var pub = await Api.PostWithErrorAsync<object>(
-                    $"api/expert/teachers/{result.Value.TenantId}/publish-profile", new { });
+                    $"api/expert/teachers/{created.TenantId}/publish-profile", new { });
                 if (pub.IsSuccess)
                     _regSuccess = $"{_regSuccess} Fiche publique publiée.";
                 else if (!string.IsNullOrWhiteSpace(pub.Error))
@@ -1099,7 +1017,6 @@
             var keptGroupName = _regSchoolName;
             var keptCountry = _regCountry;
             _regEmail = _regFirstName = _regLastName = _regCity = "";
-            _regPassword = _regConfirmPassword = "";
             _regSlug = _regAutoSlugValue = "";
             _regSlugAvailable = null;
             _regAcceptedConduct = false;
@@ -1141,7 +1058,9 @@
         string TenantSlug,
         string Email,
         bool CredentialsSent,
-        Guid? OfferingId = null);
+        Guid? OfferingId = null,
+        string? TemporaryPassword = null,
+        string? RealEmail = null);
 
     private string InviteStatusLabel(int status) => status switch
     {

@@ -211,7 +211,7 @@ public sealed class AdminService
         });
 
     public Task<ApiResult<AdminCreatedAccountItem>> CreateTeacherAccountAsync(
-        string email,
+        string? email,
         string firstName,
         string lastName,
         Guid expertGroupId,
@@ -223,7 +223,7 @@ public sealed class AdminService
         object? initialOffering = null)
         => _api.PostWithErrorAsync<AdminCreatedAccountItem>("api/admin/teachers", new
         {
-            email,
+            email = string.IsNullOrWhiteSpace(email) ? null : email,
             firstName,
             lastName,
             expertGroupId,

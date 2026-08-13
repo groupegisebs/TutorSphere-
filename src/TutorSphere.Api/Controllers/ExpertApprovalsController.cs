@@ -265,7 +265,8 @@ public class ExpertApprovalsController : ControllerBase
 
         try
         {
-            var result = await _authService.RegisterTeacherByExpertAsync(UserId, request, ct);
+            var actAs = GroupAdminActAs.ReadGroupId(Request);
+            var result = await _authService.RegisterTeacherByExpertAsync(UserId, request, ct, actAs);
             return Ok(result);
         }
         catch (InvalidOperationException ex)

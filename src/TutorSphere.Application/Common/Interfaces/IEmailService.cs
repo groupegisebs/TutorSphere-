@@ -87,6 +87,19 @@ public interface IEmailService
         string groupName,
         CancellationToken ct = default);
 
+    /// <summary>
+    /// Identifiants de connexion enseignant (login généré groupe.XXXX@domaine).
+    /// <paramref name="to"/> = destinataire de la notification ; <paramref name="loginEmail"/> = compte de connexion.
+    /// </summary>
+    Task SendTeacherAccountCredentialsAsync(
+        string to,
+        string teacherFirstName,
+        string loginEmail,
+        string temporaryPassword,
+        string loginUrl,
+        string groupName,
+        CancellationToken ct = default);
+
     /// <summary>Notification : expert existant ajouté à un groupe (sans mot de passe).</summary>
     Task SendExpertAddedToGroupAsync(
         string to,

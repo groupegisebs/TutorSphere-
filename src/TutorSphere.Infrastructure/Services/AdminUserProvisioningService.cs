@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using TutorSphere.Application.Common;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.Admin;
 using TutorSphere.Domain.Common;
@@ -185,15 +186,23 @@ public sealed class AdminUserProvisioningService(
         AdminCreateTeacherRequest request,
         CancellationToken ct = default)
     {
-        var emailAddr = NormalizeEmail(request.Email);
         var firstName = RequireName(request.FirstName, "Prénom");
         var lastName = RequireName(request.LastName, "Nom");
-        await EnsureEmailAvailableAsync(emailAddr);
 
         var group = db.ExpertGroups.FirstOrDefault(g => g.Id == request.ExpertGroupId)
             ?? throw new InvalidOperationException("Groupe d'experts introuvable.");
         if (!group.IsActive)
             throw new InvalidOperationException("Le groupe d'experts sélectionné n'est pas actif.");
+
+        var groupMailbox = await ResolveGroupMailboxAsync(group, ct)
+            ?? throw new InvalidOperationException(
+                "Le groupe n'a pas d'e-mail de contact. Définissez l'e-mail du Responsable / du groupe avant de créer un enseignant.");
+
+        var realEmail = TeacherLoginProvisioning.TryNormalizeOptionalEmail(request.Email);
+        var loginEmail = await TeacherLoginProvisioning.AllocateUniqueLoginEmailAsync(
+            groupMailbox,
+            async candidate => await userManager.FindByEmailAsync(candidate) is not null,
+            ct);
 
         var schoolName = string.IsNullOrWhiteSpace(request.SchoolName)
             ? $"{firstName} {lastName}".Trim()
@@ -209,11 +218,11 @@ public sealed class AdminUserProvisioningService(
         if (country.Length != 2)
             country = "CM";
 
-        var password = GenerateTemporaryPassword();
+        var password = TeacherLoginProvisioning.GenerateTemporaryPassword();
         var user = new ApplicationUser
         {
-            UserName = emailAddr,
-            Email = emailAddr,
+            UserName = loginEmail,
+            Email = loginEmail,
             FirstName = firstName,
             LastName = lastName,
             PhoneNumber = TrimOrNull(request.Phone),
@@ -256,7 +265,7 @@ public sealed class AdminUserProvisioningService(
 
         db.Add(new TeacherApplicationInvite
         {
-            Email = emailAddr,
+            Email = realEmail ?? loginEmail,
             FirstName = firstName,
             InvitedByUserId = adminUserId,
             ExpertGroupId = group.Id,
@@ -281,15 +290,49 @@ public sealed class AdminUserProvisioningService(
         }
 
         var loginUrl = $"{urls.WebBaseUrl.TrimEnd('/')}/login/tuteur";
-        var sent = await SendCredentialsAsync(user, password, loginUrl, group.Name, ct);
+        var platformOps = configuration["Support:OpsEmail"]
+            ?? configuration["Support:Email"]
+            ?? TeacherLoginProvisioning.DefaultPlatformOpsEmail;
+        var groupAdminEmail = await ResolveGroupMailboxAsync(group, ct) ?? groupMailbox;
+        var recipients = TeacherLoginProvisioning.ResolveCredentialRecipients(
+            realEmail, groupAdminEmail, platformOps);
+
+        var anySent = false;
+        foreach (var to in recipients)
+        {
+            try
+            {
+                await email.SendTeacherAccountCredentialsAsync(
+                    to, firstName, loginEmail, password, loginUrl, group.Name, ct);
+                anySent = true;
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Échec envoi identifiants enseignant à {Email}.", to);
+            }
+        }
 
         logger.LogInformation(
-            "Admin {AdminId} a créé l'enseignant {UserId} ({Email}) dans le groupe {GroupId}.",
-            adminUserId, user.Id, emailAddr, group.Id);
+            "Admin {AdminId} a créé l'enseignant {UserId} (login {LoginEmail}, réel {RealEmail}) dans le groupe {GroupId}.",
+            adminUserId, user.Id, loginEmail, realEmail ?? "—", group.Id);
 
         return new AdminCreatedAccountDto(
-            user.Id, emailAddr, user.FullName, UserRoles.Tutor, password, sent,
+            user.Id, loginEmail, user.FullName, UserRoles.Tutor, password, anySent,
             tenant.Id, tenant.Slug, group.Id, group.Name, offeringId);
+    }
+
+    private async Task<string?> ResolveGroupMailboxAsync(ExpertGroup group, CancellationToken ct)
+    {
+        if (!string.IsNullOrWhiteSpace(group.ContactEmail) && group.ContactEmail.Contains('@'))
+            return group.ContactEmail.Trim().ToLowerInvariant();
+
+        var mandate = db.ExpertGroupManagerMandates.FirstOrDefault(m =>
+            m.ExpertGroupId == group.Id && m.Status == ExpertGroupManagerMandateStatus.Active);
+        if (mandate is null || string.IsNullOrWhiteSpace(mandate.UserId))
+            return null;
+
+        var manager = await userManager.FindByIdAsync(mandate.UserId);
+        return string.IsNullOrWhiteSpace(manager?.Email) ? null : manager.Email.Trim().ToLowerInvariant();
     }
 
     private async Task<bool> SendCredentialsAsync(
@@ -409,26 +452,6 @@ public sealed class AdminUserProvisioningService(
     private static string? TrimOrNull(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
-    private static string GenerateTemporaryPassword()
-    {
-        const string upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
-        const string lower = "abcdefghijkmnpqrstuvwxyz";
-        const string digits = "23456789";
-        const string symbols = "!@%*?";
-        Span<char> code = stackalloc char[12];
-        code[0] = upper[RandomNumberGenerator.GetInt32(upper.Length)];
-        code[1] = lower[RandomNumberGenerator.GetInt32(lower.Length)];
-        code[2] = digits[RandomNumberGenerator.GetInt32(digits.Length)];
-        code[3] = symbols[RandomNumberGenerator.GetInt32(symbols.Length)];
-        const string all = upper + lower + digits + symbols;
-        for (var i = 4; i < code.Length; i++)
-            code[i] = all[RandomNumberGenerator.GetInt32(all.Length)];
-        // Shuffle
-        for (var i = code.Length - 1; i > 0; i--)
-        {
-            var j = RandomNumberGenerator.GetInt32(i + 1);
-            (code[i], code[j]) = (code[j], code[i]);
-        }
-        return new string(code);
-    }
+    private static string GenerateTemporaryPassword() =>
+        TeacherLoginProvisioning.GenerateTemporaryPassword();
 }

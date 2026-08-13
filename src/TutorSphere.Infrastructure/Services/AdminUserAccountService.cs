@@ -14,6 +14,11 @@ public interface IAdminUserAccountService
     Task DeleteParentOrStudentAsync(string targetUserId, CancellationToken ct = default);
 
     /// <summary>
+    /// Hard-deletes a Tutor / TeachingAssistant account and owned teacher tenants. SuperAdmin / PlatformAdmin.
+    /// </summary>
+    Task DeleteTeacherAsync(string targetUserId, CancellationToken ct = default);
+
+    /// <summary>
     /// Hard-deletes a teacher tenant/profile and related data. SuperAdmin only.
     /// Optionally removes the owner Tutor identity when it has no other role.
     /// </summary>
@@ -56,6 +61,51 @@ public class AdminUserAccountService(
         var result = await users.DeleteAsync(user);
         if (!result.Succeeded)
             throw new InvalidOperationException(string.Join("; ", result.Errors.Select(e => e.Description)));
+    }
+
+    public async Task DeleteTeacherAsync(string targetUserId, CancellationToken ct = default)
+    {
+        var user = await users.FindByIdAsync(targetUserId)
+            ?? throw new InvalidOperationException("Utilisateur introuvable.");
+
+        var roles = await users.GetRolesAsync(user);
+        var isTeacher = roles.Contains(UserRoles.Tutor) || roles.Contains(UserRoles.TeachingAssistant);
+        if (!isTeacher)
+            throw new InvalidOperationException("Ce compte n'est pas un enseignant.");
+
+        if (roles.Any(r => r is UserRoles.SuperAdmin or UserRoles.PlatformAdmin
+                or UserRoles.Expert or UserRoles.GroupManager))
+            throw new InvalidOperationException(
+                "Ce compte a un rôle protégé (admin / expert) et ne peut pas être supprimé via cette action.");
+
+        var ownedTenants = db.Tenants
+            .Where(t => t.OwnerUserId == targetUserId)
+            .Select(t => t.Id)
+            .ToList();
+
+        foreach (var tenantId in ownedTenants)
+            await DeleteTenantAsync(tenantId, ct);
+
+        // DeleteTenantAsync may already have removed the identity when it was tutor-only.
+        user = await users.FindByIdAsync(targetUserId);
+        if (user is null)
+            return;
+
+        // Still present (ex. TeachingAssistant without owned tenant, or leftover).
+        if (user.TenantId is Guid leftoverTenant
+            && db.Tenants.Any(t => t.Id == leftoverTenant && t.OwnerUserId == targetUserId))
+        {
+            await DeleteTenantAsync(leftoverTenant, ct);
+            user = await users.FindByIdAsync(targetUserId);
+            if (user is null) return;
+        }
+
+        user.TenantId = null;
+        await users.UpdateAsync(user);
+
+        var del = await users.DeleteAsync(user);
+        if (!del.Succeeded)
+            throw new InvalidOperationException(string.Join("; ", del.Errors.Select(e => e.Description)));
     }
 
     public async Task DeleteTenantAsync(Guid tenantId, CancellationToken ct = default)

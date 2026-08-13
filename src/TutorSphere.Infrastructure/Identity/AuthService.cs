@@ -33,7 +33,8 @@ public interface IAuthService
     Task<RegisterTeacherByExpertResponse> RegisterTeacherByExpertAsync(
         string expertUserId,
         RegisterTeacherByExpertRequest request,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        Guid? actAsExpertGroupId = null);
     Task<TeacherInviteInfoResponse?> GetTeacherInviteInfoAsync(string token, CancellationToken ct = default);
     Task ConfirmEmailAsync(string userId, string token, CancellationToken ct = default);
     Task ResendEmailConfirmationAsync(string email, CancellationToken ct = default);
@@ -56,6 +57,7 @@ public class AuthService : IAuthService
     private readonly IExpertReviewNotificationService _expertNotify;
     private readonly ISubscriptionOfferingService _offerings;
     private readonly IParentEngagementService _parentEngagement;
+    private readonly IExpertGroupManagerService _groupManagers;
 
     public AuthService(
         UserManager<ApplicationUser> userManager,
@@ -65,7 +67,8 @@ public class AuthService : IAuthService
         IAppUrlProvider urls,
         IExpertReviewNotificationService expertNotify,
         ISubscriptionOfferingService offerings,
-        IParentEngagementService parentEngagement)
+        IParentEngagementService parentEngagement,
+        IExpertGroupManagerService groupManagers)
     {
         _userManager = userManager;
         _configuration = configuration;
@@ -75,6 +78,7 @@ public class AuthService : IAuthService
         _expertNotify = expertNotify;
         _offerings = offerings;
         _parentEngagement = parentEngagement;
+        _groupManagers = groupManagers;
     }
 
     public async Task<AuthResponse> RegisterAsync(RegisterRequest request, CancellationToken ct = default)
@@ -444,41 +448,54 @@ public class AuthService : IAuthService
     public async Task<RegisterTeacherByExpertResponse> RegisterTeacherByExpertAsync(
         string expertUserId,
         RegisterTeacherByExpertRequest request,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        Guid? actAsExpertGroupId = null)
     {
-        var membership = _db.ExpertGroupMembers
-            .Where(m => m.UserId == expertUserId)
-            .Select(m => m.ExpertGroupId)
-            .FirstOrDefault();
-        if (membership == Guid.Empty)
-            throw new InvalidOperationException("Vous n'êtes membre d'aucun groupe d'experts.");
+        ExpertGroup group;
+        if (actAsExpertGroupId is Guid forcedGroupId)
+        {
+            group = _db.ExpertGroups.FirstOrDefault(g => g.Id == forcedGroupId && g.IsActive)
+                ?? throw new InvalidOperationException("Groupe d'experts introuvable ou inactif.");
+        }
+        else
+        {
+            var membership = _db.ExpertGroupMembers
+                .Where(m => m.UserId == expertUserId && m.Status == ExpertMembershipStatus.Active)
+                .Select(m => m.ExpertGroupId)
+                .FirstOrDefault();
+            if (membership == Guid.Empty)
+                throw new InvalidOperationException("Vous n'êtes membre d'aucun groupe d'experts.");
 
-        var group = _db.ExpertGroups.FirstOrDefault(g => g.Id == membership && g.IsActive)
-            ?? throw new InvalidOperationException("Groupe d'experts introuvable ou inactif.");
+            group = _db.ExpertGroups.FirstOrDefault(g => g.Id == membership && g.IsActive)
+                ?? throw new InvalidOperationException("Groupe d'experts introuvable ou inactif.");
+        }
 
-        var email = (request.Email ?? "").Trim().ToLowerInvariant();
-        if (string.IsNullOrWhiteSpace(email) || !email.Contains('@', StringComparison.Ordinal))
-            throw new InvalidOperationException("Adresse e-mail invalide.");
+        var groupMailbox = await ResolveGroupMailboxAsync(group, ct)
+            ?? throw new InvalidOperationException(
+                "Le groupe n'a pas d'e-mail de contact. Définissez l'e-mail du Responsable / du groupe avant de créer un enseignant.");
+
+        var realEmail = TeacherLoginProvisioning.TryNormalizeOptionalEmail(request.Email);
+        var loginEmail = await TeacherLoginProvisioning.AllocateUniqueLoginEmailAsync(
+            groupMailbox,
+            async candidate => await _userManager.FindByEmailAsync(candidate) is not null,
+            ct);
 
         var firstName = (request.FirstName ?? "").Trim();
         var lastName = (request.LastName ?? "").Trim();
         var schoolName = (request.SchoolName ?? "").Trim();
         if (string.IsNullOrWhiteSpace(schoolName))
             schoolName = group.Name;
-        var password = request.Password ?? "";
         if (string.IsNullOrWhiteSpace(firstName) || string.IsNullOrWhiteSpace(lastName))
             throw new InvalidOperationException("Prénom et nom requis.");
-        if (string.IsNullOrWhiteSpace(schoolName))
-            throw new InvalidOperationException("Nom du groupe d'experts requis.");
-        if (string.IsNullOrWhiteSpace(password) || password.Length < 8
-            || !password.Any(char.IsDigit) || password.All(char.IsLetterOrDigit))
-            throw new InvalidOperationException("Mot de passe trop faible (8 caractères, un chiffre et un caractère spécial).");
         if (!request.AcceptedTeacherConductPolicy)
             throw new InvalidOperationException(
                 "Vous devez confirmer l'acceptation du Code de conduite enseignant pour créer le compte.");
 
-        if (await _userManager.FindByEmailAsync(email) is not null)
-            throw new InvalidOperationException("Un compte existe déjà avec cet e-mail.");
+        var password = string.IsNullOrWhiteSpace(request.Password)
+            ? TeacherLoginProvisioning.GenerateTemporaryPassword()
+            : request.Password;
+        if (password.Length < 8 || !password.Any(char.IsDigit) || password.All(char.IsLetterOrDigit))
+            password = TeacherLoginProvisioning.GenerateTemporaryPassword();
 
         // Pays enseignant = pays du groupe d'experts (non modifiable à la création).
         var country = ProfileVisibility.NormalizeCode(group.CountryCode);
@@ -498,12 +515,12 @@ public class AuthService : IAuthService
 
         var user = new ApplicationUser
         {
-            UserName = email,
-            Email = email,
+            UserName = loginEmail,
+            Email = loginEmail,
             FirstName = firstName,
             LastName = lastName,
             EmailConfirmed = true,
-            MustChangePassword = false
+            MustChangePassword = true
         };
 
         var create = await _userManager.CreateAsync(user, password);
@@ -538,7 +555,7 @@ public class AuthService : IAuthService
 
         _db.Add(new TeacherApplicationInvite
         {
-            Email = email,
+            Email = realEmail ?? loginEmail,
             FirstName = firstName,
             InvitedByUserId = expertUserId,
             ExpertGroupId = group.Id,
@@ -562,8 +579,52 @@ public class AuthService : IAuthService
             offeringId = offering.Id;
         }
 
-        // Pas d'envoi du mot de passe par e-mail : l'expert le communique à l'enseignant.
-        return new RegisterTeacherByExpertResponse(tenant.Id, tenant.Slug, email, CredentialsSent: false, offeringId);
+        var loginUrl = $"{_urls.WebBaseUrl.TrimEnd('/')}/login/tuteur";
+        var platformOps = _configuration["Support:OpsEmail"]
+            ?? _configuration["Support:Email"]
+            ?? TeacherLoginProvisioning.DefaultPlatformOpsEmail;
+        var groupAdminEmail = await ResolveGroupAdminNotificationEmailAsync(group, ct) ?? groupMailbox;
+        var recipients = TeacherLoginProvisioning.ResolveCredentialRecipients(
+            realEmail, groupAdminEmail, platformOps);
+
+        var anySent = false;
+        foreach (var to in recipients)
+        {
+            try
+            {
+                await _email.SendTeacherAccountCredentialsAsync(
+                    to, firstName, loginEmail, password, loginUrl, group.Name, ct);
+                anySent = true;
+            }
+            catch
+            {
+                // Continuer les autres destinataires.
+            }
+        }
+
+        return new RegisterTeacherByExpertResponse(
+            tenant.Id, tenant.Slug, loginEmail, anySent, offeringId, password, realEmail);
+    }
+
+    private async Task<string?> ResolveGroupMailboxAsync(ExpertGroup group, CancellationToken ct)
+    {
+        if (!string.IsNullOrWhiteSpace(group.ContactEmail) && group.ContactEmail.Contains('@'))
+            return group.ContactEmail.Trim().ToLowerInvariant();
+
+        return await ResolveGroupAdminNotificationEmailAsync(group, ct);
+    }
+
+    private async Task<string?> ResolveGroupAdminNotificationEmailAsync(ExpertGroup group, CancellationToken ct)
+    {
+        if (!string.IsNullOrWhiteSpace(group.ContactEmail) && group.ContactEmail.Contains('@'))
+            return group.ContactEmail.Trim().ToLowerInvariant();
+
+        var manager = await _groupManagers.GetActiveManagerAsync(group.Id, ct);
+        if (manager is null || string.IsNullOrWhiteSpace(manager.UserId))
+            return null;
+
+        var user = await _userManager.FindByIdAsync(manager.UserId);
+        return string.IsNullOrWhiteSpace(user?.Email) ? null : user.Email.Trim().ToLowerInvariant();
     }
 
     private string AllocateUniqueSlug(string schoolName)

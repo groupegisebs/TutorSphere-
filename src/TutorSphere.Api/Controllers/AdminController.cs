@@ -236,13 +236,28 @@ public class AdminController : ControllerBase
         return Ok(new { message = "Lien de réinitialisation envoyé." });
     }
 
-    /// <summary>Suppression définitive d'un compte Parent ou Élève (SuperAdmin uniquement).</summary>
+    /// <summary>Suppression définitive Parent, Élève ou Enseignant (selon le rôle).</summary>
     [HttpDelete("users/{userId}")]
-    [Authorize(Roles = UserRoles.SuperAdmin)]
+    [Authorize(Roles = $"{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
     public async Task<IActionResult> DeleteUser(string userId, CancellationToken ct)
     {
         try
         {
+            var user = await _userManager.FindByIdAsync(userId);
+            if (user is null) return NotFound(new { error = "Utilisateur introuvable." });
+
+            var roles = await _userManager.GetRolesAsync(user);
+            if (roles.Contains(UserRoles.Tutor) || roles.Contains(UserRoles.TeachingAssistant))
+            {
+                if (!User.IsInRole(UserRoles.SuperAdmin) && !User.IsInRole(UserRoles.PlatformAdmin))
+                    return Forbid();
+                await _accountDeletion.DeleteTeacherAsync(userId, ct);
+                return Ok(new { message = "Enseignant et profil associés supprimés définitivement." });
+            }
+
+            if (!User.IsInRole(UserRoles.SuperAdmin))
+                return Forbid();
+
             await _accountDeletion.DeleteParentOrStudentAsync(userId, ct);
             return Ok(new { message = "Compte supprimé définitivement." });
         }

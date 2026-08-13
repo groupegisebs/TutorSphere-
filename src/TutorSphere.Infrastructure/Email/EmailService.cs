@@ -316,6 +316,23 @@ public class EmailService : IEmailService
             ["GroupName"] = groupName
         }, ct);
 
+    public Task SendTeacherAccountCredentialsAsync(
+        string to,
+        string teacherFirstName,
+        string loginEmail,
+        string temporaryPassword,
+        string loginUrl,
+        string groupName,
+        CancellationToken ct = default) =>
+        SendAsync(to, EmailTemplates.ExpertInvite, new Dictionary<string, string>
+        {
+            ["FirstName"] = teacherFirstName,
+            ["Email"] = loginEmail,
+            ["TemporaryPassword"] = temporaryPassword,
+            ["LoginUrl"] = loginUrl,
+            ["GroupName"] = groupName
+        }, ct);
+
     public Task SendExpertAddedToGroupAsync(
         string to,
         string firstName,

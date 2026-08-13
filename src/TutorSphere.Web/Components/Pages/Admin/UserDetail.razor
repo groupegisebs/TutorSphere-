@@ -78,6 +78,12 @@
                             <i class="bi bi-trash"></i> Supprimer
                         </button>
                     }
+                    @if (_canEditTeacher && _user.Role is "Tutor" or "TeachingAssistant")
+                    {
+                        <button type="button" class="cc-btn" style="color:#f87171;border-color:#f87171;" @onclick="DeleteTeacherFromDetailAsync">
+                            <i class="bi bi-trash"></i> Supprimer
+                        </button>
+                    }
                     <a href="admin/users" class="cc-btn">Retour</a>
                 </div>
             </div>
@@ -745,6 +751,26 @@
         }
 
         Navigation.NavigateTo(_user.Role == "Parent" ? "admin/parents" : "admin/students");
+    }
+
+    private async Task DeleteTeacherFromDetailAsync()
+    {
+        if (_user is null) return;
+        _message = null;
+        _error = null;
+        var confirmed = await JS.InvokeAsync<bool>(
+            "confirm",
+            $"Supprimer définitivement l'enseignant « {_user.FullName} » ?\n\nLe compte et le profil associés seront effacés. Action irréversible.");
+        if (!confirmed) return;
+
+        var result = await AdminSvc.DeleteUserAsync(_user.Id);
+        if (result.Error is not null)
+        {
+            _error = result.Error;
+            return;
+        }
+
+        Navigation.NavigateTo("admin/teachers");
     }
 
     private static string Initials(string name)

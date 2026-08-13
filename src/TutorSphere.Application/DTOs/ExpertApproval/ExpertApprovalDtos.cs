@@ -133,19 +133,21 @@ public record InviteTeacherApplicationRequest(
     string? FirstName = null,
     string? PersonalMessage = null);
 
-/// <summary>Création directe d'un compte enseignant par un expert membre d'un groupe.</summary>
+/// <summary>Création directe d'un compte enseignant par un expert / admin de groupe.</summary>
 public record RegisterTeacherByExpertRequest(
-    string Email,
-    string FirstName,
-    string LastName,
-    string Password,
+    /// <summary>E-mail réel de l'enseignant (optionnel) — reçoit les identifiants s'il est renseigné.</summary>
+    string? Email = null,
+    string FirstName = "",
+    string LastName = "",
+    /// <summary>Ignoré : un mot de passe temporaire est toujours généré.</summary>
+    string? Password = null,
     string? SchoolName = null,
     string? Slug = null,
     string? City = null,
     string? Country = null,
     IReadOnlyList<string>? VisibleCountryCodes = null,
     bool AcceptedTeacherConductPolicy = false,
-    /// <summary>Offre de service initiale (optionnelle) créée pour l'école.</summary>
+    /// <summary>Offre de service initiale (optionnelle) créée pour le profil.</summary>
     TutorSphere.Application.DTOs.SubscriptionOfferings.CreateSubscriptionOfferingRequest? InitialOffering = null);
 
 public record RegisterTeacherByExpertResponse(
@@ -153,7 +155,9 @@ public record RegisterTeacherByExpertResponse(
     string TenantSlug,
     string Email,
     bool CredentialsSent,
-    Guid? OfferingId = null);
+    Guid? OfferingId = null,
+    string? TemporaryPassword = null,
+    string? RealEmail = null);
 
 /// <summary>Groupe d'experts auquel l'utilisateur connecté appartient.</summary>
 public record ExpertMyGroupDto(

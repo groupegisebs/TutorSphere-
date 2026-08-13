@@ -18,7 +18,8 @@ public record AdminCreateStudentRequest(
     string? ParentEmail = null);
 
 public record AdminCreateTeacherRequest(
-    string Email,
+    /// <summary>E-mail réel enseignant (optionnel). Le login est généré depuis l'e-mail du groupe.</summary>
+    string? Email,
     string FirstName,
     string LastName,
     Guid ExpertGroupId,
@@ -27,7 +28,7 @@ public record AdminCreateTeacherRequest(
     string? City = null,
     string? Phone = null,
     bool ActivateSchool = true,
-    /// <summary>Offre de service initiale (optionnelle) créée pour l'école.</summary>
+    /// <summary>Offre de service initiale (optionnelle) créée pour le profil.</summary>
     CreateSubscriptionOfferingRequest? InitialOffering = null);
 
 public record AdminCreatedAccountDto(

@@ -121,8 +121,23 @@
                         <input class="form-control" @bind="_cLastName" />
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">Courriel *</label>
+                        <label class="form-label">
+                            @if (_createKind == "Teacher")
+                            {
+                                <text>E-mail réel enseignant <span class="text-muted">(optionnel)</span></text>
+                            }
+                            else
+                            {
+                                <text>Courriel *</text>
+                            }
+                        </label>
                         <input type="email" class="form-control" @bind="_cEmail" />
+                        @if (_createKind == "Teacher")
+                        {
+                            <div class="form-text">
+                                Login auto : e-mail du groupe + .XXXX. Identifiants → enseignant (si renseigné) + admin groupe + admin@holotuto.com.
+                            </div>
+                        }
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">Téléphone</label>
@@ -508,7 +523,12 @@
         _successMessage = null;
         try
         {
-            if (string.IsNullOrWhiteSpace(_cFirstName) || string.IsNullOrWhiteSpace(_cLastName) || string.IsNullOrWhiteSpace(_cEmail))
+            if (string.IsNullOrWhiteSpace(_cFirstName) || string.IsNullOrWhiteSpace(_cLastName))
+            {
+                _formError = "Prénom et nom sont obligatoires.";
+                return;
+            }
+            if (_createKind != "Teacher" && string.IsNullOrWhiteSpace(_cEmail))
             {
                 _formError = "Prénom, nom et courriel sont obligatoires.";
                 return;

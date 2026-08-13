@@ -5,6 +5,7 @@
 @inject AdminService AdminSvc
 @inject AuthService Auth
 @inject ApiClient Api
+@inject IJSRuntime JS
 @inject IStringLocalizer<SharedResources> L
 
 <PageTitle>Enseignants — Control Center</PageTitle>
@@ -101,39 +102,47 @@
                                             }
                                         </td>
                                         <td class="text-end">
-                                            <div class="d-flex align-items-center justify-content-end gap-2">
+                                            <div class="d-flex align-items-center justify-content-end gap-2 flex-wrap">
                                                 @if (_pendingUserId == tutor.Id)
                                                 {
                                                     <span class="spinner-border spinner-border-sm text-primary" role="status" aria-hidden="true"></span>
                                                 }
-                                                else if (tutor.IsActive)
-                                                {
-                                                    <button class="btn admin-toggle-btn admin-toggle-btn--deactivate"
-                                                            @onclick="() => ToggleUserAsync(tutor)">
-                                                        <i class="bi bi-lock me-1"></i>Désactiver
-                                                    </button>
-                                                }
                                                 else
                                                 {
-                                                    <button class="btn admin-toggle-btn admin-toggle-btn--activate"
-                                                            @onclick="() => ToggleUserAsync(tutor)">
-                                                        <i class="bi bi-unlock me-1"></i>Activer
-                                                    </button>
-                                                }
-                                                <button class="btn btn-sm btn-outline-primary"
-                                                        title="Approuver le profil"
-                                                        disabled="@(_approvingTenant == tutor.Id)"
-                                                        @onclick="() => ApproveSchoolAsync(tutor.Id)">
-                                                    @if (_approvingTenant == tutor.Id)
+                                                    @if (tutor.IsActive)
                                                     {
-                                                        <span class="spinner-border spinner-border-sm me-1"></span>
+                                                        <button class="btn admin-toggle-btn admin-toggle-btn--deactivate"
+                                                                @onclick="() => ToggleUserAsync(tutor)">
+                                                            <i class="bi bi-lock me-1"></i>Désactiver
+                                                        </button>
                                                     }
                                                     else
                                                     {
-                                                        <i class="bi bi-building-check me-1"></i>
+                                                        <button class="btn admin-toggle-btn admin-toggle-btn--activate"
+                                                                @onclick="() => ToggleUserAsync(tutor)">
+                                                            <i class="bi bi-unlock me-1"></i>Activer
+                                                        </button>
                                                     }
-                                                    Approuver profil
-                                                </button>
+                                                    <button class="btn btn-sm btn-outline-primary"
+                                                            title="Approuver le profil"
+                                                            disabled="@(_approvingTenant == tutor.Id)"
+                                                            @onclick="() => ApproveSchoolAsync(tutor.Id)">
+                                                        @if (_approvingTenant == tutor.Id)
+                                                        {
+                                                            <span class="spinner-border spinner-border-sm me-1"></span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <i class="bi bi-building-check me-1"></i>
+                                                        }
+                                                        Approuver profil
+                                                    </button>
+                                                    <button type="button" class="btn btn-sm btn-outline-danger"
+                                                            title="Supprimer définitivement"
+                                                            @onclick="() => DeleteTeacherAsync(tutor)">
+                                                        <i class="bi bi-trash me-1"></i>Supprimer
+                                                    </button>
+                                                }
                                             </div>
                                         </td>
                                     </tr>
@@ -184,7 +193,7 @@
     {
         _pendingUserId = tutor.Id;
         _successMessage = null;
-        _errorMessage   = null;
+        _errorMessage = null;
         try
         {
             bool ok = tutor.IsActive
@@ -205,11 +214,42 @@
         finally { _pendingUserId = null; }
     }
 
+    private async Task DeleteTeacherAsync(AdminUserItem tutor)
+    {
+        var confirmed = await JS.InvokeAsync<bool>(
+            "confirm",
+            $"Supprimer définitivement l'enseignant « {tutor.FullName} » ({tutor.Email}) ?\n\nLe compte, le profil public et les données associées seront effacés. Action irréversible.");
+        if (!confirmed) return;
+
+        _pendingUserId = tutor.Id;
+        _successMessage = null;
+        _errorMessage = null;
+        try
+        {
+            var result = await AdminSvc.DeleteUserAsync(tutor.Id);
+            if (!result.IsSuccess)
+            {
+                _errorMessage = string.IsNullOrWhiteSpace(result.Error)
+                    ? "Suppression impossible."
+                    : result.Error;
+                return;
+            }
+
+            _tutors.RemoveAll(t => t.Id == tutor.Id);
+            _successMessage = $"Enseignant « {tutor.FullName} » supprimé.";
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally { _pendingUserId = null; }
+    }
+
     private async Task ApproveSchoolAsync(string userId)
     {
         _approvingTenant = userId;
-        _successMessage  = null;
-        _errorMessage    = null;
+        _successMessage = null;
+        _errorMessage = null;
         try
         {
             var result = await Api.PostAsync<object>($"api/admin/tenants/{userId}/approve", new { });
