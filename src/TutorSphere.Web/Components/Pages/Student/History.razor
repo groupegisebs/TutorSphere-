@@ -1,0 +1,237 @@
+@page "/student/history"
+@layout StudentLayout
+@rendermode InteractiveServer
+@using TutorSphere.Application.DTOs.Homework
+@using TutorSphere.Application.DTOs.Lessons
+@inject IStringLocalizer<SharedResources> L
+@inject ApiClient Api
+@inject AuthService Auth
+@inject NavigationManager Nav
+
+<PageTitle>Historique – TutorSphere</PageTitle>
+
+<div class="ts-page-header">
+    <div>
+        <h1><i class="bi bi-clock-history me-2"></i>Historique</h1>
+        <p class="ts-page-subtitle">Cours passés, présences et devoirs rendus</p>
+    </div>
+</div>
+
+<div class="ts-tabs-bar mb-3">
+    <button type="button" class="ts-tab @(_tab == "courses" ? "active" : null)" @onclick='() => _tab = "courses"'>
+        Cours <span class="ts-tab-count">@_pastCourses.Count</span>
+    </button>
+    <button type="button" class="ts-tab @(_tab == "attendance" ? "active" : null)" @onclick='() => _tab = "attendance"'>
+        Présences <span class="ts-tab-count">@PastAttendances.Count()</span>
+    </button>
+    <button type="button" class="ts-tab @(_tab == "homework" ? "active" : null)" @onclick='() => _tab = "homework"'>
+        Devoirs <span class="ts-tab-count">@_pastHomework.Count</span>
+    </button>
+</div>
+
+@if (_loading)
+{
+    <div class="d-flex align-items-center justify-content-center py-5">
+        <span class="spinner-border text-primary me-3" role="status"></span>
+        <span class="text-muted">@L["Common_Loading"]</span>
+    </div>
+}
+else if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-warning"><i class="bi bi-exclamation-triangle me-2"></i>@_error</div>
+}
+else if (_tab == "courses")
+{
+    <div class="ts-table-card">
+        <table class="table ts-table">
+            <thead>
+                <tr>
+                    <th>@L["Common_Date"]</th>
+                    <th>@L["Common_Title"]</th>
+                    <th>@L["Common_Subject"]</th>
+                    <th>@L["Common_Mode"]</th>
+                    <th>Présence</th>
+                    <th>@L["Common_Status"]</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var c in _pastCourses)
+                {
+                    <tr>
+                        <td>
+                            <strong>@ToLocal(c.StartTime).ToString("dd/MM/yyyy")</strong><br />
+                            <small class="text-muted">@ToLocal(c.StartTime).ToString("HH:mm") – @ToLocal(c.EndTime).ToString("HH:mm")</small>
+                        </td>
+                        <td>@c.Title</td>
+                        <td>@(c.Subject ?? "—")</td>
+                        <td><span class="ts-badge ts-badge-neutral">@ModeLabel(c.Mode)</span></td>
+                        <td>
+                            @if (c.IsPresent == true)
+                            {
+                                <span class="ts-badge ts-badge-success">Présent</span>
+                            }
+                            else if (c.IsPresent == false)
+                            {
+                                <span class="ts-badge ts-badge-danger">Absent</span>
+                            }
+                            else
+                            {
+                                <span class="ts-badge ts-badge-muted">Non saisie</span>
+                            }
+                        </td>
+                        <td><span class="ts-badge ts-badge-success">@L["StudentCourses_Done"]</span></td>
+                    </tr>
+                }
+                @if (_pastCourses.Count == 0)
+                {
+                    <tr><td colspan="6" class="text-center text-muted py-4">Aucun cours passé pour le moment.</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+else if (_tab == "attendance")
+{
+    <div class="ts-table-card">
+        <table class="table ts-table">
+            <thead>
+                <tr>
+                    <th>@L["Common_Date"]</th>
+                    <th>Séance</th>
+                    <th>@L["Common_Subject"]</th>
+                    <th>Présence</th>
+                    <th>Notes</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var a in PastAttendances)
+                {
+                    <tr>
+                        <td>
+                            <strong>@ToLocal(a.StartTime).ToString("dd/MM/yyyy")</strong><br />
+                            <small class="text-muted">@ToLocal(a.StartTime).ToString("HH:mm")</small>
+                        </td>
+                        <td>@a.Title</td>
+                        <td>@(a.Subject ?? "—")</td>
+                        <td>
+                            @if (a.IsPresent)
+                            {
+                                <span class="ts-badge ts-badge-success">Présent</span>
+                            }
+                            else
+                            {
+                                <span class="ts-badge ts-badge-danger">Absent</span>
+                            }
+                        </td>
+                        <td class="text-muted small">@(string.IsNullOrWhiteSpace(a.Notes) ? "—" : a.Notes)</td>
+                    </tr>
+                }
+                @if (!PastAttendances.Any())
+                {
+                    <tr><td colspan="5" class="text-center text-muted py-4">Aucune présence enregistrée.</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+else
+{
+    <div class="homework-grid">
+        @foreach (var hw in _pastHomework)
+        {
+            var statusLabel = hw.IsGraded ? "Corrigé" : "Rendu";
+            <div class="hw-card">
+                <div class="hw-card-head">
+                    <span class="ts-badge @(hw.IsGraded ? "ts-badge-success" : "ts-badge-primary")">@statusLabel</span>
+                    @if (hw.SubmittedAt.HasValue)
+                    {
+                        <span class="hw-due text-muted">
+                            <i class="bi bi-check2-circle me-1"></i>@hw.SubmittedAt.Value.ToLocalTime().ToString("dd/MM/yyyy")
+                        </span>
+                    }
+                </div>
+                <h3 class="hw-title">@hw.Title</h3>
+                @if (!string.IsNullOrEmpty(hw.Subject))
+                {
+                    <p class="hw-subject"><i class="bi bi-book me-1 text-muted"></i>@hw.Subject</p>
+                }
+                @if (hw.Grade.HasValue)
+                {
+                    <div class="hw-grade-chip">Note : <strong>@hw.Grade.Value/100</strong></div>
+                }
+                @if (!string.IsNullOrEmpty(hw.Feedback))
+                {
+                    <p class="hw-desc text-muted small"><i class="bi bi-chat-square-text me-1"></i>@hw.Feedback</p>
+                }
+            </div>
+        }
+        @if (_pastHomework.Count == 0)
+        {
+            <div class="text-center py-5 text-muted" style="grid-column:1/-1">
+                <i class="bi bi-journal-check fs-1 d-block mb-3 opacity-50"></i>
+                <p>Aucun devoir rendu pour le moment.</p>
+                <a class="btn btn-outline-primary btn-sm mt-2" href="/student/homework">Voir les devoirs à faire</a>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private string _tab = "courses";
+    private bool _loading = true;
+    private string? _error;
+    private List<LessonDto> _pastCourses = [];
+    private List<StudentAttendanceHistoryDto> _attendances = [];
+    private List<HomeworkDto> _pastHomework = [];
+
+    private IEnumerable<StudentAttendanceHistoryDto> PastAttendances =>
+        _attendances.Where(x => x.SessionEnded);
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+
+        var uri = Nav.ToAbsoluteUri(Nav.Uri);
+        var q = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
+        if (q.TryGetValue("tab", out var tabVal))
+        {
+            var t = tabVal.ToString();
+            if (t is "courses" or "attendance" or "homework")
+                _tab = t;
+        }
+
+        try
+        {
+            var lessons = await Api.GetAsync<List<LessonDto>>("api/students/me/lessons") ?? [];
+            var attendances = await Api.GetAsync<List<StudentAttendanceHistoryDto>>("api/students/me/attendances") ?? [];
+            var homework = await Api.GetAsync<List<HomeworkDto>>("api/students/me/homework") ?? [];
+
+            var now = DateTime.UtcNow;
+            _pastCourses = [.. lessons
+                .Where(c => ToUtc(c.EndTime) < now)
+                .OrderByDescending(c => c.StartTime)];
+            _attendances = attendances;
+            _pastHomework = [.. homework
+                .Where(h => h.SubmittedAt.HasValue || h.IsGraded)
+                .OrderByDescending(h => h.SubmittedAt ?? h.DueDate ?? h.CreatedAt)];
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally { _loading = false; }
+    }
+
+    private static DateTime ToUtc(DateTime dt) =>
+        dt.Kind == DateTimeKind.Utc ? dt : dt.ToUniversalTime();
+
+    private static DateTime ToLocal(DateTime dt) =>
+        dt.Kind == DateTimeKind.Utc ? dt.ToLocalTime() : DateTime.SpecifyKind(dt, DateTimeKind.Local);
+
+    private string ModeLabel(string mode) => mode switch
+    {
+        "Online" => L["Common_Online"],
+        "InPerson" => L["Common_InPerson"],
+        _ => mode
+    };
+}

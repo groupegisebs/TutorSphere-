@@ -4,6 +4,7 @@
 @using System.Globalization
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
+@inject AuthService Auth
 @inject NavigationManager Navigation
 
 <PageTitle>Mes abonnements — TutorSphere</PageTitle>
@@ -13,9 +14,12 @@
         <h1><i class="bi bi-arrow-repeat me-2"></i>Mes abonnements</h1>
         <p class="ts-page-subtitle">Demandes d’inscription, paiements et cours actifs</p>
     </div>
-    <a class="btn btn-primary" href="/student/search">
-        <i class="bi bi-binoculars me-1"></i>@L["Nav_FindTutor"]
-    </a>
+    @if (!Auth.IsParentManagedStudent)
+    {
+        <a class="btn btn-primary" href="/student/search">
+            <i class="bi bi-binoculars me-1"></i>@L["Nav_FindTutor"]
+        </a>
+    }
 </div>
 
 @if (!string.IsNullOrEmpty(_banner))
@@ -113,7 +117,7 @@ else
                                 <i class="bi bi-inbox fs-2 d-block mb-2 opacity-50"></i>
                                 Aucun abonnement dans cet onglet.
                             </div>
-                            @if (_tab is "pending" or "active")
+                            @if ((_tab is "pending" or "active") && !Auth.IsParentManagedStudent)
                             {
                                 <a class="btn btn-outline-primary btn-sm" href="/student/search">@L["Nav_FindTutor"]</a>
                             }
@@ -150,6 +154,8 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        try { await Auth.EnsureSessionRestoredAsync(); } catch { }
+
         var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
         var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
         var paidReturn = query.ContainsKey("paid");

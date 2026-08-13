@@ -125,6 +125,16 @@ public class StudentPortalController : ControllerBase
         return Ok(await _portal.GetLessonsAsync(userId, start, end, ct));
     }
 
+    [HttpGet("me/attendances")]
+    public async Task<ActionResult<IReadOnlyList<StudentAttendanceHistoryDto>>> Attendances(CancellationToken ct)
+    {
+        var userId = User.GetUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        return Ok(await _portal.GetAttendanceHistoryAsync(userId, ct));
+    }
+
     [HttpGet("me/homework")]
     public async Task<ActionResult<IReadOnlyList<HomeworkDto>>> Homework(CancellationToken ct)
     {

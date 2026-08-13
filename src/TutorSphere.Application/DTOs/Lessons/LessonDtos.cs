@@ -53,7 +53,9 @@ public record LessonDto(
     bool TutorLiable = false,
     string? TutorLiabilityResolution = null,
     int MaxStudents = 1,
-    IReadOnlyList<string>? StudentNames = null);
+    IReadOnlyList<string>? StudentNames = null,
+    /// <summary>Présence de l'élève courant (portail élève) ; null si non applicable.</summary>
+    bool? IsPresent = null);
 
 public record CancelLessonRequest(string? Reason = null);
 
@@ -68,3 +70,16 @@ public record LessonAttendanceDto(
     string StudentName,
     bool IsPresent,
     string? Notes);
+
+/// <summary>Historique de présence pour le portail élève.</summary>
+public record StudentAttendanceHistoryDto(
+    Guid LessonId,
+    string Title,
+    string? Subject,
+    DateTime StartTime,
+    DateTime EndTime,
+    string Mode,
+    string SettlementStatus,
+    bool IsPresent,
+    string? Notes,
+    bool SessionEnded);

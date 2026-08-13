@@ -50,6 +50,9 @@ public sealed class AuthService
     public string? SchoolName => _authProvider.SchoolName;
     public bool MustChangePassword => _authProvider.MustChangePassword;
 
+    /// <summary>Élève lié à un parent : recherche d'enseignant réservée à la session parent.</summary>
+    public bool IsParentManagedStudent => _authProvider.IsParentManagedStudent;
+
     public bool IsInRole(string role) => _authProvider.IsInRole(role);
 
     /// <summary>Updates the in-memory display name after a successful profile save (JWT claims stay until re-login).</summary>
@@ -680,6 +683,10 @@ public sealed class CustomAuthenticationStateProvider : AuthenticationStateProvi
     public bool MustChangePassword =>
         string.Equals(_user.FindFirst("must_change_password")?.Value, "true", StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>Élève sous responsabilité parentale (claim JWT parent_managed).</summary>
+    public bool IsParentManagedStudent =>
+        string.Equals(_user.FindFirst("parent_managed")?.Value, "true", StringComparison.OrdinalIgnoreCase);
+
     public bool IsInRole(string role) =>
         !string.IsNullOrWhiteSpace(role)
         && _user.Claims.Any(c =>
@@ -730,6 +737,8 @@ public sealed class CustomAuthenticationStateProvider : AuthenticationStateProvi
                 claims.Add(new Claim("tenant_name", value));
             if (key is "must_change_password" && claims.All(c => c.Type != "must_change_password"))
                 claims.Add(new Claim("must_change_password", value));
+            if (key is "parent_managed" && claims.All(c => c.Type != "parent_managed"))
+                claims.Add(new Claim("parent_managed", value));
 
             // Toutes les claims rôle du JWT (pas seulement la première).
             if (key is "role" or "http://schemas.microsoft.com/ws/2008/06/identity/claims/role")

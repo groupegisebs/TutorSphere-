@@ -13,6 +13,21 @@
         <h1><i class="bi bi-book me-2"></i>@L["Nav_Courses"]</h1>
         <p class="ts-page-subtitle">@L["StudentCourses_Subtitle"]</p>
     </div>
+    <a class="btn btn-outline-primary" href="/student/history?tab=courses">
+        <i class="bi bi-clock-history me-1"></i>Historique
+    </a>
+</div>
+
+<div class="ts-tabs-bar mb-3">
+    <button type="button" class="ts-tab @(_filter == "upcoming" ? "active" : null)" @onclick='() => _filter = "upcoming"'>
+        @L["StudentCourses_Upcoming"]
+    </button>
+    <button type="button" class="ts-tab @(_filter == "done" ? "active" : null)" @onclick='() => _filter = "done"'>
+        Historique
+    </button>
+    <button type="button" class="ts-tab @(_filter == "" ? "active" : null)" @onclick='() => _filter = ""'>
+        @L["Common_All"]
+    </button>
 </div>
 
 <div class="ts-toolbar">
@@ -20,11 +35,6 @@
         <i class="bi bi-search ts-search-icon"></i>
         <input class="form-control" placeholder="@L["Common_Search"]" @bind="_search" @bind:event="oninput" />
     </div>
-    <select class="form-select w-auto" @bind="_filter">
-        <option value="">@L["Common_All"]</option>
-        <option value="upcoming">@L["StudentCourses_Upcoming"]</option>
-        <option value="done">@L["StudentCourses_Done"]</option>
-    </select>
 </div>
 
 @if (_loading)
@@ -45,6 +55,7 @@ else
                     <th>@L["Common_Subject"]</th>
                     <th>@L["Common_Duration"]</th>
                     <th>@L["Common_Mode"]</th>
+                    <th>Présence</th>
                     <th>@L["Common_Status"]</th>
                     <th></th>
                 </tr>
@@ -63,9 +74,30 @@ else
                         <td>@(c.Subject ?? "—")</td>
                         <td>@((c.EndTime - c.StartTime).TotalHours.ToString("N1")) h</td>
                         <td><span class="ts-badge ts-badge-neutral">@ModeLabel(c.Mode)</span></td>
+                        <td>
+                            @if (status == "done")
+                            {
+                                @if (c.IsPresent == true)
+                                {
+                                    <span class="ts-badge ts-badge-success">Présent</span>
+                                }
+                                else if (c.IsPresent == false)
+                                {
+                                    <span class="ts-badge ts-badge-danger">Absent</span>
+                                }
+                                else
+                                {
+                                    <span class="ts-badge ts-badge-muted">—</span>
+                                }
+                            }
+                            else
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                        </td>
                         <td><span class="ts-badge @badge">@StatusLabel(status)</span></td>
                         <td>
-                            @if (c.SettlementStatus is not "CancelledFree")
+                            @if (status != "done" && c.SettlementStatus is not "CancelledFree")
                             {
                                 @if (!string.IsNullOrWhiteSpace(c.MeetingUrl))
                                 {
@@ -81,7 +113,7 @@ else
                 }
                 @if (!FilteredCourses.Any())
                 {
-                    <tr><td colspan="7" class="text-center text-muted py-4">@L["StudentCourses_Empty"]</td></tr>
+                    <tr><td colspan="8" class="text-center text-muted py-4">@L["StudentCourses_Empty"]</td></tr>
                 }
             </tbody>
         </table>
@@ -89,7 +121,7 @@ else
 }
 
 @code {
-    private string _search = "", _filter = "";
+    private string _search = "", _filter = "upcoming";
     private bool _loading = true;
     private bool _loaded;
     private List<LessonDto> _courses = [];
@@ -103,7 +135,8 @@ else
             if (string.IsNullOrEmpty(_filter)) return true;
             return DeriveStatus(c.StartTime, c.EndTime) == _filter;
         })
-        .OrderByDescending(c => c.StartTime);
+        .OrderBy(c => _filter == "done" ? 0 : 1)
+        .ThenByDescending(c => c.StartTime);
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {

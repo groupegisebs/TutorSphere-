@@ -4,6 +4,8 @@
 @using TutorSphere.Web.Common
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
+@inject AuthService Auth
+@inject NavigationManager Navigation
 
 <PageTitle>@L["PageTitle_FindTutor"]</PageTitle>
 
@@ -147,12 +149,22 @@ else if (_profile is null)
 
     protected override async Task OnInitializedAsync()
     {
+        try { await Auth.EnsureSessionRestoredAsync(); } catch { }
+
         try
         {
             _profile = await Api.GetAsync<StudentDto>("api/students/me");
             _viewerCountry = _profile?.Country;
         }
         catch { _profile = null; }
+
+        // Recherche enseignant = espace parent uniquement pour les enfants rattachés.
+        if (Auth.IsParentManagedStudent || _profile?.ParentProfileId is not null)
+        {
+            Navigation.NavigateTo("/student/dashboard", replace: true);
+            return;
+        }
+
         await SearchAsync();
     }
 

@@ -21,6 +21,9 @@ public interface IStudentPortalService
         DateTime? start = null,
         DateTime? end = null,
         CancellationToken ct = default);
+    Task<IReadOnlyList<StudentAttendanceHistoryDto>> GetAttendanceHistoryAsync(
+        string userId,
+        CancellationToken ct = default);
     Task<IReadOnlyList<HomeworkDto>> GetHomeworkAsync(string userId, CancellationToken ct = default);
     Task<HomeworkDto?> GetHomeworkByIdAsync(string userId, Guid homeworkId, CancellationToken ct = default);
     Task<HomeworkDto> SubmitHomeworkAsync(
@@ -168,11 +171,13 @@ public class StudentPortalService : IStudentPortalService
         if (student is null)
             return Task.FromResult<IReadOnlyList<LessonDto>>([]);
 
-        var lessonIds = _db.LessonAttendancesForAnyTenant
+        var attendances = _db.LessonAttendancesForAnyTenant
             .Where(a => a.StudentId == student.Id)
-            .Select(a => a.LessonId)
-            .Distinct()
             .ToList();
+        var lessonIds = attendances.Select(a => a.LessonId).Distinct().ToList();
+        var presentByLesson = attendances
+            .GroupBy(a => a.LessonId)
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(a => a.UpdatedAt ?? a.CreatedAt).First().IsPresent);
 
         // Agenda actif : exclure les annulations libres (les dates affichées suivent StartTime/EndTime à jour).
         var query = _db.LessonsForAnyTenant.Where(l =>
@@ -186,10 +191,45 @@ public class StudentPortalService : IStudentPortalService
         var lessons = query
             .OrderBy(l => l.StartTime)
             .ToList()
-            .Select(MapLesson)
+            .Select(l => MapLesson(l, presentByLesson.TryGetValue(l.Id, out var p) ? p : null))
             .ToList();
 
         return Task.FromResult<IReadOnlyList<LessonDto>>(lessons);
+    }
+
+    public Task<IReadOnlyList<StudentAttendanceHistoryDto>> GetAttendanceHistoryAsync(
+        string userId,
+        CancellationToken ct = default)
+    {
+        var student = ResolveStudent(userId);
+        if (student is null)
+            return Task.FromResult<IReadOnlyList<StudentAttendanceHistoryDto>>([]);
+
+        var now = DateTime.UtcNow;
+        var rows = (
+            from a in _db.LessonAttendancesForAnyTenant
+            join l in _db.LessonsForAnyTenant on a.LessonId equals l.Id
+            where a.StudentId == student.Id
+                  && l.SettlementStatus != LessonSettlementStatus.CancelledFree
+            orderby l.StartTime descending
+            select new { a, l }
+        ).ToList();
+
+        IReadOnlyList<StudentAttendanceHistoryDto> result = rows
+            .Select(x => new StudentAttendanceHistoryDto(
+                x.l.Id,
+                x.l.Title,
+                x.l.Subject,
+                x.l.StartTime,
+                x.l.EndTime,
+                x.l.Mode.ToString(),
+                x.l.SettlementStatus.ToString(),
+                x.a.IsPresent,
+                x.a.Notes,
+                SessionEnded: (x.l.EndTime.Kind == DateTimeKind.Utc ? x.l.EndTime : x.l.EndTime.ToUniversalTime()) < now))
+            .ToList();
+
+        return Task.FromResult(result);
     }
 
     public Task<IReadOnlyList<HomeworkDto>> GetHomeworkAsync(string userId, CancellationToken ct = default)
@@ -501,10 +541,11 @@ public class StudentPortalService : IStudentPortalService
             ? []
             : raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-    private static LessonDto MapLesson(Lesson l) => new(
+    private static LessonDto MapLesson(Lesson l, bool? isPresent = null) => new(
         l.Id, l.Title, l.Description, l.Subject, l.StartTime, l.EndTime,
         l.Mode.ToString(), l.Location, l.MeetingUrl, l.SessionNotes, l.CreatedAt, l.UpdatedAt,
-        l.SettlementStatus.ToString(), l.CancelledAt, l.SessionCounted, l.TutorLiable, l.TutorLiabilityResolution);
+        l.SettlementStatus.ToString(), l.CancelledAt, l.SessionCounted, l.TutorLiable, l.TutorLiabilityResolution,
+        IsPresent: isPresent);
 
     private static HomeworkDto MapHomework(Homework h) => HomeworkService.MapPublic(h);
 

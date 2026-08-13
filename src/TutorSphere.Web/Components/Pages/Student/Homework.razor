@@ -11,8 +11,20 @@
 <div class="ts-page-header">
     <div>
         <h1><i class="bi bi-journal-text me-2"></i>Mes Devoirs</h1>
-        <p class="ts-page-subtitle">Devoirs publiés par vos enseignants (enregistrés en base)</p>
+        <p class="ts-page-subtitle">À rendre et historique des devoirs soumis</p>
     </div>
+    <a class="btn btn-outline-primary" href="/student/history?tab=homework">
+        <i class="bi bi-clock-history me-1"></i>Historique complet
+    </a>
+</div>
+
+<div class="ts-tabs-bar mb-3">
+    <button type="button" class="ts-tab @(_tab == "todo" ? "active" : null)" @onclick='() => _tab = "todo"'>
+        À faire <span class="ts-tab-count">@TodoList.Count()</span>
+    </button>
+    <button type="button" class="ts-tab @(_tab == "history" ? "active" : null)" @onclick='() => _tab = "history"'>
+        Historique <span class="ts-tab-count">@HistoryList.Count()</span>
+    </button>
 </div>
 
 @if (_loading)
@@ -28,17 +40,11 @@ else if (!string.IsNullOrEmpty(_error))
 }
 else
 {
-    @if (_homeworks.Count > 0)
-    {
-        <p class="text-muted small mb-3">
-            <i class="bi bi-journal-check me-1"></i>@_homeworks.Count devoir(s) dans votre liste
-        </p>
-    }
+    var list = _tab == "history" ? HistoryList : TodoList;
     <div class="homework-grid">
-        @foreach (var hw in _homeworks)
+        @foreach (var hw in list)
         {
-            var statusLabel = hw.IsGraded ? "Corrigé" : hw.SubmittedAt.HasValue ? "Rendu" :
-                (hw.DueDate.HasValue && hw.DueDate.Value < DateTime.UtcNow) ? "En retard" : "À rendre";
+            var statusLabel = StatusOf(hw);
             var isOverdue = statusLabel == "En retard";
             var payload = HomeworkJson.TryParseSubmission(hw.SubmissionNotes);
             var points = hw.Criteria.Sum(c => c.Points);
@@ -89,14 +95,20 @@ else
                     {
                         <span class="small text-muted"><i class="bi bi-check2-circle me-1"></i>En attente de correction</span>
                     }
+                    else if (hw.SubmittedAt.HasValue)
+                    {
+                        <span class="small text-muted">
+                            Remis le @hw.SubmittedAt.Value.ToLocalTime().ToString("dd/MM/yyyy")
+                        </span>
+                    }
                 </div>
             </div>
         }
-        @if (_homeworks.Count == 0)
+        @if (!list.Any())
         {
             <div class="text-center py-5 text-muted" style="grid-column:1/-1">
                 <i class="bi bi-journal-text fs-1 d-block mb-3 opacity-50"></i>
-                <p>Aucun devoir publié pour le moment.</p>
+                <p>@(_tab == "history" ? "Aucun devoir rendu pour le moment." : "Aucun devoir à faire pour le moment.")</p>
             </div>
         }
     </div>
@@ -105,7 +117,22 @@ else
 @code {
     private bool _loading = true;
     private string _error = "";
+    private string _tab = "todo";
     private List<HomeworkDto> _homeworks = [];
+
+    private IEnumerable<HomeworkDto> TodoList => _homeworks
+        .Where(h => StatusOf(h) is "À rendre" or "En retard")
+        .OrderBy(h => h.DueDate ?? DateTime.MaxValue);
+
+    private IEnumerable<HomeworkDto> HistoryList => _homeworks
+        .Where(h => StatusOf(h) is "Rendu" or "Corrigé")
+        .OrderByDescending(h => h.SubmittedAt ?? h.DueDate ?? h.CreatedAt);
+
+    private static string StatusOf(HomeworkDto hw) =>
+        hw.IsGraded ? "Corrigé"
+        : hw.SubmittedAt.HasValue ? "Rendu"
+        : (hw.DueDate.HasValue && hw.DueDate.Value < DateTime.UtcNow) ? "En retard"
+        : "À rendre";
 
     private static string HwBadge(string s) => s switch
     {
@@ -125,7 +152,7 @@ else
                 _error = result.Error;
                 return;
             }
-            _homeworks = [.. (result.Value ?? []).OrderBy(h => h.DueDate ?? DateTime.MaxValue)];
+            _homeworks = result.Value ?? [];
         }
         catch (Exception ex)
         {

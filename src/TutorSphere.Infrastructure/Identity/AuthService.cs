@@ -803,6 +803,13 @@ public class AuthService : IAuthService
         if (user.MustChangePassword)
             claims.Add(new Claim("must_change_password", "true"));
 
+        // Élève rattaché à un parent (connexion code parent inclus) : recherche enseignant = espace parent uniquement.
+        if (string.Equals(role, UserRoles.Student, StringComparison.OrdinalIgnoreCase)
+            && _db.StudentsForAnyTenant.Any(s => s.UserId == user.Id && s.ParentProfileId != null))
+        {
+            claims.Add(new Claim("parent_managed", "true"));
+        }
+
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
         var token = new JwtSecurityToken(
             issuer: jwtSection["Issuer"],
