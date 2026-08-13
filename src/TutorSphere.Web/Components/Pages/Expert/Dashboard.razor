@@ -20,40 +20,31 @@
             </div>
         </div>
 
-        <div class="cc-card mb-3">
-            <h2 class="cc-card-title">@L["Expert_InviteTitle"]</h2>
-            <p class="small text-muted mb-3">@L["Expert_InviteSubtitle"]</p>
-
-            @if (!string.IsNullOrEmpty(_inviteError))
-            {
-                <div class="alert alert-danger py-2">@_inviteError</div>
-            }
-            @if (!string.IsNullOrEmpty(_inviteSuccess))
-            {
-                <div class="alert alert-success py-2">@_inviteSuccess</div>
-            }
-
-            <div class="row g-2 align-items-end">
-                <div class="col-md-4">
-                    <label class="form-label">@L["Expert_InviteEmail"]</label>
-                    <input class="form-control" type="email" @bind="_inviteEmail" placeholder="enseignant@exemple.com" />
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label">@L["Expert_InviteFirstName"]</label>
-                    <input class="form-control" @bind="_inviteFirstName" />
-                </div>
-                <div class="col-md-5">
-                    <label class="form-label">@L["Expert_InviteMessage"]</label>
-                    <input class="form-control" @bind="_inviteMessage" placeholder="@L["Expert_InviteMessagePlaceholder"]" />
-                </div>
-                <div class="col-12">
-                    <button type="button" class="cc-btn cc-btn-primary" disabled="@_inviteBusy" @onclick="InviteAsync">
-                        <i class="bi bi-envelope"></i> @L["Expert_InviteSend"]
-                    </button>
-                </div>
-            </div>
+        <div class="cc-tabs" role="tablist">
+            <button type="button" role="tab" class="cc-tab @(_activeTab == "register" ? "active" : null)"
+                    aria-selected="@(_activeTab == "register")" @onclick='() => _activeTab = "register"'>
+                <i class="bi bi-person-plus me-1" aria-hidden="true"></i>@L["Expert_RegisterTeacherTitle"]
+            </button>
+            <button type="button" role="tab" class="cc-tab @(_activeTab == "invite" ? "active" : null)"
+                    aria-selected="@(_activeTab == "invite")" @onclick='() => _activeTab = "invite"'>
+                <i class="bi bi-envelope me-1" aria-hidden="true"></i>@L["Expert_InviteTitle"]
+                @if (!_invitesLoading && _invites.Count > 0)
+                {
+                    <span class="cc-pill cc-pill-type ms-1">@_invites.Count</span>
+                }
+            </button>
+            <button type="button" role="tab" class="cc-tab @(_activeTab == "queue" ? "active" : null)"
+                    aria-selected="@(_activeTab == "queue")" @onclick='() => _activeTab = "queue"'>
+                <i class="bi bi-inbox me-1" aria-hidden="true"></i>@L["Expert_Queue"]
+                @if (!_loading && _queue.Count > 0)
+                {
+                    <span class="cc-pill cc-pill-type ms-1">@_queue.Count</span>
+                }
+            </button>
         </div>
 
+        @if (_activeTab == "register")
+        {
         <div class="cc-card mb-3">
             <h2 class="cc-card-title">@L["Expert_RegisterTeacherTitle"]</h2>
             <p class="small text-muted mb-3">@L["Expert_RegisterTeacherSubtitle"]</p>
@@ -222,8 +213,12 @@
                     </div>
                 </div>
                 <div class="col-md-6">
-                    <label class="form-label">@L["Expert_RegisterCountry"] <span class="text-danger">*</span></label>
-                    <CountrySelect Value="_regCountry" ValueChanged="OnRegCountryChanged" />
+                    <label class="form-label">@L["Expert_RegisterCountry"]</label>
+                    <div class="form-field-icon">
+                        <i class="bi bi-flag field-icon" aria-hidden="true"></i>
+                        <input class="form-control" value="@RegCountryDisplay" disabled readonly />
+                    </div>
+                    <small class="text-muted">@L["Expert_RegisterCountryFromGroup"]</small>
                 </div>
             </div>
 
@@ -261,6 +256,42 @@
                     <i class="bi bi-person-plus"></i> @L["Expert_RegisterTeacherSend"]
                 }
             </button>
+        </div>
+        }
+        else if (_activeTab == "invite")
+        {
+        <div class="cc-card mb-3">
+            <h2 class="cc-card-title">@L["Expert_InviteTitle"]</h2>
+            <p class="small text-muted mb-3">@L["Expert_InviteSubtitle"]</p>
+
+            @if (!string.IsNullOrEmpty(_inviteError))
+            {
+                <div class="alert alert-danger py-2">@_inviteError</div>
+            }
+            @if (!string.IsNullOrEmpty(_inviteSuccess))
+            {
+                <div class="alert alert-success py-2">@_inviteSuccess</div>
+            }
+
+            <div class="row g-2 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label">@L["Expert_InviteEmail"]</label>
+                    <input class="form-control" type="email" @bind="_inviteEmail" placeholder="enseignant@exemple.com" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">@L["Expert_InviteFirstName"]</label>
+                    <input class="form-control" @bind="_inviteFirstName" />
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label">@L["Expert_InviteMessage"]</label>
+                    <input class="form-control" @bind="_inviteMessage" placeholder="@L["Expert_InviteMessagePlaceholder"]" />
+                </div>
+                <div class="col-12">
+                    <button type="button" class="cc-btn cc-btn-primary" disabled="@_inviteBusy" @onclick="InviteAsync">
+                        <i class="bi bi-envelope"></i> @L["Expert_InviteSend"]
+                    </button>
+                </div>
+            </div>
         </div>
 
         <div class="cc-card mb-3">
@@ -322,8 +353,12 @@
                 </table>
             }
         </div>
-
-        <h2 class="cc-card-title mb-2">@L["Expert_Queue"]</h2>
+        }
+        else
+        {
+        <div class="cc-card mb-3">
+            <h2 class="cc-card-title">@L["Expert_Queue"]</h2>
+            <p class="small text-muted mb-3">@L["Expert_QueueSubtitle"]</p>
 
         @if (_loading)
         {
@@ -335,14 +370,13 @@
         }
         else if (_queue.Count == 0)
         {
-            <div class="cc-card cc-empty">
+            <div class="cc-empty py-3">
                 <i class="bi bi-inbox"></i>
                 <p>@L["Expert_QueueEmpty"]</p>
             </div>
         }
         else
         {
-            <div class="cc-card">
                 <table class="cc-table">
                     <thead>
                         <tr>
@@ -373,7 +407,8 @@
                         }
                     </tbody>
                 </table>
-            </div>
+        }
+        </div>
         }
     </Authorized>
     <NotAuthorized>
@@ -385,6 +420,7 @@
 </AuthorizeView>
 
 @code {
+    private string _activeTab = "register";
     private List<PendingTeacherItem> _queue = [];
     private List<TeacherInviteItem> _invites = [];
     private bool _loading = true;
@@ -443,6 +479,17 @@
         3 => L["Password_Good"],
         _ => L["Password_Strong"]
     };
+
+    private string RegCountryDisplay
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(_regCountry))
+                return "—";
+            var info = CountryCatalog.Find(_regCountry);
+            return info is null ? _regCountry : $"{info.Flag} {info.Name}";
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -525,17 +572,6 @@
             _inviteError = ex.Message;
         }
         finally { _inviteBusy = false; }
-    }
-
-    private Task OnRegCountryChanged(string? code)
-    {
-        _regCountry = code;
-        if (!string.IsNullOrWhiteSpace(code)
-            && !_regVisibleCountries.Contains(code, StringComparer.OrdinalIgnoreCase))
-        {
-            _regVisibleCountries.Insert(0, code.Trim().ToUpperInvariant());
-        }
-        return Task.CompletedTask;
     }
 
     private Task OnRegAddVisibleChanged(string? code)
@@ -687,7 +723,6 @@
                 schoolName = _regSchoolName,
                 slug = _regSlug.Trim().ToLowerInvariant(),
                 city = string.IsNullOrWhiteSpace(_regCity) ? null : _regCity,
-                country = _regCountry,
                 visibleCountryCodes = _regVisibleCountries,
                 acceptedTeacherConductPolicy = true
             });
