@@ -199,21 +199,29 @@
             var result = await AuthSvc.LoginAsync(_email, _password);
             if (result.Success)
             {
-                var role = AuthSvc.PrimaryRole ?? "";
-                if (role is "SuperAdmin" or "PlatformAdmin")
+                var isTutor = AuthSvc.IsInRole("Tutor") || AuthSvc.IsInRole("TeachingAssistant");
+                if ((AuthSvc.IsInRole("SuperAdmin") || AuthSvc.IsInRole("PlatformAdmin")) && !isTutor)
                 {
                     Navigation.NavigateTo("/admin/dashboard", forceLoad: true);
                     return;
                 }
-                if (role is not ("Tutor" or "TeachingAssistant"))
+
+                if (!isTutor)
                 {
                     _errorMessage = L["Login_Tutor_WrongRole"];
                     AuthSvc.Logout();
                     return;
                 }
-                var dest = string.IsNullOrWhiteSpace(result.RedirectTo)
-                    ? "/tutor/activate"
-                    : result.RedirectTo;
+
+                // Forcer l'espace enseignant même si le rôle JWT principal est autre (ex. Expert).
+                string dest;
+                if (result.MustChangePassword)
+                    dest = "/change-password";
+                else if (!string.IsNullOrWhiteSpace(result.RedirectTo)
+                         && result.RedirectTo.StartsWith("/tutor", StringComparison.OrdinalIgnoreCase))
+                    dest = result.RedirectTo;
+                else
+                    dest = "/tutor/activate";
                 Navigation.NavigateTo(dest, forceLoad: true);
                 return;
             }

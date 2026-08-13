@@ -198,19 +198,28 @@
             var result = await AuthSvc.LoginAsync(_email, _password);
             if (result.Success)
             {
-                var role = AuthSvc.PrimaryRole ?? "";
-                if (role is "SuperAdmin" or "PlatformAdmin")
+                // Accepter tout compte ayant le rôle Parent (même si le rôle JWT principal
+                // est Expert / Tutor — cas multi-rôles).
+                if (AuthSvc.IsInRole("SuperAdmin") || AuthSvc.IsInRole("PlatformAdmin"))
                 {
-                    Navigation.NavigateTo("/admin/dashboard", forceLoad: true);
-                    return;
+                    if (!AuthSvc.IsInRole("Parent"))
+                    {
+                        Navigation.NavigateTo("/admin/dashboard", forceLoad: true);
+                        return;
+                    }
                 }
-                if (role is not "Parent")
+
+                if (!AuthSvc.IsInRole("Parent"))
                 {
                     _errorMessage = L["Login_Parent_WrongRole"];
                     AuthSvc.Logout();
                     return;
                 }
-                Navigation.NavigateTo(result.RedirectTo ?? "/parent", forceLoad: true);
+
+                // Toujours l'espace parent (ignorer la route du rôle JWT principal).
+                Navigation.NavigateTo(
+                    result.MustChangePassword ? "/change-password" : "/parent",
+                    forceLoad: true);
                 return;
             }
             _needsEmailConfirmation = result.ErrorCode == "email_not_confirmed";

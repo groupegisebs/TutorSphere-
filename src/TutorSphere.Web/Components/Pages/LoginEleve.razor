@@ -288,19 +288,23 @@
             var result = await AuthSvc.LoginAsync(_email, _password);
             if (result.Success)
             {
-                var role = AuthSvc.PrimaryRole ?? "";
-                if (role is "SuperAdmin" or "PlatformAdmin")
+                if ((AuthSvc.IsInRole("SuperAdmin") || AuthSvc.IsInRole("PlatformAdmin"))
+                    && !AuthSvc.IsInRole("Student"))
                 {
                     Navigation.NavigateTo("/admin/dashboard", forceLoad: true);
                     return;
                 }
-                if (role is not "Student")
+
+                if (!AuthSvc.IsInRole("Student"))
                 {
                     _errorMessage = L["Login_Student_WrongRole"];
                     AuthSvc.Logout();
                     return;
                 }
-                Navigation.NavigateTo(result.RedirectTo ?? "/student/dashboard", forceLoad: true);
+
+                Navigation.NavigateTo(
+                    result.MustChangePassword ? "/change-password" : "/student/dashboard",
+                    forceLoad: true);
                 return;
             }
             _needsEmailConfirmation = result.ErrorCode == "email_not_confirmed";
