@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using TutorSphere.Application.Common.Interfaces;
+using TutorSphere.Application.DTOs.Admin;
 using TutorSphere.Application.DTOs.PlatformPromo;
 using TutorSphere.Application.Services;
 using TutorSphere.Domain.Enums;
@@ -27,6 +28,7 @@ public class AdminController : ControllerBase
     private readonly MailGatewayClient _mailClient;
     private readonly IPlatformPromoService _promoCodes;
     private readonly IAdminUserAccountService _accountDeletion;
+    private readonly IAdminUserProvisioningService _provisioning;
 
     public AdminController(
         UserManager<ApplicationUser> userManager,
@@ -36,7 +38,8 @@ public class AdminController : ControllerBase
         IOptions<MailGatewaySettings> mailSettings,
         MailGatewayClient mailClient,
         IPlatformPromoService promoCodes,
-        IAdminUserAccountService accountDeletion)
+        IAdminUserAccountService accountDeletion,
+        IAdminUserProvisioningService provisioning)
     {
         _userManager = userManager;
         _email = email;
@@ -46,6 +49,7 @@ public class AdminController : ControllerBase
         _mailClient = mailClient;
         _promoCodes = promoCodes;
         _accountDeletion = accountDeletion;
+        _provisioning = provisioning;
     }
 
     /// <summary>Returns users belonging to a given role.</summary>
@@ -235,6 +239,58 @@ public class AdminController : ControllerBase
         {
             await _accountDeletion.DeleteParentOrStudentAsync(userId, ct);
             return Ok(new { message = "Compte supprimé définitivement." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("parents")]
+    [Authorize(Roles = UserRoles.SuperAdmin)]
+    public async Task<ActionResult<AdminCreatedAccountDto>> CreateParent(
+        [FromBody] AdminCreateParentRequest request, CancellationToken ct)
+    {
+        var adminId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(adminId)) return Unauthorized();
+        try
+        {
+            return Ok(await _provisioning.CreateParentAsync(adminId, request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("students")]
+    [Authorize(Roles = UserRoles.SuperAdmin)]
+    public async Task<ActionResult<AdminCreatedAccountDto>> CreateStudent(
+        [FromBody] AdminCreateStudentRequest request, CancellationToken ct)
+    {
+        var adminId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(adminId)) return Unauthorized();
+        try
+        {
+            return Ok(await _provisioning.CreateStudentAsync(adminId, request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>Crée un enseignant (Tutor) et l'affecte obligatoirement à un groupe d'experts.</summary>
+    [HttpPost("teachers")]
+    [Authorize(Roles = UserRoles.SuperAdmin)]
+    public async Task<ActionResult<AdminCreatedAccountDto>> CreateTeacher(
+        [FromBody] AdminCreateTeacherRequest request, CancellationToken ct)
+    {
+        var adminId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(adminId)) return Unauthorized();
+        try
+        {
+            return Ok(await _provisioning.CreateTeacherAsync(adminId, request, ct));
         }
         catch (InvalidOperationException ex)
         {

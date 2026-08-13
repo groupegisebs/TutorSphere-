@@ -40,6 +40,7 @@ public static class DependencyInjection
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IMessageService, MessageService>();
         services.AddScoped<IAdminUserAccountService, AdminUserAccountService>();
+        services.AddScoped<IAdminUserProvisioningService, AdminUserProvisioningService>();
         services.Configure<PayGatewaySettings>(configuration.GetSection(PayGatewaySettings.SectionName));
         services.Configure<TutorSphere.Application.Common.PlatformBillingOptions>(
             configuration.GetSection(TutorSphere.Application.Common.PlatformBillingOptions.SectionName));

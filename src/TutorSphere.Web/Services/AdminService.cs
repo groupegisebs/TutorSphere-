@@ -182,7 +182,69 @@ public sealed class AdminService
 
     public async Task<List<PendingTeacherItem>> GetPendingTeacherApprovalsAsync()
         => await _api.GetAsync<List<PendingTeacherItem>>("api/admin/pending-teacher-approvals") ?? [];
+
+    public Task<ApiResult<AdminCreatedAccountItem>> CreateParentAccountAsync(
+        string email, string firstName, string lastName, string? phone = null)
+        => _api.PostWithErrorAsync<AdminCreatedAccountItem>("api/admin/parents", new
+        {
+            email,
+            firstName,
+            lastName,
+            phone
+        });
+
+    public Task<ApiResult<AdminCreatedAccountItem>> CreateStudentAccountAsync(
+        string email,
+        string firstName,
+        string lastName,
+        DateTime dateOfBirth,
+        string? phone = null,
+        string? parentEmail = null)
+        => _api.PostWithErrorAsync<AdminCreatedAccountItem>("api/admin/students", new
+        {
+            email,
+            firstName,
+            lastName,
+            dateOfBirth,
+            phone,
+            parentEmail
+        });
+
+    public Task<ApiResult<AdminCreatedAccountItem>> CreateTeacherAccountAsync(
+        string email,
+        string firstName,
+        string lastName,
+        Guid expertGroupId,
+        string? schoolName = null,
+        string? slug = null,
+        string? city = null,
+        string? phone = null,
+        bool activateSchool = true)
+        => _api.PostWithErrorAsync<AdminCreatedAccountItem>("api/admin/teachers", new
+        {
+            email,
+            firstName,
+            lastName,
+            expertGroupId,
+            schoolName,
+            slug,
+            city,
+            phone,
+            activateSchool
+        });
 }
+
+public sealed record AdminCreatedAccountItem(
+    string UserId,
+    string Email,
+    string FullName,
+    string Role,
+    string TemporaryPassword,
+    bool CredentialsSent,
+    Guid? TenantId = null,
+    string? TenantSlug = null,
+    Guid? ExpertGroupId = null,
+    string? ExpertGroupName = null);
 
 public sealed record ExpertGroupItem(
     Guid Id,

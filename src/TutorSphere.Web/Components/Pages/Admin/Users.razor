@@ -19,7 +19,15 @@
                 <h1 class="cc-page-title">@_pageHeading</h1>
                 <p class="cc-page-sub">Recherche avancée, actions et supervision des comptes TutorSphere.</p>
             </div>
-            <a href="admin/users" class="cc-btn">Tous les rôles</a>
+            <div class="d-flex flex-wrap gap-2">
+                @if (_isSuperAdmin)
+                {
+                    <button type="button" class="cc-btn cc-btn-primary" @onclick="OpenCreate">
+                        <i class="bi bi-person-plus"></i> @_createButtonLabel
+                    </button>
+                }
+                <a href="admin/users" class="cc-btn">Tous les rôles</a>
+            </div>
         </div>
 
         <div class="cc-card mb-3">
@@ -34,8 +42,8 @@
                         <option value="all">Tous</option>
                         <option value="Parent">Parent</option>
                         <option value="Student">Élève</option>
-                        <option value="Tutor">Tuteur</option>
-                        <option value="TeachingAssistant">Enseignant</option>
+                        <option value="Tutor">Enseignant (école)</option>
+                        <option value="TeachingAssistant">Assistant</option>
                     </select>
                 </div>
                 <div class="cc-field">
@@ -61,6 +69,123 @@
                 </div>
             </div>
         </div>
+
+        @if (_showCreate)
+        {
+            <div class="cc-card mb-3">
+                <div class="d-flex justify-content-between align-items-start mb-3">
+                    <div>
+                        <h2 class="h5 mb-1">Créer un compte</h2>
+                        <p class="text-muted small mb-0">Un mot de passe temporaire sera généré et envoyé par e-mail.</p>
+                    </div>
+                    <button type="button" class="cc-btn btn-sm" @onclick="CloseCreate">Fermer</button>
+                </div>
+
+                @if (!string.IsNullOrEmpty(_formError))
+                {
+                    <div class="cc-alert cc-alert-danger mb-3"><i class="bi bi-exclamation-circle"></i> @_formError</div>
+                }
+                @if (!string.IsNullOrEmpty(_createdPassword))
+                {
+                    <div class="cc-alert cc-alert-success mb-3">
+                        <i class="bi bi-check-circle"></i>
+                        Compte créé pour <strong>@_createdEmail</strong>.
+                        Mot de passe temporaire :
+                        <code class="user-select-all">@_createdPassword</code>
+                        @if (_createdCredentialsSent)
+                        {
+                            <span> — e-mail envoyé.</span>
+                        }
+                        else
+                        {
+                            <span> — communiquez ce mot de passe manuellement.</span>
+                        }
+                    </div>
+                }
+
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <label class="form-label">Type de compte</label>
+                        <select class="form-select" @bind="_createKind" @bind:after="OnCreateKindChanged">
+                            <option value="Parent">Parent</option>
+                            <option value="Student">Élève</option>
+                            <option value="Teacher">Enseignant (école)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Prénom *</label>
+                        <input class="form-control" @bind="_cFirstName" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Nom *</label>
+                        <input class="form-control" @bind="_cLastName" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Courriel *</label>
+                        <input type="email" class="form-control" @bind="_cEmail" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Téléphone</label>
+                        <input class="form-control" @bind="_cPhone" />
+                    </div>
+
+                    @if (_createKind == "Student")
+                    {
+                        <div class="col-md-4">
+                            <label class="form-label">Date de naissance *</label>
+                            <input type="date" class="form-control" @bind="_cDob" />
+                        </div>
+                        <div class="col-md-8">
+                            <label class="form-label">E-mail du parent (obligatoire si &lt; 14 ans)</label>
+                            <input type="email" class="form-control" @bind="_cParentEmail" placeholder="parent@example.com" />
+                        </div>
+                    }
+
+                    @if (_createKind == "Teacher")
+                    {
+                        <div class="col-md-6">
+                            <label class="form-label">Groupe d'experts *</label>
+                            <select class="form-select" @bind="_cExpertGroupId">
+                                <option value="">— Sélectionner —</option>
+                                @foreach (var g in _expertGroups.Where(x => x.IsActive))
+                                {
+                                    <option value="@g.Id.ToString()">@g.Name @(g.CountryCode is null ? "(International)" : $"({g.CountryCode})")</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Nom de l'école / profil</label>
+                            <input class="form-control" @bind="_cSchoolName" placeholder="Ex. École BEDIGA" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Sous-domaine (slug)</label>
+                            <input class="form-control" @bind="_cSlug" placeholder="auto si vide" />
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Ville</label>
+                            <input class="form-control" @bind="_cCity" />
+                        </div>
+                        <div class="col-md-4 d-flex align-items-end">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="actSchool" @bind="_cActivateSchool" />
+                                <label class="form-check-label" for="actSchool">Activer l'école immédiatement</label>
+                            </div>
+                        </div>
+                    }
+                </div>
+
+                <div class="mt-3 d-flex gap-2">
+                    <button type="button" class="cc-btn cc-btn-primary" disabled="@_saving" @onclick="SaveCreateAsync">
+                        @if (_saving)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        Créer le compte
+                    </button>
+                    <button type="button" class="cc-btn" @onclick="CloseCreate">Annuler</button>
+                </div>
+            </div>
+        }
 
         @if (!string.IsNullOrEmpty(_errorMessage))
         {
@@ -182,6 +307,34 @@
     private string? _openMenuId;
     private List<AdminUserItem> _users = [];
 
+    private bool _showCreate;
+    private bool _saving;
+    private string _createKind = "Parent";
+    private string _cFirstName = "";
+    private string _cLastName = "";
+    private string _cEmail = "";
+    private string? _cPhone;
+    private DateTime? _cDob;
+    private string? _cParentEmail;
+    private string _cExpertGroupId = "";
+    private string? _cSchoolName;
+    private string? _cSlug;
+    private string? _cCity;
+    private bool _cActivateSchool = true;
+    private List<ExpertGroupItem> _expertGroups = [];
+    private string? _formError;
+    private string? _createdPassword;
+    private string? _createdEmail;
+    private bool _createdCredentialsSent;
+
+    private string _createButtonLabel => _roleFilter switch
+    {
+        "Student" => "Nouvel élève",
+        "Tutor" => "Nouvel enseignant",
+        "Parent" => "Nouveau parent",
+        _ => "Créer un compte"
+    };
+
     private IEnumerable<AdminUserItem> Filtered
     {
         get
@@ -210,12 +363,12 @@
         _isSuperAdmin = Auth.IsInRole("SuperAdmin");
 
         var path = new Uri(Navigation.Uri).AbsolutePath.Trim('/').ToLowerInvariant();
-        (_pageHeading, _roleFilter) = path switch
+        (_pageHeading, _roleFilter, _createKind) = path switch
         {
-            "admin/parents" => ("Parents", "Parent"),
-            "admin/students" => ("Élèves", "Student"),
-            "admin/teachers" => ("Enseignants", "TeachingAssistant"),
-            _ => ("Utilisateurs", "all")
+            "admin/parents" => ("Parents", "Parent", "Parent"),
+            "admin/students" => ("Élèves", "Student", "Student"),
+            "admin/teachers" => ("Enseignants", "Tutor", "Teacher"),
+            _ => ("Utilisateurs", "all", "Parent")
         };
 
         var query = new Uri(Navigation.Uri).Query.TrimStart('?');
@@ -247,6 +400,102 @@
         {
             _isLoading = false;
         }
+    }
+
+    private async Task OpenCreate()
+    {
+        _showCreate = true;
+        _formError = null;
+        _createdPassword = null;
+        _createdEmail = null;
+        if (_createKind == "Teacher" && _expertGroups.Count == 0)
+        {
+            try { _expertGroups = await AdminSvc.GetExpertGroupsAsync(); }
+            catch { _expertGroups = []; }
+        }
+    }
+
+    private void CloseCreate()
+    {
+        _showCreate = false;
+        _formError = null;
+    }
+
+    private async Task OnCreateKindChanged()
+    {
+        _formError = null;
+        _createdPassword = null;
+        if (_createKind == "Teacher" && _expertGroups.Count == 0)
+        {
+            try { _expertGroups = await AdminSvc.GetExpertGroupsAsync(); }
+            catch { _expertGroups = []; }
+        }
+    }
+
+    private async Task SaveCreateAsync()
+    {
+        _saving = true;
+        _formError = null;
+        _createdPassword = null;
+        _errorMessage = null;
+        _successMessage = null;
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_cFirstName) || string.IsNullOrWhiteSpace(_cLastName) || string.IsNullOrWhiteSpace(_cEmail))
+            {
+                _formError = "Prénom, nom et courriel sont obligatoires.";
+                return;
+            }
+
+            ApiResult<AdminCreatedAccountItem> result;
+            if (_createKind == "Parent")
+            {
+                result = await AdminSvc.CreateParentAccountAsync(_cEmail, _cFirstName, _cLastName, _cPhone);
+            }
+            else if (_createKind == "Student")
+            {
+                if (_cDob is null)
+                {
+                    _formError = "Date de naissance obligatoire.";
+                    return;
+                }
+                result = await AdminSvc.CreateStudentAccountAsync(
+                    _cEmail, _cFirstName, _cLastName, _cDob.Value, _cPhone, _cParentEmail);
+            }
+            else
+            {
+                if (!Guid.TryParse(_cExpertGroupId, out var groupId))
+                {
+                    _formError = "Sélectionnez un groupe d'experts.";
+                    return;
+                }
+                result = await AdminSvc.CreateTeacherAccountAsync(
+                    _cEmail, _cFirstName, _cLastName, groupId,
+                    _cSchoolName, _cSlug, _cCity, _cPhone, _cActivateSchool);
+            }
+
+            if (!result.IsSuccess || result.Value is null)
+            {
+                _formError = string.IsNullOrWhiteSpace(result.Error) ? "Échec de création." : result.Error;
+                return;
+            }
+
+            var created = result.Value;
+            _createdPassword = created.TemporaryPassword;
+            _createdEmail = created.Email;
+            _createdCredentialsSent = created.CredentialsSent;
+            _successMessage = $"Compte {RoleLabel(created.Role)} créé : {created.FullName}.";
+            _cFirstName = _cLastName = _cEmail = "";
+            _cPhone = _cParentEmail = _cSchoolName = _cSlug = _cCity = null;
+            _cExpertGroupId = "";
+            _cDob = null;
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            _formError = ex.Message;
+        }
+        finally { _saving = false; }
     }
 
     private void ToggleMenu(string id) => _openMenuId = _openMenuId == id ? null : id;
@@ -329,8 +578,8 @@
     {
         "Parent" => "Parent",
         "Student" => "Élève",
-        "Tutor" => "Tuteur",
-        "TeachingAssistant" => "Enseignant",
+        "Tutor" => "Enseignant",
+        "TeachingAssistant" => "Assistant",
         _ => role
     };
 
