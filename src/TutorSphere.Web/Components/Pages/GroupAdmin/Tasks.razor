@@ -1,0 +1,217 @@
+@page "/group-admin/tasks"
+@layout GroupAdminLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService Auth
+@inject ApiClient Api
+
+<PageTitle>Tâches déléguées — Responsable</PageTitle>
+
+<AuthorizeView Roles="GroupManager">
+    <Authorized>
+        <div class="cc-toolbar">
+            <div>
+                <h1 class="cc-page-title">Tâches déléguées</h1>
+                <p class="cc-page-sub">Déléguez à un Expert : profil enseignant, agenda, publication du profil public.</p>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger">@_error</div>
+        }
+        @if (!string.IsNullOrEmpty(_flash))
+        {
+            <div class="alert alert-success">@_flash</div>
+        }
+
+        <div class="cc-card mb-3">
+            <h2 class="cc-card-title">Nouvelle délégation</h2>
+            <div class="row g-2">
+                <div class="col-md-4">
+                    <label class="form-label">Enseignant (tenant)</label>
+                    <select class="form-select" @bind="_teacherId">
+                        <option value="">— Choisir —</option>
+                        @foreach (var t in _teachers)
+                        {
+                            <option value="@t.TenantId">@t.SchoolName</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Expert assigné</label>
+                    <select class="form-select" @bind="_assigneeId">
+                        <option value="">— Choisir —</option>
+                        @foreach (var m in _members)
+                        {
+                            <option value="@m.UserId">@(string.IsNullOrWhiteSpace(m.FullName) ? m.Email : m.FullName)</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Type de tâche</label>
+                    <select class="form-select" @bind="_taskType">
+                        <option value="0">Création / complétion du profil</option>
+                        <option value="1">Organisation de l'agenda</option>
+                        <option value="2">Publication du profil public</option>
+                    </select>
+                </div>
+                <div class="col-12">
+                    <label class="form-label">Notes</label>
+                    <textarea class="form-control" rows="2" @bind="_notes"></textarea>
+                </div>
+            </div>
+            <button type="button" class="cc-btn cc-btn-primary mt-2" disabled="@_busy" @onclick="CreateAsync">Déléguer</button>
+        </div>
+
+        <div class="cc-card">
+            @if (_loading)
+            {
+                <span class="spinner-border"></span>
+            }
+            else if (_tasks.Count == 0)
+            {
+                <p class="text-muted mb-0">Aucune tâche.</p>
+            }
+            else
+            {
+                <table class="cc-table">
+                    <thead>
+                        <tr>
+                            <th>Enseignant</th>
+                            <th>Tâche</th>
+                            <th>Assigné à</th>
+                            <th>Statut</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var t in _tasks)
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@t.TeacherSchoolName</strong>
+                                    @if (t.TeacherIsPublicProfile)
+                                    {
+                                        <span class="cc-pill cc-pill-ok ms-1">Public</span>
+                                    }
+                                </td>
+                                <td>@TaskLabel(t.TaskType)</td>
+                                <td>@(t.AssigneeName ?? t.AssigneeExpertUserId)</td>
+                                <td>@StatusLabel(t.Status)</td>
+                                <td class="text-end">
+                                    @if (t.Status is 0 or 1)
+                                    {
+                                        <button type="button" class="cc-btn btn-sm" @onclick="() => CancelAsync(t.Id)">Annuler</button>
+                                    }
+                                    <a class="cc-btn btn-sm" href="@($"expert/teachers/{t.TeacherTenantId}")">Fiche</a>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <div class="cc-card cc-empty"><p>Accès réservé au Responsable.</p></div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private bool _loading = true;
+    private bool _busy;
+    private string? _error;
+    private string? _flash;
+    private string _teacherId = "";
+    private string _assigneeId = "";
+    private string _taskType = "0";
+    private string? _notes;
+    private List<TaskItem> _tasks = [];
+    private List<TeacherItem> _teachers = [];
+    private List<MemberItem> _members = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _tasks = await Api.GetAsync<List<TaskItem>>("api/group-admin/tasks") ?? [];
+            _teachers = await Api.GetAsync<List<TeacherItem>>("api/expert/teachers") ?? [];
+            var queue = await Api.GetAsync<List<TeacherItem>>("api/expert/approvals-queue") ?? [];
+            foreach (var q in queue)
+            {
+                if (_teachers.All(t => t.TenantId != q.TenantId))
+                    _teachers.Add(q);
+            }
+            _members = await Api.GetAsync<List<MemberItem>>("api/expert/membership/members") ?? [];
+            _error = null;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task CreateAsync()
+    {
+        if (!Guid.TryParse(_teacherId, out var tid) || string.IsNullOrWhiteSpace(_assigneeId))
+        {
+            _error = "Enseignant et Expert requis.";
+            return;
+        }
+        _busy = true;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<TaskItem>("api/group-admin/tasks", new
+            {
+                teacherTenantId = tid,
+                assigneeExpertUserId = _assigneeId,
+                taskType = int.Parse(_taskType),
+                notes = _notes
+            });
+            if (result.Error is not null) { _error = result.Error; return; }
+            _flash = "Tâche déléguée.";
+            _notes = null;
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task CancelAsync(Guid id)
+    {
+        var result = await Api.PostWithErrorAsync<object>($"api/group-admin/tasks/{id}/cancel", new { });
+        if (result.Error is not null) { _error = result.Error; return; }
+        await ReloadAsync();
+    }
+
+    private static string TaskLabel(int t) => t switch
+    {
+        0 => "Profil enseignant",
+        1 => "Agenda",
+        2 => "Publication profil",
+        _ => t.ToString()
+    };
+
+    private static string StatusLabel(int s) => s switch
+    {
+        0 => "Ouverte",
+        1 => "En cours",
+        2 => "Terminée",
+        3 => "Annulée",
+        _ => s.ToString()
+    };
+
+    private sealed record TaskItem(
+        Guid Id, Guid ExpertGroupId, Guid TeacherTenantId, string TeacherSchoolName,
+        int TaskType, int Status, string CreatedByManagerUserId, string AssigneeExpertUserId,
+        string? AssigneeName, string? Notes, DateTime? DueAtUtc, DateTime CreatedAt,
+        DateTime? CompletedAtUtc, string? CompletionNotes, bool TeacherIsPublicProfile);
+
+    private sealed record TeacherItem(Guid TenantId, string SchoolName);
+    private sealed record MemberItem(Guid Id, Guid ExpertGroupId, string UserId, string Email, string FullName);
+}

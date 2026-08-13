@@ -334,6 +334,22 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
                 .OnDelete(DeleteBehavior.SetNull);
         });
 
+        builder.Entity<ExpertDelegatedTask>(e =>
+        {
+            e.Property(t => t.CreatedByManagerUserId).HasMaxLength(450).IsRequired();
+            e.Property(t => t.AssigneeExpertUserId).HasMaxLength(450).IsRequired();
+            e.Property(t => t.Notes).HasMaxLength(2000);
+            e.Property(t => t.CompletionNotes).HasMaxLength(2000);
+            e.HasIndex(t => t.ExpertGroupId);
+            e.HasIndex(t => t.AssigneeExpertUserId);
+            e.HasIndex(t => t.TeacherTenantId);
+            e.HasIndex(t => t.Status);
+            e.HasOne(t => t.ExpertGroup).WithMany().HasForeignKey(t => t.ExpertGroupId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(t => t.TeacherTenant).WithMany().HasForeignKey(t => t.TeacherTenantId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         builder.Entity<ExpertMembershipInvite>(e =>
         {
             e.Property(i => i.InvitedByUserId).HasMaxLength(450).IsRequired();

@@ -1,0 +1,136 @@
+@page "/expert/my-tasks"
+@layout ExpertLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService Auth
+@inject ApiClient Api
+
+<PageTitle>Mes tâches — Expert</PageTitle>
+
+<AuthorizeView Roles="Expert,GroupManager">
+    <Authorized>
+        <div class="cc-toolbar">
+            <div>
+                <h1 class="cc-page-title">Mes tâches déléguées</h1>
+                <p class="cc-page-sub">Missions assignées par le Responsable : profil, agenda, publication.</p>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger">@_error</div>
+        }
+
+        <div class="cc-card">
+            @if (_loading)
+            {
+                <span class="spinner-border"></span>
+            }
+            else if (_tasks.Count == 0)
+            {
+                <p class="text-muted mb-0">Aucune tâche assignée.</p>
+            }
+            else
+            {
+                <table class="cc-table">
+                    <thead>
+                        <tr>
+                            <th>Enseignant</th>
+                            <th>Mission</th>
+                            <th>Statut</th>
+                            <th>Notes</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var t in _tasks)
+                        {
+                            <tr>
+                                <td><strong>@t.TeacherSchoolName</strong></td>
+                                <td>@TaskLabel(t.TaskType)</td>
+                                <td>@StatusLabel(t.Status)</td>
+                                <td class="small">@(t.Notes ?? "—")</td>
+                                <td class="text-end">
+                                    <a class="cc-btn btn-sm" href="@TeacherActionUrl(t)">Ouvrir</a>
+                                    @if (t.Status == 0)
+                                    {
+                                        <button type="button" class="cc-btn btn-sm" @onclick="() => StartAsync(t.Id)">Démarrer</button>
+                                    }
+                                    @if (t.Status is 0 or 1)
+                                    {
+                                        <button type="button" class="cc-btn cc-btn-primary btn-sm" @onclick="() => CompleteAsync(t)">Clôturer</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+    private List<TaskItem> _tasks = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _tasks = await Api.GetAsync<List<TaskItem>>("api/expert/my-tasks") ?? [];
+            _error = null;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private static string TeacherActionUrl(TaskItem t) => $"expert/teachers/{t.TeacherTenantId}";
+
+    private async Task StartAsync(Guid id)
+    {
+        var result = await Api.PostWithErrorAsync<TaskItem>($"api/expert/my-tasks/{id}/start", new { });
+        if (result.Error is not null) { _error = result.Error; return; }
+        await ReloadAsync();
+    }
+
+    private async Task CompleteAsync(TaskItem t)
+    {
+        var notes = t.TaskType == 2
+            ? "Profil public publié."
+            : $"Mission « {TaskLabel(t.TaskType)} » effectuée pour {t.TeacherSchoolName}.";
+        var result = await Api.PostWithErrorAsync<TaskItem>($"api/expert/my-tasks/{t.Id}/complete", new { completionNotes = notes });
+        if (result.Error is not null) { _error = result.Error; return; }
+        await ReloadAsync();
+    }
+
+    private static string TaskLabel(int x) => x switch
+    {
+        0 => "Profil enseignant",
+        1 => "Agenda",
+        2 => "Publication profil",
+        _ => x.ToString()
+    };
+
+    private static string StatusLabel(int s) => s switch
+    {
+        0 => "Ouverte",
+        1 => "En cours",
+        2 => "Terminée",
+        3 => "Annulée",
+        _ => s.ToString()
+    };
+
+    private sealed record TaskItem(
+        Guid Id, Guid ExpertGroupId, Guid TeacherTenantId, string TeacherSchoolName,
+        int TaskType, int Status, string CreatedByManagerUserId, string AssigneeExpertUserId,
+        string? AssigneeName, string? Notes, DateTime? DueAtUtc, DateTime CreatedAt,
+        DateTime? CompletedAtUtc, string? CompletionNotes, bool TeacherIsPublicProfile);
+}

@@ -50,7 +50,7 @@ public class ExpertMembershipController(
     }
 
     [HttpGet("members")]
-    [Authorize(Roles = UserRoles.Expert)]
+    [Authorize(Roles = $"{UserRoles.Expert},{UserRoles.GroupManager}")]
     public async Task<ActionResult<IReadOnlyList<ExpertGroupMemberListItemDto>>> ListMembers(CancellationToken ct)
     {
         if (UserId is null) return Unauthorized();
