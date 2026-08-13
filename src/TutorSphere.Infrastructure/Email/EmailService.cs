@@ -54,6 +54,7 @@ internal static class EmailTemplates
     public const string ExpertMembershipVoteOpened = "EXPERT_MEMBERSHIP_VOTE_OPENED";
     public const string ExpertMembershipRejected = "EXPERT_MEMBERSHIP_REJECTED";
     public const string SupportContact = "SUPPORT_CONTACT";
+    public const string AdminDirectMessage = "ADMIN_DIRECT_MESSAGE";
 }
 
 public class EmailService : IEmailService
@@ -460,6 +461,23 @@ public class EmailService : IEmailService
             ["Message"] = message
         }, ct);
 
+    public Task SendAdminDirectMessageAsync(
+        string to,
+        string firstName,
+        string adminName,
+        string subject,
+        string messageBody,
+        string inboxUrl,
+        CancellationToken ct = default) =>
+        SendAsync(to, EmailTemplates.AdminDirectMessage, new Dictionary<string, string>
+        {
+            ["FirstName"] = firstName,
+            ["AdminName"] = adminName,
+            ["Subject"] = subject,
+            ["Message"] = messageBody,
+            ["InboxUrl"] = inboxUrl
+        }, ct);
+
     private static Dictionary<string, string> LessonBody(
         string recipientName,
         string tutorName,
@@ -488,6 +506,8 @@ public class EmailService : IEmailService
         }
 
         var lang = SupportedLanguageCodes.Normalize(language ?? await ResolveLanguageAsync(to, ct));
+        // Les coordonnées enseignants ne sont jamais exposées dans les templates (uniquement TutorName).
+        TeacherContactPrivacy.StripTeacherContactKeys(bodyData);
         await TrySendAsync(new SendMailRequest(
             ClientCode: _settings.ClientCode,
             TemplateCode: templateCode,

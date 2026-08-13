@@ -1,4 +1,5 @@
 using System.Text.Json;
+using TutorSphere.Application.Common;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.Search;
 using TutorSphere.Application.DTOs.SubscriptionOfferings;
@@ -245,9 +246,10 @@ public class SearchService : ISearchService
                         languages.Add(lang);
                 }
 
-                var blurb = !string.IsNullOrWhiteSpace(t.Description)
-                    ? t.Description
-                    : presentation;
+                var blurb = TeacherContactPrivacy.RedactFromPublicText(
+                    !string.IsNullOrWhiteSpace(t.Description)
+                        ? t.Description
+                        : presentation);
 
                 decimal? minPrice = tenantOfferings.Count > 0 ? tenantOfferings.Min(o => o.Price) : null;
                 decimal? maxPrice = tenantOfferings.Count > 0 ? tenantOfferings.Max(o => o.Price) : null;

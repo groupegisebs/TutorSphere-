@@ -1,3 +1,4 @@
+using TutorSphere.Application.Common;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.Tenants;
 using TutorSphere.Domain.Common;
@@ -169,7 +170,9 @@ public class TenantService : ITenantService
         if (!string.IsNullOrWhiteSpace(request.Name))
             tenant.Name = request.Name.Trim();
         if (request.Description is not null)
-            tenant.Description = request.Description.Trim();
+            tenant.Description = string.IsNullOrWhiteSpace(request.Description)
+                ? null
+                : TeacherContactPrivacy.RedactFromPublicText(request.Description.Trim());
         if (request.City is not null)
             tenant.City = request.City.Trim();
         if (request.Country is not null)

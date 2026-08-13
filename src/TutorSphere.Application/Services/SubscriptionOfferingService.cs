@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using TutorSphere.Application.Common;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.SubscriptionOfferings;
 using TutorSphere.Domain.Entities;
@@ -125,7 +126,7 @@ public class SubscriptionOfferingService : ISubscriptionOfferingService
         {
             TenantId = tenantId,
             Title = request.Title.Trim(),
-            Description = request.Description?.Trim(),
+            Description = TeacherContactPrivacy.RedactFromPublicText(request.Description?.Trim()),
             Subject = request.Subject?.Trim(),
             Price = request.Price,
             Currency = currency,
@@ -161,7 +162,7 @@ public class SubscriptionOfferingService : ISubscriptionOfferingService
         var (frequency, conditions, mode, sessionCount) = NormalizeSchedule(request);
 
         offering.Title = request.Title.Trim();
-        offering.Description = request.Description?.Trim();
+        offering.Description = TeacherContactPrivacy.RedactFromPublicText(request.Description?.Trim());
         offering.Subject = request.Subject?.Trim();
         offering.Price = request.Price;
         offering.Currency = request.Currency.Trim();

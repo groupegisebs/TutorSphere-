@@ -1,4 +1,5 @@
 using System.Text.Json;
+using TutorSphere.Application.Common;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.Branding;
 using TutorSphere.Application.DTOs.ExpertApproval;
@@ -53,7 +54,9 @@ public class BrandingService : IBrandingService
         if (!string.IsNullOrWhiteSpace(request.SecondaryColor))
             branding.SecondaryColor = NormalizeColor(request.SecondaryColor, branding.SecondaryColor);
         if (request.Presentation is not null)
-            branding.Presentation = string.IsNullOrWhiteSpace(request.Presentation) ? null : request.Presentation.Trim();
+            branding.Presentation = string.IsNullOrWhiteSpace(request.Presentation)
+                ? null
+                : TeacherContactPrivacy.RedactFromPublicText(request.Presentation.Trim());
         if (request.Portfolio is not null)
             branding.Portfolio = string.IsNullOrWhiteSpace(request.Portfolio) ? null : request.Portfolio.Trim();
         branding.UpdatedAt = DateTime.UtcNow;
@@ -98,20 +101,22 @@ public class BrandingService : IBrandingService
             .OrderBy(o => o.Title)
             .ToList();
 
+        var brandingDto = branding is null
+            ? new TenantBrandingDto(Guid.Empty, tenant.Id, null, null, "#2563eb", "#1e40af", null, null)
+            : MapToPublicBranding(branding);
+
         var site = new PublicTenantSiteDto(
             tenant.Id,
             tenant.Name,
             tenant.Slug,
-            tenant.Description,
+            TeacherContactPrivacy.RedactFromPublicText(tenant.Description),
             tenant.City,
             tenant.Country,
-            branding is null
-                ? new TenantBrandingDto(Guid.Empty, tenant.Id, null, null, "#2563eb", "#1e40af", null, null)
-                : MapToDto(branding),
+            brandingDto,
             offerings.Select(o => new PublicOfferingDto(
                 o.Id,
                 o.Title,
-                o.Description,
+                TeacherContactPrivacy.RedactFromPublicText(o.Description),
                 o.Subject,
                 o.Price,
                 o.Currency,
@@ -187,7 +192,9 @@ public class BrandingService : IBrandingService
                 CycleLabel(d.Cycle),
                 d.WorkMethod,
                 serviceRows.Where(s => s.DisciplineId == d.Id)
-                    .Select(s => new PublicDisciplineServiceDto(s.Title, s.Description))
+                    .Select(s => new PublicDisciplineServiceDto(
+                        s.Title,
+                        TeacherContactPrivacy.RedactFromPublicText(s.Description)))
                     .ToList())).ToList();
         }
         var offerings = _db.SubscriptionOfferingsForAnyTenant
@@ -232,8 +239,11 @@ public class BrandingService : IBrandingService
             .ToList();
 
         // Presentation = approche / CV narratif; Description école = résumé court.
-        var fullBio = FirstNonEmpty(branding?.Presentation, tenant.Description);
-        var shortBio = FirstNonEmpty(tenant.Description, branding?.Presentation);
+        // Jamais d'e-mail / téléphone enseignant dans les textes publics.
+        var fullBio = TeacherContactPrivacy.RedactFromPublicText(
+            FirstNonEmpty(branding?.Presentation, tenant.Description));
+        var shortBio = TeacherContactPrivacy.RedactFromPublicText(
+            FirstNonEmpty(tenant.Description, branding?.Presentation));
 
         var publicOfferings = offerings.Select(o =>
         {
@@ -241,7 +251,7 @@ public class BrandingService : IBrandingService
             return new PublicOfferingDto(
                 o.Id,
                 o.Title,
-                o.Description,
+                TeacherContactPrivacy.RedactFromPublicText(o.Description),
                 string.IsNullOrWhiteSpace(o.Subject)
                     ? ExtractSubjects(o.Subject, o.Title).FirstOrDefault()
                     : o.Subject,
@@ -528,6 +538,15 @@ public class BrandingService : IBrandingService
         branding.SecondaryColor,
         branding.Presentation,
         branding.Portfolio);
+
+    private static TenantBrandingDto MapToPublicBranding(TenantBranding branding)
+    {
+        var dto = MapToDto(branding);
+        return dto with
+        {
+            Presentation = TeacherContactPrivacy.RedactFromPublicText(dto.Presentation)
+        };
+    }
 
     private static string NormalizeColor(string? color, string fallback)
     {

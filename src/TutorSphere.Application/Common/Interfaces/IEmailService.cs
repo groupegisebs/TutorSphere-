@@ -166,4 +166,14 @@ public interface IEmailService
         string subject,
         string message,
         CancellationToken ct = default);
+
+    /// <summary>Copie e-mail d'un message interne envoyé par un admin plateforme.</summary>
+    Task SendAdminDirectMessageAsync(
+        string to,
+        string firstName,
+        string adminName,
+        string subject,
+        string messageBody,
+        string inboxUrl,
+        CancellationToken ct = default);
 }
