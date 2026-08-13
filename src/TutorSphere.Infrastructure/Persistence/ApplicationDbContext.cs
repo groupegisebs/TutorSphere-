@@ -307,6 +307,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
 
         builder.Entity<Student>(e =>
         {
+            e.Property(s => s.Country).HasMaxLength(2);
             e.HasOne(s => s.Tenant).WithMany(t => t.Students).HasForeignKey(s => s.TenantId)
                 .OnDelete(DeleteBehavior.Restrict);
             e.HasOne(s => s.Parent).WithMany(p => p.Children).HasForeignKey(s => s.ParentProfileId)

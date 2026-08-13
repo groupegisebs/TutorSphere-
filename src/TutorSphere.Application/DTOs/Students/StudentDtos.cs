@@ -20,7 +20,8 @@ public record StudentDto(
     bool IsActive,
     DateTime CreatedAt,
     bool HasLoginAccess = false,
-    string? LoginAccessCode = null);
+    string? LoginAccessCode = null,
+    string? Country = null);
 
 public record CreateStudentRequest(
     string FirstName,
@@ -52,4 +53,5 @@ public record UpdateMyStudentProfileRequest(
     string FirstName,
     string LastName,
     string? Phone,
-    DateTime? DateOfBirth);
+    DateTime? DateOfBirth,
+    string? Country = null);

@@ -19,6 +19,10 @@ public class Student : BaseEntity, ITenantEntity
     /// </summary>
     public string? LoginAccessCode { get; set; }
     public string? Phone { get; set; }
+
+    /// <summary>Code ISO 3166-1 alpha-2 — pays de l'élève pour la visibilité des fiches enseignants.</summary>
+    public string? Country { get; set; }
+
     public string? SchoolLevel { get; set; }
     public string? SchoolName { get; set; }
     public string? Subjects { get; set; }

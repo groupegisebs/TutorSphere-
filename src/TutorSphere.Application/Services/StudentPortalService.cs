@@ -6,6 +6,7 @@ using TutorSphere.Application.DTOs.LessonReports;
 using TutorSphere.Application.DTOs.Lessons;
 using TutorSphere.Application.DTOs.Messages;
 using TutorSphere.Application.DTOs.Students;
+using TutorSphere.Domain.Common;
 using TutorSphere.Domain.Entities;
 using TutorSphere.Domain.Enums;
 
@@ -39,6 +40,9 @@ public interface IStudentPortalService
     Task<DocumentDto?> GetDocumentForStudentAsync(string userId, Guid documentId, CancellationToken ct = default);
     Task<IReadOnlyList<LessonReportDto>> GetReportsAsync(string userId, CancellationToken ct = default);
     Task<IReadOnlyList<ConversationDto>> GetTeacherContactsAsync(string userId, CancellationToken ct = default);
+
+    /// <summary>Pays effectif pour l'annuaire (élève, sinon parent lié).</summary>
+    Task<string?> GetViewerCountryAsync(string userId, CancellationToken ct = default);
 }
 
 public class StudentPortalService : IStudentPortalService
@@ -104,6 +108,7 @@ public class StudentPortalService : IStudentPortalService
                 FirstName = request.FirstName.Trim(),
                 LastName = request.LastName.Trim(),
                 Phone = string.IsNullOrWhiteSpace(request.Phone) ? null : request.Phone.Trim(),
+                Country = NormalizeCountry(request.Country),
                 DateOfBirth = DateTime.SpecifyKind(dob, DateTimeKind.Utc),
                 IsActive = true
             };
@@ -115,6 +120,8 @@ public class StudentPortalService : IStudentPortalService
         student.FirstName = request.FirstName.Trim();
         student.LastName = request.LastName.Trim();
         student.Phone = string.IsNullOrWhiteSpace(request.Phone) ? null : request.Phone.Trim();
+        if (request.Country is not null)
+            student.Country = NormalizeCountry(request.Country);
 
         if (request.DateOfBirth.HasValue)
         {
@@ -127,6 +134,28 @@ public class StudentPortalService : IStudentPortalService
         student.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync(ct);
         return MapStudent(student);
+    }
+
+    public Task<string?> GetViewerCountryAsync(string userId, CancellationToken ct = default)
+    {
+        var student = ResolveStudent(userId);
+        if (student is null)
+            return Task.FromResult<string?>(null);
+
+        var own = NormalizeCountry(student.Country);
+        if (own is not null)
+            return Task.FromResult<string?>(own);
+
+        if (student.ParentProfileId is Guid pid)
+        {
+            var parentCountry = _db.ParentProfilesForAnyTenant
+                .Where(p => p.Id == pid)
+                .Select(p => p.Country)
+                .FirstOrDefault();
+            return Task.FromResult(NormalizeCountry(parentCountry));
+        }
+
+        return Task.FromResult<string?>(null);
     }
 
     public Task<IReadOnlyList<LessonDto>> GetLessonsAsync(
@@ -424,12 +453,18 @@ public class StudentPortalService : IStudentPortalService
     private StudentDto MapStudent(Student s)
     {
         string? parentName = null;
+        string? parentCountry = null;
         if (s.ParentProfileId is Guid pid)
         {
             var parent = _db.ParentProfilesForAnyTenant.FirstOrDefault(p => p.Id == pid);
             if (parent is not null)
+            {
                 parentName = $"{parent.FirstName} {parent.LastName}".Trim();
+                parentCountry = parent.Country;
+            }
         }
+
+        var country = NormalizeCountry(s.Country) ?? NormalizeCountry(parentCountry);
 
         return new StudentDto(
             s.Id,
@@ -451,7 +486,14 @@ public class StudentPortalService : IStudentPortalService
             s.IsActive,
             s.CreatedAt,
             !string.IsNullOrEmpty(s.UserId),
-            s.LoginAccessCode);
+            s.LoginAccessCode,
+            country);
+    }
+
+    private static string? NormalizeCountry(string? country)
+    {
+        var code = ProfileVisibility.NormalizeCode(country);
+        return code.Length == 2 ? code : null;
     }
 
     private static IReadOnlyList<string> ParseSubjects(string? raw) =>

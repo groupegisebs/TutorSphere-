@@ -15,9 +15,21 @@
     </div>
 </div>
 
+@if (string.IsNullOrWhiteSpace(_viewerCountry))
+{
+    <div class="alert alert-info">
+        <i class="bi bi-geo-alt me-2"></i>@L["Search_CountryRequired"]
+    </div>
+}
+
 <div class="search-layout">
     <aside class="search-filters">
         <h2><i class="bi bi-sliders"></i> @L["Search_Filters"]</h2>
+        <div class="mb-3">
+            <label class="form-label">@L["Search_ViewerCountry"]</label>
+            <CountrySelect Value="_viewerCountry" ValueChanged="OnViewerCountryChanged" />
+            <small class="form-hint">@L["Search_ViewerCountryHint"]</small>
+        </div>
         <div class="mb-3">
             <label class="form-label">@L["Label_Subject"]</label>
             <input class="form-control" @bind="_subject" placeholder="@L["Placeholder_Subject"]" />
@@ -25,11 +37,6 @@
         <div class="mb-3">
             <label class="form-label">@L["Label_City"]</label>
             <input class="form-control" @bind="_city" placeholder="@L["Placeholder_City"]" />
-        </div>
-        <div class="mb-3">
-            <label class="form-label">@L["Search_ViewerCountry"]</label>
-            <CountrySelect Value="_viewerCountry" ValueChanged="OnViewerCountryChanged" />
-            <small class="form-hint">@L["Search_ViewerCountryHint"]</small>
         </div>
         <div class="row g-2 mb-3">
             <div class="col-6">
@@ -45,7 +52,7 @@
             <label class="form-label">@L["Label_Level"]</label>
             <input class="form-control" @bind="_level" placeholder="@L["Placeholder_Level"]" />
         </div>
-        <button class="btn btn-primary w-100" @onclick="SearchAsync" disabled="@_loading">
+        <button class="btn btn-primary w-100" @onclick="SearchAsync" disabled="@(_loading || string.IsNullOrWhiteSpace(_viewerCountry))">
             @if (_loading)
             {
                 <span class="spinner-border spinner-border-sm me-2" role="status"></span>
@@ -117,24 +124,28 @@
     private async Task OnViewerCountryChanged(string? code)
     {
         _viewerCountry = code;
-        if (string.IsNullOrWhiteSpace(code))
-            return;
-
-        try
+        if (!string.IsNullOrWhiteSpace(code))
         {
-            var me = await Api.GetAsync<ParentMeUpdateDto>("api/parent/me");
-            if (me is null) return;
-            await Api.PutAsync<object>("api/parent/me", new
+            try
             {
-                firstName = me.FirstName,
-                lastName = me.LastName,
-                email = me.Email,
-                phone = me.Phone,
-                country = code
-            });
-            await ParentProfile.EnsureLoadedAsync(forceReload: true);
+                var me = await Api.GetAsync<ParentMeUpdateDto>("api/parent/me");
+                if (me is not null)
+                {
+                    await Api.PutAsync<object>("api/parent/me", new
+                    {
+                        firstName = me.FirstName,
+                        lastName = me.LastName,
+                        email = me.Email,
+                        phone = me.Phone,
+                        country = code
+                    });
+                    await ParentProfile.EnsureLoadedAsync(forceReload: true);
+                }
+            }
+            catch { /* filtre local même si la sauvegarde échoue */ }
         }
-        catch { /* filtre local même si la sauvegarde échoue */ }
+
+        await SearchAsync();
     }
 
     private sealed record ParentMeUpdateDto(
@@ -150,15 +161,22 @@
         _error   = null;
         try
         {
-            var parts = new List<string>();
+            if (string.IsNullOrWhiteSpace(_viewerCountry))
+            {
+                _results = [];
+                return;
+            }
+
+            var parts = new List<string>
+            {
+                $"viewerCountry={Uri.EscapeDataString(_viewerCountry.Trim())}"
+            };
             if (!string.IsNullOrWhiteSpace(_subject))   parts.Add($"subject={Uri.EscapeDataString(_subject.Trim())}");
             if (!string.IsNullOrWhiteSpace(_city))      parts.Add($"city={Uri.EscapeDataString(_city.Trim())}");
             if (!string.IsNullOrWhiteSpace(_level))     parts.Add($"level={Uri.EscapeDataString(_level.Trim())}");
             if (_minPrice.HasValue)                     parts.Add($"minPrice={_minPrice.Value}");
             if (_maxPrice.HasValue)                     parts.Add($"maxPrice={_maxPrice.Value}");
-            if (!string.IsNullOrWhiteSpace(_viewerCountry))
-                parts.Add($"viewerCountry={Uri.EscapeDataString(_viewerCountry.Trim())}");
-            var query = parts.Count == 0 ? "" : "?" + string.Join("&", parts);
+            var query = "?" + string.Join("&", parts);
 
             var result = await Api.GetAsync<List<TutorSearchResultDto>>($"api/search/tutors{query}");
             _results = result ?? [];

@@ -75,13 +75,16 @@ public class SearchService : ISearchService
             query = query.Where(t => t.Language.ToLower() == language);
         }
 
-        var tenants = query.ToList();
-        if (!string.IsNullOrWhiteSpace(filters.ViewerCountry))
+        // Annuaire : le pays du spectateur est obligatoire (parent / élève / recherche publique).
+        if (string.IsNullOrWhiteSpace(filters.ViewerCountry)
+            || ProfileVisibility.NormalizeCode(filters.ViewerCountry).Length != 2)
         {
-            tenants = tenants
-                .Where(t => ProfileVisibility.IsVisibleTo(t.VisibleCountryCodes, t.Country, filters.ViewerCountry))
-                .ToList();
+            return Task.FromResult<IReadOnlyList<TutorSearchResultDto>>([]);
         }
+
+        var tenants = query.ToList()
+            .Where(t => ProfileVisibility.IsVisibleTo(t.VisibleCountryCodes, t.Country, filters.ViewerCountry))
+            .ToList();
 
         var offeringsByTenant = offerings
             .GroupBy(o => o.TenantId)

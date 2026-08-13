@@ -1,6 +1,7 @@
 @page "/student/search"
 @layout StudentLayout
 @rendermode InteractiveServer
+@using TutorSphere.Web.Common
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
 
@@ -48,9 +49,21 @@ else if (_profile is null)
     </div>
 }
 
+@if (string.IsNullOrWhiteSpace(_viewerCountry))
+{
+    <div class="alert alert-info">
+        <i class="bi bi-geo-alt me-2"></i>@L["Search_CountryRequired"]
+    </div>
+}
+
 <div class="search-layout">
     <aside class="search-filters">
         <h2><i class="bi bi-sliders"></i> @L["Search_Filters"]</h2>
+        <div class="mb-3">
+            <label class="form-label">@L["Search_ViewerCountry"]</label>
+            <CountrySelect Value="_viewerCountry" ValueChanged="OnViewerCountryChanged" />
+            <small class="form-hint">@L["Search_ViewerCountryHint"]</small>
+        </div>
         <div class="mb-3">
             <label class="form-label">@L["Label_Subject"]</label>
             <input class="form-control" @bind="_subject" placeholder="@L["Placeholder_Subject"]" />
@@ -73,7 +86,7 @@ else if (_profile is null)
             <label class="form-label">@L["Label_Level"]</label>
             <input class="form-control" @bind="_level" placeholder="@L["Placeholder_Level"]" />
         </div>
-        <button class="btn btn-primary w-100" @onclick="SearchAsync" disabled="@_loading">
+        <button class="btn btn-primary w-100" @onclick="SearchAsync" disabled="@(_loading || string.IsNullOrWhiteSpace(_viewerCountry))">
             @if (_loading)
             {
                 <span class="spinner-border spinner-border-sm me-2" role="status"></span>
@@ -124,6 +137,7 @@ else if (_profile is null)
     private string _subject = "";
     private string _city = "";
     private string _level = "";
+    private string? _viewerCountry;
     private decimal? _minPrice;
     private decimal? _maxPrice;
     private bool _loading = true;
@@ -133,8 +147,39 @@ else if (_profile is null)
 
     protected override async Task OnInitializedAsync()
     {
-        try { _profile = await Api.GetAsync<StudentDto>("api/students/me"); }
+        try
+        {
+            _profile = await Api.GetAsync<StudentDto>("api/students/me");
+            _viewerCountry = _profile?.Country;
+        }
         catch { _profile = null; }
+        await SearchAsync();
+    }
+
+    private async Task OnViewerCountryChanged(string? code)
+    {
+        _viewerCountry = code;
+        if (string.IsNullOrWhiteSpace(code) || _profile is null)
+        {
+            await SearchAsync();
+            return;
+        }
+
+        try
+        {
+            await Api.PutAsync<object>("api/students/me", new
+            {
+                firstName = _profile.FirstName,
+                lastName = _profile.LastName,
+                phone = _profile.Phone,
+                dateOfBirth = _profile.DateOfBirth,
+                country = code
+            });
+            _profile = await Api.GetAsync<StudentDto>("api/students/me") ?? _profile;
+            _viewerCountry = _profile?.Country ?? code;
+        }
+        catch { /* filtre local */ }
+
         await SearchAsync();
     }
 
@@ -144,13 +189,22 @@ else if (_profile is null)
         _error = null;
         try
         {
-            var parts = new List<string>();
+            if (string.IsNullOrWhiteSpace(_viewerCountry))
+            {
+                _results = [];
+                return;
+            }
+
+            var parts = new List<string>
+            {
+                $"viewerCountry={Uri.EscapeDataString(_viewerCountry.Trim())}"
+            };
             if (!string.IsNullOrWhiteSpace(_subject)) parts.Add($"subject={Uri.EscapeDataString(_subject.Trim())}");
             if (!string.IsNullOrWhiteSpace(_city)) parts.Add($"city={Uri.EscapeDataString(_city.Trim())}");
             if (!string.IsNullOrWhiteSpace(_level)) parts.Add($"level={Uri.EscapeDataString(_level.Trim())}");
             if (_minPrice.HasValue) parts.Add($"minPrice={_minPrice.Value}");
             if (_maxPrice.HasValue) parts.Add($"maxPrice={_maxPrice.Value}");
-            var query = parts.Count == 0 ? "" : "?" + string.Join("&", parts);
+            var query = "?" + string.Join("&", parts);
 
             var result = await Api.GetAsync<List<TutorSearchResultDto>>($"api/search/tutors{query}");
             _results = result ?? [];
@@ -162,4 +216,27 @@ else if (_profile is null)
         }
         finally { _loading = false; }
     }
+
+    private sealed record StudentDto(
+        Guid Id,
+        string FirstName,
+        string LastName,
+        string? Email,
+        string? Phone,
+        DateTime? DateOfBirth,
+        int? Age,
+        bool IsMinor,
+        bool IsAutonomous,
+        Guid? ParentProfileId,
+        string? ParentName,
+        string? PhotoUrl,
+        string? SchoolLevel,
+        string? SchoolName,
+        IReadOnlyList<string>? Subjects,
+        string? Notes,
+        bool IsActive,
+        DateTime CreatedAt,
+        bool HasLoginAccess = false,
+        string? LoginAccessCode = null,
+        string? Country = null);
 }

@@ -45,7 +45,7 @@ public static class ProfileVisibility
     {
         var viewer = NormalizeCode(viewerCountry);
         if (viewer.Length != 2)
-            return true; // pas de pays spectateur → pas de filtre géographique
+            return true; // pas de pays spectateur → pas de filtre (ex. fiche directe)
 
         var visible = Parse(visibleCountryCodesCsv);
         if (visible.Count == 0)

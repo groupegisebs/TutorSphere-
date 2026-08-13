@@ -667,7 +667,8 @@ public class ParentService : IParentService
         s.IsActive,
         s.CreatedAt,
         !string.IsNullOrEmpty(s.UserId),
-        s.LoginAccessCode);
+        s.LoginAccessCode,
+        s.Country);
 
     private static ParentDashboardChildDto MapDashboardChild(
         Student student,

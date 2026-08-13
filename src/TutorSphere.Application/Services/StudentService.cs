@@ -182,7 +182,9 @@ public class StudentService : IStudentService
         s.Notes,
         s.IsActive,
         s.CreatedAt,
-        !string.IsNullOrEmpty(s.UserId));
+        !string.IsNullOrEmpty(s.UserId),
+        null,
+        s.Country);
 
     private static LessonDto MapLessonToDto(Lesson l) => new(
         l.Id,
