@@ -52,6 +52,7 @@ public static class DependencyInjection
         services.AddScoped<IExpertGovernanceAuditService, ExpertGovernanceAuditService>();
         services.AddScoped<IExpertWorkspaceService, ExpertWorkspaceService>();
         services.AddScoped<ITeacherDocumentService, TeacherDocumentService>();
+        services.AddScoped<ITeacherSchoolAdminService, TeacherSchoolAdminService>();
         return services;
     }
 }

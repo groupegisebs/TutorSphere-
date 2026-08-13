@@ -6,6 +6,7 @@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject AdminService AdminSvc
 @inject AuthService Auth
+@inject ApiClient Api
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
 @inject IStringLocalizer<SharedResources> L
@@ -169,6 +170,12 @@
                             <div class="form-check">
                                 <input class="form-check-input" type="checkbox" id="actSchool" @bind="_cActivateSchool" />
                                 <label class="form-check-label" for="actSchool">Activer l'école immédiatement</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4 d-flex align-items-end">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="pubProfile" @bind="_cPublishPublic" />
+                                <label class="form-check-label" for="pubProfile">Créer / publier la fiche publique</label>
                             </div>
                         </div>
 
@@ -372,6 +379,7 @@
     private string? _cSlug;
     private string? _cCity;
     private bool _cActivateSchool = true;
+    private bool _cPublishPublic = true;
     private bool _cCreateOffer;
     private string _cOfferTitle = "";
     private string? _cOfferDescription;
@@ -567,14 +575,25 @@
             _createdPassword = created.TemporaryPassword;
             _createdEmail = created.Email;
             _createdCredentialsSent = created.CredentialsSent;
-            _successMessage = created.OfferingId is not null
-                ? $"Compte {RoleLabel(created.Role)} créé : {created.FullName} (offre de service créée)."
+
+            var extras = new List<string>();
+            if (created.OfferingId is not null)
+                extras.Add("offre créée");
+            if (_createKind == "Teacher" && _cPublishPublic && created.TenantId is Guid tid)
+            {
+                var pub = await Api.PostWithErrorAsync<object>($"api/admin/teachers/{tid}/publish-profile", new { });
+                extras.Add(pub.IsSuccess ? "fiche publique publiée" : "fiche publique non publiée");
+            }
+
+            _successMessage = extras.Count > 0
+                ? $"Compte {RoleLabel(created.Role)} créé : {created.FullName} ({string.Join(", ", extras)})."
                 : $"Compte {RoleLabel(created.Role)} créé : {created.FullName}.";
             _cFirstName = _cLastName = _cEmail = "";
             _cPhone = _cParentEmail = _cSchoolName = _cSlug = _cCity = null;
             _cExpertGroupId = "";
             _cDob = null;
             _cCreateOffer = false;
+            _cPublishPublic = true;
             _cOfferTitle = "";
             _cOfferDescription = _cOfferSubject = _cOfferFrequency = null;
             _cOfferPrice = 0;

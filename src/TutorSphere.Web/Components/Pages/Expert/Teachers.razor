@@ -101,6 +101,78 @@
                     else
                     {
                         <div class="row g-3 mt-2">
+                            <div class="col-12">
+                                <div class="cc-card border mb-0">
+                                    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+                                        <h3 class="h6 mb-0">Fiche enseignant / publique</h3>
+                                        @if (_school is not null)
+                                        {
+                                            <span class="cc-pill @(_school.IsPublicProfile ? "cc-pill-ok" : "cc-pill-type")">
+                                                @(_school.IsPublicProfile ? "Publiée" : "Non publiée")
+                                            </span>
+                                        }
+                                    </div>
+                                    @if (!string.IsNullOrEmpty(_schoolError))
+                                    {
+                                        <div class="alert alert-danger py-2">@_schoolError</div>
+                                    }
+                                    @if (!string.IsNullOrEmpty(_schoolSuccess))
+                                    {
+                                        <div class="alert alert-success py-2">@_schoolSuccess</div>
+                                    }
+                                    @if (_school is not null)
+                                    {
+                                        <div class="row g-2">
+                                            <div class="col-md-4">
+                                                <label class="form-label small">Prénom</label>
+                                                <input class="form-control" @bind="_sFirstName" />
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label small">Nom</label>
+                                                <input class="form-control" @bind="_sLastName" />
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label small">Téléphone</label>
+                                                <input class="form-control" @bind="_sPhone" />
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label small">École / profil</label>
+                                                <input class="form-control" @bind="_sSchoolName" />
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label small">Ville</label>
+                                                <input class="form-control" @bind="_sCity" />
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label small">Pays</label>
+                                                <input class="form-control" @bind="_sCountry" maxlength="2" />
+                                            </div>
+                                            <div class="col-12">
+                                                <label class="form-label small">Description</label>
+                                                <textarea class="form-control" rows="2" @bind="_sDescription"></textarea>
+                                            </div>
+                                        </div>
+                                        <div class="mt-2 d-flex gap-2 flex-wrap">
+                                            <button type="button" class="cc-btn cc-btn-primary btn-sm" disabled="@_schoolBusy" @onclick="SaveSchoolAsync">
+                                                Enregistrer
+                                            </button>
+                                            @if (!_school.IsPublicProfile)
+                                            {
+                                                <button type="button" class="cc-btn btn-sm" disabled="@_schoolBusy" @onclick="PublishSchoolAsync">
+                                                    <i class="bi bi-globe2"></i> Créer fiche publique
+                                                </button>
+                                            }
+                                            else
+                                            {
+                                                <a class="cc-btn btn-sm" href="@($"/school/{_school.Slug}")" target="_blank" rel="noopener">
+                                                    Voir fiche publique
+                                                </a>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+
                             <div class="col-lg-6">
                                 <h3 class="h6">@L["ExpertTeachers_MaterialsTitle"]</h3>
                                 @if (_materials.Count == 0)
@@ -286,6 +358,7 @@
     private List<TeacherMaterialItem> _materials = [];
     private List<ExpertRemarkItem> _remarks = [];
     private List<TeacherOfferingItem> _offerings = [];
+    private TeacherSchoolVm? _school;
 
     private int _formCategory;
     private string _formRelatedKey = "";
@@ -304,6 +377,17 @@
     private bool _offerBusy;
     private string? _offerError;
     private string? _offerSuccess;
+
+    private string _sFirstName = "";
+    private string _sLastName = "";
+    private string? _sPhone;
+    private string _sSchoolName = "";
+    private string? _sDescription;
+    private string? _sCity;
+    private string? _sCountry;
+    private bool _schoolBusy;
+    private string? _schoolError;
+    private string? _schoolSuccess;
 
     protected override async Task OnInitializedAsync()
     {
@@ -331,6 +415,8 @@
         _remarkSuccess = null;
         _offerError = null;
         _offerSuccess = null;
+        _schoolError = null;
+        _schoolSuccess = null;
         _formCategory = 0;
         _formRelatedKey = "";
         _formMessage = "";
@@ -341,6 +427,17 @@
             _materials = await Api.GetAsync<List<TeacherMaterialItem>>($"api/expert/teachers/{tenantId}/materials") ?? [];
             _remarks = await Api.GetAsync<List<ExpertRemarkItem>>($"api/expert/teachers/{tenantId}/remarks") ?? [];
             _offerings = await Api.GetAsync<List<TeacherOfferingItem>>($"api/expert/teachers/{tenantId}/offerings") ?? [];
+            _school = await Api.GetAsync<TeacherSchoolVm>($"api/expert/teachers/{tenantId}/school");
+            if (_school is not null)
+            {
+                _sFirstName = _school.FirstName;
+                _sLastName = _school.LastName;
+                _sPhone = _school.Phone;
+                _sSchoolName = _school.SchoolName;
+                _sDescription = _school.Description;
+                _sCity = _school.City;
+                _sCountry = _school.Country;
+            }
         }
         catch (Exception ex) { _error = ex.Message; }
         finally { _detailLoading = false; }
@@ -352,6 +449,7 @@
         _materials = [];
         _remarks = [];
         _offerings = [];
+        _school = null;
     }
 
     private async Task CreateOfferingAsync()
@@ -393,6 +491,60 @@
         }
         catch (Exception ex) { _offerError = ex.Message; }
         finally { _offerBusy = false; }
+    }
+
+    private async Task SaveSchoolAsync()
+    {
+        if (_selectedTenantId is not Guid tenantId) return;
+        _schoolBusy = true;
+        _schoolError = null;
+        _schoolSuccess = null;
+        try
+        {
+            var result = await Api.PutWithErrorAsync<TeacherSchoolVm>($"api/expert/teachers/{tenantId}/school", new
+            {
+                firstName = _sFirstName,
+                lastName = _sLastName,
+                phone = _sPhone,
+                schoolName = _sSchoolName,
+                description = _sDescription,
+                city = _sCity,
+                country = _sCountry
+            });
+            if (!result.IsSuccess || result.Value is null)
+            {
+                _schoolError = result.Error ?? "Échec de l'enregistrement.";
+                return;
+            }
+            _school = result.Value;
+            _schoolSuccess = "Fiche enseignant mise à jour.";
+            _teachers = await Api.GetAsync<List<MonitoredTeacherItem>>("api/expert/teachers") ?? _teachers;
+        }
+        catch (Exception ex) { _schoolError = ex.Message; }
+        finally { _schoolBusy = false; }
+    }
+
+    private async Task PublishSchoolAsync()
+    {
+        if (_selectedTenantId is not Guid tenantId) return;
+        _schoolBusy = true;
+        _schoolError = null;
+        _schoolSuccess = null;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<PublishSchoolResult>($"api/expert/teachers/{tenantId}/publish-profile", new { });
+            if (!result.IsSuccess)
+            {
+                _schoolError = result.Error ?? "Échec de la publication.";
+                return;
+            }
+            _school = await Api.GetAsync<TeacherSchoolVm>($"api/expert/teachers/{tenantId}/school") ?? _school;
+            _schoolSuccess = result.Value is not null
+                ? $"Fiche publique créée : {result.Value.PublicPath}"
+                : "Fiche publique publiée.";
+        }
+        catch (Exception ex) { _schoolError = ex.Message; }
+        finally { _schoolBusy = false; }
     }
 
     private void PrepareRemarkFor(TeacherMaterialItem m)
@@ -521,4 +673,30 @@
         string? Frequency,
         bool IsActive,
         string Mode);
+
+    private sealed record TeacherSchoolVm(
+        Guid TenantId,
+        string OwnerUserId,
+        string OwnerEmail,
+        string FirstName,
+        string LastName,
+        string? Phone,
+        string SchoolName,
+        string Slug,
+        string? Description,
+        string? City,
+        string? Country,
+        string Language,
+        string Currency,
+        IReadOnlyList<string> VisibleCountryCodes,
+        bool IsPublicProfile,
+        bool IsActiveSchool,
+        bool HasValidLicense,
+        bool OnboardingCompleted,
+        DateTime? LicenseExpiresAt,
+        int ExpertApprovalStatus,
+        Guid? ApprovedByExpertGroupId,
+        string? ApprovedByExpertGroupName);
+
+    private sealed record PublishSchoolResult(Guid TenantId, string Slug, bool IsPublicProfile, string PublicPath);
 }

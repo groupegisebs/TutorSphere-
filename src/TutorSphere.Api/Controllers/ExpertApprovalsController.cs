@@ -20,6 +20,7 @@ public class ExpertApprovalsController : ControllerBase
     private readonly IAuthService _authService;
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly ISubscriptionOfferingService _offerings;
+    private readonly ITeacherSchoolAdminService _teacherSchools;
 
     public ExpertApprovalsController(
         IExpertApprovalService approvals,
@@ -27,7 +28,8 @@ public class ExpertApprovalsController : ControllerBase
         IExpertDashboardService dashboard,
         IAuthService authService,
         UserManager<ApplicationUser> userManager,
-        ISubscriptionOfferingService offerings)
+        ISubscriptionOfferingService offerings,
+        ITeacherSchoolAdminService teacherSchools)
     {
         _approvals = approvals;
         _monitoring = monitoring;
@@ -35,6 +37,7 @@ public class ExpertApprovalsController : ControllerBase
         _authService = authService;
         _userManager = userManager;
         _offerings = offerings;
+        _teacherSchools = teacherSchools;
     }
 
     private string? UserId => User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -416,6 +419,108 @@ public class ExpertApprovalsController : ControllerBase
             _monitoring.EnsureCanMonitorTeacher(tenantId, UserId);
             var created = await _offerings.CreateForTenantAsync(tenantId, request, ct);
             return Ok(created);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpGet("teachers/{tenantId:guid}/school")]
+    public async Task<ActionResult<TutorSphere.Application.DTOs.Admin.TeacherSchoolRecordDto>> GetTeacherSchool(
+        Guid tenantId, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        try
+        {
+            _teacherSchools.EnsureExpertCanManageTeacher(tenantId, UserId);
+            var dto = await _teacherSchools.GetByTenantIdAsync(tenantId, ct);
+            if (dto is null) return NotFound(new { error = "École introuvable." });
+
+            if (!string.IsNullOrWhiteSpace(dto.OwnerUserId))
+            {
+                var user = await _userManager.FindByIdAsync(dto.OwnerUserId);
+                if (user is not null)
+                {
+                    dto = dto with
+                    {
+                        FirstName = user.FirstName,
+                        LastName = user.LastName,
+                        Phone = user.PhoneNumber,
+                        OwnerEmail = user.Email ?? dto.OwnerEmail
+                    };
+                }
+            }
+            return Ok(dto);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPut("teachers/{tenantId:guid}/school")]
+    public async Task<ActionResult<TutorSphere.Application.DTOs.Admin.TeacherSchoolRecordDto>> UpdateTeacherSchool(
+        Guid tenantId,
+        [FromBody] TutorSphere.Application.DTOs.Admin.UpdateTeacherSchoolRecordRequest? request,
+        CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        if (request is null) return BadRequest(new { error = "Requête invalide." });
+        try
+        {
+            _teacherSchools.EnsureExpertCanManageTeacher(tenantId, UserId);
+            var current = await _teacherSchools.GetByTenantIdAsync(tenantId, ct)
+                ?? throw new InvalidOperationException("École introuvable.");
+
+            if (!string.IsNullOrWhiteSpace(current.OwnerUserId))
+            {
+                var user = await _userManager.FindByIdAsync(current.OwnerUserId);
+                if (user is not null)
+                {
+                    if (!string.IsNullOrWhiteSpace(request.FirstName))
+                        user.FirstName = request.FirstName.Trim();
+                    if (!string.IsNullOrWhiteSpace(request.LastName))
+                        user.LastName = request.LastName.Trim();
+                    if (request.Phone is not null)
+                        user.PhoneNumber = string.IsNullOrWhiteSpace(request.Phone) ? null : request.Phone.Trim();
+                    var ur = await _userManager.UpdateAsync(user);
+                    if (!ur.Succeeded)
+                        return BadRequest(new { error = string.Join("; ", ur.Errors.Select(e => e.Description)) });
+                }
+            }
+
+            var dto = await _teacherSchools.UpdateTenantProfileAsync(tenantId, request, ct);
+            if (!string.IsNullOrWhiteSpace(dto.OwnerUserId))
+            {
+                var user = await _userManager.FindByIdAsync(dto.OwnerUserId);
+                if (user is not null)
+                {
+                    dto = dto with
+                    {
+                        FirstName = user.FirstName,
+                        LastName = user.LastName,
+                        Phone = user.PhoneNumber,
+                        OwnerEmail = user.Email ?? dto.OwnerEmail
+                    };
+                }
+            }
+            return Ok(dto);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("teachers/{tenantId:guid}/publish-profile")]
+    public async Task<ActionResult<TutorSphere.Application.DTOs.Admin.PublishTeacherPublicProfileResult>> PublishTeacherProfile(
+        Guid tenantId, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        try
+        {
+            return Ok(await _teacherSchools.PublishPublicProfileAsync(tenantId, UserId, asPlatformAdmin: false, ct));
         }
         catch (InvalidOperationException ex)
         {

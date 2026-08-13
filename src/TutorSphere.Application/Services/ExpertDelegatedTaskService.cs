@@ -100,9 +100,15 @@ public class ExpertDelegatedTaskService(
         switch (task.TaskType)
         {
             case ExpertDelegatedTaskType.PublishTeacherProfile:
+                // Délégué : la publication complète (licence / onboarding / public) est faite
+                // via ITeacherSchoolAdminService côté API « publish-profile ».
                 if (teacher.ExpertApprovalStatus != ExpertApprovalStatus.Approved)
                     throw new InvalidOperationException("L'enseignant doit être approuvé avant publication du profil.");
+                teacher.Status = TenantStatus.Active;
                 teacher.IsPublicProfile = true;
+                teacher.OnboardingCompletedAt ??= DateTime.UtcNow;
+                if (teacher.LicenseExpiresAt is null || teacher.LicenseExpiresAt <= DateTime.UtcNow)
+                    teacher.LicenseExpiresAt = DateTime.UtcNow.AddYears(1);
                 teacher.UpdatedAt = DateTime.UtcNow;
                 break;
             case ExpertDelegatedTaskType.CreateTeacherProfile:

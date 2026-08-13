@@ -251,6 +251,12 @@
 
             <div class="mb-3 border-top pt-3">
                 <div class="form-check mb-2">
+                    <input class="form-check-input" type="checkbox" id="reg-publish-public" @bind="_regPublishPublic" />
+                    <label class="form-check-label" for="reg-publish-public">
+                        Créer / publier la fiche publique immédiatement
+                    </label>
+                </div>
+                <div class="form-check mb-2">
                     <input class="form-check-input" type="checkbox" id="reg-create-offer" @bind="_regCreateOffer" />
                     <label class="form-check-label" for="reg-create-offer">
                         Créer une offre de service pour cet enseignant
@@ -603,6 +609,7 @@
     private string? _regError;
     private string? _regSuccess;
     private bool _regCreateOffer;
+    private bool _regPublishPublic = true;
     private string _regOfferTitle = "";
     private string? _regOfferDescription;
     private string? _regOfferSubject;
@@ -1034,6 +1041,17 @@
             _regSuccess = result.Value?.OfferingId is not null
                 ? $"{L["Expert_RegisterTeacherSuccess"]} Offre de service créée."
                 : L["Expert_RegisterTeacherSuccess"];
+
+            if (_regPublishPublic && result.Value is not null)
+            {
+                var pub = await Api.PostWithErrorAsync<object>(
+                    $"api/expert/teachers/{result.Value.TenantId}/publish-profile", new { });
+                if (pub.IsSuccess)
+                    _regSuccess = $"{_regSuccess} Fiche publique publiée.";
+                else if (!string.IsNullOrWhiteSpace(pub.Error))
+                    _regSuccess = $"{_regSuccess} (fiche publique : {pub.Error})";
+            }
+
             var keptGroupName = _regSchoolName;
             var keptCountry = _regCountry;
             _regEmail = _regFirstName = _regLastName = _regCity = "";
@@ -1042,6 +1060,7 @@
             _regSlugAvailable = null;
             _regAcceptedConduct = false;
             _regCreateOffer = false;
+            _regPublishPublic = true;
             _regOfferTitle = "";
             _regOfferDescription = _regOfferSubject = _regOfferFrequency = null;
             _regOfferPrice = 0;

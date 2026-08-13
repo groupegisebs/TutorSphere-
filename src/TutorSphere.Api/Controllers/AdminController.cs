@@ -30,6 +30,7 @@ public class AdminController : ControllerBase
     private readonly IAdminUserAccountService _accountDeletion;
     private readonly IAdminUserProvisioningService _provisioning;
     private readonly ISubscriptionOfferingService _offerings;
+    private readonly ITeacherSchoolAdminService _teacherSchools;
 
     public AdminController(
         UserManager<ApplicationUser> userManager,
@@ -41,7 +42,8 @@ public class AdminController : ControllerBase
         IPlatformPromoService promoCodes,
         IAdminUserAccountService accountDeletion,
         IAdminUserProvisioningService provisioning,
-        ISubscriptionOfferingService offerings)
+        ISubscriptionOfferingService offerings,
+        ITeacherSchoolAdminService teacherSchools)
     {
         _userManager = userManager;
         _email = email;
@@ -53,6 +55,7 @@ public class AdminController : ControllerBase
         _accountDeletion = accountDeletion;
         _provisioning = provisioning;
         _offerings = offerings;
+        _teacherSchools = teacherSchools;
     }
 
     /// <summary>Returns users belonging to a given role.</summary>
@@ -315,6 +318,99 @@ public class AdminController : ControllerBase
             if (_db.Tenants.FirstOrDefault(t => t.Id == tenantId) is null)
                 return NotFound(new { error = "École introuvable." });
             return Ok(await _offerings.CreateForTenantAsync(tenantId, request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>Fiche école / enseignant (édition + statut publication).</summary>
+    [HttpGet("teachers/by-user/{userId}")]
+    [Authorize(Roles = UserRoles.SuperAdmin)]
+    public async Task<ActionResult<TeacherSchoolRecordDto>> GetTeacherSchoolByUser(string userId, CancellationToken ct)
+    {
+        var user = await _userManager.FindByIdAsync(userId);
+        if (user is null) return NotFound(new { error = "Utilisateur introuvable." });
+
+        Guid? tenantId = user.TenantId;
+        if (tenantId is null)
+        {
+            var owned = _db.Tenants.FirstOrDefault(t => t.OwnerUserId == userId);
+            tenantId = owned?.Id;
+        }
+        if (tenantId is null)
+            return NotFound(new { error = "Aucune école associée à cet utilisateur." });
+
+        var dto = await _teacherSchools.GetByTenantIdAsync(tenantId.Value, ct);
+        if (dto is null) return NotFound(new { error = "École introuvable." });
+
+        return Ok(dto with
+        {
+            FirstName = user.FirstName,
+            LastName = user.LastName,
+            Phone = user.PhoneNumber,
+            OwnerEmail = user.Email ?? dto.OwnerEmail
+        });
+    }
+
+    /// <summary>Modifie l'enregistrement enseignant (compte + fiche école).</summary>
+    [HttpPut("teachers/by-user/{userId}")]
+    [Authorize(Roles = UserRoles.SuperAdmin)]
+    public async Task<ActionResult<TeacherSchoolRecordDto>> UpdateTeacherSchoolByUser(
+        string userId,
+        [FromBody] UpdateTeacherSchoolRecordRequest? request,
+        CancellationToken ct)
+    {
+        if (request is null) return BadRequest(new { error = "Requête invalide." });
+        var user = await _userManager.FindByIdAsync(userId);
+        if (user is null) return NotFound(new { error = "Utilisateur introuvable." });
+
+        Guid? tenantId = user.TenantId;
+        if (tenantId is null)
+            tenantId = _db.Tenants.FirstOrDefault(t => t.OwnerUserId == userId)?.Id;
+        if (tenantId is null)
+            return NotFound(new { error = "Aucune école associée à cet utilisateur." });
+
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(request.FirstName))
+                user.FirstName = request.FirstName.Trim();
+            if (!string.IsNullOrWhiteSpace(request.LastName))
+                user.LastName = request.LastName.Trim();
+            if (request.Phone is not null)
+                user.PhoneNumber = string.IsNullOrWhiteSpace(request.Phone) ? null : request.Phone.Trim();
+
+            var updateUser = await _userManager.UpdateAsync(user);
+            if (!updateUser.Succeeded)
+                return BadRequest(new { error = string.Join("; ", updateUser.Errors.Select(e => e.Description)) });
+
+            var dto = await _teacherSchools.UpdateTenantProfileAsync(tenantId.Value, request, ct);
+            return Ok(dto with
+            {
+                FirstName = user.FirstName,
+                LastName = user.LastName,
+                Phone = user.PhoneNumber,
+                OwnerEmail = user.Email ?? dto.OwnerEmail
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>Publie la fiche publique de l'enseignant (visible recherche / /school/{slug}).</summary>
+    [HttpPost("teachers/{tenantId:guid}/publish-profile")]
+    [Authorize(Roles = UserRoles.SuperAdmin)]
+    public async Task<ActionResult<PublishTeacherPublicProfileResult>> PublishTeacherProfile(
+        Guid tenantId, CancellationToken ct)
+    {
+        var adminId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(adminId)) return Unauthorized();
+        try
+        {
+            return Ok(await _teacherSchools.PublishPublicProfileAsync(tenantId, adminId, asPlatformAdmin: true, ct));
         }
         catch (InvalidOperationException ex)
         {
