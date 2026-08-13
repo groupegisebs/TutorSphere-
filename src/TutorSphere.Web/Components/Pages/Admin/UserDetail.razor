@@ -1,6 +1,8 @@
 @page "/admin/users/{UserId}"
 @layout AdminLayout
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using TutorSphere.Application.DTOs.Branding
+@using TutorSphere.Application.DTOs.ExpertApproval
 @inject AdminService AdminSvc
 @inject AuthService Auth
 @inject ApiClient Api
@@ -102,12 +104,13 @@
                 @if (_teacher is not null && _canEditTeacher)
                 {
                     <div class="cc-card mb-3" id="teacher-public-editor">
-                        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+                        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
                             <div>
                                 <h2 class="cc-card-title mb-1">Fiche publique de l'enseignant</h2>
                                 <p class="small text-muted mb-0">
                                     Contenu visible sur <code>/profil/@_teacher.Slug</code>
-                                    et dans la recherche parents.
+                                    et dans la recherche parents. L’aperçu à droite reprend le rendu final parents
+                                    (e-mail et téléphone jamais affichés).
                                 </p>
                             </div>
                             <span class="cc-pill @(_teacher.IsPublicProfile ? "cc-pill-ok" : "cc-pill-type")">
@@ -115,138 +118,158 @@
                             </span>
                         </div>
 
-                        @if (!_editingPublicProfile)
-                        {
-                            <div class="cc-detail-grid mb-3">
-                                <div class="cc-detail-item"><label>Nom affiché</label><strong>@_teacher.SchoolName</strong></div>
-                                <div class="cc-detail-item"><label>Enseignant</label><strong>@_teacher.FirstName @_teacher.LastName</strong></div>
-                                <div class="cc-detail-item"><label>Ville / Pays</label><strong>@(_teacher.City ?? "—") / @(_teacher.Country ?? "—")</strong></div>
-                                <div class="cc-detail-item"><label>Langue / Devise</label><strong>@_teacher.Language / @_teacher.Currency</strong></div>
-                                <div class="cc-detail-item" style="grid-column:1/-1">
-                                    <label>Présentation</label>
-                                    <strong>@(string.IsNullOrWhiteSpace(_teacher.Presentation) && string.IsNullOrWhiteSpace(_teacher.Description) ? "—" : (_teacher.Presentation ?? _teacher.Description))</strong>
-                                </div>
-                                <div class="cc-detail-item" style="grid-column:1/-1">
-                                    <label>Métadonnées</label>
-                                    <strong>
-                                        Slug : <code>@_teacher.Slug</code>
-                                        · Groupe : @(_teacher.ApprovedByExpertGroupName ?? "—")
-                                        · Licence : @(_teacher.HasValidLicense ? "OK" : "à publier")
-                                    </strong>
-                                </div>
-                            </div>
-                            <div class="d-flex gap-2 flex-wrap">
-                                <button type="button" class="cc-btn cc-btn-primary" @onclick="StartEditPublicProfile">
-                                    <i class="bi bi-pencil-square"></i> Éditer la fiche publique
-                                </button>
-                                @if (_teacher.IsPublicProfile)
+                        <div class="row g-4 align-items-start">
+                            <div class="col-xl-5">
+                                @if (!_editingPublicProfile)
                                 {
-                                    <a class="cc-btn" href="@($"/profil/{_teacher.Slug}")" target="_blank" rel="noopener">
-                                        <i class="bi bi-box-arrow-up-right"></i> Voir fiche publique
-                                    </a>
-                                    <button type="button" class="cc-btn" disabled="@_busy" @onclick="UnpublishProfileAsync">
-                                        <i class="bi bi-eye-slash"></i> Dépublier
-                                    </button>
-                                }
-                                else
-                                {
-                                    <button type="button" class="cc-btn" disabled="@_busy" @onclick="PublishProfileAsync">
-                                        <i class="bi bi-globe2"></i> Créer / publier maintenant
-                                    </button>
-                                }
-                            </div>
-                        }
-                        else
-                        {
-                            <div class="row g-3">
-                                <div class="col-md-4">
-                                    <label class="form-label">Prénom</label>
-                                    <input class="form-control" @bind="_editFirstName" id="pub-edit-firstname" />
-                                </div>
-                                <div class="col-md-4">
-                                    <label class="form-label">Nom</label>
-                                    <input class="form-control" @bind="_editLastName" />
-                                </div>
-                                <div class="col-md-4">
-                                    <label class="form-label">Téléphone</label>
-                                    <input class="form-control" @bind="_editPhone" />
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">Nom affiché (profil)</label>
-                                    <input class="form-control" @bind="_editSchoolName" />
-                                </div>
-                                <div class="col-md-3">
-                                    <label class="form-label">Ville</label>
-                                    <input class="form-control" @bind="_editCity" />
-                                </div>
-                                <div class="col-md-3">
-                                    <label class="form-label">Pays (ISO)</label>
-                                    <input class="form-control" @bind="_editCountry" maxlength="2" />
-                                </div>
-                                <div class="col-12">
-                                    <label class="form-label">Présentation publique *</label>
-                                    <textarea class="form-control" rows="4" @bind="_editPresentation"
-                                              placeholder="Texte d'accueil visible sur la fiche publique…"></textarea>
-                                    <div class="form-text">Affiché en priorité sur la page publique.</div>
-                                </div>
-                                <div class="col-12">
-                                    <label class="form-label">Description courte</label>
-                                    <textarea class="form-control" rows="2" @bind="_editDescription"
-                                              placeholder="Résumé (recherche / à propos)…"></textarea>
-                                </div>
-                                <div class="col-md-3">
-                                    <label class="form-label">Langue</label>
-                                    <input class="form-control" @bind="_editLanguage" />
-                                </div>
-                                <div class="col-md-3">
-                                    <label class="form-label">Devise</label>
-                                    <input class="form-control" @bind="_editCurrency" />
-                                </div>
-                                <div class="col-md-6 d-flex align-items-end">
-                                    <div class="small text-muted">
-                                        Slug : <code>@_teacher.Slug</code>
-                                        · Groupe : @(_teacher.ApprovedByExpertGroupName ?? "—")
-                                        · Licence : @(_teacher.HasValidLicense ? "OK" : "à publier")
-                                    </div>
-                                </div>
-                                @if (!_teacher.IsPublicProfile)
-                                {
-                                    <div class="col-12">
-                                        <div class="form-check">
-                                            <input class="form-check-input" type="checkbox" id="pubAfterSave" @bind="_publishAfterSave" />
-                                            <label class="form-check-label" for="pubAfterSave">
-                                                Publier la fiche après enregistrement (visible recherche + /profil/…)
-                                            </label>
+                                    <div class="cc-detail-grid mb-3">
+                                        <div class="cc-detail-item"><label>Nom affiché</label><strong>@_teacher.SchoolName</strong></div>
+                                        <div class="cc-detail-item"><label>Enseignant</label><strong>@_teacher.FirstName @_teacher.LastName</strong></div>
+                                        <div class="cc-detail-item"><label>Ville / Pays</label><strong>@(_teacher.City ?? "—") / @(_teacher.Country ?? "—")</strong></div>
+                                        <div class="cc-detail-item"><label>Langue / Devise</label><strong>@_teacher.Language / @_teacher.Currency</strong></div>
+                                        <div class="cc-detail-item" style="grid-column:1/-1">
+                                            <label>Présentation</label>
+                                            <strong>@(string.IsNullOrWhiteSpace(_teacher.Presentation) && string.IsNullOrWhiteSpace(_teacher.Description) ? "—" : (_teacher.Presentation ?? _teacher.Description))</strong>
+                                        </div>
+                                        <div class="cc-detail-item" style="grid-column:1/-1">
+                                            <label>Métadonnées</label>
+                                            <strong>
+                                                Slug : <code>@_teacher.Slug</code>
+                                                · Groupe : @(_teacher.ApprovedByExpertGroupName ?? "—")
+                                                · Licence : @(_teacher.HasValidLicense ? "OK" : "à publier")
+                                            </strong>
                                         </div>
                                     </div>
-                                }
-                            </div>
-                            <div class="mt-3 d-flex gap-2 flex-wrap">
-                                <button type="button" class="cc-btn cc-btn-primary" disabled="@_busy" @onclick="SaveTeacherAsync">
-                                    @if (_busy) { <span class="spinner-border spinner-border-sm me-1"></span> }
-                                    <i class="bi bi-check-lg"></i>
-                                    @(_teacher.IsPublicProfile ? "Enregistrer les modifications" : "Enregistrer la fiche")
-                                </button>
-                                <button type="button" class="cc-btn" disabled="@_busy" @onclick="CancelEditPublicProfile">
-                                    Annuler
-                                </button>
-                                @if (!_teacher.IsPublicProfile)
-                                {
-                                    <button type="button" class="cc-btn" disabled="@_busy" @onclick="PublishProfileAsync">
-                                        <i class="bi bi-globe2"></i> Créer / publier maintenant
-                                    </button>
+                                    <div class="d-flex gap-2 flex-wrap">
+                                        <button type="button" class="cc-btn cc-btn-primary" @onclick="StartEditPublicProfile">
+                                            <i class="bi bi-pencil-square"></i> Éditer la fiche publique
+                                        </button>
+                                        @if (_teacher.IsPublicProfile)
+                                        {
+                                            <a class="cc-btn" href="@($"/profil/{_teacher.Slug}")" target="_blank" rel="noopener">
+                                                <i class="bi bi-box-arrow-up-right"></i> Voir fiche publique
+                                            </a>
+                                            <button type="button" class="cc-btn" disabled="@_busy" @onclick="UnpublishProfileAsync">
+                                                <i class="bi bi-eye-slash"></i> Dépublier
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <button type="button" class="cc-btn" disabled="@_busy" @onclick="PublishProfileAsync">
+                                                <i class="bi bi-globe2"></i> Créer / publier maintenant
+                                            </button>
+                                        }
+                                    </div>
                                 }
                                 else
                                 {
-                                    <a class="cc-btn" href="@($"/profil/{_teacher.Slug}")" target="_blank" rel="noopener">
-                                        <i class="bi bi-box-arrow-up-right"></i> Voir fiche publique
-                                    </a>
-                                    <button type="button" class="cc-btn" disabled="@_busy" @onclick="UnpublishProfileAsync">
-                                        <i class="bi bi-eye-slash"></i> Dépublier
-                                    </button>
+                                    <div class="row g-3">
+                                        <div class="col-md-6">
+                                            <label class="form-label">Prénom</label>
+                                            <input class="form-control" @bind="_editFirstName" @bind:event="oninput" id="pub-edit-firstname" />
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">Nom</label>
+                                            <input class="form-control" @bind="_editLastName" @bind:event="oninput" />
+                                        </div>
+                                        <div class="col-12">
+                                            <label class="form-label">Téléphone (compte — jamais public)</label>
+                                            <input class="form-control" @bind="_editPhone" @bind:event="oninput" autocomplete="off" />
+                                            <div class="form-text">Réservé à l’admin / l’enseignant. Masqué sur la fiche parents et dans les courriels familles.</div>
+                                        </div>
+                                        <div class="col-12">
+                                            <label class="form-label">Nom affiché (profil)</label>
+                                            <input class="form-control" @bind="_editSchoolName" @bind:event="oninput" />
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">Ville</label>
+                                            <input class="form-control" @bind="_editCity" @bind:event="oninput" />
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">Pays (ISO)</label>
+                                            <input class="form-control" @bind="_editCountry" @bind:event="oninput" maxlength="2" />
+                                        </div>
+                                        <div class="col-12">
+                                            <label class="form-label">Présentation publique *</label>
+                                            <textarea class="form-control" rows="4" @bind="_editPresentation" @bind:event="oninput"
+                                                      placeholder="Texte d'accueil visible sur la fiche publique…"></textarea>
+                                            <div class="form-text">Affiché en priorité sur la page publique.</div>
+                                        </div>
+                                        <div class="col-12">
+                                            <label class="form-label">Description courte</label>
+                                            <textarea class="form-control" rows="2" @bind="_editDescription" @bind:event="oninput"
+                                                      placeholder="Résumé (recherche / à propos)…"></textarea>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">Langue</label>
+                                            <input class="form-control" @bind="_editLanguage" @bind:event="oninput" />
+                                        </div>
+                                        <div class="col-md-6">
+                                            <label class="form-label">Devise</label>
+                                            <input class="form-control" @bind="_editCurrency" @bind:event="oninput" />
+                                        </div>
+                                        <div class="col-12">
+                                            <div class="small text-muted">
+                                                Slug : <code>@_teacher.Slug</code>
+                                                · Groupe : @(_teacher.ApprovedByExpertGroupName ?? "—")
+                                                · Licence : @(_teacher.HasValidLicense ? "OK" : "à publier")
+                                            </div>
+                                        </div>
+                                        @if (!_teacher.IsPublicProfile)
+                                        {
+                                            <div class="col-12">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" id="pubAfterSave" @bind="_publishAfterSave" />
+                                                    <label class="form-check-label" for="pubAfterSave">
+                                                        Publier la fiche après enregistrement (visible recherche + /profil/…)
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+                                    <div class="mt-3 d-flex gap-2 flex-wrap">
+                                        <button type="button" class="cc-btn cc-btn-primary" disabled="@_busy" @onclick="SaveTeacherAsync">
+                                            @if (_busy) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                                            <i class="bi bi-check-lg"></i>
+                                            @(_teacher.IsPublicProfile ? "Enregistrer les modifications" : "Enregistrer la fiche")
+                                        </button>
+                                        <button type="button" class="cc-btn" disabled="@_busy" @onclick="CancelEditPublicProfile">
+                                            Annuler
+                                        </button>
+                                        @if (!_teacher.IsPublicProfile)
+                                        {
+                                            <button type="button" class="cc-btn" disabled="@_busy" @onclick="PublishProfileAsync">
+                                                <i class="bi bi-globe2"></i> Créer / publier maintenant
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <a class="cc-btn" href="@($"/profil/{_teacher.Slug}")" target="_blank" rel="noopener">
+                                                <i class="bi bi-box-arrow-up-right"></i> Voir fiche publique
+                                            </a>
+                                            <button type="button" class="cc-btn" disabled="@_busy" @onclick="UnpublishProfileAsync">
+                                                <i class="bi bi-eye-slash"></i> Dépublier
+                                            </button>
+                                        }
+                                    </div>
                                 }
                             </div>
-                        }
+
+                            <div class="col-xl-7">
+                                <div class="cc-parent-profile-preview sticky-top" style="top:1rem;">
+                                    <div class="cc-parent-profile-preview-bar">
+                                        <span><i class="bi bi-eye"></i> Aperçu parents — rendu final</span>
+                                        @if (!_teacher.IsPublicProfile)
+                                        {
+                                            <span class="cc-pill cc-pill-type">Brouillon</span>
+                                        }
+                                    </div>
+                                    <div class="cc-parent-profile-preview-frame tutor-detail-public">
+                                        <TutorDetailView Profile="BuildParentPreview()" PreviewMode="true" />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 }
                 else
@@ -372,6 +395,7 @@
 
     private AdminUserDetail? _user;
     private TeacherSchoolVm? _teacher;
+    private PublicTutorDetailDto? _publicDetail;
     private bool _loading = true;
     private bool _isSuperAdmin;
     private bool _canEditTeacher;
@@ -437,9 +461,90 @@
         {
             _teacher = await Api.GetAsync<TeacherSchoolVm>($"api/admin/teachers/by-user/{UserId}");
             if (_teacher is not null)
+            {
                 FillEditFromTeacher();
+                await LoadPublicDetailAsync();
+            }
         }
         catch { _teacher = null; }
+    }
+
+    private async Task LoadPublicDetailAsync()
+    {
+        _publicDetail = null;
+        if (_teacher is null || string.IsNullOrWhiteSpace(_teacher.Slug))
+            return;
+        try
+        {
+            _publicDetail = await Api.GetAsync<PublicTutorDetailDto>(
+                $"api/branding/{Uri.EscapeDataString(_teacher.Slug)}/tutor");
+        }
+        catch
+        {
+            _publicDetail = null;
+        }
+    }
+
+    /// <summary>Rendu parents : champs éditables + offres/photo publiées si disponibles. Jamais e-mail/téléphone.</summary>
+    private PublicTutorDetailDto BuildParentPreview()
+    {
+        var t = _teacher!;
+        var editing = _editingPublicProfile;
+        var schoolName = editing
+            ? (string.IsNullOrWhiteSpace(_editSchoolName) ? t.SchoolName : _editSchoolName.Trim())
+            : t.SchoolName;
+        var first = editing ? _editFirstName.Trim() : t.FirstName;
+        var last = editing ? _editLastName.Trim() : t.LastName;
+        var fullName = $"{first} {last}".Trim();
+        if (string.IsNullOrWhiteSpace(fullName))
+            fullName = schoolName;
+
+        var presentation = editing ? _editPresentation : (t.Presentation ?? t.Description);
+        var description = editing ? _editDescription : t.Description;
+        var fullBio = string.IsNullOrWhiteSpace(presentation) ? description : presentation;
+        var shortBio = string.IsNullOrWhiteSpace(description) ? presentation : description;
+
+        var city = editing ? _editCity : t.City;
+        var country = editing ? _editCountry : t.Country;
+        var language = editing
+            ? (string.IsNullOrWhiteSpace(_editLanguage) ? t.Language : _editLanguage)
+            : t.Language;
+        var currency = editing
+            ? (string.IsNullOrWhiteSpace(_editCurrency) ? t.Currency : _editCurrency)
+            : t.Currency;
+
+        var baseDto = _publicDetail;
+        return new PublicTutorDetailDto(
+            t.TenantId,
+            schoolName,
+            t.Slug,
+            shortBio,
+            city,
+            country,
+            language,
+            currency,
+            t.IsPublicProfile,
+            null, // OwnerUserId masqué dans l'aperçu admin
+            first,
+            last,
+            fullName,
+            baseDto?.PhotoUrl,
+            baseDto?.BannerUrl,
+            baseDto?.PrimaryColor ?? "#2563eb",
+            baseDto?.SecondaryColor ?? "#1e40af",
+            fullBio,
+            baseDto?.YearsExperience ?? 0,
+            baseDto?.HourlyRate ?? 0,
+            baseDto?.Status,
+            baseDto?.Diplomas ?? Array.Empty<PublicCredentialDto>(),
+            baseDto?.Certifications ?? Array.Empty<PublicCredentialDto>(),
+            baseDto?.Subjects ?? Array.Empty<string>(),
+            baseDto?.Levels ?? Array.Empty<string>(),
+            baseDto?.Availability ?? Array.Empty<string>(),
+            baseDto?.Offerings ?? Array.Empty<PublicOfferingDto>(),
+            t.ApprovedByExpertGroupName ?? baseDto?.ApprovedByExpertGroupName,
+            baseDto?.ApprovedByExpertGroupLogoUrl,
+            baseDto?.Disciplines);
     }
 
     private void FillEditFromTeacher()
@@ -521,6 +626,7 @@
 
             _teacher = result.Value;
             FillEditFromTeacher();
+            await LoadPublicDetailAsync();
             _user = _user with
             {
                 FullName = $"{_teacher.FirstName} {_teacher.LastName}".Trim(),

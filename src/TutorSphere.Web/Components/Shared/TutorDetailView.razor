@@ -82,21 +82,33 @@
             </div>
 
             <div class="tutor-detail-actions">
-                @if ((AllowSubscribe || AllowSelfSubscribe) && Profile.Offerings.Count > 0)
+                @if (PreviewMode)
+                {
+                    <button type="button" class="btn btn-primary" disabled title="Aperçu — action parents">
+                        <i class="bi bi-plus-lg me-1"></i>@L["PublicProfile_Subscribe"]
+                    </button>
+                    <p class="small text-muted mt-2 mb-0">
+                        <i class="bi bi-shield-lock me-1"></i>@L["PublicProfile_ContactPrivacy"]
+                    </p>
+                }
+                else if ((AllowSubscribe || AllowSelfSubscribe) && Profile.Offerings.Count > 0)
                 {
                     <button type="button" class="btn btn-primary" @onclick="() => OpenSubscribe(Profile.Offerings[0])">
                         <i class="bi bi-plus-lg me-1"></i>@L["PublicProfile_Subscribe"]
                     </button>
+                    <p class="small text-muted mt-2 mb-0">
+                        <i class="bi bi-shield-lock me-1"></i>@L["PublicProfile_ContactPrivacy"]
+                    </p>
                 }
                 else if (!string.IsNullOrWhiteSpace(SubscribeHref))
                 {
                     <a class="btn btn-primary" href="@SubscribeHref">
                         <i class="bi bi-plus-lg me-1"></i>@L["PublicProfile_Subscribe"]
                     </a>
+                    <p class="small text-muted mt-2 mb-0">
+                        <i class="bi bi-shield-lock me-1"></i>@L["PublicProfile_ContactPrivacy"]
+                    </p>
                 }
-                <p class="small text-muted mt-2 mb-0">
-                    <i class="bi bi-shield-lock me-1"></i>@L["PublicProfile_ContactPrivacy"]
-                </p>
             </div>
         </div>
 
@@ -507,6 +519,8 @@
     [Parameter] public bool AllowSubscribe { get; set; }
     /// <summary>Élève autonome (14+) — s'abonne pour lui-même.</summary>
     [Parameter] public bool AllowSelfSubscribe { get; set; }
+    /// <summary>Aperçu admin/expert : même rendu parents, sans actions d'inscription.</summary>
+    [Parameter] public bool PreviewMode { get; set; }
     [Inject] private IStringLocalizer<SharedResources> L { get; set; } = default!;
 
     private string _activeTab = "about";
