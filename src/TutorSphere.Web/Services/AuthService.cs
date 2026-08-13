@@ -788,8 +788,25 @@ public sealed class CustomAuthenticationStateProvider : AuthenticationStateProvi
         {
             using var doc = JsonDocument.Parse(json);
             foreach (var prop in doc.RootElement.EnumerateObject())
+            {
+                // Un seul rôle → string ; plusieurs rôles → tableau JSON (sinon Parent/Expert perdus).
                 if (prop.Value.ValueKind == JsonValueKind.String)
-                    pairs.Add((prop.Name, prop.Value.GetString()!));
+                {
+                    var s = prop.Value.GetString();
+                    if (!string.IsNullOrWhiteSpace(s))
+                        pairs.Add((prop.Name, s));
+                }
+                else if (prop.Value.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var item in prop.Value.EnumerateArray())
+                    {
+                        if (item.ValueKind != JsonValueKind.String) continue;
+                        var s = item.GetString();
+                        if (!string.IsNullOrWhiteSpace(s))
+                            pairs.Add((prop.Name, s));
+                    }
+                }
+            }
         }
         catch { }
         foreach (var pair in pairs)

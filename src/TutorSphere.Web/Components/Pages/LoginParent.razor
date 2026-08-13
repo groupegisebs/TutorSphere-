@@ -200,18 +200,16 @@
             {
                 // Accepter tout compte ayant le rôle Parent (même si le rôle JWT principal
                 // est Expert / Tutor — cas multi-rôles).
-                if (AuthSvc.IsInRole("SuperAdmin") || AuthSvc.IsInRole("PlatformAdmin"))
+                if ((AuthSvc.IsInRole("SuperAdmin") || AuthSvc.IsInRole("PlatformAdmin"))
+                    && !AuthSvc.IsInRole("Parent"))
                 {
-                    if (!AuthSvc.IsInRole("Parent"))
-                    {
-                        Navigation.NavigateTo("/admin/dashboard", forceLoad: true);
-                        return;
-                    }
+                    Navigation.NavigateTo("/admin/dashboard", forceLoad: true);
+                    return;
                 }
 
                 if (!AuthSvc.IsInRole("Parent"))
                 {
-                    _errorMessage = L["Login_Parent_WrongRole"];
+                    _errorMessage = SuggestLoginPage(AuthSvc.PrimaryRole ?? result.Role);
                     AuthSvc.Logout();
                     return;
                 }
@@ -237,6 +235,16 @@
         "login_unavailable" => L["Login_Unavailable"],
         "invalid_response" => L["Login_Unavailable"],
         _ => fallback ?? L["Login_InvalidCredentials"].ToString()
+    };
+
+    /// <summary>Message orienté vers la bonne page (évite un faux « pas un parent » trompeur).</summary>
+    private string SuggestLoginPage(string? primaryRole) => primaryRole switch
+    {
+        "Expert" => L["Login_Parent_UseExpertPage"],
+        "Tutor" or "TeachingAssistant" => L["Login_Parent_UseTutorPage"],
+        "Student" => L["Login_Parent_UseStudentPage"],
+        "SuperAdmin" or "PlatformAdmin" => L["Login_Parent_UseAdminPage"],
+        _ => L["Login_Parent_WrongRole"]
     };
 
     private async Task ResendConfirmationAsync()

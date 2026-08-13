@@ -138,12 +138,13 @@ public class AuthService : IAuthService
         if (!await _userManager.CheckPasswordAsync(user, password))
             throw new UnauthorizedAccessException("Identifiants invalides.");
 
+        // Groupe expert : seulement si le rôle principal est Expert (ne bloque pas Parent/Tutor multi-rôles).
         if (role == UserRoles.Expert)
             EnsureExpertGroupIsActive(user.Id);
 
-        // Les admins plateforme n'utilisent que le Control Center (pas de profil parent auto).
+        // Profil parent si le compte a le rôle Parent (même si le rôle JWT principal est autre).
         if (role is not (UserRoles.SuperAdmin or UserRoles.PlatformAdmin)
-            && UserRoles.ParentPortalRoles.Contains(role))
+            && (UserRoles.ParentPortalRoles.Contains(role) || roles.Contains(UserRoles.Parent)))
             await EnsureParentProfileAsync(user, ct);
 
         return await BuildAuthResponse(user, role, roles);
