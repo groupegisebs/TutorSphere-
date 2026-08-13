@@ -38,16 +38,22 @@ public class SearchController : ControllerBase
         [FromQuery] LessonMode? mode,
         [FromQuery] decimal? minRating,
         [FromQuery] string? viewerCountry,
+        [FromQuery] Guid? expertGroupId,
         CancellationToken ct)
     {
         var effectiveCountry = await ResolveViewerCountryAsync(viewerCountry, ct);
 
         var filters = new TutorSearchFilters(
-            subject, city, language, minPrice, maxPrice, level, mode, minRating, effectiveCountry);
+            subject, city, language, minPrice, maxPrice, level, mode, minRating, effectiveCountry, expertGroupId);
 
         var results = await _searchService.SearchTutorsAsync(filters, ct);
         return Ok(results);
     }
+
+    [HttpGet("expert-groups")]
+    [AllowAnonymous]
+    public async Task<ActionResult<IReadOnlyList<ExpertGroupSearchOptionDto>>> ListExpertGroups(CancellationToken ct) =>
+        Ok(await _searchService.ListActiveExpertGroupsAsync(ct));
 
     /// <summary>
     /// Parent / élève : le pays du profil prime (sécurité). Sinon le paramètre query.

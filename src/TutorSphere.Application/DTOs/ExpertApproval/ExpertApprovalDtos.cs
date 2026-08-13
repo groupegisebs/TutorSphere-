@@ -144,13 +144,16 @@ public record RegisterTeacherByExpertRequest(
     string? City = null,
     string? Country = null,
     IReadOnlyList<string>? VisibleCountryCodes = null,
-    bool AcceptedTeacherConductPolicy = false);
+    bool AcceptedTeacherConductPolicy = false,
+    /// <summary>Offre de service initiale (optionnelle) créée pour l'école.</summary>
+    TutorSphere.Application.DTOs.SubscriptionOfferings.CreateSubscriptionOfferingRequest? InitialOffering = null);
 
 public record RegisterTeacherByExpertResponse(
     Guid TenantId,
     string TenantSlug,
     string Email,
-    bool CredentialsSent);
+    bool CredentialsSent,
+    Guid? OfferingId = null);
 
 /// <summary>Groupe d'experts auquel l'utilisateur connecté appartient.</summary>
 public record ExpertMyGroupDto(

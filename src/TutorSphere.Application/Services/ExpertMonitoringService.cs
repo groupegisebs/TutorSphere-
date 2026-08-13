@@ -15,6 +15,8 @@ public interface IExpertMonitoringService
     Task<ExpertRemarkDto> AddRemarkAsync(string expertUserId, Guid tenantId, CreateExpertRemarkRequest request, CancellationToken ct = default);
     Task MarkRemarkReadAsync(Guid remarkId, string requestingOwnerUserId, CancellationToken ct = default);
     Task<IReadOnlyList<ExpertRemarkDto>> ListRemarksForOwnerAsync(string ownerUserId, CancellationToken ct = default);
+    /// <summary>Vérifie que l'expert peut gérer l'enseignant (même groupe d'approbation).</summary>
+    void EnsureCanMonitorTeacher(Guid tenantId, string expertUserId);
 }
 
 public class ExpertMonitoringService(
@@ -189,6 +191,9 @@ public class ExpertMonitoringService(
         }
         return result;
     }
+
+    public void EnsureCanMonitorTeacher(Guid tenantId, string expertUserId)
+        => EnsureCanMonitor(tenantId, expertUserId);
 
     private HashSet<Guid> GetExpertGroupIds(string expertUserId) =>
         db.ExpertGroupMembers.Where(m => m.UserId == expertUserId).Select(m => m.ExpertGroupId).ToHashSet();

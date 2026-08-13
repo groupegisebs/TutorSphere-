@@ -29,6 +29,7 @@ public class AdminController : ControllerBase
     private readonly IPlatformPromoService _promoCodes;
     private readonly IAdminUserAccountService _accountDeletion;
     private readonly IAdminUserProvisioningService _provisioning;
+    private readonly ISubscriptionOfferingService _offerings;
 
     public AdminController(
         UserManager<ApplicationUser> userManager,
@@ -39,7 +40,8 @@ public class AdminController : ControllerBase
         MailGatewayClient mailClient,
         IPlatformPromoService promoCodes,
         IAdminUserAccountService accountDeletion,
-        IAdminUserProvisioningService provisioning)
+        IAdminUserProvisioningService provisioning,
+        ISubscriptionOfferingService offerings)
     {
         _userManager = userManager;
         _email = email;
@@ -50,6 +52,7 @@ public class AdminController : ControllerBase
         _promoCodes = promoCodes;
         _accountDeletion = accountDeletion;
         _provisioning = provisioning;
+        _offerings = offerings;
     }
 
     /// <summary>Returns users belonging to a given role.</summary>
@@ -291,6 +294,27 @@ public class AdminController : ControllerBase
         try
         {
             return Ok(await _provisioning.CreateTeacherAsync(adminId, request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>Crée une offre de service pour une école / enseignant existant.</summary>
+    [HttpPost("teachers/{tenantId:guid}/offerings")]
+    [Authorize(Roles = UserRoles.SuperAdmin)]
+    public async Task<ActionResult<TutorSphere.Application.DTOs.SubscriptionOfferings.SubscriptionOfferingDto>> CreateTeacherOffering(
+        Guid tenantId,
+        [FromBody] TutorSphere.Application.DTOs.SubscriptionOfferings.CreateSubscriptionOfferingRequest? request,
+        CancellationToken ct)
+    {
+        if (request is null) return BadRequest(new { error = "Requête invalide." });
+        try
+        {
+            if (_db.Tenants.FirstOrDefault(t => t.Id == tenantId) is null)
+                return NotFound(new { error = "École introuvable." });
+            return Ok(await _offerings.CreateForTenantAsync(tenantId, request, ct));
         }
         catch (InvalidOperationException ex)
         {

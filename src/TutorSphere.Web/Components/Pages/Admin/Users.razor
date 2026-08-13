@@ -171,6 +171,57 @@
                                 <label class="form-check-label" for="actSchool">Activer l'école immédiatement</label>
                             </div>
                         </div>
+
+                        <div class="col-12">
+                            <hr class="my-2" />
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="createOffer" @bind="_cCreateOffer" />
+                                <label class="form-check-label" for="createOffer">Créer une offre de service pour cet enseignant</label>
+                            </div>
+                        </div>
+                        @if (_cCreateOffer)
+                        {
+                            <div class="col-md-6">
+                                <label class="form-label">Titre de l'offre *</label>
+                                <input class="form-control" @bind="_cOfferTitle" placeholder="Ex. Maths collège — 4 séances / mois" />
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Matière</label>
+                                <input class="form-control" @bind="_cOfferSubject" placeholder="Mathématiques" />
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Mode</label>
+                                <select class="form-select" @bind="_cOfferMode">
+                                    <option value="En ligne">En ligne</option>
+                                    <option value="Présentiel">Présentiel</option>
+                                    <option value="Hybride">Hybride</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Prix *</label>
+                                <input type="number" min="0" step="100" class="form-control" @bind="_cOfferPrice" />
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Devise</label>
+                                <input class="form-control" @bind="_cOfferCurrency" />
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Durée (jours)</label>
+                                <input type="number" min="1" class="form-control" @bind="_cOfferDurationDays" />
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label">Séances</label>
+                                <input type="number" min="1" class="form-control" @bind="_cOfferSessionCount" />
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Fréquence</label>
+                                <input class="form-control" @bind="_cOfferFrequency" placeholder="Ex. 1× / semaine" />
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Description</label>
+                                <textarea class="form-control" rows="2" @bind="_cOfferDescription"></textarea>
+                            </div>
+                        }
                     }
                 </div>
 
@@ -321,6 +372,16 @@
     private string? _cSlug;
     private string? _cCity;
     private bool _cActivateSchool = true;
+    private bool _cCreateOffer;
+    private string _cOfferTitle = "";
+    private string? _cOfferDescription;
+    private string? _cOfferSubject;
+    private decimal _cOfferPrice;
+    private string _cOfferCurrency = "XAF";
+    private int _cOfferDurationDays = 30;
+    private int _cOfferSessionCount = 4;
+    private string? _cOfferFrequency;
+    private string _cOfferMode = "En ligne";
     private List<ExpertGroupItem> _expertGroups = [];
     private string? _formError;
     private string? _createdPassword;
@@ -469,9 +530,31 @@
                     _formError = "Sélectionnez un groupe d'experts.";
                     return;
                 }
+                object? initialOffering = null;
+                if (_cCreateOffer)
+                {
+                    if (string.IsNullOrWhiteSpace(_cOfferTitle))
+                    {
+                        _formError = "Titre de l'offre obligatoire (ou décochez « Créer une offre »).";
+                        return;
+                    }
+                    initialOffering = new
+                    {
+                        title = _cOfferTitle.Trim(),
+                        description = string.IsNullOrWhiteSpace(_cOfferDescription) ? null : _cOfferDescription,
+                        subject = string.IsNullOrWhiteSpace(_cOfferSubject) ? null : _cOfferSubject,
+                        price = _cOfferPrice,
+                        currency = string.IsNullOrWhiteSpace(_cOfferCurrency) ? "XAF" : _cOfferCurrency,
+                        durationDays = _cOfferDurationDays > 0 ? _cOfferDurationDays : 30,
+                        sessionCount = _cOfferSessionCount > 0 ? _cOfferSessionCount : 4,
+                        frequency = string.IsNullOrWhiteSpace(_cOfferFrequency) ? null : _cOfferFrequency,
+                        mode = _cOfferMode,
+                        maxCapacity = 20
+                    };
+                }
                 result = await AdminSvc.CreateTeacherAccountAsync(
                     _cEmail, _cFirstName, _cLastName, groupId,
-                    _cSchoolName, _cSlug, _cCity, _cPhone, _cActivateSchool);
+                    _cSchoolName, _cSlug, _cCity, _cPhone, _cActivateSchool, initialOffering);
             }
 
             if (!result.IsSuccess || result.Value is null)
@@ -484,11 +567,21 @@
             _createdPassword = created.TemporaryPassword;
             _createdEmail = created.Email;
             _createdCredentialsSent = created.CredentialsSent;
-            _successMessage = $"Compte {RoleLabel(created.Role)} créé : {created.FullName}.";
+            _successMessage = created.OfferingId is not null
+                ? $"Compte {RoleLabel(created.Role)} créé : {created.FullName} (offre de service créée)."
+                : $"Compte {RoleLabel(created.Role)} créé : {created.FullName}.";
             _cFirstName = _cLastName = _cEmail = "";
             _cPhone = _cParentEmail = _cSchoolName = _cSlug = _cCity = null;
             _cExpertGroupId = "";
             _cDob = null;
+            _cCreateOffer = false;
+            _cOfferTitle = "";
+            _cOfferDescription = _cOfferSubject = _cOfferFrequency = null;
+            _cOfferPrice = 0;
+            _cOfferCurrency = "XAF";
+            _cOfferDurationDays = 30;
+            _cOfferSessionCount = 4;
+            _cOfferMode = "En ligne";
             await ReloadAsync();
         }
         catch (Exception ex)

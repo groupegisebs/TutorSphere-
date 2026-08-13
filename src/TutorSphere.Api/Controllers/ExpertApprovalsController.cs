@@ -19,19 +19,22 @@ public class ExpertApprovalsController : ControllerBase
     private readonly IExpertDashboardService _dashboard;
     private readonly IAuthService _authService;
     private readonly UserManager<ApplicationUser> _userManager;
+    private readonly ISubscriptionOfferingService _offerings;
 
     public ExpertApprovalsController(
         IExpertApprovalService approvals,
         IExpertMonitoringService monitoring,
         IExpertDashboardService dashboard,
         IAuthService authService,
-        UserManager<ApplicationUser> userManager)
+        UserManager<ApplicationUser> userManager,
+        ISubscriptionOfferingService offerings)
     {
         _approvals = approvals;
         _monitoring = monitoring;
         _dashboard = dashboard;
         _authService = authService;
         _userManager = userManager;
+        _offerings = offerings;
     }
 
     private string? UserId => User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -376,6 +379,43 @@ public class ExpertApprovalsController : ControllerBase
         {
             var dto = await _monitoring.AddRemarkAsync(UserId, tenantId, request, ct);
             return Ok(dto);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpGet("teachers/{tenantId:guid}/offerings")]
+    public async Task<ActionResult<IReadOnlyList<TutorSphere.Application.DTOs.SubscriptionOfferings.SubscriptionOfferingDto>>> ListTeacherOfferings(
+        Guid tenantId, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        try
+        {
+            _monitoring.EnsureCanMonitorTeacher(tenantId, UserId);
+            return Ok(await _offerings.GetForTenantAsync(tenantId, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("teachers/{tenantId:guid}/offerings")]
+    public async Task<ActionResult<TutorSphere.Application.DTOs.SubscriptionOfferings.SubscriptionOfferingDto>> CreateTeacherOffering(
+        Guid tenantId,
+        [FromBody] TutorSphere.Application.DTOs.SubscriptionOfferings.CreateSubscriptionOfferingRequest? request,
+        CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        if (request is null) return BadRequest(new { error = "Requête invalide." });
+
+        try
+        {
+            _monitoring.EnsureCanMonitorTeacher(tenantId, UserId);
+            var created = await _offerings.CreateForTenantAsync(tenantId, request, ct);
+            return Ok(created);
         }
         catch (InvalidOperationException ex)
         {

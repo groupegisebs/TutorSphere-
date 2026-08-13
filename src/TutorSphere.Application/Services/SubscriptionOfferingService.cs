@@ -10,8 +10,14 @@ namespace TutorSphere.Application.Services;
 public interface ISubscriptionOfferingService
 {
     Task<IReadOnlyList<SubscriptionOfferingDto>> GetAllAsync(CancellationToken ct = default);
+    Task<IReadOnlyList<SubscriptionOfferingDto>> GetForTenantAsync(Guid tenantId, CancellationToken ct = default);
     Task<SubscriptionOfferingDto?> GetByIdAsync(Guid id, CancellationToken ct = default);
     Task<SubscriptionOfferingDto> CreateAsync(CreateSubscriptionOfferingRequest request, CancellationToken ct = default);
+    /// <summary>Crée une offre pour une école (admin / expert, hors contexte tuteur).</summary>
+    Task<SubscriptionOfferingDto> CreateForTenantAsync(
+        Guid tenantId,
+        CreateSubscriptionOfferingRequest request,
+        CancellationToken ct = default);
     Task<SubscriptionOfferingDto> UpdateAsync(Guid id, UpdateSubscriptionOfferingRequest request, CancellationToken ct = default);
     Task DeleteAsync(Guid id, CancellationToken ct = default);
     Task<SubscriptionOfferingDto> ActivateAsync(Guid id, CancellationToken ct = default);
@@ -59,6 +65,28 @@ public class SubscriptionOfferingService : ISubscriptionOfferingService
         return Task.FromResult<IReadOnlyList<SubscriptionOfferingDto>>(result);
     }
 
+    public Task<IReadOnlyList<SubscriptionOfferingDto>> GetForTenantAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        var offerings = _db.SubscriptionOfferingsForAnyTenant
+            .Where(o => o.TenantId == tenantId)
+            .OrderBy(o => o.Title)
+            .ToList();
+
+        var ids = offerings.Select(o => o.Id).ToList();
+        var counts = _db.StudentSubscriptionsForAnyTenant
+            .Where(s => ids.Contains(s.OfferingId)
+                && (s.Status == SubscriptionStatus.Active || s.Status == SubscriptionStatus.Paused))
+            .GroupBy(s => s.OfferingId)
+            .Select(g => new { OfferingId = g.Key, Count = g.Count() })
+            .ToList()
+            .ToDictionary(x => x.OfferingId, x => x.Count);
+
+        IReadOnlyList<SubscriptionOfferingDto> result = offerings
+            .Select(o => MapToDto(o, counts.GetValueOrDefault(o.Id)))
+            .ToList();
+        return Task.FromResult(result);
+    }
+
     public Task<SubscriptionOfferingDto?> GetByIdAsync(Guid id, CancellationToken ct = default)
     {
         var offering = _db.SubscriptionOfferings.FirstOrDefault(o => o.Id == id);
@@ -71,10 +99,27 @@ public class SubscriptionOfferingService : ISubscriptionOfferingService
         return Task.FromResult<SubscriptionOfferingDto?>(MapToDto(offering, subscribers));
     }
 
-    public async Task<SubscriptionOfferingDto> CreateAsync(CreateSubscriptionOfferingRequest request, CancellationToken ct = default)
+    public Task<SubscriptionOfferingDto> CreateAsync(CreateSubscriptionOfferingRequest request, CancellationToken ct = default)
+        => CreateForTenantAsync(RequireTenantId(), request, ct);
+
+    public async Task<SubscriptionOfferingDto> CreateForTenantAsync(
+        Guid tenantId,
+        CreateSubscriptionOfferingRequest request,
+        CancellationToken ct = default)
     {
-        var tenantId = RequireTenantId();
-        var (frequency, conditions, mode, sessionCount) = NormalizeSchedule(request);
+        if (tenantId == Guid.Empty)
+            throw new InvalidOperationException("École introuvable.");
+        if (_db.Tenants.FirstOrDefault(t => t.Id == tenantId) is null)
+            throw new InvalidOperationException("École introuvable.");
+        if (string.IsNullOrWhiteSpace(request.Title))
+            throw new InvalidOperationException("Le titre de l'offre est obligatoire.");
+        if (request.Price < 0)
+            throw new InvalidOperationException("Le prix de l'offre ne peut pas être négatif.");
+
+        var currency = string.IsNullOrWhiteSpace(request.Currency) ? "XAF" : request.Currency.Trim();
+        var durationDays = request.DurationDays > 0 ? request.DurationDays : 30;
+        var (frequency, conditions, mode, sessionCount) = NormalizeSchedule(
+            request with { Currency = currency, DurationDays = durationDays });
 
         var offering = new SubscriptionOffering
         {
@@ -83,20 +128,28 @@ public class SubscriptionOfferingService : ISubscriptionOfferingService
             Description = request.Description?.Trim(),
             Subject = request.Subject?.Trim(),
             Price = request.Price,
-            Currency = request.Currency.Trim(),
-            DurationDays = request.DurationDays,
-            SessionCount = sessionCount,
+            Currency = currency,
+            DurationDays = durationDays,
+            SessionCount = Math.Max(1, sessionCount),
             Frequency = frequency,
             Conditions = conditions,
             Mode = mode,
-            MaxCapacity = Math.Clamp(request.MaxCapacity, 1, 500),
+            MaxCapacity = Math.Clamp(request.MaxCapacity <= 0 ? 20 : request.MaxCapacity, 1, 500),
             IsActive = true
         };
 
         _db.Add(offering);
         PublishTenantProfile(tenantId);
         await _db.SaveChangesAsync(ct);
-        await _payments.SyncOfferingCatalogAsync(offering.Id, ct);
+        try
+        {
+            await _payments.SyncOfferingCatalogAsync(offering.Id, ct);
+        }
+        catch
+        {
+            // L'offre reste créée même si la sync catalogue paiement échoue (gateway indisponible).
+        }
+
         return MapToDto(offering);
     }
 

@@ -219,7 +219,8 @@ public sealed class AdminService
         string? slug = null,
         string? city = null,
         string? phone = null,
-        bool activateSchool = true)
+        bool activateSchool = true,
+        object? initialOffering = null)
         => _api.PostWithErrorAsync<AdminCreatedAccountItem>("api/admin/teachers", new
         {
             email,
@@ -230,7 +231,8 @@ public sealed class AdminService
             slug,
             city,
             phone,
-            activateSchool
+            activateSchool,
+            initialOffering
         });
 }
 
@@ -244,7 +246,8 @@ public sealed record AdminCreatedAccountItem(
     Guid? TenantId = null,
     string? TenantSlug = null,
     Guid? ExpertGroupId = null,
-    string? ExpertGroupName = null);
+    string? ExpertGroupName = null,
+    Guid? OfferingId = null);
 
 public sealed record ExpertGroupItem(
     Guid Id,

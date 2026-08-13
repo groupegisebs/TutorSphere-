@@ -54,6 +54,7 @@ public class AuthService : IAuthService
     private readonly IApplicationDbContext _db;
     private readonly IAppUrlProvider _urls;
     private readonly IExpertReviewNotificationService _expertNotify;
+    private readonly ISubscriptionOfferingService _offerings;
 
     public AuthService(
         UserManager<ApplicationUser> userManager,
@@ -61,7 +62,8 @@ public class AuthService : IAuthService
         IEmailService email,
         IApplicationDbContext db,
         IAppUrlProvider urls,
-        IExpertReviewNotificationService expertNotify)
+        IExpertReviewNotificationService expertNotify,
+        ISubscriptionOfferingService offerings)
     {
         _userManager = userManager;
         _configuration = configuration;
@@ -69,6 +71,7 @@ public class AuthService : IAuthService
         _db = db;
         _urls = urls;
         _expertNotify = expertNotify;
+        _offerings = offerings;
     }
 
     public async Task<AuthResponse> RegisterAsync(RegisterRequest request, CancellationToken ct = default)
@@ -545,8 +548,15 @@ public class AuthService : IAuthService
         user.TenantId = tenant.Id;
         await _userManager.UpdateAsync(user);
 
+        Guid? offeringId = null;
+        if (request.InitialOffering is { } offerReq && !string.IsNullOrWhiteSpace(offerReq.Title))
+        {
+            var offering = await _offerings.CreateForTenantAsync(tenant.Id, offerReq, ct);
+            offeringId = offering.Id;
+        }
+
         // Pas d'envoi du mot de passe par e-mail : l'expert le communique à l'enseignant.
-        return new RegisterTeacherByExpertResponse(tenant.Id, tenant.Slug, email, CredentialsSent: false);
+        return new RegisterTeacherByExpertResponse(tenant.Id, tenant.Slug, email, CredentialsSent: false, offeringId);
     }
 
     private string AllocateUniqueSlug(string schoolName)

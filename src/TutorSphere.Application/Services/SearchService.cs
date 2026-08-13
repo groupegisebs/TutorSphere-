@@ -12,6 +12,9 @@ public interface ISearchService
     Task<IReadOnlyList<TutorSearchResultDto>> SearchTutorsAsync(
         TutorSearchFilters filters,
         CancellationToken ct = default);
+
+    Task<IReadOnlyList<ExpertGroupSearchOptionDto>> ListActiveExpertGroupsAsync(
+        CancellationToken ct = default);
 }
 
 public class SearchService : ISearchService
@@ -63,6 +66,9 @@ public class SearchService : ISearchService
                         && t.LicenseExpiresAt > DateTime.UtcNow
                         && tenantIdsWithOffers.Contains(t.Id));
 
+        if (filters.ExpertGroupId is Guid expertGroupId)
+            query = query.Where(t => t.ApprovedByExpertGroupId == expertGroupId);
+
         if (!string.IsNullOrWhiteSpace(filters.City))
         {
             var city = filters.City.Trim();
@@ -75,16 +81,27 @@ public class SearchService : ISearchService
             query = query.Where(t => t.Language.ToLower() == language);
         }
 
-        // Annuaire : le pays du spectateur est obligatoire (parent / élève / recherche publique).
-        if (string.IsNullOrWhiteSpace(filters.ViewerCountry)
-            || ProfileVisibility.NormalizeCode(filters.ViewerCountry).Length != 2)
+        var tenants = query.ToList();
+
+        // Pays optionnel : si fourni, restreindre à la visibilité géographique ; sinon tous.
+        if (!string.IsNullOrWhiteSpace(filters.ViewerCountry)
+            && ProfileVisibility.NormalizeCode(filters.ViewerCountry).Length == 2)
         {
-            return Task.FromResult<IReadOnlyList<TutorSearchResultDto>>([]);
+            tenants = tenants
+                .Where(t => ProfileVisibility.IsVisibleTo(t.VisibleCountryCodes, t.Country, filters.ViewerCountry))
+                .ToList();
         }
 
-        var tenants = query.ToList()
-            .Where(t => ProfileVisibility.IsVisibleTo(t.VisibleCountryCodes, t.Country, filters.ViewerCountry))
+        var groupIds = tenants
+            .Where(t => t.ApprovedByExpertGroupId.HasValue)
+            .Select(t => t.ApprovedByExpertGroupId!.Value)
+            .Distinct()
             .ToList();
+        var groupNames = _db.ExpertGroups
+            .Where(g => groupIds.Contains(g.Id))
+            .Select(g => new { g.Id, g.Name })
+            .ToList()
+            .ToDictionary(g => g.Id, g => g.Name);
 
         var offeringsByTenant = offerings
             .GroupBy(o => o.TenantId)
@@ -218,7 +235,9 @@ public class SearchService : ISearchService
                     languages,
                     sessionDuration,
                     portfolio.IsVerified,
-                    hasFlexible);
+                    hasFlexible,
+                    t.ApprovedByExpertGroupId,
+                    t.ApprovedByExpertGroupId is Guid gid && groupNames.TryGetValue(gid, out var gn) ? gn : null);
             })
             .Where(r => !filters.MinRating.HasValue || (r.Rating ?? 0) >= filters.MinRating.Value)
             .Where(r => string.IsNullOrWhiteSpace(levelFilter)
@@ -227,6 +246,18 @@ public class SearchService : ISearchService
             .ToList();
 
         return Task.FromResult<IReadOnlyList<TutorSearchResultDto>>(results);
+    }
+
+    public Task<IReadOnlyList<ExpertGroupSearchOptionDto>> ListActiveExpertGroupsAsync(
+        CancellationToken ct = default)
+    {
+        IReadOnlyList<ExpertGroupSearchOptionDto> list = _db.ExpertGroups
+            .Where(g => g.IsActive)
+            .OrderByDescending(g => g.IsInternational)
+            .ThenBy(g => g.Name)
+            .Select(g => new ExpertGroupSearchOptionDto(g.Id, g.Name, g.CountryCode, g.IsInternational))
+            .ToList();
+        return Task.FromResult(list);
     }
 
     /// <summary>Semaine calendaire lundi → dimanche (UTC).</summary>

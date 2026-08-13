@@ -1,3 +1,5 @@
+using TutorSphere.Application.DTOs.SubscriptionOfferings;
+
 namespace TutorSphere.Application.DTOs.Admin;
 
 public record AdminCreateParentRequest(
@@ -24,7 +26,9 @@ public record AdminCreateTeacherRequest(
     string? Slug = null,
     string? City = null,
     string? Phone = null,
-    bool ActivateSchool = true);
+    bool ActivateSchool = true,
+    /// <summary>Offre de service initiale (optionnelle) créée pour l'école.</summary>
+    CreateSubscriptionOfferingRequest? InitialOffering = null);
 
 public record AdminCreatedAccountDto(
     string UserId,
@@ -36,4 +40,5 @@ public record AdminCreatedAccountDto(
     Guid? TenantId = null,
     string? TenantSlug = null,
     Guid? ExpertGroupId = null,
-    string? ExpertGroupName = null);
+    string? ExpertGroupName = null,
+    Guid? OfferingId = null);

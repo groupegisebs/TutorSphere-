@@ -26,7 +26,8 @@ public sealed class AdminUserProvisioningService(
     IEmailService email,
     IAppUrlProvider urls,
     IConfiguration configuration,
-    ILogger<AdminUserProvisioningService> logger) : IAdminUserProvisioningService
+    ILogger<AdminUserProvisioningService> logger,
+    TutorSphere.Application.Services.ISubscriptionOfferingService offerings) : IAdminUserProvisioningService
 {
     public async Task<AdminCreatedAccountDto> CreateParentAsync(
         string adminUserId,
@@ -272,6 +273,13 @@ public sealed class AdminUserProvisioningService(
         user.TenantId = tenant.Id;
         await userManager.UpdateAsync(user);
 
+        Guid? offeringId = null;
+        if (request.InitialOffering is { } offerReq && !string.IsNullOrWhiteSpace(offerReq.Title))
+        {
+            var offering = await offerings.CreateForTenantAsync(tenant.Id, offerReq, ct);
+            offeringId = offering.Id;
+        }
+
         var loginUrl = $"{urls.WebBaseUrl.TrimEnd('/')}/login/tuteur";
         var sent = await SendCredentialsAsync(user, password, loginUrl, group.Name, ct);
 
@@ -281,7 +289,7 @@ public sealed class AdminUserProvisioningService(
 
         return new AdminCreatedAccountDto(
             user.Id, emailAddr, user.FullName, UserRoles.Tutor, password, sent,
-            tenant.Id, tenant.Slug, group.Id, group.Name);
+            tenant.Id, tenant.Slug, group.Id, group.Name, offeringId);
     }
 
     private async Task<bool> SendCredentialsAsync(

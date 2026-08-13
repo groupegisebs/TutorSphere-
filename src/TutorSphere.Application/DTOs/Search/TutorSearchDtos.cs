@@ -11,8 +11,10 @@ public record TutorSearchFilters(
     string? Level = null,
     LessonMode? Mode = null,
     decimal? MinRating = null,
-    /// <summary>Pays du spectateur (ISO) — ne montre que les enseignants visibles dans ce pays.</summary>
-    string? ViewerCountry = null);
+    /// <summary>Pays du spectateur (ISO) — filtre de visibilité géographique (optionnel).</summary>
+    string? ViewerCountry = null,
+    /// <summary>Filtrer par groupe d'experts ayant approuvé l'enseignant ; null = tous.</summary>
+    Guid? ExpertGroupId = null);
 
 public record TutorSearchResultDto(
     Guid Id,
@@ -36,4 +38,13 @@ public record TutorSearchResultDto(
     IReadOnlyList<string>? Languages = null,
     int? SessionDurationMin = null,
     bool IsVerified = false,
-    bool HasFlexibleSessions = false);
+    bool HasFlexibleSessions = false,
+    Guid? ExpertGroupId = null,
+    string? ExpertGroupName = null);
+
+/// <summary>Option de filtre publique pour l'annuaire.</summary>
+public record ExpertGroupSearchOptionDto(
+    Guid Id,
+    string Name,
+    string? CountryCode,
+    bool IsInternational);

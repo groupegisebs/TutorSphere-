@@ -135,6 +135,71 @@
                                     </ul>
                                 }
 
+                                <h3 class="h6 mt-4">Offres de service</h3>
+                                @if (_offerings.Count == 0)
+                                {
+                                    <p class="text-muted small">Aucune offre pour cet enseignant.</p>
+                                }
+                                else
+                                {
+                                    <ul class="list-unstyled mb-3">
+                                        @foreach (var o in _offerings)
+                                        {
+                                            <li class="py-2 border-bottom">
+                                                <strong>@o.Title</strong>
+                                                <span class="small text-muted ms-2">@o.Price.ToString("N0") @o.Currency</span>
+                                                @if (!string.IsNullOrWhiteSpace(o.Subject))
+                                                {
+                                                    <div class="small text-muted">@o.Subject · @o.Mode</div>
+                                                }
+                                            </li>
+                                        }
+                                    </ul>
+                                }
+
+                                <div class="border rounded p-3 mb-3">
+                                    <h4 class="h6">Nouvelle offre</h4>
+                                    @if (!string.IsNullOrEmpty(_offerError))
+                                    {
+                                        <div class="alert alert-danger py-2">@_offerError</div>
+                                    }
+                                    @if (!string.IsNullOrEmpty(_offerSuccess))
+                                    {
+                                        <div class="alert alert-success py-2">@_offerSuccess</div>
+                                    }
+                                    <div class="row g-2">
+                                        <div class="col-12">
+                                            <input class="form-control" placeholder="Titre *" @bind="_offerTitle" />
+                                        </div>
+                                        <div class="col-md-6">
+                                            <input class="form-control" placeholder="Matière" @bind="_offerSubject" />
+                                        </div>
+                                        <div class="col-md-3">
+                                            <input type="number" min="0" class="form-control" placeholder="Prix" @bind="_offerPrice" />
+                                        </div>
+                                        <div class="col-md-3">
+                                            <input class="form-control" @bind="_offerCurrency" />
+                                        </div>
+                                        <div class="col-md-4">
+                                            <input type="number" min="1" class="form-control" placeholder="Durée (j)" @bind="_offerDurationDays" />
+                                        </div>
+                                        <div class="col-md-4">
+                                            <input type="number" min="1" class="form-control" placeholder="Séances" @bind="_offerSessionCount" />
+                                        </div>
+                                        <div class="col-md-4">
+                                            <select class="form-select" @bind="_offerMode">
+                                                <option value="En ligne">En ligne</option>
+                                                <option value="Présentiel">Présentiel</option>
+                                                <option value="Hybride">Hybride</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <button type="button" class="cc-btn cc-btn-primary mt-2" disabled="@_offerBusy" @onclick="CreateOfferingAsync">
+                                        @if (_offerBusy) { <span class="spinner-border spinner-border-sm"></span> }
+                                        Créer l'offre
+                                    </button>
+                                </div>
+
                                 <h3 class="h6 mt-4">@L["ExpertTeachers_RemarksTitle"]</h3>
                                 @if (_remarks.Count == 0)
                                 {
@@ -220,6 +285,7 @@
     private bool _detailLoading;
     private List<TeacherMaterialItem> _materials = [];
     private List<ExpertRemarkItem> _remarks = [];
+    private List<TeacherOfferingItem> _offerings = [];
 
     private int _formCategory;
     private string _formRelatedKey = "";
@@ -227,6 +293,17 @@
     private bool _remarkBusy;
     private string? _remarkError;
     private string? _remarkSuccess;
+
+    private string _offerTitle = "";
+    private string? _offerSubject;
+    private decimal _offerPrice;
+    private string _offerCurrency = "XAF";
+    private int _offerDurationDays = 30;
+    private int _offerSessionCount = 4;
+    private string _offerMode = "En ligne";
+    private bool _offerBusy;
+    private string? _offerError;
+    private string? _offerSuccess;
 
     protected override async Task OnInitializedAsync()
     {
@@ -252,6 +329,8 @@
         _detailLoading = true;
         _remarkError = null;
         _remarkSuccess = null;
+        _offerError = null;
+        _offerSuccess = null;
         _formCategory = 0;
         _formRelatedKey = "";
         _formMessage = "";
@@ -261,6 +340,7 @@
         {
             _materials = await Api.GetAsync<List<TeacherMaterialItem>>($"api/expert/teachers/{tenantId}/materials") ?? [];
             _remarks = await Api.GetAsync<List<ExpertRemarkItem>>($"api/expert/teachers/{tenantId}/remarks") ?? [];
+            _offerings = await Api.GetAsync<List<TeacherOfferingItem>>($"api/expert/teachers/{tenantId}/offerings") ?? [];
         }
         catch (Exception ex) { _error = ex.Message; }
         finally { _detailLoading = false; }
@@ -271,6 +351,48 @@
         _selectedTenantId = null;
         _materials = [];
         _remarks = [];
+        _offerings = [];
+    }
+
+    private async Task CreateOfferingAsync()
+    {
+        if (_selectedTenantId is not Guid tenantId) return;
+        if (string.IsNullOrWhiteSpace(_offerTitle))
+        {
+            _offerError = "Titre de l'offre obligatoire.";
+            return;
+        }
+
+        _offerBusy = true;
+        _offerError = null;
+        _offerSuccess = null;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<TeacherOfferingItem>($"api/expert/teachers/{tenantId}/offerings", new
+            {
+                title = _offerTitle.Trim(),
+                subject = string.IsNullOrWhiteSpace(_offerSubject) ? null : _offerSubject,
+                price = _offerPrice,
+                currency = string.IsNullOrWhiteSpace(_offerCurrency) ? "XAF" : _offerCurrency,
+                durationDays = _offerDurationDays > 0 ? _offerDurationDays : 30,
+                sessionCount = _offerSessionCount > 0 ? _offerSessionCount : 4,
+                mode = _offerMode,
+                maxCapacity = 20
+            });
+            if (!result.IsSuccess)
+            {
+                _offerError = result.Error ?? "Échec de création de l'offre.";
+                return;
+            }
+
+            _offerSuccess = "Offre créée.";
+            _offerTitle = "";
+            _offerSubject = null;
+            _offerPrice = 0;
+            _offerings = await Api.GetAsync<List<TeacherOfferingItem>>($"api/expert/teachers/{tenantId}/offerings") ?? [];
+        }
+        catch (Exception ex) { _offerError = ex.Message; }
+        finally { _offerBusy = false; }
     }
 
     private void PrepareRemarkFor(TeacherMaterialItem m)
@@ -386,4 +508,17 @@
         string? AuthorName,
         DateTime CreatedAt,
         DateTime? ReadByTeacherAt);
+
+    private sealed record TeacherOfferingItem(
+        Guid Id,
+        string Title,
+        string? Description,
+        string? Subject,
+        decimal Price,
+        string Currency,
+        int DurationDays,
+        int SessionCount,
+        string? Frequency,
+        bool IsActive,
+        string Mode);
 }
