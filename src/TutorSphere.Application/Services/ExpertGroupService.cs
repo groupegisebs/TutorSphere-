@@ -12,6 +12,8 @@ public interface IExpertGroupService
     Task<ExpertGroupDto> CreateAsync(CreateExpertGroupRequest request, CancellationToken ct = default);
     Task<ExpertGroupDto> UpdateAsync(Guid id, UpdateExpertGroupRequest request, CancellationToken ct = default);
     Task DeleteAsync(Guid id, CancellationToken ct = default);
+    Task ArchiveAsync(Guid id, CancellationToken ct = default);
+    Task<bool> CanHardDeleteAsync(Guid id, CancellationToken ct = default);
     Task<IReadOnlyList<ExpertGroupMemberDto>> ListMembersAsync(Guid groupId, CancellationToken ct = default);
     Task<ExpertGroupMemberDto> AddMemberAsync(
         Guid groupId,
@@ -43,8 +45,17 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
             .Select(g => new { g.Key, Count = g.Count() })
             .ToDictionary(x => x.Key, x => x.Count);
 
+        var mandates = db.ExpertGroupManagerMandates
+            .Where(m => m.Status == ExpertGroupManagerMandateStatus.Active)
+            .ToList()
+            .ToDictionary(m => m.ExpertGroupId);
+
         IReadOnlyList<ExpertGroupDto> result = groups
-            .Select(g => Map(g, memberCounts.GetValueOrDefault(g.Id)))
+            .Select(g =>
+            {
+                mandates.TryGetValue(g.Id, out var mandate);
+                return Map(g, memberCounts.GetValueOrDefault(g.Id), mandate, CanHardDelete(g.Id));
+            })
             .ToList();
         return Task.FromResult(result);
     }
@@ -53,8 +64,10 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
     {
         var g = db.ExpertGroups.FirstOrDefault(x => x.Id == id);
         if (g is null) return Task.FromResult<ExpertGroupDto?>(null);
-        var count = db.ExpertGroupMembers.Count(m => m.ExpertGroupId == id);
-        return Task.FromResult<ExpertGroupDto?>(Map(g, count));
+        var count = db.ExpertGroupMembers.Count(m => m.ExpertGroupId == id && m.Status != ExpertMembershipStatus.Removed);
+        var mandate = db.ExpertGroupManagerMandates.FirstOrDefault(m =>
+            m.ExpertGroupId == id && m.Status == ExpertGroupManagerMandateStatus.Active);
+        return Task.FromResult<ExpertGroupDto?>(Map(g, count, mandate, CanHardDelete(id)));
     }
 
     public async Task<ExpertGroupDto> CreateAsync(CreateExpertGroupRequest request, CancellationToken ct = default)
@@ -80,20 +93,27 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
                 throw new InvalidOperationException($"Un groupe existe déjà pour le pays {country}.");
         }
 
+        var hasManagerHint = !string.IsNullOrWhiteSpace(request.ManagerUserId)
+                             || !string.IsNullOrWhiteSpace(request.ManagerEmail);
+        if (!hasManagerHint)
+            throw new InvalidOperationException("Un Responsable de groupe est obligatoire à la création.");
+
         var entity = new ExpertGroup
         {
             Name = name,
             LogoUrl = TrimOrNull(request.LogoUrl),
+            Description = TrimOrNull(request.Description),
             ContactName = TrimOrNull(request.ContactName),
-            ContactEmail = TrimOrNull(request.ContactEmail),
-            ContactPhone = TrimOrNull(request.ContactPhone),
+            ContactEmail = TrimOrNull(request.ContactEmail) ?? TrimOrNull(request.ManagerEmail),
+            ContactPhone = TrimOrNull(request.ContactPhone) ?? TrimOrNull(request.ManagerPhone),
             CountryCode = country,
             IsInternational = isInternational,
-            IsActive = true
+            IsActive = false,
+            LifecycleStatus = ExpertGroupLifecycleStatus.Draft
         };
         db.Add(entity);
         await db.SaveChangesAsync(ct);
-        return Map(entity, 0);
+        return Map(entity, 0, null, true);
     }
 
     public async Task<ExpertGroupDto> UpdateAsync(Guid id, UpdateExpertGroupRequest request, CancellationToken ct = default)
@@ -105,21 +125,40 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
         if (string.IsNullOrWhiteSpace(name))
             throw new InvalidOperationException("Le nom du groupe est requis.");
 
+        if (request.IsActive && entity.ActiveManagerMandateId is null)
+        {
+            var hasActiveManager = db.ExpertGroupManagerMandates.Any(m =>
+                m.ExpertGroupId == id && m.Status == ExpertGroupManagerMandateStatus.Active);
+            if (!hasActiveManager)
+                throw new InvalidOperationException("Impossible d'activer un groupe sans Responsable actif.");
+        }
+
         entity.Name = name;
+        entity.Description = TrimOrNull(request.Description) ?? entity.Description;
         entity.ContactName = TrimOrNull(request.ContactName);
         entity.ContactEmail = TrimOrNull(request.ContactEmail);
         entity.ContactPhone = TrimOrNull(request.ContactPhone);
         entity.LogoUrl = TrimOrNull(request.LogoUrl);
         entity.IsActive = request.IsActive;
+        if (request.IsActive)
+            entity.LifecycleStatus = ExpertGroupLifecycleStatus.Active;
+        else if (entity.LifecycleStatus == ExpertGroupLifecycleStatus.Active)
+            entity.LifecycleStatus = ExpertGroupLifecycleStatus.Suspended;
         entity.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
 
-        var count = db.ExpertGroupMembers.Count(m => m.ExpertGroupId == id);
-        return Map(entity, count);
+        var count = db.ExpertGroupMembers.Count(m => m.ExpertGroupId == id && m.Status != ExpertMembershipStatus.Removed);
+        var mandate = db.ExpertGroupManagerMandates.FirstOrDefault(m =>
+            m.ExpertGroupId == id && m.Status == ExpertGroupManagerMandateStatus.Active);
+        return Map(entity, count, mandate, CanHardDelete(id));
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
     {
+        if (!CanHardDelete(id))
+            throw new InvalidOperationException(
+                "Ce groupe possède déjà des membres, enseignants, offres ou historiques. Utilisez Archiver.");
+
         var entity = db.ExpertGroups.FirstOrDefault(g => g.Id == id)
             ?? throw new InvalidOperationException("Groupe d'experts introuvable.");
 
@@ -127,20 +166,40 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
         foreach (var m in members)
             db.Remove(m);
 
+        var mandates = db.ExpertGroupManagerMandates.Where(m => m.ExpertGroupId == id).ToList();
+        foreach (var m in mandates)
+            db.Remove(m);
+
         db.Remove(entity);
         await db.SaveChangesAsync(ct);
     }
+
+    public async Task ArchiveAsync(Guid id, CancellationToken ct = default)
+    {
+        var entity = db.ExpertGroups.FirstOrDefault(g => g.Id == id)
+            ?? throw new InvalidOperationException("Groupe d'experts introuvable.");
+        entity.LifecycleStatus = ExpertGroupLifecycleStatus.Archived;
+        entity.IsActive = false;
+        entity.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+    }
+
+    public Task<bool> CanHardDeleteAsync(Guid id, CancellationToken ct = default) =>
+        Task.FromResult(CanHardDelete(id));
 
     public Task<IReadOnlyList<ExpertGroupMemberDto>> ListMembersAsync(Guid groupId, CancellationToken ct = default)
     {
         if (!db.ExpertGroups.Any(g => g.Id == groupId))
             throw new InvalidOperationException("Groupe d'experts introuvable.");
 
-        // Email/name résolus côté API via UserManager.
         IReadOnlyList<ExpertGroupMemberDto> result = db.ExpertGroupMembers
             .Where(m => m.ExpertGroupId == groupId && m.Status != ExpertMembershipStatus.Removed)
-            .OrderBy(m => m.CreatedAt)
-            .Select(m => new ExpertGroupMemberDto(m.Id, m.ExpertGroupId, m.UserId, string.Empty, string.Empty))
+            .OrderByDescending(m => m.MemberRole == ExpertGroupMemberRole.Manager)
+            .ThenBy(m => m.CreatedAt)
+            .ToList()
+            .Select(m => new ExpertGroupMemberDto(
+                m.Id, m.ExpertGroupId, m.UserId, string.Empty, string.Empty,
+                false, false, false, m.MemberRole, m.Status, m.Specialty))
             .ToList();
         return Task.FromResult(result);
     }
@@ -165,7 +224,6 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
                 && m.Status != ExpertMembershipStatus.Removed))
             throw new InvalidOperationException("Cet utilisateur est déjà membre du groupe.");
 
-        // Règle produit : un expert ne peut appartenir qu'à un seul groupe à la fois.
         var otherGroupId = db.ExpertGroupMembers
             .Where(m => m.UserId == trimmedUserId
                         && m.ExpertGroupId != groupId
@@ -186,12 +244,17 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
         {
             existingRemoved.Status = ExpertMembershipStatus.Active;
             existingRemoved.AdmissionMethod = ExpertAdmissionMethod.AdminDirect;
+            existingRemoved.MemberRole = ExpertGroupMemberRole.Expert;
             existingRemoved.Specialty = string.IsNullOrWhiteSpace(specialty) ? null : specialty.Trim();
             existingRemoved.AdmittedAtUtc = DateTime.UtcNow;
+            existingRemoved.EndedAtUtc = null;
             existingRemoved.ApprovedByAdminId = adminUserId;
             existingRemoved.UpdatedAt = DateTime.UtcNow;
             await db.SaveChangesAsync(ct);
-            return new ExpertGroupMemberDto(existingRemoved.Id, groupId, existingRemoved.UserId, string.Empty, string.Empty);
+            return new ExpertGroupMemberDto(
+                existingRemoved.Id, groupId, existingRemoved.UserId, string.Empty, string.Empty,
+                MemberRole: existingRemoved.MemberRole, Status: existingRemoved.Status,
+                Specialty: existingRemoved.Specialty);
         }
 
         var member = new ExpertGroupMember
@@ -200,20 +263,33 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
             UserId = trimmedUserId,
             Status = ExpertMembershipStatus.Active,
             AdmissionMethod = ExpertAdmissionMethod.AdminDirect,
+            MemberRole = ExpertGroupMemberRole.Expert,
             Specialty = string.IsNullOrWhiteSpace(specialty) ? null : specialty.Trim(),
             AdmittedAtUtc = DateTime.UtcNow,
             ApprovedByAdminId = adminUserId
         };
         db.Add(member);
         await db.SaveChangesAsync(ct);
-        return new ExpertGroupMemberDto(member.Id, groupId, member.UserId, string.Empty, string.Empty);
+        return new ExpertGroupMemberDto(
+            member.Id, groupId, member.UserId, string.Empty, string.Empty,
+            MemberRole: member.MemberRole, Status: member.Status, Specialty: member.Specialty);
     }
 
     public async Task RemoveMemberAsync(Guid groupId, string userId, CancellationToken ct = default)
     {
         var member = db.ExpertGroupMembers.FirstOrDefault(m => m.ExpertGroupId == groupId && m.UserId == userId)
             ?? throw new InvalidOperationException("Membre introuvable.");
+
+        var isActiveManager = db.ExpertGroupManagerMandates.Any(m =>
+            m.ExpertGroupId == groupId
+            && m.UserId == userId
+            && m.Status == ExpertGroupManagerMandateStatus.Active);
+        if (isActiveManager || member.MemberRole == ExpertGroupMemberRole.Manager)
+            throw new InvalidOperationException(
+                "Impossible de retirer le Responsable actif. Transférez d'abord la responsabilité.");
+
         member.Status = ExpertMembershipStatus.Removed;
+        member.EndedAtUtc = DateTime.UtcNow;
         member.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
     }
@@ -232,9 +308,36 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
         return db.ExpertGroups.FirstOrDefault(g => g.IsActive && g.IsInternational);
     }
 
-    private static ExpertGroupDto Map(ExpertGroup g, int memberCount) =>
+    private bool CanHardDelete(Guid id)
+    {
+        if (db.ExpertGroupMembers.Any(m => m.ExpertGroupId == id && m.Status != ExpertMembershipStatus.Removed))
+            return false;
+        if (db.TeacherApplicationInvites.Any(i => i.ExpertGroupId == id))
+            return false;
+        if (db.ExpertMembershipInvites.Any(i => i.ExpertGroupId == id))
+            return false;
+        if (db.GroupOffers.Any(o => o.ExpertGroupId == id))
+            return false;
+        if (db.GroupAdminConversations.Any(c => c.ExpertGroupId == id))
+            return false;
+        if (db.Disciplines.Any(d => d.ExpertGroupId == id))
+            return false;
+        if (db.Tenants.Any(t => t.ApprovedByExpertGroupId == id))
+            return false;
+        return true;
+    }
+
+    private static ExpertGroupDto Map(
+        ExpertGroup g,
+        int memberCount,
+        ExpertGroupManagerMandate? mandate,
+        bool canHardDelete) =>
         new(g.Id, g.Name, g.LogoUrl, g.ContactName, g.ContactEmail, g.ContactPhone,
-            g.CountryCode, g.IsInternational, g.IsActive, memberCount, g.CreatedAt);
+            g.CountryCode, g.IsInternational, g.IsActive, memberCount, g.CreatedAt,
+            g.Description, g.LifecycleStatus, g.ActiveManagerMandateId,
+            ManagerPhone: mandate?.Phone ?? g.ContactPhone,
+            ManagerUserId: mandate?.UserId,
+            CanHardDelete: canHardDelete);
 
     private static string? NormalizeCountry(string? code)
     {

@@ -19,7 +19,7 @@
             <div>
                 <h1 class="cc-page-title">Groupes d'experts</h1>
                 <p class="cc-page-sub">
-                    Un groupe par pays + un seul groupe international. Les experts valident les fiches enseignants.
+                    Un groupe par pays + un seul groupe international. Chaque groupe est administré par un Responsable.
                 </p>
             </div>
             <button type="button" class="cc-btn cc-btn-primary" @onclick="OpenCreate">
@@ -53,16 +53,8 @@
                         <input class="form-control" @bind="_formName" />
                     </div>
                     <div class="col-md-6 mb-3">
-                        <label class="form-label cc-label-light" style="color:#f3f4f6">Premier contact à appeler</label>
-                        <input class="form-control" placeholder="Nom de la personne à contacter" @bind="_formContactName" />
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label cc-label-light" style="color:#f3f4f6">E-mail contact</label>
-                        <input class="form-control" @bind="_formEmail" />
-                    </div>
-                    <div class="col-md-6 mb-3">
-                        <label class="form-label cc-label-light" style="color:#f3f4f6">Téléphone</label>
-                        <input class="form-control" @bind="_formPhone" />
+                        <label class="form-label cc-label-light" style="color:#f3f4f6">Description</label>
+                        <input class="form-control" @bind="_formDescription" />
                     </div>
                     <div class="col-md-6 mb-3">
                         <label class="form-label cc-label-light" style="color:#f3f4f6">Pays</label>
@@ -77,8 +69,53 @@
                             <label class="form-check-label cc-label-light" for="intl" style="color:#f3f4f6">Groupe international (unique)</label>
                         </div>
                     </div>
-                    @if (_editId is not null)
+
+                    @if (_editId is null)
                     {
+                        <div class="col-12"><hr class="border-secondary opacity-25" /></div>
+                        <div class="col-12 mb-2">
+                            <h3 class="h6 mb-0" style="color:#f3f4f6">Responsable du groupe *</h3>
+                            <p class="small mb-0" style="color:#d1d5db">Obligatoire. Compte Expert créé ou réutilisé, puis nommé Responsable.</p>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label cc-label-light" style="color:#f3f4f6">Prénom *</label>
+                            <input class="form-control" @bind="_mgrFirstName" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label cc-label-light" style="color:#f3f4f6">Nom *</label>
+                            <input class="form-control" @bind="_mgrLastName" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label cc-label-light" style="color:#f3f4f6">Courriel *</label>
+                            <input class="form-control" type="email" @bind="_mgrEmail" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label cc-label-light" style="color:#f3f4f6">Téléphone</label>
+                            <input class="form-control" @bind="_mgrPhone" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label cc-label-light" style="color:#f3f4f6">Fonction</label>
+                            <input class="form-control" placeholder="ex. Responsable pédagogique" @bind="_mgrFunction" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label cc-label-light" style="color:#f3f4f6">Début du mandat</label>
+                            <input class="form-control" type="date" @bind="_mgrStartDate" />
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label cc-label-light" style="color:#f3f4f6">Responsable (affichage)</label>
+                            <input class="form-control" @bind="_formContactName" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label cc-label-light" style="color:#f3f4f6">E-mail contact</label>
+                            <input class="form-control" @bind="_formEmail" />
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label cc-label-light" style="color:#f3f4f6">Téléphone</label>
+                            <input class="form-control" @bind="_formPhone" />
+                        </div>
                         <div class="col-12 mb-3">
                             <div class="form-check">
                                 <input class="form-check-input" type="checkbox" @bind="_formActive" id="active" />
@@ -96,14 +133,6 @@
                                     <span class="cc-logo-preview-caption" style="color:#f3f4f6">Logo</span>
                                 </div>
                             }
-                        </div>
-                    }
-                    else
-                    {
-                        <div class="col-12 mb-3">
-                            <div class="form-text cc-label-light" style="color:#d1d5db">
-                                <i class="bi bi-info-circle"></i> Enregistrez d'abord le groupe pour pouvoir ajouter son logo.
-                            </div>
                         </div>
                     }
                 </div>
@@ -130,7 +159,7 @@
                             <tr>
                                 <th>Groupe</th>
                                 <th>Portée</th>
-                                <th>Contact</th>
+                                <th>Responsable du groupe</th>
                                 <th>Membres</th>
                                 <th>Statut</th>
                                 <th></th>
@@ -175,23 +204,47 @@
                                         }
                                     </td>
                                     <td>
-                                        @if (!string.IsNullOrWhiteSpace(g.ContactName))
-                                        {
-                                            <div><strong>@g.ContactName</strong></div>
+                                        @{
+                                            var mgrName = g.ManagerFullName ?? g.ContactName;
+                                            var mgrEmail = g.ManagerEmail ?? g.ContactEmail;
+                                            var mgrPhone = g.ManagerPhone ?? g.ContactPhone;
                                         }
-                                        <div>@(g.ContactEmail ?? "—")</div>
-                                        <div class="small text-muted">@(g.ContactPhone ?? "")</div>
+                                        @if (!string.IsNullOrWhiteSpace(mgrName))
+                                        {
+                                            <div><strong>@mgrName</strong></div>
+                                        }
+                                        else
+                                        {
+                                            <div class="text-muted">Aucun Responsable</div>
+                                        }
+                                        <div>@(mgrEmail ?? "—")</div>
+                                        <div class="small text-muted">@(mgrPhone ?? "")</div>
                                     </td>
                                     <td>@g.MemberCount</td>
                                     <td>
                                         <span class="cc-pill @(g.IsActive ? "cc-pill-ok" : "cc-pill-bad")">
-                                            @(g.IsActive ? "Actif" : "Inactif")
+                                            @(g.LifecycleStatus == 3 ? "Archivé" : g.IsActive ? "Actif" : "Inactif")
                                         </span>
                                     </td>
                                     <td class="text-end">
-                                        <a class="cc-btn btn-sm" href="@($"admin/expert-groups/{g.Id}")">Membres</a>
-                                        <button type="button" class="cc-btn btn-sm" @onclick="() => OpenEdit(g)">Modifier</button>
-                                        <button type="button" class="cc-btn btn-sm" @onclick="() => DeleteAsync(g)">Supprimer</button>
+                                        <div class="d-flex flex-wrap gap-1 justify-content-end">
+                                            <a class="cc-btn btn-sm" href="@($"admin/expert-groups/{g.Id}")">Ouvrir</a>
+                                            <a class="cc-btn btn-sm" href="@($"admin/expert-groups/{g.Id}")">Membres</a>
+                                            <a class="cc-btn btn-sm" href="@($"admin/expert-groups/{g.Id}")">Changer le responsable</a>
+                                            <button type="button" class="cc-btn btn-sm" @onclick="() => ContactAsync(g)">Contacter</button>
+                                            <button type="button" class="cc-btn btn-sm" @onclick="() => OpenEdit(g)">Modifier</button>
+                                            <button type="button" class="cc-btn btn-sm" @onclick="() => ToggleActiveAsync(g)">
+                                                @(g.IsActive ? "Désactiver" : "Activer")
+                                            </button>
+                                            @if (g.CanHardDelete)
+                                            {
+                                                <button type="button" class="cc-btn btn-sm" @onclick="() => DeleteAsync(g)">Supprimer</button>
+                                            }
+                                            else
+                                            {
+                                                <button type="button" class="cc-btn btn-sm" @onclick="() => ArchiveAsync(g)">Archiver</button>
+                                            }
+                                        </div>
                                     </td>
                                 </tr>
                             }
@@ -262,6 +315,7 @@
     private string? _error;
     private string? _formError;
     private string _formName = "";
+    private string? _formDescription;
     private string? _formContactName;
     private string? _formEmail;
     private string? _formPhone;
@@ -269,6 +323,13 @@
     private string? _formLogo;
     private bool _formInternational;
     private bool _formActive = true;
+
+    private string _mgrFirstName = "";
+    private string _mgrLastName = "";
+    private string _mgrEmail = "";
+    private string? _mgrPhone;
+    private string? _mgrFunction;
+    private DateTime? _mgrStartDate = DateTime.Today;
 
     /// <summary>
     /// Logos are stored as API-relative paths (/uploads/...). Served via the Web /uploads proxy
@@ -305,7 +366,10 @@
     {
         _editId = null;
         _formName = "";
-        _formContactName = _formEmail = _formPhone = _formCountry = _formLogo = null;
+        _formDescription = _formContactName = _formEmail = _formPhone = _formCountry = _formLogo = null;
+        _mgrFirstName = _mgrLastName = _mgrEmail = "";
+        _mgrPhone = _mgrFunction = null;
+        _mgrStartDate = DateTime.Today;
         _formInternational = !_groups.Any(g => g.IsInternational);
         _formActive = true;
         _formError = null;
@@ -316,9 +380,10 @@
     {
         _editId = g.Id;
         _formName = g.Name;
-        _formContactName = g.ContactName;
-        _formEmail = g.ContactEmail;
-        _formPhone = g.ContactPhone;
+        _formDescription = g.Description;
+        _formContactName = g.ManagerFullName ?? g.ContactName;
+        _formEmail = g.ManagerEmail ?? g.ContactEmail;
+        _formPhone = g.ManagerPhone ?? g.ContactPhone;
         _formCountry = g.CountryCode;
         _formLogo = g.LogoUrl;
         _formInternational = g.IsInternational;
@@ -345,20 +410,29 @@
         {
             if (_editId is null)
             {
+                if (string.IsNullOrWhiteSpace(_mgrEmail) || string.IsNullOrWhiteSpace(_mgrFirstName) || string.IsNullOrWhiteSpace(_mgrLastName))
+                {
+                    _formError = "Le Responsable (prénom, nom, courriel) est obligatoire.";
+                    return;
+                }
+
                 var created = await AdminSvc.CreateExpertGroupAsync(
-                    _formName, _formContactName, _formEmail, _formPhone, _formCountry, _formInternational);
+                    _formName, null, _mgrEmail, _mgrPhone, _formCountry, _formInternational,
+                    _formDescription, _mgrEmail, _mgrFirstName, _mgrLastName, _mgrPhone, _mgrFunction,
+                    _mgrStartDate?.ToUniversalTime());
                 if (created is null) { _formError = "Échec de création."; return; }
-                // On reste sur le formulaire (passé en mode édition) pour permettre
-                // d'ajouter tout de suite le logo, sans repasser par "Modifier".
                 _editId = created.Id;
                 _formLogo = created.LogoUrl;
                 _formActive = created.IsActive;
-                _flash = "Groupe créé. Vous pouvez maintenant ajouter un logo.";
+                _formContactName = created.ManagerFullName ?? created.ContactName;
+                _formEmail = created.ManagerEmail ?? created.ContactEmail;
+                _formPhone = created.ManagerPhone ?? created.ContactPhone;
+                _flash = "Groupe créé avec son Responsable. Vous pouvez ajouter un logo.";
             }
             else
             {
                 var updated = await AdminSvc.UpdateExpertGroupAsync(
-                    _editId.Value, _formName, _formContactName, _formEmail, _formPhone, _formLogo, _formActive);
+                    _editId.Value, _formName, _formContactName, _formEmail, _formPhone, _formLogo, _formActive, _formDescription);
                 if (updated is null) { _formError = "Échec de mise à jour."; return; }
                 _flash = "Groupe mis à jour.";
                 _showForm = false;
@@ -406,6 +480,51 @@
             ".svg" => "image/svg+xml",
             _ => "image/png"
         };
+
+    private async Task ContactAsync(ExpertGroupItem g)
+    {
+        _error = null;
+        _flash = null;
+        var result = await AdminSvc.ContactExpertGroupAsync(g.Id);
+        if (!result.IsSuccess)
+        {
+            _error = result.Error ?? "Impossible d'ouvrir la conversation.";
+            return;
+        }
+        _flash = "Conversation ouverte avec le Responsable.";
+        Navigation.NavigateTo("admin/expert-groups/messages");
+    }
+
+    private async Task ToggleActiveAsync(ExpertGroupItem g)
+    {
+        _error = null;
+        try
+        {
+            var updated = await AdminSvc.UpdateExpertGroupAsync(
+                g.Id, g.Name, g.ManagerFullName ?? g.ContactName, g.ManagerEmail ?? g.ContactEmail,
+                g.ManagerPhone ?? g.ContactPhone, g.LogoUrl, !g.IsActive, g.Description);
+            if (updated is null) { _error = "Échec de mise à jour du statut."; return; }
+            _flash = updated.IsActive ? "Groupe activé." : "Groupe désactivé.";
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private async Task ArchiveAsync(ExpertGroupItem g)
+    {
+        var confirmed = await JS.InvokeAsync<bool>(
+            "confirm", $"Archiver le groupe « {g.Name} » ? L'historique est conservé.");
+        if (!confirmed) return;
+        _error = null;
+        var result = await AdminSvc.ArchiveExpertGroupAsync(g.Id);
+        if (!result.IsSuccess)
+        {
+            _error = result.Error ?? "Archivage impossible.";
+            return;
+        }
+        _flash = "Groupe archivé.";
+        await ReloadAsync();
+    }
 
     private async Task DeleteAsync(ExpertGroupItem g)
     {

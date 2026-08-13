@@ -51,6 +51,12 @@ public interface IApplicationDbContext
     IQueryable<PlatformPromoCode> PlatformPromoCodes { get; }
     IQueryable<ExpertGroup> ExpertGroups { get; }
     IQueryable<ExpertGroupMember> ExpertGroupMembers { get; }
+    IQueryable<ExpertGroupManagerMandate> ExpertGroupManagerMandates { get; }
+    IQueryable<GroupOffer> GroupOffers { get; }
+    IQueryable<GroupOfferTeacher> GroupOfferTeachers { get; }
+    IQueryable<GroupAdminConversation> GroupAdminConversations { get; }
+    IQueryable<GroupAdminMessage> GroupAdminMessages { get; }
+    IQueryable<TeacherInterestRequest> TeacherInterestRequests { get; }
     IQueryable<TeacherDocument> TeacherDocuments { get; }
     /// <summary>Teacher verification documents without tenant query filter (expert / admin review).</summary>
     IQueryable<TeacherDocument> TeacherDocumentsForAnyTenant { get; }

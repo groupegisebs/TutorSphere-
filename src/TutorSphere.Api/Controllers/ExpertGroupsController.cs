@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.ExpertApproval;
+using TutorSphere.Application.DTOs.ExpertGroupGovernance;
 using TutorSphere.Application.Services;
 using TutorSphere.Domain.Enums;
 using TutorSphere.Infrastructure.Identity;
@@ -19,6 +20,8 @@ namespace TutorSphere.Api.Controllers;
 public class ExpertGroupsController : ControllerBase
 {
     private readonly IExpertGroupService _groups;
+    private readonly IExpertGroupManagerService _managers;
+    private readonly IGroupAdminChatService _chat;
     private readonly IExpertMembershipGovernanceService _membership;
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly IEmailService _email;
@@ -28,6 +31,8 @@ public class ExpertGroupsController : ControllerBase
 
     public ExpertGroupsController(
         IExpertGroupService groups,
+        IExpertGroupManagerService managers,
+        IGroupAdminChatService chat,
         IExpertMembershipGovernanceService membership,
         UserManager<ApplicationUser> userManager,
         IEmailService email,
@@ -36,6 +41,8 @@ public class ExpertGroupsController : ControllerBase
         ILogger<ExpertGroupsController> logger)
     {
         _groups = groups;
+        _managers = managers;
+        _chat = chat;
         _membership = membership;
         _userManager = userManager;
         _email = email;
@@ -48,22 +55,62 @@ public class ExpertGroupsController : ControllerBase
 
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<ExpertGroupDto>>> List(CancellationToken ct)
-        => Ok(await _groups.ListAsync(ct));
+    {
+        var list = await _groups.ListAsync(ct);
+        var enriched = new List<ExpertGroupDto>();
+        foreach (var g in list)
+            enriched.Add(await EnrichManagerAsync(g));
+        return Ok(enriched);
+    }
 
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<ExpertGroupDto>> Get(Guid id, CancellationToken ct)
     {
         var g = await _groups.GetByIdAsync(id, ct);
-        return g is null ? NotFound(new { error = "Groupe introuvable." }) : Ok(g);
+        if (g is null) return NotFound(new { error = "Groupe introuvable." });
+        return Ok(await EnrichManagerAsync(g));
     }
 
     [HttpPost]
     public async Task<ActionResult<ExpertGroupDto>> Create([FromBody] CreateExpertGroupRequest request, CancellationToken ct)
     {
+        if (AdminUserId is null) return Unauthorized();
         try
         {
             var created = await _groups.CreateAsync(request, ct);
-            return CreatedAtAction(nameof(Get), new { id = created.Id }, created);
+            var managerUser = await ResolveOrCreateManagerUserAsync(request, ct);
+            if (managerUser is null)
+                return BadRequest(new { error = "Impossible de résoudre le Responsable (e-mail ou utilisateur requis)." });
+
+            await _groups.AddMemberAsync(created.Id, managerUser.Id, AdminUserId, ct: ct);
+            if (!await _userManager.IsInRoleAsync(managerUser, UserRoles.Expert))
+                await _userManager.AddToRoleAsync(managerUser, UserRoles.Expert);
+
+            await _managers.AppointAsync(created.Id, AdminUserId, managerUser.Id, new AppointGroupManagerRequest(
+                ExistingUserId: managerUser.Id,
+                Email: managerUser.Email,
+                Phone: request.ManagerPhone ?? request.ContactPhone,
+                FunctionTitle: request.ManagerFunctionTitle,
+                MandateStartsAtUtc: request.ManagerMandateStartsAtUtc), ct);
+
+            // Sync contact mirror + activate
+            var group = await _groups.GetByIdAsync(created.Id, ct);
+            if (group is not null)
+            {
+                await _groups.UpdateAsync(created.Id, new UpdateExpertGroupRequest(
+                    group.Name,
+                    managerUser.Email,
+                    request.ManagerPhone ?? request.ContactPhone,
+                    group.LogoUrl,
+                    IsActive: true,
+                    ContactName: managerUser.FullName,
+                    Description: request.Description));
+            }
+
+            await SendExpertLoginCredentialsAsync(managerUser, created.Name, ct);
+            var refreshed = await _groups.GetByIdAsync(created.Id, ct);
+            return CreatedAtAction(nameof(Get), new { id = created.Id },
+                refreshed is null ? created : await EnrichManagerAsync(refreshed));
         }
         catch (InvalidOperationException ex)
         {
@@ -76,7 +123,7 @@ public class ExpertGroupsController : ControllerBase
     {
         try
         {
-            return Ok(await _groups.UpdateAsync(id, request, ct));
+            return Ok(await EnrichManagerAsync(await _groups.UpdateAsync(id, request, ct)));
         }
         catch (InvalidOperationException ex)
         {
@@ -98,15 +145,173 @@ public class ExpertGroupsController : ControllerBase
         }
         catch (Microsoft.EntityFrameworkCore.DbUpdateException ex)
         {
-            // Contrainte FK inattendue (ex. nouvelle relation ajoutée sans ON DELETE CASCADE/SET NULL) :
-            // on log les détails, mais on renvoie un message exploitable côté admin plutôt qu'un 500 muet.
             _logger.LogError(ex, "Échec suppression groupe d'experts {GroupId} : contrainte base de données.", id);
             return BadRequest(new
             {
-                error = "Impossible de supprimer ce groupe : des données (enseignants, invitations, écoles…) y sont encore liées. " +
-                         "Vous pouvez le désactiver à la place."
+                error = "Impossible de supprimer ce groupe : des données y sont encore liées. Utilisez Archiver."
             });
         }
+    }
+
+    [HttpPost("{id:guid}/archive")]
+    public async Task<IActionResult> Archive(Guid id, CancellationToken ct)
+    {
+        try
+        {
+            await _groups.ArchiveAsync(id, ct);
+            return Ok(new { message = "Groupe archivé." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("{id:guid}/manager")]
+    public async Task<ActionResult<ExpertGroupDto>> TransferManager(
+        Guid id, [FromBody] TransferGroupManagerRequest request, CancellationToken ct)
+    {
+        if (AdminUserId is null) return Unauthorized();
+        try
+        {
+            var user = await _userManager.FindByIdAsync(request.NewManagerUserId)
+                ?? throw new InvalidOperationException("Utilisateur introuvable.");
+
+            var members = await _groups.ListMembersAsync(id, ct);
+            if (!members.Any(m => m.UserId == user.Id))
+                await _groups.AddMemberAsync(id, user.Id, AdminUserId, ct: ct);
+
+            if (!await _userManager.IsInRoleAsync(user, UserRoles.Expert))
+                await _userManager.AddToRoleAsync(user, UserRoles.Expert);
+
+            await _managers.AppointAsync(id, AdminUserId, user.Id, new AppointGroupManagerRequest(
+                ExistingUserId: user.Id,
+                Email: user.Email,
+                Phone: request.Phone,
+                FunctionTitle: request.FunctionTitle,
+                MandateStartsAtUtc: request.MandateStartsAtUtc,
+                IsTemporary: request.IsTemporary), ct);
+
+            var group = await _groups.GetByIdAsync(id, ct)
+                ?? throw new InvalidOperationException("Groupe introuvable.");
+            await _groups.UpdateAsync(id, new UpdateExpertGroupRequest(
+                group.Name, user.Email, request.Phone ?? group.ContactPhone, group.LogoUrl, true,
+                user.FullName, group.Description));
+
+            return Ok(await EnrichManagerAsync((await _groups.GetByIdAsync(id, ct))!));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("{id:guid}/manager/suspend")]
+    public async Task<IActionResult> SuspendManager(Guid id, [FromBody] SuspendGroupManagerRequest? request, CancellationToken ct)
+    {
+        if (AdminUserId is null) return Unauthorized();
+        try
+        {
+            await _managers.SuspendActiveMandateAsync(id, AdminUserId, request?.Reason, ct);
+            return Ok(new { message = "Mandat du Responsable suspendu." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("{id:guid}/contact")]
+    public async Task<ActionResult<object>> ContactGroup(
+        Guid id, [FromBody] CreateGroupAdminConversationRequest? request, CancellationToken ct)
+    {
+        if (AdminUserId is null) return Unauthorized();
+        try
+        {
+            var manager = await _managers.GetActiveManagerAsync(id, ct)
+                ?? throw new InvalidOperationException("Aucun Responsable actif pour ouvrir le canal.");
+
+            var subject = string.IsNullOrWhiteSpace(request?.Subject)
+                ? "Contact Super Admin"
+                : request!.Subject;
+            var message = string.IsNullOrWhiteSpace(request?.Message)
+                ? "Conversation ouverte depuis le Control Center."
+                : request!.Message;
+
+            var conversation = await _chat.OpenOrCreateForGroupAsync(
+                id,
+                manager.UserId,
+                new CreateGroupAdminConversationRequest(
+                    subject,
+                    request?.Category ?? GroupAdminConversationCategory.Administrative,
+                    request?.Priority ?? GroupAdminConversationPriority.Normal,
+                    message),
+                ct);
+
+            // First message attributed to manager for routing; admin can reply next.
+            return Ok(new { conversationId = conversation.Id, reference = conversation.Reference });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    private async Task<ExpertGroupDto> EnrichManagerAsync(ExpertGroupDto g)
+    {
+        if (string.IsNullOrWhiteSpace(g.ManagerUserId))
+            return g;
+
+        var user = await _userManager.FindByIdAsync(g.ManagerUserId);
+        if (user is null) return g;
+        return g with
+        {
+            ManagerFullName = user.FullName,
+            ManagerEmail = user.Email,
+            ManagerPhone = g.ManagerPhone ?? g.ContactPhone,
+            ContactName = user.FullName,
+            ContactEmail = user.Email ?? g.ContactEmail,
+            ContactPhone = g.ManagerPhone ?? g.ContactPhone
+        };
+    }
+
+    private async Task<ApplicationUser?> ResolveOrCreateManagerUserAsync(
+        CreateExpertGroupRequest request, CancellationToken ct)
+    {
+        if (!string.IsNullOrWhiteSpace(request.ManagerUserId))
+            return await _userManager.FindByIdAsync(request.ManagerUserId.Trim());
+
+        var email = (request.ManagerEmail ?? request.ContactEmail)?.Trim();
+        if (string.IsNullOrWhiteSpace(email))
+            return null;
+
+        var existing = await _userManager.FindByEmailAsync(email);
+        if (existing is not null)
+            return existing;
+
+        if (!request.CreateManagerAccount)
+            return null;
+
+        var firstName = (request.ManagerFirstName ?? string.Empty).Trim();
+        var lastName = (request.ManagerLastName ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(firstName) || string.IsNullOrWhiteSpace(lastName))
+            throw new InvalidOperationException("Prénom et nom du Responsable requis pour créer le compte.");
+
+        var password = GenerateTemporaryPassword();
+        var user = new ApplicationUser
+        {
+            UserName = email,
+            Email = email,
+            FirstName = firstName,
+            LastName = lastName,
+            PhoneNumber = string.IsNullOrWhiteSpace(request.ManagerPhone) ? null : request.ManagerPhone.Trim(),
+            EmailConfirmed = true,
+            MustChangePassword = true
+        };
+        var create = await _userManager.CreateAsync(user, password);
+        if (!create.Succeeded)
+            throw new InvalidOperationException(string.Join("; ", create.Errors.Select(e => e.Description)));
+        return user;
     }
 
     private static readonly HashSet<string> AllowedLogoExtensions = new(StringComparer.OrdinalIgnoreCase)
@@ -156,7 +361,7 @@ public class ExpertGroupsController : ControllerBase
 
         var url = $"/uploads/{safeFileName}";
         var updated = await _groups.UpdateAsync(id, new UpdateExpertGroupRequest(
-            group.Name, group.ContactEmail, group.ContactPhone, url, group.IsActive, group.ContactName), ct);
+            group.Name, group.ContactEmail, group.ContactPhone, url, group.IsActive, group.ContactName, group.Description), ct);
         return Ok(new { logoUrl = updated.LogoUrl });
     }
 

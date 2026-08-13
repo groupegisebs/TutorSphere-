@@ -1,0 +1,112 @@
+@page "/tutor/interest"
+@layout LoginLayout
+@rendermode InteractiveServer
+@inject HttpClient Http
+@inject NavigationManager Navigation
+@inject IStringLocalizer<SharedResources> L
+
+<ApplyRequestCulture />
+
+<PageTitle>Demande d'intérêt enseignant — TutorSphere</PageTitle>
+
+<div class="register-v2">
+    <div class="register-v2-top">
+        <div class="register-v2-icon"><i class="bi bi-mortarboard"></i></div>
+        <h1 class="register-v2-title">Devenir enseignant</h1>
+        <p class="register-v2-subtitle">
+            L'inscription des enseignants à TutorSphere se fait sur invitation d'un groupe d'experts.
+            Vous pouvez soumettre une demande d'intérêt.
+        </p>
+    </div>
+
+    <div class="register-v2-card">
+        @if (_done)
+        {
+            <div class="alert alert-success">
+                Demande envoyée. Un Expert pourra vous inviter officiellement si votre profil convient.
+            </div>
+            <a class="btn btn-primary" href="/">Retour à l'accueil</a>
+        }
+        else
+        {
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <div class="alert alert-danger">@_error</div>
+            }
+            <div class="mb-3">
+                <label class="form-label">Nom complet *</label>
+                <input class="form-control" @bind="_fullName" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Courriel *</label>
+                <input class="form-control" type="email" @bind="_email" />
+            </div>
+            <div class="row g-2">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Pays</label>
+                    <input class="form-control" placeholder="CM" @bind="_country" />
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Ville</label>
+                    <input class="form-control" @bind="_city" />
+                </div>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Disciplines</label>
+                <input class="form-control" @bind="_disciplines" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Expérience</label>
+                <textarea class="form-control" rows="3" @bind="_experience"></textarea>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Message</label>
+                <textarea class="form-control" rows="3" @bind="_message"></textarea>
+            </div>
+            <button type="button" class="btn btn-primary" disabled="@_busy" @onclick="SubmitAsync">Envoyer la demande</button>
+            <p class="small text-muted mt-3 mb-0">
+                Déjà invité ? <a href="/tutor/register">Compléter mon inscription avec mon invitation</a>
+            </p>
+        }
+    </div>
+</div>
+
+@code {
+    private bool _busy;
+    private bool _done;
+    private string? _error;
+    private string _fullName = "";
+    private string _email = "";
+    private string? _country;
+    private string? _city;
+    private string? _disciplines;
+    private string? _experience;
+    private string? _message;
+
+    private async Task SubmitAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            var response = await Http.PostAsJsonAsync("api/public/teacher-interest", new
+            {
+                fullName = _fullName,
+                email = _email,
+                countryCode = _country,
+                city = _city,
+                disciplines = _disciplines,
+                experience = _experience,
+                message = _message
+            });
+            if (!response.IsSuccessStatusCode)
+            {
+                _error = await response.Content.ReadAsStringAsync();
+                return;
+            }
+            _done = true;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+}

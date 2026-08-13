@@ -1,0 +1,125 @@
+@page "/admin/expert-groups/messages"
+@layout AdminLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService Auth
+@inject ApiClient Api
+
+<PageTitle>Messages groupes d'experts — Control Center</PageTitle>
+
+<AuthorizeView Roles="SuperAdmin,PlatformAdmin">
+    <Authorized>
+        <div class="cc-toolbar">
+            <div>
+                <h1 class="cc-page-title">Chat Responsable ↔ Admin</h1>
+                <p class="cc-page-sub">Canal officiel avec les Responsables de groupe.</p>
+            </div>
+            <a class="cc-btn" href="admin/expert-groups">Retour aux groupes</a>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger">@_error</div>
+        }
+
+        <div class="row g-3">
+            <div class="col-lg-4">
+                <div class="cc-card">
+                    <h2 class="cc-card-title">Conversations</h2>
+                    @if (_loading)
+                    {
+                        <span class="spinner-border spinner-border-sm"></span>
+                    }
+                    else if (_conversations.Count == 0)
+                    {
+                        <p class="text-muted mb-0">Aucune conversation.</p>
+                    }
+                    else
+                    {
+                        <div class="list-group list-group-flush">
+                            @foreach (var c in _conversations)
+                            {
+                                <button type="button"
+                                        class="list-group-item list-group-item-action @(_selectedId == c.Id ? "active" : null)"
+                                        @onclick="() => SelectAsync(c.Id)">
+                                    <div class="fw-semibold">@c.Subject</div>
+                                    <div class="small">@c.GroupName · @c.Reference</div>
+                                </button>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+            <div class="col-lg-8">
+                <div class="cc-card">
+                    @if (_selectedId is null)
+                    {
+                        <p class="text-muted mb-0">Sélectionnez une conversation.</p>
+                    }
+                    else
+                    {
+                        <div style="max-height:420px;overflow:auto" class="mb-3">
+                            @foreach (var m in _messages)
+                            {
+                                <div class="mb-2">
+                                    <div class="small text-muted">@m.SentAtUtc.ToLocalTime().ToString("g")</div>
+                                    <div>@m.Body</div>
+                                </div>
+                            }
+                        </div>
+                        <textarea class="form-control mb-2" rows="3" @bind="_reply"></textarea>
+                        <button type="button" class="cc-btn cc-btn-primary" disabled="@_busy" @onclick="SendAsync">Envoyer</button>
+                    }
+                </div>
+            </div>
+        </div>
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    private bool _loading = true;
+    private bool _busy;
+    private string? _error;
+    private Guid? _selectedId;
+    private string _reply = "";
+    private List<ConversationItem> _conversations = [];
+    private List<MessageItem> _messages = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        try
+        {
+            _conversations = await Api.GetAsync<List<ConversationItem>>("api/admin/expert-groups/messages") ?? [];
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task SelectAsync(Guid id)
+    {
+        _selectedId = id;
+        _messages = await Api.GetAsync<List<MessageItem>>($"api/admin/expert-groups/messages/{id}") ?? [];
+    }
+
+    private async Task SendAsync()
+    {
+        if (_selectedId is null || string.IsNullOrWhiteSpace(_reply)) return;
+        _busy = true;
+        try
+        {
+            await Api.PostWithErrorAsync<object>($"api/admin/expert-groups/messages/{_selectedId}", new { message = _reply });
+            _reply = "";
+            await SelectAsync(_selectedId.Value);
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private sealed record ConversationItem(
+        Guid Id, Guid ExpertGroupId, string GroupName, string Reference, string Subject,
+        int Category, int Priority, int Status, DateTime CreatedAt, int MessageCount, DateTime? LastMessageAt);
+
+    private sealed record MessageItem(
+        Guid Id, string SenderUserId, string? SenderName, string Body, string? AttachmentReference,
+        DateTime SentAtUtc, DateTime? ReadAtUtc, DateTime? EditedAtUtc);
+}

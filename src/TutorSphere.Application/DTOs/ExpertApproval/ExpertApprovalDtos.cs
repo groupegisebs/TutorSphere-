@@ -13,7 +13,15 @@ public record ExpertGroupDto(
     bool IsInternational,
     bool IsActive,
     int MemberCount,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    string? Description = null,
+    ExpertGroupLifecycleStatus LifecycleStatus = ExpertGroupLifecycleStatus.Draft,
+    Guid? ActiveManagerMandateId = null,
+    string? ManagerFullName = null,
+    string? ManagerEmail = null,
+    string? ManagerPhone = null,
+    string? ManagerUserId = null,
+    bool CanHardDelete = true);
 
 public record ExpertGroupMemberDto(
     Guid Id,
@@ -23,7 +31,10 @@ public record ExpertGroupMemberDto(
     string FullName,
     bool AccountCreated = false,
     bool CredentialsSent = false,
-    bool NotificationSent = false);
+    bool NotificationSent = false,
+    ExpertGroupMemberRole MemberRole = ExpertGroupMemberRole.Expert,
+    ExpertMembershipStatus Status = ExpertMembershipStatus.Active,
+    string? Specialty = null);
 
 public record CreateExpertGroupRequest(
     string Name,
@@ -32,7 +43,17 @@ public record CreateExpertGroupRequest(
     string? CountryCode,
     bool IsInternational,
     string? LogoUrl = null,
-    string? ContactName = null);
+    string? ContactName = null,
+    string? Description = null,
+    /// <summary>Responsable obligatoire à la création (utilisateur Expert existant).</summary>
+    string? ManagerUserId = null,
+    string? ManagerEmail = null,
+    string? ManagerFirstName = null,
+    string? ManagerLastName = null,
+    string? ManagerPhone = null,
+    string? ManagerFunctionTitle = null,
+    DateTime? ManagerMandateStartsAtUtc = null,
+    bool CreateManagerAccount = true);
 
 public record UpdateExpertGroupRequest(
     string Name,
@@ -40,7 +61,8 @@ public record UpdateExpertGroupRequest(
     string? ContactPhone,
     string? LogoUrl,
     bool IsActive,
-    string? ContactName = null);
+    string? ContactName = null,
+    string? Description = null);
 
 public record AddExpertMemberRequest(string UserId);
 

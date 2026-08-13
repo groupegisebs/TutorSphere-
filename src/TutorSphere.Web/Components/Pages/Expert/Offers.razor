@@ -1,0 +1,165 @@
+@page "/expert/offers"
+@layout ExpertLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService Auth
+@inject ApiClient Api
+@inject IStringLocalizer<SharedResources> L
+
+<ApplyRequestCulture />
+
+<PageTitle>Offres du groupe — TutorSphere</PageTitle>
+
+<AuthorizeView Roles="Expert">
+    <Authorized>
+        <div class="cc-toolbar">
+            <div>
+                <h1 class="cc-page-title">Catalogue — Offres du groupe</h1>
+                <p class="cc-page-sub">Brouillons et publications gérées par le Responsable.</p>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger">@_error</div>
+        }
+
+        <div class="cc-card mb-3">
+            <h2 class="cc-card-title">Nouvelle offre (brouillon)</h2>
+            <div class="row g-2">
+                <div class="col-md-6">
+                    <input class="form-control" placeholder="Nom *" @bind="_name" />
+                </div>
+                <div class="col-md-3">
+                    <input class="form-control" placeholder="Code" @bind="_code" />
+                </div>
+                <div class="col-md-3">
+                    <input class="form-control" type="number" placeholder="Prix recommandé" @bind="_price" />
+                </div>
+                <div class="col-12">
+                    <input class="form-control" placeholder="Description courte" @bind="_short" />
+                </div>
+            </div>
+            <button type="button" class="cc-btn cc-btn-primary mt-2" disabled="@_busy" @onclick="CreateAsync">Créer</button>
+        </div>
+
+        <div class="cc-card">
+            @if (_loading)
+            {
+                <span class="spinner-border"></span>
+            }
+            else if (_offers.Count == 0)
+            {
+                <p class="text-muted mb-0">Aucune offre.</p>
+            }
+            else
+            {
+                <table class="cc-table">
+                    <thead>
+                        <tr>
+                            <th>Nom</th>
+                            <th>Statut</th>
+                            <th>Prix</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var o in _offers)
+                        {
+                            <tr>
+                                <td><strong>@o.Name</strong> <span class="small text-muted">@o.Code</span></td>
+                                <td>@StatusName(o.Status)</td>
+                                <td>@(o.RecommendedPrice?.ToString("N0") ?? "—") @o.Currency</td>
+                                <td class="text-end">
+                                    @if (o.Status is 0 or 1 or 2)
+                                    {
+                                        <button type="button" class="cc-btn btn-sm" @onclick="() => PublishAsync(o.Id)">Publier</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    private bool _loading = true;
+    private bool _busy;
+    private string? _error;
+    private string _name = "";
+    private string? _code;
+    private string? _short;
+    private decimal? _price;
+    private List<OfferItem> _offers = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _offers = await Api.GetAsync<List<OfferItem>>("api/expert/group-offers") ?? [];
+            _error = null;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task CreateAsync()
+    {
+        _busy = true;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<OfferItem>("api/expert/group-offers", new
+            {
+                name = _name,
+                code = _code,
+                shortDescription = _short,
+                pricingModel = 0,
+                currency = "XAF",
+                fixedPrice = _price,
+                recommendedPrice = _price
+            });
+            if (result.Error is not null) { _error = result.Error; return; }
+            _name = "";
+            _code = _short = null;
+            _price = null;
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task PublishAsync(Guid id)
+    {
+        try
+        {
+            var result = await Api.PostWithErrorAsync<object>($"api/expert/group-offers/{id}/publish", new { });
+            if (result.Error is not null) { _error = result.Error; return; }
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private static string StatusName(int s) => s switch
+    {
+        0 => "Draft",
+        1 => "UnderReview",
+        2 => "Approved",
+        3 => "Published",
+        4 => "Suspended",
+        5 => "Archived",
+        _ => s.ToString()
+    };
+
+    private sealed record OfferItem(
+        Guid Id, Guid ExpertGroupId, string Name, string? Code, int Status, int PricingModel,
+        string Currency, decimal? RecommendedPrice, DateTime CreatedAt, DateTime? PublishedAtUtc);
+}

@@ -1,5 +1,6 @@
 @inject IStringLocalizer<SharedResources> L
 @inject AuthService Auth
+@inject ApiClient Api
 @inject NavigationManager Nav
 
 <div class="cc-sidebar-brand">
@@ -80,6 +81,10 @@
                 <i class="bi bi-book" aria-hidden="true"></i>
                 <span>Disciplines</span>
             </NavLink>
+            <NavLink class="cc-nav-link" href="expert/offers" Match="NavLinkMatch.Prefix">
+                <i class="bi bi-tags" aria-hidden="true"></i>
+                <span>Offres du groupe</span>
+            </NavLink>
             <NavLink class="cc-nav-link cc-nav-link-soon" href="expert/coming-soon/library">
                 <i class="bi bi-journal-bookmark" aria-hidden="true"></i>
                 <span>Bibliothèque</span>
@@ -114,19 +119,37 @@
             </NavLink>
         </div>
 
+        @if (_isManager)
+        {
+            <div class="cc-nav-section">
+                <div class="cc-nav-section-label">Administration</div>
+                <NavLink class="cc-nav-link" href="expert/admin-chat" Match="NavLinkMatch.Prefix">
+                    <i class="bi bi-chat-dots" aria-hidden="true"></i>
+                    <span>Chat avec TutorSphere</span>
+                </NavLink>
+                <NavLink class="cc-nav-link cc-nav-link-soon" href="expert/coming-soon/reports">
+                    <i class="bi bi-file-earmark-bar-graph" aria-hidden="true"></i>
+                    <span>Rapports</span>
+                </NavLink>
+                <NavLink class="cc-nav-link cc-nav-link-soon" href="expert/coming-soon/activity">
+                    <i class="bi bi-activity" aria-hidden="true"></i>
+                    <span>Journal d'activité</span>
+                </NavLink>
+            </div>
+        }
+
         <div class="cc-nav-section">
             <div class="cc-nav-section-label">Outils</div>
-            <NavLink class="cc-nav-link cc-nav-link-soon" href="expert/coming-soon/reports">
-                <i class="bi bi-file-earmark-bar-graph" aria-hidden="true"></i>
-                <span>Rapports</span>
-            </NavLink>
+            @if (!_isManager)
+            {
+                <NavLink class="cc-nav-link cc-nav-link-soon" href="expert/coming-soon/reports">
+                    <i class="bi bi-file-earmark-bar-graph" aria-hidden="true"></i>
+                    <span>Rapports</span>
+                </NavLink>
+            }
             <NavLink class="cc-nav-link cc-nav-link-soon" href="expert/coming-soon/notifications">
                 <i class="bi bi-bell" aria-hidden="true"></i>
                 <span>Notifications</span>
-            </NavLink>
-            <NavLink class="cc-nav-link cc-nav-link-soon" href="expert/coming-soon/activity">
-                <i class="bi bi-activity" aria-hidden="true"></i>
-                <span>Journal</span>
             </NavLink>
             <NavLink class="cc-nav-link cc-nav-link-soon" href="expert/coming-soon/profile">
                 <i class="bi bi-person-gear" aria-hidden="true"></i>
@@ -143,10 +166,25 @@
 </div>
 
 @code {
+    private bool _isManager;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await Auth.EnsureSessionRestoredAsync(forceJs: true);
+            var ctx = await Api.GetAsync<MeContext>("api/expert/me-context");
+            _isManager = ctx?.IsGroupManager == true;
+        }
+        catch { }
+    }
+
     private Task LogoutAsync()
     {
         Auth.Logout();
         Nav.NavigateTo("/login/expert", forceLoad: true);
         return Task.CompletedTask;
     }
+
+    private sealed record MeContext(bool IsGroupManager, Guid? GroupId, string? GroupName);
 }

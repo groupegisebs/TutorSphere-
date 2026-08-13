@@ -354,6 +354,10 @@ public class AuthService : IAuthService
 
     public async Task<RegisterSchoolResponse> RegisterSchoolAsync(RegisterSchoolRequest request, CancellationToken ct = default)
     {
+        if (string.IsNullOrWhiteSpace(request.InviteToken))
+            throw new InvalidOperationException(
+                "L'inscription enseignant se fait uniquement sur invitation. Soumettez une demande d'intérêt ou utilisez le lien reçu.");
+
         var slug = request.Slug.Trim().ToLowerInvariant();
 
         if (_db.Tenants.Any(t => t.Slug == slug))

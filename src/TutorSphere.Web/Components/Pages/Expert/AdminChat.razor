@@ -1,0 +1,141 @@
+@page "/expert/admin-chat"
+@layout ExpertLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService Auth
+@inject ApiClient Api
+@inject IStringLocalizer<SharedResources> L
+
+<ApplyRequestCulture />
+
+<PageTitle>Chat TutorSphere — Expert</PageTitle>
+
+<AuthorizeView Roles="Expert">
+    <Authorized>
+        <div class="cc-toolbar">
+            <div>
+                <h1 class="cc-page-title">Chat avec TutorSphere</h1>
+                <p class="cc-page-sub">Canal réservé au Responsable du groupe.</p>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger">@_error</div>
+        }
+
+        <div class="row g-3">
+            <div class="col-lg-5">
+                <div class="cc-card mb-3">
+                    <h2 class="cc-card-title">Nouvelle conversation</h2>
+                    <input class="form-control mb-2" placeholder="Sujet" @bind="_subject" />
+                    <textarea class="form-control mb-2" rows="3" placeholder="Message" @bind="_body"></textarea>
+                    <button type="button" class="cc-btn cc-btn-primary" disabled="@_busy" @onclick="CreateAsync">Ouvrir</button>
+                </div>
+                <div class="cc-card">
+                    <h2 class="cc-card-title">Historique</h2>
+                    @foreach (var c in _conversations)
+                    {
+                        <button type="button" class="cc-btn w-100 mb-1 text-start" @onclick="() => SelectAsync(c.Id)">
+                            @c.Subject <span class="small text-muted">(@c.Reference)</span>
+                        </button>
+                    }
+                </div>
+            </div>
+            <div class="col-lg-7">
+                <div class="cc-card">
+                    @if (_selectedId is null)
+                    {
+                        <p class="text-muted mb-0">Sélectionnez ou créez une conversation.</p>
+                    }
+                    else
+                    {
+                        @foreach (var m in _messages)
+                        {
+                            <div class="mb-2">
+                                <div class="small text-muted">@m.SentAtUtc.ToLocalTime().ToString("g")</div>
+                                <div>@m.Body</div>
+                            </div>
+                        }
+                        <textarea class="form-control mb-2" rows="3" @bind="_reply"></textarea>
+                        <button type="button" class="cc-btn cc-btn-primary" disabled="@_busy" @onclick="SendAsync">Envoyer</button>
+                    }
+                </div>
+            </div>
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <div class="cc-card cc-empty">
+            <p>@L["Expert_LoginRequired"]</p>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private bool _busy;
+    private string? _error;
+    private string _subject = "";
+    private string _body = "";
+    private string _reply = "";
+    private Guid? _selectedId;
+    private List<ConversationItem> _conversations = [];
+    private List<MessageItem> _messages = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        try
+        {
+            _conversations = await Api.GetAsync<List<ConversationItem>>("api/expert/admin-chat") ?? [];
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private async Task CreateAsync()
+    {
+        _busy = true;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<ConversationItem>("api/expert/admin-chat", new
+            {
+                subject = _subject,
+                category = 10,
+                priority = 0,
+                message = _body
+            });
+            if (result.Error is not null) { _error = result.Error; return; }
+            _subject = _body = "";
+            _conversations = await Api.GetAsync<List<ConversationItem>>("api/expert/admin-chat") ?? [];
+            if (result.Value is not null) await SelectAsync(result.Value.Id);
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task SelectAsync(Guid id)
+    {
+        _selectedId = id;
+        _messages = await Api.GetAsync<List<MessageItem>>($"api/expert/admin-chat/{id}/messages") ?? [];
+    }
+
+    private async Task SendAsync()
+    {
+        if (_selectedId is null || string.IsNullOrWhiteSpace(_reply)) return;
+        _busy = true;
+        try
+        {
+            await Api.PostWithErrorAsync<object>($"api/expert/admin-chat/{_selectedId}/messages", new { message = _reply });
+            _reply = "";
+            await SelectAsync(_selectedId.Value);
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private sealed record ConversationItem(
+        Guid Id, Guid ExpertGroupId, string GroupName, string Reference, string Subject,
+        int Category, int Priority, int Status, DateTime CreatedAt, int MessageCount, DateTime? LastMessageAt);
+
+    private sealed record MessageItem(
+        Guid Id, string SenderUserId, string? SenderName, string Body, string? AttachmentReference,
+        DateTime SentAtUtc, DateTime? ReadAtUtc, DateTime? EditedAtUtc);
+}

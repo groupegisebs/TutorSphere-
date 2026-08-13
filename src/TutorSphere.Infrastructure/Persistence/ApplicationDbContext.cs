@@ -38,6 +38,12 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     public DbSet<PlatformPromoCode> PlatformPromoCodesSet => Set<PlatformPromoCode>();
     public DbSet<ExpertGroup> ExpertGroupsSet => Set<ExpertGroup>();
     public DbSet<ExpertGroupMember> ExpertGroupMembersSet => Set<ExpertGroupMember>();
+    public DbSet<ExpertGroupManagerMandate> ExpertGroupManagerMandatesSet => Set<ExpertGroupManagerMandate>();
+    public DbSet<GroupOffer> GroupOffersSet => Set<GroupOffer>();
+    public DbSet<GroupOfferTeacher> GroupOfferTeachersSet => Set<GroupOfferTeacher>();
+    public DbSet<GroupAdminConversation> GroupAdminConversationsSet => Set<GroupAdminConversation>();
+    public DbSet<GroupAdminMessage> GroupAdminMessagesSet => Set<GroupAdminMessage>();
+    public DbSet<TeacherInterestRequest> TeacherInterestRequestsSet => Set<TeacherInterestRequest>();
     public DbSet<TeacherDocument> TeacherDocumentsSet => Set<TeacherDocument>();
     public DbSet<TeacherApplicationInvite> TeacherApplicationInvitesSet => Set<TeacherApplicationInvite>();
     public DbSet<ExpertMembershipInvite> ExpertMembershipInvitesSet => Set<ExpertMembershipInvite>();
@@ -90,6 +96,15 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     IQueryable<PlatformPromoCode> IApplicationDbContext.PlatformPromoCodes => PlatformPromoCodesSet;
     IQueryable<ExpertGroup> IApplicationDbContext.ExpertGroups => ExpertGroupsSet;
     IQueryable<ExpertGroupMember> IApplicationDbContext.ExpertGroupMembers => ExpertGroupMembersSet;
+    IQueryable<ExpertGroupManagerMandate> IApplicationDbContext.ExpertGroupManagerMandates =>
+        ExpertGroupManagerMandatesSet;
+    IQueryable<GroupOffer> IApplicationDbContext.GroupOffers => GroupOffersSet;
+    IQueryable<GroupOfferTeacher> IApplicationDbContext.GroupOfferTeachers => GroupOfferTeachersSet;
+    IQueryable<GroupAdminConversation> IApplicationDbContext.GroupAdminConversations =>
+        GroupAdminConversationsSet;
+    IQueryable<GroupAdminMessage> IApplicationDbContext.GroupAdminMessages => GroupAdminMessagesSet;
+    IQueryable<TeacherInterestRequest> IApplicationDbContext.TeacherInterestRequests =>
+        TeacherInterestRequestsSet;
     IQueryable<TeacherDocument> IApplicationDbContext.TeacherDocuments => TeacherDocumentsSet;
     IQueryable<TeacherDocument> IApplicationDbContext.TeacherDocumentsForAnyTenant =>
         TeacherDocumentsSet.IgnoreQueryFilters();
@@ -198,12 +213,14 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
         {
             e.Property(g => g.Name).HasMaxLength(200).IsRequired();
             e.Property(g => g.LogoUrl).HasMaxLength(500);
+            e.Property(g => g.Description).HasMaxLength(4000);
             e.Property(g => g.ContactName).HasMaxLength(200);
             e.Property(g => g.ContactEmail).HasMaxLength(256);
             e.Property(g => g.ContactPhone).HasMaxLength(50);
             e.Property(g => g.CountryCode).HasMaxLength(8);
             e.HasIndex(g => g.IsInternational);
             e.HasIndex(g => g.CountryCode);
+            e.HasIndex(g => g.ActiveManagerMandateId);
             // Unicité logique : un international + un par pays (appliquée aussi en service).
             e.HasIndex(g => g.CountryCode)
                 .IsUnique()
@@ -219,8 +236,98 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             e.Property(m => m.Specialty).HasMaxLength(200);
             e.Property(m => m.ApprovedByAdminId).HasMaxLength(450);
             e.HasIndex(m => new { m.ExpertGroupId, m.UserId }).IsUnique();
+            e.HasIndex(m => new { m.ExpertGroupId, m.MemberRole });
             e.HasOne(m => m.ExpertGroup).WithMany(g => g.Members).HasForeignKey(m => m.ExpertGroupId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<ExpertGroupManagerMandate>(e =>
+        {
+            e.Property(m => m.UserId).HasMaxLength(450).IsRequired();
+            e.Property(m => m.FunctionTitle).HasMaxLength(200);
+            e.Property(m => m.Phone).HasMaxLength(50);
+            e.Property(m => m.AppointedByAdminId).HasMaxLength(450).IsRequired();
+            e.Property(m => m.EndedByAdminId).HasMaxLength(450);
+            e.Property(m => m.EndReason).HasMaxLength(2000);
+            e.HasIndex(m => m.ExpertGroupId);
+            e.HasIndex(m => new { m.ExpertGroupId, m.Status });
+            e.HasOne(m => m.ExpertGroup).WithMany(g => g.ManagerMandates).HasForeignKey(m => m.ExpertGroupId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(m => m.Membership).WithMany().HasForeignKey(m => m.MembershipId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<GroupOffer>(e =>
+        {
+            e.Property(o => o.Name).HasMaxLength(200).IsRequired();
+            e.Property(o => o.Code).HasMaxLength(64);
+            e.Property(o => o.ShortDescription).HasMaxLength(500);
+            e.Property(o => o.FullDescription).HasMaxLength(8000);
+            e.Property(o => o.ImageUrl).HasMaxLength(500);
+            e.Property(o => o.SchoolCycle).HasMaxLength(120);
+            e.Property(o => o.LevelsCsv).HasMaxLength(500);
+            e.Property(o => o.LanguagesCsv).HasMaxLength(200);
+            e.Property(o => o.VisibleCountryCodes).HasMaxLength(500);
+            e.Property(o => o.Currency).HasMaxLength(8).IsRequired();
+            e.Property(o => o.CreatedByUserId).HasMaxLength(450).IsRequired();
+            e.Property(o => o.ApprovedByManagerUserId).HasMaxLength(450);
+            e.HasIndex(o => o.ExpertGroupId);
+            e.HasIndex(o => new { o.ExpertGroupId, o.Status });
+            e.HasOne(o => o.ExpertGroup).WithMany(g => g.Offers).HasForeignKey(o => o.ExpertGroupId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(o => o.Discipline).WithMany().HasForeignKey(o => o.DisciplineId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        builder.Entity<GroupOfferTeacher>(e =>
+        {
+            e.Property(t => t.ApprovedByUserId).HasMaxLength(450);
+            e.HasIndex(t => new { t.GroupOfferId, t.TeacherTenantId }).IsUnique();
+            e.HasOne(t => t.GroupOffer).WithMany(o => o.Teachers).HasForeignKey(t => t.GroupOfferId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(t => t.TeacherTenant).WithMany().HasForeignKey(t => t.TeacherTenantId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<GroupAdminConversation>(e =>
+        {
+            e.Property(c => c.Reference).HasMaxLength(64).IsRequired();
+            e.Property(c => c.Subject).HasMaxLength(300).IsRequired();
+            e.Property(c => c.CreatedByManagerUserId).HasMaxLength(450).IsRequired();
+            e.Property(c => c.AssignedAdminUserId).HasMaxLength(450);
+            e.HasIndex(c => c.Reference).IsUnique();
+            e.HasIndex(c => c.ExpertGroupId);
+            e.HasIndex(c => c.Status);
+            e.HasOne(c => c.ExpertGroup).WithMany().HasForeignKey(c => c.ExpertGroupId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<GroupAdminMessage>(e =>
+        {
+            e.Property(m => m.SenderUserId).HasMaxLength(450).IsRequired();
+            e.Property(m => m.Body).HasMaxLength(8000).IsRequired();
+            e.Property(m => m.AttachmentReference).HasMaxLength(500);
+            e.Property(m => m.PreviousBody).HasMaxLength(8000);
+            e.HasIndex(m => m.ConversationId);
+            e.HasOne(m => m.Conversation).WithMany(c => c.Messages).HasForeignKey(m => m.ConversationId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<TeacherInterestRequest>(e =>
+        {
+            e.Property(r => r.FullName).HasMaxLength(200).IsRequired();
+            e.Property(r => r.Email).HasMaxLength(256).IsRequired();
+            e.Property(r => r.CountryCode).HasMaxLength(8);
+            e.Property(r => r.City).HasMaxLength(120);
+            e.Property(r => r.Disciplines).HasMaxLength(500);
+            e.Property(r => r.Experience).HasMaxLength(2000);
+            e.Property(r => r.Message).HasMaxLength(4000);
+            e.Property(r => r.HandledByUserId).HasMaxLength(450);
+            e.HasIndex(r => r.Email);
+            e.HasIndex(r => r.Status);
+            e.HasIndex(r => r.RoutedExpertGroupId);
+            e.HasOne(r => r.RoutedExpertGroup).WithMany().HasForeignKey(r => r.RoutedExpertGroupId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         builder.Entity<ExpertMembershipInvite>(e =>

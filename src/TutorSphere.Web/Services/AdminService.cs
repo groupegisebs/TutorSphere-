@@ -61,7 +61,19 @@ public sealed class AdminService
         => await _api.GetAsync<List<ExpertGroupItem>>("api/admin/expert-groups") ?? [];
 
     public async Task<ExpertGroupItem?> CreateExpertGroupAsync(
-        string name, string? contactName, string? contactEmail, string? contactPhone, string? countryCode, bool isInternational)
+        string name,
+        string? contactName,
+        string? contactEmail,
+        string? contactPhone,
+        string? countryCode,
+        bool isInternational,
+        string? description = null,
+        string? managerEmail = null,
+        string? managerFirstName = null,
+        string? managerLastName = null,
+        string? managerPhone = null,
+        string? managerFunctionTitle = null,
+        DateTime? managerMandateStartsAtUtc = null)
         => await _api.PostAsync<ExpertGroupItem>("api/admin/expert-groups", new
         {
             name,
@@ -69,11 +81,20 @@ public sealed class AdminService
             contactEmail,
             contactPhone,
             countryCode,
-            isInternational
+            isInternational,
+            description,
+            managerEmail,
+            managerFirstName,
+            managerLastName,
+            managerPhone,
+            managerFunctionTitle,
+            managerMandateStartsAtUtc,
+            createManagerAccount = true
         });
 
     public async Task<ExpertGroupItem?> UpdateExpertGroupAsync(
-        Guid id, string name, string? contactName, string? contactEmail, string? contactPhone, string? logoUrl, bool isActive)
+        Guid id, string name, string? contactName, string? contactEmail, string? contactPhone, string? logoUrl, bool isActive,
+        string? description = null)
         => await _api.PutAsync<ExpertGroupItem>($"api/admin/expert-groups/{id}", new
         {
             name,
@@ -81,11 +102,33 @@ public sealed class AdminService
             contactEmail,
             contactPhone,
             logoUrl,
-            isActive
+            isActive,
+            description
         });
 
     public async Task<ApiResult<bool>> DeleteExpertGroupAsync(Guid id)
         => await _api.DeleteWithErrorAsync($"api/admin/expert-groups/{id}");
+
+    public Task<ApiResult<object>> ArchiveExpertGroupAsync(Guid id)
+        => _api.PostWithErrorAsync<object>($"api/admin/expert-groups/{id}/archive", new { });
+
+    public Task<ApiResult<object>> ContactExpertGroupAsync(Guid id, string? subject = null, string? message = null)
+        => _api.PostWithErrorAsync<object>($"api/admin/expert-groups/{id}/contact", new
+        {
+            subject = subject ?? "Contact Super Admin",
+            category = 10,
+            priority = 0,
+            message = message ?? "Conversation ouverte depuis le Control Center."
+        });
+
+    public Task<ApiResult<ExpertGroupItem>> TransferGroupManagerAsync(
+        Guid groupId, string newManagerUserId, string? phone = null, string? functionTitle = null)
+        => _api.PostWithErrorAsync<ExpertGroupItem>($"api/admin/expert-groups/{groupId}/manager", new
+        {
+            newManagerUserId,
+            phone,
+            functionTitle
+        });
 
     public async Task<List<ExpertMemberItem>> GetExpertGroupMembersAsync(Guid groupId)
         => await _api.GetAsync<List<ExpertMemberItem>>($"api/admin/expert-groups/{groupId}/members") ?? [];
@@ -148,7 +191,15 @@ public sealed record ExpertGroupItem(
     bool IsInternational,
     bool IsActive,
     int MemberCount,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    string? Description = null,
+    int LifecycleStatus = 0,
+    Guid? ActiveManagerMandateId = null,
+    string? ManagerFullName = null,
+    string? ManagerEmail = null,
+    string? ManagerPhone = null,
+    string? ManagerUserId = null,
+    bool CanHardDelete = true);
 
 public sealed record ExpertMemberItem(
     Guid Id,

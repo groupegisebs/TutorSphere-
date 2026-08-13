@@ -11,11 +11,14 @@ public class ExpertGroupMember : BaseEntity
 
     public ExpertMembershipStatus Status { get; set; } = ExpertMembershipStatus.Active;
     public ExpertAdmissionMethod AdmissionMethod { get; set; } = ExpertAdmissionMethod.AdminDirect;
+    public ExpertGroupMemberRole MemberRole { get; set; } = ExpertGroupMemberRole.Expert;
+
     public string? Specialty { get; set; }
     public DateTime? AdmittedAtUtc { get; set; }
     public string? ApprovedByAdminId { get; set; }
     public int? ApprovalCount { get; set; }
     public int? RequiredApprovalCount { get; set; }
+    public DateTime? EndedAtUtc { get; set; }
 
     public ExpertGroup ExpertGroup { get; set; } = null!;
 }

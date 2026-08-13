@@ -1,4 +1,5 @@
 using TutorSphere.Domain.Common;
+using TutorSphere.Domain.Enums;
 
 namespace TutorSphere.Domain.Entities;
 
@@ -7,13 +8,15 @@ namespace TutorSphere.Domain.Entities;
 /// Règle produit : au plus un groupe par code pays, et exactement au plus un groupe international
 /// (<see cref="IsInternational"/> = true, <see cref="CountryCode"/> null).
 /// Routage revue : pays de l'enseignant → groupe pays ; sinon groupe international.
+/// Administré par un <see cref="ExpertGroupManagerMandate"/> (Responsable du groupe).
 /// </summary>
 public class ExpertGroup : BaseEntity
 {
     public string Name { get; set; } = string.Empty;
     public string? LogoUrl { get; set; }
+    public string? Description { get; set; }
 
-    /// <summary>Nom du premier contact à appeler pour ce groupe (ex. responsable du pays).</summary>
+    /// <summary>Coordonnées miroir du Responsable actif (affichage rapide / rétrocompat).</summary>
     public string? ContactName { get; set; }
     public string? ContactEmail { get; set; }
     public string? ContactPhone { get; set; }
@@ -26,5 +29,12 @@ public class ExpertGroup : BaseEntity
 
     public bool IsActive { get; set; } = true;
 
+    public ExpertGroupLifecycleStatus LifecycleStatus { get; set; } = ExpertGroupLifecycleStatus.Draft;
+
+    /// <summary>Mandat Responsable principal actif (dénormalisé pour jointures rapides).</summary>
+    public Guid? ActiveManagerMandateId { get; set; }
+
     public ICollection<ExpertGroupMember> Members { get; set; } = [];
+    public ICollection<ExpertGroupManagerMandate> ManagerMandates { get; set; } = [];
+    public ICollection<GroupOffer> Offers { get; set; } = [];
 }

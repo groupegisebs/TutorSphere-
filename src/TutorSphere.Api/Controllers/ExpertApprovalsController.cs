@@ -258,6 +258,25 @@ public class ExpertApprovalsController : ControllerBase
         return group is null ? NotFound() : Ok(group);
     }
 
+    [HttpGet("me-context")]
+    public async Task<ActionResult<object>> MeContext(
+        [FromServices] IExpertGroupManagerService managers,
+        [FromServices] IExpertGroupService groups,
+        CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        var isManager = managers.IsActiveManager(UserId);
+        Guid? groupId = null;
+        string? groupName = null;
+        var my = await _approvals.GetMyGroupAsync(UserId, ct);
+        if (my is not null)
+        {
+            groupId = my.Id;
+            groupName = my.Name;
+        }
+        return Ok(new { isGroupManager = isManager, groupId, groupName });
+    }
+
     [HttpGet("invitations")]
     public async Task<ActionResult<IReadOnlyList<TeacherApplicationInviteDto>>> Invitations(CancellationToken ct)
     {

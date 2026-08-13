@@ -30,6 +30,10 @@ public static class DependencyInjection
         services.AddScoped<IPlatformPromoService, PlatformPromoService>();
         services.AddScoped<ITutorOnboardingService, TutorOnboardingService>();
         services.AddScoped<IExpertGroupService, ExpertGroupService>();
+        services.AddScoped<IExpertGroupManagerService, ExpertGroupManagerService>();
+        services.AddScoped<IGroupOfferService, GroupOfferService>();
+        services.AddScoped<IGroupAdminChatService, GroupAdminChatService>();
+        services.AddScoped<ITeacherInterestService, TeacherInterestService>();
         services.AddScoped<IExpertApprovalService, ExpertApprovalService>();
         services.AddScoped<IExpertMonitoringService, ExpertMonitoringService>();
         services.AddScoped<IExpertDisciplineService, ExpertDisciplineService>();
