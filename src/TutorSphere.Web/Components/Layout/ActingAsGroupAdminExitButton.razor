@@ -1,0 +1,29 @@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService Auth
+@inject NavigationManager Nav
+
+@if (_ready && Auth.IsActingAsGroupAdmin)
+{
+    <button type="button" class="cc-btn btn-sm ex-actas-exit" @onclick="ExitActAsAsync"
+            title="Quitter le mode suppléant et retourner au Control Center">
+        <i class="bi bi-box-arrow-left" aria-hidden="true"></i>
+        Control Center
+    </button>
+}
+
+@code {
+    private bool _ready;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        try { await Auth.RestoreActAsGroupAsync(); } catch { }
+        _ready = true;
+    }
+
+    private async Task ExitActAsAsync()
+    {
+        await Auth.StopActingAsGroupAdminAsync();
+        Nav.NavigateTo("/admin/expert-groups");
+    }
+}

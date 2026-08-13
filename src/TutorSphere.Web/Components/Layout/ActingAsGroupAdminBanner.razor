@@ -1,0 +1,33 @@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService Auth
+@inject NavigationManager Nav
+
+@if (_ready && Auth.IsActingAsGroupAdmin)
+{
+    <div class="alert alert-warning d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 ex-actas-banner">
+        <span>
+            <i class="bi bi-person-gear me-1"></i>
+            Mode administrateur suppléant — <strong>@(Auth.ActingAsExpertGroupName ?? "groupe")</strong>
+        </span>
+        <button type="button" class="cc-btn btn-sm" @onclick="ExitActAsAsync">
+            Quitter et retour Control Center
+        </button>
+    </div>
+}
+
+@code {
+    private bool _ready;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        try { await Auth.RestoreActAsGroupAsync(); } catch { }
+        _ready = true;
+    }
+
+    private async Task ExitActAsAsync()
+    {
+        await Auth.StopActingAsGroupAdminAsync();
+        Nav.NavigateTo("/admin/expert-groups");
+    }
+}

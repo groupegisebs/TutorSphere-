@@ -3,24 +3,11 @@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject AuthService Auth
 @inject ApiClient Api
-@inject NavigationManager Nav
 
 <PageTitle>Espace Responsable — TutorSphere</PageTitle>
 
 <AuthorizeView Roles="GroupManager,SuperAdmin,PlatformAdmin">
     <Authorized>
-        @if (Auth.IsActingAsGroupAdmin)
-        {
-            <div class="alert alert-warning d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-                <span>
-                    <i class="bi bi-person-gear me-1"></i>
-                    Mode administrateur suppléant — <strong>@(Auth.ActingAsExpertGroupName ?? "groupe")</strong>
-                </span>
-                <button type="button" class="cc-btn btn-sm" @onclick="ExitActAsAsync">
-                    Quitter et retour Control Center
-                </button>
-            </div>
-        }
         <div class="cc-toolbar">
             <div>
                 <h1 class="cc-page-title">Tableau de bord Responsable</h1>
@@ -99,12 +86,6 @@
         }
         catch (Exception ex) { _error = ex.Message; }
         finally { _loading = false; }
-    }
-
-    private async Task ExitActAsAsync()
-    {
-        await Auth.StopActingAsGroupAdminAsync();
-        Nav.NavigateTo("/admin/expert-groups");
     }
 
     private sealed record MeContext(bool IsGroupManager, Guid? GroupId, string? GroupName, bool IsPlatformActAs = false);
