@@ -1,0 +1,107 @@
+@page "/expert/activity"
+@layout ExpertLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService Auth
+@inject ApiClient Api
+
+<PageTitle>Journal d'activité — Expert</PageTitle>
+
+<AuthorizeView Roles="Expert,GroupManager">
+    <Authorized>
+        <div class="cc-toolbar">
+            <div>
+                <h1 class="cc-page-title">Journal d'activité</h1>
+                <p class="cc-page-sub">Historique des événements de gouvernance du groupe.</p>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger">@_error</div>
+        }
+
+        <div class="cc-card">
+            @if (_loading)
+            {
+                <span class="spinner-border"></span>
+            }
+            else if (_events.Count == 0)
+            {
+                <p class="text-muted mb-0">Aucun événement enregistré.</p>
+            }
+            else
+            {
+                <table class="cc-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Type</th>
+                            <th>Résumé</th>
+                            <th>Acteur</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var e in _events)
+                        {
+                            <tr>
+                                <td class="text-nowrap">@e.CreatedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")</td>
+                                <td><span class="cc-pill cc-pill-type">@EventTypeLabel(e.EventType)</span></td>
+                                <td>@e.Summary</td>
+                                <td class="small">@(e.ActorName ?? e.ActorUserId)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+    private List<GovernanceEvent> _events = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _events = await Api.GetAsync<List<GovernanceEvent>>("api/expert/activity?take=100") ?? [];
+            _error = null;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private static string EventTypeLabel(int t) => t switch
+    {
+        0 => "Attribution dossier",
+        1 => "Revue démarrée",
+        2 => "Enseignant approuvé",
+        3 => "Enseignant refusé",
+        4 => "Modifications demandées",
+        5 => "Invitation créée",
+        6 => "Vote Expert",
+        7 => "Décision admission",
+        8 => "Responsable nommé",
+        9 => "Responsable suspendu",
+        10 => "Élément workspace créé",
+        11 => "Élément workspace clôturé",
+        12 => "Tâche déléguée",
+        13 => "Paramètres groupe",
+        14 => "Remarque ajoutée",
+        _ => t.ToString()
+    };
+
+    private sealed record GovernanceEvent(
+        Guid Id, Guid? ExpertGroupId, int EventType, string ActorUserId, string? ActorName,
+        string Summary, Guid? RelatedTenantId, Guid? RelatedEntityId, bool IsNotification,
+        DateTime? ReadAtUtc, DateTime CreatedAt);
+}

@@ -1,0 +1,143 @@
+@page "/expert/notifications"
+@layout ExpertLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService Auth
+@inject ApiClient Api
+
+<PageTitle>Notifications — Expert</PageTitle>
+
+<AuthorizeView Roles="Expert,GroupManager">
+    <Authorized>
+        <div class="cc-toolbar">
+            <div>
+                <h1 class="cc-page-title">Notifications</h1>
+                <p class="cc-page-sub">Alertes et événements marqués comme notifications.</p>
+            </div>
+            @if (_notifications.Any(n => n.ReadAtUtc is null))
+            {
+                <button type="button" class="cc-btn btn-sm" disabled="@_markAllBusy" @onclick="MarkAllReadAsync">
+                    Tout marquer comme lu
+                </button>
+            }
+        </div>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger">@_error</div>
+        }
+
+        <div class="cc-card">
+            @if (_loading)
+            {
+                <span class="spinner-border"></span>
+            }
+            else if (_notifications.Count == 0)
+            {
+                <p class="text-muted mb-0">Aucune notification.</p>
+            }
+            else
+            {
+                <table class="cc-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Type</th>
+                            <th>Message</th>
+                            <th>État</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var n in _notifications)
+                        {
+                            <tr class="@(n.ReadAtUtc is null ? "table-active" : null)">
+                                <td class="text-nowrap">@n.CreatedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")</td>
+                                <td><span class="cc-pill cc-pill-type">@EventTypeLabel(n.EventType)</span></td>
+                                <td>@n.Summary</td>
+                                <td>
+                                    @if (n.ReadAtUtc is not null)
+                                    {
+                                        <span class="text-muted small">Lu</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="cc-pill cc-pill-bad">Non lu</span>
+                                    }
+                                </td>
+                                <td class="text-end">
+                                    @if (n.ReadAtUtc is null)
+                                    {
+                                        <button type="button" class="cc-btn btn-sm" @onclick="() => MarkReadAsync(n.Id)">Marquer lu</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    private bool _loading = true;
+    private bool _markAllBusy;
+    private string? _error;
+    private List<NotificationItem> _notifications = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _notifications = await Api.GetAsync<List<NotificationItem>>("api/expert/notifications?take=50") ?? [];
+            _error = null;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task MarkReadAsync(Guid id)
+    {
+        var result = await Api.PostWithErrorAsync<object>($"api/expert/notifications/{id}/read", new { });
+        if (result.Error is not null) { _error = result.Error; return; }
+        await LoadAsync();
+    }
+
+    private async Task MarkAllReadAsync()
+    {
+        _markAllBusy = true;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<object>("api/expert/notifications/read-all", new { });
+            if (result.Error is not null) { _error = result.Error; return; }
+            await LoadAsync();
+        }
+        finally { _markAllBusy = false; }
+    }
+
+    private static string EventTypeLabel(int t) => t switch
+    {
+        0 => "Attribution",
+        1 => "Revue",
+        2 => "Approbation",
+        3 => "Refus",
+        4 => "Modifications",
+        10 => "Workspace",
+        11 => "Clôture",
+        12 => "Tâche",
+        14 => "Remarque",
+        _ => t.ToString()
+    };
+
+    private sealed record NotificationItem(
+        Guid Id, Guid? ExpertGroupId, int EventType, string ActorUserId, string? ActorName,
+        string Summary, Guid? RelatedTenantId, Guid? RelatedEntityId, bool IsNotification,
+        DateTime? ReadAtUtc, DateTime CreatedAt);
+}

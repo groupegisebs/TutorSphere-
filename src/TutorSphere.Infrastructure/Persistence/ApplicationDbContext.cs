@@ -45,6 +45,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     public DbSet<GroupAdminMessage> GroupAdminMessagesSet => Set<GroupAdminMessage>();
     public DbSet<TeacherInterestRequest> TeacherInterestRequestsSet => Set<TeacherInterestRequest>();
     public DbSet<ExpertDelegatedTask> ExpertDelegatedTasksSet => Set<ExpertDelegatedTask>();
+    public DbSet<ExpertWorkspaceItem> ExpertWorkspaceItemsSet => Set<ExpertWorkspaceItem>();
+    public DbSet<ExpertGovernanceEvent> ExpertGovernanceEventsSet => Set<ExpertGovernanceEvent>();
     public DbSet<TeacherDocument> TeacherDocumentsSet => Set<TeacherDocument>();
     public DbSet<TeacherApplicationInvite> TeacherApplicationInvitesSet => Set<TeacherApplicationInvite>();
     public DbSet<ExpertMembershipInvite> ExpertMembershipInvitesSet => Set<ExpertMembershipInvite>();
@@ -107,6 +109,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     IQueryable<TeacherInterestRequest> IApplicationDbContext.TeacherInterestRequests =>
         TeacherInterestRequestsSet;
     IQueryable<ExpertDelegatedTask> IApplicationDbContext.ExpertDelegatedTasks => ExpertDelegatedTasksSet;
+    IQueryable<ExpertWorkspaceItem> IApplicationDbContext.ExpertWorkspaceItems => ExpertWorkspaceItemsSet;
+    IQueryable<ExpertGovernanceEvent> IApplicationDbContext.ExpertGovernanceEvents => ExpertGovernanceEventsSet;
     IQueryable<TeacherDocument> IApplicationDbContext.TeacherDocuments => TeacherDocumentsSet;
     IQueryable<TeacherDocument> IApplicationDbContext.TeacherDocumentsForAnyTenant =>
         TeacherDocumentsSet.IgnoreQueryFilters();
@@ -348,6 +352,31 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             e.HasOne(t => t.ExpertGroup).WithMany().HasForeignKey(t => t.ExpertGroupId)
                 .OnDelete(DeleteBehavior.Cascade);
             e.HasOne(t => t.TeacherTenant).WithMany().HasForeignKey(t => t.TeacherTenantId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<ExpertWorkspaceItem>(e =>
+        {
+            e.Property(i => i.Title).HasMaxLength(200).IsRequired();
+            e.Property(i => i.Description).HasMaxLength(4000);
+            e.Property(i => i.CreatedByUserId).HasMaxLength(450).IsRequired();
+            e.Property(i => i.AssignedToUserId).HasMaxLength(450);
+            e.Property(i => i.OutcomeNotes).HasMaxLength(2000);
+            e.HasIndex(i => new { i.ExpertGroupId, i.ItemType, i.Status });
+            e.HasOne(i => i.ExpertGroup).WithMany().HasForeignKey(i => i.ExpertGroupId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(i => i.RelatedTeacherTenant).WithMany().HasForeignKey(i => i.RelatedTeacherTenantId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        builder.Entity<ExpertGovernanceEvent>(e =>
+        {
+            e.Property(x => x.ActorUserId).HasMaxLength(450).IsRequired();
+            e.Property(x => x.Summary).HasMaxLength(500).IsRequired();
+            e.Property(x => x.PayloadJson).HasMaxLength(4000);
+            e.HasIndex(x => x.ExpertGroupId);
+            e.HasIndex(x => x.CreatedAt);
+            e.HasOne(x => x.ExpertGroup).WithMany().HasForeignKey(x => x.ExpertGroupId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

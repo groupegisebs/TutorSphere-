@@ -427,6 +427,7 @@
                             <th>Âge</th>
                             <th>@L["Expert_ColDocs"]</th>
                             <th>Priorité</th>
+                            <th>Assigné</th>
                             <th></th>
                         </tr>
                     </thead>
@@ -443,7 +444,16 @@
                                 <td>@item.AgeDays j</td>
                                 <td>@item.DocumentCount @(item.IsComplete ? "" : "(incomplet)")</td>
                                 <td>@(item.ReviewPriority > 0 ? "Urgent" : "Normal")</td>
+                                <td class="small">@(item.ReviewAssignedToName ?? "—")</td>
                                 <td class="text-end">
+                                    @if (_isManager)
+                                    {
+                                        <button type="button" class="cc-btn btn-sm me-1" @onclick="() => OpenAssignAsync(item)">Attribuer</button>
+                                    }
+                                    else
+                                    {
+                                        <button type="button" class="cc-btn btn-sm me-1" @onclick="() => AssignToMeAsync(item.TenantId)">M'attribuer</button>
+                                    }
                                     <button type="button" class="cc-btn btn-sm me-1" @onclick="() => StartReviewAsync(item.TenantId)">Revoir</button>
                                     <a class="cc-btn cc-btn-primary btn-sm" href="@($"expert/teachers/{item.TenantId}")">
                                         @L["Expert_Review"]
@@ -455,6 +465,35 @@
                 </table>
         }
         </div>
+
+        @if (_assignTarget is not null)
+        {
+            <div class="cc-card mt-3">
+                <h2 class="cc-card-title">Attribuer le dossier — @_assignTarget.SchoolName</h2>
+                <div class="row g-2 align-items-end">
+                    <div class="col-md-6">
+                        <label class="form-label">Expert</label>
+                        <select class="form-select" @bind="_assignUserId">
+                            <option value="">— Choisir —</option>
+                            @foreach (var m in _members)
+                            {
+                                <option value="@m.UserId">@(string.IsNullOrWhiteSpace(m.FullName) ? m.Email : m.FullName)</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-check mt-4">
+                            <input class="form-check-input" type="checkbox" @bind="_assignUrgent" />
+                            <span class="form-check-label">Urgent</span>
+                        </label>
+                    </div>
+                    <div class="col-md-3 d-flex gap-2">
+                        <button type="button" class="cc-btn cc-btn-primary" disabled="@_assignBusy" @onclick="ConfirmAssignAsync">Confirmer</button>
+                        <button type="button" class="cc-btn" @onclick="() => _assignTarget = null">Annuler</button>
+                    </div>
+                </div>
+            </div>
+        }
         }
     </Authorized>
     <NotAuthorized>
@@ -510,6 +549,13 @@
     private string? _regError;
     private string? _regSuccess;
 
+    private bool _isManager;
+    private List<MemberItem> _members = [];
+    private QueueItem? _assignTarget;
+    private string _assignUserId = "";
+    private bool _assignUrgent;
+    private bool _assignBusy;
+
     private bool IsRegSlugFormatValid => !string.IsNullOrWhiteSpace(_regSlug)
         && System.Text.RegularExpressions.Regex.IsMatch(_regSlug, @"^[a-z0-9]([a-z0-9-]{1,48}[a-z0-9])?$");
 
@@ -547,7 +593,63 @@
     protected override async Task OnInitializedAsync()
     {
         try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
-        await Task.WhenAll(LoadQueueAsync(), LoadInvitesAsync(), LoadMyGroupAsync());
+        await Task.WhenAll(LoadQueueAsync(), LoadInvitesAsync(), LoadMyGroupAsync(), LoadAssignContextAsync());
+    }
+
+    private async Task LoadAssignContextAsync()
+    {
+        try
+        {
+            var ctx = await Api.GetAsync<MeCtx>("api/expert/me-context");
+            _isManager = ctx?.IsGroupManager == true;
+            _members = await Api.GetAsync<List<MemberItem>>("api/expert/membership/members") ?? [];
+        }
+        catch { }
+    }
+
+    private async Task OpenAssignAsync(QueueItem item)
+    {
+        _assignTarget = item;
+        _assignUserId = item.ReviewAssignedToUserId ?? "";
+        _assignUrgent = item.ReviewPriority > 0;
+        if (_members.Count == 0)
+            _members = await Api.GetAsync<List<MemberItem>>("api/expert/membership/members") ?? [];
+    }
+
+    private async Task AssignToMeAsync(Guid tenantId)
+    {
+        try
+        {
+            var result = await Api.PostWithErrorAsync<object>($"api/expert/teachers/{tenantId}/assign", new
+            {
+                assigneeUserId = (string?)null,
+                urgent = false
+            });
+            if (result.Error is not null) { _error = result.Error; return; }
+            await LoadQueueFilteredAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private async Task ConfirmAssignAsync()
+    {
+        if (_assignTarget is null || string.IsNullOrWhiteSpace(_assignUserId))
+        {
+            _error = "Choisissez un Expert.";
+            return;
+        }
+        _assignBusy = true;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<object>(
+                $"api/expert/teachers/{_assignTarget.TenantId}/assign",
+                new { assigneeUserId = _assignUserId, urgent = _assignUrgent });
+            if (result.Error is not null) { _error = result.Error; return; }
+            _assignTarget = null;
+            await LoadQueueFilteredAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _assignBusy = false; }
     }
 
     private async Task LoadMyGroupAsync()
@@ -634,6 +736,9 @@
         string? ReviewAssignedToUserId,
         string? ReviewAssignedToName,
         string? ReviewRequestNotes);
+
+    private sealed record MemberItem(Guid Id, Guid ExpertGroupId, string UserId, string Email, string FullName);
+    private sealed record MeCtx(bool IsGroupManager, Guid? GroupId, string? GroupName);
 
     private async Task LoadInvitesAsync()
     {

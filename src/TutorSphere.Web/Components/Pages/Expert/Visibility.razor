@@ -1,0 +1,97 @@
+@page "/expert/visibility"
+@layout ExpertLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService Auth
+@inject ApiClient Api
+
+<PageTitle>Visibilité géographique — Expert</PageTitle>
+
+<AuthorizeView Roles="Expert,GroupManager">
+    <Authorized>
+        <div class="cc-toolbar">
+            <div>
+                <h1 class="cc-page-title">Visibilité géographique</h1>
+                <p class="cc-page-sub">Pays et villes des enseignants approuvés du groupe.</p>
+            </div>
+        </div>
+
+        <div class="alert alert-info py-2 mb-3">
+            <i class="bi bi-info-circle me-1" aria-hidden="true"></i>
+            La visibilité et les pays cibles sont gérées sur la fiche enseignant.
+        </div>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger">@_error</div>
+        }
+
+        <div class="cc-card">
+            @if (_loading)
+            {
+                <span class="spinner-border"></span>
+            }
+            else if (_teachers.Count == 0)
+            {
+                <p class="text-muted mb-0">Aucun enseignant approuvé.</p>
+            }
+            else
+            {
+                <table class="cc-table">
+                    <thead>
+                        <tr>
+                            <th>École</th>
+                            <th>Pays</th>
+                            <th>Ville</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var t in _teachers.OrderBy(x => x.Country).ThenBy(x => x.City))
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@t.SchoolName</strong>
+                                    <div class="small text-muted">@(t.OwnerName ?? t.OwnerEmail ?? "—")</div>
+                                </td>
+                                <td>@(t.Country ?? "—")</td>
+                                <td>@(t.City ?? "—")</td>
+                                <td class="text-end">
+                                    <a class="cc-btn btn-sm" href="@($"expert/teachers/{t.TenantId}")">Fiche enseignant</a>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+    private List<MonitoredTeacher> _teachers = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _teachers = await Api.GetAsync<List<MonitoredTeacher>>("api/expert/teachers") ?? [];
+            _error = null;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private sealed record MonitoredTeacher(
+        Guid TenantId, string SchoolName, string? Country, string? City,
+        string? OwnerEmail, string? OwnerName, int TotalLessons, int CancelledLessons,
+        int NoShowIncidents, DateTime? LastActivityAt, int RemarkCount, DateTime? LastRemarkAt);
+}

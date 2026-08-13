@@ -1,0 +1,84 @@
+@page "/expert/profile"
+@layout ExpertLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService Auth
+@inject ApiClient Api
+
+<PageTitle>Mon profil — Expert</PageTitle>
+
+<AuthorizeView Roles="Expert,GroupManager">
+    <Authorized>
+        <div class="cc-toolbar">
+            <div>
+                <h1 class="cc-page-title">Mon profil</h1>
+                <p class="cc-page-sub">Informations de compte et contexte du groupe d'experts.</p>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger">@_error</div>
+        }
+
+        <div class="cc-card">
+            @if (_loading)
+            {
+                <span class="spinner-border"></span>
+            }
+            else
+            {
+                <table class="cc-table">
+                    <tbody>
+                        <tr>
+                            <th style="width:12rem">Nom</th>
+                            <td>@(Auth.UserName ?? "—")</td>
+                        </tr>
+                        <tr>
+                            <th>Courriel</th>
+                            <td>@(Auth.UserEmail ?? "—")</td>
+                        </tr>
+                        <tr>
+                            <th>Rôle principal</th>
+                            <td>@(Auth.PrimaryRole ?? "—")</td>
+                        </tr>
+                        <tr>
+                            <th>Groupe d'experts</th>
+                            <td>@(_context?.GroupName ?? "—")</td>
+                        </tr>
+                        <tr>
+                            <th>Responsable de groupe</th>
+                            <td>@(_context?.IsGroupManager == true ? "Oui" : "Non")</td>
+                        </tr>
+                        @if (_context?.GroupId is Guid gid)
+                        {
+                            <tr>
+                                <th>Identifiant groupe</th>
+                                <td class="small text-muted">@gid</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+    private MeContext? _context;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        try
+        {
+            _context = await Api.GetAsync<MeContext>("api/expert/me-context");
+            _error = null;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private sealed record MeContext(bool IsGroupManager, Guid? GroupId, string? GroupName);
+}

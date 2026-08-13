@@ -37,6 +37,7 @@ public class ExpertApprovalService(
     IEmailService email,
     IUserContactLookup contacts,
     IAppUrlProvider urls,
+    IExpertGovernanceAuditService audit,
     ILogger<ExpertApprovalService> logger) : IExpertApprovalService
 {
     public Task<IReadOnlyList<Guid>> GetExpertGroupIdsAsync(string expertUserId, CancellationToken ct = default)
@@ -295,6 +296,14 @@ public class ExpertApprovalService(
             tenant.ExpertApprovalStatus = ExpertApprovalStatus.Assigned;
         tenant.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
+
+        await audit.RecordAsync(
+            ExpertGovernanceEventType.CaseAssigned,
+            expertUserId,
+            $"Dossier « {tenant.Name} » attribué",
+            group.Id,
+            tenant.Id,
+            ct: ct);
     }
 
     public async Task StartReviewAsync(Guid tenantId, string expertUserId, CancellationToken ct = default)

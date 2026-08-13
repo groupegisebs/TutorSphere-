@@ -1,0 +1,113 @@
+@page "/expert/documents"
+@layout ExpertLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService Auth
+@inject ApiClient Api
+
+<PageTitle>Documents & échéances — Expert</PageTitle>
+
+<AuthorizeView Roles="Expert,GroupManager">
+    <Authorized>
+        <div class="cc-toolbar">
+            <div>
+                <h1 class="cc-page-title">Documents & échéances</h1>
+                <p class="cc-page-sub">Dossiers en file d'attente — pièces jointes et complétude documentaire.</p>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger">@_error</div>
+        }
+
+        <div class="cc-card">
+            @if (_loading)
+            {
+                <span class="spinner-border"></span>
+            }
+            else if (_queue.Count == 0)
+            {
+                <p class="text-muted mb-0">Aucun dossier en attente de revue documentaire.</p>
+            }
+            else
+            {
+                <table class="cc-table">
+                    <thead>
+                        <tr>
+                            <th>École</th>
+                            <th>Localisation</th>
+                            <th>Documents</th>
+                            <th>Statut</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in _queue.OrderByDescending(q => q.DocumentCount))
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@item.SchoolName</strong>
+                                    <div class="small text-muted">@(item.OwnerName ?? item.OwnerEmail ?? "—")</div>
+                                </td>
+                                <td>@JoinMeta(item.City, item.Country)</td>
+                                <td>
+                                    @item.DocumentCount
+                                    @if (!item.IsComplete)
+                                    {
+                                        <span class="cc-pill cc-pill-bad ms-1">Incomplet</span>
+                                    }
+                                </td>
+                                <td><span class="cc-pill cc-pill-type">@StatusLabel(item.ApprovalStatus)</span></td>
+                                <td class="text-end">
+                                    <a class="cc-btn cc-btn-primary btn-sm" href="@($"expert/teachers/{item.TenantId}")">Ouvrir le dossier</a>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+    private List<QueueItem> _queue = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _queue = await Api.GetAsync<List<QueueItem>>("api/expert/approvals-queue") ?? [];
+            _error = null;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private static string JoinMeta(params string?[] parts) =>
+        string.Join(" · ", parts.Where(p => !string.IsNullOrWhiteSpace(p)));
+
+    private static string StatusLabel(int status) => status switch
+    {
+        0 => "En attente",
+        3 => "Modifications demandées",
+        4 => "En revue",
+        5 => "Attribué",
+        _ => status.ToString()
+    };
+
+    private sealed record QueueItem(
+        Guid TenantId, string SchoolName, string Slug, string? Country, string? City,
+        int ApprovalStatus, DateTime CreatedAt, int AgeDays, string? OwnerEmail, string? OwnerName,
+        int DocumentCount, bool IsComplete, int ReviewPriority,
+        string? ReviewAssignedToUserId, string? ReviewAssignedToName, string? ReviewRequestNotes);
+}

@@ -1,0 +1,169 @@
+@page "/expert/reports"
+@layout ExpertLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService Auth
+@inject ApiClient Api
+@inject IJSRuntime Js
+
+<PageTitle>Rapports — Expert</PageTitle>
+
+<AuthorizeView Roles="Expert,GroupManager">
+    <Authorized>
+        <div class="cc-toolbar ex-report-toolbar">
+            <div>
+                <h1 class="cc-page-title">Rapport de gouvernance</h1>
+                <p class="cc-page-sub">
+                    @if (_summary is not null)
+                    {
+                        <text>@_summary.GroupName — synthèse imprimable du @(_generatedAt.ToLocalTime().ToString("dd MMMM yyyy HH:mm")).</text>
+                    }
+                    else
+                    {
+                        <text>Synthèse KPI et alertes du groupe.</text>
+                    }
+                </p>
+            </div>
+            <button type="button" class="cc-btn cc-btn-primary btn-sm ex-no-print" @onclick="PrintAsync">
+                <i class="bi bi-printer" aria-hidden="true"></i> Imprimer
+            </button>
+        </div>
+
+        @if (_loading)
+        {
+            <div class="cc-empty"><span class="spinner-border"></span></div>
+        }
+        else if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger">@_error</div>
+        }
+        else if (_summary is not null)
+        {
+            <div class="ex-report-body">
+                <div class="ex-kpi-grid mb-4">
+                    <div class="ex-kpi">
+                        <div class="ex-kpi-value">@_summary.TeachersPending</div>
+                        <div class="ex-kpi-label">En attente</div>
+                    </div>
+                    <div class="ex-kpi">
+                        <div class="ex-kpi-value">@_summary.TeachersUnderReview</div>
+                        <div class="ex-kpi-label">En revue</div>
+                    </div>
+                    <div class="ex-kpi">
+                        <div class="ex-kpi-value">@_summary.TeachersChangesRequested</div>
+                        <div class="ex-kpi-label">Modifications</div>
+                    </div>
+                    <div class="ex-kpi">
+                        <div class="ex-kpi-value">@_summary.TeachersApproved</div>
+                        <div class="ex-kpi-label">Approuvés</div>
+                    </div>
+                    <div class="ex-kpi">
+                        <div class="ex-kpi-value">@_summary.ExpertVotesOpen</div>
+                        <div class="ex-kpi-label">Votes ouverts</div>
+                    </div>
+                    <div class="ex-kpi">
+                        <div class="ex-kpi-value">@_summary.ActiveGroupMembers</div>
+                        <div class="ex-kpi-label">Membres actifs</div>
+                    </div>
+                </div>
+
+                <div class="cc-card mb-3">
+                    <h2 class="cc-card-title">Indicateurs complémentaires</h2>
+                    <div class="ex-stat-grid">
+                        <div class="ex-stat">
+                            <span class="ex-stat-val">@_summary.TeacherInvitesSent</span>
+                            <span class="ex-stat-lbl">Invitations enseignants</span>
+                        </div>
+                        <div class="ex-stat">
+                            <span class="ex-stat-val">@_summary.ExpertInvitesPending</span>
+                            <span class="ex-stat-lbl">Invitations Expert en attente</span>
+                        </div>
+                        <div class="ex-stat">
+                            <span class="ex-stat-val">@_summary.DisciplinesWithoutTeacher</span>
+                            <span class="ex-stat-lbl">Disciplines sans enseignant</span>
+                        </div>
+                        <div class="ex-stat">
+                            <span class="ex-stat-val">@_summary.TeachersInactive</span>
+                            <span class="ex-stat-lbl">Inactifs (45 j)</span>
+                        </div>
+                        <div class="ex-stat">
+                            <span class="ex-stat-val">@_summary.UnreadRemarksForTeachers</span>
+                            <span class="ex-stat-lbl">Remarques non lues</span>
+                        </div>
+                        <div class="ex-stat">
+                            <span class="ex-stat-val">@_summary.CancelledLessonsRecent</span>
+                            <span class="ex-stat-lbl">Cours annulés (30 j)</span>
+                        </div>
+                        @if (_summary.TeachersSuspended > 0)
+                        {
+                            <div class="ex-stat">
+                                <span class="ex-stat-val">@_summary.TeachersSuspended</span>
+                                <span class="ex-stat-lbl">Suspendus</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <div class="cc-card">
+                    <h2 class="cc-card-title">Alertes (@_summary.Alerts.Count)</h2>
+                    @if (_summary.Alerts.Count == 0)
+                    {
+                        <p class="text-muted mb-0">Aucune alerte active.</p>
+                    }
+                    else
+                    {
+                        <table class="cc-table">
+                            <thead>
+                                <tr>
+                                    <th>Gravité</th>
+                                    <th>Message</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var alert in _summary.Alerts)
+                                {
+                                    <tr>
+                                        <td><span class="cc-pill cc-pill-type">@alert.Severity</span></td>
+                                        <td>@alert.Message</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                </div>
+            </div>
+        }
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+    private DashboardSummary? _summary;
+    private DateTime _generatedAt = DateTime.UtcNow;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        try
+        {
+            _summary = await Api.GetAsync<DashboardSummary>("api/expert/dashboard-summary");
+            _generatedAt = DateTime.UtcNow;
+            if (_summary is null)
+                _error = "Impossible de charger le rapport.";
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private Task PrintAsync() => Js.InvokeVoidAsync("print").AsTask();
+
+    private sealed record DashboardAlert(string Severity, string Code, string Message, string? ActionUrl);
+
+    private sealed record DashboardSummary(
+        string GroupName, string? CountryCode, int TeachersPending, int TeachersUnderReview,
+        int TeachersChangesRequested, int TeachersApproved, int TeachersSuspended,
+        int ExpertVotesOpen, int ExpertInvitesPending, int TeacherInvitesSent,
+        int UnreadRemarksForTeachers, int CancelledLessonsRecent, int DisciplinesWithoutTeacher,
+        int TeachersInactive, int ActiveGroupMembers, Guid? NextPendingTenantId,
+        Guid? NextOpenExpertVoteId, List<DashboardAlert> Alerts);
+}

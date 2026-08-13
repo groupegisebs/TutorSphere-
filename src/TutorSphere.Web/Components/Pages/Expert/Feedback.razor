@@ -1,0 +1,106 @@
+@page "/expert/feedback"
+@layout ExpertLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService Auth
+@inject ApiClient Api
+
+<PageTitle>Remarques & plans — Expert</PageTitle>
+
+<AuthorizeView Roles="Expert,GroupManager">
+    <Authorized>
+        <div class="cc-toolbar">
+            <div>
+                <h1 class="cc-page-title">Remarques & plans</h1>
+                <p class="cc-page-sub">Enseignants suivis — accès aux remarques et retours pédagogiques.</p>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger">@_error</div>
+        }
+
+        <div class="cc-card">
+            @if (_loading)
+            {
+                <span class="spinner-border"></span>
+            }
+            else if (_teachers.Count == 0)
+            {
+                <p class="text-muted mb-0">Aucun enseignant approuvé à suivre.</p>
+            }
+            else
+            {
+                <table class="cc-table">
+                    <thead>
+                        <tr>
+                            <th>École</th>
+                            <th>Localisation</th>
+                            <th>Remarques</th>
+                            <th>Dernière remarque</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var t in _teachers.OrderByDescending(x => x.RemarkCount))
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@t.SchoolName</strong>
+                                    <div class="small text-muted">@(t.OwnerName ?? t.OwnerEmail ?? "—")</div>
+                                </td>
+                                <td>@JoinMeta(t.City, t.Country)</td>
+                                <td>
+                                    @if (t.RemarkCount > 0)
+                                    {
+                                        <span class="cc-pill cc-pill-type">@t.RemarkCount</span>
+                                    }
+                                    else
+                                    {
+                                        <span>0</span>
+                                    }
+                                </td>
+                                <td>@(t.LastRemarkAt is { } lr ? lr.ToLocalTime().ToString("dd MMM yyyy") : "—")</td>
+                                <td class="text-end">
+                                    <a class="cc-btn cc-btn-primary btn-sm" href="@($"expert/teachers/{t.TenantId}")">Voir les remarques</a>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+    private List<MonitoredTeacher> _teachers = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _teachers = await Api.GetAsync<List<MonitoredTeacher>>("api/expert/teachers") ?? [];
+            _error = null;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private static string JoinMeta(params string?[] parts) =>
+        string.Join(" · ", parts.Where(p => !string.IsNullOrWhiteSpace(p)));
+
+    private sealed record MonitoredTeacher(
+        Guid TenantId, string SchoolName, string? Country, string? City,
+        string? OwnerEmail, string? OwnerName, int TotalLessons, int CancelledLessons,
+        int NoShowIncidents, DateTime? LastActivityAt, int RemarkCount, DateTime? LastRemarkAt);
+}

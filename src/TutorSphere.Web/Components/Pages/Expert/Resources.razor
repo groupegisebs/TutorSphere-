@@ -1,0 +1,150 @@
+@page "/expert/resources"
+@layout ExpertLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService Auth
+@inject ApiClient Api
+
+<PageTitle>Supports pédagogiques — Expert</PageTitle>
+
+<AuthorizeView Roles="Expert,GroupManager">
+    <Authorized>
+        <div class="cc-toolbar">
+            <div>
+                <h1 class="cc-page-title">Supports pédagogiques</h1>
+                <p class="cc-page-sub">Devoirs et documents publiés par les enseignants du groupe.</p>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger">@_error</div>
+        }
+
+        <div class="cc-card mb-3">
+            <label class="form-label">Enseignant</label>
+            @if (_loading)
+            {
+                <span class="spinner-border spinner-border-sm"></span>
+            }
+            else
+            {
+                <select class="form-select" @bind="_selectedTenantId" @bind:after="OnTeacherChangedAsync">
+                    <option value="">— Choisir un enseignant —</option>
+                    @foreach (var t in _teachers)
+                    {
+                        <option value="@t.TenantId">@t.SchoolName</option>
+                    }
+                </select>
+            }
+        </div>
+
+        @if (Guid.TryParse(_selectedTenantId, out var tid))
+        {
+            var teacher = _teachers.FirstOrDefault(x => x.TenantId == tid);
+            <div class="cc-card">
+                <h2 class="cc-card-title">@(teacher?.SchoolName ?? "Supports")</h2>
+                @if (_materialsLoading)
+                {
+                    <span class="spinner-border"></span>
+                }
+                else if (_materials.Count == 0)
+                {
+                    <p class="text-muted mb-0">Aucun support disponible pour cet enseignant.</p>
+                }
+                else
+                {
+                    <table class="cc-table">
+                        <thead>
+                            <tr>
+                                <th>Type</th>
+                                <th>Titre</th>
+                                <th>Matière</th>
+                                <th>Remarques</th>
+                                <th>Créé le</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var m in _materials)
+                            {
+                                <tr>
+                                    <td><span class="cc-pill cc-pill-type">@KindLabel(m.Kind)</span></td>
+                                    <td><strong>@m.Title</strong></td>
+                                    <td>@(m.Subject ?? "—")</td>
+                                    <td>@m.RemarkCount</td>
+                                    <td>@m.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</td>
+                                    <td class="text-end">
+                                        @if (!string.IsNullOrWhiteSpace(m.FileUrl))
+                                        {
+                                            <a class="cc-btn btn-sm" href="@m.FileUrl" target="_blank" rel="noopener">Ouvrir</a>
+                                        }
+                                        <a class="cc-btn cc-btn-primary btn-sm" href="@($"expert/teachers/{tid}")">Gérer</a>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        }
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    private bool _loading = true;
+    private bool _materialsLoading;
+    private string? _error;
+    private List<MonitoredTeacher> _teachers = [];
+    private List<MaterialItem> _materials = [];
+    private string _selectedTenantId = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        await LoadTeachersAsync();
+    }
+
+    private async Task LoadTeachersAsync()
+    {
+        _loading = true;
+        try
+        {
+            _teachers = await Api.GetAsync<List<MonitoredTeacher>>("api/expert/teachers") ?? [];
+            _error = null;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task OnTeacherChangedAsync()
+    {
+        _materials = [];
+        if (!Guid.TryParse(_selectedTenantId, out var tid))
+            return;
+
+        _materialsLoading = true;
+        try
+        {
+            _materials = await Api.GetAsync<List<MaterialItem>>($"api/expert/teachers/{tid}/materials") ?? [];
+            _error = null;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _materialsLoading = false; }
+    }
+
+    private static string KindLabel(string kind) => kind switch
+    {
+        "Homework" => "Devoir",
+        "Document" => "Document",
+        _ => kind
+    };
+
+    private sealed record MonitoredTeacher(
+        Guid TenantId, string SchoolName, string? Country, string? City,
+        string? OwnerEmail, string? OwnerName, int TotalLessons, int CancelledLessons,
+        int NoShowIncidents, DateTime? LastActivityAt, int RemarkCount, DateTime? LastRemarkAt);
+
+    private sealed record MaterialItem(
+        Guid Id, string Kind, string Title, string? Subject, string? FileUrl,
+        DateTime CreatedAt, int RemarkCount);
+}

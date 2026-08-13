@@ -1,0 +1,274 @@
+@page "/expert/workspace/{Module}"
+@page "/expert/interviews"
+@page "/expert/demonstrations"
+@page "/expert/renewals"
+@page "/expert/observations"
+@page "/expert/library"
+@page "/expert/training"
+@page "/expert/meetings"
+@page "/expert/decisions"
+@page "/expert/incidents"
+@layout ExpertLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService Auth
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<PageTitle>@PageTitleText — Expert</PageTitle>
+
+<AuthorizeView Roles="Expert,GroupManager">
+    <Authorized>
+        <div class="cc-toolbar">
+            <div>
+                <h1 class="cc-page-title">@PageTitleText</h1>
+                <p class="cc-page-sub">@PageSubtitle</p>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger">@_error</div>
+        }
+
+        <div class="cc-card mb-3">
+            <h2 class="cc-card-title">Nouvel élément</h2>
+            <div class="row g-2 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label">Titre <span class="text-danger">*</span></label>
+                    <input class="form-control" @bind="_formTitle" placeholder="Titre" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Description</label>
+                    <input class="form-control" @bind="_formDescription" placeholder="Description (optionnelle)" />
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Planifié le</label>
+                    <input type="datetime-local" class="form-control" @bind="_formScheduledAt" />
+                </div>
+                <div class="col-md-1">
+                    <button type="button" class="cc-btn cc-btn-primary w-100" disabled="@_createBusy" @onclick="CreateAsync">
+                        @if (_createBusy) { <span class="spinner-border spinner-border-sm"></span> }
+                        else { <text>Créer</text> }
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="cc-card">
+            @if (_loading)
+            {
+                <span class="spinner-border"></span>
+            }
+            else if (_items.Count == 0)
+            {
+                <p class="text-muted mb-0">Aucun élément pour le moment.</p>
+            }
+            else
+            {
+                <table class="cc-table">
+                    <thead>
+                        <tr>
+                            <th>Titre</th>
+                            <th>Statut</th>
+                            <th>Planifié</th>
+                            <th>Créé le</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in _items)
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@item.Title</strong>
+                                    @if (!string.IsNullOrWhiteSpace(item.Description))
+                                    {
+                                        <div class="small text-muted">@item.Description</div>
+                                    }
+                                </td>
+                                <td>@StatusLabel(item.Status)</td>
+                                <td>@(item.ScheduledAtUtc is { } s ? s.ToLocalTime().ToString("dd MMM yyyy HH:mm") : "—")</td>
+                                <td>@item.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</td>
+                                <td class="text-end">
+                                    @if (item.Status == 0)
+                                    {
+                                        <button type="button" class="cc-btn btn-sm" @onclick="() => StartAsync(item.Id)">Démarrer</button>
+                                    }
+                                    @if (item.Status is 0 or 1)
+                                    {
+                                        <button type="button" class="cc-btn cc-btn-primary btn-sm" @onclick="() => CompleteAsync(item.Id)">Clôturer</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    [Parameter] public string? Module { get; set; }
+
+    private bool _loading = true;
+    private bool _createBusy;
+    private string? _error;
+    private int _itemType;
+    private List<WorkspaceItem> _items = [];
+
+    private string _formTitle = "";
+    private string _formDescription = "";
+    private DateTime? _formScheduledAt;
+
+    private string PageTitleText => ModuleLabel(_moduleKey);
+    private string PageSubtitle => _moduleKey switch
+    {
+        "interviews" => "Planifier et suivre les entretiens avec les enseignants.",
+        "demonstrations" => "Démonstrations pédagogiques du groupe.",
+        "renewals" => "Réévaluations périodiques des enseignants.",
+        "observations" => "Observations de cours et comptes rendus.",
+        "library" => "Bibliothèque de ressources partagées du groupe.",
+        "training" => "Sessions de formation internes.",
+        "meetings" => "Réunions et points collectifs du groupe.",
+        "decisions" => "Décisions collégiales et arbitrages.",
+        "incidents" => "Signalements et incidents à traiter.",
+        _ => "Espace de travail du groupe d'experts."
+    };
+
+    private string _moduleKey = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _moduleKey = ResolveModuleKey();
+        if (!TryMapModule(_moduleKey, out _itemType))
+        {
+            _error = $"Module inconnu : « {_moduleKey} ».";
+            _loading = false;
+            return;
+        }
+        await ReloadAsync();
+    }
+
+    private string ResolveModuleKey()
+    {
+        if (!string.IsNullOrWhiteSpace(Module))
+            return Module.Trim().ToLowerInvariant();
+        var rel = Nav.ToBaseRelativePath(Nav.Uri).TrimEnd('/');
+        var segment = rel.Split('/', StringSplitOptions.RemoveEmptyEntries).LastOrDefault() ?? "";
+        return segment.Equals("workspace", StringComparison.OrdinalIgnoreCase) ? "" : segment.ToLowerInvariant();
+    }
+
+    private static bool TryMapModule(string key, out int type) => key switch
+    {
+        "interviews" => Assign(0, out type),
+        "demonstrations" => Assign(1, out type),
+        "renewals" => Assign(2, out type),
+        "observations" => Assign(3, out type),
+        "library" => Assign(4, out type),
+        "training" => Assign(5, out type),
+        "meetings" => Assign(6, out type),
+        "decisions" => Assign(7, out type),
+        "incidents" => Assign(8, out type),
+        _ => Assign(-1, out type) && false
+    };
+
+    private static bool Assign(int value, out int type)
+    {
+        type = value;
+        return value >= 0;
+    }
+
+    private static string ModuleLabel(string key) => key switch
+    {
+        "interviews" => "Entretiens",
+        "demonstrations" => "Démonstrations",
+        "renewals" => "Réévaluations",
+        "observations" => "Observations",
+        "library" => "Bibliothèque",
+        "training" => "Formations",
+        "meetings" => "Réunions",
+        "decisions" => "Décisions",
+        "incidents" => "Incidents",
+        _ => "Espace de travail"
+    };
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        try
+        {
+            _items = await Api.GetAsync<List<WorkspaceItem>>($"api/expert/workspace?type={_itemType}") ?? [];
+            _error = null;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task CreateAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_formTitle))
+        {
+            _error = "Le titre est obligatoire.";
+            return;
+        }
+
+        _createBusy = true;
+        try
+        {
+            DateTime? scheduledUtc = _formScheduledAt.HasValue
+                ? DateTime.SpecifyKind(_formScheduledAt.Value, DateTimeKind.Local).ToUniversalTime()
+                : null;
+
+            var result = await Api.PostWithErrorAsync<WorkspaceItem>("api/expert/workspace", new
+            {
+                itemType = _itemType,
+                title = _formTitle.Trim(),
+                description = string.IsNullOrWhiteSpace(_formDescription) ? null : _formDescription.Trim(),
+                scheduledAtUtc = scheduledUtc
+            });
+            if (result.Error is not null) { _error = result.Error; return; }
+
+            _formTitle = "";
+            _formDescription = "";
+            _formScheduledAt = null;
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _createBusy = false; }
+    }
+
+    private async Task StartAsync(Guid id)
+    {
+        var result = await Api.PostWithErrorAsync<WorkspaceItem>($"api/expert/workspace/{id}/start", new { });
+        if (result.Error is not null) { _error = result.Error; return; }
+        await ReloadAsync();
+    }
+
+    private async Task CompleteAsync(Guid id)
+    {
+        var result = await Api.PostWithErrorAsync<WorkspaceItem>($"api/expert/workspace/{id}/complete", new { outcomeNotes = (string?)null });
+        if (result.Error is not null) { _error = result.Error; return; }
+        await ReloadAsync();
+    }
+
+    private static string StatusLabel(int s) => s switch
+    {
+        0 => "Ouverte",
+        1 => "En cours",
+        2 => "Terminée",
+        3 => "Annulée",
+        _ => s.ToString()
+    };
+
+    private sealed record WorkspaceItem(
+        Guid Id, Guid ExpertGroupId, int ItemType, int Status, string Title, string? Description,
+        Guid? RelatedTeacherTenantId, string? RelatedTeacherName, string CreatedByUserId,
+        string? AssignedToUserId, string? AssignedToName, DateTime? ScheduledAtUtc,
+        DateTime? CompletedAtUtc, string? OutcomeNotes, DateTime CreatedAt);
+}
