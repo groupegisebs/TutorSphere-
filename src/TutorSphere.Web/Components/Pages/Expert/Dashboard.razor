@@ -21,10 +21,6 @@
         </div>
 
         <div class="cc-tabs" role="tablist">
-            <button type="button" role="tab" class="cc-tab @(_activeTab == "register" ? "active" : null)"
-                    aria-selected="@(_activeTab == "register")" @onclick='() => _activeTab = "register"'>
-                <i class="bi bi-person-plus me-1" aria-hidden="true"></i>@L["Expert_RegisterTeacherTitle"]
-            </button>
             <button type="button" role="tab" class="cc-tab @(_activeTab == "invite" ? "active" : null)"
                     aria-selected="@(_activeTab == "invite")" @onclick='() => _activeTab = "invite"'>
                 <i class="bi bi-envelope me-1" aria-hidden="true"></i>@L["Expert_InviteTitle"]
@@ -32,6 +28,10 @@
                 {
                     <span class="cc-pill cc-pill-type ms-1">@_invites.Count</span>
                 }
+            </button>
+            <button type="button" role="tab" class="cc-tab @(_activeTab == "register" ? "active" : null)"
+                    aria-selected="@(_activeTab == "register")" @onclick='() => _activeTab = "register"'>
+                <i class="bi bi-person-plus me-1" aria-hidden="true"></i>@L["Expert_RegisterTeacherTitle"]
             </button>
             <button type="button" role="tab" class="cc-tab @(_activeTab == "queue" ? "active" : null)"
                     aria-selected="@(_activeTab == "queue")" @onclick='() => _activeTab = "queue"'>
@@ -47,7 +47,12 @@
         {
         <div class="cc-card mb-3">
             <h2 class="cc-card-title">@L["Expert_RegisterTeacherTitle"]</h2>
-            <p class="small text-muted mb-3">@L["Expert_RegisterTeacherSubtitle"]</p>
+            <p class="small text-muted mb-2">@L["Expert_RegisterTeacherSubtitle"]</p>
+            <p class="small mb-3">
+                <button type="button" class="btn btn-link p-0 align-baseline" @onclick='() => _activeTab = "invite"'>
+                    @L["Expert_RegisterOrInviteLink"]
+                </button>
+            </p>
 
             @if (!string.IsNullOrEmpty(_regError))
             {
@@ -420,7 +425,7 @@
 </AuthorizeView>
 
 @code {
-    private string _activeTab = "register";
+    private string _activeTab = "invite";
     private List<PendingTeacherItem> _queue = [];
     private List<TeacherInviteItem> _invites = [];
     private bool _loading = true;
