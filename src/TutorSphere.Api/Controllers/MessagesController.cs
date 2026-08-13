@@ -9,7 +9,7 @@ namespace TutorSphere.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = $"{UserRoles.Tutor},{UserRoles.Parent},{UserRoles.Student},{UserRoles.TeachingAssistant},{UserRoles.SuperAdmin}")]
+[Authorize(Roles = $"{UserRoles.Tutor},{UserRoles.Parent},{UserRoles.Student},{UserRoles.TeachingAssistant},{UserRoles.Expert},{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
 public class MessagesController : ControllerBase
 {
     private readonly IMessageService _messageService;
@@ -25,6 +25,24 @@ public class MessagesController : ControllerBase
         string otherUserId,
         CancellationToken ct) =>
         Ok(await _messageService.GetMessagesAsync(GetUserId(), otherUserId, ct));
+
+    /// <summary>
+    /// Recherche de destinataires autorisés (élève↔enseignant ; admin plateforme = autre API).
+    /// </summary>
+    [HttpGet("recipients")]
+    public async Task<ActionResult<IReadOnlyList<MessageRecipientDto>>> SearchRecipients(
+        [FromQuery] string? q,
+        CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _messageService.SearchRecipientsAsync(GetUserId(), q, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
 
     [HttpPost]
     public async Task<ActionResult<MessageDto>> Send([FromBody] SendMessageRequest request, CancellationToken ct)

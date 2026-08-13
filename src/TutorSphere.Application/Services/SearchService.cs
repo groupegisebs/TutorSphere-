@@ -35,7 +35,7 @@ public class SearchService : ISearchService
     {
         var now = DateTime.UtcNow;
 
-        // Annuaire = fiches publiques éligibles (pas seulement celles qui ont déjà une offre).
+        // Annuaire parent/élève : uniquement les enseignants avec au moins une offre active.
         var query = _db.Tenants
             .Where(t => t.Status == TenantStatus.Active
                         && t.IsPublicProfile
@@ -99,19 +99,11 @@ public class SearchService : ISearchService
             .GroupBy(o => o.TenantId)
             .ToDictionary(g => g.Key, g => g.ToList());
 
-        // Filtres liés aux offres : ne garder que les enseignants qui matchent.
-        var offerFilterActive = !string.IsNullOrWhiteSpace(filters.Subject)
-            || filters.MinPrice.HasValue
-            || filters.MaxPrice.HasValue
-            || filters.Mode.HasValue;
-
-        if (offerFilterActive)
-        {
-            tenants = tenants.Where(t => offeringsByTenant.ContainsKey(t.Id)).ToList();
-            if (tenants.Count == 0)
-                return Task.FromResult<IReadOnlyList<TutorSearchResultDto>>([]);
-            tenantIds = tenants.Select(t => t.Id).ToList();
-        }
+        // Toujours exclure les enseignants sans offre active (et ceux qui ne matchent pas les filtres d'offre).
+        tenants = tenants.Where(t => offeringsByTenant.ContainsKey(t.Id)).ToList();
+        if (tenants.Count == 0)
+            return Task.FromResult<IReadOnlyList<TutorSearchResultDto>>([]);
+        tenantIds = tenants.Select(t => t.Id).ToList();
 
         var groupIds = tenants
             .Where(t => t.ApprovedByExpertGroupId.HasValue)

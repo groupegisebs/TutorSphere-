@@ -10,7 +10,7 @@ using TutorSphere.Infrastructure.Persistence;
 
 namespace TutorSphere.Api.Hubs;
 
-[Authorize(Roles = $"{UserRoles.Tutor},{UserRoles.Parent},{UserRoles.Student},{UserRoles.TeachingAssistant},{UserRoles.SuperAdmin}")]
+[Authorize(Roles = $"{UserRoles.Tutor},{UserRoles.Parent},{UserRoles.Student},{UserRoles.TeachingAssistant},{UserRoles.Expert},{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
 public class MessagesHub : Hub
 {
     private readonly IMessageService _messageService;

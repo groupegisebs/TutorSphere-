@@ -17,3 +17,9 @@ public record ConversationDto(
     string OtherUserName,
     MessageDto? LastMessage,
     int UnreadCount);
+
+public record MessageRecipientDto(
+    string UserId,
+    string DisplayName,
+    string? Email,
+    string Role);

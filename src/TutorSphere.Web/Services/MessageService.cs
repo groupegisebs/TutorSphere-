@@ -14,6 +14,12 @@ public sealed class MessageService
     public async Task<List<MessageDto>> GetMessagesAsync(string otherUserId) =>
         await _api.GetAsync<List<MessageDto>>($"api/messages/conversations/{Uri.EscapeDataString(otherUserId)}") ?? [];
 
+    public async Task<List<MessageRecipientDto>> SearchRecipientsAsync(string? query)
+    {
+        var q = string.IsNullOrWhiteSpace(query) ? "" : $"?q={Uri.EscapeDataString(query.Trim())}";
+        return await _api.GetAsync<List<MessageRecipientDto>>($"api/messages/recipients{q}") ?? [];
+    }
+
     public async Task<MessageDto?> SendMessageAsync(SendMessageRequest req) =>
         await _api.PostAsync<MessageDto>("api/messages", req);
 

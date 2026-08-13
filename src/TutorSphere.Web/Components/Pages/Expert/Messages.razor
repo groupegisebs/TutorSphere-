@@ -1,0 +1,265 @@
+@page "/expert/messages"
+@layout ExpertLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService Auth
+@inject ApiClient Api
+@inject MessageService MessageSvc
+@inject IStringLocalizer<SharedResources> L
+
+<ApplyRequestCulture />
+
+<PageTitle>Messagerie groupe — TutorSphere</PageTitle>
+
+<AuthorizeView Roles="Expert,GroupManager,SuperAdmin,PlatformAdmin">
+    <Authorized>
+        <div class="cc-toolbar">
+            <div>
+                <h1 class="cc-page-title">Messagerie du groupe</h1>
+                <p class="cc-page-sub">
+                    @(_isManager
+                        ? "Écrire aux membres du groupe ou à l’administration TutorSphere."
+                        : "Écrire aux autres membres de votre groupe et au Responsable.")
+                </p>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger">@_error</div>
+        }
+
+        <div class="row g-3">
+            <div class="col-lg-4">
+                <div class="cc-card mb-3">
+                    <h2 class="cc-card-title">Conversations</h2>
+                    @if (_loading)
+                    {
+                        <span class="spinner-border spinner-border-sm"></span>
+                    }
+                    else if (_conversations.Count == 0)
+                    {
+                        <p class="text-muted small mb-0">Aucune conversation.</p>
+                    }
+                    else
+                    {
+                        <ul class="list-unstyled mb-0">
+                            @foreach (var c in _conversations)
+                            {
+                                <li class="py-2 border-bottom">
+                                    <button type="button" class="btn btn-link text-start p-0 text-decoration-none w-100"
+                                            @onclick="() => OpenThreadAsync(c.OtherUserId, c.OtherUserName)">
+                                        <strong>@c.OtherUserName</strong>
+                                        @if (c.UnreadCount > 0)
+                                        {
+                                            <span class="badge bg-danger ms-1">@c.UnreadCount</span>
+                                        }
+                                        <div class="small text-muted text-truncate">
+                                            @(c.LastMessage?.Body ?? "—")
+                                        </div>
+                                    </button>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </div>
+
+                <div class="cc-card">
+                    <h2 class="cc-card-title">Nouveau destinataire</h2>
+                    <input class="form-control mb-2"
+                           placeholder="@(_isManager ? "Membre ou admin…" : "Membre ou Responsable…")"
+                           @bind="_userQuery" @bind:event="oninput" @onkeyup="SearchUsersAsync" />
+                    @if (_searching)
+                    {
+                        <span class="spinner-border spinner-border-sm"></span>
+                    }
+                    else if (_userHits.Count > 0)
+                    {
+                        <ul class="list-unstyled mb-0" style="max-height:240px;overflow:auto;">
+                            @foreach (var u in _userHits)
+                            {
+                                <li class="py-1">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary w-100 text-start"
+                                            @onclick="() => SelectRecipientAsync(u)">
+                                        <strong>@u.DisplayName</strong>
+                                        <span class="small text-muted d-block">@(u.Email ?? u.Role)</span>
+                                    </button>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </div>
+            </div>
+
+            <div class="col-lg-8">
+                <div class="cc-card">
+                    @if (_recipientId is null)
+                    {
+                        <div class="cc-empty">
+                            <p>Sélectionnez une conversation ou recherchez un destinataire.</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="d-flex justify-content-between align-items-start mb-3">
+                            <div>
+                                <h2 class="cc-card-title mb-0">@_recipientName</h2>
+                                <p class="small text-muted mb-0">@_recipientEmail</p>
+                            </div>
+                            <button type="button" class="cc-btn btn-sm" @onclick="ClearRecipient">Fermer</button>
+                        </div>
+
+                        <div class="border rounded p-3 mb-3" style="max-height:320px;overflow:auto;background:rgba(0,0,0,.08);">
+                            @if (_threadLoading)
+                            {
+                                <span class="spinner-border spinner-border-sm"></span>
+                            }
+                            else if (_thread.Count == 0)
+                            {
+                                <p class="text-muted small mb-0">Aucun message dans ce fil.</p>
+                            }
+                            else
+                            {
+                                @foreach (var m in _thread)
+                                {
+                                    var mine = !string.Equals(m.SenderUserId, _recipientId, StringComparison.Ordinal);
+                                    <div class="mb-3 @(mine ? "text-end" : "")">
+                                        <div class="small text-muted">
+                                            @(mine ? "Vous" : _recipientName)
+                                            · @m.CreatedAt.ToLocalTime().ToString("dd MMM HH:mm")
+                                        </div>
+                                        <div style="white-space:pre-wrap;">@m.Body</div>
+                                    </div>
+                                }
+                            }
+                        </div>
+
+                        <textarea class="form-control mb-2" rows="4" @bind="_body"
+                                  placeholder="Votre message…"></textarea>
+                        <button type="button" class="cc-btn cc-btn-primary" disabled="@_sending" @onclick="SendAsync">
+                            @if (_sending) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                            <i class="bi bi-send"></i> Envoyer
+                        </button>
+                    }
+                </div>
+            </div>
+        </div>
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    private bool _isManager;
+    private bool _loading = true;
+    private bool _searching;
+    private bool _threadLoading;
+    private bool _sending;
+    private string? _error;
+
+    private List<ConversationDto> _conversations = [];
+    private string _userQuery = "";
+    private List<MessageRecipientDto> _userHits = [];
+    private CancellationTokenSource? _searchCts;
+
+    private string? _recipientId;
+    private string _recipientName = "";
+    private string? _recipientEmail;
+    private List<MessageDto> _thread = [];
+    private string _body = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        try
+        {
+            var ctx = await Api.GetAsync<MeCtx>("api/expert/me-context");
+            _isManager = ctx?.IsGroupManager == true || Auth.IsActingAsGroupAdmin;
+        }
+        catch { }
+
+        await LoadConversationsAsync();
+        await SearchUsersAsync();
+    }
+
+    private async Task LoadConversationsAsync()
+    {
+        _loading = true;
+        try
+        {
+            _conversations = await MessageSvc.GetConversationsAsync();
+            _error = null;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task SearchUsersAsync()
+    {
+        _searchCts?.Cancel();
+        _searchCts = new CancellationTokenSource();
+        var token = _searchCts.Token;
+        _searching = true;
+        try
+        {
+            await Task.Delay(200, token);
+            _userHits = await MessageSvc.SearchRecipientsAsync(_userQuery);
+        }
+        catch (TaskCanceledException) { }
+        catch { _userHits = []; }
+        finally { if (!token.IsCancellationRequested) _searching = false; }
+    }
+
+    private async Task SelectRecipientAsync(MessageRecipientDto u)
+    {
+        _userHits = [];
+        _userQuery = "";
+        await OpenThreadAsync(u.UserId, u.DisplayName);
+        _recipientEmail = u.Email;
+    }
+
+    private async Task OpenThreadAsync(string userId, string name)
+    {
+        _recipientId = userId;
+        _recipientName = name;
+        _error = null;
+        _threadLoading = true;
+        try
+        {
+            _thread = await MessageSvc.GetMessagesAsync(userId);
+            await MessageSvc.MarkConversationReadAsync(userId);
+            await LoadConversationsAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; _thread = []; }
+        finally { _threadLoading = false; }
+    }
+
+    private void ClearRecipient()
+    {
+        _recipientId = null;
+        _recipientName = "";
+        _recipientEmail = null;
+        _thread = [];
+        _body = "";
+    }
+
+    private async Task SendAsync()
+    {
+        if (_recipientId is null || string.IsNullOrWhiteSpace(_body)) return;
+        _sending = true;
+        _error = null;
+        try
+        {
+            var dto = await MessageSvc.SendMessageAsync(
+                new SendMessageRequest(_recipientId, "(TutorSphere)", _body.Trim()));
+            if (dto is null)
+            {
+                _error = "Envoi impossible.";
+                return;
+            }
+            _body = "";
+            await OpenThreadAsync(_recipientId, _recipientName);
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _sending = false; }
+    }
+
+    private sealed record MeCtx(bool IsGroupManager, Guid? GroupId, string? GroupName);
+}

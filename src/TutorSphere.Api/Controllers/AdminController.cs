@@ -68,11 +68,11 @@ public class AdminController : ControllerBase
         if (string.IsNullOrWhiteSpace(role) || role.Equals("all", StringComparison.OrdinalIgnoreCase))
         {
             resolvedRole = "All";
-            var tutors = await _userManager.GetUsersInRoleAsync(UserRoles.Tutor);
-            var parents = await _userManager.GetUsersInRoleAsync(UserRoles.Parent);
-            var students = await _userManager.GetUsersInRoleAsync(UserRoles.Student);
-            var tas = await _userManager.GetUsersInRoleAsync(UserRoles.TeachingAssistant);
-            users = tutors.Concat(parents).Concat(students).Concat(tas)
+            // Tous les rôles : messagerie admin doit pouvoir trouver n'importe quel utilisateur.
+            var bags = new List<IList<ApplicationUser>>();
+            foreach (var r in UserRoles.All)
+                bags.Add(await _userManager.GetUsersInRoleAsync(r));
+            users = bags.SelectMany(x => x)
                 .GroupBy(u => u.Id)
                 .Select(g => g.First())
                 .ToList();
