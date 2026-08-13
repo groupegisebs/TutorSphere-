@@ -49,7 +49,8 @@ public record GroupOfferListItemDto(
     DateTime? PublishedAtUtc,
     string? ShortDescription = null,
     bool IsInternational = false,
-    string? MarketCountryCode = null);
+    string? MarketCountryCode = null,
+    int AssignedTeacherCount = 0);
 
 public record CreateGroupOfferRequest(
     string Name,
@@ -86,6 +87,28 @@ public record GroupOffersCatalogDto(
     string GroupCurrency,
     bool GroupIsInternational,
     IReadOnlyList<GroupOfferListItemDto> Offers);
+
+public record GroupOfferAssignableTeacherDto(
+    Guid TenantId,
+    string SchoolName,
+    string? OwnerName,
+    string? City,
+    string? Country);
+
+public record GroupOfferTeacherAssignmentDto(
+    Guid Id,
+    Guid GroupOfferId,
+    Guid TeacherTenantId,
+    string TeacherName,
+    GroupOfferTeacherAssignmentStatus AssignmentStatus,
+    decimal? TeacherPrice,
+    Guid? SubscriptionOfferingId,
+    DateTime AssignedAtUtc);
+
+public record AssignGroupOfferTeacherRequest(
+    Guid TeacherTenantId,
+    decimal? TeacherPrice = null,
+    int? Capacity = null);
 
 public record GroupAdminConversationDto(
     Guid Id,

@@ -14,7 +14,7 @@
         <div class="cc-toolbar">
             <div>
                 <h1 class="cc-page-title">Catalogue — Offres du groupe</h1>
-                <p class="cc-page-sub">Brouillons et publications gérées par le Responsable.</p>
+                <p class="cc-page-sub">Créez des offres, affectez-les aux enseignants du groupe — ils pourront programmer leur agenda sur la plateforme.</p>
             </div>
             @if (!string.IsNullOrWhiteSpace(_groupCurrencyLabel))
             {
@@ -107,6 +107,7 @@
                             <th>Nom</th>
                             <th>Portée</th>
                             <th>Statut</th>
+                            <th>Enseignants</th>
                             <th>Prix</th>
                             <th></th>
                         </tr>
@@ -127,8 +128,10 @@
                                     }
                                 </td>
                                 <td>@StatusName(o.Status)</td>
+                                <td>@o.AssignedTeacherCount</td>
                                 <td>@(o.RecommendedPrice?.ToString("N0") ?? "—") @GroupOfferCurrencyRules.FormatCurrencyLabel(o.Currency)</td>
                                 <td class="text-end text-nowrap">
+                                    <button type="button" class="cc-btn btn-sm" @onclick="() => OpenAssignAsync(o)">Affecter</button>
                                     <button type="button" class="cc-btn btn-sm" @onclick="() => BeginEdit(o)">Modifier</button>
                                     <button type="button" class="cc-btn btn-sm" @onclick="() => DeleteAsync(o)">Supprimer</button>
                                     @if (o.Status is 0 or 1 or 2)
@@ -142,6 +145,73 @@
                 </table>
             }
         </div>
+
+        @if (_assignOffer is not null)
+        {
+            <div class="cc-card mt-3">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                        <h2 class="cc-card-title mb-0">Affecter — @_assignOffer.Name</h2>
+                        <p class="small text-muted mb-0">
+                            Crée une offre sur le compte enseignant (agenda &amp; abonnements). L’enseignant complète ensuite ses créneaux.
+                        </p>
+                    </div>
+                    <button type="button" class="cc-btn btn-sm" @onclick="CloseAssign">Fermer</button>
+                </div>
+
+                <div class="row g-2 mb-3">
+                    <div class="col-md-8">
+                        <label class="form-label">Enseignant du groupe</label>
+                        <select class="form-select" @bind="_assignTenantId">
+                            <option value="">— Choisir —</option>
+                            @foreach (var t in _assignableTeachers)
+                            {
+                                <option value="@t.TenantId.ToString()">@t.SchoolName @(string.IsNullOrWhiteSpace(t.City) ? "" : $"· {t.City}")</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-4 d-flex align-items-end">
+                        <button type="button" class="cc-btn cc-btn-primary w-100" disabled="@(_busy || string.IsNullOrEmpty(_assignTenantId))"
+                                @onclick="AssignTeacherAsync">
+                            Affecter l’offre
+                        </button>
+                    </div>
+                </div>
+
+                @if (_assignments.Count == 0)
+                {
+                    <p class="text-muted mb-0">Aucun enseignant affecté.</p>
+                }
+                else
+                {
+                    <table class="cc-table">
+                        <thead>
+                            <tr>
+                                <th>Enseignant</th>
+                                <th>Statut</th>
+                                <th>Prix</th>
+                                <th>Offre plateforme</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var a in _assignments)
+                            {
+                                <tr>
+                                    <td>@a.TeacherName</td>
+                                    <td>@a.AssignmentStatus</td>
+                                    <td>@(a.TeacherPrice?.ToString("N0") ?? "—")</td>
+                                    <td class="small text-muted">@(a.SubscriptionOfferingId is Guid oid ? oid.ToString("N")[..8] + "…" : "—")</td>
+                                    <td class="text-end">
+                                        <button type="button" class="cc-btn btn-sm" @onclick="() => UnassignAsync(a)">Retirer</button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            </div>
+        }
     </Authorized>
 </AuthorizeView>
 
@@ -160,6 +230,10 @@
     private string _groupCurrency = "XAF";
     private string? _groupCountryCode;
     private List<OfferItem> _offers = [];
+    private OfferItem? _assignOffer;
+    private string _assignTenantId = "";
+    private List<AssignableTeacher> _assignableTeachers = [];
+    private List<AssignmentItem> _assignments = [];
 
     private bool IsInternational => string.Equals(_scope, "international", StringComparison.OrdinalIgnoreCase);
     private string _groupCurrencyLabel => GroupOfferCurrencyRules.FormatCurrencyLabel(_groupCurrency);
@@ -311,6 +385,68 @@
         catch (Exception ex) { _error = ex.Message; }
     }
 
+    private async Task OpenAssignAsync(OfferItem o)
+    {
+        _assignOffer = o;
+        _assignTenantId = "";
+        _error = null;
+        _info = null;
+        try
+        {
+            _assignableTeachers = await Api.GetAsync<List<AssignableTeacher>>("api/expert/group-offers/assignable-teachers") ?? [];
+            _assignments = await Api.GetAsync<List<AssignmentItem>>($"api/expert/group-offers/{o.Id}/teachers") ?? [];
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private void CloseAssign()
+    {
+        _assignOffer = null;
+        _assignments = [];
+        _assignTenantId = "";
+    }
+
+    private async Task AssignTeacherAsync()
+    {
+        if (_assignOffer is null || !Guid.TryParse(_assignTenantId, out var tenantId))
+            return;
+
+        _busy = true;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<AssignmentItem>(
+                $"api/expert/group-offers/{_assignOffer.Id}/teachers",
+                new { teacherTenantId = tenantId, teacherPrice = _assignOffer.RecommendedPrice });
+            if (result.Error is not null) { _error = result.Error; return; }
+            _info = "Offre affectée — l’enseignant peut programmer son agenda dans Mes offres.";
+            _assignTenantId = "";
+            _assignments = await Api.GetAsync<List<AssignmentItem>>($"api/expert/group-offers/{_assignOffer.Id}/teachers") ?? [];
+            await ReloadAsync();
+            _assignOffer = _offers.FirstOrDefault(x => x.Id == _assignOffer.Id) ?? _assignOffer;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task UnassignAsync(AssignmentItem a)
+    {
+        if (_assignOffer is null) return;
+        if (!await JsConfirm($"Retirer « {a.TeacherName} » de cette offre ?"))
+            return;
+
+        try
+        {
+            var result = await Api.DeleteWithErrorAsync(
+                $"api/expert/group-offers/{_assignOffer.Id}/teachers/{a.TeacherTenantId}");
+            if (result.Error is not null) { _error = result.Error; return; }
+            _info = "Affectation retirée.";
+            _assignments = await Api.GetAsync<List<AssignmentItem>>($"api/expert/group-offers/{_assignOffer.Id}/teachers") ?? [];
+            await ReloadAsync();
+            _assignOffer = _offers.FirstOrDefault(x => x.Id == _assignOffer.Id) ?? _assignOffer;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
     [Inject] private IJSRuntime Js { get; set; } = default!;
 
     private async Task<bool> JsConfirm(string message)
@@ -351,5 +487,23 @@
         DateTime? PublishedAtUtc,
         string? ShortDescription = null,
         bool IsInternational = false,
-        string? MarketCountryCode = null);
+        string? MarketCountryCode = null,
+        int AssignedTeacherCount = 0);
+
+    private sealed record AssignableTeacher(
+        Guid TenantId,
+        string SchoolName,
+        string? OwnerName,
+        string? City,
+        string? Country);
+
+    private sealed record AssignmentItem(
+        Guid Id,
+        Guid GroupOfferId,
+        Guid TeacherTenantId,
+        string TeacherName,
+        int AssignmentStatus,
+        decimal? TeacherPrice,
+        Guid? SubscriptionOfferingId,
+        DateTime AssignedAtUtc);
 }

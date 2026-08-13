@@ -203,7 +203,7 @@ public class SubscriptionOfferingService : ISubscriptionOfferingService
 
     public async Task<SubscriptionOfferingDto> DeactivateAsync(Guid id, CancellationToken ct = default)
     {
-        var offering = _db.SubscriptionOfferings.FirstOrDefault(o => o.Id == id)
+        var offering = _db.SubscriptionOfferingsForAnyTenant.FirstOrDefault(o => o.Id == id)
             ?? throw new InvalidOperationException("Offre introuvable.");
 
         offering.IsActive = false;

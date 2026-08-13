@@ -159,6 +159,78 @@ public class GroupGovernanceController : ControllerBase
         }
     }
 
+    [HttpGet("expert/group-offers/assignable-teachers")]
+    [Authorize(Roles = ExpertOrManagerOrPlatform)]
+    public async Task<ActionResult<IReadOnlyList<GroupOfferAssignableTeacherDto>>> ListAssignableTeachers(
+        CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        try
+        {
+            var groupId = await ResolveCallerGroupIdAsync(ct)
+                ?? throw new InvalidOperationException("Aucun groupe associé.");
+            return Ok(await _offers.ListAssignableTeachersAsync(groupId, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpGet("expert/group-offers/{offerId:guid}/teachers")]
+    [Authorize(Roles = ExpertOrManagerOrPlatform)]
+    public async Task<ActionResult<IReadOnlyList<GroupOfferTeacherAssignmentDto>>> ListOfferTeachers(
+        Guid offerId, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _offers.ListAssignmentsAsync(offerId, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("expert/group-offers/{offerId:guid}/teachers")]
+    [Authorize(Roles = ExpertOrManagerOrPlatform)]
+    public async Task<ActionResult<GroupOfferTeacherAssignmentDto>> AssignOfferTeacher(
+        Guid offerId,
+        [FromBody] AssignGroupOfferTeacherRequest? request,
+        CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        if (request is null) return BadRequest(new { error = "Requête invalide." });
+        try
+        {
+            var asPlatform = _groupAccess.IsPlatformAdmin(User) && ActAsGroupId.HasValue;
+            return Ok(await _offers.AssignTeacherAsync(
+                offerId, UserId, request, ct, asPlatformAdmin: asPlatform, actAsGroupId: ActAsGroupId));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpDelete("expert/group-offers/{offerId:guid}/teachers/{teacherTenantId:guid}")]
+    [Authorize(Roles = ExpertOrManagerOrPlatform)]
+    public async Task<IActionResult> UnassignOfferTeacher(Guid offerId, Guid teacherTenantId, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        try
+        {
+            var asPlatform = _groupAccess.IsPlatformAdmin(User) && ActAsGroupId.HasValue;
+            await _offers.UnassignTeacherAsync(
+                offerId, teacherTenantId, UserId, ct, asPlatformAdmin: asPlatform, actAsGroupId: ActAsGroupId);
+            return Ok(new { message = "Affectation retirée." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     [HttpGet("expert/admin-chat")]
     [Authorize(Roles = ManagerOrPlatform)]
     public async Task<ActionResult<IReadOnlyList<GroupAdminConversationDto>>> ManagerConversations(CancellationToken ct)

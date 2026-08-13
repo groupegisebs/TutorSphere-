@@ -295,6 +295,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
         {
             e.Property(t => t.ApprovedByUserId).HasMaxLength(450);
             e.HasIndex(t => new { t.GroupOfferId, t.TeacherTenantId }).IsUnique();
+            e.HasIndex(t => t.SubscriptionOfferingId);
             e.HasOne(t => t.GroupOffer).WithMany(o => o.Teachers).HasForeignKey(t => t.GroupOfferId)
                 .OnDelete(DeleteBehavior.Cascade);
             e.HasOne(t => t.TeacherTenant).WithMany().HasForeignKey(t => t.TeacherTenantId)

@@ -16,6 +16,9 @@ public class GroupOfferTeacher : BaseEntity
     public DateTime? AvailableFrom { get; set; }
     public string? ApprovedByUserId { get; set; }
 
+    /// <summary>Offre plateforme matérialisée pour l'agenda / abonnements de l'enseignant.</summary>
+    public Guid? SubscriptionOfferingId { get; set; }
+
     public GroupOffer GroupOffer { get; set; } = null!;
     public Tenant TeacherTenant { get; set; } = null!;
 }
