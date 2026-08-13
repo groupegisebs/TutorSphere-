@@ -155,7 +155,11 @@ public record RegisterTeacherByExpertResponse(
 public record ExpertMyGroupDto(
     Guid Id,
     string Name,
-    string? CountryCode);
+    string? CountryCode,
+    string? Description = null,
+    bool IsInternational = false);
+
+public record UpdateManagerGroupSettingsRequest(string? Description);
 
 public record TeacherApplicationInviteDto(
     Guid Id,

@@ -91,4 +91,5 @@ public record ExpertGroupMemberListItemDto(
     ExpertMembershipStatus Status,
     ExpertAdmissionMethod AdmissionMethod,
     string? Specialty,
-    DateTime? AdmittedAtUtc);
+    DateTime? AdmittedAtUtc,
+    ExpertGroupMemberRole MemberRole = ExpertGroupMemberRole.Expert);

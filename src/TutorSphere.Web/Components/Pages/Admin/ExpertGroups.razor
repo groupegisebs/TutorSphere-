@@ -22,9 +22,13 @@
                     Un groupe par pays + un seul groupe international. Chaque groupe est administré par un Responsable.
                 </p>
             </div>
-            <button type="button" class="cc-btn cc-btn-primary" @onclick="OpenCreate">
-                <i class="bi bi-plus-lg"></i> Nouveau groupe
-            </button>
+            <AuthorizeView Roles="SuperAdmin">
+                <Authorized>
+                    <button type="button" class="cc-btn cc-btn-primary" @onclick="OpenCreate">
+                        <i class="bi bi-plus-lg"></i> Nouveau groupe
+                    </button>
+                </Authorized>
+            </AuthorizeView>
         </div>
 
         @if (!string.IsNullOrEmpty(_flash))
@@ -230,7 +234,7 @@
                                         <div class="d-flex flex-wrap gap-1 justify-content-end">
                                             <a class="cc-btn btn-sm" href="@($"admin/expert-groups/{g.Id}")">Ouvrir</a>
                                             <a class="cc-btn btn-sm" href="@($"admin/expert-groups/{g.Id}")">Membres</a>
-                                            <a class="cc-btn btn-sm" href="@($"admin/expert-groups/{g.Id}")">Changer le responsable</a>
+                                            <a class="cc-btn btn-sm" href="@($"admin/expert-groups/{g.Id}/manager")">Changer le responsable</a>
                                             <button type="button" class="cc-btn btn-sm" @onclick="() => ContactAsync(g)">Contacter</button>
                                             <button type="button" class="cc-btn btn-sm" @onclick="() => OpenEdit(g)">Modifier</button>
                                             <button type="button" class="cc-btn btn-sm" @onclick="() => ToggleActiveAsync(g)">

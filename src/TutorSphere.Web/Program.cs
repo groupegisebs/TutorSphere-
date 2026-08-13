@@ -50,6 +50,11 @@ builder.Services.AddScoped<MessagingNotificationState>();
 builder.Services.AddScoped<RealtimeMessagingClient>();
 builder.Services.AddScoped<RealtimeClassroomClient>();
 builder.Services.AddScoped<AdminService>();
+builder.Services.Configure<TutorSphere.Application.Options.ExpertModuleFeatureOptions>(
+    builder.Configuration.GetSection(TutorSphere.Application.Options.ExpertModuleFeatureOptions.SectionName));
+builder.Services.AddScoped<TutorSphere.Application.Services.IExpertModuleFeatureService,
+    TutorSphere.Application.Services.ExpertModuleFeatureService>();
+builder.Services.AddScoped<ExpertModuleFeatures>();
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();

@@ -143,7 +143,7 @@ public class ExpertMembershipGovernanceService(
         IReadOnlyList<ExpertGroupMemberListItemDto> result = members
             .Select(m => new ExpertGroupMemberListItemDto(
                 m.Id, m.ExpertGroupId, m.UserId, "", "", m.Status, m.AdmissionMethod,
-                m.Specialty, m.AdmittedAtUtc))
+                m.Specialty, m.AdmittedAtUtc, m.MemberRole))
             .ToList();
         return Task.FromResult(result);
     }

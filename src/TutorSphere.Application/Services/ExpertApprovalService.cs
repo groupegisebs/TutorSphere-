@@ -27,6 +27,8 @@ public interface IExpertApprovalService
     Task<TeacherApprovalStatusDto> GetStatusForOwnerAsync(string ownerUserId, CancellationToken ct = default);
     Task<IReadOnlyList<Guid>> GetExpertGroupIdsAsync(string expertUserId, CancellationToken ct = default);
     Task<ExpertMyGroupDto?> GetMyGroupAsync(string expertUserId, CancellationToken ct = default);
+    Task<ExpertMyGroupDto> GetMyGroupSettingsAsync(string managerUserId, CancellationToken ct = default);
+    Task<ExpertMyGroupDto> UpdateMyGroupSettingsAsync(string managerUserId, string? description, CancellationToken ct = default);
 }
 
 public class ExpertApprovalService(
@@ -50,7 +52,7 @@ public class ExpertApprovalService(
     public Task<ExpertMyGroupDto?> GetMyGroupAsync(string expertUserId, CancellationToken ct = default)
     {
         var groupId = db.ExpertGroupMembers
-            .Where(m => m.UserId == expertUserId)
+            .Where(m => m.UserId == expertUserId && m.Status == ExpertMembershipStatus.Active)
             .Select(m => m.ExpertGroupId)
             .FirstOrDefault();
         if (groupId == Guid.Empty)
@@ -61,7 +63,37 @@ public class ExpertApprovalService(
             return Task.FromResult<ExpertMyGroupDto?>(null);
 
         return Task.FromResult<ExpertMyGroupDto?>(
-            new ExpertMyGroupDto(group.Id, group.Name, group.CountryCode));
+            new ExpertMyGroupDto(group.Id, group.Name, group.CountryCode, group.Description, group.IsInternational));
+    }
+
+    public Task<ExpertMyGroupDto> GetMyGroupSettingsAsync(string managerUserId, CancellationToken ct = default)
+    {
+        var group = RequireManagedGroup(managerUserId);
+        return Task.FromResult(new ExpertMyGroupDto(
+            group.Id, group.Name, group.CountryCode, group.Description, group.IsInternational));
+    }
+
+    public async Task<ExpertMyGroupDto> UpdateMyGroupSettingsAsync(
+        string managerUserId, string? description, CancellationToken ct = default)
+    {
+        var group = RequireManagedGroup(managerUserId);
+        group.Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
+        group.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return new ExpertMyGroupDto(
+            group.Id, group.Name, group.CountryCode, group.Description, group.IsInternational);
+    }
+
+    private ExpertGroup RequireManagedGroup(string managerUserId)
+    {
+        var membership = db.ExpertGroupMembers.FirstOrDefault(m =>
+            m.UserId == managerUserId
+            && m.Status == ExpertMembershipStatus.Active
+            && m.MemberRole == ExpertGroupMemberRole.Manager)
+            ?? throw new InvalidOperationException("Accès réservé au Responsable actif du groupe.");
+
+        return db.ExpertGroups.FirstOrDefault(g => g.Id == membership.ExpertGroupId && g.IsActive)
+            ?? throw new InvalidOperationException("Groupe introuvable ou inactif.");
     }
 
     public Task<IReadOnlyList<PendingTeacherDto>> ListPendingForExpertAsync(string expertUserId, CancellationToken ct = default)

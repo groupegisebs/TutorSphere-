@@ -1,0 +1,95 @@
+@page "/group-admin/settings"
+@layout GroupAdminLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService Auth
+@inject ApiClient Api
+
+<PageTitle>Paramètres du groupe — TutorSphere</PageTitle>
+
+<AuthorizeView Roles="GroupManager">
+    <Authorized>
+        <div class="cc-toolbar">
+            <div>
+                <h1 class="cc-page-title">Paramètres du groupe</h1>
+                <p class="cc-page-sub">Description publique modifiable. Pays, type et Responsable : Super Admin uniquement.</p>
+            </div>
+        </div>
+
+        @if (_loading)
+        {
+            <span class="spinner-border"></span>
+        }
+        else if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger">@_error</div>
+        }
+        else
+        {
+            @if (!string.IsNullOrEmpty(_flash))
+            {
+                <div class="alert alert-success">@_flash</div>
+            }
+            <div class="cc-card">
+                <div class="mb-3">
+                    <label class="form-label">Nom</label>
+                    <input class="form-control" value="@_name" disabled />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Pays / portée</label>
+                    <input class="form-control" value="@(_country ?? "International")" disabled />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Description publique</label>
+                    <textarea class="form-control" rows="4" @bind="_description"></textarea>
+                </div>
+                <button type="button" class="cc-btn cc-btn-primary" disabled="@_busy" @onclick="SaveAsync">Enregistrer</button>
+            </div>
+        }
+    </Authorized>
+    <NotAuthorized>
+        <div class="cc-card cc-empty"><p>Accès réservé au Responsable.</p></div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private bool _loading = true;
+    private bool _busy;
+    private string? _error;
+    private string? _flash;
+    private string _name = "";
+    private string? _country;
+    private string? _description;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        try
+        {
+            var settings = await Api.GetAsync<GroupSettings>("api/expert/my-group/settings");
+            if (settings is null) { _error = "Impossible de charger les paramètres."; return; }
+            _name = settings.Name;
+            _country = settings.CountryCode;
+            _description = settings.Description;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task SaveAsync()
+    {
+        _busy = true;
+        _flash = null;
+        _error = null;
+        try
+        {
+            var result = await Api.PutWithErrorAsync<GroupSettings>("api/expert/my-group/settings", new { description = _description });
+            if (result.Error is not null) { _error = result.Error; return; }
+            if (result.Value is not null) _description = result.Value.Description;
+            _flash = "Description enregistrée.";
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private sealed record GroupSettings(Guid Id, string Name, string? CountryCode, string? Description, bool IsInternational);
+}

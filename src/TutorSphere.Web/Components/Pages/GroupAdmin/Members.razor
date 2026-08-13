@@ -1,0 +1,94 @@
+@page "/group-admin/members"
+@layout GroupAdminLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService Auth
+@inject ApiClient Api
+
+<PageTitle>Membres du groupe — Responsable</PageTitle>
+
+<AuthorizeView Roles="GroupManager">
+    <Authorized>
+        <div class="cc-toolbar">
+            <div>
+                <h1 class="cc-page-title">Membres</h1>
+                <p class="cc-page-sub">Consultation. Ajout direct d'Expert : Super Admin uniquement. Invitation : vote 75 %.</p>
+            </div>
+            <a class="cc-btn cc-btn-primary" href="expert/admissions">Inviter un candidat</a>
+        </div>
+
+        @if (_loading)
+        {
+            <span class="spinner-border"></span>
+        }
+        else if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger">@_error</div>
+        }
+        else
+        {
+            <div class="cc-card">
+                <table class="cc-table">
+                    <thead>
+                        <tr>
+                            <th>Nom</th>
+                            <th>E-mail</th>
+                            <th>Rôle</th>
+                            <th>Statut</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var m in _members.OrderByDescending(x => x.MemberRole == 1))
+                        {
+                            <tr>
+                                <td><strong>@(string.IsNullOrWhiteSpace(m.FullName) ? m.UserId : m.FullName)</strong></td>
+                                <td>@(m.Email ?? "—")</td>
+                                <td>@RoleName(m.MemberRole)</td>
+                                <td>@m.Status</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </Authorized>
+    <NotAuthorized>
+        <div class="cc-card cc-empty"><p>Accès réservé au Responsable.</p></div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+    private List<MemberItem> _members = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        try
+        {
+            _members = await Api.GetAsync<List<MemberItem>>("api/expert/membership/members") ?? [];
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private static string RoleName(int role) => role switch
+    {
+        1 => "Responsable",
+        2 => "Chef discipline",
+        3 => "Chef comité",
+        _ => "Expert"
+    };
+
+    private sealed record MemberItem(
+        Guid Id,
+        Guid ExpertGroupId,
+        string UserId,
+        string Email,
+        string FullName,
+        int Status,
+        int AdmissionMethod,
+        string? Specialty,
+        DateTime? AdmittedAtUtc,
+        int MemberRole = 0);
+}

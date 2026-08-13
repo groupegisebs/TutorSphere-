@@ -1,0 +1,90 @@
+@page "/group-admin/dashboard"
+@layout GroupAdminLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService Auth
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<PageTitle>Espace Responsable — TutorSphere</PageTitle>
+
+<AuthorizeView Roles="GroupManager">
+    <Authorized>
+        <div class="cc-toolbar">
+            <div>
+                <h1 class="cc-page-title">Tableau de bord Responsable</h1>
+                <p class="cc-page-sub">@_groupName — coordination du groupe d'experts.</p>
+            </div>
+            <a class="cc-btn" href="expert/dashboard">Vue Expert</a>
+        </div>
+
+        @if (_loading)
+        {
+            <div class="cc-empty"><span class="spinner-border"></span></div>
+        }
+        else if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger">@_error</div>
+        }
+        else if (_summary is not null)
+        {
+            <div class="cc-kpi-grid mb-3">
+                <div class="cc-kpi"><div class="cc-kpi-label">En attente</div><div class="cc-kpi-value">@_summary.TeachersPending</div></div>
+                <div class="cc-kpi"><div class="cc-kpi-label">En revue</div><div class="cc-kpi-value">@_summary.TeachersUnderReview</div></div>
+                <div class="cc-kpi"><div class="cc-kpi-label">Votes Expert</div><div class="cc-kpi-value">@_summary.ExpertVotesOpen</div></div>
+                <div class="cc-kpi"><div class="cc-kpi-label">Membres actifs</div><div class="cc-kpi-value">@_summary.ActiveGroupMembers</div></div>
+            </div>
+            <div class="cc-card">
+                <h2 class="cc-card-title">Actions rapides</h2>
+                <div class="d-flex flex-wrap gap-2">
+                    <a class="cc-btn cc-btn-primary" href="expert/approvals">File d'attente</a>
+                    <a class="cc-btn" href="expert/offers">Offres du groupe</a>
+                    <a class="cc-btn" href="group-admin/members">Membres</a>
+                    <a class="cc-btn" href="expert/admissions">Admissions</a>
+                    <a class="cc-btn" href="expert/admin-chat">Chat TutorSphere</a>
+                    <a class="cc-btn" href="group-admin/settings">Paramètres</a>
+                </div>
+            </div>
+        }
+    </Authorized>
+    <NotAuthorized>
+        <div class="cc-card cc-empty">
+            <p>Accès réservé au Responsable du groupe.</p>
+            <a class="cc-btn cc-btn-primary" href="expert/dashboard">Retour</a>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+    private string _groupName = "";
+    private SummaryDto? _summary;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        try
+        {
+            var ctx = await Api.GetAsync<MeContext>("api/expert/me-context");
+            if (ctx is null || !ctx.IsGroupManager)
+            {
+                _error = "Vous n'êtes pas Responsable actif d'un groupe.";
+                return;
+            }
+            _groupName = ctx.GroupName ?? "";
+            _summary = await Api.GetAsync<SummaryDto>("api/expert/dashboard-summary");
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private sealed record MeContext(bool IsGroupManager, Guid? GroupId, string? GroupName);
+    private sealed record SummaryDto(
+        string GroupName, string? CountryCode,
+        int TeachersPending, int TeachersUnderReview, int TeachersChangesRequested,
+        int TeachersApproved, int TeachersSuspended, int ExpertVotesOpen,
+        int ExpertInvitesPending, int TeacherInvitesSent, int UnreadRemarksForTeachers,
+        int CancelledLessonsRecent, int DisciplinesWithoutTeacher, int TeachersInactive,
+        int ActiveGroupMembers, Guid? NextPendingTenantId, Guid? NextOpenExpertVoteId,
+        List<object> Alerts);
+}

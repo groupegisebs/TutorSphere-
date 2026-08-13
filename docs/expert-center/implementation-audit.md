@@ -364,7 +364,19 @@ Objectif : atteindre les **critères de fin du Lot 1** sans toucher Lot 2/3 ni m
 - Feature flags : `Enabled` vs `Frozen` (pas `Hidden` en Production pour ces modules).
 - Quand un module passe à Completed : retirer le freeze, activer le NavLink, supprimer la dépendance coming-soon.
 
-### Décisions 1–3 : audit validé — prêt pour Phase 0 + Lot 1
+### Décisions 1–3 : audit validé — **Phase 0 + Lot 1A démarrés (2026-08-13)**
+
+Livré :
+- Feature flags `ExpertModules` + menu freezé (badge, non cliquable)
+- Rôle Identity `GroupManager` (seed via `UserRoles.All`)
+- Claims : priorité GroupManager avant Expert
+- Nomination / création groupe / suspend : **SuperAdmin seul**
+- Champs `GroupManagerMembershipId`, `ManagerAssignedAtUtc`, `ManagerAssignedByAdminId`
+- Pages `/admin/expert-groups/{id}/manager`, `/group-admin/dashboard|settings|members`
+- Chat API/UI : rôle `GroupManager` (403 Expert ordinaire)
+- Migration `Lot1A_GroupManagerIdentityAndFields`
+
+Suite Lot 1 : admissions routes détaillées, affectation dossiers UI, audit events.
 
 ---
 

@@ -1,0 +1,150 @@
+@page "/admin/expert-groups/{GroupId:guid}/manager"
+@layout AdminLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService Auth
+@inject AdminService AdminSvc
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<PageTitle>Responsable du groupe — Control Center</PageTitle>
+
+<AuthorizeView Roles="SuperAdmin">
+    <Authorized>
+        <div class="cc-toolbar">
+            <div>
+                <h1 class="cc-page-title">Responsable du groupe</h1>
+                <p class="cc-page-sub">@_groupName — nomination réservée au Super Admin.</p>
+            </div>
+            <a class="cc-btn" href="admin/expert-groups">Retour</a>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger">@_error</div>
+        }
+        @if (!string.IsNullOrEmpty(_flash))
+        {
+            <div class="alert alert-success">@_flash</div>
+        }
+
+        <div class="cc-card mb-3">
+            <h2 class="cc-card-title">Responsable actuel</h2>
+            @if (_managerUserId is null)
+            {
+                <p class="text-muted mb-0">Aucun Responsable actif.</p>
+            }
+            else
+            {
+                <p class="mb-1"><strong>@_managerName</strong></p>
+                <p class="mb-1">@_managerEmail</p>
+                <p class="small text-muted">@_managerPhone</p>
+                <button type="button" class="cc-btn btn-sm mt-2" disabled="@_busy" @onclick="SuspendAsync">Suspendre le mandat</button>
+            }
+        </div>
+
+        <div class="cc-card mb-3">
+            <h2 class="cc-card-title">Nommer / remplacer</h2>
+            <p class="small text-muted">Sélectionnez un membre Expert du groupe (ou ajoutez-le d'abord dans Membres).</p>
+            <div class="mb-3">
+                <label class="form-label">Membre</label>
+                <select class="form-select" @bind="_selectedUserId">
+                    <option value="">— Choisir —</option>
+                    @foreach (var m in _members)
+                    {
+                        <option value="@m.UserId">@m.FullName (@m.Email)</option>
+                    }
+                </select>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Fonction</label>
+                <input class="form-control" @bind="_function" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Téléphone</label>
+                <input class="form-control" @bind="_phone" />
+            </div>
+            <button type="button" class="cc-btn cc-btn-primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_selectedUserId))" @onclick="TransferAsync">
+                Confirmer le Responsable
+            </button>
+        </div>
+
+        <a class="cc-btn" href="@($"admin/expert-groups/{GroupId}")">Membres du groupe</a>
+    </Authorized>
+    <NotAuthorized>
+        <div class="cc-card cc-empty">
+            <p>Seul le Super Admin peut nommer le Responsable.</p>
+            <a class="cc-btn" href="admin/expert-groups">Retour</a>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    [Parameter] public Guid GroupId { get; set; }
+
+    private bool _busy;
+    private string? _error;
+    private string? _flash;
+    private string _groupName = "";
+    private string? _managerUserId;
+    private string? _managerName;
+    private string? _managerEmail;
+    private string? _managerPhone;
+    private string _selectedUserId = "";
+    private string? _function;
+    private string? _phone;
+    private List<ExpertMemberItem> _members = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _error = null;
+        try
+        {
+            var groups = await AdminSvc.GetExpertGroupsAsync();
+            var g = groups.FirstOrDefault(x => x.Id == GroupId);
+            if (g is null) { _error = "Groupe introuvable."; return; }
+            _groupName = g.Name;
+            _managerUserId = g.ManagerUserId;
+            _managerName = g.ManagerFullName ?? g.ContactName;
+            _managerEmail = g.ManagerEmail ?? g.ContactEmail;
+            _managerPhone = g.ManagerPhone ?? g.ContactPhone;
+            _members = await AdminSvc.GetExpertGroupMembersAsync(GroupId);
+        }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private async Task TransferAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_selectedUserId)) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            var result = await AdminSvc.TransferGroupManagerAsync(GroupId, _selectedUserId, _phone, _function);
+            if (!result.IsSuccess) { _error = result.Error ?? "Échec."; return; }
+            _flash = "Responsable nommé.";
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task SuspendAsync()
+    {
+        _busy = true;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<object>($"api/admin/expert-groups/{GroupId}/manager/suspend", new { reason = "Suspension Super Admin" });
+            if (result.Error is not null) { _error = result.Error; return; }
+            _flash = "Mandat suspendu.";
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+}

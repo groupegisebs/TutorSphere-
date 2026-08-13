@@ -261,11 +261,10 @@ public class ExpertApprovalsController : ControllerBase
     [HttpGet("me-context")]
     public async Task<ActionResult<object>> MeContext(
         [FromServices] IExpertGroupManagerService managers,
-        [FromServices] IExpertGroupService groups,
         CancellationToken ct)
     {
         if (UserId is null) return Unauthorized();
-        var isManager = managers.IsActiveManager(UserId);
+        var isManager = User.IsInRole(UserRoles.GroupManager) || managers.IsActiveManager(UserId);
         Guid? groupId = null;
         string? groupName = null;
         var my = await _approvals.GetMyGroupAsync(UserId, ct);
@@ -275,6 +274,33 @@ public class ExpertApprovalsController : ControllerBase
             groupName = my.Name;
         }
         return Ok(new { isGroupManager = isManager, groupId, groupName });
+    }
+
+    [HttpGet("my-group/settings")]
+    [Authorize(Roles = UserRoles.GroupManager)]
+    public async Task<ActionResult<object>> GetMyGroupSettings(CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        var group = await _approvals.GetMyGroupAsync(UserId, ct);
+        if (group is null) return NotFound();
+        // Reload description from full entity via dashboard service path — use approvals GetMyGroup extended
+        return Ok(await _approvals.GetMyGroupSettingsAsync(UserId, ct));
+    }
+
+    [HttpPut("my-group/settings")]
+    [Authorize(Roles = UserRoles.GroupManager)]
+    public async Task<ActionResult<object>> UpdateMyGroupSettings(
+        [FromBody] UpdateManagerGroupSettingsRequest? request, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        try
+        {
+            return Ok(await _approvals.UpdateMyGroupSettingsAsync(UserId, request?.Description, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 
     [HttpGet("invitations")]

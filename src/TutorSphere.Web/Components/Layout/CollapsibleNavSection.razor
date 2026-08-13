@@ -1,0 +1,39 @@
+<div class="cc-nav-section @(_open ? "is-open" : "is-collapsed")">
+    <button type="button"
+            class="cc-nav-section-toggle"
+            aria-expanded="@_open"
+            @onclick="Toggle">
+        <span class="cc-nav-section-label">@Title</span>
+        <i class="bi @(_open ? "bi-chevron-up" : "bi-chevron-down")" aria-hidden="true"></i>
+    </button>
+    @if (_open)
+    {
+        <div class="cc-nav-section-body">
+            @ChildContent
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string SectionKey { get; set; } = "";
+    [Parameter] public bool DefaultOpen { get; set; } = true;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private bool _open;
+
+    protected override void OnInitialized()
+    {
+        _open = DefaultOpen;
+        if (!string.IsNullOrWhiteSpace(SectionKey)
+            && ExpertSidebarCollapseState.TryGet(SectionKey, out var saved))
+            _open = saved;
+    }
+
+    private void Toggle()
+    {
+        _open = !_open;
+        if (!string.IsNullOrWhiteSpace(SectionKey))
+            ExpertSidebarCollapseState.Set(SectionKey, _open);
+    }
+}
