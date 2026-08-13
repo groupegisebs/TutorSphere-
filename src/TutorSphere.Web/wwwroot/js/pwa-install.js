@@ -79,6 +79,10 @@
     isDismissed: isDismissed,
     getState: currentState,
     dismiss: dismiss,
+    clearDismiss: function () {
+      try { localStorage.removeItem(STORAGE_KEY); } catch (_) { /* ignore */ }
+      pushState();
+    },
     bind: function (dotNetRef) {
       blazorRef = dotNetRef;
       pushState();

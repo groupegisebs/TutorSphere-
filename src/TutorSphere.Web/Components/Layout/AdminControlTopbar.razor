@@ -34,6 +34,7 @@
                 <div class="cc-dropdown" style="right:0;top:2.6rem;">
                     <a href="admin/settings"><i class="bi bi-sliders"></i>Configurations</a>
                     <a href="admin/health"><i class="bi bi-heart-pulse"></i>Santé plateforme</a>
+                    <button type="button" @onclick="InstallAppAsync"><i class="bi bi-download"></i>Installation</button>
                     <button type="button" class="danger" @onclick="Logout"><i class="bi bi-box-arrow-left"></i>Déconnexion</button>
                 </div>
             </div>
@@ -119,6 +120,32 @@
         _menuOpen = false;
         AuthSvc.Logout();
         Navigation.NavigateTo("/login/admin");
+    }
+
+    private async Task InstallAppAsync()
+    {
+        _menuOpen = false;
+        try
+        {
+            await Js.InvokeVoidAsync("tutorSpherePwa.clearDismiss");
+            var choice = await Js.InvokeAsync<InstallChoice>("tutorSpherePwa.promptInstall");
+            if (choice?.Outcome is "unavailable" or null)
+            {
+                await Js.InvokeVoidAsync("alert",
+                    "L'installation PWA n'est pas disponible pour le moment.\n\n" +
+                    "Chrome / Edge : menu ⋮ → « Installer TutorSphere ».\n" +
+                    "Safari iOS : Partager → « Sur l'écran d'accueil ».");
+            }
+        }
+        catch
+        {
+            /* ignore */
+        }
+    }
+
+    private sealed class InstallChoice
+    {
+        public string? Outcome { get; set; }
     }
 
     private static string ResolveTitle(string uri)

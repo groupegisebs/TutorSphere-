@@ -1,4 +1,5 @@
 @inject IStringLocalizer<SharedResources> L
+@inject IJSRuntime JS
 
 <div class="cc-sidebar-brand">
     <a class="cc-sidebar-brand-link" href="admin/dashboard">
@@ -42,6 +43,10 @@
             <div class="cc-nav-section-label">Plateforme</div>
             <NavLink class="cc-nav-link" href="admin/settings"><i class="bi bi-sliders"></i><span>Configurations</span></NavLink>
             <NavLink class="cc-nav-link" href="admin/health"><i class="bi bi-heart-pulse"></i><span>Santé plateforme</span></NavLink>
+            <button type="button" class="cc-nav-link cc-nav-link-btn" @onclick="InstallAppAsync">
+                <i class="bi bi-download" aria-hidden="true"></i>
+                <span>Installation</span>
+            </button>
         </div>
     </nav>
 </div>
@@ -53,3 +58,30 @@
     </div>
     <button type="button" class="cc-switch" title="Mode sombre actif" aria-label="Mode sombre"></button>
 </div>
+
+@code {
+    private async Task InstallAppAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("tutorSpherePwa.clearDismiss");
+            var choice = await JS.InvokeAsync<InstallChoice>("tutorSpherePwa.promptInstall");
+            if (choice?.Outcome is "unavailable" or null)
+            {
+                await JS.InvokeVoidAsync("alert",
+                    "L'installation PWA n'est pas disponible pour le moment.\n\n" +
+                    "Chrome / Edge : menu ⋮ → « Installer TutorSphere ».\n" +
+                    "Safari iOS : Partager → « Sur l'écran d'accueil ».");
+            }
+        }
+        catch
+        {
+            /* ignore */
+        }
+    }
+
+    private sealed class InstallChoice
+    {
+        public string? Outcome { get; set; }
+    }
+}

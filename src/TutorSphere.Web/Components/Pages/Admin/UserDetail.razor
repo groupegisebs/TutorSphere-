@@ -4,6 +4,7 @@
 @inject AdminService AdminSvc
 @inject AuthService Auth
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 
 <PageTitle>Fiche utilisateur — Control Center</PageTitle>
 
@@ -44,6 +45,12 @@
                         <button type="button" class="cc-btn cc-btn-primary" @onclick="ActivateAsync"><i class="bi bi-unlock"></i> Activer</button>
                     }
                     <button type="button" class="cc-btn" @onclick="ResetPasswordAsync"><i class="bi bi-arrow-repeat"></i> Réinit. MDP</button>
+                    @if (_isSuperAdmin && (_user.Role is "Parent" or "Student"))
+                    {
+                        <button type="button" class="cc-btn" style="color:#f87171;border-color:#f87171;" @onclick="DeleteAsync">
+                            <i class="bi bi-trash"></i> Supprimer
+                        </button>
+                    }
                     <a href="admin/users" class="cc-btn">Retour</a>
                 </div>
             </div>
@@ -99,6 +106,7 @@
 
     private AdminUserDetail? _user;
     private bool _loading = true;
+    private bool _isSuperAdmin;
     private string _tab = "info";
     private string? _message;
     private string? _error;
@@ -119,6 +127,7 @@
     protected override async Task OnInitializedAsync()
     {
         try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        _isSuperAdmin = Auth.IsInRole("SuperAdmin");
         var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
         if (uri.Query.Contains("tab=history", StringComparison.OrdinalIgnoreCase))
             _tab = "history";
@@ -159,11 +168,31 @@
         if (_message is null) _error = "Impossible d'envoyer le lien.";
     }
 
+    private async Task DeleteAsync()
+    {
+        if (_user is null) return;
+        _message = null;
+        _error = null;
+        var confirmed = await JS.InvokeAsync<bool>(
+            "confirm",
+            $"Supprimer définitivement le compte {RoleLabel(_user.Role)} « {_user.FullName} » ?\n\nCette action est irréversible.");
+        if (!confirmed) return;
+
+        var result = await AdminSvc.DeleteUserAsync(_user.Id);
+        if (result.Error is not null)
+        {
+            _error = result.Error;
+            return;
+        }
+
+        Navigation.NavigateTo(_user.Role == "Parent" ? "admin/parents" : "admin/students");
+    }
+
     private static string Initials(string name)
     {
         var parts = name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
         return parts.Length >= 2
-            ? $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[^1][0])}"
+            ? $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant()
             : name[..Math.Min(2, name.Length)].ToUpperInvariant();
     }
 

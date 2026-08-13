@@ -7,12 +7,13 @@
 @inject AdminService AdminSvc
 @inject AuthService Auth
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 @inject IStringLocalizer<SharedResources> L
 
 <PageTitle>Gestion des utilisateurs — Control Center</PageTitle>
 
 <AuthorizeView Roles="SuperAdmin,PlatformAdmin">
-    <Authorized>
+    <Authorized Context="adminAuth">
         <div class="cc-toolbar">
             <div>
                 <h1 class="cc-page-title">@_pageHeading</h1>
@@ -135,6 +136,12 @@
                                                         <button type="button" @onclick="() => ToggleUserAsync(user)"><i class="bi bi-unlock"></i> Activer</button>
                                                     }
                                                     <button type="button" @onclick="() => ResetPasswordAsync(user)"><i class="bi bi-arrow-repeat"></i> Réinitialiser mot de passe</button>
+                                                    @if (_isSuperAdmin && IsDeletableRole(user.Role))
+                                                    {
+                                                        <button type="button" class="danger" @onclick="() => DeleteUserAsync(user)">
+                                                            <i class="bi bi-trash"></i> Supprimer
+                                                        </button>
+                                                    }
                                                     <a href="admin/support"><i class="bi bi-envelope"></i> Envoyer un message</a>
                                                     <a href="admin/users/@user.Id?tab=history"><i class="bi bi-graph-up"></i> Historique</a>
                                                 </div>
@@ -169,6 +176,7 @@
     private string _schoolFilter = "";
     private string _statusFilter = "all";
     private bool _isLoading;
+    private bool _isSuperAdmin;
     private string? _errorMessage;
     private string? _successMessage;
     private string? _openMenuId;
@@ -199,6 +207,8 @@
     protected override async Task OnInitializedAsync()
     {
         try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        _isSuperAdmin = Auth.IsInRole("SuperAdmin");
+
         var path = new Uri(Navigation.Uri).AbsolutePath.Trim('/').ToLowerInvariant();
         (_pageHeading, _roleFilter) = path switch
         {
@@ -276,6 +286,36 @@
         }
         catch { _errorMessage = "Une erreur inattendue s'est produite."; }
     }
+
+    private async Task DeleteUserAsync(AdminUserItem user)
+    {
+        _openMenuId = null;
+        _successMessage = null;
+        _errorMessage = null;
+        var confirmed = await JS.InvokeAsync<bool>(
+            "confirm",
+            $"Supprimer définitivement le compte {RoleLabel(user.Role)} « {user.FullName} » ({user.Email}) ?\n\nCette action est irréversible.");
+        if (!confirmed) return;
+
+        try
+        {
+            var result = await AdminSvc.DeleteUserAsync(user.Id);
+            if (result.Error is not null)
+            {
+                _errorMessage = result.Error;
+                return;
+            }
+            _users.RemoveAll(u => u.Id == user.Id);
+            _successMessage = $"Compte de {user.FullName} supprimé.";
+        }
+        catch
+        {
+            _errorMessage = "Impossible de supprimer ce compte.";
+        }
+    }
+
+    private static bool IsDeletableRole(string role) =>
+        role is "Parent" or "Student";
 
     private static string Initials(string fullName)
     {

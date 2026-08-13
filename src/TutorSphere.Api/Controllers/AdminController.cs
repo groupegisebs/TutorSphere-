@@ -10,6 +10,7 @@ using TutorSphere.Application.Services;
 using TutorSphere.Domain.Enums;
 using TutorSphere.Infrastructure.Email;
 using TutorSphere.Infrastructure.Identity;
+using TutorSphere.Infrastructure.Services;
 
 namespace TutorSphere.Api.Controllers;
 
@@ -25,6 +26,7 @@ public class AdminController : ControllerBase
     private readonly MailGatewaySettings _mailSettings;
     private readonly MailGatewayClient _mailClient;
     private readonly IPlatformPromoService _promoCodes;
+    private readonly IAdminUserAccountService _accountDeletion;
 
     public AdminController(
         UserManager<ApplicationUser> userManager,
@@ -33,7 +35,8 @@ public class AdminController : ControllerBase
         IConfiguration configuration,
         IOptions<MailGatewaySettings> mailSettings,
         MailGatewayClient mailClient,
-        IPlatformPromoService promoCodes)
+        IPlatformPromoService promoCodes,
+        IAdminUserAccountService accountDeletion)
     {
         _userManager = userManager;
         _email = email;
@@ -42,6 +45,7 @@ public class AdminController : ControllerBase
         _mailSettings = mailSettings.Value;
         _mailClient = mailClient;
         _promoCodes = promoCodes;
+        _accountDeletion = accountDeletion;
     }
 
     /// <summary>Returns users belonging to a given role.</summary>
@@ -220,6 +224,22 @@ public class AdminController : ControllerBase
         var resetUrl = $"{webBase}/reset-password?email={Uri.EscapeDataString(user.Email)}&token={Uri.EscapeDataString(token)}";
         await _email.SendResetPasswordAsync(user.Email, user.FirstName, resetUrl, ct);
         return Ok(new { message = "Lien de réinitialisation envoyé." });
+    }
+
+    /// <summary>Suppression définitive d'un compte Parent ou Élève (SuperAdmin uniquement).</summary>
+    [HttpDelete("users/{userId}")]
+    [Authorize(Roles = UserRoles.SuperAdmin)]
+    public async Task<IActionResult> DeleteUser(string userId, CancellationToken ct)
+    {
+        try
+        {
+            await _accountDeletion.DeleteParentOrStudentAsync(userId, ct);
+            return Ok(new { message = "Compte supprimé définitivement." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 
     /// <summary>Approves a pending school/tenant and notifies the owner.</summary>

@@ -27,6 +27,9 @@ public sealed class AdminService
     public async Task<bool> ResetPasswordAsync(string userId)
         => await _api.PostAsync<AdminActionResult>($"api/admin/users/{userId}/reset-password", new { }) is not null;
 
+    public Task<ApiResult<bool>> DeleteUserAsync(string userId)
+        => _api.DeleteWithErrorAsync($"api/admin/users/{Uri.EscapeDataString(userId)}");
+
     public async Task<AdminStats?> GetStatsAsync()
         => await _api.GetAsync<AdminStats>("api/admin/stats");
 
