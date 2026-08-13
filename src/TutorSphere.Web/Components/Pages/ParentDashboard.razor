@@ -10,48 +10,40 @@
 <PageTitle>@L["PageTitle_ParentDashboard"]</PageTitle>
 
 <div class="parent-dashboard">
-    <header class="parent-dashboard-header">
+    <header class="pd-header">
         <div>
-            <h1 class="dashboard-greeting">@L["ParentDashboard_Welcome", ParentProfile.DisplayName] 👋</h1>
-            <p class="dashboard-date">@L["ParentDashboard_Subtitle"]</p>
+            <h1 class="pd-greeting">@L["ParentDashboard_Welcome", ParentProfile.DisplayName] 👋</h1>
+            <p class="pd-subtitle">@L["ParentDashboard_Subtitle"]</p>
         </div>
     </header>
 
     @if (_loading)
     {
-        <div class="parent-dashboard-loading">
+        <div class="pd-loading">
             <span class="spinner-border spinner-border-sm text-primary" role="status"></span>
-            <span class="text-muted">@L["Label_Loading"]</span>
+            <span>@L["Label_Loading"]</span>
         </div>
     }
     else
     {
-        <div class="parent-stats-row">
-            <StatCard Label="@L["Parent_MyChildren_Title"]" Value="@_children.Count.ToString()"
-                      Icon="bi-people-fill" Variant="students"
-                      Change="@(_children.Count > 0 ? L["ParentDashboard_ChildrenRegistered", _children.Count].Value : null)" />
-            <StatCard Label="@L["ParentDashboard_StatCoursesToday"]" Value="@_lessonsToday.ToString()"
-                      Icon="bi-calendar-check" Variant="lessons"
-                      Change="@_nextCourseLabel" ChangeVariant="info" />
-            <StatCard Label="@L["ParentDashboard_StatAverage"]" Value="@_averageGradeDisplay"
-                      Icon="bi-graph-up" Variant="revenue" />
-            <StatCard Label="@L["Parent_ActiveSubscription"]" Value="@_subscriptionValue"
-                      Icon="bi-wallet2" Variant="subscriptions"
-                      Change="@_subscriptionPlan" ChangeVariant="@_subscriptionChangeVariant" />
-        </div>
-
-        <div class="parent-row-children-cal">
-            <div class="parent-children-grid">
+        <!-- Mes enfants -->
+        <section class="pd-section">
+            <div class="pd-section-head">
+                <h2>@L["Parent_MyChildren_Title"]</h2>
+                <a href="/parent/children" class="pd-link">@L["Button_ViewAll"]</a>
+            </div>
+            <div class="pd-children-row">
                 @if (_children.Count == 0)
                 {
-                    <div class="section-card parent-children-empty">
-                        <EmptyState Icon="bi-people"
-                                    Title="@L["ParentDashboard_NoChildren"]"
-                                    Description="@L["Empty_NoData_Description"]">
-                            <a href="/parent/children" class="btn btn-primary btn-sm">
-                                @L["ParentDashboard_AddChild"]
-                            </a>
-                        </EmptyState>
+                    <div class="pd-empty-banner">
+                        <div class="pd-empty-banner-icon"><i class="bi bi-people-fill" aria-hidden="true"></i></div>
+                        <div class="pd-empty-banner-body">
+                            <h3>@L["ParentDashboard_NoChildren"]</h3>
+                            <p>@L["ParentDashboard_EmptyChildrenHint"]</p>
+                        </div>
+                        <a href="/parent/children" class="btn btn-primary pd-btn-primary">
+                            <i class="bi bi-person-plus me-1" aria-hidden="true"></i>@L["ParentDashboard_AddChild"]
+                        </a>
                     </div>
                 }
                 else
@@ -61,295 +53,274 @@
                         var name = $"{child.FirstName} {child.LastName}".Trim();
                         var initials = GetInitials(name);
                         var color = AvatarColors[index % AvatarColors.Length];
-                        var variant = ProgressVariants[index % ProgressVariants.Length];
-                        <article class="parent-child-card">
-                            <div class="parent-child-card-top">
-                                @if (!string.IsNullOrEmpty(child.PhotoUrl))
-                                {
-                                    <img class="parent-child-photo" src="@child.PhotoUrl" alt="" />
-                                }
-                                else
-                                {
-                                    <div class="parent-child-avatar" style="background:@color">@initials</div>
-                                }
-                                <div class="parent-child-info">
-                                    <h3>@name</h3>
-                                    <span class="parent-child-level">@(child.SchoolLevel ?? "—")</span>
-                                </div>
-                                <div class="parent-child-grade">
-                                    <span class="parent-child-grade-label">@L["ParentDashboard_AverageLabel"]</span>
-                                    <strong>@FormatGrade(child.AverageGrade)</strong>
-                                    <span class="parent-child-pct">@FormatPercent(child.ProgressPercent)</span>
-                                </div>
-                            </div>
-                            @if (child.ProgressPercent.HasValue)
+                        <article class="pd-child-card">
+                            @if (!string.IsNullOrEmpty(child.PhotoUrl))
                             {
-                                <div class="parent-progress-bar">
-                                    <div class="parent-progress-fill parent-progress-fill--@variant"
-                                         style="width:@child.ProgressPercent%"></div>
-                                </div>
+                                <img class="pd-child-photo" src="@child.PhotoUrl" alt="" />
                             }
-                            <ul class="parent-child-meta">
-                                <li><i class="bi bi-calendar3"></i> @FormatNextLesson(child)</li>
-                                <li><i class="bi bi-journal-text"></i> @(child.NextLessonSubject ?? "—")</li>
-                            </ul>
-                            <a href="/parent/children" class="parent-child-link">@L["ParentDashboard_ViewProfile"] →</a>
+                            else
+                            {
+                                <div class="pd-child-avatar" style="background:@color">@initials</div>
+                            }
+                            <div class="pd-child-meta">
+                                <h3>@name</h3>
+                                <span>@(child.SchoolLevel ?? "—")</span>
+                            </div>
+                            <div class="pd-child-progress">
+                                <div class="pd-progress-track">
+                                    <div class="pd-progress-fill" style="width:@(child.ProgressPercent ?? 0)%"></div>
+                                </div>
+                                <strong>@FormatPercent(child.ProgressPercent)</strong>
+                            </div>
                         </article>
                     }
                 }
+                <a href="/parent/children" class="pd-child-add" aria-label="@L["ParentDashboard_AddChild"]">
+                    <i class="bi bi-plus-lg" aria-hidden="true"></i>
+                    <span>@L["ParentDashboard_AddChild"]</span>
+                </a>
             </div>
+        </section>
 
-            <div class="section-card parent-calendar-card">
-                <div class="section-card-header">
-                    <h2>@L["ParentDashboard_FamilyCalendar"]</h2>
-                    <a href="/parent/calendar" class="parent-link-more">@L["Button_ViewAll"]</a>
+        <!-- KPI row -->
+        <div class="pd-kpi-row">
+            <article class="pd-kpi pd-kpi--purple">
+                <div class="pd-kpi-icon"><i class="bi bi-calendar2-check" aria-hidden="true"></i></div>
+                <div>
+                    <span class="pd-kpi-label">@L["ParentDashboard_StatCoursesToday"]</span>
+                    <strong class="pd-kpi-value">@L["ParentDashboard_CoursesCount", _lessonsToday]</strong>
+                    <span class="pd-kpi-hint">@_nextCourseLabel</span>
                 </div>
-                <div class="parent-week-cal">
-                    @foreach (var day in _weekDays)
+            </article>
+            <article class="pd-kpi pd-kpi--amber">
+                <div class="pd-kpi-icon"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i></div>
+                <div>
+                    <span class="pd-kpi-label">@L["ParentDashboard_StatWatch"]</span>
+                    <strong class="pd-kpi-value">@L["ParentDashboard_HomeworkCount", _homeworkItems.Count]</strong>
+                </div>
+            </article>
+            <article class="pd-kpi pd-kpi--green">
+                <div class="pd-kpi-icon"><i class="bi bi-graph-up-arrow" aria-hidden="true"></i></div>
+                <div>
+                    <span class="pd-kpi-label">@L["ParentDashboard_StatProgressAvg"]</span>
+                    <strong class="pd-kpi-value">@_averageGradeDisplay</strong>
+                </div>
+            </article>
+            <article class="pd-kpi pd-kpi--blue">
+                <div class="pd-kpi-icon"><i class="bi bi-credit-card" aria-hidden="true"></i></div>
+                <div>
+                    <span class="pd-kpi-label">@L["ParentDashboard_NextPayment"]</span>
+                    <strong class="pd-kpi-value">@_nextPaymentDisplay</strong>
+                    <span class="pd-kpi-hint">@_subscriptionPlan</span>
+                </div>
+            </article>
+        </div>
+
+        <!-- Main 3-column board -->
+        <div class="pd-board">
+            <div class="pd-board-col">
+                <section class="pd-card pd-today-card">
+                    <div class="pd-card-head">
+                        <h2>@L["ParentDashboard_TodaySection"]</h2>
+                    </div>
+                    @if (_featuredSession is null)
                     {
-                        <div class="parent-week-day @(day.IsToday ? "is-today" : null)">
-                            <div class="parent-week-day-label">@day.Label</div>
-                            <div class="parent-week-day-body">
-                                @if (day.Events.Count == 0)
-                                {
-                                    <span class="parent-week-empty">@L["ParentDashboard_NoClass"]</span>
-                                }
-                                else
-                                {
-                                    @foreach (var ev in day.Events)
-                                    {
-                                        <div class="parent-cal-event parent-cal-event--@ev.Color">
-                                            <strong>@ev.Title</strong>
-                                            <span>@ev.Subtitle · @ev.Time</span>
-                                        </div>
-                                    }
-                                }
+                        <div class="pd-soft-empty">
+                            <i class="bi bi-calendar-event" aria-hidden="true"></i>
+                            <p>@L["ParentDashboard_NoSessions"]</p>
+                            <a href="/parent/calendar" class="pd-link">@L["ParentDashboard_ScheduleClass"]</a>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="pd-today-body">
+                            <div class="pd-today-badge">
+                                <i class="bi bi-clock" aria-hidden="true"></i>
+                                @FormatSessionTime(_featuredSession.StartTime)
+                            </div>
+                            <h3>@(_featuredSession.Subject ?? L["ParentDashboard_NextClass"])</h3>
+                            <p class="pd-today-meta">
+                                <span>@_featuredSession.TutorName</span>
+                                <span class="pd-dot">·</span>
+                                <span>@LessonModeLabel(_featuredSession.Mode)</span>
+                            </p>
+                            <div class="pd-today-actions">
+                                <a href="/parent/calendar" class="btn btn-primary pd-btn-primary">@L["ParentDashboard_JoinClass"]</a>
+                                <a href="/parent/messages" class="btn btn-outline-primary pd-btn-outline">@L["ParentDashboard_ContactTeacher"]</a>
                             </div>
                         </div>
                     }
-                </div>
-            </div>
-        </div>
+                </section>
 
-        <div class="parent-row-charts-side">
-            <div class="parent-charts-stack">
-                <div class="section-card">
-                    <div class="section-card-header">
-                        <h2>@L["ParentDashboard_GlobalProgress"]</h2>
-                    </div>
-                    @if (_children.Count == 0 || !_children.Any(c => c.AverageGrade.HasValue))
-                    {
-                        <EmptyState Icon="bi-graph-up"
-                                    Title="@L["ParentDashboard_NoProgressData"]"
-                                    Description="@L["Empty_NoData_Description"]" />
-                    }
-                    else
-                    {
-                        <div class="parent-line-chart parent-line-chart--empty-hint">
-                            <p class="text-muted mb-0 px-3 pb-3">
-                                @L["ParentDashboard_ProgressSummary", _children.Count, FormatGrade(_dashboard?.AverageGrade)]
-                            </p>
-                        </div>
-                    }
-                </div>
-
-                <div class="section-card">
-                    <div class="section-card-header">
-                        <h2>@L["ParentDashboard_StudyTime"] <span class="parent-card-subtitle">@L["ParentDashboard_ThisWeek"]</span></h2>
-                    </div>
-                    <EmptyState Icon="bi-clock-history"
-                                Title="@L["ParentDashboard_NoStudyTime"]"
-                                Description="@L["Empty_NoData_Description"]" />
-                </div>
-            </div>
-
-            <div class="parent-side-stack">
-                <div class="section-card">
-                    <div class="section-card-header">
-                        <h2>@L["ParentDashboard_UpcomingSessions"]</h2>
-                        <a href="/parent/calendar" class="parent-link-more">@L["Button_ViewAll"]</a>
-                    </div>
-                    @if (_upcomingSessions.Count == 0)
-                    {
-                        <EmptyState Icon="bi-calendar-event" Title="@L["ParentDashboard_NoSessions"]" />
-                    }
-                    else
-                    {
-                        <ul class="parent-session-list">
-                            @foreach (var session in _upcomingSessions)
-                            {
-                                <li class="parent-session-item">
-                                    <div class="parent-session-avatar">@GetInitials(session.TutorName)</div>
-                                    <div class="parent-session-info">
-                                        <strong>@session.TutorName</strong>
-                                        <span>@(session.Subject ?? "—")</span>
-                                        <span class="parent-session-time">@FormatSessionTime(session.StartTime)</span>
-                                    </div>
-                                    <span class="parent-tag parent-tag--online">@LessonModeLabel(session.Mode)</span>
-                                </li>
-                            }
-                        </ul>
-                    }
-                </div>
-
-                <div class="section-card">
-                    <div class="section-card-header">
-                        <h2>@L["ParentDashboard_HomeworkTodo"]</h2>
-                        <a href="/parent/homework" class="parent-link-more">@L["Button_ViewAll"]</a>
+                <section class="pd-card">
+                    <div class="pd-card-head">
+                        <h2>@L["ParentDashboard_TodoSection"]</h2>
+                        <a href="/parent/homework" class="pd-link">@L["Button_ViewAll"]</a>
                     </div>
                     @if (_homeworkItems.Count == 0)
                     {
-                        <EmptyState Icon="bi-journal-text" Title="@L["ParentDashboard_NoHomework"]" />
+                        <div class="pd-soft-empty pd-soft-empty--sm">
+                            <i class="bi bi-journal-check" aria-hidden="true"></i>
+                            <p>@L["ParentDashboard_NoHomework"]</p>
+                        </div>
                     }
                     else
                     {
-                        <ul class="parent-homework-list">
-                            @foreach (var hw in _homeworkItems)
+                        <ul class="pd-todo-list">
+                            @foreach (var hw in _homeworkItems.Take(4))
                             {
                                 var tag = GetHomeworkTag(hw);
-                                <li class="parent-homework-item">
+                                <li>
                                     <div>
                                         <strong>@hw.Title</strong>
                                         <span>@hw.ChildName — @FormatDueDate(hw.DueDate)</span>
                                     </div>
-                                    <span class="parent-tag parent-tag--@tag.Class">
-                                        @if (tag.Class == "done")
-                                        {
-                                            <i class="bi bi-check-lg"></i>
-                                        }
-                                        @tag.Label
-                                    </span>
+                                    <span class="pd-tag pd-tag--@tag.Class">@tag.Label</span>
                                 </li>
                             }
                         </ul>
                     }
-                </div>
-            </div>
-        </div>
-
-        <div class="parent-row-widgets">
-            <div class="section-card">
-                <div class="section-card-header">
-                    <h2>@L["StudentDashboard_RecentReports"]</h2>
-                    <a href="/parent/reports" class="parent-link-more">@L["Button_ViewAll"]</a>
-                </div>
-                @if (_recentReports.Count == 0)
-                {
-                    <EmptyState Icon="bi-file-earmark-bar-graph" Title="@L["ParentDashboard_NoReports"]" />
-                }
-                else
-                {
-                    <ul class="parent-report-list">
-                        @foreach (var report in _recentReports)
-                        {
-                            <li class="parent-report-item">
-                                <div class="parent-report-avatar">@GetInitials(report.TutorName)</div>
-                                <div class="parent-report-info">
-                                    <strong>@report.TutorName</strong>
-                                    <span>@(report.Subject ?? report.TopicsStudied ?? "—")</span>
-                                    <span class="text-muted small">@report.StudentName</span>
-                                </div>
-                                <div class="parent-report-grade">
-                                    <span>@FormatRelativeDate(report.CreatedAt)</span>
-                                </div>
-                            </li>
-                        }
-                    </ul>
-                }
+                </section>
             </div>
 
-            <div class="section-card">
-                <div class="section-card-header">
-                    <h2>@L["ParentDashboard_RecentMessages"]</h2>
-                    <a href="/parent/messages" class="parent-link-more">@L["Button_ViewAll"]</a>
-                </div>
-                @if (_recentMessages.Count == 0)
-                {
-                    <EmptyState Icon="bi-chat-left-text" Title="@L["ParentDashboard_NoMessages"]" />
-                }
-                else
-                {
-                    <ul class="parent-message-list">
-                        @foreach (var msg in _recentMessages)
-                        {
-                            <li class="parent-message-item">
-                                <div class="parent-message-avatar">@GetInitials(msg.From)</div>
-                                <div class="parent-message-info">
-                                    <strong>@msg.From</strong>
-                                    <span>@msg.Preview</span>
-                                </div>
-                                @if (msg.IsUnread)
-                                {
-                                    <span class="parent-message-badge">1</span>
-                                }
-                            </li>
-                        }
-                    </ul>
-                }
-            </div>
-
-            <div class="section-card parent-payment-card">
-                <div class="section-card-header">
-                    <h2>@L["Parent_RecentPayment"]</h2>
-                </div>
-                @if (_recentPayment is null)
-                {
-                    <EmptyState Icon="bi-credit-card" Title="@L["ParentDashboard_NoPayment"]" />
-                }
-                else
-                {
-                    <div class="parent-payment-body">
-                        <div class="parent-payment-status">
-                            <i class="bi bi-check-circle-fill text-success"></i>
-                            <span>@L["ParentDashboard_PaymentSuccess"]</span>
-                        </div>
-                        <p class="parent-payment-amount">@FormatPaymentAmount(_recentPayment)</p>
-                        <span class="text-muted small">@FormatRelativeDate(_recentPayment.CompletedAt ?? DateTime.UtcNow)</span>
-                        <a href="/parent/payments" class="parent-payment-link">@L["ParentDashboard_ViewHistory"]</a>
+            <div class="pd-board-col">
+                <section class="pd-card pd-progress-card">
+                    <div class="pd-card-head">
+                        <h2>@L["ParentDashboard_ChildrenProgress"]</h2>
+                        <a href="/parent/progress" class="pd-link">@L["Button_ViewAll"]</a>
                     </div>
-                }
+                    @if (_children.Count == 0)
+                    {
+                        <div class="pd-soft-empty">
+                            <i class="bi bi-bar-chart-line" aria-hidden="true"></i>
+                            <p>@L["ParentDashboard_NoProgressData"]</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <ul class="pd-progress-list">
+                            @foreach (var child in _children)
+                            {
+                                var name = $"{child.FirstName} {child.LastName}".Trim();
+                                <li>
+                                    <div class="pd-progress-row-head">
+                                        <strong>@name</strong>
+                                        <span>@FormatGrade(child.AverageGrade)</span>
+                                    </div>
+                                    <div class="pd-progress-track pd-progress-track--lg">
+                                        <div class="pd-progress-fill" style="width:@(child.ProgressPercent ?? 0)%"></div>
+                                    </div>
+                                    <div class="pd-progress-row-foot">
+                                        <span>@(child.NextLessonSubject ?? child.SchoolLevel ?? "—")</span>
+                                        <span>@FormatPercent(child.ProgressPercent)</span>
+                                    </div>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </section>
             </div>
 
-            <div class="section-card">
-                <div class="section-card-header">
-                    <h2>@L["ParentDashboard_RecentDocuments"]</h2>
-                    <a href="/parent/documents" class="parent-link-more">@L["Button_ViewAll"]</a>
-                </div>
-                @if (_recentDocuments.Count == 0)
-                {
-                    <EmptyState Icon="bi-folder2-open" Title="@L["ParentDashboard_NoDocuments"]" />
-                }
-                else
-                {
-                    <ul class="parent-doc-list">
-                        @foreach (var doc in _recentDocuments)
+            <div class="pd-board-col">
+                <section class="pd-card">
+                    <div class="pd-card-head">
+                        <h2>@L["ParentDashboard_FamilyCalendar"]</h2>
+                        <a href="/parent/calendar" class="pd-link">@L["Button_ViewAll"]</a>
+                    </div>
+                    <div class="pd-mini-cal">
+                        @foreach (var day in _weekDays.Take(5))
                         {
-                            <li class="parent-doc-item">
-                                <i class="bi @GetDocumentIcon(doc.ContentType) parent-doc-icon"></i>
-                                <div class="parent-doc-info">
-                                    <strong>@doc.Name</strong>
-                                    <span>@FormatFileSize(doc.FileSizeBytes)</span>
-                                </div>
-                                @if (!string.IsNullOrEmpty(doc.FileUrl))
+                            <div class="pd-mini-day @(day.IsToday ? "is-today" : null)">
+                                <span class="pd-mini-day-label">@day.Label</span>
+                                @if (day.Events.Count == 0)
                                 {
-                                    <a href="@doc.FileUrl" class="parent-doc-download" aria-label="@L["ParentDashboard_Download"]" download>
-                                        <i class="bi bi-download"></i>
-                                    </a>
+                                    <span class="pd-mini-empty">@L["ParentDashboard_NoClass"]</span>
                                 }
-                            </li>
+                                else
+                                {
+                                    @foreach (var ev in day.Events.Take(2))
+                                    {
+                                        <div class="pd-mini-event pd-mini-event--@ev.Color">
+                                            <strong>@ev.Title</strong>
+                                            <span>@ev.Time</span>
+                                        </div>
+                                    }
+                                }
+                            </div>
                         }
-                    </ul>
-                }
+                    </div>
+                </section>
+
+                <section class="pd-card">
+                    <div class="pd-card-head">
+                        <h2>@L["ParentDashboard_RecentMessages"]</h2>
+                        <a href="/parent/messages" class="pd-link">@L["Button_ViewAll"]</a>
+                    </div>
+                    @if (_recentMessages.Count == 0)
+                    {
+                        <div class="pd-soft-empty pd-soft-empty--sm">
+                            <i class="bi bi-chat-left-text" aria-hidden="true"></i>
+                            <p>@L["ParentDashboard_NoMessages"]</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <ul class="pd-msg-list">
+                            @foreach (var msg in _recentMessages.Take(3))
+                            {
+                                <li class="@(msg.IsUnread ? "is-unread" : null)">
+                                    <div class="pd-msg-avatar">@GetInitials(msg.From)</div>
+                                    <div class="pd-msg-body">
+                                        <strong>@msg.From</strong>
+                                        <span>@msg.Preview</span>
+                                    </div>
+                                    <time>@FormatRelativeDate(msg.CreatedAt)</time>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </section>
+
+                <section class="pd-card pd-sub-card">
+                    <div class="pd-card-head">
+                        <h2>@L["ParentDashboard_ActivePlan"]</h2>
+                    </div>
+                    @if (_dashboard?.ActiveSubscription is null)
+                    {
+                        <div class="pd-soft-empty pd-soft-empty--sm">
+                            <i class="bi bi-wallet2" aria-hidden="true"></i>
+                            <p>@L["ParentDashboard_NoSubscription"]</p>
+                            <a href="/parent/subscriptions" class="pd-link">@L["Nav_Subscriptions"]</a>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="pd-sub-body">
+                            <div class="pd-sub-check"><i class="bi bi-check-circle-fill" aria-hidden="true"></i></div>
+                            <div>
+                                <strong>@_dashboard.ActiveSubscription.PlanName</strong>
+                                <span class="pd-tag pd-tag--active">@L["ParentDashboard_SubscriptionActive"]</span>
+                                <p>@L["ParentDashboard_Until", _dashboard.ActiveSubscription.EndDate.ToLocalTime().ToString("d MMM yyyy")]</p>
+                            </div>
+                        </div>
+                    }
+                </section>
             </div>
         </div>
 
-        <div class="parent-quick-actions">
-            <a href="/parent/children" class="parent-quick-action"><i class="bi bi-person-plus"></i>@L["ParentDashboard_AddChild"]</a>
-            <a href="/parent/search" class="parent-quick-action"><i class="bi bi-search"></i>@L["ParentDashboard_FindTutor"]</a>
-            <a href="/parent/calendar" class="parent-quick-action"><i class="bi bi-calendar-plus"></i>@L["ParentDashboard_ScheduleClass"]</a>
-            <a href="/parent/payments" class="parent-quick-action"><i class="bi bi-credit-card"></i>@L["ParentDashboard_PayOnline"]</a>
-            <a href="/parent/messages" class="parent-quick-action"><i class="bi bi-send"></i>@L["ParentDashboard_SendMessage"]</a>
-        </div>
+        <!-- Accès rapides -->
+        <section class="pd-section">
+            <div class="pd-section-head">
+                <h2>@L["ParentDashboard_QuickActions"]</h2>
+            </div>
+            <div class="pd-quick-row">
+                <a href="/parent/calendar" class="pd-quick"><i class="bi bi-camera-video" aria-hidden="true"></i><span>@L["ParentDashboard_JoinClass"]</span></a>
+                <a href="/parent/homework" class="pd-quick"><i class="bi bi-journal-text" aria-hidden="true"></i><span>@L["Nav_Homework"]</span></a>
+                <a href="/parent/reports" class="pd-quick"><i class="bi bi-file-earmark-bar-graph" aria-hidden="true"></i><span>@L["Nav_Reports"]</span></a>
+                <a href="/parent/documents" class="pd-quick"><i class="bi bi-folder2-open" aria-hidden="true"></i><span>@L["Nav_Documents"]</span></a>
+                <a href="/parent/messages" class="pd-quick"><i class="bi bi-headset" aria-hidden="true"></i><span>@L["ParentDashboard_ContactUs"]</span></a>
+            </div>
+        </section>
     }
 </div>
 
@@ -357,24 +328,19 @@
     private static readonly string[] AvatarColors =
         ["#5831e0", "#ec4899", "#0ea5e9", "#10b981", "#f59e0b", "#8b5cf6"];
 
-    private static readonly string[] ProgressVariants = ["purple", "pink", "purple", "pink"];
-
     private bool _loading = true;
     private ParentDashboardDto? _dashboard;
     private int _lessonsToday;
     private string _nextCourseLabel = "—";
     private string _averageGradeDisplay = "—";
-    private string _subscriptionValue = "—";
+    private string _nextPaymentDisplay = "—";
     private string? _subscriptionPlan;
-    private string _subscriptionChangeVariant = "warning";
     private List<ParentDashboardChildDto> _children = [];
     private List<ParentDashboardSessionDto> _upcomingSessions = [];
     private List<ParentDashboardHomeworkDto> _homeworkItems = [];
     private List<ParentDashboardMessageDto> _recentMessages = [];
-    private List<ParentDashboardDocumentDto> _recentDocuments = [];
-    private List<ParentDashboardReportDto> _recentReports = [];
     private List<ParentDashboardCalendarDayDto> _weekDays = [];
-    private ParentDashboardPaymentDto? _recentPayment;
+    private ParentDashboardSessionDto? _featuredSession;
 
     protected override async Task OnInitializedAsync()
     {
@@ -387,13 +353,11 @@
             {
                 _children = _dashboard.Children.ToList();
                 _lessonsToday = _dashboard.LessonsTodayCount;
-                _upcomingSessions = _dashboard.UpcomingSessions.Take(3).ToList();
+                _upcomingSessions = _dashboard.UpcomingSessions.ToList();
                 _homeworkItems = _dashboard.PendingHomework.ToList();
-                _recentReports = _dashboard.RecentReports.ToList();
                 _recentMessages = _dashboard.RecentMessages.ToList();
-                _recentDocuments = _dashboard.RecentDocuments.ToList();
-                _recentPayment = _dashboard.RecentPayment;
                 _weekDays = _dashboard.WeekCalendar.ToList();
+                _featuredSession = _upcomingSessions.FirstOrDefault();
 
                 _nextCourseLabel = _dashboard.NextLessonStartTime is null
                     ? L["ParentDashboard_NextNone"]
@@ -403,15 +367,18 @@
 
                 if (_dashboard.ActiveSubscription is not null)
                 {
-                    _subscriptionValue = L["ParentDashboard_SubscriptionActive"];
+                    _nextPaymentDisplay = _dashboard.ActiveSubscription.EndDate.ToLocalTime().ToString("d MMM");
                     _subscriptionPlan = _dashboard.ActiveSubscription.PlanName;
-                    _subscriptionChangeVariant = "warning";
+                }
+                else if (_dashboard.RecentPayment is not null)
+                {
+                    _nextPaymentDisplay = FormatPaymentAmount(_dashboard.RecentPayment);
+                    _subscriptionPlan = L["Parent_RecentPayment"];
                 }
                 else
                 {
-                    _subscriptionValue = "—";
+                    _nextPaymentDisplay = "—";
                     _subscriptionPlan = L["ParentDashboard_NoSubscription"];
-                    _subscriptionChangeVariant = "info";
                 }
             }
         }
@@ -435,13 +402,8 @@
     private static string FormatPercent(int? percent) =>
         percent.HasValue ? $"{percent}%" : "—";
 
-    private string FormatNextLesson(ParentDashboardChildDto child) =>
-        child.NextLessonStartTime is null
-            ? L["ParentDashboard_NoSessions"]
-            : L["ParentDashboard_NextAt", child.NextLessonStartTime.Value.ToLocalTime().ToString("ddd · HH:mm")];
-
     private static string FormatSessionTime(DateTime startTime) =>
-        startTime.ToLocalTime().ToString("ddd · HH:mm");
+        startTime.ToLocalTime().ToString("dddd · HH:mm");
 
     private static string LessonModeLabel(string mode) => mode switch
     {
@@ -459,15 +421,13 @@
         if (hw.DueDate.HasValue)
         {
             var due = hw.DueDate.Value.Date;
-            if (due < DateTime.Today)
-                return (L["Tag_Urgent"], "urgent");
             if (due <= DateTime.Today.AddDays(1))
                 return (L["Tag_Urgent"], "urgent");
             if (due <= DateTime.Today.AddDays(3))
                 return (L["Tag_Important"], "important");
         }
 
-        return (L["Tag_Important"], "important");
+        return (L["Tag_New"], "new");
     }
 
     private static string FormatDueDate(DateTime? dueDate) =>
@@ -477,27 +437,13 @@
     {
         var local = dateTime.ToLocalTime();
         var diff = DateTime.Now - local;
-        if (diff.TotalDays < 1) return "Aujourd'hui";
+        if (diff.TotalHours < 1) return "à l'instant";
+        if (diff.TotalHours < 24) return $"il y a {(int)diff.TotalHours}h";
         if (diff.TotalDays < 2) return "Hier";
         if (diff.TotalDays < 7) return $"Il y a {(int)diff.TotalDays} j";
-        if (diff.TotalDays < 14) return "Il y a 1 sem.";
-        return local.ToString("dd/MM/yyyy");
+        return local.ToString("dd/MM");
     }
 
     private static string FormatPaymentAmount(ParentDashboardPaymentDto payment) =>
         $"{payment.Amount:N2} {payment.Currency}";
-
-    private static string FormatFileSize(long bytes)
-    {
-        if (bytes >= 1_048_576)
-            return $"{bytes / 1_048_576.0:0.#} Mo";
-        if (bytes >= 1024)
-            return $"{bytes / 1024.0:0.#} Ko";
-        return $"{bytes} o";
-    }
-
-    private static string GetDocumentIcon(string contentType) =>
-        contentType.Contains("pdf", StringComparison.OrdinalIgnoreCase)
-            ? "bi-file-earmark-pdf-fill"
-            : "bi-file-earmark-fill";
 }
