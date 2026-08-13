@@ -1,12 +1,13 @@
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Web;
+using Microsoft.JSInterop;
 using TutorSphere.Web.Common;
 
 namespace TutorSphere.Web.Components.Shared;
 
 /// <summary>
 /// Searchable country picker (flag + name), backed by <see cref="CountryCatalog"/>.
-/// Requires a live circuit (InteractiveServer, not prerendered) — it is a plain C#
-/// event-driven dropdown, not a native &lt;select&gt;.
+/// Requires a live circuit (InteractiveServer) — custom dropdown, not a native &lt;select&gt;.
 /// </summary>
 public partial class CountrySelect : ComponentBase
 {
@@ -20,18 +21,30 @@ public partial class CountrySelect : ComponentBase
     private bool _isOpen;
     private string _search = "";
     private List<CountryInfo> _filtered = CountryCatalog.All.ToList();
+    private ElementReference _searchInput;
+    private bool _focusSearchPending;
 
     private CountryInfo? SelectedCountry => CountryCatalog.Find(Value);
 
     private void ToggleDropdown()
     {
         if (Disabled) return;
-        _isOpen = !_isOpen;
         if (_isOpen)
         {
-            _search = "";
-            _filtered = CountryCatalog.All.ToList();
+            CloseDropdown();
+            return;
         }
+
+        _isOpen = true;
+        _search = "";
+        _filtered = CountryCatalog.All.ToList();
+        _focusSearchPending = true;
+    }
+
+    private void CloseDropdown()
+    {
+        _isOpen = false;
+        _search = "";
     }
 
     private void OnSearchInput(ChangeEventArgs e)
@@ -42,16 +55,24 @@ public partial class CountrySelect : ComponentBase
 
     private async Task SelectCountryAsync(CountryInfo country)
     {
-        _isOpen = false;
         Value = country.Code;
+        CloseDropdown();
         await ValueChanged.InvokeAsync(country.Code);
     }
 
-    private async Task HandleFocusOutAsync()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        // Give a click on a list item time to be dispatched before we collapse the panel.
-        await Task.Delay(180);
-        _isOpen = false;
-        StateHasChanged();
+        if (!_focusSearchPending || !_isOpen)
+            return;
+
+        _focusSearchPending = false;
+        try
+        {
+            await _searchInput.FocusAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+            // Circuit gone — ignore.
+        }
     }
 }

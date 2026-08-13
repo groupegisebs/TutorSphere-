@@ -1,7 +1,11 @@
 @using TutorSphere.Web.Common
 
-<div class="country-select @(Disabled ? "country-select--disabled" : "")" @onfocusout="HandleFocusOutAsync">
-    <button type="button" class="country-select-control" disabled="@Disabled" @onclick="ToggleDropdown">
+<div class="country-select @(Disabled ? "country-select--disabled" : null) @(_isOpen ? "country-select--open" : null)">
+    <button type="button"
+            class="country-select-control"
+            disabled="@Disabled"
+            @onclick="ToggleDropdown"
+            @onclick:stopPropagation="true">
         @if (SelectedCountry is not null)
         {
             <span class="country-select-flag" aria-hidden="true">@SelectedCountry.Flag</span>
@@ -16,12 +20,13 @@
 
     @if (_isOpen && !Disabled)
     {
-        <div class="country-select-panel">
+        <div class="country-select-backdrop" @onclick="CloseDropdown" @onclick:stopPropagation="true"></div>
+        <div class="country-select-panel" @onclick:stopPropagation="true">
             <input class="form-control form-control-sm country-select-search"
                    placeholder="@SearchPlaceholder"
                    value="@_search"
                    @oninput="OnSearchInput"
-                   autofocus />
+                   @ref="_searchInput" />
             <div class="country-select-list">
                 @if (_filtered.Count == 0)
                 {
@@ -32,8 +37,10 @@
                     @foreach (var c in _filtered)
                     {
                         <button type="button"
-                                class="country-select-item @(string.Equals(c.Code, Value, StringComparison.OrdinalIgnoreCase) ? "country-select-item--active" : "")"
-                                @onclick="() => SelectCountryAsync(c)">
+                                class="country-select-item @(string.Equals(c.Code, Value, StringComparison.OrdinalIgnoreCase) ? "country-select-item--active" : null)"
+                                @onmousedown:preventDefault
+                                @onclick="() => SelectCountryAsync(c)"
+                                @onclick:stopPropagation="true">
                             <span class="country-select-flag" aria-hidden="true">@c.Flag</span>
                             <span class="country-select-name">@c.Name</span>
                             <span class="country-select-code">@c.Code</span>

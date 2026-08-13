@@ -62,7 +62,7 @@ public class ExpertGroupsController : ControllerBase
         var list = await _groups.ListAsync(ct);
         var enriched = new List<ExpertGroupDto>();
         foreach (var g in list)
-            enriched.Add(await EnrichManagerAsync(g));
+            enriched.Add(await EnrichManagerAsync(g, ct));
         return Ok(enriched);
     }
 
@@ -71,7 +71,7 @@ public class ExpertGroupsController : ControllerBase
     {
         var g = await _groups.GetByIdAsync(id, ct);
         if (g is null) return NotFound(new { error = "Groupe introuvable." });
-        return Ok(await EnrichManagerAsync(g));
+        return Ok(await EnrichManagerAsync(g, ct));
     }
 
     [HttpPost]
@@ -113,7 +113,7 @@ public class ExpertGroupsController : ControllerBase
             await SendExpertLoginCredentialsAsync(managerUser, created.Name, ct);
             var refreshed = await _groups.GetByIdAsync(created.Id, ct);
             return CreatedAtAction(nameof(Get), new { id = created.Id },
-                refreshed is null ? created : await EnrichManagerAsync(refreshed));
+                refreshed is null ? created : await EnrichManagerAsync(refreshed, ct));
         }
         catch (InvalidOperationException ex)
         {
@@ -126,7 +126,7 @@ public class ExpertGroupsController : ControllerBase
     {
         try
         {
-            return Ok(await EnrichManagerAsync(await _groups.UpdateAsync(id, request, ct)));
+            return Ok(await EnrichManagerAsync(await _groups.UpdateAsync(id, request, ct), ct));
         }
         catch (InvalidOperationException ex)
         {
@@ -204,7 +204,7 @@ public class ExpertGroupsController : ControllerBase
                 group.Name, user.Email, request.Phone ?? group.ContactPhone, group.LogoUrl, true,
                 user.FullName, group.Description));
 
-            return Ok(await EnrichManagerAsync((await _groups.GetByIdAsync(id, ct))!));
+            return Ok(await EnrichManagerAsync((await _groups.GetByIdAsync(id, ct))!, ct));
         }
         catch (InvalidOperationException ex)
         {
@@ -267,8 +267,10 @@ public class ExpertGroupsController : ControllerBase
         }
     }
 
-    private async Task<ExpertGroupDto> EnrichManagerAsync(ExpertGroupDto g)
+    private async Task<ExpertGroupDto> EnrichManagerAsync(ExpertGroupDto g, CancellationToken ct = default)
     {
+        g = await SanitizeMissingLogoAsync(g, ct);
+
         if (string.IsNullOrWhiteSpace(g.ManagerUserId))
             return g;
 
@@ -283,6 +285,39 @@ public class ExpertGroupsController : ControllerBase
             ContactEmail = user.Email ?? g.ContactEmail,
             ContactPhone = g.ManagerPhone ?? g.ContactPhone
         };
+    }
+
+    /// <summary>
+    /// DB may still point at /uploads/expert-group-….png after a volume reset or failed write.
+    /// Hide broken URLs (stops browser 404 spam) and clear the stale path once.
+    /// </summary>
+    private async Task<ExpertGroupDto> SanitizeMissingLogoAsync(ExpertGroupDto g, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(g.LogoUrl))
+            return g;
+
+        var fileName = Path.GetFileName(g.LogoUrl.Replace('\\', '/'));
+        if (string.IsNullOrWhiteSpace(fileName))
+            return g with { LogoUrl = null };
+
+        if (UploadsPaths.FindExistingFile(_env, fileName) is not null)
+            return g;
+
+        _logger.LogWarning(
+            "Logo groupe {GroupId} introuvable sur disque ({LogoUrl}). Référence effacée — re-uploader le logo.",
+            g.Id, g.LogoUrl);
+
+        try
+        {
+            await _groups.UpdateAsync(g.Id, new UpdateExpertGroupRequest(
+                g.Name, g.ContactEmail, g.ContactPhone, LogoUrl: null, g.IsActive, g.ContactName, g.Description), ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Impossible d'effacer LogoUrl obsolète pour le groupe {GroupId}.", g.Id);
+        }
+
+        return g with { LogoUrl = null };
     }
 
     private async Task<ApplicationUser?> ResolveOrCreateManagerUserAsync(

@@ -140,6 +140,21 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
         entity.ContactPhone = TrimOrNull(request.ContactPhone);
         entity.LogoUrl = TrimOrNull(request.LogoUrl);
         entity.IsActive = request.IsActive;
+
+        // Country can change for national groups only (international stays without country).
+        if (!entity.IsInternational && request.CountryCode is not null)
+        {
+            var country = NormalizeCountry(request.CountryCode);
+            if (country is not null && country != entity.CountryCode
+                && db.ExpertGroups.Any(g => g.Id != id && !g.IsInternational && g.CountryCode == country))
+            {
+                throw new InvalidOperationException(
+                    $"Un groupe national existe déjà pour le pays {country}.");
+            }
+
+            entity.CountryCode = country;
+        }
+
         if (request.IsActive)
             entity.LifecycleStatus = ExpertGroupLifecycleStatus.Active;
         else if (entity.LifecycleStatus == ExpertGroupLifecycleStatus.Active)

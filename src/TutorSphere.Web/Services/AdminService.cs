@@ -95,10 +95,10 @@ public sealed class AdminService
             createManagerAccount = true
         });
 
-    public async Task<ExpertGroupItem?> UpdateExpertGroupAsync(
+    public Task<ApiResult<ExpertGroupItem>> UpdateExpertGroupAsync(
         Guid id, string name, string? contactName, string? contactEmail, string? contactPhone, string? logoUrl, bool isActive,
-        string? description = null)
-        => await _api.PutAsync<ExpertGroupItem>($"api/admin/expert-groups/{id}", new
+        string? description = null, string? countryCode = null)
+        => _api.PutWithErrorAsync<ExpertGroupItem>($"api/admin/expert-groups/{id}", new
         {
             name,
             contactName,
@@ -106,7 +106,8 @@ public sealed class AdminService
             contactPhone,
             logoUrl,
             isActive,
-            description
+            description,
+            countryCode
         });
 
     public async Task<ApiResult<bool>> DeleteExpertGroupAsync(Guid id)

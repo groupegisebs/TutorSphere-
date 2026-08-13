@@ -133,7 +133,9 @@
                             @if (!string.IsNullOrWhiteSpace(_formLogo))
                             {
                                 <div class="cc-logo-preview">
-                                    <img src="@ResolveMediaUrl(_formLogo)" alt="Aperçu logo" />
+                                    <img src="@ResolveMediaUrl(_formLogo)" alt="Aperçu logo"
+                                         onerror="this.style.display='none'; this.nextElementSibling?.classList.add('cc-logo-preview-missing--show');" />
+                                    <span class="cc-logo-preview-missing">Logo introuvable — re-uploadez le fichier</span>
                                     <span class="cc-logo-preview-caption" style="color:#f3f4f6">Logo</span>
                                 </div>
                             }
@@ -181,7 +183,9 @@
                                         <div class="cc-user-cell">
                                             @if (!string.IsNullOrWhiteSpace(g.LogoUrl))
                                             {
-                                                <img class="cc-group-logo-thumb" src="@ResolveMediaUrl(g.LogoUrl)" alt="" />
+                                                <img class="cc-group-logo-thumb" src="@ResolveMediaUrl(g.LogoUrl)" alt=""
+                                                     onerror="this.style.display='none'; this.nextElementSibling?.classList.remove('d-none');" />
+                                                <span class="cc-rank-icon d-none"><i class="bi bi-award"></i></span>
                                             }
                                             else
                                             {
@@ -209,20 +213,42 @@
                                     </td>
                                     <td>
                                         @{
-                                            var mgrName = g.ManagerFullName ?? g.ContactName;
-                                            var mgrEmail = g.ManagerEmail ?? g.ContactEmail;
-                                            var mgrPhone = g.ManagerPhone ?? g.ContactPhone;
+                                            var mgrName = FirstNonEmpty(g.ManagerFullName, g.ContactName);
+                                            var mgrEmail = FirstNonEmpty(g.ManagerEmail, g.ContactEmail);
+                                            var mgrPhone = FirstNonEmpty(g.ManagerPhone, g.ContactPhone);
+                                            var hasMandate = g.ActiveManagerMandateId.HasValue
+                                                || !string.IsNullOrWhiteSpace(g.ManagerUserId);
+                                            var hasContact = !string.IsNullOrWhiteSpace(mgrName)
+                                                || !string.IsNullOrWhiteSpace(mgrEmail)
+                                                || !string.IsNullOrWhiteSpace(mgrPhone);
+                                            var displayName = !string.IsNullOrWhiteSpace(mgrName)
+                                                ? mgrName
+                                                : (!string.IsNullOrWhiteSpace(mgrEmail)
+                                                    ? mgrEmail
+                                                    : null);
                                         }
-                                        @if (!string.IsNullOrWhiteSpace(mgrName))
+                                        @if (hasMandate || hasContact)
                                         {
-                                            <div><strong>@mgrName</strong></div>
+                                            <div class="cc-manager-cell">
+                                                <strong class="cc-manager-name">@(displayName ?? "Responsable nommé")</strong>
+                                                @if (!string.IsNullOrWhiteSpace(mgrEmail) && !string.Equals(mgrEmail, displayName, StringComparison.OrdinalIgnoreCase))
+                                                {
+                                                    <span class="cc-manager-meta">@mgrEmail</span>
+                                                }
+                                                @if (!string.IsNullOrWhiteSpace(mgrPhone))
+                                                {
+                                                    <span class="cc-manager-meta">@mgrPhone</span>
+                                                }
+                                                @if (!hasMandate && hasContact)
+                                                {
+                                                    <span class="cc-manager-hint">Contact groupe — mandat à confirmer</span>
+                                                }
+                                            </div>
                                         }
                                         else
                                         {
-                                            <div class="text-muted">Aucun Responsable</div>
+                                            <div class="cc-manager-empty">Aucun Responsable</div>
                                         }
-                                        <div>@(mgrEmail ?? "—")</div>
-                                        <div class="small text-muted">@(mgrPhone ?? "")</div>
                                     </td>
                                     <td>@g.MemberCount</td>
                                     <td>
@@ -404,7 +430,10 @@
         if (_formInternational) _formCountry = null;
     }
 
-    private void OnCountryChanged(string? code) => _formCountry = code;
+    private void OnCountryChanged(string? code)
+    {
+        _formCountry = string.IsNullOrWhiteSpace(code) ? null : code.Trim().ToUpperInvariant();
+    }
 
     private async Task SaveAsync()
     {
@@ -436,8 +465,12 @@
             else
             {
                 var updated = await AdminSvc.UpdateExpertGroupAsync(
-                    _editId.Value, _formName, _formContactName, _formEmail, _formPhone, _formLogo, _formActive, _formDescription);
-                if (updated is null) { _formError = "Échec de mise à jour."; return; }
+                    _editId.Value, _formName, _formContactName, _formEmail, _formPhone, _formLogo, _formActive, _formDescription, _formCountry);
+                if (!updated.IsSuccess)
+                {
+                    _formError = string.IsNullOrWhiteSpace(updated.Error) ? "Échec de mise à jour." : updated.Error;
+                    return;
+                }
                 _flash = "Groupe mis à jour.";
                 _showForm = false;
             }
@@ -506,9 +539,13 @@
         {
             var updated = await AdminSvc.UpdateExpertGroupAsync(
                 g.Id, g.Name, g.ManagerFullName ?? g.ContactName, g.ManagerEmail ?? g.ContactEmail,
-                g.ManagerPhone ?? g.ContactPhone, g.LogoUrl, !g.IsActive, g.Description);
-            if (updated is null) { _error = "Échec de mise à jour du statut."; return; }
-            _flash = updated.IsActive ? "Groupe activé." : "Groupe désactivé.";
+                g.ManagerPhone ?? g.ContactPhone, g.LogoUrl, !g.IsActive, g.Description, g.CountryCode);
+            if (!updated.IsSuccess)
+            {
+                _error = updated.Error ?? "Échec de mise à jour du statut.";
+                return;
+            }
+            _flash = updated.Value!.IsActive ? "Groupe activé." : "Groupe désactivé.";
             await ReloadAsync();
         }
         catch (Exception ex) { _error = ex.Message; }
@@ -549,4 +586,14 @@
     }
 
     private sealed record LogoUploadResult(string? LogoUrl);
+
+    private static string? FirstNonEmpty(params string?[] values)
+    {
+        foreach (var v in values)
+        {
+            if (!string.IsNullOrWhiteSpace(v))
+                return v.Trim();
+        }
+        return null;
+    }
 }

@@ -62,7 +62,8 @@ public record UpdateExpertGroupRequest(
     string? LogoUrl,
     bool IsActive,
     string? ContactName = null,
-    string? Description = null);
+    string? Description = null,
+    string? CountryCode = null);
 
 public record AddExpertMemberRequest(string UserId);
 

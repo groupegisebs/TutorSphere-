@@ -240,11 +240,7 @@ static void MapAuthBffEndpoints(WebApplication app)
 /// </summary>
 static void MapUploadsProxy(WebApplication app)
 {
-    app.MapGet("/uploads/{*filePath}", async (
-        string filePath,
-        HttpContext httpContext,
-        IHttpClientFactory httpClientFactory,
-        CancellationToken ct) =>
+    async Task ProxyUploadAsync(string filePath, HttpContext httpContext, IHttpClientFactory httpClientFactory, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(filePath)
             || filePath.Contains("..", StringComparison.Ordinal)
@@ -264,10 +260,12 @@ static void MapUploadsProxy(WebApplication app)
         }
 
         var client = httpClientFactory.CreateClient("TutorSphereApi");
-        using var response = await client.GetAsync(
-            $"uploads/{safePath}",
-            HttpCompletionOption.ResponseHeadersRead,
-            ct);
+        using var request = new HttpRequestMessage(
+            httpContext.Request.Method.Equals("HEAD", StringComparison.OrdinalIgnoreCase)
+                ? HttpMethod.Head
+                : HttpMethod.Get,
+            $"uploads/{safePath}");
+        using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
 
         if (!response.IsSuccessStatusCode)
         {
@@ -285,8 +283,13 @@ static void MapUploadsProxy(WebApplication app)
 
         httpContext.Response.ContentType = contentType;
         httpContext.Response.Headers.CacheControl = "public,max-age=86400";
+        if (HttpMethods.IsHead(httpContext.Request.Method))
+            return;
+
         await response.Content.CopyToAsync(httpContext.Response.Body, ct);
-    }).AllowAnonymous();
+    }
+
+    app.MapMethods("/uploads/{*filePath}", ["GET", "HEAD"], ProxyUploadAsync).AllowAnonymous();
 }
 
 internal sealed record EstablishAuthRequest(string Token, DateTime? ExpiresAt);
