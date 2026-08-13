@@ -1,6 +1,7 @@
 @page "/expert/dashboard"
 @layout ExpertLayout
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using TutorSphere.Web.Common
 @inject AuthService Auth
 @inject ApiClient Api
 @inject IStringLocalizer<SharedResources> L
@@ -47,6 +48,73 @@
                 <div class="col-12">
                     <button type="button" class="cc-btn cc-btn-primary" disabled="@_inviteBusy" @onclick="InviteAsync">
                         <i class="bi bi-envelope"></i> @L["Expert_InviteSend"]
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="cc-card mb-3">
+            <h2 class="cc-card-title">@L["Expert_RegisterTeacherTitle"]</h2>
+            <p class="small text-muted mb-3">@L["Expert_RegisterTeacherSubtitle"]</p>
+
+            @if (!string.IsNullOrEmpty(_regError))
+            {
+                <div class="alert alert-danger py-2">@_regError</div>
+            }
+            @if (!string.IsNullOrEmpty(_regSuccess))
+            {
+                <div class="alert alert-success py-2">@_regSuccess</div>
+            }
+
+            <div class="row g-2 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label">@L["Expert_InviteEmail"]</label>
+                    <input class="form-control" type="email" @bind="_regEmail" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">@L["Expert_InviteFirstName"]</label>
+                    <input class="form-control" @bind="_regFirstName" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">@L["Expert_RegisterLastName"]</label>
+                    <input class="form-control" @bind="_regLastName" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">@L["Expert_RegisterSchoolName"]</label>
+                    <input class="form-control" @bind="_regSchoolName" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">@L["Expert_RegisterCity"]</label>
+                    <input class="form-control" @bind="_regCity" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">@L["Expert_RegisterCountry"]</label>
+                    <CountrySelect Value="_regCountry" ValueChanged="OnRegCountryChanged" />
+                </div>
+                <div class="col-12">
+                    <label class="form-label">@L["School_VisibleCountries"]</label>
+                    <p class="small text-muted mb-2">@L["School_VisibleCountriesHint"]</p>
+                    <div class="d-flex flex-wrap gap-2 mb-2">
+                        @foreach (var code in _regVisibleCountries)
+                        {
+                            var info = CountryCatalog.Find(code);
+                            <span class="badge text-bg-light border d-inline-flex align-items-center gap-1 py-2 px-2">
+                                <span aria-hidden="true">@(info?.Flag ?? "")</span>
+                                @(info?.Name ?? code)
+                                @if (!string.Equals(code, _regCountry, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    <button type="button" class="btn-close btn-close-sm ms-1" @onclick="() => RemoveRegVisible(code)"></button>
+                                }
+                            </span>
+                        }
+                    </div>
+                    <div class="col-md-6 px-0">
+                        <CountrySelect Value="@_regAddVisible" ValueChanged="OnRegAddVisibleChanged" Placeholder="@L["School_AddVisibleCountry"]" />
+                    </div>
+                </div>
+                <div class="col-12">
+                    <button type="button" class="cc-btn cc-btn-primary" disabled="@_regBusy" @onclick="RegisterTeacherAsync">
+                        <i class="bi bi-person-plus"></i> @L["Expert_RegisterTeacherSend"]
                     </button>
                 </div>
             </div>
@@ -187,6 +255,18 @@
     private string? _inviteError;
     private string? _inviteSuccess;
 
+    private string _regEmail = "";
+    private string _regFirstName = "";
+    private string _regLastName = "";
+    private string _regSchoolName = "";
+    private string _regCity = "";
+    private string? _regCountry = "CM";
+    private List<string> _regVisibleCountries = ["CM"];
+    private string? _regAddVisible;
+    private bool _regBusy;
+    private string? _regError;
+    private string? _regSuccess;
+
     protected override async Task OnInitializedAsync()
     {
         try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
@@ -250,6 +330,82 @@
         }
         finally { _inviteBusy = false; }
     }
+
+    private Task OnRegCountryChanged(string? code)
+    {
+        _regCountry = code;
+        if (!string.IsNullOrWhiteSpace(code)
+            && !_regVisibleCountries.Contains(code, StringComparer.OrdinalIgnoreCase))
+        {
+            _regVisibleCountries.Insert(0, code.Trim().ToUpperInvariant());
+        }
+        return Task.CompletedTask;
+    }
+
+    private Task OnRegAddVisibleChanged(string? code)
+    {
+        _regAddVisible = null;
+        if (string.IsNullOrWhiteSpace(code))
+            return Task.CompletedTask;
+        var n = code.Trim().ToUpperInvariant();
+        if (!_regVisibleCountries.Contains(n, StringComparer.OrdinalIgnoreCase))
+            _regVisibleCountries.Add(n);
+        return Task.CompletedTask;
+    }
+
+    private void RemoveRegVisible(string code)
+    {
+        _regVisibleCountries.RemoveAll(c => string.Equals(c, code, StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrWhiteSpace(_regCountry)
+            && !_regVisibleCountries.Contains(_regCountry, StringComparer.OrdinalIgnoreCase))
+            _regVisibleCountries.Insert(0, _regCountry.Trim().ToUpperInvariant());
+    }
+
+    private async Task RegisterTeacherAsync()
+    {
+        _regBusy = true;
+        _regError = null;
+        _regSuccess = null;
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_regCountry))
+            {
+                _regError = L["Expert_RegisterCountryRequired"];
+                return;
+            }
+
+            var result = await Api.PostWithErrorAsync<RegisterTeacherResult>("api/expert/register-teacher", new
+            {
+                email = _regEmail,
+                firstName = _regFirstName,
+                lastName = _regLastName,
+                schoolName = _regSchoolName,
+                city = string.IsNullOrWhiteSpace(_regCity) ? null : _regCity,
+                country = _regCountry,
+                visibleCountryCodes = _regVisibleCountries
+            });
+            if (result.Error is not null)
+            {
+                _regError = result.Error;
+                return;
+            }
+
+            _regSuccess = L["Expert_RegisterTeacherSuccess"];
+            _regEmail = _regFirstName = _regLastName = _regSchoolName = _regCity = "";
+            await LoadInvitesAsync();
+        }
+        catch (Exception ex)
+        {
+            _regError = ex.Message;
+        }
+        finally { _regBusy = false; }
+    }
+
+    private sealed record RegisterTeacherResult(
+        Guid TenantId,
+        string TenantSlug,
+        string Email,
+        bool CredentialsSent);
 
     private string InviteStatusLabel(int status) => status switch
     {

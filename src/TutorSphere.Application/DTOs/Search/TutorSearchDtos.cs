@@ -10,7 +10,9 @@ public record TutorSearchFilters(
     decimal? MaxPrice = null,
     string? Level = null,
     LessonMode? Mode = null,
-    decimal? MinRating = null);
+    decimal? MinRating = null,
+    /// <summary>Pays du spectateur (ISO) — ne montre que les enseignants visibles dans ce pays.</summary>
+    string? ViewerCountry = null);
 
 public record TutorSearchResultDto(
     Guid Id,

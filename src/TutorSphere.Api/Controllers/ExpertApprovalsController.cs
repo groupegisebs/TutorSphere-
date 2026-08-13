@@ -16,15 +16,18 @@ public class ExpertApprovalsController : ControllerBase
 {
     private readonly IExpertApprovalService _approvals;
     private readonly IExpertMonitoringService _monitoring;
+    private readonly IAuthService _authService;
     private readonly UserManager<ApplicationUser> _userManager;
 
     public ExpertApprovalsController(
         IExpertApprovalService approvals,
         IExpertMonitoringService monitoring,
+        IAuthService authService,
         UserManager<ApplicationUser> userManager)
     {
         _approvals = approvals;
         _monitoring = monitoring;
+        _authService = authService;
         _userManager = userManager;
     }
 
@@ -114,6 +117,26 @@ public class ExpertApprovalsController : ControllerBase
         {
             await _approvals.InviteTeacherApplicationAsync(UserId, request, ct);
             return Ok(new { message = "Invitation envoyée." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("register-teacher")]
+    public async Task<ActionResult<RegisterTeacherByExpertResponse>> RegisterTeacher(
+        [FromBody] RegisterTeacherByExpertRequest? request,
+        CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        if (request is null)
+            return BadRequest(new { error = "Requête invalide." });
+
+        try
+        {
+            var result = await _authService.RegisterTeacherByExpertAsync(UserId, request, ct);
+            return Ok(result);
         }
         catch (InvalidOperationException ex)
         {

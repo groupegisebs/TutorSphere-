@@ -293,8 +293,14 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
         builder.Entity<Holiday>(e => e.HasIndex(h => h.TenantId));
         builder.Entity<Vacation>(e => e.HasIndex(v => v.TenantId));
 
+        builder.Entity<Tenant>(e =>
+        {
+            e.Property(t => t.VisibleCountryCodes).HasMaxLength(500);
+        });
+
         builder.Entity<ParentProfile>(e =>
         {
+            e.Property(p => p.Country).HasMaxLength(2);
             e.HasOne(p => p.Tenant).WithMany().HasForeignKey(p => p.TenantId)
                 .OnDelete(DeleteBehavior.Restrict);
         });

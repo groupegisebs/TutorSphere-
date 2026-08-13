@@ -39,7 +39,8 @@ public record TutorProfileDto(
     string? Country,
     string Language,
     string Currency,
-    string Slug);
+    string Slug,
+    IReadOnlyList<string> VisibleCountryCodes);
 
 public record UpdateTutorProfileRequest(
     string? Name,
@@ -47,4 +48,6 @@ public record UpdateTutorProfileRequest(
     string? City,
     string? Country,
     string? Language,
-    string? Currency);
+    string? Currency,
+    /// <summary>Pays où la fiche est visible (ISO). Null = ne pas modifier. Vide = reset au pays d'origine.</summary>
+    IReadOnlyList<string>? VisibleCountryCodes = null);

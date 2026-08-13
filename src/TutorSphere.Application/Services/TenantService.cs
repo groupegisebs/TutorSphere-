@@ -1,5 +1,6 @@
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.Tenants;
+using TutorSphere.Domain.Common;
 using TutorSphere.Domain.Entities;
 using TutorSphere.Domain.Enums;
 using TutorSphere.Domain.Payouts;
@@ -172,11 +173,24 @@ public class TenantService : ITenantService
         if (request.City is not null)
             tenant.City = request.City.Trim();
         if (request.Country is not null)
-            tenant.Country = request.Country.Trim();
+            tenant.Country = ProfileVisibility.NormalizeCode(request.Country) is { Length: 2 } c
+                ? c
+                : request.Country.Trim();
         if (!string.IsNullOrWhiteSpace(request.Language))
             tenant.Language = request.Language.Trim();
         if (!string.IsNullOrWhiteSpace(request.Currency))
             tenant.Currency = request.Currency.Trim();
+
+        if (request.VisibleCountryCodes is not null)
+        {
+            tenant.VisibleCountryCodes = ProfileVisibility.ToCsv(request.VisibleCountryCodes, tenant.Country);
+        }
+        else if (request.Country is not null
+                 && string.IsNullOrWhiteSpace(tenant.VisibleCountryCodes))
+        {
+            // Nouveau pays d'origine sans liste explicite → défaut = ce pays.
+            tenant.VisibleCountryCodes = ProfileVisibility.ToCsv(null, tenant.Country);
+        }
 
         tenant.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync(ct);
@@ -193,13 +207,25 @@ public class TenantService : ITenantService
         tenant.Currency,
         tenant.Language);
 
-    private static TutorProfileDto MapToProfileDto(Tenant tenant) => new(
-        tenant.Id,
-        tenant.Name,
-        tenant.Description,
-        tenant.City,
-        tenant.Country,
-        tenant.Language,
-        tenant.Currency,
-        tenant.Slug);
+    private static TutorProfileDto MapToProfileDto(Tenant tenant)
+    {
+        var visible = ProfileVisibility.Parse(tenant.VisibleCountryCodes);
+        if (visible.Count == 0)
+        {
+            var home = ProfileVisibility.NormalizeCode(tenant.Country);
+            if (home.Length == 2)
+                visible = [home];
+        }
+
+        return new(
+            tenant.Id,
+            tenant.Name,
+            tenant.Description,
+            tenant.City,
+            tenant.Country,
+            tenant.Language,
+            tenant.Currency,
+            tenant.Slug,
+            visible);
+    }
 }

@@ -1,16 +1,21 @@
 using System.Collections.Concurrent;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 using TutorSphere.Application.Common;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.Auth;
+using TutorSphere.Application.DTOs.ExpertApproval;
 using TutorSphere.Application.Services;
+using TutorSphere.Domain.Common;
 using TutorSphere.Domain.Entities;
 using TutorSphere.Domain.Enums;
+using TutorSphere.Domain.Policies;
 using TutorSphere.Infrastructure.Identity;
 
 namespace TutorSphere.Infrastructure.Identity;
@@ -25,6 +30,10 @@ public interface IAuthService
     Task<ChildLoginAccessDto> GetChildLoginAccessAsync(string parentUserId, Guid studentId, CancellationToken ct = default);
     Task RevokeChildLoginAccessAsync(string parentUserId, Guid studentId, CancellationToken ct = default);
     Task<RegisterSchoolResponse> RegisterSchoolAsync(RegisterSchoolRequest request, CancellationToken ct = default);
+    Task<RegisterTeacherByExpertResponse> RegisterTeacherByExpertAsync(
+        string expertUserId,
+        RegisterTeacherByExpertRequest request,
+        CancellationToken ct = default);
     Task<TeacherInviteInfoResponse?> GetTeacherInviteInfoAsync(string token, CancellationToken ct = default);
     Task ConfirmEmailAsync(string userId, string token, CancellationToken ct = default);
     Task ResendEmailConfirmationAsync(string email, CancellationToken ct = default);
@@ -371,18 +380,23 @@ public class AuthService : IAuthService
 
         await _userManager.AddToRoleAsync(user, UserRoles.Tutor);
 
+        var country = ProfileVisibility.NormalizeCode(request.Country);
+        if (country.Length != 2)
+            country = "CA";
+
         var tenant = new Tenant
         {
             Name = request.SchoolName.Trim(),
             Slug = slug,
             Subdomain = slug,
             City = request.City,
-            Country = request.Country ?? "CA",
+            Country = country,
+            VisibleCountryCodes = ProfileVisibility.ToCsv(null, country),
             Status = TenantStatus.PendingValidation,
             Plan = TenantPlan.Starter,
             OwnerUserId = user.Id,
             Branding = new TenantBranding(),
-            TeacherConductPolicyVersion = TutorSphere.Domain.Policies.TeacherConductPolicy.CurrentVersion,
+            TeacherConductPolicyVersion = TeacherConductPolicy.CurrentVersion,
             TeacherConductAcceptedAt = DateTime.UtcNow
         };
 
@@ -401,6 +415,171 @@ public class AuthService : IAuthService
         await _expertNotify.NotifyExpertsIfNeededAsync(tenant.Id, ct);
 
         return new RegisterSchoolResponse(tenant.Id, tenant.Slug, user.Email!);
+    }
+
+    public async Task<RegisterTeacherByExpertResponse> RegisterTeacherByExpertAsync(
+        string expertUserId,
+        RegisterTeacherByExpertRequest request,
+        CancellationToken ct = default)
+    {
+        var membership = _db.ExpertGroupMembers
+            .Where(m => m.UserId == expertUserId)
+            .Select(m => m.ExpertGroupId)
+            .FirstOrDefault();
+        if (membership == Guid.Empty)
+            throw new InvalidOperationException("Vous n'êtes membre d'aucun groupe d'experts.");
+
+        var group = _db.ExpertGroups.FirstOrDefault(g => g.Id == membership && g.IsActive)
+            ?? throw new InvalidOperationException("Groupe d'experts introuvable ou inactif.");
+
+        var email = (request.Email ?? "").Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(email) || !email.Contains('@', StringComparison.Ordinal))
+            throw new InvalidOperationException("Adresse e-mail invalide.");
+
+        var firstName = (request.FirstName ?? "").Trim();
+        var lastName = (request.LastName ?? "").Trim();
+        var schoolName = (request.SchoolName ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(firstName) || string.IsNullOrWhiteSpace(lastName))
+            throw new InvalidOperationException("Prénom et nom requis.");
+        if (string.IsNullOrWhiteSpace(schoolName))
+            throw new InvalidOperationException("Nom de l'école / enseignant requis.");
+
+        if (await _userManager.FindByEmailAsync(email) is not null)
+            throw new InvalidOperationException("Un compte existe déjà avec cet e-mail.");
+
+        var country = ProfileVisibility.NormalizeCode(request.Country);
+        if (country.Length != 2)
+            country = ProfileVisibility.NormalizeCode(group.CountryCode);
+        if (country.Length != 2)
+            country = "CM";
+
+        var visibleCsv = ProfileVisibility.ToCsv(request.VisibleCountryCodes, country);
+        var slug = AllocateUniqueSlug(schoolName);
+        var temporaryPassword = GenerateTemporaryPassword();
+
+        var user = new ApplicationUser
+        {
+            UserName = email,
+            Email = email,
+            FirstName = firstName,
+            LastName = lastName,
+            EmailConfirmed = true,
+            MustChangePassword = true
+        };
+
+        var create = await _userManager.CreateAsync(user, temporaryPassword);
+        if (!create.Succeeded)
+            throw new InvalidOperationException(string.Join("; ", create.Errors.Select(e => e.Description)));
+
+        await _userManager.AddToRoleAsync(user, UserRoles.Tutor);
+
+        var now = DateTime.UtcNow;
+        var tenant = new Tenant
+        {
+            Name = schoolName,
+            Slug = slug,
+            Subdomain = slug,
+            City = string.IsNullOrWhiteSpace(request.City) ? null : request.City.Trim(),
+            Country = country,
+            VisibleCountryCodes = visibleCsv,
+            Status = TenantStatus.PendingValidation,
+            Plan = TenantPlan.Starter,
+            OwnerUserId = user.Id,
+            Branding = new TenantBranding(),
+            ExpertApprovalStatus = ExpertApprovalStatus.Approved,
+            ApprovedByExpertGroupId = group.Id,
+            ApprovedByUserId = expertUserId,
+            ExpertApprovedAt = now,
+            ExpertApprovalNotes = "Compte créé et approuvé par un expert du groupe.",
+            TeacherConductPolicyVersion = TeacherConductPolicy.CurrentVersion,
+            TeacherConductAcceptedAt = now
+        };
+
+        _db.Add(tenant);
+
+        _db.Add(new TeacherApplicationInvite
+        {
+            Email = email,
+            FirstName = firstName,
+            InvitedByUserId = expertUserId,
+            ExpertGroupId = group.Id,
+            Token = Guid.NewGuid().ToString("N"),
+            SentAt = now,
+            AcceptedAt = now,
+            AcceptedTenantId = tenant.Id,
+            Status = TeacherApplicationInviteStatus.Approved,
+            ExpiresAt = now.AddDays(30)
+        });
+
+        await _db.SaveChangesAsync(ct);
+
+        user.TenantId = tenant.Id;
+        await _userManager.UpdateAsync(user);
+
+        var loginUrl = $"{_urls.WebBaseUrl.TrimEnd('/')}/login";
+        var credentialsSent = false;
+        try
+        {
+            await _email.SendExpertInviteAsync(
+                email,
+                firstName,
+                temporaryPassword,
+                loginUrl,
+                group.Name,
+                ct);
+            credentialsSent = true;
+        }
+        catch
+        {
+            // Compte créé même si l'e-mail échoue — l'expert pourra renvoyer un reset.
+        }
+
+        return new RegisterTeacherByExpertResponse(tenant.Id, tenant.Slug, email, credentialsSent);
+    }
+
+    private string AllocateUniqueSlug(string schoolName)
+    {
+        var baseSlug = Regex.Replace(schoolName.Trim().ToLowerInvariant(), @"[^a-z0-9]+", "-")
+            .Trim('-');
+        if (string.IsNullOrWhiteSpace(baseSlug))
+            baseSlug = "enseignant";
+        if (baseSlug.Length > 40)
+            baseSlug = baseSlug[..40].Trim('-');
+
+        for (var i = 0; i < 20; i++)
+        {
+            var candidate = i == 0
+                ? baseSlug
+                : $"{baseSlug}-{RandomNumberGenerator.GetInt32(1000, 9999)}";
+            if (!_db.Tenants.Any(t => t.Slug == candidate))
+                return candidate;
+        }
+
+        return $"{baseSlug}-{Guid.NewGuid():N}"[..Math.Min(48, baseSlug.Length + 9)];
+    }
+
+    private static string GenerateTemporaryPassword()
+    {
+        const string upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+        const string lower = "abcdefghijkmnpqrstuvwxyz";
+        const string digits = "23456789";
+        const string symbols = "!@%*?";
+        Span<char> code = stackalloc char[12];
+        code[0] = upper[RandomNumberGenerator.GetInt32(upper.Length)];
+        code[1] = lower[RandomNumberGenerator.GetInt32(lower.Length)];
+        code[2] = digits[RandomNumberGenerator.GetInt32(digits.Length)];
+        code[3] = symbols[RandomNumberGenerator.GetInt32(symbols.Length)];
+        const string all = upper + lower + digits + symbols;
+        for (var i = 4; i < code.Length; i++)
+            code[i] = all[RandomNumberGenerator.GetInt32(all.Length)];
+
+        for (var i = code.Length - 1; i > 0; i--)
+        {
+            var j = RandomNumberGenerator.GetInt32(i + 1);
+            (code[i], code[j]) = (code[j], code[i]);
+        }
+
+        return new string(code);
     }
 
     public Task<TeacherInviteInfoResponse?> GetTeacherInviteInfoAsync(string token, CancellationToken ct = default)

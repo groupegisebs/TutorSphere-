@@ -23,18 +23,24 @@ public class BrandingController : ControllerBase
 
     [HttpGet("{slug}")]
     [AllowAnonymous]
-    public async Task<ActionResult<PublicTenantSiteDto>> GetPublicSite(string slug, CancellationToken ct)
+    public async Task<ActionResult<PublicTenantSiteDto>> GetPublicSite(
+        string slug,
+        [FromQuery] string? viewerCountry,
+        CancellationToken ct)
     {
-        var site = await _brandingService.GetPublicSiteBySlugAsync(slug, ct);
+        var site = await _brandingService.GetPublicSiteBySlugAsync(slug, viewerCountry, ct);
         return site is null ? NotFound() : Ok(site);
     }
 
     /// <summary>Full public tutor/school profile for directory "View profile".</summary>
     [HttpGet("{slug}/tutor")]
     [AllowAnonymous]
-    public async Task<ActionResult<PublicTutorDetailDto>> GetPublicTutorDetail(string slug, CancellationToken ct)
+    public async Task<ActionResult<PublicTutorDetailDto>> GetPublicTutorDetail(
+        string slug,
+        [FromQuery] string? viewerCountry,
+        CancellationToken ct)
     {
-        var detail = await _brandingService.GetPublicTutorDetailAsync(slug, ct);
+        var detail = await _brandingService.GetPublicTutorDetailAsync(slug, viewerCountry, ct);
         if (detail is null)
             return NotFound();
 

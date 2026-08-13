@@ -110,6 +110,22 @@ public record InviteTeacherApplicationRequest(
     string? FirstName = null,
     string? PersonalMessage = null);
 
+/// <summary>Création directe d'un compte enseignant par un expert membre d'un groupe.</summary>
+public record RegisterTeacherByExpertRequest(
+    string Email,
+    string FirstName,
+    string LastName,
+    string SchoolName,
+    string? City = null,
+    string? Country = null,
+    IReadOnlyList<string>? VisibleCountryCodes = null);
+
+public record RegisterTeacherByExpertResponse(
+    Guid TenantId,
+    string TenantSlug,
+    string Email,
+    bool CredentialsSent);
+
 public record TeacherApplicationInviteDto(
     Guid Id,
     string Email,

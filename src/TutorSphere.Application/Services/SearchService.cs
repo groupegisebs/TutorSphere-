@@ -2,6 +2,7 @@ using System.Text.Json;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.Search;
 using TutorSphere.Application.DTOs.SubscriptionOfferings;
+using TutorSphere.Domain.Common;
 using TutorSphere.Domain.Enums;
 
 namespace TutorSphere.Application.Services;
@@ -75,6 +76,13 @@ public class SearchService : ISearchService
         }
 
         var tenants = query.ToList();
+        if (!string.IsNullOrWhiteSpace(filters.ViewerCountry))
+        {
+            tenants = tenants
+                .Where(t => ProfileVisibility.IsVisibleTo(t.VisibleCountryCodes, t.Country, filters.ViewerCountry))
+                .ToList();
+        }
+
         var offeringsByTenant = offerings
             .GroupBy(o => o.TenantId)
             .ToDictionary(g => g.Key, g => g.ToList());

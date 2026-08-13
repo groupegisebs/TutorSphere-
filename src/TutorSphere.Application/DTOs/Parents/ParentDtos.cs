@@ -7,19 +7,22 @@ public record ParentDto(
     string Email,
     string? Phone,
     int ChildrenCount,
-    int UnreadMessagesCount = 0);
+    int UnreadMessagesCount = 0,
+    string? Country = null);
 
 public record CreateParentRequest(
     string FirstName,
     string LastName,
     string Email,
-    string? Phone);
+    string? Phone,
+    string? Country = null);
 
 public record UpdateParentRequest(
     string FirstName,
     string LastName,
     string Email,
-    string? Phone);
+    string? Phone,
+    string? Country = null);
 
 public record ParentAddChildRequest(
     string FirstName,

@@ -47,6 +47,23 @@ public class ParentPortalController : ControllerBase
         return parent is null ? NotFound(new { error = "Profil parent introuvable." }) : Ok(parent);
     }
 
+    [HttpPut("me")]
+    public async Task<ActionResult<ParentDto>> UpdateMe([FromBody] UpdateParentRequest request, CancellationToken ct)
+    {
+        var userId = await ResolveParentUserIdAsync(ct);
+        if (userId is null)
+            return Unauthorized();
+
+        try
+        {
+            return Ok(await _parentService.UpdateForUserAsync(userId, request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     [HttpGet("children")]
     public async Task<ActionResult<IReadOnlyList<StudentDto>>> Children(CancellationToken ct)
     {

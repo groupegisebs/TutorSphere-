@@ -25,10 +25,11 @@ public class SearchController : ControllerBase
         [FromQuery] string? level,
         [FromQuery] LessonMode? mode,
         [FromQuery] decimal? minRating,
+        [FromQuery] string? viewerCountry,
         CancellationToken ct)
     {
         var filters = new TutorSearchFilters(
-            subject, city, language, minPrice, maxPrice, level, mode, minRating);
+            subject, city, language, minPrice, maxPrice, level, mode, minRating, viewerCountry);
 
         var results = await _searchService.SearchTutorsAsync(filters, ct);
         return Ok(results);

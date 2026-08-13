@@ -1,4 +1,6 @@
 @page "/search"
+@rendermode InteractiveServer
+@using TutorSphere.Web.Common
 @inject HttpClient Http
 @inject IStringLocalizer<SharedResources> L
 
@@ -20,6 +22,11 @@
             <div class="mb-3">
                 <label class="form-label">@L["Label_City"]</label>
                 <input class="form-control" @bind="Filters.City" placeholder="@L["Placeholder_City"]" />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">@L["Search_ViewerCountry"]</label>
+                <CountrySelect Value="Filters.ViewerCountry" ValueChanged="OnViewerCountryChanged" />
+                <small class="form-hint">@L["Search_ViewerCountryHint"]</small>
             </div>
             <div class="mb-3">
                 <label class="form-label">@L["Label_Language"]</label>
@@ -149,6 +156,7 @@
         AddQuery(parts, "city", Filters.City);
         AddQuery(parts, "language", Filters.Language);
         AddQuery(parts, "level", Filters.Level);
+        AddQuery(parts, "viewerCountry", Filters.ViewerCountry);
 
         if (Filters.MinPrice.HasValue)
             parts.Add($"minPrice={Filters.MinPrice.Value}");
@@ -166,10 +174,17 @@
             parts.Add($"{key}={Uri.EscapeDataString(value.Trim())}");
     }
 
+    private Task OnViewerCountryChanged(string? code)
+    {
+        Filters.ViewerCountry = code ?? "";
+        return Task.CompletedTask;
+    }
+
     private sealed class SearchFiltersModel
     {
         public string Subject { get; set; } = "";
         public string City { get; set; } = "";
+        public string ViewerCountry { get; set; } = "";
         public string Language { get; set; } = "";
         public decimal? MinPrice { get; set; }
         public decimal? MaxPrice { get; set; }

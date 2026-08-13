@@ -12,6 +12,7 @@ public sealed class ParentProfileState
     public string DisplayName { get; private set; } = "";
     public string Email { get; private set; } = "";
     public string? PhotoUrl { get; private set; }
+    public string? Country { get; private set; }
     public int UnreadMessagesCount { get; private set; }
 
     public ParentProfileState(ApiClient api, AuthService auth)
@@ -59,6 +60,7 @@ public sealed class ParentProfileState
                 Email = profile.Email;
 
             PhotoUrl = profile.PhotoUrl;
+            Country = profile.Country;
             UnreadMessagesCount = profile.UnreadMessagesCount;
         }
         else if (!string.IsNullOrWhiteSpace(_auth.UserName))
@@ -80,5 +82,6 @@ public sealed class ParentProfileState
         string? Phone,
         int ChildrenCount,
         int UnreadMessagesCount = 0,
-        string? PhotoUrl = null);
+        string? PhotoUrl = null,
+        string? Country = null);
 }

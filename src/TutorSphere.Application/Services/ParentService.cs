@@ -3,6 +3,7 @@ using TutorSphere.Application.DTOs.Lessons;
 using TutorSphere.Application.DTOs.Parents;
 using TutorSphere.Application.DTOs.Payments;
 using TutorSphere.Application.DTOs.Students;
+using TutorSphere.Domain.Common;
 using TutorSphere.Domain.Entities;
 using TutorSphere.Domain.Enums;
 
@@ -15,6 +16,7 @@ public interface IParentService
     Task<ParentDto?> GetByUserIdAsync(string userId, CancellationToken ct = default);
     Task<ParentDto> CreateAsync(CreateParentRequest request, CancellationToken ct = default);
     Task<ParentDto> UpdateAsync(Guid id, UpdateParentRequest request, CancellationToken ct = default);
+    Task<ParentDto> UpdateForUserAsync(string userId, UpdateParentRequest request, CancellationToken ct = default);
     Task DeleteAsync(Guid id, CancellationToken ct = default);
     Task<IReadOnlyList<StudentDto>> GetChildrenAsync(Guid parentId, CancellationToken ct = default);
     Task<IReadOnlyList<StudentDto>> GetChildrenForUserAsync(string userId, CancellationToken ct = default);
@@ -80,7 +82,8 @@ public class ParentService : IParentService
             FirstName = request.FirstName.Trim(),
             LastName = request.LastName.Trim(),
             Email = request.Email.Trim(),
-            Phone = request.Phone?.Trim()
+            Phone = request.Phone?.Trim(),
+            Country = NormalizeParentCountry(request.Country)
         };
 
         _db.Add(parent);
@@ -93,15 +96,39 @@ public class ParentService : IParentService
         var parent = _db.ParentProfiles.FirstOrDefault(p => p.Id == id)
             ?? throw new InvalidOperationException("Parent introuvable.");
 
-        parent.FirstName = request.FirstName.Trim();
-        parent.LastName = request.LastName.Trim();
-        parent.Email = request.Email.Trim();
-        parent.Phone = request.Phone?.Trim();
-        parent.UpdatedAt = DateTime.UtcNow;
+        ApplyParentUpdate(parent, request);
 
         await _db.SaveChangesAsync(ct);
         var count = _db.Students.Count(s => s.ParentProfileId == id);
         return MapToDto(parent, count);
+    }
+
+    public async Task<ParentDto> UpdateForUserAsync(string userId, UpdateParentRequest request, CancellationToken ct = default)
+    {
+        var parent = _db.ParentProfilesForAnyTenant.FirstOrDefault(p => p.UserId == userId)
+            ?? throw new InvalidOperationException("Parent introuvable.");
+
+        ApplyParentUpdate(parent, request);
+        await _db.SaveChangesAsync(ct);
+        var count = _db.StudentsForAnyTenant.Count(s => s.ParentProfileId == parent.Id);
+        var unread = _db.Messages.Count(m => m.RecipientUserId == userId && !m.IsRead);
+        return MapToDto(parent, count, unread);
+    }
+
+    private static void ApplyParentUpdate(ParentProfile parent, UpdateParentRequest request)
+    {
+        parent.FirstName = request.FirstName.Trim();
+        parent.LastName = request.LastName.Trim();
+        parent.Email = request.Email.Trim();
+        parent.Phone = request.Phone?.Trim();
+        parent.Country = NormalizeParentCountry(request.Country);
+        parent.UpdatedAt = DateTime.UtcNow;
+    }
+
+    private static string? NormalizeParentCountry(string? country)
+    {
+        var code = ProfileVisibility.NormalizeCode(country);
+        return code.Length == 2 ? code : null;
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
@@ -617,7 +644,8 @@ public class ParentService : IParentService
         p.Email,
         p.Phone,
         childrenCount,
-        unreadMessagesCount);
+        unreadMessagesCount,
+        p.Country);
 
     private static StudentDto MapStudentToDto(Student s) => new(
         s.Id,

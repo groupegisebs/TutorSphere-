@@ -1,6 +1,7 @@
 @page "/tutor/school"
 @layout TutorLayout
 @rendermode InteractiveServer
+@using TutorSphere.Web.Common
 @inject IStringLocalizer<SharedResources> L
 @inject AuthService AuthSvc
 @inject ApiClient Api
@@ -101,10 +102,10 @@ else if (_activeTab == "contact")
 {
     <div class="section-card p-4">
         <div class="row g-3">
-            <div class="col-md-6"><label class="form-label">@L["School_Country"]</label>
-                <select class="form-select" @bind="_school.Country">
-                    <option>Canada</option><option>France</option><option>Belgique</option><option>Suisse</option><option>Maroc</option>
-                </select></div>
+            <div class="col-md-6">
+                <label class="form-label">@L["School_Country"]</label>
+                <CountrySelect Value="_school.Country" ValueChanged="OnHomeCountryChanged" />
+            </div>
             <div class="col-md-6"><label class="form-label">@L["School_Province"]</label>
                 <input class="form-control" @bind="_school.Province" /></div>
             <div class="col-md-6"><label class="form-label">@L["School_City"]</label>
@@ -117,6 +118,29 @@ else if (_activeTab == "contact")
                 <input class="form-control" @bind="_school.Phone" /></div>
             <div class="col-md-6"><label class="form-label">@L["School_ContactEmail"]</label>
                 <input type="email" class="form-control" @bind="_school.Email" /></div>
+            <div class="col-12">
+                <label class="form-label">@L["School_VisibleCountries"]</label>
+                <p class="small text-muted mb-2">@L["School_VisibleCountriesHint"]</p>
+                <div class="d-flex flex-wrap gap-2 mb-2">
+                    @foreach (var code in _visibleCountries)
+                    {
+                        var info = CountryCatalog.Find(code);
+                        <span class="badge text-bg-light border d-inline-flex align-items-center gap-1 py-2 px-2">
+                            <span aria-hidden="true">@(info?.Flag ?? "")</span>
+                            @(info?.Name ?? code)
+                            @if (!string.Equals(code, _school.Country, StringComparison.OrdinalIgnoreCase))
+                            {
+                                <button type="button" class="btn-close btn-close-sm ms-1" aria-label="Retirer" @onclick="() => RemoveVisibleCountry(code)"></button>
+                            }
+                        </span>
+                    }
+                </div>
+                <div class="row g-2 align-items-end">
+                    <div class="col-md-6">
+                        <CountrySelect Value="@_addVisibleCountry" ValueChanged="OnAddVisibleCountryChanged" Placeholder="@L["School_AddVisibleCountry"]" />
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 }
@@ -170,6 +194,8 @@ else if (_activeTab == "media")
     private bool _saving, _saved;
     private string? _logoDataUrl;
     private string? _bannerDataUrl;
+    private List<string> _visibleCountries = [];
+    private string? _addVisibleCountry;
 
     private async Task HandleLogoChange(InputFileChangeEventArgs e)
     {
@@ -219,7 +245,46 @@ else if (_activeTab == "media")
             if (!string.IsNullOrEmpty(profile.City)) _school.City = profile.City;
             if (!string.IsNullOrEmpty(profile.Country)) _school.Country = profile.Country;
             if (!string.IsNullOrEmpty(profile.Slug)) _school.Slug = profile.Slug;
+            _visibleCountries = (profile.VisibleCountryCodes ?? [])
+                .Where(c => !string.IsNullOrWhiteSpace(c))
+                .Select(c => c.Trim().ToUpperInvariant())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            EnsureHomeCountryVisible();
         }
+    }
+
+    private Task OnHomeCountryChanged(string? code)
+    {
+        _school.Country = code ?? "";
+        EnsureHomeCountryVisible();
+        return Task.CompletedTask;
+    }
+
+    private Task OnAddVisibleCountryChanged(string? code)
+    {
+        _addVisibleCountry = null;
+        if (string.IsNullOrWhiteSpace(code))
+            return Task.CompletedTask;
+        var normalized = code.Trim().ToUpperInvariant();
+        if (!_visibleCountries.Contains(normalized, StringComparer.OrdinalIgnoreCase))
+            _visibleCountries.Add(normalized);
+        return Task.CompletedTask;
+    }
+
+    private void RemoveVisibleCountry(string code)
+    {
+        _visibleCountries.RemoveAll(c => string.Equals(c, code, StringComparison.OrdinalIgnoreCase));
+        EnsureHomeCountryVisible();
+    }
+
+    private void EnsureHomeCountryVisible()
+    {
+        if (string.IsNullOrWhiteSpace(_school.Country))
+            return;
+        var home = _school.Country.Trim().ToUpperInvariant();
+        if (!_visibleCountries.Contains(home, StringComparer.OrdinalIgnoreCase))
+            _visibleCountries.Insert(0, home);
     }
 
     private async Task SaveSchool()
@@ -243,6 +308,7 @@ else if (_activeTab == "media")
             await Api.PutAsync<object>($"api/branding/tenant/{tenantId}", brandingReq);
 
             // Update profile (name, city, country, slug)
+            EnsureHomeCountryVisible();
             var profileReq = new
             {
                 name = _school.Name,
@@ -250,7 +316,8 @@ else if (_activeTab == "media")
                 city = _school.City,
                 country = _school.Country,
                 language = "fr",
-                currency = "CAD"
+                currency = "CAD",
+                visibleCountryCodes = _visibleCountries
             };
             await Api.PutAsync<object>($"api/tenants/{tenantId}/profile", profileReq);
 
@@ -273,7 +340,8 @@ else if (_activeTab == "media")
 
     private record TutorProfileDto(
         Guid Id, string Name, string? Description, string? City, string? Country,
-        string Language, string Currency, string Slug);
+        string Language, string Currency, string Slug,
+        IReadOnlyList<string>? VisibleCountryCodes = null);
 
     private class SchoolVM
     {

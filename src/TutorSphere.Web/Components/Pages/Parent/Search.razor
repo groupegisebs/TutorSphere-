@@ -1,8 +1,10 @@
 @page "/parent/search"
 @layout ParentLayout
 @rendermode InteractiveServer
+@using TutorSphere.Web.Common
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
+@inject ParentProfileState ParentProfile
 
 <PageTitle>@L["PageTitle_FindTutor"]</PageTitle>
 
@@ -23,6 +25,11 @@
         <div class="mb-3">
             <label class="form-label">@L["Label_City"]</label>
             <input class="form-control" @bind="_city" placeholder="@L["Placeholder_City"]" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label">@L["Search_ViewerCountry"]</label>
+            <CountrySelect Value="_viewerCountry" ValueChanged="OnViewerCountryChanged" />
+            <small class="form-hint">@L["Search_ViewerCountryHint"]</small>
         </div>
         <div class="row g-2 mb-3">
             <div class="col-6">
@@ -89,13 +96,53 @@
     private string  _subject  = "";
     private string  _city     = "";
     private string  _level    = "";
+    private string? _viewerCountry;
     private decimal? _minPrice;
     private decimal? _maxPrice;
     private bool    _loading  = true;
     private string? _error;
     private List<TutorSearchResultDto> _results = [];
 
-    protected override async Task OnInitializedAsync() => await SearchAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await ParentProfile.EnsureLoadedAsync();
+            _viewerCountry = ParentProfile.Country;
+        }
+        catch { }
+        await SearchAsync();
+    }
+
+    private async Task OnViewerCountryChanged(string? code)
+    {
+        _viewerCountry = code;
+        if (string.IsNullOrWhiteSpace(code))
+            return;
+
+        try
+        {
+            var me = await Api.GetAsync<ParentMeUpdateDto>("api/parent/me");
+            if (me is null) return;
+            await Api.PutAsync<object>("api/parent/me", new
+            {
+                firstName = me.FirstName,
+                lastName = me.LastName,
+                email = me.Email,
+                phone = me.Phone,
+                country = code
+            });
+            await ParentProfile.EnsureLoadedAsync(forceReload: true);
+        }
+        catch { /* filtre local même si la sauvegarde échoue */ }
+    }
+
+    private sealed record ParentMeUpdateDto(
+        string FirstName,
+        string LastName,
+        string Email,
+        string? Phone,
+        string? Country = null);
 
     private async Task SearchAsync()
     {
@@ -109,6 +156,8 @@
             if (!string.IsNullOrWhiteSpace(_level))     parts.Add($"level={Uri.EscapeDataString(_level.Trim())}");
             if (_minPrice.HasValue)                     parts.Add($"minPrice={_minPrice.Value}");
             if (_maxPrice.HasValue)                     parts.Add($"maxPrice={_maxPrice.Value}");
+            if (!string.IsNullOrWhiteSpace(_viewerCountry))
+                parts.Add($"viewerCountry={Uri.EscapeDataString(_viewerCountry.Trim())}");
             var query = parts.Count == 0 ? "" : "?" + string.Join("&", parts);
 
             var result = await Api.GetAsync<List<TutorSearchResultDto>>($"api/search/tutors{query}");

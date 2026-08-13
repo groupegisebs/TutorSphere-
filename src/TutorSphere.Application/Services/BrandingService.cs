@@ -2,6 +2,7 @@ using System.Text.Json;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.Branding;
 using TutorSphere.Application.DTOs.ExpertApproval;
+using TutorSphere.Domain.Common;
 using TutorSphere.Domain.Entities;
 using TutorSphere.Domain.Enums;
 
@@ -11,8 +12,8 @@ public interface IBrandingService
 {
     Task<TenantBrandingDto?> GetBrandingAsync(Guid tenantId, CancellationToken ct = default);
     Task<TenantBrandingDto> UpdateBrandingAsync(Guid tenantId, UpdateTenantBrandingRequest request, CancellationToken ct = default);
-    Task<PublicTenantSiteDto?> GetPublicSiteBySlugAsync(string slug, CancellationToken ct = default);
-    Task<PublicTutorDetailDto?> GetPublicTutorDetailAsync(string slug, CancellationToken ct = default);
+    Task<PublicTenantSiteDto?> GetPublicSiteBySlugAsync(string slug, string? viewerCountry = null, CancellationToken ct = default);
+    Task<PublicTutorDetailDto?> GetPublicTutorDetailAsync(string slug, string? viewerCountry = null, CancellationToken ct = default);
 }
 
 public class BrandingService : IBrandingService
@@ -61,7 +62,7 @@ public class BrandingService : IBrandingService
         return MapToDto(branding);
     }
 
-    public Task<PublicTenantSiteDto?> GetPublicSiteBySlugAsync(string slug, CancellationToken ct = default)
+    public Task<PublicTenantSiteDto?> GetPublicSiteBySlugAsync(string slug, string? viewerCountry = null, CancellationToken ct = default)
     {
         var normalizedSlug = slug.ToLowerInvariant().Trim();
         var now = DateTime.UtcNow;
@@ -80,11 +81,15 @@ public class BrandingService : IBrandingService
                 t.Slug,
                 t.Description,
                 t.City,
-                t.Country
+                t.Country,
+                t.VisibleCountryCodes
             })
             .FirstOrDefault();
 
         if (tenant is null)
+            return Task.FromResult<PublicTenantSiteDto?>(null);
+
+        if (!ProfileVisibility.IsVisibleTo(tenant.VisibleCountryCodes, tenant.Country, viewerCountry))
             return Task.FromResult<PublicTenantSiteDto?>(null);
 
         var branding = _db.TenantBrandings.FirstOrDefault(b => b.TenantId == tenant.Id);
@@ -118,7 +123,7 @@ public class BrandingService : IBrandingService
         return Task.FromResult<PublicTenantSiteDto?>(site);
     }
 
-    public Task<PublicTutorDetailDto?> GetPublicTutorDetailAsync(string slug, CancellationToken ct = default)
+    public Task<PublicTutorDetailDto?> GetPublicTutorDetailAsync(string slug, string? viewerCountry = null, CancellationToken ct = default)
     {
         var normalizedSlug = slug.ToLowerInvariant().Trim();
         var now = DateTime.UtcNow;
@@ -138,6 +143,7 @@ public class BrandingService : IBrandingService
                 t.Description,
                 t.City,
                 t.Country,
+                t.VisibleCountryCodes,
                 t.Language,
                 t.Currency,
                 t.IsPublicProfile,
@@ -147,6 +153,9 @@ public class BrandingService : IBrandingService
             .FirstOrDefault();
 
         if (tenant is null)
+            return Task.FromResult<PublicTutorDetailDto?>(null);
+
+        if (!ProfileVisibility.IsVisibleTo(tenant.VisibleCountryCodes, tenant.Country, viewerCountry))
             return Task.FromResult<PublicTutorDetailDto?>(null);
 
         var branding = _db.TenantBrandings.FirstOrDefault(b => b.TenantId == tenant.Id);

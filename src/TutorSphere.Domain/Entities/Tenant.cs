@@ -11,6 +11,13 @@ public class Tenant : BaseEntity
     public string? Description { get; set; }
     public string? City { get; set; }
     public string? Country { get; set; }
+
+    /// <summary>
+    /// Codes ISO des pays où la fiche peut être vue (CSV, ex. "CM,SN,CI").
+    /// Null/vide = uniquement le pays de l'enseignant (<see cref="Country"/>).
+    /// </summary>
+    public string? VisibleCountryCodes { get; set; }
+
     public string TimeZone { get; set; } = "America/Montreal";
     public string Currency { get; set; } = "CAD";
 
