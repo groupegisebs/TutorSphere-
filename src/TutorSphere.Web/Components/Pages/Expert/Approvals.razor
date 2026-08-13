@@ -282,23 +282,47 @@
                             </select>
                         </div>
                         <div class="col-md-3">
+                            <label class="form-label">Période package</label>
+                            <select class="form-select" @bind="_regOfferPeriod">
+                                <option value="semaine">Hebdomadaire</option>
+                                <option value="mois">Mensuel</option>
+                                <option value="trimestre">Trimestriel</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Cadence</label>
+                            <select class="form-select" @bind="_regOfferCadence">
+                                <option value="weekly">Chaque semaine</option>
+                                <option value="biweekly">Toutes les 2 semaines</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Facturation</label>
+                            <select class="form-select" @bind="_regOfferBillingMode">
+                                <option value="perSession">Par séance</option>
+                                <option value="hourly">Horaire</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Durée séance (min)</label>
+                            <input type="number" min="15" step="15" class="form-control" @bind="_regOfferSessionDuration" />
+                        </div>
+                        <div class="col-md-3">
                             <label class="form-label">Prix *</label>
                             <input type="number" min="0" step="100" class="form-control" @bind="_regOfferPrice" />
                         </div>
                         <div class="col-md-2">
                             <label class="form-label">Devise</label>
-                            <input class="form-control" @bind="_regOfferCurrency" />
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label">Durée (j)</label>
-                            <input type="number" min="1" class="form-control" @bind="_regOfferDurationDays" />
+                            <select class="form-select" @bind="_regOfferCurrency">
+                                <option>CAD</option><option>USD</option><option>EUR</option><option>XAF</option><option>XOF</option>
+                            </select>
                         </div>
                         <div class="col-md-2">
                             <label class="form-label">Séances</label>
                             <input type="number" min="1" class="form-control" @bind="_regOfferSessionCount" />
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label">Fréquence</label>
+                            <label class="form-label">Fréquence (libellé)</label>
                             <input class="form-control" @bind="_regOfferFrequency" placeholder="1× / semaine" />
                         </div>
                         <div class="col-12">
@@ -614,10 +638,14 @@
     private string? _regOfferDescription;
     private string? _regOfferSubject;
     private decimal _regOfferPrice;
-    private string _regOfferCurrency = "XAF";
+    private string _regOfferCurrency = "CAD";
     private int _regOfferDurationDays = 30;
     private int _regOfferSessionCount = 4;
     private string? _regOfferFrequency;
+    private string _regOfferPeriod = "mois";
+    private string _regOfferCadence = "weekly";
+    private string _regOfferBillingMode = "perSession";
+    private int _regOfferSessionDuration = 60;
     private string _regOfferMode = "En ligne";
 
     private bool _isManager;
@@ -1010,12 +1038,28 @@
                     description = string.IsNullOrWhiteSpace(_regOfferDescription) ? null : _regOfferDescription,
                     subject = string.IsNullOrWhiteSpace(_regOfferSubject) ? null : _regOfferSubject,
                     price = _regOfferPrice,
-                    currency = string.IsNullOrWhiteSpace(_regOfferCurrency) ? "XAF" : _regOfferCurrency,
-                    durationDays = _regOfferDurationDays > 0 ? _regOfferDurationDays : 30,
+                    currency = string.IsNullOrWhiteSpace(_regOfferCurrency) ? "CAD" : _regOfferCurrency,
+                    durationDays = _regOfferPeriod switch
+                    {
+                        "semaine" => 7,
+                        "mois" => 30,
+                        "trimestre" => 90,
+                        _ => _regOfferDurationDays > 0 ? _regOfferDurationDays : 30
+                    },
                     sessionCount = _regOfferSessionCount > 0 ? _regOfferSessionCount : 4,
                     frequency = string.IsNullOrWhiteSpace(_regOfferFrequency) ? null : _regOfferFrequency,
                     mode = _regOfferMode,
-                    maxCapacity = 20
+                    maxCapacity = 20,
+                    schedule = new
+                    {
+                        billingPeriod = _regOfferPeriod,
+                        cadence = _regOfferCadence,
+                        sessionDurationMin = _regOfferSessionDuration > 0 ? _regOfferSessionDuration : 60,
+                        level = (string?)null,
+                        cancellationPolicy = (string?)null,
+                        slots = Array.Empty<object>(),
+                        billingMode = _regOfferBillingMode
+                    }
                 };
             }
 
@@ -1064,8 +1108,13 @@
             _regOfferTitle = "";
             _regOfferDescription = _regOfferSubject = _regOfferFrequency = null;
             _regOfferPrice = 0;
-            _regOfferCurrency = "XAF";
+            _regOfferCurrency = "CAD";
             _regOfferDurationDays = 30;
+            _regOfferSessionCount = 4;
+            _regOfferPeriod = "mois";
+            _regOfferCadence = "weekly";
+            _regOfferBillingMode = "perSession";
+            _regOfferSessionDuration = 60;
             _regOfferSessionCount = 4;
             _regOfferMode = "En ligne";
             _regSchoolName = keptGroupName;

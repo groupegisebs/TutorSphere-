@@ -17,6 +17,7 @@ public interface IExpertDisciplineService
     Task<DisciplineDto> UpdateAsync(Guid disciplineId, string expertUserId, UpdateDisciplineRequest request, CancellationToken ct = default);
     Task DeleteAsync(Guid disciplineId, string expertUserId, CancellationToken ct = default);
     Task<IReadOnlyList<GroupTeacherAssignmentDto>> ListGroupTeachersAsync(Guid disciplineId, string expertUserId, CancellationToken ct = default);
+    Task<IReadOnlyList<TeacherDisciplineStatusDto>> ListAssignmentsForTeacherAsync(Guid tenantId, string expertUserId, CancellationToken ct = default);
     Task AssignTeacherAsync(Guid disciplineId, string expertUserId, Guid tenantId, CancellationToken ct = default);
     Task UnassignTeacherAsync(Guid disciplineId, string expertUserId, Guid tenantId, CancellationToken ct = default);
 }
@@ -191,6 +192,32 @@ public class ExpertDisciplineService(IApplicationDbContext db, IUserContactLooku
                 t.Id, t.Name, contact?.Email, contact?.DisplayName, assignedIds.Contains(t.Id)));
         }
         return result;
+    }
+
+    public Task<IReadOnlyList<TeacherDisciplineStatusDto>> ListAssignmentsForTeacherAsync(
+        Guid tenantId, string expertUserId, CancellationToken ct = default)
+    {
+        var groupId = GetExpertGroupId(expertUserId);
+        var tenant = db.Tenants.FirstOrDefault(t => t.Id == tenantId)
+            ?? throw new InvalidOperationException("Enseignant introuvable.");
+        if (tenant.ApprovedByExpertGroupId != groupId
+            && tenant.ExpertApprovalStatus == ExpertApprovalStatus.Approved)
+            throw new InvalidOperationException("Cet enseignant n'appartient pas à votre groupe d'experts.");
+
+        var assigned = db.TeacherDisciplineAssignments
+            .Where(a => a.TenantId == tenantId)
+            .Select(a => a.DisciplineId)
+            .ToHashSet();
+
+        var list = db.Disciplines
+            .Where(d => d.ExpertGroupId == groupId)
+            .OrderBy(d => d.Name)
+            .AsEnumerable()
+            .Select(d => new TeacherDisciplineStatusDto(
+                d.Id, d.Name, d.Cycle, d.IsActive, assigned.Contains(d.Id)))
+            .ToList();
+
+        return Task.FromResult<IReadOnlyList<TeacherDisciplineStatusDto>>(list);
     }
 
     public async Task AssignTeacherAsync(Guid disciplineId, string expertUserId, Guid tenantId, CancellationToken ct = default)

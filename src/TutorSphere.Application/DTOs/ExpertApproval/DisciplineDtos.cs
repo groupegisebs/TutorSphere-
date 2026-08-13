@@ -26,6 +26,14 @@ public record DisciplineDto(
     int AssignedTeacherCount,
     DateTime CreatedAt);
 
+/// <summary>Discipline du groupe avec statut d'affectation pour un enseignant donné.</summary>
+public record TeacherDisciplineStatusDto(
+    Guid DisciplineId,
+    string Name,
+    SchoolCycle Cycle,
+    bool IsActive,
+    bool IsAssigned);
+
 public record CreateDisciplineRequest(
     string Name,
     SchoolCycle Cycle,

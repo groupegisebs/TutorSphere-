@@ -59,7 +59,7 @@ public class StudentService : IStudentService
         {
             var parentExists = _db.ParentProfiles.Any(p => p.Id == pid);
             if (!parentExists)
-                throw new InvalidOperationException("Parent introuvable dans votre école.");
+                throw new InvalidOperationException("Parent introuvable dans votre espace.");
         }
         else
         {
@@ -107,7 +107,7 @@ public class StudentService : IStudentService
             else
             {
                 if (!_db.ParentProfiles.Any(p => p.Id == pid))
-                    throw new InvalidOperationException("Parent introuvable dans votre école.");
+                    throw new InvalidOperationException("Parent introuvable dans votre espace.");
                 student.ParentProfileId = pid;
             }
         }

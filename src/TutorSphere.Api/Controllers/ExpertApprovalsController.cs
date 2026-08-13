@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using TutorSphere.Application.DTOs.Branding;
 using TutorSphere.Application.DTOs.ExpertApproval;
 using TutorSphere.Application.Services;
 using TutorSphere.Domain.Enums;
@@ -22,6 +23,9 @@ public class ExpertApprovalsController : ControllerBase
     private readonly ISubscriptionOfferingService _offerings;
     private readonly ITeacherSchoolAdminService _teacherSchools;
     private readonly IGroupAdminAccessService _groupAccess;
+    private readonly IBrandingService _branding;
+    private readonly IExpertDisciplineService _disciplines;
+    private readonly IWebHostEnvironment _env;
 
     public ExpertApprovalsController(
         IExpertApprovalService approvals,
@@ -31,7 +35,10 @@ public class ExpertApprovalsController : ControllerBase
         UserManager<ApplicationUser> userManager,
         ISubscriptionOfferingService offerings,
         ITeacherSchoolAdminService teacherSchools,
-        IGroupAdminAccessService groupAccess)
+        IGroupAdminAccessService groupAccess,
+        IBrandingService branding,
+        IExpertDisciplineService disciplines,
+        IWebHostEnvironment env)
     {
         _approvals = approvals;
         _monitoring = monitoring;
@@ -41,6 +48,9 @@ public class ExpertApprovalsController : ControllerBase
         _offerings = offerings;
         _teacherSchools = teacherSchools;
         _groupAccess = groupAccess;
+        _branding = branding;
+        _disciplines = disciplines;
+        _env = env;
     }
 
     private string? UserId => User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -582,6 +592,152 @@ public class ExpertApprovalsController : ControllerBase
         try
         {
             return Ok(await _teacherSchools.UnpublishPublicProfileAsync(tenantId, UserId, asPlatformAdmin: false, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpGet("teachers/{tenantId:guid}/branding")]
+    public async Task<ActionResult<TenantBrandingDto>> GetTeacherBranding(Guid tenantId, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        try
+        {
+            _teacherSchools.EnsureExpertCanManageTeacher(tenantId, UserId);
+            var branding = await _branding.GetBrandingAsync(tenantId, ct);
+            return Ok(branding ?? new TenantBrandingDto(
+                Guid.Empty, tenantId, null, null, "#2563eb", "#1e40af", null, null));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPut("teachers/{tenantId:guid}/branding")]
+    public async Task<ActionResult<TenantBrandingDto>> UpdateTeacherBranding(
+        Guid tenantId,
+        [FromBody] UpdateTenantBrandingRequest? request,
+        CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        if (request is null) return BadRequest(new { error = "Requête invalide." });
+        try
+        {
+            _teacherSchools.EnsureExpertCanManageTeacher(tenantId, UserId);
+            return Ok(await _branding.UpdateBrandingAsync(tenantId, request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    private static readonly HashSet<string> AllowedPhotoExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".png", ".jpg", ".jpeg", ".gif", ".webp"
+    };
+
+    [HttpPost("teachers/{tenantId:guid}/photo")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(5 * 1024 * 1024)]
+    public async Task<ActionResult<object>> UploadTeacherPhoto(
+        Guid tenantId, IFormFile file, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        if (file is null || file.Length == 0)
+            return BadRequest(new { error = "Fichier requis." });
+        if (file.Length > 5 * 1024 * 1024)
+            return BadRequest(new { error = "Photo trop volumineuse (max. 5 Mo)." });
+
+        try
+        {
+            _teacherSchools.EnsureExpertCanManageTeacher(tenantId, UserId);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+
+        var extension = Path.GetExtension(file.FileName);
+        if (string.IsNullOrWhiteSpace(extension) || !AllowedPhotoExtensions.Contains(extension))
+        {
+            extension = file.ContentType?.ToLowerInvariant() switch
+            {
+                "image/png" => ".png",
+                "image/jpeg" or "image/jpg" => ".jpg",
+                "image/gif" => ".gif",
+                "image/webp" => ".webp",
+                _ => ""
+            };
+        }
+        if (string.IsNullOrWhiteSpace(extension) || !AllowedPhotoExtensions.Contains(extension))
+            return BadRequest(new { error = "Format non supporté. Utilisez PNG, JPG, GIF ou WebP." });
+
+        var uploadsRoot = UploadsPaths.GetRoot(_env);
+        var safeFileName = $"teacher-{tenantId:N}{extension.ToLowerInvariant()}";
+        var filePath = Path.Combine(uploadsRoot, safeFileName);
+        await using (var stream = System.IO.File.Create(filePath))
+            await file.CopyToAsync(stream, ct);
+
+        var url = $"/uploads/{safeFileName}";
+        try
+        {
+            var updated = await _branding.UpdateBrandingAsync(
+                tenantId, new UpdateTenantBrandingRequest(LogoUrl: url), ct);
+            return Ok(new { logoUrl = updated.LogoUrl });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpGet("teachers/{tenantId:guid}/disciplines")]
+    public async Task<ActionResult<IReadOnlyList<TeacherDisciplineStatusDto>>> ListTeacherDisciplines(
+        Guid tenantId, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        try
+        {
+            _teacherSchools.EnsureExpertCanManageTeacher(tenantId, UserId);
+            return Ok(await _disciplines.ListAssignmentsForTeacherAsync(tenantId, UserId, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("teachers/{tenantId:guid}/disciplines/{disciplineId:guid}")]
+    public async Task<IActionResult> AssignTeacherDiscipline(
+        Guid tenantId, Guid disciplineId, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        try
+        {
+            _teacherSchools.EnsureExpertCanManageTeacher(tenantId, UserId);
+            await _disciplines.AssignTeacherAsync(disciplineId, UserId, tenantId, ct);
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpDelete("teachers/{tenantId:guid}/disciplines/{disciplineId:guid}")]
+    public async Task<IActionResult> UnassignTeacherDiscipline(
+        Guid tenantId, Guid disciplineId, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        try
+        {
+            _teacherSchools.EnsureExpertCanManageTeacher(tenantId, UserId);
+            await _disciplines.UnassignTeacherAsync(disciplineId, UserId, tenantId, ct);
+            return NoContent();
         }
         catch (InvalidOperationException ex)
         {

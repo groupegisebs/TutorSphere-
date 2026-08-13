@@ -340,7 +340,7 @@ public class AdminController : ControllerBase
             tenantId = owned?.Id;
         }
         if (tenantId is null)
-            return NotFound(new { error = "Aucune école associée à cet utilisateur." });
+            return NotFound(new { error = "Aucun profil associé à cet utilisateur." });
 
         var dto = await _teacherSchools.GetByTenantIdAsync(tenantId.Value, ct);
         if (dto is null) return NotFound(new { error = "Profil introuvable." });
@@ -370,7 +370,7 @@ public class AdminController : ControllerBase
         if (tenantId is null)
             tenantId = _db.Tenants.FirstOrDefault(t => t.OwnerUserId == userId)?.Id;
         if (tenantId is null)
-            return NotFound(new { error = "Aucune école associée à cet utilisateur." });
+            return NotFound(new { error = "Aucun profil associé à cet utilisateur." });
 
         try
         {
@@ -447,6 +447,65 @@ public class AdminController : ControllerBase
         }
     }
 
+    /// <summary>Élèves suivant actuellement un cours de l'enseignant (abonnements Active).</summary>
+    [HttpGet("teachers/{tenantId:guid}/active-students")]
+    [Authorize(Roles = "SuperAdmin,PlatformAdmin")]
+    public async Task<ActionResult<IReadOnlyList<AdminTeacherActiveStudentDto>>> ListTeacherActiveStudents(
+        Guid tenantId, CancellationToken ct)
+    {
+        var tenantExists = await _db.Tenants.AsNoTracking().AnyAsync(t => t.Id == tenantId, ct);
+        if (!tenantExists)
+            return NotFound(new { error = "Profil enseignant introuvable." });
+
+        var now = DateTime.UtcNow;
+        var rows = await _db.StudentSubscriptionsForAnyTenant.AsNoTracking()
+            .Where(s => s.TenantId == tenantId && s.Status == SubscriptionStatus.Active)
+            .OrderByDescending(s => s.StartDate)
+            .Select(s => new
+            {
+                s.Id,
+                s.StudentId,
+                StudentFirst = s.Student.FirstName,
+                StudentLast = s.Student.LastName,
+                StudentEmail = s.Student.Email,
+                ParentFirst = s.Student.Parent != null ? s.Student.Parent.FirstName : null,
+                ParentLast = s.Student.Parent != null ? s.Student.Parent.LastName : null,
+                s.OfferingId,
+                OfferingTitle = s.Offering.Title,
+                Subject = s.Offering.Subject,
+                Status = s.Status.ToString(),
+                s.StartDate,
+                s.EndDate,
+                s.SessionsRemaining,
+                Price = s.Offering.Price,
+                Currency = s.Offering.Currency
+            })
+            .ToListAsync(ct);
+
+        var list = rows.Select(s => new AdminTeacherActiveStudentDto(
+            s.Id,
+            s.StudentId,
+            $"{s.StudentFirst} {s.StudentLast}".Trim(),
+            s.StudentEmail,
+            string.IsNullOrWhiteSpace($"{s.ParentFirst} {s.ParentLast}".Trim())
+                ? null
+                : $"{s.ParentFirst} {s.ParentLast}".Trim(),
+            s.OfferingId,
+            s.OfferingTitle,
+            s.Subject,
+            s.Status,
+            s.StartDate,
+            s.EndDate,
+            s.SessionsRemaining,
+            s.Price,
+            s.Currency
+        )).ToList();
+
+        // Optionnel : aussi les abonnements encore dans la fenêtre de dates
+        _ = now;
+        return Ok(list);
+    }
+
     /// <summary>Approves a pending school/tenant and notifies the owner.</summary>
     [HttpPost("tenants/{tenantId:guid}/approve")]
     public async Task<IActionResult> ApproveTenant(Guid tenantId, CancellationToken ct)
@@ -514,6 +573,22 @@ public class AdminController : ControllerBase
             .ToListAsync(ct);
 
         return Ok(schools);
+    }
+
+    /// <summary>Suppression définitive d'un profil enseignant (tenant). SuperAdmin uniquement.</summary>
+    [HttpDelete("schools/{tenantId:guid}")]
+    [Authorize(Roles = "SuperAdmin")]
+    public async Task<IActionResult> DeleteSchool(Guid tenantId, CancellationToken ct)
+    {
+        try
+        {
+            await _accountDeletion.DeleteTenantAsync(tenantId, ct);
+            return Ok(new { message = "Profil supprimé." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 
     /// <summary>Returns aggregate counts used by the admin dashboard (données réelles uniquement).</summary>
@@ -716,7 +791,7 @@ public class AdminController : ControllerBase
         {
             var n = await _db.Tenants.AsNoTracking().CountAsync(ct);
             sw.Stop();
-            checks.Add(new AdminHealthCheckDto("Base de données", true, $"{n} école(s)", $"{sw.ElapsedMilliseconds} ms"));
+            checks.Add(new AdminHealthCheckDto("Base de données", true, $"{n} profil(s)", $"{sw.ElapsedMilliseconds} ms"));
         }
         catch (Exception ex)
         {

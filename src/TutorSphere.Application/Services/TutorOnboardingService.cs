@@ -175,22 +175,22 @@ public class TutorOnboardingService(
     private static List<ModuleDef> FrModules() =>
     [
         new("welcome", 1, "Bienvenue sur TutorSphere",
-            "Votre école numérique en 2 minutes.",
+            "Votre profil enseignant en 2 minutes.",
             """
             <p>TutorSphere est votre <strong>espace répétiteur</strong> : élèves, cours, devoirs et paiements parents.</p>
-            <p>Après cette formation, votre établissement sera <strong>actif et visible</strong> dans la recherche parents.</p>
+            <p>Après cette formation, votre profil sera <strong>actif et visible</strong> dans la recherche parents.</p>
             <p>Rappel : vous avez accepté le <strong>Code de conduite et d’éthique enseignant</strong> (respect, sécurité des mineurs, signalement, confidentialité). Un manquement peut entraîner la suspension du compte.</p>
             <ul><li>Tableau de bord</li><li>Offres d'abonnement</li><li>Calendrier et salle de classe</li></ul>
             """,
             [new("Quel est l'objectif de TutorSphere pour vous ?",
-                ["Réserver un hôtel", "Gérer votre école de soutien scolaire", "Acheter des fournitures"], 1)]),
+                ["Réserver un hôtel", "Gérer votre profil d'enseignant", "Acheter des fournitures"], 1)]),
         new("offers", 2, "Créer vos offres de cours",
             "Regardez la vidéo puis publiez une offre que les parents peuvent choisir.",
             """
             <p>Regardez la <strong>vidéo de démonstration</strong> ci-dessous : elle montre comment créer une offre étape par étape.</p>
             <p>Menu <strong>Offres</strong> → <strong>Nouvelle offre</strong> : matière, cycle, mode (en ligne / présentiel), puis tarification.</p>
             <p>Modes de facturation : <strong>taux horaire</strong>, <strong>taux par séance</strong>, ou <strong>abonnement trimestriel</strong> — chaque cours n’est comptabilisé qu’après validation de son effectivité.</p>
-            <p>Une offre active devient visible aux parents <em>une fois votre école publique</em>.</p>
+            <p>Une offre active devient visible aux parents <em>une fois votre profil public</em>.</p>
             """,
             [new("Quand un cours est-il facturé ?",
                 ["Dès la réservation", "Après validation / confirmation de l'effectivité du cours", "Une fois par an seulement"], 1),
@@ -220,9 +220,9 @@ public class TutorOnboardingService(
             """
             <p>Les parents paient vos forfaits ; TutorSphere prélève une <strong>commission</strong> (5–15 %).</p>
             <p>Configurez un compte de versement (Stripe Connect / PayPal) dans les paramètres de payout.</p>
-            <p>À la fin de cette formation, votre école devient <strong>visible par tous</strong> dans la recherche.</p>
+            <p>À la fin de cette formation, votre profil devient <strong>visible par tous</strong> dans la recherche.</p>
             """,
-            [new("Quand votre école devient-elle visible publiquement ?",
+            [new("Quand votre profil devient-il visible publiquement ?",
                 ["Dès l'inscription", "Après paiement + cette formation", "Jamais"], 1)])
     ];
 

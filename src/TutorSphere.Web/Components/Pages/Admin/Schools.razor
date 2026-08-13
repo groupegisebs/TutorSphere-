@@ -4,6 +4,8 @@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject AdminService AdminSvc
 @inject AuthService Auth
+@inject ApiClient Api
+@inject IJSRuntime JS
 
 <PageTitle>Profils enseignants — Control Center</PageTitle>
 
@@ -15,6 +17,15 @@
                 <p class="cc-page-sub">Chaque enseignant possède sa fiche publique, son abonnement et ses métriques.</p>
             </div>
         </div>
+
+        @if (!string.IsNullOrEmpty(_message))
+        {
+            <div class="cc-alert cc-alert-success"><i class="bi bi-check-circle"></i> @_message</div>
+        }
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="cc-alert cc-alert-danger"><i class="bi bi-exclamation-circle"></i> @_error</div>
+        }
 
         @if (_loading)
         {
@@ -48,6 +59,10 @@
                                 <th>Abonnement</th>
                                 <th>Statut</th>
                                 <th>Créé</th>
+                                @if (_isSuperAdmin)
+                                {
+                                    <th></th>
+                                }
                             </tr>
                         </thead>
                         <tbody>
@@ -71,6 +86,25 @@
                                         <span class="cc-pill @(s.Status == "Active" ? "cc-pill-ok" : "cc-pill-bad")">@s.Status</span>
                                     </td>
                                     <td>@s.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</td>
+                                    @if (_isSuperAdmin)
+                                    {
+                                        <td class="text-end">
+                                            <button type="button" class="cc-btn btn-sm"
+                                                    style="color:#f87171;border-color:#f87171;"
+                                                    disabled="@(_busyId == s.Id)"
+                                                    title="Supprimer définitivement"
+                                                    @onclick="() => DeleteAsync(s)">
+                                                @if (_busyId == s.Id)
+                                                {
+                                                    <span class="spinner-border spinner-border-sm"></span>
+                                                }
+                                                else
+                                                {
+                                                    <i class="bi bi-trash"></i>
+                                                }
+                                            </button>
+                                        </td>
+                                    }
                                 </tr>
                             }
                         </tbody>
@@ -84,12 +118,50 @@
 @code {
     private List<AdminSchoolItem> _schools = [];
     private bool _loading = true;
+    private bool _isSuperAdmin;
+    private Guid? _busyId;
+    private string? _message;
+    private string? _error;
 
     protected override async Task OnInitializedAsync()
     {
         try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        _isSuperAdmin = Auth.IsInRole("SuperAdmin");
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
         try { _schools = await AdminSvc.GetSchoolsAsync(); }
         catch { _schools = []; }
         finally { _loading = false; }
+    }
+
+    private async Task DeleteAsync(AdminSchoolItem school)
+    {
+        if (!_isSuperAdmin) return;
+        _error = null;
+        _message = null;
+
+        var confirmed = await JS.InvokeAsync<bool>(
+            "confirm",
+            $"Supprimer définitivement le profil « {school.Name} » (/profil/{school.Slug}) ?\n\nCette action est irréversible (offres, élèves liés, cours, paiements du profil).");
+        if (!confirmed) return;
+
+        _busyId = school.Id;
+        try
+        {
+            var result = await Api.DeleteWithErrorAsync($"api/admin/schools/{school.Id}");
+            if (!result.IsSuccess)
+            {
+                _error = result.Error ?? "Suppression impossible.";
+                return;
+            }
+            _message = $"Profil « {school.Name} » supprimé.";
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busyId = null; }
     }
 }

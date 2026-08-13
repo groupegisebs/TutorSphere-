@@ -380,7 +380,7 @@ public class AuthService : IAuthService
         var slug = request.Slug.Trim().ToLowerInvariant();
 
         if (_db.Tenants.Any(t => t.Slug == slug))
-            throw new InvalidOperationException("Cette adresse est déjà utilisée par une autre école.");
+            throw new InvalidOperationException("Cette adresse est déjà utilisée par un autre profil.");
 
         if (!request.AcceptedTeacherConductPolicy
             || !TutorSphere.Domain.Policies.TeacherConductPolicy.IsCurrent(request.TeacherConductPolicyVersion))
@@ -493,7 +493,7 @@ public class AuthService : IAuthService
         if (!Regex.IsMatch(requestedSlug, @"^[a-z0-9]([a-z0-9-]{1,48}[a-z0-9])?$"))
             throw new InvalidOperationException("Sous-domaine invalide.");
         if (_db.Tenants.Any(t => t.Slug == requestedSlug))
-            throw new InvalidOperationException("Cette adresse est déjà utilisée par une autre école.");
+            throw new InvalidOperationException("Cette adresse est déjà utilisée par un autre profil.");
         var slug = requestedSlug;
 
         var user = new ApplicationUser
@@ -960,7 +960,7 @@ public class AuthService : IAuthService
         var tenantId = user.TenantId ?? await EnsureMarketplaceParentTenantIdAsync(ct);
         if (tenantId == Guid.Empty)
             throw new InvalidOperationException(
-                "Aucune école disponible pour finaliser l'inscription. Réessayez plus tard.");
+                "Aucun profil disponible pour finaliser l'inscription. Réessayez plus tard.");
 
         var billingParent = new ParentProfile
         {

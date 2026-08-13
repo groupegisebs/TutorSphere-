@@ -1,9 +1,13 @@
 @page "/expert/teachers"
 @layout ExpertLayout
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using System.Text.Json
+@using Microsoft.AspNetCore.Components.Forms
 @inject AuthService Auth
 @inject ApiClient Api
 @inject IStringLocalizer<SharedResources> L
+@inject IConfiguration Config
+@inject NavigationManager Navigation
 
 <ApplyRequestCulture />
 
@@ -123,15 +127,31 @@
                                     @if (_school is not null)
                                     {
                                         <div class="row g-2">
-                                            <div class="col-md-4">
+                                            <div class="col-md-3">
+                                                <label class="form-label small">Photo</label>
+                                                <div class="d-flex align-items-center gap-2 flex-wrap">
+                                                    @if (!string.IsNullOrWhiteSpace(_photoUrl))
+                                                    {
+                                                        <img src="@MediaUrlHelper.Resolve(_photoUrl, Config, Navigation)"
+                                                             alt="Photo" class="rounded"
+                                                             style="width:64px;height:64px;object-fit:cover;border:1px solid #ddd;" />
+                                                    }
+                                                    <InputFile OnChange="OnPhotoSelected" accept="image/*" class="form-control form-control-sm" />
+                                                </div>
+                                                @if (_photoBusy)
+                                                {
+                                                    <div class="small text-muted mt-1">Envoi…</div>
+                                                }
+                                            </div>
+                                            <div class="col-md-3">
                                                 <label class="form-label small">Prénom</label>
                                                 <input class="form-control" @bind="_sFirstName" />
                                             </div>
-                                            <div class="col-md-4">
+                                            <div class="col-md-3">
                                                 <label class="form-label small">Nom</label>
                                                 <input class="form-control" @bind="_sLastName" />
                                             </div>
-                                            <div class="col-md-4">
+                                            <div class="col-md-3">
                                                 <label class="form-label small">Téléphone</label>
                                                 <input class="form-control" @bind="_sPhone" />
                                             </div>
@@ -139,13 +159,27 @@
                                                 <label class="form-label small">Nom affiché (profil)</label>
                                                 <input class="form-control" @bind="_sSchoolName" />
                                             </div>
-                                            <div class="col-md-3">
+                                            <div class="col-md-2">
                                                 <label class="form-label small">Ville</label>
                                                 <input class="form-control" @bind="_sCity" />
                                             </div>
-                                            <div class="col-md-3">
+                                            <div class="col-md-2">
                                                 <label class="form-label small">Pays</label>
                                                 <input class="form-control" @bind="_sCountry" maxlength="2" />
+                                            </div>
+                                            <div class="col-md-2">
+                                                <label class="form-label small">Langue</label>
+                                                <input class="form-control" @bind="_sLanguage" />
+                                            </div>
+                                            <div class="col-md-2">
+                                                <label class="form-label small">Devise</label>
+                                                <select class="form-select" @bind="_sCurrency">
+                                                    <option value="CAD">CAD</option>
+                                                    <option value="USD">USD</option>
+                                                    <option value="EUR">EUR</option>
+                                                    <option value="XAF">XAF</option>
+                                                    <option value="XOF">XOF</option>
+                                                </select>
                                             </div>
                                             <div class="col-12">
                                                 <label class="form-label small">Présentation publique</label>
@@ -155,6 +189,48 @@
                                             <div class="col-12">
                                                 <label class="form-label small">Description courte</label>
                                                 <textarea class="form-control" rows="2" @bind="_sDescription"></textarea>
+                                            </div>
+
+                                            <div class="col-12">
+                                                <label class="form-label small">Disciplines du groupe</label>
+                                                @if (_disciplines.Count == 0)
+                                                {
+                                                    <p class="small text-muted mb-0">Aucune discipline définie. Créez-en dans <a href="expert/disciplines">Disciplines</a>.</p>
+                                                }
+                                                else
+                                                {
+                                                    <div class="d-flex flex-wrap gap-2">
+                                                        @foreach (var d in _disciplines.Where(x => x.IsActive || x.IsAssigned))
+                                                        {
+                                                            <label class="border rounded px-2 py-1 small mb-0 @(d.IsAssigned ? "bg-light" : "")">
+                                                                <input type="checkbox" class="form-check-input me-1"
+                                                                       checked="@d.IsAssigned"
+                                                                       disabled="@_discBusy"
+                                                                       @onchange="e => ToggleDisciplineAsync(d, e)" />
+                                                                @d.Name <span class="text-muted">(@CycleLabel(d.Cycle))</span>
+                                                            </label>
+                                                        }
+                                                    </div>
+                                                }
+                                            </div>
+
+                                            <div class="col-12">
+                                                <label class="form-label small">Agenda / disponibilités (fiche publique)</label>
+                                                <p class="small text-muted mb-2">Cliquez pour activer les créneaux hebdomadaires visibles aux parents.</p>
+                                                <div class="d-flex flex-wrap gap-1">
+                                                    @foreach (var day in AvailabilityDays)
+                                                    {
+                                                        @foreach (var slot in AvailabilitySlots)
+                                                        {
+                                                            var key = $"{day}-{slot}";
+                                                            var on = _availability.Contains(key);
+                                                            <button type="button" class="btn btn-sm @(on ? "btn-primary" : "btn-outline-secondary")"
+                                                                    @onclick="() => ToggleAvailability(key)">
+                                                                @day @slot
+                                                            </button>
+                                                        }
+                                                    }
+                                                </div>
                                             </div>
                                         </div>
                                         <div class="mt-2 d-flex gap-2 flex-wrap">
@@ -238,7 +314,7 @@
                                 }
 
                                 <div class="border rounded p-3 mb-3">
-                                    <h4 class="h6">Nouvelle offre</h4>
+                                    <h4 class="h6">Nouvelle offre / package</h4>
                                     @if (!string.IsNullOrEmpty(_offerError))
                                     {
                                         <div class="alert alert-danger py-2">@_offerError</div>
@@ -252,26 +328,77 @@
                                             <input class="form-control" placeholder="Titre *" @bind="_offerTitle" />
                                         </div>
                                         <div class="col-md-6">
-                                            <input class="form-control" placeholder="Matière" @bind="_offerSubject" />
+                                            <input class="form-control" placeholder="Matière (liée à la discipline)" @bind="_offerSubject" />
                                         </div>
                                         <div class="col-md-3">
-                                            <input type="number" min="0" class="form-control" placeholder="Prix" @bind="_offerPrice" />
+                                            <label class="form-label small mb-0">Facturation</label>
+                                            <select class="form-select" @bind="_offerBillingMode">
+                                                <option value="perSession">Par séance</option>
+                                                <option value="hourly">Horaire</option>
+                                                <option value="quarterlyPerValidated">Trimestriel (validé)</option>
+                                            </select>
                                         </div>
                                         <div class="col-md-3">
-                                            <input class="form-control" @bind="_offerCurrency" />
+                                            <label class="form-label small mb-0">Période package</label>
+                                            <select class="form-select" @bind="_offerPeriod" @bind:after="RecalcOfferSessions">
+                                                <option value="semaine">Hebdomadaire</option>
+                                                <option value="mois">Mensuel</option>
+                                                <option value="trimestre">Trimestriel</option>
+                                                <option value="semestre">Semestriel</option>
+                                                <option value="an">Annuel</option>
+                                            </select>
                                         </div>
-                                        <div class="col-md-4">
-                                            <input type="number" min="1" class="form-control" placeholder="Durée (j)" @bind="_offerDurationDays" />
+                                        <div class="col-md-3">
+                                            <label class="form-label small mb-0">Cadence</label>
+                                            <select class="form-select" @bind="_offerCadence" @bind:after="RecalcOfferSessions">
+                                                <option value="weekly">Chaque semaine</option>
+                                                <option value="biweekly">Toutes les 2 semaines</option>
+                                            </select>
                                         </div>
-                                        <div class="col-md-4">
-                                            <input type="number" min="1" class="form-control" placeholder="Séances" @bind="_offerSessionCount" />
+                                        <div class="col-md-3">
+                                            <label class="form-label small mb-0">Durée séance (min)</label>
+                                            <input type="number" min="15" step="15" class="form-control" @bind="_offerSessionDuration" />
                                         </div>
-                                        <div class="col-md-4">
+                                        <div class="col-md-3">
+                                            <label class="form-label small mb-0">Nb séances</label>
+                                            <input type="number" min="1" class="form-control" @bind="_offerSessionCount" />
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label small mb-0">Prix package</label>
+                                            <input type="number" min="0" step="0.01" class="form-control" @bind="_offerPrice" />
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label small mb-0">Devise</label>
+                                            <select class="form-select" @bind="_offerCurrency">
+                                                <option>CAD</option><option>USD</option><option>EUR</option><option>XAF</option><option>XOF</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label small mb-0">Mode</label>
                                             <select class="form-select" @bind="_offerMode">
                                                 <option value="En ligne">En ligne</option>
                                                 <option value="Présentiel">Présentiel</option>
                                                 <option value="Hybride">Hybride</option>
                                             </select>
+                                        </div>
+                                        <div class="col-12">
+                                            <label class="form-label small">Créneaux hebdomadaires (agenda de l'offre)</label>
+                                            <div class="d-flex flex-wrap gap-2">
+                                                @foreach (var day in OfferDays)
+                                                {
+                                                    var slot = _offerDaySlots[day];
+                                                    <label class="border rounded px-2 py-1 small mb-0">
+                                                        <input type="checkbox" class="form-check-input me-1"
+                                                               checked="@slot.Enabled"
+                                                               @onchange="e => OnOfferDayToggle(day, e)" />
+                                                        @day
+                                                        <input type="time" class="form-control form-control-sm d-inline-block ms-1"
+                                                               style="width:7rem" disabled="@(!slot.Enabled)"
+                                                               value="@slot.Time"
+                                                               @onchange="e => SetOfferDayTime(day, e.Value?.ToString())" />
+                                                    </label>
+                                                }
+                                            </div>
                                         </div>
                                     </div>
                                     <button type="button" class="cc-btn cc-btn-primary mt-2" disabled="@_offerBusy" @onclick="CreateOfferingAsync">
@@ -378,10 +505,16 @@
     private string _offerTitle = "";
     private string? _offerSubject;
     private decimal _offerPrice;
-    private string _offerCurrency = "XAF";
+    private string _offerCurrency = "CAD";
     private int _offerDurationDays = 30;
     private int _offerSessionCount = 4;
     private string _offerMode = "En ligne";
+    private string _offerBillingMode = "perSession";
+    private string _offerPeriod = "mois";
+    private string _offerCadence = "weekly";
+    private int _offerSessionDuration = 60;
+    private readonly Dictionary<string, OfferDaySlot> _offerDaySlots = OfferDays.ToDictionary(
+        d => d, _ => new OfferDaySlot());
     private bool _offerBusy;
     private string? _offerError;
     private string? _offerSuccess;
@@ -394,9 +527,27 @@
     private string? _sPresentation;
     private string? _sCity;
     private string? _sCountry;
+    private string _sLanguage = "fr";
+    private string _sCurrency = "CAD";
     private bool _schoolBusy;
     private string? _schoolError;
     private string? _schoolSuccess;
+
+    private string? _photoUrl;
+    private bool _photoBusy;
+    private List<TeacherDisciplineStatusVm> _disciplines = [];
+    private bool _discBusy;
+    private HashSet<string> _availability = new(StringComparer.OrdinalIgnoreCase);
+    private string? _portfolioJson;
+
+    private static readonly string[] AvailabilityDays = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
+    private static readonly string[] AvailabilitySlots = ["Matin", "Après-midi", "Soir"];
+    private static readonly string[] OfferDays = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
+    private static readonly JsonSerializerOptions PortfolioJsonOpts = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
 
     protected override async Task OnInitializedAsync()
     {
@@ -437,6 +588,11 @@
             _remarks = await Api.GetAsync<List<ExpertRemarkItem>>($"api/expert/teachers/{tenantId}/remarks") ?? [];
             _offerings = await Api.GetAsync<List<TeacherOfferingItem>>($"api/expert/teachers/{tenantId}/offerings") ?? [];
             _school = await Api.GetAsync<TeacherSchoolVm>($"api/expert/teachers/{tenantId}/school");
+            _disciplines = await Api.GetAsync<List<TeacherDisciplineStatusVm>>($"api/expert/teachers/{tenantId}/disciplines") ?? [];
+            var branding = await Api.GetAsync<TeacherBrandingVm>($"api/expert/teachers/{tenantId}/branding");
+            _photoUrl = branding?.LogoUrl;
+            _portfolioJson = branding?.Portfolio;
+            _availability = ParseAvailability(branding?.Portfolio);
             if (_school is not null)
             {
                 _sFirstName = _school.FirstName;
@@ -449,6 +605,9 @@
                     : _school.Presentation;
                 _sCity = _school.City;
                 _sCountry = _school.Country;
+                _sLanguage = string.IsNullOrWhiteSpace(_school.Language) ? "fr" : _school.Language;
+                _sCurrency = string.IsNullOrWhiteSpace(_school.Currency) ? "CAD" : _school.Currency;
+                _offerCurrency = _sCurrency;
             }
         }
         catch (Exception ex) { _error = ex.Message; }
@@ -462,6 +621,10 @@
         _remarks = [];
         _offerings = [];
         _school = null;
+        _disciplines = [];
+        _photoUrl = null;
+        _availability = [];
+        _portfolioJson = null;
     }
 
     private async Task CreateOfferingAsync()
@@ -478,16 +641,43 @@
         _offerSuccess = null;
         try
         {
+            var slots = _offerDaySlots
+                .Where(kv => kv.Value.Enabled && !string.IsNullOrWhiteSpace(kv.Value.Time))
+                .Select(kv => new { day = kv.Key, time = kv.Value.Time })
+                .ToList();
+
+            var durationDays = _offerPeriod switch
+            {
+                "semaine" => 7,
+                "mois" => 30,
+                "trimestre" => 90,
+                "semestre" => 180,
+                "an" => 365,
+                _ => 30
+            };
+
             var result = await Api.PostWithErrorAsync<TeacherOfferingItem>($"api/expert/teachers/{tenantId}/offerings", new
             {
                 title = _offerTitle.Trim(),
                 subject = string.IsNullOrWhiteSpace(_offerSubject) ? null : _offerSubject,
                 price = _offerPrice,
-                currency = string.IsNullOrWhiteSpace(_offerCurrency) ? "XAF" : _offerCurrency,
-                durationDays = _offerDurationDays > 0 ? _offerDurationDays : 30,
+                currency = string.IsNullOrWhiteSpace(_offerCurrency) ? _sCurrency : _offerCurrency,
+                durationDays,
                 sessionCount = _offerSessionCount > 0 ? _offerSessionCount : 4,
                 mode = _offerMode,
-                maxCapacity = 20
+                maxCapacity = 20,
+                schedule = new
+                {
+                    billingPeriod = _offerPeriod,
+                    cadence = _offerCadence,
+                    sessionDurationMin = _offerSessionDuration > 0 ? _offerSessionDuration : 60,
+                    level = (string?)null,
+                    cancellationPolicy = (string?)null,
+                    slots,
+                    billingMode = _offerBillingMode,
+                    hourlyRate = _offerBillingMode == "hourly" ? _offerPrice : (decimal?)null,
+                    sessionRate = _offerBillingMode == "perSession" ? _offerPrice : (decimal?)null
+                }
             });
             if (!result.IsSuccess)
             {
@@ -495,7 +685,7 @@
                 return;
             }
 
-            _offerSuccess = "Offre créée.";
+            _offerSuccess = "Offre créée avec agenda et package.";
             _offerTitle = "";
             _offerSubject = null;
             _offerPrice = 0;
@@ -503,6 +693,48 @@
         }
         catch (Exception ex) { _offerError = ex.Message; }
         finally { _offerBusy = false; }
+    }
+
+    private void RecalcOfferSessions()
+    {
+        var weeks = _offerPeriod switch
+        {
+            "semaine" => 1,
+            "mois" => 4,
+            "trimestre" => 12,
+            "semestre" => 24,
+            "an" => 48,
+            _ => 4
+        };
+        var perWeek = _offerCadence == "biweekly" ? 0.5m : 1m;
+        var enabledDays = _offerDaySlots.Count(kv => kv.Value.Enabled);
+        if (enabledDays <= 0) enabledDays = 1;
+        _offerSessionCount = Math.Max(1, (int)Math.Round(weeks * perWeek * enabledDays));
+        _offerDurationDays = _offerPeriod switch
+        {
+            "semaine" => 7,
+            "mois" => 30,
+            "trimestre" => 90,
+            "semestre" => 180,
+            "an" => 365,
+            _ => 30
+        };
+    }
+
+    private void OnOfferDayToggle(string day, ChangeEventArgs e)
+    {
+        var on = e.Value is bool b ? b : string.Equals(e.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+        if (!_offerDaySlots.TryGetValue(day, out var slot)) return;
+        slot.Enabled = on;
+        if (on && string.IsNullOrWhiteSpace(slot.Time))
+            slot.Time = "17:00";
+        RecalcOfferSessions();
+    }
+
+    private void SetOfferDayTime(string day, string? time)
+    {
+        if (_offerDaySlots.TryGetValue(day, out var slot))
+            slot.Time = string.IsNullOrWhiteSpace(time) ? "17:00" : time!;
     }
 
     private async Task SaveSchoolAsync()
@@ -522,7 +754,9 @@
                 description = _sDescription,
                 presentation = _sPresentation,
                 city = _sCity,
-                country = _sCountry
+                country = _sCountry,
+                language = _sLanguage,
+                currency = _sCurrency
             });
             if (!result.IsSuccess || result.Value is null)
             {
@@ -533,13 +767,121 @@
             _sPresentation = string.IsNullOrWhiteSpace(_school.Presentation)
                 ? _school.Description
                 : _school.Presentation;
+
+            await SaveAvailabilityAsync(tenantId);
+
             _schoolSuccess = _school.IsPublicProfile
-                ? "Fiche publique mise à jour."
+                ? "Fiche publique mise à jour (profil, agenda, devise)."
                 : "Fiche enregistrée (brouillon).";
             _teachers = await Api.GetAsync<List<MonitoredTeacherItem>>("api/expert/teachers") ?? _teachers;
         }
         catch (Exception ex) { _schoolError = ex.Message; }
         finally { _schoolBusy = false; }
+    }
+
+    private async Task SaveAvailabilityAsync(Guid tenantId)
+    {
+        var portfolio = BuildPortfolioJson();
+        await Api.PutWithErrorAsync<TeacherBrandingVm>($"api/expert/teachers/{tenantId}/branding", new
+        {
+            presentation = _sPresentation,
+            portfolio
+        });
+        _portfolioJson = portfolio;
+    }
+
+    private void ToggleAvailability(string key)
+    {
+        if (!_availability.Add(key))
+            _availability.Remove(key);
+    }
+
+    private HashSet<string> ParseAvailability(string? portfolio)
+    {
+        if (string.IsNullOrWhiteSpace(portfolio)) return [];
+        try
+        {
+            using var doc = JsonDocument.Parse(portfolio);
+            if (doc.RootElement.TryGetProperty("availability", out var arr) && arr.ValueKind == JsonValueKind.Array)
+            {
+                return arr.EnumerateArray()
+                    .Select(x => x.GetString())
+                    .Where(s => !string.IsNullOrWhiteSpace(s))
+                    .Cast<string>()
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            }
+        }
+        catch { }
+        return [];
+    }
+
+    private string BuildPortfolioJson()
+    {
+        Dictionary<string, object?>? existing = null;
+        if (!string.IsNullOrWhiteSpace(_portfolioJson))
+        {
+            try
+            {
+                existing = JsonSerializer.Deserialize<Dictionary<string, object?>>(_portfolioJson, PortfolioJsonOpts);
+            }
+            catch { }
+        }
+        existing ??= new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+        existing["availability"] = _availability.OrderBy(x => x).ToList();
+        return JsonSerializer.Serialize(existing, PortfolioJsonOpts);
+    }
+
+    private async Task OnPhotoSelected(InputFileChangeEventArgs e)
+    {
+        if (_selectedTenantId is not Guid tenantId) return;
+        var file = e.File;
+        if (file is null) return;
+        _photoBusy = true;
+        _schoolError = null;
+        try
+        {
+            await using var stream = file.OpenReadStream(5 * 1024 * 1024);
+            using var content = new MultipartFormDataContent();
+            var streamContent = new StreamContent(stream);
+            streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(file.ContentType);
+            content.Add(streamContent, "file", file.Name);
+            var result = await Api.PostMultipartAsync<PhotoUploadVm>($"api/expert/teachers/{tenantId}/photo", content);
+            if (!result.IsSuccess)
+            {
+                _schoolError = result.Error ?? "Échec de l'envoi de la photo.";
+                return;
+            }
+            _photoUrl = result.Value?.LogoUrl ?? _photoUrl;
+            _schoolSuccess = "Photo mise à jour.";
+        }
+        catch (Exception ex) { _schoolError = ex.Message; }
+        finally { _photoBusy = false; }
+    }
+
+    private async Task ToggleDisciplineAsync(TeacherDisciplineStatusVm d, ChangeEventArgs e)
+    {
+        if (_selectedTenantId is not Guid tenantId) return;
+        var on = e.Value is bool b ? b : string.Equals(e.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+        _discBusy = true;
+        _schoolError = null;
+        try
+        {
+            if (on)
+            {
+                var r = await Api.PostWithErrorAsync<object>($"api/expert/teachers/{tenantId}/disciplines/{d.DisciplineId}", new { });
+                if (!r.IsSuccess) { _schoolError = r.Error ?? "Affectation impossible."; return; }
+            }
+            else
+            {
+                var ok = await Api.DeleteAsync($"api/expert/teachers/{tenantId}/disciplines/{d.DisciplineId}");
+                if (!ok) { _schoolError = "Retrait de la discipline impossible."; return; }
+            }
+            _disciplines = await Api.GetAsync<List<TeacherDisciplineStatusVm>>($"api/expert/teachers/{tenantId}/disciplines") ?? _disciplines;
+            if (on && string.IsNullOrWhiteSpace(_offerSubject))
+                _offerSubject = d.Name;
+        }
+        catch (Exception ex) { _schoolError = ex.Message; }
+        finally { _discBusy = false; }
     }
 
     private async Task PublishSchoolAsync()
@@ -742,4 +1084,28 @@
         string? ApprovedByExpertGroupName);
 
     private sealed record PublishSchoolResult(Guid TenantId, string Slug, bool IsPublicProfile, string PublicPath);
+
+    private sealed record TeacherDisciplineStatusVm(
+        Guid DisciplineId, string Name, int Cycle, bool IsActive, bool IsAssigned);
+
+    private sealed record TeacherBrandingVm(
+        Guid Id, Guid TenantId, string? LogoUrl, string? BannerUrl,
+        string PrimaryColor, string SecondaryColor, string? Presentation, string? Portfolio);
+
+    private sealed record PhotoUploadVm(string? LogoUrl);
+
+    private sealed class OfferDaySlot
+    {
+        public bool Enabled { get; set; }
+        public string Time { get; set; } = "17:00";
+    }
+
+    private static string CycleLabel(int cycle) => cycle switch
+    {
+        0 => "Primaire",
+        1 => "Secondaire",
+        2 => "Université",
+        3 => "Formation adultes",
+        _ => cycle.ToString()
+    };
 }

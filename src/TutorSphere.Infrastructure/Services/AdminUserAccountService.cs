@@ -12,12 +12,26 @@ public interface IAdminUserAccountService
     /// Hard-deletes a Parent or Student account (and related profiles). SuperAdmin only.
     /// </summary>
     Task DeleteParentOrStudentAsync(string targetUserId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Hard-deletes a teacher tenant/profile and related data. SuperAdmin only.
+    /// Optionally removes the owner Tutor identity when it has no other role.
+    /// </summary>
+    Task DeleteTenantAsync(Guid tenantId, CancellationToken ct = default);
 }
 
 public class AdminUserAccountService(
     IApplicationDbContext db,
     UserManager<ApplicationUser> users) : IAdminUserAccountService
 {
+    private static readonly HashSet<string> ProtectedSlugs = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "platform-parents",
+        "tutorsphere-parents",
+        "holding",
+        "marketplace"
+    };
+
     public async Task DeleteParentOrStudentAsync(string targetUserId, CancellationToken ct = default)
     {
         var user = await users.FindByIdAsync(targetUserId)
@@ -42,6 +56,163 @@ public class AdminUserAccountService(
         var result = await users.DeleteAsync(user);
         if (!result.Succeeded)
             throw new InvalidOperationException(string.Join("; ", result.Errors.Select(e => e.Description)));
+    }
+
+    public async Task DeleteTenantAsync(Guid tenantId, CancellationToken ct = default)
+    {
+        var tenant = db.Tenants.FirstOrDefault(t => t.Id == tenantId)
+            ?? throw new InvalidOperationException("Profil introuvable.");
+
+        if (ProtectedSlugs.Contains(tenant.Slug)
+            || tenant.Name.Contains("Parents", StringComparison.OrdinalIgnoreCase)
+               && tenant.Slug.Contains("parent", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "Ce profil système (espace parents / holding) ne peut pas être supprimé.");
+        }
+
+        var ownerUserId = tenant.OwnerUserId;
+
+        // Order matters for FKs.
+        var remarks = db.ExpertRemarksForAnyTenant.Where(r => r.TenantId == tenantId).ToList();
+        if (remarks.Count > 0) db.RemoveRange(remarks);
+
+        var teacherDocs = db.TeacherDocumentsForAnyTenant.Where(d => d.TenantId == tenantId).ToList();
+        if (teacherDocs.Count > 0) db.RemoveRange(teacherDocs);
+
+        var assignments = db.TeacherDisciplineAssignments.Where(a => a.TenantId == tenantId).ToList();
+        if (assignments.Count > 0) db.RemoveRange(assignments);
+
+        var groupOfferLinks = db.GroupOfferTeachers.Where(x => x.TeacherTenantId == tenantId).ToList();
+        if (groupOfferLinks.Count > 0) db.RemoveRange(groupOfferLinks);
+
+        var delegated = db.ExpertDelegatedTasks.Where(t => t.TeacherTenantId == tenantId).ToList();
+        if (delegated.Count > 0) db.RemoveRange(delegated);
+
+        var workspace = db.ExpertWorkspaceItems.Where(w => w.RelatedTeacherTenantId == tenantId).ToList();
+        if (workspace.Count > 0) db.RemoveRange(workspace);
+
+        var invites = db.TeacherApplicationInvites.Where(i => i.AcceptedTenantId == tenantId).ToList();
+        foreach (var inv in invites)
+            inv.AcceptedTenantId = null;
+
+        var subs = db.StudentSubscriptionsForAnyTenant.Where(s => s.TenantId == tenantId).ToList();
+        if (subs.Count > 0)
+        {
+            var subIds = subs.Select(s => s.Id).ToList();
+            var subPayments = db.PaymentsForAnyTenant
+                .Where(p => p.SubscriptionId.HasValue && subIds.Contains(p.SubscriptionId.Value))
+                .ToList();
+            if (subPayments.Count > 0) db.RemoveRange(subPayments);
+            db.RemoveRange(subs);
+        }
+
+        var offerings = db.SubscriptionOfferingsForAnyTenant.Where(o => o.TenantId == tenantId).ToList();
+        if (offerings.Count > 0) db.RemoveRange(offerings);
+
+        var lessons = db.LessonsForAnyTenant.Where(l => l.TenantId == tenantId).ToList();
+        if (lessons.Count > 0)
+        {
+            var lessonIds = lessons.Select(l => l.Id).ToList();
+            var attendances = db.LessonAttendancesForAnyTenant.Where(a => lessonIds.Contains(a.LessonId)).ToList();
+            if (attendances.Count > 0) db.RemoveRange(attendances);
+            db.RemoveRange(lessons);
+        }
+
+        var reportsByTenant = db.LessonReportsForAnyTenant.Where(r => r.TenantId == tenantId).ToList();
+        if (reportsByTenant.Count > 0) db.RemoveRange(reportsByTenant);
+
+        var homeworksByTenant = db.HomeworksForAnyTenant.Where(h => h.TenantId == tenantId).ToList();
+        if (homeworksByTenant.Count > 0) db.RemoveRange(homeworksByTenant);
+
+        var unavail = db.Unavailabilities.Where(u => u.TenantId == tenantId).ToList();
+        if (unavail.Count > 0) db.RemoveRange(unavail);
+
+        var holidays = db.Holidays.Where(h => h.TenantId == tenantId).ToList();
+        if (holidays.Count > 0) db.RemoveRange(holidays);
+
+        var vacations = db.Vacations.Where(v => v.TenantId == tenantId).ToList();
+        if (vacations.Count > 0) db.RemoveRange(vacations);
+
+        var invoices = db.InvoicesForAnyTenant.Where(i => i.TenantId == tenantId).ToList();
+        if (invoices.Count > 0)
+        {
+            var invoiceIds = invoices.Select(i => i.Id).ToList();
+            var invPay = db.PaymentsForAnyTenant
+                .Where(p => p.InvoiceId.HasValue && invoiceIds.Contains(p.InvoiceId.Value))
+                .ToList();
+            if (invPay.Count > 0) db.RemoveRange(invPay);
+            db.RemoveRange(invoices);
+        }
+
+        var payments = db.PaymentsForAnyTenant.Where(p => p.TenantId == tenantId).ToList();
+        if (payments.Count > 0) db.RemoveRange(payments);
+
+        var licensePays = db.PlatformLicensePaymentsForAnyTenant.Where(p => p.TenantId == tenantId).ToList();
+        if (licensePays.Count > 0) db.RemoveRange(licensePays);
+
+        var payouts = db.TutorPayoutsForAnyTenant.Where(p => p.TenantId == tenantId).ToList();
+        if (payouts.Count > 0) db.RemoveRange(payouts);
+
+        var payoutAccounts = db.TutorPayoutAccounts.Where(a => a.TenantId == tenantId).ToList();
+        if (payoutAccounts.Count > 0) db.RemoveRange(payoutAccounts);
+
+        var messages = db.Messages.Where(m => m.TenantId == tenantId).ToList();
+        if (messages.Count > 0) db.RemoveRange(messages);
+
+        var documents = db.DocumentsForAnyTenant.Where(d => d.TenantId == tenantId).ToList();
+        if (documents.Count > 0) db.RemoveRange(documents);
+
+        var brandings = db.TenantBrandings.Where(b => b.TenantId == tenantId).ToList();
+        if (brandings.Count > 0) db.RemoveRange(brandings);
+
+        // Students / parents attached to this teacher tenant
+        var parentProfiles = db.ParentProfilesForAnyTenant.Where(p => p.TenantId == tenantId).ToList();
+        if (parentProfiles.Count > 0)
+        {
+            var parentIds = parentProfiles.Select(p => p.Id).ToList();
+            var linkedStudents = db.StudentsForAnyTenant
+                .Where(s => s.ParentProfileId.HasValue && parentIds.Contains(s.ParentProfileId.Value))
+                .ToList();
+            foreach (var child in linkedStudents)
+                await DeleteStudentEntityAsync(child, deleteIdentityUser: true, ct);
+            db.RemoveRange(parentProfiles);
+        }
+
+        var students = db.StudentsForAnyTenant.Where(s => s.TenantId == tenantId).ToList();
+        foreach (var student in students)
+            await DeleteStudentEntityAsync(student, deleteIdentityUser: true, ct);
+
+        db.Remove(tenant);
+        await db.SaveChangesAsync(ct);
+
+        // Detach other users pointing at this tenant
+        var linkedUsers = users.Users.Where(u => u.TenantId == tenantId).ToList();
+        foreach (var u in linkedUsers)
+        {
+            u.TenantId = null;
+            await users.UpdateAsync(u);
+        }
+
+        if (!string.IsNullOrWhiteSpace(ownerUserId))
+        {
+            var owner = await users.FindByIdAsync(ownerUserId);
+            if (owner is not null)
+            {
+                var roles = await users.GetRolesAsync(owner);
+                var onlyTutor = roles.Contains(UserRoles.Tutor)
+                    && !roles.Any(r => r is UserRoles.SuperAdmin or UserRoles.PlatformAdmin
+                        or UserRoles.Expert or UserRoles.GroupManager or UserRoles.Parent);
+                var ownsOther = db.Tenants.Any(t => t.OwnerUserId == ownerUserId && t.Id != tenantId);
+                if (onlyTutor && !ownsOther)
+                {
+                    var del = await users.DeleteAsync(owner);
+                    if (!del.Succeeded)
+                        throw new InvalidOperationException(
+                            $"Profil supprimé, mais le compte propriétaire n'a pas pu l'être : {string.Join("; ", del.Errors.Select(e => e.Description))}");
+                }
+            }
+        }
     }
 
     private async Task DeleteParentGraphAsync(string parentUserId, CancellationToken ct)

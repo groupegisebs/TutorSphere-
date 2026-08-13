@@ -86,7 +86,7 @@ public class StudentPortalService : IStudentPortalService
 
             var tenantId = _db.Tenants.Select(t => t.Id).FirstOrDefault();
             if (tenantId == Guid.Empty)
-                throw new InvalidOperationException("Aucune école disponible.");
+                throw new InvalidOperationException("Aucun profil disponible.");
 
             var billing = _db.ParentProfilesForAnyTenant.FirstOrDefault(p => p.UserId == userId);
             if (billing is null)

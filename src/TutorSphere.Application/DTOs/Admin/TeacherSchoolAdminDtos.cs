@@ -47,3 +47,20 @@ public record PublishTeacherPublicProfileResult(
     string Slug,
     bool IsPublicProfile,
     string PublicPath);
+
+/// <summary>Élève actuellement inscrit à une offre d'un enseignant (abonnement actif).</summary>
+public record AdminTeacherActiveStudentDto(
+    Guid SubscriptionId,
+    Guid StudentId,
+    string StudentName,
+    string? StudentEmail,
+    string? ParentName,
+    Guid OfferingId,
+    string OfferingTitle,
+    string? Subject,
+    string Status,
+    DateTime StartDate,
+    DateTime EndDate,
+    int SessionsRemaining,
+    decimal Price,
+    string Currency);

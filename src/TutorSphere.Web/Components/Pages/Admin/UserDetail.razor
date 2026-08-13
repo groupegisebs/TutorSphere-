@@ -92,7 +92,8 @@
             <div class="cc-tabs">
                 @foreach (var tab in Tabs)
                 {
-                    <button type="button" class="cc-tab @(_tab == tab.Key ? "active" : null)" @onclick="() => _tab = tab.Key">@tab.Label</button>
+                    <button type="button" class="cc-tab @(_tab == tab.Key ? "active" : null)"
+                            @onclick="() => SelectTabAsync(tab.Key)">@tab.Label</button>
                 }
             </div>
 
@@ -264,6 +265,95 @@
                     </div>
                 }
             }
+            else if (_tab == "students")
+            {
+                <div class="cc-card">
+                    <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+                        <div>
+                            <h2 class="cc-card-title mb-1">Élèves inscrits actuellement</h2>
+                            <p class="small text-muted mb-0">Abonnements actifs aux cours de cet enseignant.</p>
+                        </div>
+                        @if (_teacher is not null)
+                        {
+                            <button type="button" class="cc-btn btn-sm" disabled="@_studentsLoading" @onclick="LoadActiveStudentsAsync">
+                                <i class="bi bi-arrow-clockwise"></i> Actualiser
+                            </button>
+                        }
+                    </div>
+
+                    @if (_teacher is null)
+                    {
+                        <div class="cc-empty">
+                            <i class="bi bi-people"></i>
+                            <p>Cet utilisateur n'est pas un enseignant — pas de liste d'élèves.</p>
+                        </div>
+                    }
+                    else if (_studentsLoading)
+                    {
+                        <div class="cc-empty"><span class="spinner-border"></span></div>
+                    }
+                    else if (!string.IsNullOrEmpty(_studentsError))
+                    {
+                        <div class="cc-alert cc-alert-danger"><i class="bi bi-exclamation-circle"></i> @_studentsError</div>
+                    }
+                    else if (_activeStudents.Count == 0)
+                    {
+                        <div class="cc-empty">
+                            <i class="bi bi-mortarboard"></i>
+                            <p>Aucun élève ne suit actuellement un cours de cet enseignant.</p>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="cc-table-wrap">
+                            <table class="cc-table">
+                                <thead>
+                                    <tr>
+                                        <th>Élève</th>
+                                        <th>Parent</th>
+                                        <th>Cours / offre</th>
+                                        <th>Séances restantes</th>
+                                        <th>Période</th>
+                                        <th>Tarif</th>
+                                        <th>Statut</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var s in _activeStudents)
+                                    {
+                                        <tr>
+                                            <td>
+                                                <strong>@s.StudentName</strong>
+                                                @if (!string.IsNullOrWhiteSpace(s.StudentEmail))
+                                                {
+                                                    <div class="small text-muted">@s.StudentEmail</div>
+                                                }
+                                            </td>
+                                            <td>@(s.ParentName ?? "—")</td>
+                                            <td>
+                                                <strong>@s.OfferingTitle</strong>
+                                                @if (!string.IsNullOrWhiteSpace(s.Subject))
+                                                {
+                                                    <div class="small text-muted">@s.Subject</div>
+                                                }
+                                            </td>
+                                            <td>@s.SessionsRemaining</td>
+                                            <td class="small">
+                                                @s.StartDate.ToLocalTime().ToString("dd MMM yyyy")
+                                                –
+                                                @s.EndDate.ToLocalTime().ToString("dd MMM yyyy")
+                                            </td>
+                                            <td>@s.Price.ToString("N0") @s.Currency</td>
+                                            <td><span class="cc-pill cc-pill-ok">@s.Status</span></td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                        <p class="small text-muted mt-2 mb-0">@_activeStudents.Count élève(s) actif(s).</p>
+                    }
+                </div>
+            }
             else
             {
                 <div class="cc-card">
@@ -303,9 +393,15 @@
     private string _editLanguage = "fr";
     private string _editCurrency = "XAF";
 
+    private List<ActiveStudentVm> _activeStudents = [];
+    private bool _studentsLoading;
+    private bool _studentsLoaded;
+    private string? _studentsError;
+
     private static readonly (string Key, string Label)[] Tabs =
     [
         ("info", "Informations"),
+        ("students", "Élèves"),
         ("activity", "Activité"),
         ("payments", "Paiements"),
         ("courses", "Cours"),
@@ -570,6 +666,48 @@
         "TeachingAssistant" => "teacher",
         _ => ""
     };
+
+    private async Task SelectTabAsync(string key)
+    {
+        _tab = key;
+        if (key == "students" && !_studentsLoaded && _teacher is not null)
+            await LoadActiveStudentsAsync();
+    }
+
+    private async Task LoadActiveStudentsAsync()
+    {
+        if (_teacher is null) return;
+        _studentsLoading = true;
+        _studentsError = null;
+        try
+        {
+            _activeStudents = await Api.GetAsync<List<ActiveStudentVm>>(
+                $"api/admin/teachers/{_teacher.TenantId}/active-students") ?? [];
+            _studentsLoaded = true;
+        }
+        catch (Exception ex)
+        {
+            _studentsError = ex.Message;
+            _activeStudents = [];
+        }
+        finally { _studentsLoading = false; }
+    }
+
+    private sealed record ActiveStudentVm(
+        Guid SubscriptionId,
+        Guid StudentId,
+        string StudentName,
+        string? StudentEmail,
+        string? ParentName,
+        Guid OfferingId,
+        string OfferingTitle,
+        string? Subject,
+        string Status,
+        DateTime StartDate,
+        DateTime EndDate,
+        int SessionsRemaining,
+        decimal Price,
+        string Currency);
 
     private sealed record TeacherSchoolVm(
         Guid TenantId,

@@ -126,7 +126,7 @@ public class AuthController : ControllerBase
                 <body><div class="box">
                 <div class="icon">✅</div>
                 <h1>Adresse confirmée !</h1>
-                <p>Votre e-mail est validé. Vous pouvez maintenant vous connecter pour activer votre école (paiement 10 $ USD / an, puis courte formation).</p>
+                <p>Votre e-mail est validé. Vous pouvez maintenant vous connecter pour activer votre profil (paiement 10 $ USD / an, puis courte formation).</p>
                 <p><a href="/login/tuteur">Connexion enseignant →</a></p>
                 </div></body></html>
                 """, "text/html");
