@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using TutorSphere.Application.Common;
 using TutorSphere.Application.DTOs.Branding;
 using TutorSphere.Application.Services;
+using TutorSphere.Domain.Common;
 using TutorSphere.Domain.Enums;
 using TutorSphere.Infrastructure.Identity;
 
@@ -13,11 +15,19 @@ namespace TutorSphere.Api.Controllers;
 public class BrandingController : ControllerBase
 {
     private readonly IBrandingService _brandingService;
+    private readonly IParentService _parentService;
+    private readonly IStudentPortalService _studentPortal;
     private readonly UserManager<ApplicationUser> _userManager;
 
-    public BrandingController(IBrandingService brandingService, UserManager<ApplicationUser> userManager)
+    public BrandingController(
+        IBrandingService brandingService,
+        IParentService parentService,
+        IStudentPortalService studentPortal,
+        UserManager<ApplicationUser> userManager)
     {
         _brandingService = brandingService;
+        _parentService = parentService;
+        _studentPortal = studentPortal;
         _userManager = userManager;
     }
 
@@ -28,7 +38,11 @@ public class BrandingController : ControllerBase
         [FromQuery] string? viewerCountry,
         CancellationToken ct)
     {
-        var site = await _brandingService.GetPublicSiteBySlugAsync(slug, viewerCountry, ct);
+        var country = await ResolveViewerCountryAsync(viewerCountry, ct);
+        if (RequiresCountryFilter() && country is null)
+            return NotFound();
+
+        var site = await _brandingService.GetPublicSiteBySlugAsync(slug, country, ct);
         return site is null ? NotFound() : Ok(site);
     }
 
@@ -40,7 +54,12 @@ public class BrandingController : ControllerBase
         [FromQuery] string? viewerCountry,
         CancellationToken ct)
     {
-        var detail = await _brandingService.GetPublicTutorDetailAsync(slug, viewerCountry, ct);
+        var country = await ResolveViewerCountryAsync(viewerCountry, ct);
+        // Parent / élève : pays obligatoire (même règle que la recherche).
+        if (RequiresCountryFilter() && country is null)
+            return NotFound();
+
+        var detail = await _brandingService.GetPublicTutorDetailAsync(slug, country, ct);
         if (detail is null)
             return NotFound();
 
@@ -102,6 +121,34 @@ public class BrandingController : ControllerBase
         {
             return NotFound(new { error = ex.Message });
         }
+    }
+
+    private bool RequiresCountryFilter() =>
+        User.IsInRole(UserRoles.Parent) || User.IsInRole(UserRoles.Student);
+
+    private async Task<string?> ResolveViewerCountryAsync(string? requested, CancellationToken ct)
+    {
+        var userId = User.GetUserId();
+        if (!string.IsNullOrEmpty(userId))
+        {
+            if (User.IsInRole(UserRoles.Parent))
+            {
+                var parent = await _parentService.GetByUserIdAsync(userId, ct);
+                var fromProfile = ProfileVisibility.NormalizeCode(parent?.Country);
+                if (fromProfile.Length == 2)
+                    return fromProfile;
+            }
+            else if (User.IsInRole(UserRoles.Student))
+            {
+                var fromProfile = ProfileVisibility.NormalizeCode(
+                    await _studentPortal.GetViewerCountryAsync(userId, ct));
+                if (fromProfile.Length == 2)
+                    return fromProfile;
+            }
+        }
+
+        var fromQuery = ProfileVisibility.NormalizeCode(requested);
+        return fromQuery.Length == 2 ? fromQuery : null;
     }
 
     private bool CanAccessTenant(Guid tenantId)

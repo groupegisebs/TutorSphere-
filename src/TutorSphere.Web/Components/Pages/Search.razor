@@ -69,13 +69,17 @@
                 <input type="number" class="form-control" @bind="Filters.MinRating" min="0" max="5" step="0.5" disabled />
                 <small class="form-hint">@L["Hint_RatingsComingSoon"]</small>
             </div>
-            <button class="btn btn-primary w-100" @onclick="SearchAsync" disabled="@IsLoading">
+            <button class="btn btn-primary w-100" @onclick="SearchAsync" disabled="@(IsLoading || string.IsNullOrWhiteSpace(Filters.ViewerCountry))">
                 @if (IsLoading)
                 {
                     <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
                 }
                 @(IsLoading ? L["Button_Searching"] : L["Button_Search"])
             </button>
+            @if (string.IsNullOrWhiteSpace(Filters.ViewerCountry))
+            {
+                <small class="form-hint d-block mt-2">@L["Search_CountryRequired"]</small>
+            }
         </aside>
 
         <section class="search-results">
@@ -123,7 +127,8 @@
 
     protected override async Task OnInitializedAsync()
     {
-        await SearchAsync();
+        // Pas de recherche sans pays (filtre de visibilité géographique).
+        IsLoading = false;
     }
 
     private async Task SearchAsync()
@@ -133,6 +138,12 @@
 
         try
         {
+            if (string.IsNullOrWhiteSpace(Filters.ViewerCountry))
+            {
+                Results = [];
+                return;
+            }
+
             var query = BuildQueryString();
             var response = await Http.GetFromJsonAsync<List<TutorSearchResultDto>>($"api/search/tutors{query}");
             Results = response ?? [];
@@ -174,10 +185,10 @@
             parts.Add($"{key}={Uri.EscapeDataString(value.Trim())}");
     }
 
-    private Task OnViewerCountryChanged(string? code)
+    private async Task OnViewerCountryChanged(string? code)
     {
         Filters.ViewerCountry = code ?? "";
-        return Task.CompletedTask;
+        await SearchAsync();
     }
 
     private sealed class SearchFiltersModel

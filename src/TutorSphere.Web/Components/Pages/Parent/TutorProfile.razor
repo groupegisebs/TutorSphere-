@@ -4,6 +4,7 @@
 @using TutorSphere.Application.DTOs.Branding
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
+@inject ParentProfileState ParentProfile
 
 <PageTitle>@(Profile?.TutorFullName ?? Profile?.SchoolName ?? L["Nav_FindTutor"]) — TutorSphere</PageTitle>
 
@@ -61,7 +62,11 @@ else
 
         try
         {
-            Profile = await Api.GetAsync<PublicTutorDetailDto>($"api/branding/{Uri.EscapeDataString(Slug)}/tutor");
+            try { await ParentProfile.EnsureLoadedAsync(); } catch { }
+            var url = $"api/branding/{Uri.EscapeDataString(Slug)}/tutor";
+            if (!string.IsNullOrWhiteSpace(ParentProfile.Country))
+                url += $"?viewerCountry={Uri.EscapeDataString(ParentProfile.Country)}";
+            Profile = await Api.GetAsync<PublicTutorDetailDto>(url);
             _notFound = Profile is null;
         }
         catch

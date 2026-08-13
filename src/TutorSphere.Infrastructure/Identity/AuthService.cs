@@ -516,7 +516,7 @@ public class AuthService : IAuthService
         user.TenantId = tenant.Id;
         await _userManager.UpdateAsync(user);
 
-        var loginUrl = $"{_urls.WebBaseUrl.TrimEnd('/')}/login";
+        var loginUrl = $"{_urls.WebBaseUrl.TrimEnd('/')}/login/tuteur";
         var credentialsSent = false;
         try
         {

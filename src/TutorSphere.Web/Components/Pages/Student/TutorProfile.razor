@@ -65,7 +65,10 @@ else
             try { _me = await Api.GetAsync<StudentDto>("api/students/me"); }
             catch { _me = null; }
 
-            Profile = await Api.GetAsync<PublicTutorDetailDto>($"api/branding/{Uri.EscapeDataString(Slug)}/tutor");
+            var url = $"api/branding/{Uri.EscapeDataString(Slug)}/tutor";
+            if (!string.IsNullOrWhiteSpace(_me?.Country))
+                url += $"?viewerCountry={Uri.EscapeDataString(_me.Country)}";
+            Profile = await Api.GetAsync<PublicTutorDetailDto>(url);
             _notFound = Profile is null;
         }
         catch
