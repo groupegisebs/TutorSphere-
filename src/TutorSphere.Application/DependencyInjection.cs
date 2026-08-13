@@ -1,13 +1,20 @@
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using TutorSphere.Application.Common.Interfaces;
+using TutorSphere.Application.Options;
 using TutorSphere.Application.Services;
 
 namespace TutorSphere.Application;
 
 public static class DependencyInjection
 {
-    public static IServiceCollection AddApplication(this IServiceCollection services)
+    public static IServiceCollection AddApplication(this IServiceCollection services, IConfiguration? configuration = null)
     {
+        if (configuration is not null)
+            services.Configure<ExpertModuleFeatureOptions>(configuration.GetSection(ExpertModuleFeatureOptions.SectionName));
+        else
+            services.Configure<ExpertModuleFeatureOptions>(_ => { });
+
         services.AddScoped<ITenantService, TenantService>();
         services.AddScoped<IBrandingService, BrandingService>();
         services.AddScoped<ISearchService, SearchService>();
@@ -34,6 +41,7 @@ public static class DependencyInjection
         services.AddScoped<IGroupOfferService, GroupOfferService>();
         services.AddScoped<IGroupAdminChatService, GroupAdminChatService>();
         services.AddScoped<ITeacherInterestService, TeacherInterestService>();
+        services.AddScoped<IExpertModuleFeatureService, ExpertModuleFeatureService>();
         services.AddScoped<IExpertApprovalService, ExpertApprovalService>();
         services.AddScoped<IExpertMonitoringService, ExpertMonitoringService>();
         services.AddScoped<IExpertDisciplineService, ExpertDisciplineService>();

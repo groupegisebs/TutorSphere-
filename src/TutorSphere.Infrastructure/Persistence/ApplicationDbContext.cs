@@ -218,9 +218,11 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             e.Property(g => g.ContactEmail).HasMaxLength(256);
             e.Property(g => g.ContactPhone).HasMaxLength(50);
             e.Property(g => g.CountryCode).HasMaxLength(8);
+            e.Property(g => g.ManagerAssignedByAdminId).HasMaxLength(450);
             e.HasIndex(g => g.IsInternational);
             e.HasIndex(g => g.CountryCode);
             e.HasIndex(g => g.ActiveManagerMandateId);
+            e.HasIndex(g => g.GroupManagerMembershipId);
             // Unicité logique : un international + un par pays (appliquée aussi en service).
             e.HasIndex(g => g.CountryCode)
                 .IsUnique()

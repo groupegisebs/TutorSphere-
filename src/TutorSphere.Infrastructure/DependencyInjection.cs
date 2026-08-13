@@ -53,7 +53,7 @@ public static class DependencyInjection
         services.AddScoped<IUserContactLookup, IdentityUserContactLookup>();
         services.AddScoped<IExpertIdentityActions, ExpertIdentityActions>();
         services.AddSingleton<IAppUrlProvider, ConfigurationAppUrlProvider>();
-        services.AddApplication();
+        services.AddApplication(configuration);
 
         return services;
     }

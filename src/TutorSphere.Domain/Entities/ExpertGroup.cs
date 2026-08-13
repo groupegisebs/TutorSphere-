@@ -34,6 +34,12 @@ public class ExpertGroup : BaseEntity
     /// <summary>Mandat Responsable principal actif (dénormalisé pour jointures rapides).</summary>
     public Guid? ActiveManagerMandateId { get; set; }
 
+    /// <summary>Adhésion du Responsable actif (contrat produit Lot 1).</summary>
+    public Guid? GroupManagerMembershipId { get; set; }
+
+    public DateTime? ManagerAssignedAtUtc { get; set; }
+    public string? ManagerAssignedByAdminId { get; set; }
+
     public ICollection<ExpertGroupMember> Members { get; set; } = [];
     public ICollection<ExpertGroupManagerMandate> ManagerMandates { get; set; } = [];
     public ICollection<GroupOffer> Offers { get; set; } = [];

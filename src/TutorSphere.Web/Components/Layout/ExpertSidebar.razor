@@ -1,6 +1,7 @@
 @inject IStringLocalizer<SharedResources> L
 @inject AuthService Auth
 @inject ApiClient Api
+@inject ExpertModuleFeatures Modules
 @inject NavigationManager Nav
 
 <div class="cc-sidebar-brand">
@@ -8,7 +9,7 @@
         <img class="cc-sidebar-logo" src="images/tutorsphere-logo-full.png" alt="TutorSphere" />
         <div class="cc-sidebar-brand-text">
             <span class="cc-sidebar-brand-name">TutorSphere</span>
-            <span class="cc-sidebar-brand-badge">Expert</span>
+            <span class="cc-sidebar-brand-badge">@(_isManager ? "Responsable" : "Expert")</span>
         </div>
     </a>
 </div>
@@ -21,6 +22,13 @@
                 <i class="bi bi-speedometer2" aria-hidden="true"></i>
                 <span>Tableau de bord</span>
             </NavLink>
+            @if (_isManager && Modules.GroupAdmin)
+            {
+                <NavLink class="cc-nav-link" href="group-admin/dashboard" Match="NavLinkMatch.Prefix">
+                    <i class="bi bi-building-gear" aria-hidden="true"></i>
+                    <span>Espace Responsable</span>
+                </NavLink>
+            }
         </div>
 
         <div class="cc-nav-section">
@@ -33,46 +41,19 @@
                 <i class="bi bi-mortarboard" aria-hidden="true"></i>
                 <span>Approuvés</span>
             </NavLink>
-            <NavLink class="cc-nav-link cc-nav-link-soon" href="expert/coming-soon/interviews">
-                <i class="bi bi-camera-video" aria-hidden="true"></i>
-                <span>Entretiens</span>
-            </NavLink>
-            <NavLink class="cc-nav-link cc-nav-link-soon" href="expert/coming-soon/demonstrations">
-                <i class="bi bi-easel" aria-hidden="true"></i>
-                <span>Démonstrations</span>
-            </NavLink>
-            <NavLink class="cc-nav-link cc-nav-link-soon" href="expert/coming-soon/documents">
-                <i class="bi bi-file-earmark-text" aria-hidden="true"></i>
-                <span>Documents</span>
-            </NavLink>
-            <NavLink class="cc-nav-link cc-nav-link-soon" href="expert/coming-soon/renewals">
-                <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
-                <span>Réévaluations</span>
-            </NavLink>
+            <FrozenNavItem Icon="bi-camera-video" Label="Entretiens" />
+            <FrozenNavItem Icon="bi-easel" Label="Démonstrations" />
+            <FrozenNavItem Icon="bi-file-earmark-text" Label="Documents" />
+            <FrozenNavItem Icon="bi-arrow-repeat" Label="Réévaluations" />
         </div>
 
         <div class="cc-nav-section">
             <div class="cc-nav-section-label">Qualité</div>
-            <NavLink class="cc-nav-link cc-nav-link-soon" href="expert/coming-soon/quality">
-                <i class="bi bi-graph-up" aria-hidden="true"></i>
-                <span>Suivi qualité</span>
-            </NavLink>
-            <NavLink class="cc-nav-link cc-nav-link-soon" href="expert/coming-soon/observations">
-                <i class="bi bi-eye" aria-hidden="true"></i>
-                <span>Observations</span>
-            </NavLink>
-            <NavLink class="cc-nav-link cc-nav-link-soon" href="expert/coming-soon/resources">
-                <i class="bi bi-folder2-open" aria-hidden="true"></i>
-                <span>Supports</span>
-            </NavLink>
-            <NavLink class="cc-nav-link cc-nav-link-soon" href="expert/coming-soon/feedback">
-                <i class="bi bi-chat-left-text" aria-hidden="true"></i>
-                <span>Remarques</span>
-            </NavLink>
-            <NavLink class="cc-nav-link cc-nav-link-soon" href="expert/coming-soon/incidents">
-                <i class="bi bi-exclamation-triangle" aria-hidden="true"></i>
-                <span>Incidents</span>
-            </NavLink>
+            <FrozenNavItem Icon="bi-graph-up" Label="Suivi qualité" />
+            <FrozenNavItem Icon="bi-eye" Label="Observations" />
+            <FrozenNavItem Icon="bi-folder2-open" Label="Supports" />
+            <FrozenNavItem Icon="bi-chat-left-text" Label="Remarques" />
+            <FrozenNavItem Icon="bi-exclamation-triangle" Label="Incidents" />
         </div>
 
         <div class="cc-nav-section">
@@ -85,18 +66,9 @@
                 <i class="bi bi-tags" aria-hidden="true"></i>
                 <span>Offres du groupe</span>
             </NavLink>
-            <NavLink class="cc-nav-link cc-nav-link-soon" href="expert/coming-soon/library">
-                <i class="bi bi-journal-bookmark" aria-hidden="true"></i>
-                <span>Bibliothèque</span>
-            </NavLink>
-            <NavLink class="cc-nav-link cc-nav-link-soon" href="expert/coming-soon/training">
-                <i class="bi bi-mortarboard-fill" aria-hidden="true"></i>
-                <span>Formations</span>
-            </NavLink>
-            <NavLink class="cc-nav-link cc-nav-link-soon" href="expert/coming-soon/visibility">
-                <i class="bi bi-globe2" aria-hidden="true"></i>
-                <span>Visibilité</span>
-            </NavLink>
+            <FrozenNavItem Icon="bi-journal-bookmark" Label="Bibliothèque" />
+            <FrozenNavItem Icon="bi-mortarboard-fill" Label="Formations" />
+            <FrozenNavItem Icon="bi-globe2" Label="Visibilité" />
         </div>
 
         <div class="cc-nav-section">
@@ -109,14 +81,8 @@
                 <i class="bi bi-person-check" aria-hidden="true"></i>
                 <span>Admissions Experts</span>
             </NavLink>
-            <NavLink class="cc-nav-link cc-nav-link-soon" href="expert/coming-soon/meetings">
-                <i class="bi bi-calendar-event" aria-hidden="true"></i>
-                <span>Réunions</span>
-            </NavLink>
-            <NavLink class="cc-nav-link cc-nav-link-soon" href="expert/coming-soon/decisions">
-                <i class="bi bi-ui-checks" aria-hidden="true"></i>
-                <span>Décisions</span>
-            </NavLink>
+            <FrozenNavItem Icon="bi-calendar-event" Label="Réunions" />
+            <FrozenNavItem Icon="bi-ui-checks" Label="Décisions" />
         </div>
 
         @if (_isManager)
@@ -127,14 +93,8 @@
                     <i class="bi bi-chat-dots" aria-hidden="true"></i>
                     <span>Chat avec TutorSphere</span>
                 </NavLink>
-                <NavLink class="cc-nav-link cc-nav-link-soon" href="expert/coming-soon/reports">
-                    <i class="bi bi-file-earmark-bar-graph" aria-hidden="true"></i>
-                    <span>Rapports</span>
-                </NavLink>
-                <NavLink class="cc-nav-link cc-nav-link-soon" href="expert/coming-soon/activity">
-                    <i class="bi bi-activity" aria-hidden="true"></i>
-                    <span>Journal d'activité</span>
-                </NavLink>
+                <FrozenNavItem Icon="bi-file-earmark-bar-graph" Label="Rapports" />
+                <FrozenNavItem Icon="bi-activity" Label="Journal d'activité" />
             </div>
         }
 
@@ -142,19 +102,10 @@
             <div class="cc-nav-section-label">Outils</div>
             @if (!_isManager)
             {
-                <NavLink class="cc-nav-link cc-nav-link-soon" href="expert/coming-soon/reports">
-                    <i class="bi bi-file-earmark-bar-graph" aria-hidden="true"></i>
-                    <span>Rapports</span>
-                </NavLink>
+                <FrozenNavItem Icon="bi-file-earmark-bar-graph" Label="Rapports" />
             }
-            <NavLink class="cc-nav-link cc-nav-link-soon" href="expert/coming-soon/notifications">
-                <i class="bi bi-bell" aria-hidden="true"></i>
-                <span>Notifications</span>
-            </NavLink>
-            <NavLink class="cc-nav-link cc-nav-link-soon" href="expert/coming-soon/profile">
-                <i class="bi bi-person-gear" aria-hidden="true"></i>
-                <span>Mon profil</span>
-            </NavLink>
+            <FrozenNavItem Icon="bi-bell" Label="Notifications" />
+            <FrozenNavItem Icon="bi-person-gear" Label="Mon profil" />
         </div>
     </nav>
 </div>

@@ -26,6 +26,24 @@ public class ExpertIdentityActions(
             await userManager.AddToRoleAsync(user, Domain.Enums.UserRoles.Expert);
     }
 
+    public async Task EnsureGroupManagerRoleAsync(string userId, CancellationToken ct = default)
+    {
+        var user = await userManager.FindByIdAsync(userId)
+            ?? throw new InvalidOperationException("Utilisateur introuvable.");
+        if (!await userManager.IsInRoleAsync(user, Domain.Enums.UserRoles.Expert))
+            await userManager.AddToRoleAsync(user, Domain.Enums.UserRoles.Expert);
+        if (!await userManager.IsInRoleAsync(user, Domain.Enums.UserRoles.GroupManager))
+            await userManager.AddToRoleAsync(user, Domain.Enums.UserRoles.GroupManager);
+    }
+
+    public async Task RemoveGroupManagerRoleAsync(string userId, CancellationToken ct = default)
+    {
+        var user = await userManager.FindByIdAsync(userId);
+        if (user is null) return;
+        if (await userManager.IsInRoleAsync(user, Domain.Enums.UserRoles.GroupManager))
+            await userManager.RemoveFromRoleAsync(user, Domain.Enums.UserRoles.GroupManager);
+    }
+
     public async Task<string> EnsureCandidateUserAsync(
         string email,
         string firstName,

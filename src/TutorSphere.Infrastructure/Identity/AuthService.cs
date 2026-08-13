@@ -138,8 +138,8 @@ public class AuthService : IAuthService
         if (!await _userManager.CheckPasswordAsync(user, password))
             throw new UnauthorizedAccessException("Identifiants invalides.");
 
-        // Groupe expert : seulement si le rôle principal est Expert (ne bloque pas Parent/Tutor multi-rôles).
-        if (role == UserRoles.Expert)
+        // Groupe expert : Expert ou Responsable de groupe.
+        if (role is UserRoles.Expert or UserRoles.GroupManager)
             EnsureExpertGroupIsActive(user.Id);
 
         // Profil parent si le compte a le rôle Parent (même si le rôle JWT principal est autre).
@@ -804,13 +804,15 @@ public class AuthService : IAuthService
             user.MustChangePassword);
     }
 
-    /// <summary>Priorité : SuperAdmin → PlatformAdmin → Expert → premier autre rôle.</summary>
+    /// <summary>Priorité : SuperAdmin → PlatformAdmin → GroupManager → Expert → premier autre rôle.</summary>
     private static string ResolvePrimaryRole(IList<string> roles)
     {
         if (roles.Contains(UserRoles.SuperAdmin))
             return UserRoles.SuperAdmin;
         if (roles.Contains(UserRoles.PlatformAdmin))
             return UserRoles.PlatformAdmin;
+        if (roles.Contains(UserRoles.GroupManager))
+            return UserRoles.GroupManager;
         if (roles.Contains(UserRoles.Expert))
             return UserRoles.Expert;
         return roles.FirstOrDefault() ?? UserRoles.Parent;

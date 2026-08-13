@@ -94,6 +94,9 @@ public class ExpertGroupManagerService(IApplicationDbContext db) : IExpertGroupM
         await db.SaveChangesAsync(ct);
 
         group.ActiveManagerMandateId = mandate.Id;
+        group.GroupManagerMembershipId = member.Id;
+        group.ManagerAssignedAtUtc = starts;
+        group.ManagerAssignedByAdminId = adminUserId;
         group.ContactName = null; // rempli côté API avec FullName
         group.ContactPhone = mandate.Phone;
         group.ContactEmail = string.IsNullOrWhiteSpace(extras.Email) ? group.ContactEmail : extras.Email.Trim();
@@ -126,6 +129,9 @@ public class ExpertGroupManagerService(IApplicationDbContext db) : IExpertGroupM
         if (group is not null && group.ActiveManagerMandateId == active.Id)
         {
             group.ActiveManagerMandateId = null;
+            group.GroupManagerMembershipId = null;
+            group.ManagerAssignedAtUtc = null;
+            group.ManagerAssignedByAdminId = null;
             group.UpdatedAt = DateTime.UtcNow;
         }
 
@@ -146,6 +152,9 @@ public class ExpertGroupManagerService(IApplicationDbContext db) : IExpertGroupM
         if (group is not null)
         {
             group.ActiveManagerMandateId = null;
+            group.GroupManagerMembershipId = null;
+            group.ManagerAssignedAtUtc = null;
+            group.ManagerAssignedByAdminId = null;
             group.LifecycleStatus = ExpertGroupLifecycleStatus.Suspended;
             group.IsActive = false;
             group.UpdatedAt = DateTime.UtcNow;

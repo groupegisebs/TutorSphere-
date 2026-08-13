@@ -7,6 +7,10 @@ public interface IExpertIdentityActions
 
     Task EnsureExpertRoleAsync(string userId, CancellationToken ct = default);
 
+    Task EnsureGroupManagerRoleAsync(string userId, CancellationToken ct = default);
+
+    Task RemoveGroupManagerRoleAsync(string userId, CancellationToken ct = default);
+
     /// <summary>Crée ou met à jour le compte candidat ; retourne le userId.</summary>
     Task<string> EnsureCandidateUserAsync(
         string email,

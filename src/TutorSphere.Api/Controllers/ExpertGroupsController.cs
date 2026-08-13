@@ -23,6 +23,7 @@ public class ExpertGroupsController : ControllerBase
     private readonly IExpertGroupManagerService _managers;
     private readonly IGroupAdminChatService _chat;
     private readonly IExpertMembershipGovernanceService _membership;
+    private readonly IExpertIdentityActions _identity;
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly IEmailService _email;
     private readonly IAppUrlProvider _urls;
@@ -34,6 +35,7 @@ public class ExpertGroupsController : ControllerBase
         IExpertGroupManagerService managers,
         IGroupAdminChatService chat,
         IExpertMembershipGovernanceService membership,
+        IExpertIdentityActions identity,
         UserManager<ApplicationUser> userManager,
         IEmailService email,
         IAppUrlProvider urls,
@@ -44,6 +46,7 @@ public class ExpertGroupsController : ControllerBase
         _managers = managers;
         _chat = chat;
         _membership = membership;
+        _identity = identity;
         _userManager = userManager;
         _email = email;
         _urls = urls;
@@ -72,6 +75,7 @@ public class ExpertGroupsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize(Roles = UserRoles.SuperAdmin)]
     public async Task<ActionResult<ExpertGroupDto>> Create([FromBody] CreateExpertGroupRequest request, CancellationToken ct)
     {
         if (AdminUserId is null) return Unauthorized();
@@ -83,8 +87,7 @@ public class ExpertGroupsController : ControllerBase
                 return BadRequest(new { error = "Impossible de résoudre le Responsable (e-mail ou utilisateur requis)." });
 
             await _groups.AddMemberAsync(created.Id, managerUser.Id, AdminUserId, ct: ct);
-            if (!await _userManager.IsInRoleAsync(managerUser, UserRoles.Expert))
-                await _userManager.AddToRoleAsync(managerUser, UserRoles.Expert);
+            await _identity.EnsureGroupManagerRoleAsync(managerUser.Id, ct);
 
             await _managers.AppointAsync(created.Id, AdminUserId, managerUser.Id, new AppointGroupManagerRequest(
                 ExistingUserId: managerUser.Id,
@@ -168,21 +171,20 @@ public class ExpertGroupsController : ControllerBase
     }
 
     [HttpPost("{id:guid}/manager")]
+    [Authorize(Roles = UserRoles.SuperAdmin)]
     public async Task<ActionResult<ExpertGroupDto>> TransferManager(
         Guid id, [FromBody] TransferGroupManagerRequest request, CancellationToken ct)
     {
         if (AdminUserId is null) return Unauthorized();
         try
         {
+            var previous = await _managers.GetActiveManagerAsync(id, ct);
             var user = await _userManager.FindByIdAsync(request.NewManagerUserId)
                 ?? throw new InvalidOperationException("Utilisateur introuvable.");
 
             var members = await _groups.ListMembersAsync(id, ct);
             if (!members.Any(m => m.UserId == user.Id))
                 await _groups.AddMemberAsync(id, user.Id, AdminUserId, ct: ct);
-
-            if (!await _userManager.IsInRoleAsync(user, UserRoles.Expert))
-                await _userManager.AddToRoleAsync(user, UserRoles.Expert);
 
             await _managers.AppointAsync(id, AdminUserId, user.Id, new AppointGroupManagerRequest(
                 ExistingUserId: user.Id,
@@ -191,6 +193,10 @@ public class ExpertGroupsController : ControllerBase
                 FunctionTitle: request.FunctionTitle,
                 MandateStartsAtUtc: request.MandateStartsAtUtc,
                 IsTemporary: request.IsTemporary), ct);
+
+            await _identity.EnsureGroupManagerRoleAsync(user.Id, ct);
+            if (previous is not null && previous.UserId != user.Id)
+                await _identity.RemoveGroupManagerRoleAsync(previous.UserId, ct);
 
             var group = await _groups.GetByIdAsync(id, ct)
                 ?? throw new InvalidOperationException("Groupe introuvable.");
@@ -207,12 +213,16 @@ public class ExpertGroupsController : ControllerBase
     }
 
     [HttpPost("{id:guid}/manager/suspend")]
+    [Authorize(Roles = UserRoles.SuperAdmin)]
     public async Task<IActionResult> SuspendManager(Guid id, [FromBody] SuspendGroupManagerRequest? request, CancellationToken ct)
     {
         if (AdminUserId is null) return Unauthorized();
         try
         {
+            var previous = await _managers.GetActiveManagerAsync(id, ct);
             await _managers.SuspendActiveMandateAsync(id, AdminUserId, request?.Reason, ct);
+            if (previous is not null)
+                await _identity.RemoveGroupManagerRoleAsync(previous.UserId, ct);
             return Ok(new { message = "Mandat du Responsable suspendu." });
         }
         catch (InvalidOperationException ex)
