@@ -7,7 +7,9 @@ public record RegisterRequest(
     string LastName,
     string Role,
     DateTime? DateOfBirth = null,
-    string? PreferredLanguage = null);
+    string? PreferredLanguage = null,
+    /// <summary>Code parrainage parent (optionnel), ex. FAM-AB12CD.</summary>
+    string? ReferralCode = null);
 
 public record RegisterSchoolRequest(
     string SchoolName,

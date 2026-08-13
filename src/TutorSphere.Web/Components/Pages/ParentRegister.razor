@@ -29,6 +29,12 @@
     else
     {
         <div class="register-v2-card">
+            @if (!string.IsNullOrWhiteSpace(_referralCode))
+            {
+                <div class="alert alert-success py-2 mb-3">
+                    Code parrainage appliqué : <strong>@_referralCode</strong> — 1 mois gratuit à l’inscription.
+                </div>
+            }
             <div class="register-v2-benefits">
                 <svg class="register-v2-illustration" viewBox="0 0 240 180" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                     <rect width="240" height="180" fill="#f0fdf4" rx="12"/>
@@ -183,6 +189,7 @@
 
 @code {
     private string _firstName = "", _lastName = "", _email = "", _password = "", _confirm = "";
+    private string? _referralCode;
     private string? _error;
     private bool _submitting, _showPwd, _showConfirm, _confirmed;
 
@@ -193,6 +200,14 @@
     private int PwdBars => (HasLen ? 1 : 0) + (HasNum ? 1 : 0) + (HasSpc ? 1 : 0) + (_password.Length >= 12 ? 1 : 0);
     private string PwdClass => PwdBars <= 1 ? "weak" : PwdBars <= 2 ? "medium" : "";
     private string PwdLabel => PwdBars switch { <= 1 => L["Password_Weak"], 2 => L["Password_Medium"], 3 => L["Password_Good"], _ => L["Password_Strong"] };
+
+    protected override void OnInitialized()
+    {
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
+        if (query.TryGetValue("ref", out var refCode) && !string.IsNullOrWhiteSpace(refCode))
+            _referralCode = refCode.ToString().Trim().ToUpperInvariant();
+    }
 
     private async Task RegisterAsync()
     {
@@ -211,7 +226,8 @@
         {
             var req = new RegisterRequest(
                 _email.Trim(), _password, _firstName.Trim(), _lastName.Trim(), "Parent",
-                PreferredLanguage: System.Globalization.CultureInfo.CurrentUICulture.Name);
+                PreferredLanguage: System.Globalization.CultureInfo.CurrentUICulture.Name,
+                ReferralCode: _referralCode);
             var resp = await Http.PostAsJsonAsync("api/auth/register", req);
             if (resp.IsSuccessStatusCode)
             {

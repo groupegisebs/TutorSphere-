@@ -53,6 +53,7 @@ internal static class EmailTemplates
     public const string ExpertMembershipInvite = "EXPERT_MEMBERSHIP_INVITE";
     public const string ExpertMembershipVoteOpened = "EXPERT_MEMBERSHIP_VOTE_OPENED";
     public const string ExpertMembershipRejected = "EXPERT_MEMBERSHIP_REJECTED";
+    public const string SupportContact = "SUPPORT_CONTACT";
 }
 
 public class EmailService : IEmailService
@@ -441,6 +442,22 @@ public class EmailService : IEmailService
         {
             ["FirstName"] = firstName,
             ["Reason"] = string.IsNullOrWhiteSpace(reason) ? "Candidature non retenue." : reason.Trim()
+        }, ct);
+
+    public Task SendSupportContactAsync(
+        string to,
+        string parentFirstName,
+        string parentLastName,
+        string replyToEmail,
+        string subject,
+        string message,
+        CancellationToken ct = default) =>
+        SendAsync(to, EmailTemplates.SupportContact, new Dictionary<string, string>
+        {
+            ["ParentName"] = $"{parentFirstName} {parentLastName}".Trim(),
+            ["ReplyTo"] = replyToEmail,
+            ["Subject"] = subject,
+            ["Message"] = message
         }, ct);
 
     private static Dictionary<string, string> LessonBody(

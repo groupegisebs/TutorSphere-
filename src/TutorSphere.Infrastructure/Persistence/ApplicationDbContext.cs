@@ -18,6 +18,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     public DbSet<Tenant> TenantsSet => Set<Tenant>();
     public DbSet<Student> StudentsSet => Set<Student>();
     public DbSet<ParentProfile> ParentProfilesSet => Set<ParentProfile>();
+    public DbSet<ParentSupportRequest> ParentSupportRequestsSet => Set<ParentSupportRequest>();
     public DbSet<SubscriptionOffering> SubscriptionOfferingsSet => Set<SubscriptionOffering>();
     public DbSet<StudentSubscription> StudentSubscriptionsSet => Set<StudentSubscription>();
     public DbSet<Lesson> LessonsSet => Set<Lesson>();
@@ -62,6 +63,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     IQueryable<Student> IApplicationDbContext.StudentsForAnyTenant => StudentsSet.IgnoreQueryFilters();
     IQueryable<ParentProfile> IApplicationDbContext.ParentProfiles => ParentProfilesSet;
     IQueryable<ParentProfile> IApplicationDbContext.ParentProfilesForAnyTenant => ParentProfilesSet.IgnoreQueryFilters();
+    IQueryable<ParentSupportRequest> IApplicationDbContext.ParentSupportRequests => ParentSupportRequestsSet;
     IQueryable<SubscriptionOffering> IApplicationDbContext.SubscriptionOfferings => SubscriptionOfferingsSet;
     IQueryable<SubscriptionOffering> IApplicationDbContext.SubscriptionOfferingsForAnyTenant =>
         SubscriptionOfferingsSet.IgnoreQueryFilters();
@@ -503,8 +505,22 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
         builder.Entity<ParentProfile>(e =>
         {
             e.Property(p => p.Country).HasMaxLength(2);
+            e.Property(p => p.ReferralCode).HasMaxLength(32);
+            e.HasIndex(p => p.ReferralCode).IsUnique().HasFilter("[ReferralCode] IS NOT NULL");
             e.HasOne(p => p.Tenant).WithMany().HasForeignKey(p => p.TenantId)
                 .OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(p => p.ReferredByParent).WithMany().HasForeignKey(p => p.ReferredByParentProfileId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        builder.Entity<ParentSupportRequest>(e =>
+        {
+            e.Property(r => r.Subject).HasMaxLength(200);
+            e.Property(r => r.Message).HasMaxLength(4000);
+            e.Property(r => r.ContactEmail).HasMaxLength(256);
+            e.Property(r => r.UserId).HasMaxLength(450);
+            e.HasOne(r => r.Parent).WithMany(p => p.SupportRequests).HasForeignKey(r => r.ParentProfileId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         builder.Entity<Student>(e =>

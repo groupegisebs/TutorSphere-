@@ -1,0 +1,112 @@
+@page "/parent/help"
+@layout ParentLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService Auth
+@inject ApiClient Api
+@inject IStringLocalizer<SharedResources> L
+
+<PageTitle>Aide — TutorSphere</PageTitle>
+
+<AuthorizeView Roles="Parent">
+    <Authorized>
+        <div class="ts-page-header">
+            <div>
+                <h1><i class="bi bi-headset me-2"></i>@L["ParentDashboard_NeedHelp"]</h1>
+                <p class="ts-page-subtitle">Notre équipe vous répond rapidement.</p>
+            </div>
+        </div>
+
+        <div class="row g-3">
+            <div class="col-lg-7">
+                <div class="section-card p-4">
+                    <h2 class="h5 mb-3">@L["ParentDashboard_ContactUs"]</h2>
+
+                    @if (!string.IsNullOrEmpty(_error))
+                    {
+                        <div class="alert alert-danger py-2">@_error</div>
+                    }
+                    @if (!string.IsNullOrEmpty(_success))
+                    {
+                        <div class="alert alert-success py-2">@_success</div>
+                    }
+
+                    <div class="mb-3">
+                        <label class="form-label">Objet *</label>
+                        <input class="form-control" @bind="_subject" maxlength="200"
+                               placeholder="Ex. Problème d'abonnement" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Message *</label>
+                        <textarea class="form-control" rows="6" @bind="_message" maxlength="4000"
+                                  placeholder="Décrivez votre besoin…"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">E-mail de réponse (optionnel)</label>
+                        <input type="email" class="form-control" @bind="_contactEmail" />
+                    </div>
+                    <button type="button" class="btn btn-primary" disabled="@_busy" @onclick="SubmitAsync">
+                        @if (_busy) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                        Envoyer
+                    </button>
+                </div>
+            </div>
+            <div class="col-lg-5">
+                <div class="section-card p-4">
+                    <h2 class="h5 mb-3">Questions fréquentes</h2>
+                    <div class="mb-3">
+                        <strong>Comment ajouter un enfant ?</strong>
+                        <p class="small text-muted mb-0">Allez dans <a href="/parent/children">Mes enfants</a>, puis « Ajouter un enfant ».</p>
+                    </div>
+                    <div class="mb-3">
+                        <strong>Comment s’abonner à un cours ?</strong>
+                        <p class="small text-muted mb-0">Trouvez un enseignant via <a href="/parent/search">Enseignants</a>, ouvrez une offre, puis envoyez une demande.</p>
+                    </div>
+                    <div class="mb-0">
+                        <strong>Parrainage</strong>
+                        <p class="small text-muted mb-0">Partagez votre code depuis <a href="/parent/refer">Parrainer une famille</a>.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    private string _subject = "";
+    private string _message = "";
+    private string? _contactEmail;
+    private bool _busy;
+    private string? _error;
+    private string? _success;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+    }
+
+    private async Task SubmitAsync()
+    {
+        _busy = true;
+        _error = null;
+        _success = null;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<object>("api/parent/support", new
+            {
+                subject = _subject,
+                message = _message,
+                contactEmail = string.IsNullOrWhiteSpace(_contactEmail) ? null : _contactEmail
+            });
+            if (!result.IsSuccess)
+            {
+                _error = result.Error ?? "Échec de l'envoi.";
+                return;
+            }
+            _success = "Message envoyé. Nous vous répondrons bientôt.";
+            _subject = "";
+            _message = "";
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+}

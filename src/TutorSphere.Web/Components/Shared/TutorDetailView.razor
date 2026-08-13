@@ -458,7 +458,12 @@
                 else if (_children.Count == 0)
                 {
                     <div class="alert alert-warning mb-0">
-                        @((MarkupString)string.Format(L["ParentSubscribe_NoChildren"].Value, "/parent/children"))
+                        @{
+                            // Ressource : « … dans <a href="{0}">…</a> … » (évite le HTML double-encodé).
+                            var noChildrenHtml = System.Net.WebUtility.HtmlDecode(
+                                string.Format(L["ParentSubscribe_NoChildren"].Value, "/parent/children"));
+                        }
+                        @((MarkupString)noChildrenHtml)
                     </div>
                 }
                 else

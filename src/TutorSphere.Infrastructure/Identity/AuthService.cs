@@ -55,6 +55,7 @@ public class AuthService : IAuthService
     private readonly IAppUrlProvider _urls;
     private readonly IExpertReviewNotificationService _expertNotify;
     private readonly ISubscriptionOfferingService _offerings;
+    private readonly IParentEngagementService _parentEngagement;
 
     public AuthService(
         UserManager<ApplicationUser> userManager,
@@ -63,7 +64,8 @@ public class AuthService : IAuthService
         IApplicationDbContext db,
         IAppUrlProvider urls,
         IExpertReviewNotificationService expertNotify,
-        ISubscriptionOfferingService offerings)
+        ISubscriptionOfferingService offerings,
+        IParentEngagementService parentEngagement)
     {
         _userManager = userManager;
         _configuration = configuration;
@@ -72,6 +74,7 @@ public class AuthService : IAuthService
         _urls = urls;
         _expertNotify = expertNotify;
         _offerings = offerings;
+        _parentEngagement = parentEngagement;
     }
 
     public async Task<AuthResponse> RegisterAsync(RegisterRequest request, CancellationToken ct = default)
@@ -97,7 +100,11 @@ public class AuthService : IAuthService
         await _userManager.AddToRoleAsync(user, role);
 
         if (UserRoles.ParentPortalRoles.Contains(role))
+        {
             await EnsureParentProfileAsync(user, ct);
+            if (role == UserRoles.Parent)
+                await _parentEngagement.ApplyReferralCodeAsync(user.Id, request.ReferralCode, ct);
+        }
 
         if (role == UserRoles.Student)
             await EnsureStudentProfileOnRegisterAsync(user, studentDob, ct);

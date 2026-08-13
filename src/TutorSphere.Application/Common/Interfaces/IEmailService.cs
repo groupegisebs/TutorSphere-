@@ -157,4 +157,13 @@ public interface IEmailService
         string firstName,
         string reason,
         CancellationToken ct = default);
+
+    Task SendSupportContactAsync(
+        string to,
+        string parentFirstName,
+        string parentLastName,
+        string replyToEmail,
+        string subject,
+        string message,
+        CancellationToken ct = default);
 }

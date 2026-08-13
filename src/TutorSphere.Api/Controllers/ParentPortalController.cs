@@ -23,17 +23,20 @@ public class ParentPortalController : ControllerBase
     private readonly IAuthService _authService;
     private readonly IStudentSubscriptionService _subscriptions;
     private readonly IInvoiceService _invoices;
+    private readonly IParentEngagementService _engagement;
 
     public ParentPortalController(
         IParentService parentService,
         IAuthService authService,
         IStudentSubscriptionService subscriptions,
-        IInvoiceService invoices)
+        IInvoiceService invoices,
+        IParentEngagementService engagement)
     {
         _parentService = parentService;
         _authService = authService;
         _subscriptions = subscriptions;
         _invoices = invoices;
+        _engagement = engagement;
     }
 
     [HttpGet("me")]
@@ -383,5 +386,38 @@ public class ParentPortalController : ControllerBase
 
         await _authService.EnsureParentProfileForUserAsync(userId, ct);
         return userId;
+    }
+
+    [HttpGet("referral")]
+    public async Task<ActionResult<TutorSphere.Application.DTOs.Parents.ParentReferralDto>> Referral(CancellationToken ct)
+    {
+        var userId = await ResolveParentUserIdAsync(ct);
+        if (userId is null) return Unauthorized();
+        try
+        {
+            return Ok(await _engagement.GetOrCreateReferralAsync(userId, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("support")]
+    public async Task<ActionResult<TutorSphere.Application.DTOs.Parents.ParentSupportRequestDto>> Support(
+        [FromBody] TutorSphere.Application.DTOs.Parents.CreateParentSupportRequest? request,
+        CancellationToken ct)
+    {
+        var userId = await ResolveParentUserIdAsync(ct);
+        if (userId is null) return Unauthorized();
+        if (request is null) return BadRequest(new { error = "Requête invalide." });
+        try
+        {
+            return Ok(await _engagement.SubmitSupportAsync(userId, request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 }

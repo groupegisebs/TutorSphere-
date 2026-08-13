@@ -1,0 +1,114 @@
+@page "/parent/refer"
+@layout ParentLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService Auth
+@inject ApiClient Api
+@inject IJSRuntime JS
+@inject IStringLocalizer<SharedResources> L
+
+<PageTitle>Parrainage — TutorSphere</PageTitle>
+
+<AuthorizeView Roles="Parent">
+    <Authorized>
+        <div class="ts-page-header">
+            <div>
+                <h1><i class="bi bi-gift me-2"></i>@L["ParentDashboard_ReferTitle"]</h1>
+                <p class="ts-page-subtitle">@L["ParentDashboard_ReferDesc"]</p>
+            </div>
+        </div>
+
+        @if (_loading)
+        {
+            <div class="text-center py-5"><span class="spinner-border"></span></div>
+        }
+        else if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger">@_error</div>
+        }
+        else if (_referral is not null)
+        {
+            <div class="row g-3">
+                <div class="col-lg-7">
+                    <div class="section-card p-4">
+                        <h2 class="h5 mb-3">Votre code de parrainage</h2>
+                        <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+                            <code class="fs-4 px-3 py-2 bg-light border rounded">@_referral.Code</code>
+                            <button type="button" class="btn btn-outline-primary btn-sm" @onclick="CopyCodeAsync">
+                                <i class="bi bi-clipboard"></i> Copier le code
+                            </button>
+                        </div>
+                        <label class="form-label">Lien à partager</label>
+                        <div class="input-group mb-3">
+                            <input class="form-control" readonly value="@_referral.ShareUrl" />
+                            <button type="button" class="btn btn-primary" @onclick="CopyLinkAsync">
+                                <i class="bi bi-share"></i> Copier le lien
+                            </button>
+                        </div>
+                        @if (!string.IsNullOrEmpty(_copied))
+                        {
+                            <div class="alert alert-success py-2 mb-0">@_copied</div>
+                        }
+                    </div>
+                </div>
+                <div class="col-lg-5">
+                    <div class="section-card p-4">
+                        <h2 class="h5 mb-3">Vos avantages</h2>
+                        <p class="mb-3">@_referral.OfferSummary</p>
+                        <div class="d-flex gap-3">
+                            <div>
+                                <div class="fs-3 fw-bold text-primary">@_referral.SuccessfulReferrals</div>
+                                <div class="small text-muted">Filleul(s) inscrit(s)</div>
+                            </div>
+                            <div>
+                                <div class="fs-3 fw-bold text-primary">@_referral.RewardMonthsAvailable</div>
+                                <div class="small text-muted">Mois gratuits accumulés</div>
+                            </div>
+                        </div>
+                        <p class="small text-muted mt-3 mb-0">
+                            Les mois gratuits s’appliquent lors du prochain renouvellement d’abonnement éligible.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        }
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    private bool _loading = true;
+    private string? _error;
+    private string? _copied;
+    private ReferralVm? _referral;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        try
+        {
+            _referral = await Api.GetAsync<ReferralVm>("api/parent/referral");
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task CopyCodeAsync()
+    {
+        if (_referral is null) return;
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", _referral.Code);
+        _copied = "Code copié.";
+    }
+
+    private async Task CopyLinkAsync()
+    {
+        if (_referral is null) return;
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", _referral.ShareUrl);
+        _copied = "Lien copié — partagez-le avec une famille.";
+    }
+
+    private sealed record ReferralVm(
+        string Code,
+        string ShareUrl,
+        int RewardMonthsAvailable,
+        int SuccessfulReferrals,
+        string OfferSummary);
+}
