@@ -148,7 +148,9 @@ public record RegisterTeacherByExpertRequest(
     IReadOnlyList<string>? VisibleCountryCodes = null,
     bool AcceptedTeacherConductPolicy = false,
     /// <summary>Offre de service initiale (optionnelle) créée pour le profil.</summary>
-    TutorSphere.Application.DTOs.SubscriptionOfferings.CreateSubscriptionOfferingRequest? InitialOffering = null);
+    TutorSphere.Application.DTOs.SubscriptionOfferings.CreateSubscriptionOfferingRequest? InitialOffering = null,
+    /// <summary>Publie immédiatement la fiche publique (recherche parents / cours).</summary>
+    bool PublishPublicProfile = false);
 
 public record RegisterTeacherByExpertResponse(
     Guid TenantId,
@@ -157,7 +159,9 @@ public record RegisterTeacherByExpertResponse(
     bool CredentialsSent,
     Guid? OfferingId = null,
     string? TemporaryPassword = null,
-    string? RealEmail = null);
+    string? RealEmail = null,
+    bool IsPublicProfile = false,
+    string? PublicPath = null);
 
 /// <summary>Groupe d'experts auquel l'utilisateur connecté appartient.</summary>
 public record ExpertMyGroupDto(

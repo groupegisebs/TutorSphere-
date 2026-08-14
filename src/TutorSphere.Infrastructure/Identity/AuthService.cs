@@ -579,6 +579,22 @@ public class AuthService : IAuthService
             offeringId = offering.Id;
         }
 
+        string? publicPath = null;
+        if (request.PublishPublicProfile)
+        {
+            var nowPub = DateTime.UtcNow;
+            tenant.Status = TenantStatus.Active;
+            tenant.IsPublicProfile = true;
+            tenant.OnboardingCompletedAt ??= nowPub;
+            if (tenant.LicenseExpiresAt is null || tenant.LicenseExpiresAt <= nowPub)
+                tenant.LicenseExpiresAt = nowPub.AddYears(1);
+            if (string.IsNullOrWhiteSpace(tenant.VisibleCountryCodes))
+                tenant.VisibleCountryCodes = ProfileVisibility.ToCsv(null, tenant.Country);
+            tenant.UpdatedAt = nowPub;
+            await _db.SaveChangesAsync(ct);
+            publicPath = $"/profil/{tenant.Slug}";
+        }
+
         var loginUrl = $"{_urls.WebBaseUrl.TrimEnd('/')}/login/tuteur";
         var platformOps = _configuration["Support:OpsEmail"]
             ?? _configuration["Support:Email"]
@@ -603,7 +619,8 @@ public class AuthService : IAuthService
         }
 
         return new RegisterTeacherByExpertResponse(
-            tenant.Id, tenant.Slug, loginEmail, anySent, offeringId, password, realEmail);
+            tenant.Id, tenant.Slug, loginEmail, anySent, offeringId, password, realEmail,
+            tenant.IsPublicProfile, publicPath);
     }
 
     private async Task<string?> ResolveGroupMailboxAsync(ExpertGroup group, CancellationToken ct)

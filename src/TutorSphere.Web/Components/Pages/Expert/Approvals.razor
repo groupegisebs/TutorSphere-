@@ -10,61 +10,56 @@
 
 <ApplyRequestCulture />
 
-<PageTitle>Nourrir le groupe — Enseignants</PageTitle>
+<PageTitle>@L["Expert_TeachersHubTitle"]</PageTitle>
 
 <AuthorizeView Roles="Expert,GroupManager,SuperAdmin,PlatformAdmin">
     <Authorized>
         <div class="cc-toolbar">
             <div>
-                <h1 class="cc-page-title">Nourrir le groupe — Enseignants</h1>
-                <p class="cc-page-sub">
-                    Deux façons d'ajouter un <strong>enseignant</strong> : le créer vous-même, ou l'inviter à s'inscrire.
-                    Ensuite, suivez les dossiers en revue. Ceci ne concerne <strong>pas</strong> l'admission d'un membre Expert.
-                </p>
+                <h1 class="cc-page-title">@L["Expert_TeachersHubTitle"]</h1>
+                <p class="cc-page-sub">@L["Expert_TeachersHubSubtitle"]</p>
             </div>
         </div>
 
-        <div class="cc-path-grid mb-3" role="navigation" aria-label="Parcours enseignants">
+        <div class="cc-path-grid mb-3" role="navigation" aria-label="@L["Expert_TeachersNav"]">
             <button type="button" class="cc-path-card @(_activeTab == "register" ? "active" : null)"
                     @onclick='() => SetTab("register")'>
                 <span class="cc-path-num">1</span>
                 <div>
-                    <strong>Créer un enseignant</strong>
-                    <p>Vous créez le compte tout de suite (identifiants générés). Idéal si vous avez les infos sous la main.</p>
+                    <strong>@L["Expert_PathCreateTitle"]</strong>
+                    <p>@L["Expert_PathCreateDesc"]</p>
                 </div>
             </button>
             <button type="button" class="cc-path-card @(_activeTab == "invite" ? "active" : null)"
                     @onclick='() => SetTab("invite")'>
                 <span class="cc-path-num">2</span>
                 <div>
-                    <strong>Inviter un enseignant</strong>
-                    <p>Vous envoyez un lien : l'enseignant s'inscrit et dépose son dossier. Idéal pour un premier contact.</p>
+                    <strong>@L["Expert_PathInviteTitle"]</strong>
+                    <p>@L["Expert_PathInviteDesc"]</p>
                 </div>
             </button>
             <button type="button" class="cc-path-card @(_activeTab == "queue" ? "active" : null)"
                     @onclick='() => SetTab("queue")'>
                 <span class="cc-path-num">3</span>
                 <div>
-                    <strong>Dossiers en revue</strong>
-                    <p>Traitez les candidatures et profils déjà créés ou soumis (validation du groupe).</p>
+                    <strong>@L["Expert_PathQueueTitle"]</strong>
+                    <p>@L["Expert_PathQueueDesc"]</p>
                 </div>
             </button>
         </div>
 
         <div class="alert alert-secondary small mb-3">
-            <strong>À ne pas confondre :</strong>
-            ici = <em>enseignants</em> (vivier pédagogique).
-            Pour inviter un <em>membre Expert</em> du groupe → menu Responsable → Admissions (Responsable uniquement).
+            @((MarkupString)L["Expert_TeachersNotConfuse"].Value)
         </div>
 
         <div class="cc-tabs" role="tablist">
             <button type="button" role="tab" class="cc-tab @(_activeTab == "register" ? "active" : null)"
                     aria-selected="@(_activeTab == "register")" @onclick='() => SetTab("register")'>
-                <i class="bi bi-person-plus me-1" aria-hidden="true"></i>Créer un enseignant
+                <i class="bi bi-person-plus me-1" aria-hidden="true"></i>@L["Expert_PathCreateTitle"]
             </button>
             <button type="button" role="tab" class="cc-tab @(_activeTab == "invite" ? "active" : null)"
                     aria-selected="@(_activeTab == "invite")" @onclick='() => SetTab("invite")'>
-                <i class="bi bi-envelope me-1" aria-hidden="true"></i>Inviter un enseignant
+                <i class="bi bi-envelope me-1" aria-hidden="true"></i>@L["Expert_PathInviteTitle"]
                 @if (!_invitesLoading && _invites.Count > 0)
                 {
                     <span class="cc-pill cc-pill-type ms-1">@_invites.Count</span>
@@ -72,7 +67,7 @@
             </button>
             <button type="button" role="tab" class="cc-tab @(_activeTab == "queue" ? "active" : null)"
                     aria-selected="@(_activeTab == "queue")" @onclick='() => SetTab("queue")'>
-                <i class="bi bi-inbox me-1" aria-hidden="true"></i>Dossiers en revue
+                <i class="bi bi-inbox me-1" aria-hidden="true"></i>@L["Expert_PathQueueTitle"]
                 @if (!_loading && _queue.Count > 0)
                 {
                     <span class="cc-pill cc-pill-type ms-1">@_queue.Count</span>
@@ -83,11 +78,12 @@
         @if (_activeTab == "register")
         {
         <div class="cc-card mb-3">
-            <h2 class="cc-card-title">Créer un enseignant (compte immédiat)</h2>
+            <h2 class="cc-card-title">@L["Expert_RegisterTeacherTitle"]</h2>
             <p class="small text-muted mb-2">
-                Vous créez le profil et le compte maintenant. Les identifiants sont générés automatiquement.
-                Préférez <button type="button" class="btn btn-link p-0 align-baseline" @onclick='() => SetTab("invite")'>inviter l'enseignant</button>
-                s'il doit plutôt s'inscrire lui-même.
+                @L["Expert_RegisterTeacherSubtitle"]
+                <button type="button" class="btn btn-link p-0 align-baseline" @onclick='() => SetTab("invite")'>
+                    @L["Expert_RegisterOrInviteLink"]
+                </button>
             </p>
 
             @if (!string.IsNullOrEmpty(_regError))
@@ -242,13 +238,14 @@
                 <div class="form-check mb-2">
                     <input class="form-check-input" type="checkbox" id="reg-publish-public" @bind="_regPublishPublic" />
                     <label class="form-check-label" for="reg-publish-public">
-                        Créer / publier la fiche publique immédiatement
+                        @L["Expert_PublishPublicProfile"]
                     </label>
+                    <div class="form-text">@L["Expert_PublishPublicProfileHint"]</div>
                 </div>
                 <div class="form-check mb-2">
                     <input class="form-check-input" type="checkbox" id="reg-create-offer" @bind="_regCreateOffer" />
                     <label class="form-check-label" for="reg-create-offer">
-                        Créer une offre de service pour cet enseignant
+                        @L["Expert_CreateOfferLabel"]
                     </label>
                 </div>
                 @if (_regCreateOffer)
@@ -339,11 +336,8 @@
         else if (_activeTab == "invite")
         {
         <div class="cc-card mb-3">
-            <h2 class="cc-card-title">Inviter un enseignant (lien de candidature)</h2>
-            <p class="small text-muted mb-3">
-                L'enseignant reçoit un e-mail avec un lien pour créer son compte et déposer son dossier.
-                Ce n'est <strong>pas</strong> une invitation de membre Expert.
-            </p>
+            <h2 class="cc-card-title">@L["Expert_InviteTitle"]</h2>
+            <p class="small text-muted mb-3">@L["Expert_InviteSubtitle"]</p>
 
             @if (!string.IsNullOrEmpty(_inviteError))
             {
@@ -1050,6 +1044,7 @@
                 city = string.IsNullOrWhiteSpace(_regCity) ? null : _regCity,
                 visibleCountryCodes = _regVisibleCountries,
                 acceptedTeacherConductPolicy = true,
+                publishPublicProfile = _regPublishPublic,
                 initialOffering
             });
             if (result.Error is not null)
@@ -1066,14 +1061,20 @@
                   + (created.CredentialsSent ? " · identifiants envoyés par e-mail." : " · e-mail non envoyé (vérifier Mail Sender).")
                   + (created.OfferingId is not null ? " Offre créée." : "");
 
-            if (_regPublishPublic && created is not null)
+            if (created is { IsPublicProfile: true })
             {
+                _regSuccess = $"{_regSuccess} {L["Expert_RegisterPublicPublished"]}"
+                    + (string.IsNullOrWhiteSpace(created.PublicPath) ? "" : $" ({created.PublicPath})");
+            }
+            else if (_regPublishPublic && created is not null)
+            {
+                // Secours si l'API n'a pas encore le flag côté déploiement.
                 var pub = await Api.PostWithErrorAsync<object>(
                     $"api/expert/teachers/{created.TenantId}/publish-profile", new { });
                 if (pub.IsSuccess)
-                    _regSuccess = $"{_regSuccess} Fiche publique publiée.";
+                    _regSuccess = $"{_regSuccess} {L["Expert_RegisterPublicPublished"]}";
                 else if (!string.IsNullOrWhiteSpace(pub.Error))
-                    _regSuccess = $"{_regSuccess} (fiche publique : {pub.Error})";
+                    _regSuccess = string.Format(L["Expert_RegisterPublicPublishFailed"], pub.Error);
             }
 
             var keptGroupName = _regSchoolName;
@@ -1122,7 +1123,9 @@
         bool CredentialsSent,
         Guid? OfferingId = null,
         string? TemporaryPassword = null,
-        string? RealEmail = null);
+        string? RealEmail = null,
+        bool IsPublicProfile = false,
+        string? PublicPath = null);
 
     private string InviteStatusLabel(int status) => status switch
     {
