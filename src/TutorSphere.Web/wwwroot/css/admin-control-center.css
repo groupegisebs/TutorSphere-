@@ -421,19 +421,19 @@ button.cc-nav-link,
     flex: 1;
 }
 
-.cc-content:has(.cc-im) {
+.cc-content:has(.cc-im-page),
+.cc-content:has(.cc-im),
+.cc-content:has(.cc-mail) {
     padding: 0.75rem 1rem 1rem;
     display: flex;
     flex-direction: column;
     min-height: 0;
+    overflow: hidden;
 }
 
+.cc-content:has(.cc-im-page) > .cc-alert,
 .cc-content:has(.cc-im) > .cc-alert {
     flex-shrink: 0;
-}
-
-.cc-content:has(.cc-im) > .cc-im {
-    flex: 1;
 }
 
 /* ?? Cards & KPI ?? */
@@ -1489,7 +1489,7 @@ html body .cc-shell .cc-expert-groups .cc-label-light {
 .cc-shell .language-selector,
 .cc-shell .lang-selector { color: var(--cc-text-secondary); }
 
-/* Promo codes ? formulaire inline (évite modal Bootstrap pointer-events / stacking) */
+/* Promo codes ? formulaire inline (?vite modal Bootstrap pointer-events / stacking) */
 .cc-promo-create {
     border-color: rgba(124, 92, 255, 0.35);
     box-shadow: 0 0 0 1px rgba(124, 92, 255, 0.15), var(--cc-shadow);
@@ -1594,28 +1594,73 @@ html body .cc-shell .cc-expert-groups .cc-label-light {
 }
 
 /* -- Admin internal messaging (3-column chat) -- */
+.cc-im-page {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: calc(100vh - var(--cc-topbar-h) - 1.5rem);
+    min-height: 560px;
+    max-height: calc(100vh - var(--cc-topbar-h) - 1.5rem);
+}
+
 .cc-im {
-    display: grid;
-    grid-template-columns: minmax(260px, 320px) minmax(0, 1fr) minmax(260px, 300px);
-    height: calc(100vh - var(--cc-topbar-h) - 2.5rem);
-    min-height: 520px;
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    align-items: stretch;
+    flex: 1 1 auto;
+    width: 100%;
+    min-height: 0;
+    height: 100%;
     border: 1px solid var(--cc-border);
     border-radius: var(--cc-radius);
     overflow: hidden;
     background: var(--cc-surface);
     box-shadow: var(--cc-shadow);
 }
-.cc-im:has(.cc-im-chat:only-child),
-.cc-im:not(:has(.cc-im-details)) {
-    grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
-}
 
 .cc-im-list {
     display: flex;
     flex-direction: column;
+    flex: 0 0 300px;
+    width: 300px;
+    max-width: 300px;
+    min-width: 260px;
+    min-height: 0;
     border-right: 1px solid var(--cc-border);
     background: var(--cc-surface-2);
+}
+
+.cc-im-chat {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-width: 0;
     min-height: 0;
+    background: var(--cc-bg);
+}
+
+.cc-im-details {
+    display: flex;
+    flex-direction: column;
+    flex: 0 0 280px;
+    width: 280px;
+    max-width: 280px;
+    min-width: 240px;
+    min-height: 0;
+    border-left: 1px solid var(--cc-border);
+    background: var(--cc-surface-2);
+    overflow-y: auto;
+}
+
+.cc-im:not(.cc-im--details) .cc-im-details {
+    display: none;
+}
+
+.cc-content:has(.cc-im-page),
+.cc-content:has(.cc-mail) {
+    padding: 0.75rem 1rem 1rem;
+    overflow: hidden;
 }
 .cc-im-list-tabs {
     display: flex;
@@ -1803,13 +1848,6 @@ html body .cc-shell .cc-expert-groups .cc-label-light {
 .cc-im-user-hits strong { display: block; font-size: 0.85rem; }
 .cc-im-user-hits span { font-size: 0.75rem; color: var(--cc-text-muted); }
 
-.cc-im-chat {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-    min-height: 0;
-    background: var(--cc-bg);
-}
 .cc-im-chat-empty {
     flex: 1;
     display: flex;
@@ -2020,14 +2058,6 @@ html body .cc-shell .cc-expert-groups .cc-label-light {
     color: var(--cc-text-muted);
 }
 
-.cc-im-details {
-    display: flex;
-    flex-direction: column;
-    border-left: 1px solid var(--cc-border);
-    background: var(--cc-surface-2);
-    min-height: 0;
-    overflow-y: auto;
-}
 .cc-im-details-head {
     display: flex;
     align-items: center;
@@ -2137,41 +2167,81 @@ html body .cc-shell .cc-expert-groups .cc-label-light {
 .cc-im-empty-inline p { margin: 0; }
 
 @media (max-width: 1100px) {
-    .cc-im { grid-template-columns: minmax(240px, 280px) minmax(0, 1fr); }
-    .cc-im-details { display: none; }
+    .cc-im-details { display: none !important; }
+    .cc-im-list { flex-basis: 280px; width: 280px; max-width: 280px; }
 }
 @media (max-width: 760px) {
-    .cc-im {
-        grid-template-columns: 1fr;
+    .cc-im-page {
         height: auto;
+        max-height: none;
         min-height: 0;
     }
-    .cc-im-list { max-height: 360px; }
-    .cc-im-chat { min-height: 480px; }
+    .cc-im {
+        flex-direction: column !important;
+        height: auto;
+    }
+    .cc-im-list {
+        flex: none;
+        width: 100%;
+        max-width: none;
+        max-height: 320px;
+    }
+    .cc-im-chat {
+        flex: none;
+        min-height: 480px;
+    }
 }
 
 /* -- Admin mailbox (email client) -- */
 .cc-mail {
-    display: grid;
-    grid-template-columns: 220px minmax(280px, 340px) minmax(0, 1fr) minmax(240px, 280px);
-    height: calc(100vh - var(--cc-topbar-h) - 2rem);
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    align-items: stretch;
+    width: 100%;
+    height: calc(100vh - var(--cc-topbar-h) - 1.5rem);
     min-height: 560px;
     border: 1px solid var(--cc-border);
     border-radius: var(--cc-radius);
     overflow: hidden;
     background: var(--cc-surface);
 }
-.cc-mail:not(:has(.cc-mail-contact)) {
-    grid-template-columns: 220px minmax(280px, 340px) minmax(0, 1fr);
-}
-.cc-content:has(.cc-mail) { padding: 0.75rem 1rem 1rem; }
 .cc-mail-folders {
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
+    flex: 0 0 220px;
+    width: 220px;
     padding: 0.9rem 0.75rem;
     background: var(--cc-surface-2);
     border-right: 1px solid var(--cc-border);
+    min-height: 0;
+    overflow-y: auto;
+}
+.cc-mail-list {
+    display: flex;
+    flex-direction: column;
+    flex: 0 0 320px;
+    width: 320px;
+    min-width: 280px;
+    min-height: 0;
+    border-right: 1px solid var(--cc-border);
+    background: var(--cc-bg);
+}
+.cc-mail-reading {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    background: var(--cc-bg);
+}
+.cc-mail-contact {
+    flex: 0 0 260px;
+    width: 260px;
+    border-left: 1px solid var(--cc-border);
+    background: var(--cc-surface-2);
+    overflow-y: auto;
 }
 .cc-mail-compose-btn {
     display: inline-flex;
@@ -2241,13 +2311,6 @@ html body .cc-shell .cc-expert-groups .cc-label-light {
     height: 100%;
     background: var(--cc-primary);
     border-radius: inherit;
-}
-.cc-mail-list {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-    border-right: 1px solid var(--cc-border);
-    background: var(--cc-bg);
 }
 .cc-mail-list-head {
     display: flex;
@@ -2328,13 +2391,6 @@ html body .cc-shell .cc-expert-groups .cc-label-light {
     gap: 0.25rem;
     color: #c4b5fd;
     font-size: 0.75rem;
-}
-.cc-mail-reading {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-    min-height: 0;
-    background: var(--cc-bg);
 }
 .cc-mail-read-toolbar {
     display: flex;
@@ -2435,22 +2491,28 @@ html body .cc-shell .cc-expert-groups .cc-label-light {
     color: inherit;
     cursor: pointer;
 }
-.cc-mail-contact {
-    border-left: 1px solid var(--cc-border);
-    background: var(--cc-surface-2);
-    overflow-y: auto;
-}
 @media (max-width: 1200px) {
-    .cc-mail { grid-template-columns: 200px minmax(240px, 300px) minmax(0, 1fr); }
-    .cc-mail-contact { display: none; }
+    .cc-mail-contact { display: none !important; }
 }
 @media (max-width: 900px) {
     .cc-mail {
-        grid-template-columns: 1fr;
+        flex-direction: column !important;
         height: auto;
+        min-height: 0;
     }
-    .cc-mail-folders { flex-direction: row; flex-wrap: wrap; }
+    .cc-mail-folders {
+        flex: none;
+        width: 100%;
+        max-width: none;
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
     .cc-mail-folder-nav { flex-direction: row; flex-wrap: wrap; }
-    .cc-mail-list { max-height: 360px; }
-    .cc-mail-reading { min-height: 480px; }
+    .cc-mail-list {
+        flex: none;
+        width: 100%;
+        max-width: none;
+        max-height: 360px;
+    }
+    .cc-mail-reading { flex: none; min-height: 480px; }
 }
