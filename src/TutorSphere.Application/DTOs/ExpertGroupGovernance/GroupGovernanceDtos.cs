@@ -15,6 +15,19 @@ public record ExpertGroupManagerDto(
     DateTime? MandateEndsAtUtc,
     bool IsTemporary);
 
+public record ExpertGroupManagerMandateHistoryDto(
+    Guid MandateId,
+    string UserId,
+    ExpertGroupManagerMandateStatus Status,
+    string? FunctionTitle,
+    string? Phone,
+    DateTime MandateStartsAtUtc,
+    DateTime? MandateEndsAtUtc,
+    bool IsTemporary,
+    string AppointedByAdminId,
+    string? EndedByAdminId,
+    string? EndReason);
+
 public record AppointGroupManagerRequest(
     string? ExistingUserId = null,
     string? Email = null,

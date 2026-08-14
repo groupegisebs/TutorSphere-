@@ -37,5 +37,10 @@ public enum ExpertGovernanceEventType
     WorkspaceItemCompleted = 11,
     DelegatedTaskCreated = 12,
     GroupSettingsUpdated = 13,
-    RemarkAdded = 14
+    RemarkAdded = 14,
+    GroupOfferCreated = 15,
+    GroupOfferPublished = 16,
+    GroupAdminChatOpened = 17,
+    GroupAdminChatMessagePosted = 18,
+    ManagerMandateEnded = 19
 }

@@ -9,12 +9,29 @@ public interface IGroupAdminChatService
 {
     Task<IReadOnlyList<GroupAdminConversationDto>> ListForAdminAsync(CancellationToken ct = default);
     Task<IReadOnlyList<GroupAdminConversationDto>> ListForManagerAsync(string managerUserId, CancellationToken ct = default);
-    Task<GroupAdminConversationDto> OpenOrCreateForGroupAsync(Guid groupId, string managerUserId, CreateGroupAdminConversationRequest request, CancellationToken ct = default);
-    Task<IReadOnlyList<GroupAdminMessageDto>> ListMessagesAsync(Guid conversationId, CancellationToken ct = default);
-    Task<GroupAdminMessageDto> PostMessageAsync(Guid conversationId, string senderUserId, PostGroupAdminMessageRequest request, CancellationToken ct = default);
+    Task<GroupAdminConversationDto> OpenOrCreateForGroupAsync(
+        Guid groupId,
+        string managerUserId,
+        CreateGroupAdminConversationRequest request,
+        CancellationToken ct = default,
+        bool asPlatformAdmin = false);
+    Task<IReadOnlyList<GroupAdminMessageDto>> ListMessagesAsync(
+        Guid conversationId,
+        string callerUserId,
+        bool asPlatformAdmin,
+        CancellationToken ct = default);
+    Task<GroupAdminMessageDto> PostMessageAsync(
+        Guid conversationId,
+        string senderUserId,
+        PostGroupAdminMessageRequest request,
+        bool asPlatformAdmin,
+        CancellationToken ct = default);
 }
 
-public class GroupAdminChatService(IApplicationDbContext db, IExpertGroupManagerService managers) : IGroupAdminChatService
+public class GroupAdminChatService(
+    IApplicationDbContext db,
+    IExpertGroupManagerService managers,
+    IExpertGovernanceAuditService audit) : IGroupAdminChatService
 {
     public Task<IReadOnlyList<GroupAdminConversationDto>> ListForAdminAsync(CancellationToken ct = default)
     {
@@ -40,13 +57,12 @@ public class GroupAdminChatService(IApplicationDbContext db, IExpertGroupManager
         Guid groupId,
         string managerUserId,
         CreateGroupAdminConversationRequest request,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool asPlatformAdmin = false)
     {
-        if (!managers.IsActiveManager(managerUserId, groupId)
-            && !db.ExpertGroups.Any(g => g.Id == groupId)) // admin path validated by controller
-        {
-            // Controllers enforce roles; managers still must belong.
-        }
+        if (!asPlatformAdmin && !managers.IsActiveManager(managerUserId, groupId))
+            throw new InvalidOperationException(
+                "Seul le Responsable actif du groupe (ou un admin plateforme) peut ouvrir cette conversation.");
 
         if (string.IsNullOrWhiteSpace(request.Subject) || string.IsNullOrWhiteSpace(request.Message))
             throw new InvalidOperationException("Sujet et message requis.");
@@ -85,11 +101,26 @@ public class GroupAdminChatService(IApplicationDbContext db, IExpertGroupManager
         conversation.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
 
+        await audit.RecordAsync(
+            ExpertGovernanceEventType.GroupAdminChatOpened,
+            managerUserId,
+            $"Conversation ouverte : {conversation.Reference}",
+            groupId,
+            relatedEntityId: conversation.Id,
+            isNotification: false,
+            ct: ct);
+
         return MapList([conversation]).First();
     }
 
-    public Task<IReadOnlyList<GroupAdminMessageDto>> ListMessagesAsync(Guid conversationId, CancellationToken ct = default)
+    public Task<IReadOnlyList<GroupAdminMessageDto>> ListMessagesAsync(
+        Guid conversationId,
+        string callerUserId,
+        bool asPlatformAdmin,
+        CancellationToken ct = default)
     {
+        EnsureCanAccessConversation(conversationId, callerUserId, asPlatformAdmin);
+
         IReadOnlyList<GroupAdminMessageDto> messages = db.GroupAdminMessages
             .Where(m => m.ConversationId == conversationId)
             .OrderBy(m => m.SentAtUtc)
@@ -101,13 +132,16 @@ public class GroupAdminChatService(IApplicationDbContext db, IExpertGroupManager
     }
 
     public async Task<GroupAdminMessageDto> PostMessageAsync(
-        Guid conversationId, string senderUserId, PostGroupAdminMessageRequest request, CancellationToken ct = default)
+        Guid conversationId,
+        string senderUserId,
+        PostGroupAdminMessageRequest request,
+        bool asPlatformAdmin,
+        CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(request.Message))
             throw new InvalidOperationException("Message requis.");
 
-        var conversation = db.GroupAdminConversations.FirstOrDefault(c => c.Id == conversationId)
-            ?? throw new InvalidOperationException("Conversation introuvable.");
+        var conversation = EnsureCanAccessConversation(conversationId, senderUserId, asPlatformAdmin);
 
         var msg = new GroupAdminMessage
         {
@@ -126,9 +160,34 @@ public class GroupAdminChatService(IApplicationDbContext db, IExpertGroupManager
         conversation.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
 
+        await audit.RecordAsync(
+            ExpertGovernanceEventType.GroupAdminChatMessagePosted,
+            senderUserId,
+            "Message chat plateforme",
+            conversation.ExpertGroupId,
+            relatedEntityId: conversation.Id,
+            isNotification: false,
+            ct: ct);
+
         return new GroupAdminMessageDto(
             msg.Id, msg.SenderUserId, null, msg.Body, msg.AttachmentReference,
             msg.SentAtUtc, msg.ReadAtUtc, msg.EditedAtUtc);
+    }
+
+    private GroupAdminConversation EnsureCanAccessConversation(
+        Guid conversationId, string callerUserId, bool asPlatformAdmin)
+    {
+        var conversation = db.GroupAdminConversations.FirstOrDefault(c => c.Id == conversationId)
+            ?? throw new InvalidOperationException("Conversation introuvable.");
+
+        if (asPlatformAdmin)
+            return conversation;
+
+        if (managers.IsActiveManager(callerUserId, conversation.ExpertGroupId))
+            return conversation;
+
+        throw new InvalidOperationException(
+            "Accès refusé : seuls le Responsable du groupe de cette conversation ou un admin plateforme peuvent y accéder.");
     }
 
     private IReadOnlyList<GroupAdminConversationDto> MapList(List<GroupAdminConversation> conversations)

@@ -96,7 +96,9 @@ public class GroupGovernanceController : ControllerBase
             var groupId = await ResolveCallerGroupIdAsync(ct)
                 ?? throw new InvalidOperationException(
                     "Aucun groupe associé. Passez en mode « Administrer » depuis le Control Center.");
-            return Ok(await _offers.CreateDraftAsync(groupId, UserId, request, ct));
+            var asPlatform = _groupAccess.IsPlatformAdmin(User) && ActAsGroupId.HasValue;
+            return Ok(await _offers.CreateDraftAsync(
+                groupId, UserId, request, ct, asPlatformAdmin: asPlatform, actAsGroupId: ActAsGroupId));
         }
         catch (InvalidOperationException ex)
         {
@@ -251,7 +253,9 @@ public class GroupGovernanceController : ControllerBase
         {
             var groupId = await ResolveCallerGroupIdAsync(ct)
                 ?? throw new InvalidOperationException("Aucun groupe associé.");
-            return Ok(await _chat.OpenOrCreateForGroupAsync(groupId, UserId, request, ct));
+            var asPlatform = _groupAccess.IsPlatformAdmin(User) && ActAsGroupId.HasValue;
+            return Ok(await _chat.OpenOrCreateForGroupAsync(
+                groupId, UserId, request, ct, asPlatformAdmin: asPlatform));
         }
         catch (InvalidOperationException ex)
         {
@@ -264,7 +268,15 @@ public class GroupGovernanceController : ControllerBase
     public async Task<ActionResult<IReadOnlyList<GroupAdminMessageDto>>> ManagerMessages(Guid conversationId, CancellationToken ct)
     {
         if (UserId is null) return Unauthorized();
-        return Ok(await _chat.ListMessagesAsync(conversationId, ct));
+        try
+        {
+            var asPlatform = _groupAccess.IsPlatformAdmin(User);
+            return Ok(await _chat.ListMessagesAsync(conversationId, UserId, asPlatform, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 
     [HttpPost("expert/admin-chat/{conversationId:guid}/messages")]
@@ -276,7 +288,8 @@ public class GroupGovernanceController : ControllerBase
         if (request is null) return BadRequest(new { error = "Requête invalide." });
         try
         {
-            return Ok(await _chat.PostMessageAsync(conversationId, UserId, request, ct));
+            var asPlatform = _groupAccess.IsPlatformAdmin(User);
+            return Ok(await _chat.PostMessageAsync(conversationId, UserId, request, asPlatform, ct));
         }
         catch (InvalidOperationException ex)
         {
@@ -292,7 +305,17 @@ public class GroupGovernanceController : ControllerBase
     [HttpGet("admin/expert-groups/messages/{conversationId:guid}")]
     [Authorize(Roles = $"{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
     public async Task<ActionResult<IReadOnlyList<GroupAdminMessageDto>>> AdminMessages(Guid conversationId, CancellationToken ct)
-        => Ok(await _chat.ListMessagesAsync(conversationId, ct));
+    {
+        if (UserId is null) return Unauthorized();
+        try
+        {
+            return Ok(await _chat.ListMessagesAsync(conversationId, UserId, asPlatformAdmin: true, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
 
     [HttpPost("admin/expert-groups/messages/{conversationId:guid}")]
     [Authorize(Roles = $"{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
@@ -303,7 +326,7 @@ public class GroupGovernanceController : ControllerBase
         if (request is null) return BadRequest(new { error = "Requête invalide." });
         try
         {
-            return Ok(await _chat.PostMessageAsync(conversationId, UserId, request, ct));
+            return Ok(await _chat.PostMessageAsync(conversationId, UserId, request, asPlatformAdmin: true, ct));
         }
         catch (InvalidOperationException ex)
         {

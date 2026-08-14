@@ -16,11 +16,46 @@ public interface IExpertApprovalService
         CancellationToken ct = default,
         Guid? overrideGroupId = null);
     Task<TeacherReviewDetailDto?> GetReviewDetailAsync(Guid tenantId, CancellationToken ct = default);
-    Task ApproveAsync(Guid tenantId, string expertUserId, string? notes, CancellationToken ct = default);
-    Task RejectAsync(Guid tenantId, string expertUserId, string? notes, CancellationToken ct = default);
-    Task RequestChangesAsync(Guid tenantId, string expertUserId, string notes, CancellationToken ct = default);
-    Task AssignReviewAsync(Guid tenantId, string expertUserId, AssignReviewRequest request, CancellationToken ct = default);
-    Task StartReviewAsync(Guid tenantId, string expertUserId, CancellationToken ct = default);
+    Task EnsureCanViewTeacherAsync(
+        Guid tenantId,
+        string callerUserId,
+        CancellationToken ct = default,
+        bool asPlatformAdmin = false,
+        Guid? actAsGroupId = null);
+    Task ApproveAsync(
+        Guid tenantId,
+        string expertUserId,
+        string? notes,
+        CancellationToken ct = default,
+        bool asPlatformAdmin = false,
+        Guid? actAsGroupId = null);
+    Task RejectAsync(
+        Guid tenantId,
+        string expertUserId,
+        string? notes,
+        CancellationToken ct = default,
+        bool asPlatformAdmin = false,
+        Guid? actAsGroupId = null);
+    Task RequestChangesAsync(
+        Guid tenantId,
+        string expertUserId,
+        string notes,
+        CancellationToken ct = default,
+        bool asPlatformAdmin = false,
+        Guid? actAsGroupId = null);
+    Task AssignReviewAsync(
+        Guid tenantId,
+        string expertUserId,
+        AssignReviewRequest request,
+        CancellationToken ct = default,
+        bool asPlatformAdmin = false,
+        Guid? actAsGroupId = null);
+    Task StartReviewAsync(
+        Guid tenantId,
+        string expertUserId,
+        CancellationToken ct = default,
+        bool asPlatformAdmin = false,
+        Guid? actAsGroupId = null);
     Task InviteTeacherApplicationAsync(string expertUserId, InviteTeacherApplicationRequest request, CancellationToken ct = default);
     Task<IReadOnlyList<TeacherApplicationInviteDto>> ListInvitesForExpertAsync(string expertUserId, CancellationToken ct = default);
     Task MarkInviteAcceptedAsync(string email, Guid tenantId, string? inviteToken = null, CancellationToken ct = default);
@@ -36,6 +71,7 @@ public interface IExpertApprovalService
 public class ExpertApprovalService(
     IApplicationDbContext db,
     IExpertGroupService expertGroups,
+    IExpertGroupManagerService managers,
     IEmailService email,
     IUserContactLookup contacts,
     IAppUrlProvider urls,
@@ -229,14 +265,43 @@ public class ExpertApprovalService(
         return Task.FromResult<TeacherReviewDetailDto?>(dto);
     }
 
-    public async Task ApproveAsync(Guid tenantId, string expertUserId, string? notes, CancellationToken ct = default)
+    public Task EnsureCanViewTeacherAsync(
+        Guid tenantId,
+        string callerUserId,
+        CancellationToken ct = default,
+        bool asPlatformAdmin = false,
+        Guid? actAsGroupId = null)
     {
-        var tenant = await RequireReviewableForExpertAsync(tenantId, expertUserId, ct);
-        var group = expertGroups.ResolveReviewerGroup(tenant.Country)
-            ?? throw new InvalidOperationException(
-                "Aucun groupe d'experts disponible pour ce pays (ni groupe international).");
+        var tenant = db.Tenants.FirstOrDefault(t => t.Id == tenantId)
+            ?? throw new InvalidOperationException("Fiche introuvable.");
 
-        EnsureExpertInGroup(expertUserId, group.Id);
+        var suggested = expertGroups.ResolveReviewerGroup(tenant.Country)
+            ?? throw new InvalidOperationException("Aucun groupe d'experts pour cette fiche.");
+
+        if (asPlatformAdmin && actAsGroupId is Guid actGid)
+        {
+            if (actGid != suggested.Id)
+                throw new InvalidOperationException("Cette fiche n'appartient pas au groupe administré.");
+            return Task.CompletedTask;
+        }
+
+        if (asPlatformAdmin)
+            return Task.CompletedTask;
+
+        EnsureExpertInGroup(callerUserId, suggested.Id);
+        return Task.CompletedTask;
+    }
+
+    public async Task ApproveAsync(
+        Guid tenantId,
+        string expertUserId,
+        string? notes,
+        CancellationToken ct = default,
+        bool asPlatformAdmin = false,
+        Guid? actAsGroupId = null)
+    {
+        var (tenant, group) = await RequireReviewableContextAsync(
+            tenantId, expertUserId, ct, asPlatformAdmin, actAsGroupId);
 
         tenant.ExpertApprovalStatus = ExpertApprovalStatus.Approved;
         tenant.ApprovedByExpertGroupId = group.Id;
@@ -254,14 +319,16 @@ public class ExpertApprovalService(
         await NotifyTeacherDecisionAsync(tenant, group.Name, approved: true, ct);
     }
 
-    public async Task RejectAsync(Guid tenantId, string expertUserId, string? notes, CancellationToken ct = default)
+    public async Task RejectAsync(
+        Guid tenantId,
+        string expertUserId,
+        string? notes,
+        CancellationToken ct = default,
+        bool asPlatformAdmin = false,
+        Guid? actAsGroupId = null)
     {
-        var tenant = await RequireReviewableForExpertAsync(tenantId, expertUserId, ct);
-        var group = expertGroups.ResolveReviewerGroup(tenant.Country)
-            ?? throw new InvalidOperationException(
-                "Aucun groupe d'experts disponible pour ce pays (ni groupe international).");
-
-        EnsureExpertInGroup(expertUserId, group.Id);
+        var (tenant, group) = await RequireReviewableContextAsync(
+            tenantId, expertUserId, ct, asPlatformAdmin, actAsGroupId);
 
         if (string.IsNullOrWhiteSpace(notes))
             throw new InvalidOperationException("Un commentaire / motif est requis pour rejeter une demande.");
@@ -280,9 +347,16 @@ public class ExpertApprovalService(
         await NotifyTeacherDecisionAsync(tenant, group.Name, approved: false, ct);
     }
 
-    public async Task RequestChangesAsync(Guid tenantId, string expertUserId, string notes, CancellationToken ct = default)
+    public async Task RequestChangesAsync(
+        Guid tenantId,
+        string expertUserId,
+        string notes,
+        CancellationToken ct = default,
+        bool asPlatformAdmin = false,
+        Guid? actAsGroupId = null)
     {
-        var tenant = await RequireReviewableForExpertAsync(tenantId, expertUserId, ct);
+        var (tenant, _) = await RequireReviewableContextAsync(
+            tenantId, expertUserId, ct, asPlatformAdmin, actAsGroupId);
         if (string.IsNullOrWhiteSpace(notes))
             throw new InvalidOperationException("Précisez les modifications demandées.");
 
@@ -294,15 +368,27 @@ public class ExpertApprovalService(
         await db.SaveChangesAsync(ct);
     }
 
-    public async Task AssignReviewAsync(Guid tenantId, string expertUserId, AssignReviewRequest request, CancellationToken ct = default)
+    public async Task AssignReviewAsync(
+        Guid tenantId,
+        string expertUserId,
+        AssignReviewRequest request,
+        CancellationToken ct = default,
+        bool asPlatformAdmin = false,
+        Guid? actAsGroupId = null)
     {
-        var tenant = await RequireReviewableForExpertAsync(tenantId, expertUserId, ct);
+        var (tenant, group) = await RequireReviewableContextAsync(
+            tenantId, expertUserId, ct, asPlatformAdmin, actAsGroupId);
         var assignee = string.IsNullOrWhiteSpace(request.AssigneeUserId)
             ? expertUserId
             : request.AssigneeUserId.Trim();
 
-        var group = expertGroups.ResolveReviewerGroup(tenant.Country)
-            ?? throw new InvalidOperationException("Aucun groupe d'experts pour ce dossier.");
+        var isSelfClaim = string.Equals(assignee, expertUserId, StringComparison.Ordinal);
+        var canAssignOthers = asPlatformAdmin
+            || managers.IsActiveManager(expertUserId, group.Id);
+        if (!isSelfClaim && !canAssignOthers)
+            throw new InvalidOperationException(
+                "Seul le Responsable du groupe (ou un admin plateforme en mode suppléant) peut attribuer un dossier à un autre expert. Les experts peuvent uniquement s'auto-attribuer.");
+
         EnsureExpertInGroup(assignee, group.Id);
 
         tenant.ReviewAssignedToUserId = assignee;
@@ -322,9 +408,15 @@ public class ExpertApprovalService(
             ct: ct);
     }
 
-    public async Task StartReviewAsync(Guid tenantId, string expertUserId, CancellationToken ct = default)
+    public async Task StartReviewAsync(
+        Guid tenantId,
+        string expertUserId,
+        CancellationToken ct = default,
+        bool asPlatformAdmin = false,
+        Guid? actAsGroupId = null)
     {
-        var tenant = await RequireReviewableForExpertAsync(tenantId, expertUserId, ct);
+        var (tenant, _) = await RequireReviewableContextAsync(
+            tenantId, expertUserId, ct, asPlatformAdmin, actAsGroupId);
         tenant.ReviewAssignedToUserId ??= expertUserId;
         tenant.ReviewAssignedAt ??= DateTime.UtcNow;
         tenant.ExpertApprovalStatus = ExpertApprovalStatus.UnderReview;
@@ -719,7 +811,12 @@ public class ExpertApprovalService(
         }
     }
 
-    private Task<Tenant> RequireReviewableForExpertAsync(Guid tenantId, string expertUserId, CancellationToken ct)
+    private Task<(Tenant Tenant, ExpertGroup Group)> RequireReviewableContextAsync(
+        Guid tenantId,
+        string expertUserId,
+        CancellationToken ct,
+        bool asPlatformAdmin = false,
+        Guid? actAsGroupId = null)
     {
         var tenant = db.Tenants.FirstOrDefault(t => t.Id == tenantId)
             ?? throw new InvalidOperationException("Profil introuvable.");
@@ -731,18 +828,22 @@ public class ExpertApprovalService(
             or ExpertApprovalStatus.ChangesRequested))
             throw new InvalidOperationException("Cette fiche n'est plus en cours de revue.");
 
-        var groupIds = db.ExpertGroupMembers
-            .Where(m => m.UserId == expertUserId && m.Status == ExpertMembershipStatus.Active)
-            .Select(m => m.ExpertGroupId)
-            .ToHashSet();
-        if (groupIds.Count == 0)
-            throw new InvalidOperationException("Vous n'êtes membre d'aucun groupe d'experts.");
+        var suggested = expertGroups.ResolveReviewerGroup(tenant.Country)
+            ?? throw new InvalidOperationException(
+                "Aucun groupe d'experts disponible pour ce pays (ni groupe international).");
 
-        var suggested = expertGroups.ResolveReviewerGroup(tenant.Country);
-        if (suggested is null || !groupIds.Contains(suggested.Id))
-            throw new InvalidOperationException("Cette fiche n'est pas assignée à votre groupe d'experts.");
+        if (asPlatformAdmin && actAsGroupId is Guid actGid)
+        {
+            if (actGid != suggested.Id)
+                throw new InvalidOperationException("Cette fiche n'appartient pas au groupe administré.");
+            return Task.FromResult((tenant, suggested));
+        }
 
-        return Task.FromResult(tenant);
+        if (asPlatformAdmin)
+            return Task.FromResult((tenant, suggested));
+
+        EnsureExpertInGroup(expertUserId, suggested.Id);
+        return Task.FromResult((tenant, suggested));
     }
 
     private void EnsureExpertInGroup(string expertUserId, Guid groupId)

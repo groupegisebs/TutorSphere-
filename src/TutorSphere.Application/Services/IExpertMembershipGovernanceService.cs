@@ -8,11 +8,15 @@ public interface IExpertMembershipGovernanceService
     Task<ExpertMembershipInviteDto> CreateInviteAsync(
         string initiatorUserId,
         CreateExpertMembershipInviteRequest request,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        bool asPlatformAdmin = false,
+        Guid? actAsGroupId = null);
 
     Task<IReadOnlyList<ExpertMembershipInviteDto>> ListForExpertAsync(
         string expertUserId,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        bool asPlatformAdmin = false,
+        Guid? actAsGroupId = null);
 
     Task<IReadOnlyList<ExpertMembershipInviteDto>> ListForAdminAsync(
         Guid? groupId,
@@ -20,7 +24,9 @@ public interface IExpertMembershipGovernanceService
 
     Task<IReadOnlyList<ExpertGroupMemberListItemDto>> ListActiveMembersAsync(
         string expertUserId,
-        CancellationToken ct = default);
+        CancellationToken ct = default,
+        bool asPlatformAdmin = false,
+        Guid? actAsGroupId = null);
 
     Task<ExpertMembershipInvitePublicDto> GetPublicInviteAsync(string token, CancellationToken ct = default);
 

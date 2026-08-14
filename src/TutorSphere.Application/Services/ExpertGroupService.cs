@@ -130,7 +130,7 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
         if (string.IsNullOrWhiteSpace(name))
             throw new InvalidOperationException("Le nom du groupe est requis.");
 
-        if (request.IsActive && entity.LifecycleStatus == ExpertGroupLifecycleStatus.Archived)
+        if (entity.LifecycleStatus == ExpertGroupLifecycleStatus.Archived && request.IsActive)
             throw new InvalidOperationException("Impossible de réactiver un groupe archivé. Créez un nouveau groupe ou contactez le support.");
 
         // Réconcilie le pointeur dénormalisé avec le mandat Active réel.
@@ -141,6 +141,13 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
 
         if (request.IsActive && activeMandate is null)
             throw new InvalidOperationException("Impossible d'activer un groupe sans Responsable actif.");
+
+        // Ne pas réactiver silencieusement un groupe Suspended via un simple IsActive=true
+        // sans transition explicite depuis Suspended → Active (autorisée ici si mandat présent).
+        if (request.IsActive
+            && entity.LifecycleStatus == ExpertGroupLifecycleStatus.Suspended
+            && activeMandate is null)
+            throw new InvalidOperationException("Impossible de réactiver un groupe suspendu sans Responsable actif.");
 
         entity.Name = name;
         entity.Description = TrimOrNull(request.Description) ?? entity.Description;
@@ -153,6 +160,8 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
         // LogoUrl: null = ne pas toucher ; "" = effacer ; valeur = remplacer.
         if (request.LogoUrl is not null)
             entity.LogoUrl = string.IsNullOrWhiteSpace(request.LogoUrl) ? null : request.LogoUrl.Trim();
+
+        var wasActive = entity.IsActive;
         entity.IsActive = request.IsActive;
 
         // Country can change for national groups only (international stays without country).
@@ -172,9 +181,17 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
         }
 
         if (request.IsActive)
+        {
             entity.LifecycleStatus = ExpertGroupLifecycleStatus.Active;
-        else if (entity.LifecycleStatus == ExpertGroupLifecycleStatus.Active)
+        }
+        else if (wasActive || entity.LifecycleStatus == ExpertGroupLifecycleStatus.Active)
+        {
+            // Soft-deactivate = Suspended + même nettoyage mandat qu'archive (sans hard-delete).
             entity.LifecycleStatus = ExpertGroupLifecycleStatus.Suspended;
+            EndActiveMandateForGroup(entity, "Groupe désactivé (soft)");
+            activeMandate = null;
+        }
+
         entity.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
 
@@ -223,13 +240,26 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
         var entity = db.ExpertGroups.FirstOrDefault(g => g.Id == id)
             ?? throw new InvalidOperationException("Groupe d'experts introuvable.");
 
+        EndActiveMandateForGroup(entity, "Groupe archivé");
+
+        entity.LifecycleStatus = ExpertGroupLifecycleStatus.Archived;
+        entity.IsActive = false;
+        entity.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Termine le mandat Active et rétrograde le membre Manager → Expert (sans toucher Identity).
+    /// </summary>
+    private void EndActiveMandateForGroup(ExpertGroup entity, string reason)
+    {
         var active = db.ExpertGroupManagerMandates.FirstOrDefault(m =>
-            m.ExpertGroupId == id && m.Status == ExpertGroupManagerMandateStatus.Active);
+            m.ExpertGroupId == entity.Id && m.Status == ExpertGroupManagerMandateStatus.Active);
         if (active is not null)
         {
             active.Status = ExpertGroupManagerMandateStatus.Ended;
             active.MandateEndsAtUtc = DateTime.UtcNow;
-            active.EndReason = "Groupe archivé";
+            active.EndReason = reason;
             active.UpdatedAt = DateTime.UtcNow;
 
             var member = db.ExpertGroupMembers.FirstOrDefault(m => m.Id == active.MembershipId);
@@ -240,14 +270,10 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
             }
         }
 
-        entity.LifecycleStatus = ExpertGroupLifecycleStatus.Archived;
-        entity.IsActive = false;
         entity.ActiveManagerMandateId = null;
         entity.GroupManagerMembershipId = null;
         entity.ManagerAssignedAtUtc = null;
         entity.ManagerAssignedByAdminId = null;
-        entity.UpdatedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync(ct);
     }
 
     public Task<bool> CanHardDeleteAsync(Guid id, CancellationToken ct = default) =>

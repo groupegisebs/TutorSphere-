@@ -40,6 +40,48 @@
             <div class="alert alert-danger mb-3">@_error</div>
         }
 
+        @if (_historyGroup is not null)
+        {
+            <div class="cc-card mb-3">
+                <div class="cc-card-header d-flex justify-content-between align-items-center">
+                    <h2 class="cc-card-title mb-0">Historique des mandats — @_historyGroup.Name</h2>
+                    <button type="button" class="cc-btn btn-sm" @onclick="() => _historyGroup = null"><i class="bi bi-x-lg"></i></button>
+                </div>
+                @if (_mandateHistory.Count == 0)
+                {
+                    <p class="text-muted mb-0 p-3">Aucun mandat enregistré.</p>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Statut</th>
+                                    <th>UserId</th>
+                                    <th>Début</th>
+                                    <th>Fin</th>
+                                    <th>Motif</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var h in _mandateHistory)
+                                {
+                                    <tr>
+                                        <td>@(((TutorSphere.Domain.Enums.ExpertGroupManagerMandateStatus)h.Status).ToString())</td>
+                                        <td><code>@h.UserId</code></td>
+                                        <td>@h.MandateStartsAtUtc.ToLocalTime().ToString("g")</td>
+                                        <td>@(h.MandateEndsAtUtc?.ToLocalTime().ToString("g") ?? "—")</td>
+                                        <td>@(h.EndReason ?? "—")</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        }
+
         @if (_showForm)
         {
             <div class="cc-card mb-3 cc-expert-group-form">
@@ -269,6 +311,7 @@
                                                     <a class="cc-btn btn-sm" href="@($"admin/expert-groups/{g.Id}/manager")">Changer le responsable</a>
                                                 </Authorized>
                                             </AuthorizeView>
+                                            <button type="button" class="cc-btn btn-sm" @onclick="() => ShowMandateHistoryAsync(g)">Historique</button>
                                             <button type="button" class="cc-btn btn-sm" @onclick="() => ContactAsync(g)">Contacter</button>
                                             <button type="button" class="cc-btn btn-sm" @onclick="() => OpenEdit(g)">Modifier</button>
                                             <button type="button" class="cc-btn btn-sm" @onclick="() => ToggleActiveAsync(g)">
@@ -344,6 +387,8 @@
 
 @code {
     private List<ExpertGroupItem> _groups = [];
+    private ExpertGroupItem? _historyGroup;
+    private List<MandateHistoryItem> _mandateHistory = [];
     private List<PendingTeacherItem> _pending = [];
     private bool _loading = true;
     private bool _showForm;
@@ -579,6 +624,22 @@
 
     private sealed record ActAsResult(Guid GroupId, string GroupName, string? CountryCode, bool IsInternational, string? PortalPath);
 
+    private async Task ShowMandateHistoryAsync(ExpertGroupItem g)
+    {
+        _error = null;
+        _historyGroup = g;
+        try
+        {
+            _mandateHistory = await Api.GetAsync<List<MandateHistoryItem>>(
+                $"api/admin/expert-groups/{g.Id}/manager/history") ?? [];
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _mandateHistory = [];
+        }
+    }
+
     private async Task ToggleActiveAsync(ExpertGroupItem g)
     {
         _error = null;
@@ -633,6 +694,19 @@
     }
 
     private sealed record LogoUploadResult(string? LogoUrl);
+
+    private sealed record MandateHistoryItem(
+        Guid MandateId,
+        string UserId,
+        int Status,
+        string? FunctionTitle,
+        string? Phone,
+        DateTime MandateStartsAtUtc,
+        DateTime? MandateEndsAtUtc,
+        bool IsTemporary,
+        string AppointedByAdminId,
+        string? EndedByAdminId,
+        string? EndReason);
 
     private static string? FirstNonEmpty(params string?[] values)
     {

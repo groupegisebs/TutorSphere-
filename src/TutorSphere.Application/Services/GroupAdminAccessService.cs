@@ -6,7 +6,7 @@ using TutorSphere.Domain.Enums;
 namespace TutorSphere.Application.Services;
 
 /// <summary>
-/// Résout le groupe administré : Responsable actif, ou SuperAdmin/PlatformAdmin en mode suppléant
+/// Résout le groupe administré : Responsable actif (mandat), ou SuperAdmin/PlatformAdmin en mode suppléant
 /// (passer <paramref name="actAsGroupId"/> depuis le header <c>X-Act-As-Expert-Group-Id</c>).
 /// </summary>
 public interface IGroupAdminAccessService
@@ -50,20 +50,18 @@ public sealed class GroupAdminAccessService(
                 group.Id, group.Name, group.CountryCode, group.Description, group.IsInternational));
         }
 
-        if (user.IsInRole(UserRoles.GroupManager) || managers.IsActiveManager(userId))
-        {
-            var membership = db.ExpertGroupMembers.FirstOrDefault(m =>
-                m.UserId == userId
-                && m.Status == ExpertMembershipStatus.Active
-                && m.MemberRole == ExpertGroupMemberRole.Manager);
-            if (membership is null) return Task.FromResult<ExpertMyGroupDto?>(null);
-            var group = db.ExpertGroups.FirstOrDefault(g => g.Id == membership.ExpertGroupId && g.IsActive);
-            if (group is null) return Task.FromResult<ExpertMyGroupDto?>(null);
-            return Task.FromResult<ExpertMyGroupDto?>(new ExpertMyGroupDto(
-                group.Id, group.Name, group.CountryCode, group.Description, group.IsInternational));
-        }
+        // Mandat Active uniquement — un rôle Identity orphelin ne suffit plus.
+        if (!managers.IsActiveManager(userId))
+            return Task.FromResult<ExpertMyGroupDto?>(null);
 
-        return Task.FromResult<ExpertMyGroupDto?>(null);
+        var mandate = db.ExpertGroupManagerMandates.FirstOrDefault(m =>
+            m.UserId == userId && m.Status == ExpertGroupManagerMandateStatus.Active);
+        if (mandate is null) return Task.FromResult<ExpertMyGroupDto?>(null);
+
+        var managed = db.ExpertGroups.FirstOrDefault(g => g.Id == mandate.ExpertGroupId && g.IsActive);
+        if (managed is null) return Task.FromResult<ExpertMyGroupDto?>(null);
+        return Task.FromResult<ExpertMyGroupDto?>(new ExpertMyGroupDto(
+            managed.Id, managed.Name, managed.CountryCode, managed.Description, managed.IsInternational));
     }
 
     public async Task<Guid> RequireManagedGroupIdAsync(

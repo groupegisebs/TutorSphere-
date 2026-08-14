@@ -1,3 +1,4 @@
+@using TutorSphere.Application.Options
 @inject IStringLocalizer<SharedResources> L
 @inject AuthService Auth
 @inject ApiClient Api
@@ -17,10 +18,13 @@
 <div class="cc-nav-scroll">
     <nav>
         <CollapsibleNavSection Title="Pilotage" SectionKey="pilotage" DefaultOpen="true">
-            <NavLink class="cc-nav-link" href="expert/dashboard" Match="NavLinkMatch.All">
-                <i class="bi bi-speedometer2" aria-hidden="true"></i>
-                <span>Tableau de bord</span>
-            </NavLink>
+            @if (Modules.IsEnabled(ExpertModuleKeys.Dashboard))
+            {
+                <NavLink class="cc-nav-link" href="expert/dashboard" Match="NavLinkMatch.All">
+                    <i class="bi bi-speedometer2" aria-hidden="true"></i>
+                    <span>Tableau de bord</span>
+                </NavLink>
+            }
             @if (_isManager && Modules.GroupAdmin)
             {
                 <NavLink class="cc-nav-link" href="group-admin/dashboard" Match="NavLinkMatch.Prefix">
@@ -28,74 +32,71 @@
                     <span>Espace Responsable</span>
                 </NavLink>
             }
-            <NavLink class="cc-nav-link" href="expert/reports" Match="NavLinkMatch.Prefix">
-                <i class="bi bi-file-earmark-bar-graph" aria-hidden="true"></i>
-                <span>Rapports</span>
-            </NavLink>
-            <NavLink class="cc-nav-link" href="expert/activity" Match="NavLinkMatch.Prefix">
-                <i class="bi bi-activity" aria-hidden="true"></i>
-                <span>Journal d'activité</span>
-            </NavLink>
+            @ModuleLink(ExpertModuleKeys.Reports, "expert/coming-soon/reports", "bi-file-earmark-bar-graph", "Rapports")
+            @ModuleLink(ExpertModuleKeys.Activity, "expert/coming-soon/activity", "bi-activity", "Journal d'activité")
         </CollapsibleNavSection>
 
         <CollapsibleNavSection Title="Enseignants" SectionKey="enseignants" DefaultOpen="true">
-            <NavLink class="cc-nav-link" href="expert/approvals" Match="NavLinkMatch.Prefix">
-                <i class="bi bi-inbox" aria-hidden="true"></i>
-                <span>File d'attente</span>
-            </NavLink>
-            <NavLink class="cc-nav-link" href="expert/teachers" Match="NavLinkMatch.All">
-                <i class="bi bi-mortarboard" aria-hidden="true"></i>
-                <span>Approuvés</span>
-            </NavLink>
+            @if (Modules.Approvals)
+            {
+                <NavLink class="cc-nav-link" href="expert/approvals" Match="NavLinkMatch.Prefix">
+                    <i class="bi bi-inbox" aria-hidden="true"></i>
+                    <span>File d'attente</span>
+                </NavLink>
+            }
+            @if (Modules.Teachers)
+            {
+                <NavLink class="cc-nav-link" href="expert/teachers" Match="NavLinkMatch.All">
+                    <i class="bi bi-mortarboard" aria-hidden="true"></i>
+                    <span>Approuvés</span>
+                </NavLink>
+            }
             <NavLink class="cc-nav-link" href="expert/my-tasks" Match="NavLinkMatch.Prefix">
                 <i class="bi bi-clipboard-check" aria-hidden="true"></i>
                 <span>Mes tâches</span>
             </NavLink>
-            <NavLink class="cc-nav-link" href="expert/interviews" Match="NavLinkMatch.Prefix">
-                <i class="bi bi-camera-video" aria-hidden="true"></i>
-                <span>Entretiens</span>
-            </NavLink>
-            <NavLink class="cc-nav-link" href="expert/demonstrations" Match="NavLinkMatch.Prefix">
-                <i class="bi bi-easel" aria-hidden="true"></i>
-                <span>Démonstrations</span>
-            </NavLink>
-            <NavLink class="cc-nav-link" href="expert/documents" Match="NavLinkMatch.Prefix">
-                <i class="bi bi-file-earmark-text" aria-hidden="true"></i>
-                <span>Documents</span>
-            </NavLink>
-            <NavLink class="cc-nav-link" href="expert/renewals" Match="NavLinkMatch.Prefix">
-                <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
-                <span>Réévaluations</span>
-            </NavLink>
+            @ModuleLink(ExpertModuleKeys.Interviews, "expert/coming-soon/interviews", "bi-camera-video", "Entretiens")
+            @ModuleLink(ExpertModuleKeys.Demonstrations, "expert/coming-soon/demonstrations", "bi-easel", "Démonstrations")
+            @ModuleLink(ExpertModuleKeys.Documents, "expert/coming-soon/documents", "bi-file-earmark-text", "Documents")
+            @ModuleLink(ExpertModuleKeys.Renewals, "expert/coming-soon/renewals", "bi-arrow-repeat", "Réévaluations")
         </CollapsibleNavSection>
 
         @if (_isManager)
         {
             <CollapsibleNavSection Title="Responsable" SectionKey="responsable" DefaultOpen="true">
-                <NavLink class="cc-nav-link" href="expert/approvals" Match="NavLinkMatch.Prefix">
-                    <i class="bi bi-inbox" aria-hidden="true"></i>
-                    <span>File d'attente</span>
+                <NavLink class="cc-nav-link" href="group-admin/dashboard" Match="NavLinkMatch.Prefix">
+                    <i class="bi bi-speedometer2" aria-hidden="true"></i>
+                    <span>Tableau de bord groupe</span>
                 </NavLink>
                 <NavLink class="cc-nav-link" href="group-admin/tasks" Match="NavLinkMatch.Prefix">
                     <i class="bi bi-list-check" aria-hidden="true"></i>
                     <span>Déléguer des tâches</span>
                 </NavLink>
-                <NavLink class="cc-nav-link" href="expert/offers" Match="NavLinkMatch.Prefix">
-                    <i class="bi bi-tags" aria-hidden="true"></i>
-                    <span>Offres du groupe</span>
-                </NavLink>
+                @if (Modules.Offers)
+                {
+                    <NavLink class="cc-nav-link" href="expert/offers" Match="NavLinkMatch.Prefix">
+                        <i class="bi bi-tags" aria-hidden="true"></i>
+                        <span>Offres du groupe</span>
+                    </NavLink>
+                }
                 <NavLink class="cc-nav-link" href="group-admin/members" Match="NavLinkMatch.Prefix">
                     <i class="bi bi-people" aria-hidden="true"></i>
                     <span>Membres</span>
                 </NavLink>
-                <NavLink class="cc-nav-link" href="expert/admissions" Match="NavLinkMatch.Prefix">
-                    <i class="bi bi-person-check" aria-hidden="true"></i>
-                    <span>Admissions</span>
-                </NavLink>
-                <NavLink class="cc-nav-link" href="expert/admin-chat" Match="NavLinkMatch.Prefix">
-                    <i class="bi bi-chat-dots" aria-hidden="true"></i>
-                    <span>Chat TutorSphere</span>
-                </NavLink>
+                @if (Modules.Admissions)
+                {
+                    <NavLink class="cc-nav-link" href="expert/admissions" Match="NavLinkMatch.Prefix">
+                        <i class="bi bi-person-check" aria-hidden="true"></i>
+                        <span>Admissions</span>
+                    </NavLink>
+                }
+                @if (Modules.AdminChat)
+                {
+                    <NavLink class="cc-nav-link" href="expert/admin-chat" Match="NavLinkMatch.Prefix">
+                        <i class="bi bi-chat-dots" aria-hidden="true"></i>
+                        <span>Chat TutorSphere</span>
+                    </NavLink>
+                }
                 <NavLink class="cc-nav-link" href="expert/messages" Match="NavLinkMatch.Prefix">
                     <i class="bi bi-envelope" aria-hidden="true"></i>
                     <span>Messagerie groupe</span>
@@ -108,83 +109,66 @@
         }
 
         <CollapsibleNavSection Title="Qualité" SectionKey="qualite" DefaultOpen="false">
-            <NavLink class="cc-nav-link" href="expert/quality" Match="NavLinkMatch.Prefix">
-                <i class="bi bi-graph-up" aria-hidden="true"></i>
-                <span>Suivi qualité</span>
-            </NavLink>
-            <NavLink class="cc-nav-link" href="expert/observations" Match="NavLinkMatch.Prefix">
-                <i class="bi bi-eye" aria-hidden="true"></i>
-                <span>Observations</span>
-            </NavLink>
-            <NavLink class="cc-nav-link" href="expert/resources" Match="NavLinkMatch.Prefix">
-                <i class="bi bi-folder2-open" aria-hidden="true"></i>
-                <span>Supports</span>
-            </NavLink>
-            <NavLink class="cc-nav-link" href="expert/feedback" Match="NavLinkMatch.Prefix">
-                <i class="bi bi-chat-left-text" aria-hidden="true"></i>
-                <span>Remarques</span>
-            </NavLink>
-            <NavLink class="cc-nav-link" href="expert/incidents" Match="NavLinkMatch.Prefix">
-                <i class="bi bi-exclamation-triangle" aria-hidden="true"></i>
-                <span>Incidents</span>
-            </NavLink>
+            @ModuleLink(ExpertModuleKeys.Quality, "expert/coming-soon/quality", "bi-graph-up", "Suivi qualité")
+            @ModuleLink(ExpertModuleKeys.Observations, "expert/coming-soon/observations", "bi-eye", "Observations")
+            @ModuleLink(ExpertModuleKeys.Resources, "expert/coming-soon/resources", "bi-folder2-open", "Supports")
+            @ModuleLink(ExpertModuleKeys.Feedback, "expert/coming-soon/feedback", "bi-chat-left-text", "Remarques")
+            @ModuleLink(ExpertModuleKeys.Incidents, "expert/coming-soon/incidents", "bi-exclamation-triangle", "Incidents")
         </CollapsibleNavSection>
 
         <CollapsibleNavSection Title="Organisation" SectionKey="organisation" DefaultOpen="false">
-            <NavLink class="cc-nav-link" href="expert/disciplines" Match="NavLinkMatch.Prefix">
-                <i class="bi bi-book" aria-hidden="true"></i>
-                <span>Disciplines</span>
-            </NavLink>
-            <NavLink class="cc-nav-link" href="expert/offers" Match="NavLinkMatch.Prefix">
-                <i class="bi bi-tags" aria-hidden="true"></i>
-                <span>Offres du groupe</span>
-            </NavLink>
-            <NavLink class="cc-nav-link" href="expert/library" Match="NavLinkMatch.Prefix">
-                <i class="bi bi-journal-bookmark" aria-hidden="true"></i>
-                <span>Bibliothèque</span>
-            </NavLink>
-            <NavLink class="cc-nav-link" href="expert/training" Match="NavLinkMatch.Prefix">
-                <i class="bi bi-mortarboard-fill" aria-hidden="true"></i>
-                <span>Formations</span>
-            </NavLink>
-            <NavLink class="cc-nav-link" href="expert/visibility" Match="NavLinkMatch.Prefix">
-                <i class="bi bi-globe2" aria-hidden="true"></i>
-                <span>Visibilité</span>
-            </NavLink>
+            @if (Modules.Disciplines)
+            {
+                <NavLink class="cc-nav-link" href="expert/disciplines" Match="NavLinkMatch.Prefix">
+                    <i class="bi bi-book" aria-hidden="true"></i>
+                    <span>Disciplines</span>
+                </NavLink>
+            }
+            @if (!_isManager && Modules.Offers)
+            {
+                <NavLink class="cc-nav-link" href="expert/offers" Match="NavLinkMatch.Prefix">
+                    <i class="bi bi-tags" aria-hidden="true"></i>
+                    <span>Offres du groupe</span>
+                </NavLink>
+            }
+            else if (!_isManager)
+            {
+                @ModuleLink(ExpertModuleKeys.Offers, "expert/offers", "bi-tags", "Offres du groupe")
+            }
+            @ModuleLink(ExpertModuleKeys.Library, "expert/coming-soon/library", "bi-journal-bookmark", "Bibliothèque")
+            @ModuleLink(ExpertModuleKeys.Training, "expert/coming-soon/training", "bi-mortarboard-fill", "Formations")
+            @ModuleLink(ExpertModuleKeys.Visibility, "expert/coming-soon/visibility", "bi-globe2", "Visibilité")
         </CollapsibleNavSection>
 
         <CollapsibleNavSection Title="Groupe" SectionKey="groupe" DefaultOpen="false">
-            <NavLink class="cc-nav-link" href="expert/members" Match="NavLinkMatch.All">
-                <i class="bi bi-people" aria-hidden="true"></i>
-                <span>Membres</span>
-            </NavLink>
-            <NavLink class="cc-nav-link" href="expert/messages" Match="NavLinkMatch.Prefix">
-                <i class="bi bi-envelope" aria-hidden="true"></i>
-                <span>Messagerie</span>
-            </NavLink>
-            <NavLink class="cc-nav-link" href="expert/admissions" Match="NavLinkMatch.Prefix">
-                <i class="bi bi-person-check" aria-hidden="true"></i>
-                <span>Admissions Experts</span>
-            </NavLink>
-            <NavLink class="cc-nav-link" href="expert/meetings" Match="NavLinkMatch.Prefix">
-                <i class="bi bi-calendar-event" aria-hidden="true"></i>
-                <span>Réunions</span>
-            </NavLink>
-            <NavLink class="cc-nav-link" href="expert/decisions" Match="NavLinkMatch.Prefix">
-                <i class="bi bi-ui-checks" aria-hidden="true"></i>
-                <span>Décisions</span>
-            </NavLink>
+            @if (!_isManager)
+            {
+                @if (Modules.Members)
+                {
+                    <NavLink class="cc-nav-link" href="expert/members" Match="NavLinkMatch.All">
+                        <i class="bi bi-people" aria-hidden="true"></i>
+                        <span>Membres</span>
+                    </NavLink>
+                }
+                <NavLink class="cc-nav-link" href="expert/messages" Match="NavLinkMatch.Prefix">
+                    <i class="bi bi-envelope" aria-hidden="true"></i>
+                    <span>Messagerie</span>
+                </NavLink>
+                @if (Modules.Admissions)
+                {
+                    <NavLink class="cc-nav-link" href="expert/admissions" Match="NavLinkMatch.Prefix">
+                        <i class="bi bi-person-check" aria-hidden="true"></i>
+                        <span>Admissions Experts</span>
+                    </NavLink>
+                }
+            }
+            @ModuleLink(ExpertModuleKeys.Meetings, "expert/coming-soon/meetings", "bi-calendar-event", "Réunions")
+            @ModuleLink(ExpertModuleKeys.Decisions, "expert/coming-soon/decisions", "bi-ui-checks", "Décisions")
         </CollapsibleNavSection>
 
         <CollapsibleNavSection Title="Outils" SectionKey="outils" DefaultOpen="false">
-            <NavLink class="cc-nav-link" href="expert/notifications" Match="NavLinkMatch.Prefix">
-                <i class="bi bi-bell" aria-hidden="true"></i>
-                <span>Notifications</span>
-            </NavLink>
-            <NavLink class="cc-nav-link" href="expert/profile" Match="NavLinkMatch.Prefix">
-                <i class="bi bi-person-gear" aria-hidden="true"></i>
-                <span>Mon profil</span>
-            </NavLink>
+            @ModuleLink(ExpertModuleKeys.Notifications, "expert/coming-soon/notifications", "bi-bell", "Notifications")
+            @ModuleLink(ExpertModuleKeys.Profile, "expert/coming-soon/profile", "bi-person-gear", "Mon profil")
         </CollapsibleNavSection>
     </nav>
 </div>
@@ -208,6 +192,35 @@
         }
         catch { }
     }
+
+    private RenderFragment ModuleLink(string key, string href, string icon, string label) => builder =>
+    {
+        if (Modules.IsEnabled(key))
+        {
+            builder.OpenComponent<NavLink>(0);
+            builder.AddAttribute(1, "class", "cc-nav-link");
+            builder.AddAttribute(2, "href", href);
+            builder.AddAttribute(3, "Match", NavLinkMatch.Prefix);
+            builder.AddAttribute(4, "ChildContent", (RenderFragment)(child =>
+            {
+                child.OpenElement(0, "i");
+                child.AddAttribute(1, "class", $"bi {icon}");
+                child.AddAttribute(2, "aria-hidden", "true");
+                child.CloseElement();
+                child.OpenElement(3, "span");
+                child.AddContent(4, label);
+                child.CloseElement();
+            }));
+            builder.CloseComponent();
+        }
+        else if (Modules.IsFrozen(key))
+        {
+            builder.OpenComponent<FrozenNavItem>(10);
+            builder.AddAttribute(11, "Icon", icon);
+            builder.AddAttribute(12, "Label", label);
+            builder.CloseComponent();
+        }
+    };
 
     private Task LogoutAsync()
     {

@@ -12,6 +12,7 @@ public class ExpertMembershipGovernanceService(
     IUserContactLookup contacts,
     IAppUrlProvider urls,
     IExpertIdentityActions identity,
+    IExpertGovernanceAuditService audit,
     ILogger<ExpertMembershipGovernanceService> logger) : IExpertMembershipGovernanceService
 {
     private const int InviteDays = 30;
@@ -20,10 +21,12 @@ public class ExpertMembershipGovernanceService(
     public async Task<ExpertMembershipInviteDto> CreateInviteAsync(
         string initiatorUserId,
         CreateExpertMembershipInviteRequest request,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool asPlatformAdmin = false,
+        Guid? actAsGroupId = null)
     {
-        var membership = RequireActiveMembership(initiatorUserId);
-        var group = db.ExpertGroups.FirstOrDefault(g => g.Id == membership.ExpertGroupId && g.IsActive)
+        var groupId = ResolveCallerGroupId(initiatorUserId, asPlatformAdmin, actAsGroupId);
+        var group = db.ExpertGroups.FirstOrDefault(g => g.Id == groupId && g.IsActive)
             ?? throw new InvalidOperationException("Groupe d'experts introuvable ou inactif.");
 
         var emailAddr = NormalizeEmail(request.Email);
@@ -68,6 +71,15 @@ public class ExpertMembershipGovernanceService(
         db.Add(invite);
         await db.SaveChangesAsync(ct);
 
+        await audit.RecordAsync(
+            ExpertGovernanceEventType.MembershipInviteCreated,
+            initiatorUserId,
+            $"Invitation expert {emailAddr}",
+            group.Id,
+            relatedEntityId: invite.Id,
+            isNotification: false,
+            ct: ct);
+
         var initiator = await contacts.GetAsync(initiatorUserId, ct);
         var joinUrl = $"{urls.WebBaseUrl.TrimEnd('/')}/expert/join?invite={Uri.EscapeDataString(token)}";
         try
@@ -91,12 +103,14 @@ public class ExpertMembershipGovernanceService(
 
     public async Task<IReadOnlyList<ExpertMembershipInviteDto>> ListForExpertAsync(
         string expertUserId,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool asPlatformAdmin = false,
+        Guid? actAsGroupId = null)
     {
-        var membership = RequireActiveMembership(expertUserId);
-        ExpireStaleInvites(membership.ExpertGroupId);
+        var groupId = ResolveCallerGroupId(expertUserId, asPlatformAdmin, actAsGroupId);
+        ExpireStaleInvites(groupId);
         var invites = db.ExpertMembershipInvites
-            .Where(i => i.ExpertGroupId == membership.ExpertGroupId)
+            .Where(i => i.ExpertGroupId == groupId)
             .OrderByDescending(i => i.SentAtUtc)
             .Take(100)
             .ToList();
@@ -131,11 +145,13 @@ public class ExpertMembershipGovernanceService(
 
     public Task<IReadOnlyList<ExpertGroupMemberListItemDto>> ListActiveMembersAsync(
         string expertUserId,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool asPlatformAdmin = false,
+        Guid? actAsGroupId = null)
     {
-        var membership = RequireActiveMembership(expertUserId);
+        var groupId = ResolveCallerGroupId(expertUserId, asPlatformAdmin, actAsGroupId);
         var members = db.ExpertGroupMembers
-            .Where(m => m.ExpertGroupId == membership.ExpertGroupId
+            .Where(m => m.ExpertGroupId == groupId
                         && m.Status != ExpertMembershipStatus.Removed)
             .OrderBy(m => m.CreatedAt)
             .ToList();
@@ -530,6 +546,18 @@ public class ExpertMembershipGovernanceService(
                 logger.LogWarning(ex, "Échec notif vote à {Voter}", voterId);
             }
         }
+    }
+
+    private Guid ResolveCallerGroupId(string userId, bool asPlatformAdmin, Guid? actAsGroupId)
+    {
+        if (asPlatformAdmin && actAsGroupId is Guid gid)
+        {
+            if (!db.ExpertGroups.Any(g => g.Id == gid && g.IsActive))
+                throw new InvalidOperationException("Groupe d'experts introuvable ou inactif.");
+            return gid;
+        }
+
+        return RequireActiveMembership(userId).ExpertGroupId;
     }
 
     private ExpertGroupMember RequireActiveMembership(string userId)

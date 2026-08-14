@@ -11,7 +11,13 @@ public interface IGroupOfferService
 {
     Task<GroupOffersCatalogDto?> GetCatalogAsync(Guid groupId, CancellationToken ct = default);
     Task<IReadOnlyList<GroupOfferListItemDto>> ListForGroupAsync(Guid groupId, CancellationToken ct = default);
-    Task<GroupOfferListItemDto> CreateDraftAsync(Guid groupId, string userId, CreateGroupOfferRequest request, CancellationToken ct = default);
+    Task<GroupOfferListItemDto> CreateDraftAsync(
+        Guid groupId,
+        string userId,
+        CreateGroupOfferRequest request,
+        CancellationToken ct = default,
+        bool asPlatformAdmin = false,
+        Guid? actAsGroupId = null);
     Task<GroupOfferListItemDto> UpdateDraftAsync(
         Guid offerId,
         string userId,
@@ -55,7 +61,8 @@ public interface IGroupOfferService
 public class GroupOfferService(
     IApplicationDbContext db,
     IExpertGroupManagerService managers,
-    ISubscriptionOfferingService offerings) : IGroupOfferService
+    ISubscriptionOfferingService offerings,
+    IExpertGovernanceAuditService audit) : IGroupOfferService
 {
     public Task<GroupOffersCatalogDto?> GetCatalogAsync(Guid groupId, CancellationToken ct = default)
     {
@@ -77,12 +84,22 @@ public class GroupOfferService(
         => Task.FromResult(MapList(groupId));
 
     public async Task<GroupOfferListItemDto> CreateDraftAsync(
-        Guid groupId, string userId, CreateGroupOfferRequest request, CancellationToken ct = default)
+        Guid groupId,
+        string userId,
+        CreateGroupOfferRequest request,
+        CancellationToken ct = default,
+        bool asPlatformAdmin = false,
+        Guid? actAsGroupId = null)
     {
         var group = db.ExpertGroups.FirstOrDefault(g => g.Id == groupId)
             ?? throw new InvalidOperationException("Groupe introuvable.");
         if (string.IsNullOrWhiteSpace(request.Name))
             throw new InvalidOperationException("Le nom de l'offre est requis.");
+
+        var allowedAsPlatform = asPlatformAdmin && actAsGroupId is Guid gid && gid == groupId;
+        if (!allowedAsPlatform && !managers.IsActiveManager(userId, groupId))
+            throw new InvalidOperationException(
+                "Seul le Responsable du groupe (ou un admin plateforme en mode suppléant) peut créer une offre.");
 
         var (isInternational, marketCode, currency) = ResolveScope(group, request.IsInternational, request.MarketCountryCode);
 
@@ -106,6 +123,16 @@ public class GroupOfferService(
         };
         db.Add(offer);
         await db.SaveChangesAsync(ct);
+
+        await audit.RecordAsync(
+            ExpertGovernanceEventType.GroupOfferCreated,
+            userId,
+            $"Offre brouillon « {offer.Name} »",
+            groupId,
+            relatedEntityId: offer.Id,
+            isNotification: false,
+            ct: ct);
+
         return ToDto(offer, 0);
     }
 
@@ -185,6 +212,15 @@ public class GroupOfferService(
         offer.PublishedAtUtc = DateTime.UtcNow;
         offer.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
+
+        await audit.RecordAsync(
+            ExpertGovernanceEventType.GroupOfferPublished,
+            managerUserId,
+            $"Offre publiée « {offer.Name} »",
+            offer.ExpertGroupId,
+            relatedEntityId: offer.Id,
+            isNotification: false,
+            ct: ct);
     }
 
     public Task<IReadOnlyList<GroupOfferAssignableTeacherDto>> ListAssignableTeachersAsync(

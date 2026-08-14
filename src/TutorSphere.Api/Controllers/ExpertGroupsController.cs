@@ -136,7 +136,12 @@ public class ExpertGroupsController : ControllerBase
     {
         try
         {
-            return Ok(await EnrichManagerAsync(await _groups.UpdateAsync(id, request, ct), ct));
+            var previous = await _managers.GetActiveManagerAsync(id, ct);
+            var before = await _groups.GetByIdAsync(id, ct);
+            var updated = await _groups.UpdateAsync(id, request, ct);
+            if (before?.IsActive == true && !updated.IsActive && previous is not null)
+                await _identity.RemoveGroupManagerRoleAsync(previous.UserId, ct);
+            return Ok(await EnrichManagerAsync(updated, ct));
         }
         catch (InvalidOperationException ex)
         {
@@ -213,8 +218,9 @@ public class ExpertGroupsController : ControllerBase
 
             var group = await _groups.GetByIdAsync(id, ct)
                 ?? throw new InvalidOperationException("Groupe introuvable.");
+            // Met à jour les contacts sans forcer une réactivation si le groupe est Suspended.
             await _groups.UpdateAsync(id, new UpdateExpertGroupRequest(
-                group.Name, user.Email, request.Phone ?? group.ContactPhone, LogoUrl: null, true,
+                group.Name, user.Email, request.Phone ?? group.ContactPhone, LogoUrl: null, group.IsActive,
                 user.FullName, group.Description, group.CountryCode));
 
             return Ok(await EnrichManagerAsync((await _groups.GetByIdAsync(id, ct))!, ct));
@@ -242,6 +248,15 @@ public class ExpertGroupsController : ControllerBase
         {
             return BadRequest(new { error = ex.Message });
         }
+    }
+
+    [HttpGet("{id:guid}/manager/history")]
+    public async Task<ActionResult<IReadOnlyList<ExpertGroupManagerMandateHistoryDto>>> MandateHistory(
+        Guid id, CancellationToken ct)
+    {
+        if (await _groups.GetByIdAsync(id, ct) is null)
+            return NotFound();
+        return Ok(await _managers.ListMandateHistoryAsync(id, ct));
     }
 
     [HttpPost("{id:guid}/contact")]

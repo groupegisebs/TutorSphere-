@@ -262,6 +262,11 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             e.Property(m => m.EndReason).HasMaxLength(2000);
             e.HasIndex(m => m.ExpertGroupId);
             e.HasIndex(m => new { m.ExpertGroupId, m.Status });
+            // Un seul mandat Active (Status = 1) par groupe.
+            e.HasIndex(m => m.ExpertGroupId)
+                .IsUnique()
+                .HasFilter("\"Status\" = 1")
+                .HasDatabaseName("IX_ExpertGroupManagerMandates_OneActivePerGroup");
             e.HasOne(m => m.ExpertGroup).WithMany(g => g.ManagerMandates).HasForeignKey(m => m.ExpertGroupId)
                 .OnDelete(DeleteBehavior.Cascade);
             e.HasOne(m => m.Membership).WithMany().HasForeignKey(m => m.MembershipId)

@@ -145,20 +145,32 @@ public class ExpertApprovalsController : ControllerBase
     [HttpGet("teachers/{tenantId:guid}")]
     public async Task<ActionResult<TeacherReviewDetailDto>> GetTeacher(Guid tenantId, CancellationToken ct)
     {
-        var detail = await _approvals.GetReviewDetailAsync(tenantId, ct);
-        if (detail is null) return NotFound(new { error = "Fiche introuvable." });
-
-        if (!string.IsNullOrWhiteSpace(detail.OwnerUserId))
+        if (UserId is null) return Unauthorized();
+        try
         {
-            var user = await _userManager.FindByIdAsync(detail.OwnerUserId);
-            detail = detail with
-            {
-                OwnerEmail = user?.Email,
-                OwnerName = user?.FullName
-            };
-        }
+            var asPlatform = _groupAccess.IsPlatformAdmin(User);
+            await _approvals.EnsureCanViewTeacherAsync(
+                tenantId, UserId, ct, asPlatformAdmin: asPlatform, actAsGroupId: ActAsGroupId);
 
-        return Ok(detail);
+            var detail = await _approvals.GetReviewDetailAsync(tenantId, ct);
+            if (detail is null) return NotFound(new { error = "Fiche introuvable." });
+
+            if (!string.IsNullOrWhiteSpace(detail.OwnerUserId))
+            {
+                var user = await _userManager.FindByIdAsync(detail.OwnerUserId);
+                detail = detail with
+                {
+                    OwnerEmail = user?.Email,
+                    OwnerName = user?.FullName
+                };
+            }
+
+            return Ok(detail);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 
     [HttpPost("teachers/{tenantId:guid}/approve")]
@@ -167,7 +179,9 @@ public class ExpertApprovalsController : ControllerBase
         if (UserId is null) return Unauthorized();
         try
         {
-            await _approvals.ApproveAsync(tenantId, UserId, request?.Notes, ct);
+            var asPlatform = _groupAccess.IsPlatformAdmin(User) && ActAsGroupId.HasValue;
+            await _approvals.ApproveAsync(
+                tenantId, UserId, request?.Notes, ct, asPlatformAdmin: asPlatform, actAsGroupId: ActAsGroupId);
             return Ok(new { message = "Enseignant approuvé." });
         }
         catch (InvalidOperationException ex)
@@ -182,7 +196,9 @@ public class ExpertApprovalsController : ControllerBase
         if (UserId is null) return Unauthorized();
         try
         {
-            await _approvals.RejectAsync(tenantId, UserId, request?.Notes, ct);
+            var asPlatform = _groupAccess.IsPlatformAdmin(User) && ActAsGroupId.HasValue;
+            await _approvals.RejectAsync(
+                tenantId, UserId, request?.Notes, ct, asPlatformAdmin: asPlatform, actAsGroupId: ActAsGroupId);
             return Ok(new { message = "Enseignant rejeté." });
         }
         catch (InvalidOperationException ex)
@@ -197,7 +213,9 @@ public class ExpertApprovalsController : ControllerBase
         if (UserId is null) return Unauthorized();
         try
         {
-            await _approvals.RequestChangesAsync(tenantId, UserId, request?.Notes ?? "", ct);
+            var asPlatform = _groupAccess.IsPlatformAdmin(User) && ActAsGroupId.HasValue;
+            await _approvals.RequestChangesAsync(
+                tenantId, UserId, request?.Notes ?? "", ct, asPlatformAdmin: asPlatform, actAsGroupId: ActAsGroupId);
             return Ok(new { message = "Modifications demandées." });
         }
         catch (InvalidOperationException ex)
@@ -212,7 +230,10 @@ public class ExpertApprovalsController : ControllerBase
         if (UserId is null) return Unauthorized();
         try
         {
-            await _approvals.AssignReviewAsync(tenantId, UserId, request ?? new AssignReviewRequest(null), ct);
+            var asPlatform = _groupAccess.IsPlatformAdmin(User) && ActAsGroupId.HasValue;
+            await _approvals.AssignReviewAsync(
+                tenantId, UserId, request ?? new AssignReviewRequest(null), ct,
+                asPlatformAdmin: asPlatform, actAsGroupId: ActAsGroupId);
             return Ok(new { message = "Dossier attribué." });
         }
         catch (InvalidOperationException ex)
@@ -227,7 +248,9 @@ public class ExpertApprovalsController : ControllerBase
         if (UserId is null) return Unauthorized();
         try
         {
-            await _approvals.StartReviewAsync(tenantId, UserId, ct);
+            var asPlatform = _groupAccess.IsPlatformAdmin(User) && ActAsGroupId.HasValue;
+            await _approvals.StartReviewAsync(
+                tenantId, UserId, ct, asPlatformAdmin: asPlatform, actAsGroupId: ActAsGroupId);
             return Ok(new { message = "Revue démarrée." });
         }
         catch (InvalidOperationException ex)
@@ -303,14 +326,17 @@ public class ExpertApprovalsController : ControllerBase
             });
         }
 
-        var isManager = User.IsInRole(UserRoles.GroupManager) || managers.IsActiveManager(UserId);
+        var isManager = managers.IsActiveManager(UserId);
         Guid? groupId = null;
         string? groupName = null;
-        var my = await _approvals.GetMyGroupAsync(UserId, ct);
-        if (my is not null)
+        if (isManager)
         {
-            groupId = my.Id;
-            groupName = my.Name;
+            var my = await _approvals.GetMyGroupAsync(UserId, ct);
+            if (my is not null)
+            {
+                groupId = my.Id;
+                groupName = my.Name;
+            }
         }
         return Ok(new { isGroupManager = isManager, groupId, groupName, isPlatformActAs = false });
     }

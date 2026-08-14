@@ -12,12 +12,15 @@ namespace TutorSphere.Api.Controllers;
 [Route("api/expert/membership")]
 public class ExpertMembershipController(
     IExpertMembershipGovernanceService membership,
-    IUserContactLookup contacts) : ControllerBase
+    IUserContactLookup contacts,
+    IGroupAdminAccessService groupAccess) : ControllerBase
 {
     private string? UserId => User.FindFirstValue(ClaimTypes.NameIdentifier);
+    private Guid? ActAsGroupId => GroupAdminActAs.ReadGroupId(Request);
+    private bool AsPlatformActAs => groupAccess.IsPlatformAdmin(User) && ActAsGroupId.HasValue;
 
     [HttpPost("invites")]
-    [Authorize(Roles = UserRoles.Expert)]
+    [Authorize(Roles = $"{UserRoles.Expert},{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
     public async Task<ActionResult<ExpertMembershipInviteDto>> CreateInvite(
         [FromBody] CreateExpertMembershipInviteRequest? request,
         CancellationToken ct)
@@ -26,7 +29,8 @@ public class ExpertMembershipController(
         if (request is null) return BadRequest(new { error = "Requête invalide." });
         try
         {
-            return Ok(await membership.CreateInviteAsync(UserId, request, ct));
+            return Ok(await membership.CreateInviteAsync(
+                UserId, request, ct, asPlatformAdmin: AsPlatformActAs, actAsGroupId: ActAsGroupId));
         }
         catch (InvalidOperationException ex)
         {
@@ -35,13 +39,14 @@ public class ExpertMembershipController(
     }
 
     [HttpGet("invites")]
-    [Authorize(Roles = UserRoles.Expert)]
+    [Authorize(Roles = $"{UserRoles.Expert},{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
     public async Task<ActionResult<IReadOnlyList<ExpertMembershipInviteDto>>> ListInvites(CancellationToken ct)
     {
         if (UserId is null) return Unauthorized();
         try
         {
-            return Ok(await membership.ListForExpertAsync(UserId, ct));
+            return Ok(await membership.ListForExpertAsync(
+                UserId, ct, asPlatformAdmin: AsPlatformActAs, actAsGroupId: ActAsGroupId));
         }
         catch (InvalidOperationException ex)
         {
@@ -50,13 +55,14 @@ public class ExpertMembershipController(
     }
 
     [HttpGet("members")]
-    [Authorize(Roles = $"{UserRoles.Expert},{UserRoles.GroupManager}")]
+    [Authorize(Roles = $"{UserRoles.Expert},{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
     public async Task<ActionResult<IReadOnlyList<ExpertGroupMemberListItemDto>>> ListMembers(CancellationToken ct)
     {
         if (UserId is null) return Unauthorized();
         try
         {
-            var list = await membership.ListActiveMembersAsync(UserId, ct);
+            var list = await membership.ListActiveMembersAsync(
+                UserId, ct, asPlatformAdmin: AsPlatformActAs, actAsGroupId: ActAsGroupId);
             var enriched = new List<ExpertGroupMemberListItemDto>();
             foreach (var m in list)
             {

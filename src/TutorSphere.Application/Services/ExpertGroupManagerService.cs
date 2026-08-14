@@ -10,12 +10,15 @@ public interface IExpertGroupManagerService
     bool IsActiveManager(string userId, Guid? groupId = null);
     ExpertGroupManagerMandate? GetActiveMandate(Guid groupId);
     Task<ExpertGroupManagerDto?> GetActiveManagerAsync(Guid groupId, CancellationToken ct = default);
+    Task<IReadOnlyList<ExpertGroupManagerMandateHistoryDto>> ListMandateHistoryAsync(Guid groupId, CancellationToken ct = default);
     Task AppointAsync(Guid groupId, string adminUserId, string membershipUserId, AppointGroupManagerRequest extras, CancellationToken ct = default);
     Task EndActiveMandateAsync(Guid groupId, string adminUserId, string? reason, CancellationToken ct = default);
     Task SuspendActiveMandateAsync(Guid groupId, string adminUserId, string? reason, CancellationToken ct = default);
 }
 
-public class ExpertGroupManagerService(IApplicationDbContext db) : IExpertGroupManagerService
+public class ExpertGroupManagerService(
+    IApplicationDbContext db,
+    IExpertGovernanceAuditService audit) : IExpertGroupManagerService
 {
     public bool IsActiveManager(string userId, Guid? groupId = null)
     {
@@ -48,6 +51,31 @@ public class ExpertGroupManagerService(IApplicationDbContext db) : IExpertGroupM
             mandate.IsTemporary));
     }
 
+    public Task<IReadOnlyList<ExpertGroupManagerMandateHistoryDto>> ListMandateHistoryAsync(
+        Guid groupId, CancellationToken ct = default)
+    {
+        IReadOnlyList<ExpertGroupManagerMandateHistoryDto> list = db.ExpertGroupManagerMandates
+            .Where(m => m.ExpertGroupId == groupId)
+            .OrderByDescending(m => m.MandateStartsAtUtc)
+            .ThenByDescending(m => m.CreatedAt)
+            .Take(50)
+            .AsEnumerable()
+            .Select(m => new ExpertGroupManagerMandateHistoryDto(
+                m.Id,
+                m.UserId,
+                m.Status,
+                m.FunctionTitle,
+                m.Phone,
+                m.MandateStartsAtUtc,
+                m.MandateEndsAtUtc,
+                m.IsTemporary,
+                m.AppointedByAdminId,
+                m.EndedByAdminId,
+                m.EndReason))
+            .ToList();
+        return Task.FromResult(list);
+    }
+
     public async Task AppointAsync(
         Guid groupId,
         string adminUserId,
@@ -66,7 +94,6 @@ public class ExpertGroupManagerService(IApplicationDbContext db) : IExpertGroupM
 
         await EndActiveMandateAsync(groupId, adminUserId, "Remplacé par un nouveau Responsable.", ct);
 
-        // Reset previous manager roles in group
         foreach (var previous in db.ExpertGroupMembers.Where(m =>
                      m.ExpertGroupId == groupId && m.MemberRole == ExpertGroupMemberRole.Manager))
         {
@@ -105,10 +132,26 @@ public class ExpertGroupManagerService(IApplicationDbContext db) : IExpertGroupM
         group.ContactPhone = mandate.Phone ?? group.ContactPhone;
         group.ContactEmail = string.IsNullOrWhiteSpace(extras.Email) ? group.ContactEmail : extras.Email.Trim();
         if (group.LifecycleStatus == ExpertGroupLifecycleStatus.Draft)
+        {
             group.LifecycleStatus = ExpertGroupLifecycleStatus.Active;
-        group.IsActive = group.LifecycleStatus == ExpertGroupLifecycleStatus.Active;
+            group.IsActive = true;
+        }
+        else if (group.LifecycleStatus == ExpertGroupLifecycleStatus.Active)
+        {
+            group.IsActive = true;
+        }
+        // Suspended / Archived : nommer un Responsable ne réactive pas le groupe silencieusement.
         group.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
+
+        await audit.RecordAsync(
+            ExpertGovernanceEventType.ManagerAppointed,
+            adminUserId,
+            $"Responsable nommé ({membershipUserId})",
+            groupId,
+            relatedEntityId: mandate.Id,
+            isNotification: false,
+            ct: ct);
     }
 
     public async Task EndActiveMandateAsync(Guid groupId, string adminUserId, string? reason, CancellationToken ct = default)
@@ -140,6 +183,15 @@ public class ExpertGroupManagerService(IApplicationDbContext db) : IExpertGroupM
         }
 
         await db.SaveChangesAsync(ct);
+
+        await audit.RecordAsync(
+            ExpertGovernanceEventType.ManagerMandateEnded,
+            adminUserId,
+            reason ?? "Mandat du Responsable terminé",
+            groupId,
+            relatedEntityId: active.Id,
+            isNotification: false,
+            ct: ct);
     }
 
     public async Task SuspendActiveMandateAsync(Guid groupId, string adminUserId, string? reason, CancellationToken ct = default)
@@ -167,11 +219,19 @@ public class ExpertGroupManagerService(IApplicationDbContext db) : IExpertGroupM
             group.GroupManagerMembershipId = null;
             group.ManagerAssignedAtUtc = null;
             group.ManagerAssignedByAdminId = null;
-            group.LifecycleStatus = ExpertGroupLifecycleStatus.Suspended;
-            group.IsActive = false;
+            // Suspendre le mandat ≠ suspendre le groupe.
             group.UpdatedAt = DateTime.UtcNow;
         }
 
         await db.SaveChangesAsync(ct);
+
+        await audit.RecordAsync(
+            ExpertGovernanceEventType.ManagerSuspended,
+            adminUserId,
+            active.EndReason ?? "Mandat suspendu",
+            groupId,
+            relatedEntityId: active.Id,
+            isNotification: false,
+            ct: ct);
     }
 }
