@@ -13,6 +13,7 @@ public class ExpertMembershipGovernanceService(
     IAppUrlProvider urls,
     IExpertIdentityActions identity,
     IExpertGovernanceAuditService audit,
+    IExpertGroupManagerService managers,
     ILogger<ExpertMembershipGovernanceService> logger) : IExpertMembershipGovernanceService
 {
     private const int InviteDays = 30;
@@ -28,6 +29,12 @@ public class ExpertMembershipGovernanceService(
         var groupId = ResolveCallerGroupId(initiatorUserId, asPlatformAdmin, actAsGroupId);
         var group = db.ExpertGroups.FirstOrDefault(g => g.Id == groupId && g.IsActive)
             ?? throw new InvalidOperationException("Groupe d'experts introuvable ou inactif.");
+
+        var allowedAsPlatform = asPlatformAdmin && actAsGroupId is Guid ag && ag == groupId;
+        if (!allowedAsPlatform && !managers.IsActiveManager(initiatorUserId, groupId))
+            throw new InvalidOperationException(
+                "Seul le Responsable du groupe peut inviter un nouveau membre Expert. " +
+                "La création de profils enseignants reste ouverte à tous les Experts du groupe.");
 
         var emailAddr = NormalizeEmail(request.Email);
         var firstName = RequireText(request.FirstName, "Prénom");

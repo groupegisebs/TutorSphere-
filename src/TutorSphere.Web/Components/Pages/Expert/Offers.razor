@@ -270,7 +270,7 @@
             if (result.Error is not null)
             {
                 _error = result.Error;
-                _offers = [];
+                // Ne pas vider la liste locale : une offre vient peut-être d'être créée.
                 return;
             }
 
@@ -316,8 +316,15 @@
     {
         _busy = true;
         _info = null;
+        _error = null;
         try
         {
+            if (string.IsNullOrWhiteSpace(_name))
+            {
+                _error = "Le nom de l'offre est requis.";
+                return;
+            }
+
             if (IsInternational && string.IsNullOrWhiteSpace(_marketCountry))
             {
                 _error = "Sélectionnez un pays de marché pour une offre internationale.";
@@ -346,6 +353,8 @@
             {
                 var result = await Api.PostWithErrorAsync<OfferItem>("api/expert/group-offers", payload);
                 if (result.Error is not null) { _error = result.Error; return; }
+                if (result.Value is not null)
+                    _offers = _offers.Where(o => o.Id != result.Value.Id).Prepend(result.Value).ToList();
                 _info = "Offre créée.";
             }
 

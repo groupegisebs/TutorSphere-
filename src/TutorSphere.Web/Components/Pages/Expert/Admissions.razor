@@ -14,7 +14,16 @@
         <div class="cc-toolbar">
             <div>
                 <h1 class="cc-page-title">Admissions des Experts</h1>
-                <p class="cc-page-sub">Invitez un candidat ; l'admission exige 75&nbsp;% des autres membres actifs (initiateur exclu).</p>
+                <p class="cc-page-sub">
+                    @if (_canInvite)
+                    {
+                        <text>Invitation réservée au Responsable. L'admission exige 75&nbsp;% des autres membres actifs (initiateur exclu). Distinct de la création de profils enseignants (ouverte à tous les Experts).</text>
+                    }
+                    else
+                    {
+                        <text>Votez sur les candidatures ouvertes. Seul le Responsable peut inviter un nouveau membre Expert ; tous les Experts peuvent créer des profils enseignants.</text>
+                    }
+                </p>
             </div>
         </div>
 
@@ -27,48 +36,54 @@
             <div class="alert alert-success mb-3">@_success</div>
         }
 
-        <div class="cc-card mb-3">
-            <h2 class="cc-card-title">Inviter un candidat</h2>
-            <div class="row g-2">
-                <div class="col-md-4">
-                    <label class="form-label">E-mail *</label>
-                    <input class="form-control" type="email" @bind="_email" />
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">Prénom *</label>
-                    <input class="form-control" @bind="_firstName" />
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">Nom *</label>
-                    <input class="form-control" @bind="_lastName" />
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">Téléphone</label>
-                    <input class="form-control" @bind="_phone" />
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">Spécialité</label>
-                    <input class="form-control" @bind="_specialty" />
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">Fonction envisagée</label>
-                    <input class="form-control" @bind="_role" />
-                </div>
-                <div class="col-12">
-                    <label class="form-label">Justification *</label>
-                    <textarea class="form-control" rows="2" @bind="_justification"></textarea>
-                </div>
-                <div class="col-12">
-                    <label class="form-label">Message personnel</label>
-                    <textarea class="form-control" rows="2" @bind="_message"></textarea>
-                </div>
-                <div class="col-12">
-                    <button type="button" class="cc-btn cc-btn-primary" disabled="@_busy" @onclick="InviteAsync">
-                        <i class="bi bi-envelope"></i> Envoyer l'invitation
-                    </button>
+        @if (_canInvite)
+        {
+            <div class="cc-card mb-3">
+                <h2 class="cc-card-title">Inviter un candidat Expert</h2>
+                <p class="small text-muted mb-2">
+                    Ceci invite un <strong>membre du groupe d'experts</strong>. Pour un enseignant, utilisez plutôt la file enseignants (création de profil).
+                </p>
+                <div class="row g-2">
+                    <div class="col-md-4">
+                        <label class="form-label">E-mail *</label>
+                        <input class="form-control" type="email" @bind="_email" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Prénom *</label>
+                        <input class="form-control" @bind="_firstName" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Nom *</label>
+                        <input class="form-control" @bind="_lastName" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Téléphone</label>
+                        <input class="form-control" @bind="_phone" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Spécialité</label>
+                        <input class="form-control" @bind="_specialty" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Fonction envisagée</label>
+                        <input class="form-control" @bind="_role" />
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Justification *</label>
+                        <textarea class="form-control" rows="2" @bind="_justification"></textarea>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Message personnel</label>
+                        <textarea class="form-control" rows="2" @bind="_message"></textarea>
+                    </div>
+                    <div class="col-12">
+                        <button type="button" class="cc-btn cc-btn-primary" disabled="@_busy" @onclick="InviteAsync">
+                            <i class="bi bi-envelope"></i> Envoyer l'invitation
+                        </button>
+                    </div>
                 </div>
             </div>
-        </div>
+        }
 
         <div class="cc-card">
             <h2 class="cc-card-title">Candidatures</h2>
@@ -125,6 +140,7 @@
     private List<InviteItem> _invites = [];
     private bool _loading = true;
     private bool _busy;
+    private bool _canInvite;
     private string? _error;
     private string? _success;
 
@@ -140,6 +156,15 @@
     protected override async Task OnInitializedAsync()
     {
         try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        try { await Auth.RestoreActAsGroupAsync(); } catch { }
+        try
+        {
+            var ctx = await Api.GetAsync<MeContext>("api/expert/me-context");
+            _canInvite = ctx?.IsGroupManager == true
+                         || Auth.IsInRole("GroupManager")
+                         || Auth.IsActingAsGroupAdmin;
+        }
+        catch { _canInvite = Auth.IsInRole("GroupManager") || Auth.IsActingAsGroupAdmin; }
         await LoadAsync();
     }
 
@@ -159,6 +184,12 @@
 
     private async Task InviteAsync()
     {
+        if (!_canInvite)
+        {
+            _error = "Seul le Responsable du groupe peut inviter un membre Expert.";
+            return;
+        }
+
         _busy = true;
         _error = _success = null;
         try
@@ -215,6 +246,8 @@
         7 => "Validation admin",
         _ => status.ToString()
     };
+
+    private sealed record MeContext(bool IsGroupManager, Guid? GroupId, string? GroupName, bool IsPlatformActAs = false);
 
     private sealed record InviteItem(
         Guid Id,

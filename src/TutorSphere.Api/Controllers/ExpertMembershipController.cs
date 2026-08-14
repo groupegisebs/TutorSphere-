@@ -20,7 +20,7 @@ public class ExpertMembershipController(
     private bool AsPlatformActAs => groupAccess.IsPlatformAdmin(User) && ActAsGroupId.HasValue;
 
     [HttpPost("invites")]
-    [Authorize(Roles = $"{UserRoles.Expert},{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
+    [Authorize(Roles = $"{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
     public async Task<ActionResult<ExpertMembershipInviteDto>> CreateInvite(
         [FromBody] CreateExpertMembershipInviteRequest? request,
         CancellationToken ct)

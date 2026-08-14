@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Guide utilisateur — Gérer mon groupe (Responsable)</title>
+  <style>
+    :root {
+      --ink: #1a2332;
+      --muted: #5a6577;
+      --line: #d8dee8;
+      --bg: #f6f8fb;
+      --card: #ffffff;
+      --accent: #0b6e4f;
+      --accent-soft: #e6f4ef;
+      --warn-bg: #fff8e8;
+      --warn-border: #e8c96a;
+      --tip-bg: #eef4ff;
+      --tip-border: #8aa4d8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+      line-height: 1.55;
+    }
+    .wrap {
+      max-width: 820px;
+      margin: 0 auto;
+      padding: 2rem 1.25rem 4rem;
+    }
+    header.doc-hero {
+      background: linear-gradient(145deg, #0b6e4f 0%, #145a8a 100%);
+      color: #fff;
+      border-radius: 14px;
+      padding: 1.75rem 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    header.doc-hero h1 {
+      margin: 0 0 0.4rem;
+      font-size: 1.65rem;
+      font-weight: 700;
+    }
+    header.doc-hero p {
+      margin: 0;
+      opacity: 0.92;
+      font-size: 1.02rem;
+    }
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem 1rem;
+      margin: 1rem 0 0;
+      font-size: 0.9rem;
+      opacity: 0.9;
+    }
+    nav.toc {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+    nav.toc h2 {
+      margin: 0 0 0.6rem;
+      font-size: 1rem;
+    }
+    nav.toc ol {
+      margin: 0;
+      padding-left: 1.2rem;
+    }
+    nav.toc a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    nav.toc a:hover { text-decoration: underline; }
+    section {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 1.25rem 1.35rem 1.4rem;
+      margin-bottom: 1.1rem;
+    }
+    section h2 {
+      margin: 0 0 0.75rem;
+      font-size: 1.25rem;
+      color: var(--ink);
+      border-bottom: 2px solid var(--accent-soft);
+      padding-bottom: 0.45rem;
+    }
+    section h3 {
+      margin: 1.1rem 0 0.45rem;
+      font-size: 1.05rem;
+    }
+    p { margin: 0.55rem 0; }
+    ul, ol { margin: 0.4rem 0 0.6rem; padding-left: 1.25rem; }
+    li { margin: 0.25rem 0; }
+    .menu-name {
+      display: inline-block;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-weight: 600;
+      font-size: 0.92rem;
+      padding: 0.12rem 0.45rem;
+      border-radius: 6px;
+    }
+    .steps {
+      counter-reset: step;
+      list-style: none;
+      padding: 0;
+      margin: 0.75rem 0 0;
+    }
+    .steps li {
+      position: relative;
+      padding: 0.75rem 0.85rem 0.75rem 3rem;
+      margin: 0.5rem 0;
+      background: var(--bg);
+      border-radius: 10px;
+      border: 1px solid var(--line);
+    }
+    .steps li::before {
+      counter-increment: step;
+      content: counter(step);
+      position: absolute;
+      left: 0.75rem;
+      top: 0.75rem;
+      width: 1.55rem;
+      height: 1.55rem;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #fff;
+      font-size: 0.85rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1.55rem;
+      text-align: center;
+    }
+    .callout {
+      border-radius: 10px;
+      padding: 0.85rem 1rem;
+      margin: 0.85rem 0 0.35rem;
+      border: 1px solid;
+    }
+    .callout.tip {
+      background: var(--tip-bg);
+      border-color: var(--tip-border);
+    }
+    .callout.warn {
+      background: var(--warn-bg);
+      border-color: var(--warn-border);
+    }
+    .callout strong { display: block; margin-bottom: 0.2rem; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+      margin: 0.6rem 0;
+    }
+    th, td {
+      border: 1px solid var(--line);
+      padding: 0.55rem 0.65rem;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: var(--bg); font-weight: 600; }
+    .yes { color: #0b6e4f; font-weight: 600; }
+    .no { color: #9a3412; font-weight: 600; }
+    footer {
+      margin-top: 1.5rem;
+      color: var(--muted);
+      font-size: 0.9rem;
+      text-align: center;
+    }
+    @media print {
+      body { background: #fff; }
+      .wrap { max-width: none; padding: 0; }
+      section, nav.toc, header.doc-hero { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="doc-hero">
+      <h1>Gérer mon groupe d’experts</h1>
+      <p>Guide utilisateur pour le <strong>Responsable de groupe</strong> — invitations, membres, tâches et coordination au quotidien.</p>
+      <div class="meta">
+        <span>TutorSphere · Centre Expert</span>
+        <span>Public : Responsable de groupe</span>
+      </div>
+    </header>
+
+    <nav class="toc" aria-label="Sommaire">
+      <h2>Sommaire</h2>
+      <ol>
+        <li><a href="#role">Votre rôle</a></li>
+        <li><a href="#menu">Où trouver les écrans</a></li>
+        <li><a href="#membres">Consulter les membres</a></li>
+        <li><a href="#inviter">Inviter un nouvel Expert</a></li>
+        <li><a href="#taches">Déléguer des tâches</a></li>
+        <li><a href="#quotidien">Autres actions utiles</a></li>
+        <li><a href="#limites">Ce que vous ne pouvez pas faire</a></li>
+        <li><a href="#faq">Questions fréquentes</a></li>
+      </ol>
+    </nav>
+
+    <section id="role">
+      <h2>1. Votre rôle</h2>
+      <p>
+        En tant que <strong>Responsable</strong>, vous coordonnez le groupe d’experts :
+        vous invitez de nouveaux <strong>membres Experts</strong>, suivez les admissions, déléguez le travail
+        et gérez les offres du groupe.
+      </p>
+      <div class="callout warn">
+        <strong>Ne pas confondre</strong>
+        Inviter un <strong>membre Expert</strong> (Admissions) = Responsable uniquement.<br/>
+        Créer un <strong>profil enseignant</strong> (file Enseignants) = tous les Experts du groupe.
+      </div>
+      <p>
+        L’accès à l’espace Responsable est réservé à la personne actuellement
+        désignée comme Responsable du groupe. Si vous ne voyez pas le menu
+        <span class="menu-name">Espace Responsable</span>, contactez l’administration TutorSphere.
+      </p>
+      <div class="callout tip">
+        <strong>Astuce</strong>
+        Commencez toujours par le <span class="menu-name">Tableau de bord</span> :
+        il résume les enseignants en attente, les votes ouverts et le nombre de membres actifs.
+      </div>
+    </section>
+
+    <section id="menu">
+      <h2>2. Où trouver les écrans</h2>
+      <p>Dans le menu latéral, ouvrez la section <span class="menu-name">Espace Responsable</span> :</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Menu</th>
+            <th>À quoi ça sert</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="menu-name">Tableau de bord</span></td>
+            <td>Vue d’ensemble et raccourcis vers les actions principales</td>
+          </tr>
+          <tr>
+            <td><span class="menu-name">Membres</span></td>
+            <td>Liste des Experts du groupe (nom, e-mail, rôle, statut)</td>
+          </tr>
+          <tr>
+            <td><span class="menu-name">Admissions</span></td>
+            <td>Inviter un candidat et suivre les votes d’admission</td>
+          </tr>
+          <tr>
+            <td><span class="menu-name">Déléguer des tâches</span></td>
+            <td>Attribuer ou annuler des tâches pour les membres</td>
+          </tr>
+          <tr>
+            <td><span class="menu-name">Offres du groupe</span></td>
+            <td>Créer, publier et gérer les offres commerciales du groupe</td>
+          </tr>
+          <tr>
+            <td><span class="menu-name">Chat TutorSphere</span></td>
+            <td>Échanger avec l’équipe plateforme</td>
+          </tr>
+          <tr>
+            <td><span class="menu-name">Messagerie groupe</span></td>
+            <td>Échanges internes avec les membres</td>
+          </tr>
+          <tr>
+            <td><span class="menu-name">Paramètres</span></td>
+            <td>Modifier la description publique du groupe</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="membres">
+      <h2>3. Consulter les membres</h2>
+      <ol class="steps">
+        <li>Ouvrez <span class="menu-name">Membres</span> dans l’Espace Responsable.</li>
+        <li>Parcourez le tableau : nom, e-mail, rôle (Responsable, Chef discipline, Chef comité, Expert) et statut.</li>
+        <li>Pour faire entrer quelqu’un de nouveau, cliquez sur <strong>Inviter un candidat</strong> (vous serez dirigé vers Admissions).</li>
+      </ol>
+      <div class="callout warn">
+        <strong>À savoir</strong>
+        Cette page est destinée à la <strong>consultation</strong>.
+        Vous ne pouvez pas ajouter un Expert « directement » sans passer par une invitation et le vote du groupe.
+      </div>
+    </section>
+
+    <section id="inviter">
+      <h2>4. Inviter un nouvel Expert</h2>
+      <p>
+        L’admission d’un Expert est <strong>collégiale</strong> :
+        il faut le vote favorable d’au moins <strong>75&nbsp;%</strong> des autres membres actifs
+        (la personne qui a lancé l’invitation ne vote pas).
+      </p>
+
+      <h3>Étapes pour vous (Responsable)</h3>
+      <ol class="steps">
+        <li>Allez dans <span class="menu-name">Admissions</span> (ou depuis Membres → <strong>Inviter un candidat</strong>).</li>
+        <li>
+          Remplissez le formulaire :
+          <ul>
+            <li><strong>Obligatoires :</strong> e-mail, prénom, nom, justification</li>
+            <li><strong>Optionnels :</strong> téléphone, spécialité, fonction envisagée, message personnel</li>
+          </ul>
+        </li>
+        <li>Cliquez sur <strong>Envoyer l’invitation</strong>.</li>
+        <li>Suivez l’état de la candidature dans la liste <strong>Candidatures</strong> sur la même page.</li>
+        <li>Quand le seuil de 75&nbsp;% est atteint, le candidat devient membre du groupe et apparaît dans <span class="menu-name">Membres</span>.</li>
+      </ol>
+
+      <h3>Côté candidat</h3>
+      <ol>
+        <li>Il reçoit l’invitation (lien personnalisé).</li>
+        <li>Il complète sa candidature ou peut la refuser.</li>
+        <li>Les membres Experts du groupe votent ensuite.</li>
+      </ol>
+
+      <div class="callout tip">
+        <strong>Conseil</strong>
+        Rédigez une justification claire : elle aide les autres Experts à voter en connaissance de cause.
+      </div>
+    </section>
+
+    <section id="taches">
+      <h2>5. Déléguer des tâches</h2>
+      <p>Pour répartir le travail entre les membres du groupe :</p>
+      <ol class="steps">
+        <li>Ouvrez <span class="menu-name">Déléguer des tâches</span>.</li>
+        <li>Choisissez un membre actif, décrivez la tâche, puis validez.</li>
+        <li>Vous pouvez annuler une tâche si elle n’est plus pertinente.</li>
+      </ol>
+    </section>
+
+    <section id="quotidien">
+      <h2>6. Autres actions utiles au quotidien</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Besoin</th>
+            <th>Où aller</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Traiter les profils enseignants en attente</td>
+            <td>Tableau de bord → <strong>File d’attente</strong>, ou écrans Enseignants / Approbations</td>
+          </tr>
+          <tr>
+            <td>Publier ou mettre à jour une offre du groupe</td>
+            <td><span class="menu-name">Offres du groupe</span></td>
+          </tr>
+          <tr>
+            <td>Contacter l’équipe TutorSphere</td>
+            <td><span class="menu-name">Chat TutorSphere</span></td>
+          </tr>
+          <tr>
+            <td>Écrire aux membres du groupe</td>
+            <td><span class="menu-name">Messagerie groupe</span></td>
+          </tr>
+          <tr>
+            <td>Mettre à jour le texte public du groupe</td>
+            <td><span class="menu-name">Paramètres</span> (description uniquement)</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="limites">
+      <h2>7. Ce que vous ne pouvez pas faire</h2>
+      <p>Ces actions sont réservées à l’administration TutorSphere :</p>
+      <ul>
+        <li>Créer, suspendre ou archiver le groupe</li>
+        <li>Nommer, transférer ou retirer le Responsable</li>
+        <li>Modifier le pays ou le type de groupe</li>
+        <li>Ajouter un Expert sans invitation ni vote</li>
+        <li>Changer unilatéralement le rôle ou le statut d’un membre depuis l’écran Membres</li>
+      </ul>
+      <div class="callout warn">
+        <strong>Important</strong>
+        Même en tant que Responsable, vous ne pouvez pas admettre un Expert tout seul :
+        le vote à 75&nbsp;% des membres reste obligatoire.
+      </div>
+    </section>
+
+    <section id="faq">
+      <h2>8. Questions fréquentes</h2>
+
+      <h3>Je n’ai pas accès au menu Responsable</h3>
+      <p>
+        Votre mandat de Responsable n’est peut-être plus actif, ou le groupe n’est pas encore activé.
+        Contactez l’administration via le support TutorSphere.
+      </p>
+
+      <h3>L’invitation n’aboutit pas</h3>
+      <p>
+        Vérifiez que l’e-mail est correct, que la justification est renseignée,
+        puis suivez la candidature dans <span class="menu-name">Admissions</span>.
+        Tant que le seuil de 75&nbsp;% n’est pas atteint, le candidat n’est pas membre.
+      </p>
+
+      <h3>Puis-je retirer un membre moi-même ?</h3>
+      <p>
+        Pas depuis l’écran Membres actuel. Demandez l’intervention de l’administration plateforme
+        si un retrait est nécessaire.
+      </p>
+
+      <h3>Qui peut créer ou publier les offres ?</h3>
+      <p>
+        Vous, en tant que Responsable. Les autres Experts peuvent consulter,
+        mais la création et la publication sont réservées au Responsable.
+      </p>
+
+      <h3>Inviter un Expert ou créer un enseignant ?</h3>
+      <p>
+        <strong>Admissions</strong> = nouveau <em>membre Expert</em> du groupe (Responsable uniquement + vote 75&nbsp;%).<br/>
+        <strong>Enseignants / file d’attente</strong> = créer un <em>profil enseignant</em> (tous les Experts du groupe).
+      </p>
+    </section>
+
+    <footer>
+      TutorSphere — Documentation utilisateur · Gestion du groupe par le Responsable
+    </footer>
+  </div>
+</body>
+</html>

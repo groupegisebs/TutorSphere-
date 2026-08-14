@@ -39,7 +39,7 @@ Source de vérité manager UI : **mandat Active** (ou act-as valide), plus un r�
 | `GET teachers/{id}` | Membre du groupe reviewer (ou act-as / platform) |
 | `AssignReview` | Self-claim Expert ; attribution à autrui = Responsable / act-as |
 | Approve / Reject / RequestChanges / StartReview | Act-as via `X-Act-As-Expert-Group-Id` |
-| Membership invites / members | Act-as supporté |
+| Membership invites / members | **Création d’invitation Expert = Responsable / act-as uniquement** ; vote = Expert membre ; act-as supporté |
 | `me-context.isGroupManager` | Mandat Active **ou** act-as valide |
 
 ---
@@ -71,7 +71,11 @@ Source de vérité manager UI : **mandat Active** (ou act-as valide), plus un r�
 
 ---
 
-## 7. Fichiers pivots
+## 7. Documentation produit liée
+
+- Guide utilisateur Responsable (HTML) : [`group-admin-member-management.html`](./group-admin-member-management.html)
+
+## 8. Fichiers pivots
 
 - Lifecycle / mandat : `ExpertGroupService.cs`, `ExpertGroupManagerService.cs`, `ExpertGroupsController.cs`
 - Act-as : `GroupAdminAccessService.cs`, `ExpertMembershipController.cs`, `ExpertApprovalsController.cs`
@@ -81,6 +85,6 @@ Source de vérité manager UI : **mandat Active** (ou act-as valide), plus un r�
 
 ---
 
-## 8. Déploiement
+## 9. Déploiement
 
 Appliquer la migration `UniqueActiveManagerMandatePerGroup` (API + Web). Vérifier qu’il n’existe pas déjà plusieurs mandats Active par groupe avant migrate.

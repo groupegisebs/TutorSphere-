@@ -459,12 +459,31 @@ public class GroupOfferService(
             && a.AssignmentStatus != GroupOfferTeacherAssignmentStatus.Declined);
 
     private IReadOnlyList<GroupOfferListItemDto> MapList(Guid groupId)
-        => db.GroupOffers
+    {
+        // Materialize first — nested CountQueries during AsEnumerable enumeration
+        // throw with Npgsql (no concurrent readers on the same connection).
+        var offers = db.GroupOffers
             .Where(o => o.ExpertGroupId == groupId)
             .OrderByDescending(o => o.UpdatedAt)
-            .AsEnumerable()
-            .Select(o => ToDto(o, CountAssignments(o.Id)))
             .ToList();
+
+        if (offers.Count == 0)
+            return Array.Empty<GroupOfferListItemDto>();
+
+        var offerIds = offers.Select(o => o.Id).ToList();
+        var counts = db.GroupOfferTeachers
+            .Where(a => offerIds.Contains(a.GroupOfferId)
+                        && a.AssignmentStatus != GroupOfferTeacherAssignmentStatus.Removed
+                        && a.AssignmentStatus != GroupOfferTeacherAssignmentStatus.Declined)
+            .GroupBy(a => a.GroupOfferId)
+            .Select(g => new { OfferId = g.Key, Count = g.Count() })
+            .ToList()
+            .ToDictionary(x => x.OfferId, x => x.Count);
+
+        return offers
+            .Select(o => ToDto(o, counts.GetValueOrDefault(o.Id)))
+            .ToList();
+    }
 
     private static GroupOfferListItemDto ToDto(GroupOffer o, int assignedCount) => new(
         o.Id, o.ExpertGroupId, o.Name, o.Code, o.Status, o.PricingModel,
