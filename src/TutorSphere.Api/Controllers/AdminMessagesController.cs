@@ -1,12 +1,10 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Configuration;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.Messages;
 using TutorSphere.Domain.Enums;
-using TutorSphere.Infrastructure.Identity;
+using TutorSphere.Infrastructure.Services;
 
 namespace TutorSphere.Api.Controllers;
 
@@ -16,20 +14,14 @@ namespace TutorSphere.Api.Controllers;
 public class AdminMessagesController : ControllerBase
 {
     private readonly IMessageService _messages;
-    private readonly IEmailService _email;
-    private readonly UserManager<ApplicationUser> _users;
-    private readonly IConfiguration _config;
+    private readonly IAdminMailboxService _mailbox;
 
     public AdminMessagesController(
         IMessageService messages,
-        IEmailService email,
-        UserManager<ApplicationUser> users,
-        IConfiguration config)
+        IAdminMailboxService mailbox)
     {
         _messages = messages;
-        _email = email;
-        _users = users;
-        _config = config;
+        _mailbox = mailbox;
     }
 
     private string? UserId => User.FindFirstValue(ClaimTypes.NameIdentifier);
@@ -39,6 +31,8 @@ public class AdminMessagesController : ControllerBase
         string Subject,
         string Body,
         bool SendEmailCopy = true);
+
+    // ── Chat threads (compat) ──
 
     [HttpGet("conversations")]
     public async Task<ActionResult<IReadOnlyList<ConversationDto>>> Conversations(CancellationToken ct)
@@ -62,49 +56,26 @@ public class AdminMessagesController : ControllerBase
 
         try
         {
-            var dto = await _messages.SendAsPlatformAdminAsync(
-                UserId,
-                new SendMessageRequest(request.RecipientUserId, request.Subject, request.Body),
-                ct);
-
-            var emailSent = false;
-            string? emailError = null;
-            if (request.SendEmailCopy)
-            {
-                var recipient = await _users.FindByIdAsync(request.RecipientUserId);
-                var admin = await _users.FindByIdAsync(UserId);
-                if (recipient?.Email is { Length: > 0 } email)
-                {
-                    try
-                    {
-                        var webBase = (_config["WebBaseUrl"] ?? "https://tutorsphere.gisebs.com").TrimEnd('/');
-                        var inboxPath = await ResolveInboxPathAsync(recipient);
-                        await _email.SendAdminDirectMessageAsync(
-                            email,
-                            recipient.FirstName,
-                            admin?.FullName ?? "Administration TutorSphere",
-                            request.Subject.Trim(),
-                            request.Body.Trim(),
-                            $"{webBase}{inboxPath}",
-                            ct);
-                        emailSent = true;
-                    }
-                    catch (Exception ex)
-                    {
-                        emailError = ex.Message;
-                    }
-                }
-                else
-                {
-                    emailError = "Destinataire sans adresse e-mail.";
-                }
-            }
+            var result = await _mailbox.ComposeAsync(UserId, new AdminComposeMessageRequest(
+                request.RecipientUserId,
+                ExternalEmail: null,
+                request.Subject,
+                request.Body,
+                request.SendEmailCopy), ct);
 
             return Ok(new
             {
-                message = dto,
-                emailSent,
-                emailError
+                message = new MessageDto(
+                    result.Message.Id,
+                    result.Message.SenderUserId,
+                    result.Message.RecipientUserId,
+                    result.Message.Subject,
+                    result.Message.Body,
+                    result.Message.IsRead,
+                    null,
+                    result.Message.CreatedAt),
+                emailSent = result.EmailSent,
+                emailError = result.EmailError
             });
         }
         catch (InvalidOperationException ex)
@@ -113,15 +84,85 @@ public class AdminMessagesController : ControllerBase
         }
     }
 
-    private async Task<string> ResolveInboxPathAsync(ApplicationUser user)
+    // ── Mailbox (client mail) ──
+
+    [HttpGet("mailbox/counts")]
+    public async Task<ActionResult<MailboxFolderCountsDto>> Counts(CancellationToken ct)
     {
-        var roles = await _users.GetRolesAsync(user);
-        if (roles.Contains(UserRoles.Parent)) return "/parent/messages";
-        if (roles.Contains(UserRoles.Student)) return "/student/messages";
-        if (roles.Contains(UserRoles.Tutor) || roles.Contains(UserRoles.TeachingAssistant))
-            return "/tutor/messages";
-        if (roles.Contains(UserRoles.Expert) || roles.Contains(UserRoles.GroupManager))
-            return "/expert/dashboard";
-        return "/login";
+        if (UserId is null) return Unauthorized();
+        return Ok(await _mailbox.GetCountsAsync(UserId, ct));
+    }
+
+    [HttpGet("mailbox")]
+    public async Task<ActionResult<IReadOnlyList<MailboxMessageListItemDto>>> List(
+        [FromQuery] MailboxFolder folder = MailboxFolder.Inbox,
+        [FromQuery] string? q = null,
+        CancellationToken ct = default)
+    {
+        if (UserId is null) return Unauthorized();
+        return Ok(await _mailbox.ListAsync(UserId, folder, q, ct));
+    }
+
+    [HttpGet("mailbox/{id:guid}")]
+    public async Task<ActionResult<MailboxMessageDetailDto>> Get(Guid id, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        var msg = await _mailbox.GetAsync(UserId, id, ct);
+        return msg is null ? NotFound() : Ok(msg);
+    }
+
+    [HttpPost("mailbox/compose")]
+    public async Task<ActionResult<AdminMailboxSendResultDto>> Compose(
+        [FromBody] AdminComposeMessageRequest? request, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        if (request is null) return BadRequest(new { error = "Requête invalide." });
+        try
+        {
+            return Ok(await _mailbox.ComposeAsync(UserId, request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("mailbox/{id:guid}/star")]
+    public async Task<ActionResult<MailboxMessageDetailDto>> Star(Guid id, [FromQuery] bool value = true, CancellationToken ct = default)
+    {
+        if (UserId is null) return Unauthorized();
+        var msg = await _mailbox.StarAsync(UserId, id, value, ct);
+        return msg is null ? NotFound() : Ok(msg);
+    }
+
+    [HttpPost("mailbox/{id:guid}/archive")]
+    public async Task<ActionResult<MailboxMessageDetailDto>> Archive(Guid id, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        var msg = await _mailbox.ArchiveAsync(UserId, id, ct);
+        return msg is null ? NotFound() : Ok(msg);
+    }
+
+    [HttpPost("mailbox/{id:guid}/trash")]
+    public async Task<ActionResult<MailboxMessageDetailDto>> Trash(Guid id, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        var msg = await _mailbox.TrashAsync(UserId, id, ct);
+        return msg is null ? NotFound() : Ok(msg);
+    }
+
+    [HttpDelete("mailbox/{id:guid}")]
+    public async Task<IActionResult> DeletePermanent(Guid id, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        try
+        {
+            var ok = await _mailbox.DeletePermanentAsync(UserId, id, ct);
+            return ok ? NoContent() : NotFound();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 }

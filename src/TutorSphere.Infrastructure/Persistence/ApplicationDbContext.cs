@@ -500,6 +500,20 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             e.Property(h => h.Grade).HasPrecision(5, 2);
         });
 
+        builder.Entity<Message>(e =>
+        {
+            e.Property(m => m.SenderUserId).HasMaxLength(450).IsRequired();
+            e.Property(m => m.RecipientUserId).HasMaxLength(450).IsRequired();
+            e.Property(m => m.Subject).HasMaxLength(300).IsRequired();
+            e.Property(m => m.Body).HasMaxLength(8000).IsRequired();
+            e.Property(m => m.ExternalRecipientEmail).HasMaxLength(256);
+            e.Property(m => m.EmailError).HasMaxLength(2000);
+            e.HasIndex(m => m.SenderUserId);
+            e.HasIndex(m => m.RecipientUserId);
+            e.HasIndex(m => m.CreatedAt);
+            e.HasIndex(m => new { m.RecipientUserId, m.IsRead });
+        });
+
         builder.Entity<Unavailability>(e => e.HasIndex(u => u.TenantId));
         builder.Entity<Holiday>(e => e.HasIndex(h => h.TenantId));
         builder.Entity<Vacation>(e => e.HasIndex(v => v.TenantId));
