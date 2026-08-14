@@ -11,171 +11,313 @@
 
 <AuthorizeView Roles="SuperAdmin,PlatformAdmin">
     <Authorized>
-        <div class="cc-toolbar">
-            <div>
-                <h1 class="cc-page-title">Messagerie interne</h1>
-                <p class="cc-page-sub">Recherchez n’importe quel utilisateur pour lui écrire (copie e-mail optionnelle).</p>
-            </div>
-        </div>
-
         @if (!string.IsNullOrEmpty(_error))
         {
-            <div class="cc-alert cc-alert-danger"><i class="bi bi-exclamation-circle"></i> @_error</div>
-        }
-        @if (!string.IsNullOrEmpty(_success))
-        {
-            <div class="cc-alert cc-alert-success"><i class="bi bi-check-circle"></i> @_success</div>
+            <div class="cc-alert cc-alert-danger mb-3"><i class="bi bi-exclamation-circle"></i> @_error</div>
         }
 
-        <div class="row g-3">
-            <div class="col-lg-4">
-                <div class="cc-card mb-3">
-                    <h2 class="cc-card-title">Conversations</h2>
+        <div class="cc-im">
+            @* ── Colonne gauche : conversations ── *@
+            <aside class="cc-im-list">
+                <div class="cc-im-list-tabs">
+                    <button type="button" class="cc-im-tab @(_filter == InboxFilter.All ? "is-active" : null)"
+                            @onclick="() => SetFilter(InboxFilter.All)">
+                        Toutes <span class="cc-im-tab-count">@_conversations.Count</span>
+                    </button>
+                    <button type="button" class="cc-im-tab @(_filter == InboxFilter.Unread ? "is-active" : null)"
+                            @onclick="() => SetFilter(InboxFilter.Unread)">
+                        Non lues <span class="cc-im-tab-count">@UnreadTotal</span>
+                    </button>
+                    <button type="button" class="cc-im-tab is-muted" disabled title="Bientôt">Favoris</button>
+                    <button type="button" class="cc-im-tab is-muted" disabled title="Bientôt">Archives</button>
+                </div>
+
+                <div class="cc-im-list-search">
+                    <i class="bi bi-search" aria-hidden="true"></i>
+                    <input type="search" placeholder="Rechercher une conversation…"
+                           @bind="_listSearch" @bind:event="oninput" />
+                </div>
+
+                <div class="cc-im-list-scroll">
                     @if (_loadingConv)
                     {
-                        <span class="spinner-border spinner-border-sm"></span>
+                        <div class="cc-im-empty-inline">
+                            <span class="spinner-border spinner-border-sm"></span>
+                        </div>
                     }
-                    else if (_conversations.Count == 0)
+                    else if (FilteredConversations.Count == 0)
                     {
-                        <p class="text-muted small mb-0">Aucune conversation pour le moment.</p>
+                        <div class="cc-im-empty-inline">
+                            <p>Aucune conversation</p>
+                        </div>
                     }
                     else
                     {
-                        <ul class="list-unstyled mb-0">
-                            @foreach (var c in _conversations)
-                            {
-                                <li class="py-2 border-bottom">
-                                    <button type="button" class="btn btn-link text-start p-0 text-decoration-none w-100"
-                                            @onclick="() => OpenThreadAsync(c.OtherUserId, c.OtherUserName)">
-                                        <strong>@c.OtherUserName</strong>
+                        @foreach (var c in FilteredConversations)
+                        {
+                            var active = string.Equals(_recipientId, c.OtherUserId, StringComparison.Ordinal);
+                            <button type="button"
+                                    class="cc-im-conv @(active ? "is-active" : null) @(c.UnreadCount > 0 ? "is-unread" : null)"
+                                    @onclick="() => OpenThreadAsync(c.OtherUserId, c.OtherUserName)">
+                                <div class="cc-im-avatar" style="--av:@AvatarColor(c.OtherUserName)">
+                                    @Initials(c.OtherUserName)
+                                    <span class="cc-im-online" title="Statut"></span>
+                                </div>
+                                <div class="cc-im-conv-body">
+                                    <div class="cc-im-conv-top">
+                                        <span class="cc-im-conv-name">@c.OtherUserName</span>
+                                        <span class="cc-im-conv-time">@FormatListTime(c.LastMessage?.CreatedAt)</span>
+                                    </div>
+                                    <div class="cc-im-conv-bottom">
+                                        <span class="cc-im-conv-preview">@(Preview(c) ?? "—")</span>
                                         @if (c.UnreadCount > 0)
                                         {
-                                            <span class="cc-pill cc-pill-bad ms-1">@c.UnreadCount</span>
+                                            <span class="cc-im-unread">@c.UnreadCount</span>
                                         }
-                                        <div class="small text-muted text-truncate">
-                                            @(c.LastMessage?.Subject ?? c.LastMessage?.Body ?? "—")
-                                        </div>
-                                    </button>
-                                </li>
-                            }
-                        </ul>
+                                    </div>
+                                </div>
+                            </button>
+                        }
                     }
                 </div>
 
-                <div class="cc-card">
-                    <h2 class="cc-card-title">Nouveau destinataire</h2>
-                    <input class="form-control mb-2" placeholder="Rechercher nom ou e-mail…"
-                           @bind="_userQuery" @bind:event="oninput" @onkeyup="SearchUsersAsync" />
-                    @if (_searching)
+                <div class="cc-im-list-compose">
+                    <label class="cc-im-compose-label">Nouveau message</label>
+                    <div class="cc-im-compose-row">
+                        <input type="search" placeholder="Rechercher un utilisateur…"
+                               @bind="_userQuery" @bind:event="oninput" @onkeyup="SearchUsersAsync" />
+                        @if (_searching)
+                        {
+                            <span class="spinner-border spinner-border-sm"></span>
+                        }
+                    </div>
+                    @if (_userHits.Count > 0)
                     {
-                        <span class="spinner-border spinner-border-sm"></span>
-                    }
-                    else if (_userHits.Count > 0)
-                    {
-                        <ul class="list-unstyled mb-0" style="max-height:220px;overflow:auto;">
-                            @foreach (var u in _userHits.Take(12))
+                        <ul class="cc-im-user-hits">
+                            @foreach (var u in _userHits.Take(8))
                             {
-                                <li class="py-1">
-                                    <button type="button" class="btn btn-sm btn-outline-secondary w-100 text-start"
-                                            @onclick="() => SelectRecipient(u)">
+                                <li>
+                                    <button type="button" @onclick="() => SelectRecipient(u)">
                                         <strong>@u.FullName</strong>
-                                        <span class="small text-muted d-block">@u.Email · @u.Role</span>
+                                        <span>@u.Email · @RoleLabel(u.Role)</span>
                                     </button>
                                 </li>
                             }
                         </ul>
                     }
                 </div>
-            </div>
+            </aside>
 
-            <div class="col-lg-8">
-                <div class="cc-card">
-                    @if (_recipientId is null)
-                    {
-                        <div class="cc-empty">
-                            <i class="bi bi-chat-dots"></i>
-                            <p>Sélectionnez une conversation ou un destinataire.</p>
+            @* ── Colonne centre : fil de chat ── *@
+            <section class="cc-im-chat">
+                @if (_recipientId is null)
+                {
+                    <div class="cc-im-chat-empty">
+                        <i class="bi bi-chat-dots" aria-hidden="true"></i>
+                        <h2>Messagerie</h2>
+                        <p>Sélectionnez une conversation ou recherchez un destinataire.</p>
+                    </div>
+                }
+                else
+                {
+                    <header class="cc-im-chat-head">
+                        <div class="cc-im-avatar cc-im-avatar--lg" style="--av:@AvatarColor(_recipientName)">
+                            @Initials(_recipientName)
+                            <span class="cc-im-online"></span>
                         </div>
-                    }
-                    else
-                    {
-                        <div class="d-flex justify-content-between align-items-start mb-3">
-                            <div>
-                                <h2 class="cc-card-title mb-0">@_recipientName</h2>
-                                <p class="small text-muted mb-0">@_recipientEmail</p>
+                        <div class="cc-im-chat-head-meta">
+                            <strong>@_recipientName</strong>
+                            <span>
+                                @RoleLabel(_recipientRole)
+                                @if (!string.IsNullOrWhiteSpace(_recipientEmail))
+                                {
+                                    <span class="cc-im-dot">·</span> @_recipientEmail
+                                }
+                            </span>
+                        </div>
+                        <div class="cc-im-chat-actions">
+                            <button type="button" class="cc-im-icon-btn" title="Favori" disabled><i class="bi bi-star"></i></button>
+                            <button type="button" class="cc-im-icon-btn" title="Appel" disabled><i class="bi bi-telephone"></i></button>
+                            <button type="button" class="cc-im-icon-btn" title="Vidéo" disabled><i class="bi bi-camera-video"></i></button>
+                            <button type="button" class="cc-im-icon-btn @(_detailsOpen ? "is-on" : null)"
+                                    title="Détails" @onclick="() => _detailsOpen = !_detailsOpen">
+                                <i class="bi bi-info-circle"></i>
+                            </button>
+                        </div>
+                    </header>
+
+                    <div class="cc-im-thread" @ref="_threadEl">
+                        @if (_threadLoading)
+                        {
+                            <div class="cc-im-empty-inline"><span class="spinner-border spinner-border-sm"></span></div>
+                        }
+                        else if (_thread.Count == 0)
+                        {
+                            <div class="cc-im-empty-inline"><p>Aucun message — écrivez le premier.</p></div>
+                        }
+                        else
+                        {
+                            string? lastDay = null;
+                            @foreach (var m in _thread)
+                            {
+                                var day = m.CreatedAt.ToLocalTime().ToString("d MMMM yyyy");
+                                if (day != lastDay)
+                                {
+                                    lastDay = day;
+                                    <div class="cc-im-day"><span>@FormatDayLabel(m.CreatedAt)</span></div>
+                                }
+                                var mine = !string.Equals(m.SenderUserId, _recipientId, StringComparison.Ordinal);
+                                <div class="cc-im-msg @(mine ? "is-mine" : "is-them")">
+                                    @if (!mine)
+                                    {
+                                        <div class="cc-im-avatar cc-im-avatar--sm" style="--av:@AvatarColor(_recipientName)">
+                                            @Initials(_recipientName)
+                                        </div>
+                                    }
+                                    <div class="cc-im-msg-col">
+                                        <div class="cc-im-msg-meta">
+                                            <span>@(mine ? "Vous" : _recipientName)</span>
+                                            <time>@m.CreatedAt.ToLocalTime().ToString("HH:mm")</time>
+                                        </div>
+                                        <div class="cc-im-bubble">
+                                            @if (!string.IsNullOrWhiteSpace(m.Subject)
+                                                 && !string.Equals(m.Subject, "Message", StringComparison.OrdinalIgnoreCase)
+                                                 && !m.Subject.StartsWith("Re:", StringComparison.OrdinalIgnoreCase))
+                                            {
+                                                <div class="cc-im-bubble-subject">@m.Subject</div>
+                                            }
+                                            <div class="cc-im-bubble-body">@m.Body</div>
+                                        </div>
+                                        @if (mine && m.IsRead)
+                                        {
+                                            <span class="cc-im-seen"><i class="bi bi-check2-all"></i> Lu</span>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        }
+                    </div>
+
+                    <footer class="cc-im-composer">
+                        <div class="cc-im-composer-tools">
+                            <button type="button" class="cc-im-icon-btn" disabled title="Pièce jointe"><i class="bi bi-paperclip"></i></button>
+                            <button type="button" class="cc-im-icon-btn" disabled title="Emoji"><i class="bi bi-emoji-smile"></i></button>
+                        </div>
+                        <div class="cc-im-composer-main">
+                            <input type="text"
+                                   placeholder="Écrire un message…"
+                                   @bind="_body"
+                                   @bind:event="oninput"
+                                   @onkeydown="OnComposerKey" />
+                            <div class="cc-im-composer-opts">
+                                <label class="cc-im-check">
+                                    <input type="checkbox" @bind="_sendEmailCopy" />
+                                    Copie e-mail
+                                </label>
                             </div>
-                            <button type="button" class="cc-btn btn-sm" @onclick="ClearRecipient">Fermer</button>
                         </div>
-
-                        <div class="border rounded p-3 mb-3" style="max-height:320px;overflow:auto;background:rgba(0,0,0,.15);">
-                            @if (_threadLoading)
+                        <button type="button" class="cc-im-send" disabled="@(_sending || string.IsNullOrWhiteSpace(_body))"
+                                @onclick="SendAsync" title="Envoyer">
+                            @if (_sending)
                             {
                                 <span class="spinner-border spinner-border-sm"></span>
                             }
-                            else if (_thread.Count == 0)
-                            {
-                                <p class="text-muted small mb-0">Aucun message dans ce fil.</p>
-                            }
                             else
                             {
-                                @foreach (var m in _thread)
-                                {
-                                    var mine = !string.Equals(m.SenderUserId, _recipientId, StringComparison.Ordinal);
-                                    <div class="mb-3 @(mine ? "text-end" : "")">
-                                        <div class="small text-muted">
-                                            @(mine ? "Vous" : _recipientName)
-                                            · @m.CreatedAt.ToLocalTime().ToString("dd MMM HH:mm")
-                                        </div>
-                                        @if (!string.IsNullOrWhiteSpace(m.Subject))
-                                        {
-                                            <div><strong>@m.Subject</strong></div>
-                                        }
-                                        <div style="white-space:pre-wrap;">@m.Body</div>
-                                    </div>
-                                }
+                                <i class="bi bi-send-fill"></i>
                             }
-                        </div>
+                        </button>
+                        <p class="cc-im-composer-hint">Appuyez sur Entrée pour envoyer</p>
+                    </footer>
+                }
+            </section>
 
-                        <div class="row g-2">
-                            <div class="col-12">
-                                <label class="form-label">Objet</label>
-                                <input class="form-control" @bind="_subject" placeholder="Objet du message" />
-                            </div>
-                            <div class="col-12">
-                                <label class="form-label">Message</label>
-                                <textarea class="form-control" rows="5" @bind="_body"
-                                          placeholder="Votre message…"></textarea>
-                            </div>
-                            <div class="col-12">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="emailCopy" @bind="_sendEmailCopy" />
-                                    <label class="form-check-label" for="emailCopy">
-                                        Envoyer aussi une copie par e-mail au destinataire
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="col-12">
-                                <button type="button" class="cc-btn cc-btn-primary" disabled="@_sending" @onclick="SendAsync">
-                                    @if (_sending) { <span class="spinner-border spinner-border-sm me-1"></span> }
-                                    <i class="bi bi-send"></i> Envoyer
-                                </button>
-                            </div>
+            @* ── Colonne droite : détails ── *@
+            @if (_recipientId is not null && _detailsOpen)
+            {
+                <aside class="cc-im-details">
+                    <header class="cc-im-details-head">
+                        <h2>Détails de la conversation</h2>
+                        <button type="button" class="cc-im-icon-btn" @onclick="() => _detailsOpen = false" title="Fermer">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </header>
+
+                    <div class="cc-im-details-profile">
+                        <div class="cc-im-avatar cc-im-avatar--xl" style="--av:@AvatarColor(_recipientName)">
+                            @Initials(_recipientName)
+                            <span class="cc-im-online"></span>
                         </div>
-                    }
-                </div>
-            </div>
+                        <strong>@_recipientName</strong>
+                        <span class="cc-im-role-pill">@RoleLabel(_recipientRole)</span>
+                        <span class="cc-im-status-line"><span class="cc-im-online-dot"></span> Disponible</span>
+                        @if (!string.IsNullOrWhiteSpace(_recipientEmail))
+                        {
+                            <a class="cc-im-profile-link" href="@($"admin/users/{_recipientId}")">Voir le profil</a>
+                        }
+                    </div>
+
+                    <div class="cc-im-details-block">
+                        <h3>Options</h3>
+                        <ul class="cc-im-options">
+                            <li>
+                                <button type="button" disabled>
+                                    <i class="bi bi-search"></i> Rechercher dans la conversation
+                                </button>
+                            </li>
+                            <li>
+                                <button type="button" disabled>
+                                    <i class="bi bi-bell"></i> Notifications
+                                    <span class="cc-im-opt-badge">Activées</span>
+                                </button>
+                            </li>
+                            <li>
+                                <button type="button" disabled>
+                                    <i class="bi bi-envelope-open"></i> Marquer comme non lue
+                                </button>
+                            </li>
+                            <li>
+                                <button type="button" disabled>
+                                    <i class="bi bi-archive"></i> Archiver la conversation
+                                </button>
+                            </li>
+                            <li>
+                                <button type="button" class="is-danger" @onclick="ClearRecipient">
+                                    <i class="bi bi-trash"></i> Fermer la conversation
+                                </button>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <div class="cc-im-details-block cc-im-details-info">
+                        <h3>Informations</h3>
+                        <dl>
+                            <div><dt>ID utilisateur</dt><dd><code>@_recipientId</code></dd></div>
+                            @if (!string.IsNullOrWhiteSpace(_recipientEmail))
+                            {
+                                <div><dt>E-mail</dt><dd>@_recipientEmail</dd></div>
+                            }
+                            <div><dt>Messages</dt><dd>@_thread.Count</dd></div>
+                        </dl>
+                    </div>
+                </aside>
+            }
         </div>
     </Authorized>
 </AuthorizeView>
 
 @code {
+    private enum InboxFilter { All, Unread }
+
     private bool _loadingConv = true;
     private bool _searching;
     private bool _threadLoading;
     private bool _sending;
+    private bool _detailsOpen = true;
     private string? _error;
-    private string? _success;
 
+    private InboxFilter _filter = InboxFilter.All;
+    private string _listSearch = "";
     private List<ConversationVm> _conversations = [];
     private string _userQuery = "";
     private List<AdminUserItem> _userHits = [];
@@ -184,10 +326,30 @@
     private string? _recipientId;
     private string _recipientName = "";
     private string? _recipientEmail;
+    private string? _recipientRole;
     private List<MessageVm> _thread = [];
-    private string _subject = "";
     private string _body = "";
-    private bool _sendEmailCopy = true;
+    private bool _sendEmailCopy;
+
+    private ElementReference _threadEl;
+
+    private int UnreadTotal => _conversations.Sum(c => c.UnreadCount);
+
+    private IReadOnlyList<ConversationVm> FilteredConversations
+    {
+        get
+        {
+            IEnumerable<ConversationVm> q = _conversations;
+            if (_filter == InboxFilter.Unread)
+                q = q.Where(c => c.UnreadCount > 0);
+            var s = _listSearch.Trim();
+            if (s.Length > 0)
+                q = q.Where(c =>
+                    c.OtherUserName.Contains(s, StringComparison.OrdinalIgnoreCase)
+                    || (c.LastMessage?.Body?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false));
+            return q.ToList();
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -212,11 +374,14 @@
                 {
                     await OpenThreadAsync(detail.Id, detail.FullName);
                     _recipientEmail = detail.Email;
+                    _recipientRole = detail.Role;
                 }
             }
             catch { /* ignore */ }
         }
     }
+
+    private void SetFilter(InboxFilter f) => _filter = f;
 
     private async Task LoadConversationsAsync()
     {
@@ -256,8 +421,9 @@
     {
         _userHits = [];
         _userQuery = "";
-        await OpenThreadAsync(u.Id, u.FullName);
         _recipientEmail = u.Email;
+        _recipientRole = u.Role;
+        await OpenThreadAsync(u.Id, u.FullName);
     }
 
     private async Task OpenThreadAsync(string userId, string name)
@@ -265,15 +431,18 @@
         _recipientId = userId;
         _recipientName = name;
         _error = null;
-        _success = null;
+        _detailsOpen = true;
         _threadLoading = true;
         try
         {
             _thread = await Api.GetAsync<List<MessageVm>>($"api/admin/messages/conversations/{userId}") ?? [];
-            if (_thread.Count > 0 && string.IsNullOrWhiteSpace(_subject))
-                _subject = _thread[^1].Subject.StartsWith("Re:", StringComparison.OrdinalIgnoreCase)
-                    ? _thread[^1].Subject
-                    : $"Re: {_thread[^1].Subject}";
+            var known = _conversations.FirstOrDefault(c => c.OtherUserId == userId);
+            if (known is not null && known.UnreadCount > 0)
+            {
+                _conversations = _conversations
+                    .Select(c => c.OtherUserId == userId ? c with { UnreadCount = 0 } : c)
+                    .ToList();
+            }
         }
         catch (Exception ex) { _error = ex.Message; _thread = []; }
         finally { _threadLoading = false; }
@@ -284,29 +453,36 @@
         _recipientId = null;
         _recipientName = "";
         _recipientEmail = null;
+        _recipientRole = null;
         _thread = [];
-        _subject = "";
         _body = "";
+    }
+
+    private async Task OnComposerKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey)
+        {
+            await SendAsync();
+        }
     }
 
     private async Task SendAsync()
     {
         if (_recipientId is null) return;
-        if (string.IsNullOrWhiteSpace(_subject) || string.IsNullOrWhiteSpace(_body))
+        if (string.IsNullOrWhiteSpace(_body))
         {
-            _error = "Objet et message obligatoires.";
+            _error = "Écrivez un message.";
             return;
         }
 
         _sending = true;
         _error = null;
-        _success = null;
         try
         {
             var result = await Api.PostWithErrorAsync<SendResult>("api/admin/messages", new
             {
                 recipientUserId = _recipientId,
-                subject = _subject.Trim(),
+                subject = "Message",
                 body = _body.Trim(),
                 sendEmailCopy = _sendEmailCopy
             });
@@ -316,11 +492,6 @@
                 return;
             }
 
-            _success = result.Value.EmailSent
-                ? "Message envoyé (interne + e-mail)."
-                : string.IsNullOrWhiteSpace(result.Value.EmailError)
-                    ? "Message interne envoyé."
-                    : $"Message interne envoyé. E-mail non envoyé : {result.Value.EmailError}";
             _body = "";
             await OpenThreadAsync(_recipientId, _recipientName);
             await LoadConversationsAsync();
@@ -328,6 +499,61 @@
         catch (Exception ex) { _error = ex.Message; }
         finally { _sending = false; }
     }
+
+    private static string? Preview(ConversationVm c)
+    {
+        var body = c.LastMessage?.Body;
+        if (string.IsNullOrWhiteSpace(body)) return c.LastMessage?.Subject;
+        return body.Length > 72 ? body[..72] + "…" : body;
+    }
+
+    private static string FormatListTime(DateTime? utc)
+    {
+        if (utc is null) return "";
+        var local = utc.Value.ToLocalTime();
+        var today = DateTime.Today;
+        if (local.Date == today) return local.ToString("HH:mm");
+        if (local.Date == today.AddDays(-1)) return "Hier";
+        if (local.Year == today.Year) return local.ToString("d MMM");
+        return local.ToString("dd/MM/yy");
+    }
+
+    private static string FormatDayLabel(DateTime utc)
+    {
+        var local = utc.ToLocalTime().Date;
+        var today = DateTime.Today;
+        if (local == today) return "Aujourd'hui";
+        if (local == today.AddDays(-1)) return "Hier";
+        return local.ToString("d MMMM yyyy");
+    }
+
+    private static string Initials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "?";
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 1) return parts[0][..Math.Min(2, parts[0].Length)].ToUpperInvariant();
+        return $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[^1][0])}";
+    }
+
+    private static string AvatarColor(string? name)
+    {
+        var palette = new[] { "#7c5cff", "#3b82f6", "#22c55e", "#f59e0b", "#ec4899", "#06b6d4", "#8b5cf6" };
+        if (string.IsNullOrWhiteSpace(name)) return palette[0];
+        var h = name.Aggregate(0, (acc, ch) => acc * 31 + ch);
+        return palette[Math.Abs(h) % palette.Length];
+    }
+
+    private static string RoleLabel(string? role) => role switch
+    {
+        "Tutor" => "Tuteur",
+        "Parent" => "Parent",
+        "Student" => "Élève",
+        "Expert" => "Expert",
+        "GroupManager" => "Responsable",
+        "PlatformAdmin" => "Admin plateforme",
+        "SuperAdmin" => "Super admin",
+        _ => string.IsNullOrWhiteSpace(role) ? "Utilisateur" : role
+    };
 
     private sealed record ConversationVm(
         string OtherUserId,
