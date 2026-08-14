@@ -95,229 +95,288 @@
                 <div class="alert alert-success py-2">@_regSuccess</div>
             }
 
-            <div class="mb-3">
-                <label class="form-label">@L["Label_ExpertGroupName"] <span class="text-danger">*</span></label>
-                <div class="form-field-icon">
-                    <i class="bi bi-people field-icon" aria-hidden="true"></i>
-                    <input class="form-control" value="@_regSchoolName" disabled readonly
-                           placeholder="@(_regGroupLoading ? L["Label_Loading"] : L["Placeholder_ExpertGroupName"])" />
-                </div>
-            </div>
+            <section class="ex-form-section">
+                <h3 class="ex-form-section-title">@L["Expert_FormSection_Identity"]</h3>
 
-            <div class="row g-2">
-                <div class="col-12 col-sm-6 mb-3">
-                    <label class="form-label">@L["Label_FirstName"] <span class="text-danger">*</span></label>
+                <div class="mb-3">
+                    <label class="form-label">@L["Label_ExpertGroupName"] <span class="text-danger">*</span></label>
                     <div class="form-field-icon">
-                        <i class="bi bi-person field-icon" aria-hidden="true"></i>
-                        <input class="form-control" @bind="_regFirstName" @bind:event="oninput" @bind:after="OnRegNameChanged"
-                               placeholder="@L["Label_FirstName"]" autocomplete="given-name" />
+                        <i class="bi bi-people field-icon" aria-hidden="true"></i>
+                        <input class="form-control" value="@_regSchoolName" disabled readonly
+                               placeholder="@(_regGroupLoading ? L["Label_Loading"] : L["Placeholder_ExpertGroupName"])" />
                     </div>
                 </div>
-                <div class="col-12 col-sm-6 mb-3">
-                    <label class="form-label">@L["Label_LastName"] <span class="text-danger">*</span></label>
-                    <div class="form-field-icon">
-                        <i class="bi bi-person field-icon" aria-hidden="true"></i>
-                        <input class="form-control" @bind="_regLastName" @bind:event="oninput" @bind:after="OnRegNameChanged"
-                               placeholder="@L["Label_LastName"]" autocomplete="family-name" />
+
+                <div class="row g-2">
+                    <div class="col-12 col-sm-6 mb-3">
+                        <label class="form-label">@L["Label_FirstName"] <span class="text-danger">*</span></label>
+                        <div class="form-field-icon">
+                            <i class="bi bi-person field-icon" aria-hidden="true"></i>
+                            <input class="form-control" @bind="_regFirstName" @bind:event="oninput" @bind:after="OnRegNameChanged"
+                                   placeholder="@L["Label_FirstName"]" autocomplete="given-name" />
+                        </div>
+                    </div>
+                    <div class="col-12 col-sm-6 mb-3">
+                        <label class="form-label">@L["Label_LastName"] <span class="text-danger">*</span></label>
+                        <div class="form-field-icon">
+                            <i class="bi bi-person field-icon" aria-hidden="true"></i>
+                            <input class="form-control" @bind="_regLastName" @bind:event="oninput" @bind:after="OnRegNameChanged"
+                                   placeholder="@L["Label_LastName"]" autocomplete="family-name" />
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <div class="mb-3">
-                <label class="form-label">E-mail réel de l'enseignant <span class="text-muted">(optionnel)</span></label>
-                <div class="form-field-icon">
-                    <i class="bi bi-envelope field-icon" aria-hidden="true"></i>
-                    <input type="email" class="form-control" @bind="_regEmail" placeholder="exemple@courriel.com" />
-                </div>
-                <div class="form-text">
-                    Login généré automatiquement (e-mail du groupe + .XXXX).
-                    Avec e-mail réel : identifiants envoyés à l'enseignant, au Responsable et à admin@holotuto.com.
-                    Sans e-mail réel : uniquement Responsable + admin@holotuto.com.
-                </div>
-            </div>
-
-            <div class="alert alert-info small mb-3">
-                <i class="bi bi-shield-lock me-1"></i>
-                Mot de passe temporaire généré automatiquement et envoyé par e-mail. Changement obligatoire à la première connexion.
-            </div>
-
-            <div class="teacher-conduct-box mb-3">
-                <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
-                    <strong>@L["TeacherConduct_Title"]</strong>
-                    <span class="badge ex-badge-version">v@(TeacherConductPolicy.CurrentVersion)</span>
-                </div>
-                <div class="teacher-conduct-scroll" tabindex="0">
-                    <p class="small mb-2">@L["TeacherConduct_Intro"]</p>
-                    <ul class="small mb-2">
-                        <li>@L["TeacherConduct_Bullet_Trust"]</li>
-                        <li>@L["TeacherConduct_Bullet_Respect"]</li>
-                        <li>@L["TeacherConduct_Bullet_Safety"]</li>
-                        <li>@L["TeacherConduct_Bullet_Report"]</li>
-                        <li>@L["TeacherConduct_Bullet_Privacy"]</li>
-                        <li>@L["TeacherConduct_Bullet_Ethics"]</li>
-                    </ul>
-                    <p class="small text-muted mb-0">@L["TeacherConduct_LegalNote"]</p>
-                </div>
-                <a class="small d-inline-block mt-2" href="@TeacherConductPolicy.PublicPath" target="_blank" rel="noopener">
-                    @L["TeacherConduct_ReadFull"] <i class="bi bi-box-arrow-up-right" aria-hidden="true"></i>
-                </a>
-                <div class="form-check mt-3">
-                    <input class="form-check-input" type="checkbox" id="expert-accept-conduct"
-                           @bind="_regAcceptedConduct" />
-                    <label class="form-check-label" for="expert-accept-conduct">
-                        @L["TeacherConduct_AcceptCheckbox"]
+                <div class="mb-3">
+                    <label class="form-label">
+                        @L["Expert_RegisterRealEmail"]
+                        <span class="text-muted">@L["Expert_RegisterRealEmailOptional"]</span>
                     </label>
-                </div>
-            </div>
-
-            <div class="mb-3">
-                <label class="form-label">@L["Label_SubdomainFull"] <span class="text-danger">*</span></label>
-                <div class="subdomain-field">
-                    <span class="subdomain-prefix">https://</span>
-                    <input @bind="_regSlug" @bind:event="oninput" @bind:after="AfterRegSlugChanged" placeholder="jean" aria-label="@L["Label_Subdomain"]" />
-                    <span class="subdomain-suffix">.tutorsphere.com</span>
-                    @if (_regCheckingSlug)
-                    {
-                        <span class="subdomain-status"><span class="spinner-border spinner-border-sm" role="status"></span></span>
-                    }
-                    else if (!string.IsNullOrWhiteSpace(_regSlug) && IsRegSlugFormatValid)
-                    {
-                        <span class="subdomain-status @(_regSlugAvailable == true ? "" : "unavailable")">
-                            <i class="bi @(_regSlugAvailable == true ? "bi-check-circle-fill" : "bi-x-circle-fill")" aria-hidden="true"></i>
-                        </span>
-                    }
-                </div>
-                <small class="text-muted">@L["Hint_SubdomainAutoFilled"]</small>
-                @if (_regSlugAvailable == false && !string.IsNullOrWhiteSpace(_regSlug))
-                {
-                    <small class="text-danger d-block">@L["Error_SlugTaken"]</small>
-                }
-            </div>
-
-            <div class="row g-2 mb-3">
-                <div class="col-md-6">
-                    <label class="form-label">@L["Expert_RegisterCity"]</label>
                     <div class="form-field-icon">
-                        <i class="bi bi-geo-alt field-icon" aria-hidden="true"></i>
-                        <input class="form-control" @bind="_regCity" />
+                        <i class="bi bi-envelope field-icon" aria-hidden="true"></i>
+                        <input type="email" class="form-control" @bind="_regEmail" placeholder="exemple@courriel.com" />
+                    </div>
+                    <div class="form-text">@L["Expert_RegisterRealEmailHint"]</div>
+                </div>
+
+                <div class="alert alert-info small mb-0">
+                    <i class="bi bi-shield-lock me-1"></i>
+                    @L["Expert_RegisterPasswordHint"]
+                </div>
+            </section>
+
+            <section class="ex-form-section">
+                <h3 class="ex-form-section-title">@L["Expert_FormSection_Conduct"]</h3>
+                <div class="teacher-conduct-box mb-0">
+                    <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+                        <strong>@L["TeacherConduct_Title"]</strong>
+                        <span class="badge ex-badge-version">v@(TeacherConductPolicy.CurrentVersion)</span>
+                    </div>
+                    <div class="teacher-conduct-scroll" tabindex="0">
+                        <p class="small mb-2">@L["TeacherConduct_Intro"]</p>
+                        <ul class="small mb-2">
+                            <li>@L["TeacherConduct_Bullet_Trust"]</li>
+                            <li>@L["TeacherConduct_Bullet_Respect"]</li>
+                            <li>@L["TeacherConduct_Bullet_Safety"]</li>
+                            <li>@L["TeacherConduct_Bullet_Report"]</li>
+                            <li>@L["TeacherConduct_Bullet_Privacy"]</li>
+                            <li>@L["TeacherConduct_Bullet_Ethics"]</li>
+                        </ul>
+                        <p class="small text-muted mb-0">@L["TeacherConduct_LegalNote"]</p>
+                    </div>
+                    <a class="small d-inline-block mt-2" href="@TeacherConductPolicy.PublicPath" target="_blank" rel="noopener">
+                        @L["TeacherConduct_ReadFull"] <i class="bi bi-box-arrow-up-right" aria-hidden="true"></i>
+                    </a>
+                    <div class="form-check mt-3">
+                        <input class="form-check-input" type="checkbox" id="expert-accept-conduct"
+                               @bind="_regAcceptedConduct" />
+                        <label class="form-check-label" for="expert-accept-conduct">
+                            @L["TeacherConduct_AcceptCheckbox"]
+                        </label>
                     </div>
                 </div>
-                <div class="col-md-6">
-                    <label class="form-label">@L["Expert_RegisterCountry"]</label>
-                    <div class="form-field-icon">
-                        <i class="bi bi-flag field-icon" aria-hidden="true"></i>
-                        <input class="form-control" value="@RegCountryDisplay" disabled readonly />
-                    </div>
-                    <small class="text-muted">@L["Expert_RegisterCountryFromGroup"]</small>
-                </div>
-            </div>
+            </section>
 
-            <div class="mb-3">
-                <label class="form-label">@L["School_VisibleCountries"]</label>
-                <p class="small text-muted mb-2">@L["School_VisibleCountriesHint"]</p>
-                <div class="d-flex flex-wrap gap-2 mb-2">
-                    @foreach (var code in _regVisibleCountries)
+            <section class="ex-form-section">
+                <h3 class="ex-form-section-title">@L["Expert_FormSection_Profile"]</h3>
+
+                <div class="mb-3">
+                    <label class="form-label">@L["Label_SubdomainFull"] <span class="text-danger">*</span></label>
+                    <div class="subdomain-field">
+                        <span class="subdomain-prefix">https://</span>
+                        <input @bind="_regSlug" @bind:event="oninput" @bind:after="AfterRegSlugChanged" placeholder="jean" aria-label="@L["Label_Subdomain"]" />
+                        <span class="subdomain-suffix">.tutorsphere.com</span>
+                        @if (_regCheckingSlug)
+                        {
+                            <span class="subdomain-status"><span class="spinner-border spinner-border-sm" role="status"></span></span>
+                        }
+                        else if (!string.IsNullOrWhiteSpace(_regSlug) && IsRegSlugFormatValid)
+                        {
+                            <span class="subdomain-status @(_regSlugAvailable == true ? "" : "unavailable")">
+                                <i class="bi @(_regSlugAvailable == true ? "bi-check-circle-fill" : "bi-x-circle-fill")" aria-hidden="true"></i>
+                            </span>
+                        }
+                    </div>
+                    <small class="text-muted">@L["Hint_SubdomainAutoFilled"]</small>
+                    @if (_regSlugAvailable == false && !string.IsNullOrWhiteSpace(_regSlug))
                     {
-                        var info = CountryCatalog.Find(code);
-                        <span class="badge text-bg-light border d-inline-flex align-items-center gap-1 py-2 px-2">
-                            <span aria-hidden="true">@(info?.Flag ?? "")</span>
-                            @(info?.Name ?? code)
-                            @if (!string.Equals(code, _regCountry, StringComparison.OrdinalIgnoreCase))
-                            {
-                                <button type="button" class="btn-close btn-close-sm ms-1" @onclick="() => RemoveRegVisible(code)"></button>
-                            }
-                        </span>
+                        <small class="text-danger d-block">@L["Error_SlugTaken"]</small>
                     }
                 </div>
-                <div class="col-md-6 px-0">
-                    <CountrySelect Value="@_regAddVisible" ValueChanged="OnRegAddVisibleChanged" Placeholder="@L["School_AddVisibleCountry"]" />
-                </div>
-            </div>
 
-            <div class="mb-3 border-top pt-3">
-                <div class="form-check mb-2">
+                <div class="row g-2 mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label">@L["Expert_RegisterCity"]</label>
+                        <div class="form-field-icon">
+                            <i class="bi bi-geo-alt field-icon" aria-hidden="true"></i>
+                            <input class="form-control" @bind="_regCity" />
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">@L["Expert_RegisterCountry"]</label>
+                        <div class="form-field-icon">
+                            <i class="bi bi-flag field-icon" aria-hidden="true"></i>
+                            <input class="form-control" value="@RegCountryDisplay" disabled readonly />
+                        </div>
+                        <small class="text-muted">@L["Expert_RegisterCountryFromGroup"]</small>
+                    </div>
+                </div>
+
+                <div class="mb-0">
+                    <label class="form-label">@L["School_VisibleCountries"]</label>
+                    <p class="small text-muted mb-2">@L["School_VisibleCountriesHint"]</p>
+                    <div class="d-flex flex-wrap gap-2 mb-2">
+                        @foreach (var code in _regVisibleCountries)
+                        {
+                            var info = CountryCatalog.Find(code);
+                            <span class="badge text-bg-light border d-inline-flex align-items-center gap-1 py-2 px-2">
+                                <span aria-hidden="true">@(info?.Flag ?? "")</span>
+                                @(info?.Name ?? code)
+                                @if (!string.Equals(code, _regCountry, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    <button type="button" class="btn-close btn-close-sm ms-1" @onclick="() => RemoveRegVisible(code)"></button>
+                                }
+                            </span>
+                        }
+                    </div>
+                    <div class="col-md-6 px-0">
+                        <CountrySelect Value="@_regAddVisible" ValueChanged="OnRegAddVisibleChanged" Placeholder="@L["School_AddVisibleCountry"]" />
+                    </div>
+                </div>
+            </section>
+
+            <section class="ex-form-section">
+                <h3 class="ex-form-section-title">@L["Expert_FormSection_Publish"]</h3>
+
+                <div class="form-check mb-3">
                     <input class="form-check-input" type="checkbox" id="reg-publish-public" @bind="_regPublishPublic" />
                     <label class="form-check-label" for="reg-publish-public">
                         @L["Expert_PublishPublicProfile"]
                     </label>
                     <div class="form-text">@L["Expert_PublishPublicProfileHint"]</div>
                 </div>
+
                 <div class="form-check mb-2">
                     <input class="form-check-input" type="checkbox" id="reg-create-offer" @bind="_regCreateOffer" />
                     <label class="form-check-label" for="reg-create-offer">
                         @L["Expert_CreateOfferLabel"]
                     </label>
                 </div>
+
                 @if (_regCreateOffer)
                 {
-                    <div class="row g-2">
-                        <div class="col-md-6">
-                            <label class="form-label">Titre de l'offre *</label>
-                            <input class="form-control" @bind="_regOfferTitle" placeholder="Ex. Français — soutien scolaire" />
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Matière</label>
-                            <input class="form-control" @bind="_regOfferSubject" />
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Mode</label>
-                            <select class="form-select" @bind="_regOfferMode">
-                                <option value="En ligne">En ligne</option>
-                                <option value="Présentiel">Présentiel</option>
-                                <option value="Hybride">Hybride</option>
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Période package</label>
-                            <select class="form-select" @bind="_regOfferPeriod">
-                                <option value="semaine">Hebdomadaire</option>
-                                <option value="mois">Mensuel</option>
-                                <option value="trimestre">Trimestriel</option>
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Cadence</label>
-                            <select class="form-select" @bind="_regOfferCadence">
-                                <option value="weekly">Chaque semaine</option>
-                                <option value="biweekly">Toutes les 2 semaines</option>
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Facturation</label>
-                            <select class="form-select" @bind="_regOfferBillingMode">
-                                <option value="perSession">Par séance</option>
-                                <option value="hourly">Horaire</option>
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Durée séance (min)</label>
-                            <input type="number" min="15" step="15" class="form-control" @bind="_regOfferSessionDuration" />
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Prix *</label>
-                            <input type="number" min="0" step="100" class="form-control" @bind="_regOfferPrice" />
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label">Devise</label>
-                            <select class="form-select" @bind="_regOfferCurrency">
-                                <option>CAD</option><option>USD</option><option>EUR</option><option>XAF</option><option>XOF</option>
-                            </select>
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label">Séances</label>
-                            <input type="number" min="1" class="form-control" @bind="_regOfferSessionCount" />
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Fréquence (libellé)</label>
-                            <input class="form-control" @bind="_regOfferFrequency" placeholder="1× / semaine" />
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label">Description</label>
-                            <textarea class="form-control" rows="2" @bind="_regOfferDescription"></textarea>
+                    <div class="ex-offer-panel mt-3">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">@L["Expert_OfferTitle"] <span class="text-danger">*</span></label>
+                                <input class="form-control" @bind="_regOfferTitle" placeholder="Ex. Français — soutien scolaire" />
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">@L["Common_Subject"]</label>
+                                <input class="form-control" @bind="_regOfferSubject" />
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">@L["Offers_Mode"]</label>
+                                <select class="form-select" @bind="_regOfferMode">
+                                    <option value="En ligne">@L["Offers_Online"]</option>
+                                    <option value="Présentiel">@L["Offers_InPerson"]</option>
+                                    <option value="Hybride">@L["Offers_Hybrid"]</option>
+                                </select>
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label">@L["Expert_OfferBillingMode"] <span class="text-danger">*</span></label>
+                                <div class="form-text mb-2">@L["Expert_OfferBillingHint"]</div>
+                                <div class="ex-billing-toggle" role="group" aria-label="@L["Expert_OfferBillingMode"]">
+                                    <button type="button"
+                                            class="ex-billing-option @(_regOfferBillingMode == "hourly" ? "active" : null)"
+                                            @onclick='() => SetOfferBillingMode("hourly")'>
+                                        <i class="bi bi-clock-history" aria-hidden="true"></i>
+                                        <strong>@L["Billing_Hourly"]</strong>
+                                        <span>/ @L["CreateOffer_PerHour"]</span>
+                                    </button>
+                                    <button type="button"
+                                            class="ex-billing-option @(_regOfferBillingMode == "monthly" ? "active" : null)"
+                                            @onclick='() => SetOfferBillingMode("monthly")'>
+                                        <i class="bi bi-calendar-month" aria-hidden="true"></i>
+                                        <strong>@L["Billing_Monthly"]</strong>
+                                        <span>/ @L["CreateOffer_PerMonth"]</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            @if (_regOfferBillingMode == "hourly")
+                            {
+                                <div class="col-md-4">
+                                    <label class="form-label">@L["Expert_OfferHourlyRate"] <span class="text-danger">*</span></label>
+                                    <div class="input-group">
+                                        <input type="number" min="0" step="0.01" class="form-control" @bind="_regOfferPrice" />
+                                        <span class="input-group-text">@_regOfferCurrency / h</span>
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="col-md-4">
+                                    <label class="form-label">@L["Expert_OfferMonthlyRate"] <span class="text-danger">*</span></label>
+                                    <div class="input-group">
+                                        <input type="number" min="0" step="0.01" class="form-control" @bind="_regOfferPrice" />
+                                        <span class="input-group-text">@_regOfferCurrency / mois</span>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">@L["Expert_OfferHoursPerWeek"] <span class="text-danger">*</span></label>
+                                    <input type="number" min="0.5" step="0.5" class="form-control" @bind="_regOfferHoursPerWeek" />
+                                    <div class="form-text">@L["Expert_OfferHoursPerWeekHint"]</div>
+                                </div>
+                            }
+
+                            <div class="col-md-4">
+                                <label class="form-label">@L["Expert_OfferSessionDuration"]</label>
+                                <select class="form-select" @bind="_regOfferSessionDuration">
+                                    <option value="30">30</option>
+                                    <option value="45">45</option>
+                                    <option value="60">60</option>
+                                    <option value="90">90</option>
+                                    <option value="120">120</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">@L["Common_Currency"]</label>
+                                <select class="form-select" @bind="_regOfferCurrency">
+                                    <option>CAD</option><option>USD</option><option>EUR</option><option>XAF</option><option>XOF</option>
+                                </select>
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label">@L["Expert_OfferSlotsTitle"] <span class="text-danger">*</span></label>
+                                <p class="small text-muted mb-2">@L["Expert_OfferSlotsHint"]</p>
+                                <div class="offer-day-grid">
+                                    @foreach (var day in OfferDays)
+                                    {
+                                        var slot = _regOfferDaySlots[day];
+                                        <div class="offer-day-row @(slot.Enabled ? "is-on" : null)">
+                                            <label class="offer-day-check">
+                                                <input type="checkbox" checked="@slot.Enabled"
+                                                       @onchange="e => OnRegOfferDayToggle(day, e)" />
+                                                <span>@DayFullLabel(day)</span>
+                                            </label>
+                                            <input type="time" class="form-control form-control-sm offer-day-time"
+                                                   disabled="@(!slot.Enabled)"
+                                                   value="@slot.Time"
+                                                   @onchange="e => SetRegOfferDayTime(day, e.Value?.ToString())" />
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label">@L["Common_Description"]</label>
+                                <textarea class="form-control" rows="2" @bind="_regOfferDescription"></textarea>
+                            </div>
                         </div>
                     </div>
                 }
-            </div>
+            </section>
 
             <button type="button" class="cc-btn cc-btn-primary"
                     disabled="@(_regBusy || !_regAcceptedConduct)" @onclick="RegisterTeacherAsync">
@@ -621,14 +680,14 @@
     private string? _regOfferSubject;
     private decimal _regOfferPrice;
     private string _regOfferCurrency = "CAD";
-    private int _regOfferDurationDays = 30;
-    private int _regOfferSessionCount = 4;
-    private string? _regOfferFrequency;
-    private string _regOfferPeriod = "mois";
-    private string _regOfferCadence = "weekly";
-    private string _regOfferBillingMode = "perSession";
+    private string _regOfferBillingMode = "hourly";
+    private decimal _regOfferHoursPerWeek = 2;
     private int _regOfferSessionDuration = 60;
     private string _regOfferMode = "En ligne";
+    private static readonly string[] OfferDays =
+        ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
+    private readonly Dictionary<string, OfferDaySlot> _regOfferDaySlots = OfferDays.ToDictionary(
+        d => d, _ => new OfferDaySlot());
 
     private bool _isManager;
     private List<MemberItem> _members = [];
@@ -1000,9 +1059,41 @@
             {
                 if (string.IsNullOrWhiteSpace(_regOfferTitle))
                 {
-                    _regError = "Titre de l'offre obligatoire (ou décochez « Créer une offre »).";
+                    _regError = L["Expert_OfferTitleRequired"];
                     return;
                 }
+
+                if (_regOfferPrice <= 0)
+                {
+                    _regError = _regOfferBillingMode == "monthly"
+                        ? L["Expert_OfferMonthlyRate"] + " — " + L["Error_FillAllFields"]
+                        : L["Expert_OfferHourlyRate"] + " — " + L["Error_FillAllFields"];
+                    return;
+                }
+
+                if (_regOfferBillingMode == "monthly" && _regOfferHoursPerWeek <= 0)
+                {
+                    _regError = L["Expert_OfferHoursPerWeekRequired"];
+                    return;
+                }
+
+                var slots = _regOfferDaySlots
+                    .Where(kv => kv.Value.Enabled && !string.IsNullOrWhiteSpace(kv.Value.Time))
+                    .Select(kv => new { day = kv.Key, time = kv.Value.Time })
+                    .ToList();
+                if (slots.Count == 0)
+                {
+                    _regError = L["Expert_OfferSlotsRequired"];
+                    return;
+                }
+
+                var isMonthly = _regOfferBillingMode == "monthly";
+                var sessionMinutes = _regOfferSessionDuration > 0 ? _regOfferSessionDuration : 60;
+                var sessionsPerWeek = isMonthly
+                    ? Math.Max(1, (int)Math.Ceiling((double)_regOfferHoursPerWeek * 60 / sessionMinutes))
+                    : slots.Count;
+                var sessionCount = Math.Max(1, sessionsPerWeek * 4);
+
                 initialOffering = new
                 {
                     title = _regOfferTitle.Trim(),
@@ -1010,26 +1101,25 @@
                     subject = string.IsNullOrWhiteSpace(_regOfferSubject) ? null : _regOfferSubject,
                     price = _regOfferPrice,
                     currency = string.IsNullOrWhiteSpace(_regOfferCurrency) ? "CAD" : _regOfferCurrency,
-                    durationDays = _regOfferPeriod switch
-                    {
-                        "semaine" => 7,
-                        "mois" => 30,
-                        "trimestre" => 90,
-                        _ => _regOfferDurationDays > 0 ? _regOfferDurationDays : 30
-                    },
-                    sessionCount = _regOfferSessionCount > 0 ? _regOfferSessionCount : 4,
-                    frequency = string.IsNullOrWhiteSpace(_regOfferFrequency) ? null : _regOfferFrequency,
+                    durationDays = isMonthly ? 30 : 7,
+                    sessionCount,
+                    frequency = isMonthly
+                        ? $"{_regOfferHoursPerWeek:0.##} h/semaine · forfait mensuel"
+                        : $"Taux horaire · {sessionMinutes} min",
                     mode = _regOfferMode,
                     maxCapacity = 20,
                     schedule = new
                     {
-                        billingPeriod = _regOfferPeriod,
-                        cadence = _regOfferCadence,
-                        sessionDurationMin = _regOfferSessionDuration > 0 ? _regOfferSessionDuration : 60,
+                        billingPeriod = isMonthly ? "mois" : "semaine",
+                        cadence = "weekly",
+                        sessionDurationMin = sessionMinutes,
                         level = (string?)null,
                         cancellationPolicy = (string?)null,
-                        slots = Array.Empty<object>(),
-                        billingMode = _regOfferBillingMode
+                        slots,
+                        billingMode = isMonthly ? "monthly" : "hourly",
+                        hourlyRate = isMonthly ? (decimal?)null : _regOfferPrice,
+                        sessionRate = (decimal?)null,
+                        hoursPerWeek = isMonthly ? _regOfferHoursPerWeek : (decimal?)null
                     }
                 };
             }
@@ -1086,17 +1176,14 @@
             _regCreateOffer = false;
             _regPublishPublic = true;
             _regOfferTitle = "";
-            _regOfferDescription = _regOfferSubject = _regOfferFrequency = null;
+            _regOfferDescription = _regOfferSubject = null;
             _regOfferPrice = 0;
             _regOfferCurrency = "CAD";
-            _regOfferDurationDays = 30;
-            _regOfferSessionCount = 4;
-            _regOfferPeriod = "mois";
-            _regOfferCadence = "weekly";
-            _regOfferBillingMode = "perSession";
+            _regOfferBillingMode = "hourly";
+            _regOfferHoursPerWeek = 2;
             _regOfferSessionDuration = 60;
-            _regOfferSessionCount = 4;
             _regOfferMode = "En ligne";
+            ResetRegOfferDaySlots();
             _regSchoolName = keptGroupName;
             _regCountry = keptCountry;
             _regVisibleCountries = string.IsNullOrWhiteSpace(keptCountry) ? ["CM"] : [keptCountry];
@@ -1107,6 +1194,50 @@
             _regError = ex.Message;
         }
         finally { _regBusy = false; }
+    }
+
+    private void SetOfferBillingMode(string mode)
+    {
+        _regOfferBillingMode = mode is "monthly" ? "monthly" : "hourly";
+    }
+
+    private string DayFullLabel(string day) => day switch
+    {
+        "Lundi" => L["Day_Monday"],
+        "Mardi" => L["Day_Tuesday"],
+        "Mercredi" => L["Day_Wednesday"],
+        "Jeudi" => L["Day_Thursday"],
+        "Vendredi" => L["Day_Friday"],
+        "Samedi" => L["Day_Saturday"],
+        "Dimanche" => L["Day_Sunday"],
+        _ => day
+    };
+
+    private void OnRegOfferDayToggle(string day, ChangeEventArgs e)
+    {
+        if (!_regOfferDaySlots.TryGetValue(day, out var slot)) return;
+        var enabled = e.Value is bool b ? b : bool.TryParse(e.Value?.ToString(), out var p) && p;
+        slot.Enabled = enabled;
+        if (enabled && string.IsNullOrWhiteSpace(slot.Time))
+            slot.Time = "16:00";
+    }
+
+    private void SetRegOfferDayTime(string day, string? time)
+    {
+        if (_regOfferDaySlots.TryGetValue(day, out var slot))
+            slot.Time = string.IsNullOrWhiteSpace(time) ? "16:00" : time;
+    }
+
+    private void ResetRegOfferDaySlots()
+    {
+        foreach (var day in OfferDays)
+            _regOfferDaySlots[day] = new OfferDaySlot();
+    }
+
+    private sealed class OfferDaySlot
+    {
+        public bool Enabled { get; set; }
+        public string Time { get; set; } = "16:00";
     }
 
     private sealed record ExpertMyGroup(Guid Id, string Name, string? CountryCode);

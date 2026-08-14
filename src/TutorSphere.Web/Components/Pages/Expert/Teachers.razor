@@ -313,8 +313,9 @@
                                     </ul>
                                 }
 
-                                <div class="border rounded p-3 mb-3">
-                                    <h4 class="h6">Nouvelle offre / package</h4>
+                                <div class="border rounded p-3 mb-3 ex-offer-panel">
+                                    <h4 class="h6">@L["Expert_CreateOfferLabel"]</h4>
+                                    <p class="small text-muted mb-2">@L["Expert_OfferBillingHint"]</p>
                                     @if (!string.IsNullOrEmpty(_offerError))
                                     {
                                         <div class="alert alert-danger py-2">@_offerError</div>
@@ -323,85 +324,110 @@
                                     {
                                         <div class="alert alert-success py-2">@_offerSuccess</div>
                                     }
-                                    <div class="row g-2">
-                                        <div class="col-12">
-                                            <input class="form-control" placeholder="Titre *" @bind="_offerTitle" />
-                                        </div>
+                                    <div class="row g-3">
                                         <div class="col-md-6">
-                                            <input class="form-control" placeholder="Matière (liée à la discipline)" @bind="_offerSubject" />
+                                            <label class="form-label">@L["Expert_OfferTitle"] <span class="text-danger">*</span></label>
+                                            <input class="form-control" @bind="_offerTitle" placeholder="Ex. Français — soutien scolaire" />
                                         </div>
                                         <div class="col-md-3">
-                                            <label class="form-label small mb-0">Facturation</label>
-                                            <select class="form-select" @bind="_offerBillingMode">
-                                                <option value="perSession">Par séance</option>
-                                                <option value="hourly">Horaire</option>
-                                                <option value="quarterlyPerValidated">Trimestriel (validé)</option>
+                                            <label class="form-label">@L["Common_Subject"]</label>
+                                            <input class="form-control" @bind="_offerSubject" />
+                                        </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label">@L["Offers_Mode"]</label>
+                                            <select class="form-select" @bind="_offerMode">
+                                                <option value="En ligne">@L["Offers_Online"]</option>
+                                                <option value="Présentiel">@L["Offers_InPerson"]</option>
+                                                <option value="Hybride">@L["Offers_Hybrid"]</option>
                                             </select>
                                         </div>
-                                        <div class="col-md-3">
-                                            <label class="form-label small mb-0">Période package</label>
-                                            <select class="form-select" @bind="_offerPeriod" @bind:after="RecalcOfferSessions">
-                                                <option value="semaine">Hebdomadaire</option>
-                                                <option value="mois">Mensuel</option>
-                                                <option value="trimestre">Trimestriel</option>
-                                                <option value="semestre">Semestriel</option>
-                                                <option value="an">Annuel</option>
+
+                                        <div class="col-12">
+                                            <label class="form-label">@L["Expert_OfferBillingMode"] <span class="text-danger">*</span></label>
+                                            <div class="ex-billing-toggle" role="group">
+                                                <button type="button"
+                                                        class="ex-billing-option @(_offerBillingMode == "hourly" ? "active" : null)"
+                                                        @onclick='() => SetTeacherOfferBilling("hourly")'>
+                                                    <i class="bi bi-clock-history" aria-hidden="true"></i>
+                                                    <strong>@L["Billing_Hourly"]</strong>
+                                                    <span>/ @L["CreateOffer_PerHour"]</span>
+                                                </button>
+                                                <button type="button"
+                                                        class="ex-billing-option @(_offerBillingMode == "monthly" ? "active" : null)"
+                                                        @onclick='() => SetTeacherOfferBilling("monthly")'>
+                                                    <i class="bi bi-calendar-month" aria-hidden="true"></i>
+                                                    <strong>@L["Billing_Monthly"]</strong>
+                                                    <span>/ @L["CreateOffer_PerMonth"]</span>
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        @if (_offerBillingMode == "hourly")
+                                        {
+                                            <div class="col-md-4">
+                                                <label class="form-label">@L["Expert_OfferHourlyRate"] <span class="text-danger">*</span></label>
+                                                <div class="input-group">
+                                                    <input type="number" min="0" step="0.01" class="form-control" @bind="_offerPrice" />
+                                                    <span class="input-group-text">@_offerCurrency / h</span>
+                                                </div>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div class="col-md-4">
+                                                <label class="form-label">@L["Expert_OfferMonthlyRate"] <span class="text-danger">*</span></label>
+                                                <div class="input-group">
+                                                    <input type="number" min="0" step="0.01" class="form-control" @bind="_offerPrice" />
+                                                    <span class="input-group-text">@_offerCurrency / mois</span>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">@L["Expert_OfferHoursPerWeek"] <span class="text-danger">*</span></label>
+                                                <input type="number" min="0.5" step="0.5" class="form-control" @bind="_offerHoursPerWeek" />
+                                                <div class="form-text">@L["Expert_OfferHoursPerWeekHint"]</div>
+                                            </div>
+                                        }
+
+                                        <div class="col-md-4">
+                                            <label class="form-label">@L["Expert_OfferSessionDuration"]</label>
+                                            <select class="form-select" @bind="_offerSessionDuration">
+                                                <option value="30">30</option>
+                                                <option value="45">45</option>
+                                                <option value="60">60</option>
+                                                <option value="90">90</option>
+                                                <option value="120">120</option>
                                             </select>
                                         </div>
-                                        <div class="col-md-3">
-                                            <label class="form-label small mb-0">Cadence</label>
-                                            <select class="form-select" @bind="_offerCadence" @bind:after="RecalcOfferSessions">
-                                                <option value="weekly">Chaque semaine</option>
-                                                <option value="biweekly">Toutes les 2 semaines</option>
-                                            </select>
-                                        </div>
-                                        <div class="col-md-3">
-                                            <label class="form-label small mb-0">Durée séance (min)</label>
-                                            <input type="number" min="15" step="15" class="form-control" @bind="_offerSessionDuration" />
-                                        </div>
-                                        <div class="col-md-3">
-                                            <label class="form-label small mb-0">Nb séances</label>
-                                            <input type="number" min="1" class="form-control" @bind="_offerSessionCount" />
-                                        </div>
-                                        <div class="col-md-3">
-                                            <label class="form-label small mb-0">Prix package</label>
-                                            <input type="number" min="0" step="0.01" class="form-control" @bind="_offerPrice" />
-                                        </div>
-                                        <div class="col-md-3">
-                                            <label class="form-label small mb-0">Devise</label>
+                                        <div class="col-md-4">
+                                            <label class="form-label">@L["Common_Currency"]</label>
                                             <select class="form-select" @bind="_offerCurrency">
                                                 <option>CAD</option><option>USD</option><option>EUR</option><option>XAF</option><option>XOF</option>
                                             </select>
                                         </div>
-                                        <div class="col-md-3">
-                                            <label class="form-label small mb-0">Mode</label>
-                                            <select class="form-select" @bind="_offerMode">
-                                                <option value="En ligne">En ligne</option>
-                                                <option value="Présentiel">Présentiel</option>
-                                                <option value="Hybride">Hybride</option>
-                                            </select>
-                                        </div>
+
                                         <div class="col-12">
-                                            <label class="form-label small">Créneaux hebdomadaires (agenda de l'offre)</label>
-                                            <div class="d-flex flex-wrap gap-2">
+                                            <label class="form-label">@L["Expert_OfferSlotsTitle"] <span class="text-danger">*</span></label>
+                                            <p class="small text-muted mb-2">@L["Expert_OfferSlotsHint"]</p>
+                                            <div class="offer-day-grid">
                                                 @foreach (var day in OfferDays)
                                                 {
                                                     var slot = _offerDaySlots[day];
-                                                    <label class="border rounded px-2 py-1 small mb-0">
-                                                        <input type="checkbox" class="form-check-input me-1"
-                                                               checked="@slot.Enabled"
-                                                               @onchange="e => OnOfferDayToggle(day, e)" />
-                                                        @day
-                                                        <input type="time" class="form-control form-control-sm d-inline-block ms-1"
-                                                               style="width:7rem" disabled="@(!slot.Enabled)"
+                                                    <div class="offer-day-row @(slot.Enabled ? "is-on" : null)">
+                                                        <label class="offer-day-check">
+                                                            <input type="checkbox" checked="@slot.Enabled"
+                                                                   @onchange="e => OnOfferDayToggle(day, e)" />
+                                                            <span>@OfferDayFullLabel(day)</span>
+                                                        </label>
+                                                        <input type="time" class="form-control form-control-sm offer-day-time"
+                                                               disabled="@(!slot.Enabled)"
                                                                value="@slot.Time"
                                                                @onchange="e => SetOfferDayTime(day, e.Value?.ToString())" />
-                                                    </label>
+                                                    </div>
                                                 }
                                             </div>
                                         </div>
                                     </div>
-                                    <button type="button" class="cc-btn cc-btn-primary mt-2" disabled="@_offerBusy" @onclick="CreateOfferingAsync">
+                                    <button type="button" class="cc-btn cc-btn-primary mt-3" disabled="@_offerBusy" @onclick="CreateOfferingAsync">
                                         @if (_offerBusy) { <span class="spinner-border spinner-border-sm"></span> }
                                         Créer l'offre
                                     </button>
@@ -506,12 +532,9 @@
     private string? _offerSubject;
     private decimal _offerPrice;
     private string _offerCurrency = "CAD";
-    private int _offerDurationDays = 30;
-    private int _offerSessionCount = 4;
     private string _offerMode = "En ligne";
-    private string _offerBillingMode = "perSession";
-    private string _offerPeriod = "mois";
-    private string _offerCadence = "weekly";
+    private string _offerBillingMode = "hourly";
+    private decimal _offerHoursPerWeek = 2;
     private int _offerSessionDuration = 60;
     private readonly Dictionary<string, OfferDaySlot> _offerDaySlots = OfferDays.ToDictionary(
         d => d, _ => new OfferDaySlot());
@@ -542,7 +565,8 @@
 
     private static readonly string[] AvailabilityDays = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
     private static readonly string[] AvailabilitySlots = ["Matin", "Après-midi", "Soir"];
-    private static readonly string[] OfferDays = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
+    private static readonly string[] OfferDays =
+        ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
     private static readonly JsonSerializerOptions PortfolioJsonOpts = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -632,7 +656,27 @@
         if (_selectedTenantId is not Guid tenantId) return;
         if (string.IsNullOrWhiteSpace(_offerTitle))
         {
-            _offerError = "Titre de l'offre obligatoire.";
+            _offerError = L["Expert_OfferTitleRequired"];
+            return;
+        }
+        if (_offerPrice <= 0)
+        {
+            _offerError = L["Error_FillAllFields"];
+            return;
+        }
+        if (_offerBillingMode == "monthly" && _offerHoursPerWeek <= 0)
+        {
+            _offerError = L["Expert_OfferHoursPerWeekRequired"];
+            return;
+        }
+
+        var slots = _offerDaySlots
+            .Where(kv => kv.Value.Enabled && !string.IsNullOrWhiteSpace(kv.Value.Time))
+            .Select(kv => new { day = kv.Key, time = kv.Value.Time })
+            .ToList();
+        if (slots.Count == 0)
+        {
+            _offerError = L["Expert_OfferSlotsRequired"];
             return;
         }
 
@@ -641,20 +685,12 @@
         _offerSuccess = null;
         try
         {
-            var slots = _offerDaySlots
-                .Where(kv => kv.Value.Enabled && !string.IsNullOrWhiteSpace(kv.Value.Time))
-                .Select(kv => new { day = kv.Key, time = kv.Value.Time })
-                .ToList();
-
-            var durationDays = _offerPeriod switch
-            {
-                "semaine" => 7,
-                "mois" => 30,
-                "trimestre" => 90,
-                "semestre" => 180,
-                "an" => 365,
-                _ => 30
-            };
+            var isMonthly = _offerBillingMode == "monthly";
+            var sessionMinutes = _offerSessionDuration > 0 ? _offerSessionDuration : 60;
+            var sessionsPerWeek = isMonthly
+                ? Math.Max(1, (int)Math.Ceiling((double)_offerHoursPerWeek * 60 / sessionMinutes))
+                : slots.Count;
+            var sessionCount = Math.Max(1, sessionsPerWeek * 4);
 
             var result = await Api.PostWithErrorAsync<TeacherOfferingItem>($"api/expert/teachers/{tenantId}/offerings", new
             {
@@ -662,21 +698,25 @@
                 subject = string.IsNullOrWhiteSpace(_offerSubject) ? null : _offerSubject,
                 price = _offerPrice,
                 currency = string.IsNullOrWhiteSpace(_offerCurrency) ? _sCurrency : _offerCurrency,
-                durationDays,
-                sessionCount = _offerSessionCount > 0 ? _offerSessionCount : 4,
+                durationDays = isMonthly ? 30 : 7,
+                sessionCount,
+                frequency = isMonthly
+                    ? $"{_offerHoursPerWeek:0.##} h/semaine · forfait mensuel"
+                    : $"Taux horaire · {sessionMinutes} min",
                 mode = _offerMode,
                 maxCapacity = 20,
                 schedule = new
                 {
-                    billingPeriod = _offerPeriod,
-                    cadence = _offerCadence,
-                    sessionDurationMin = _offerSessionDuration > 0 ? _offerSessionDuration : 60,
+                    billingPeriod = isMonthly ? "mois" : "semaine",
+                    cadence = "weekly",
+                    sessionDurationMin = sessionMinutes,
                     level = (string?)null,
                     cancellationPolicy = (string?)null,
                     slots,
-                    billingMode = _offerBillingMode,
-                    hourlyRate = _offerBillingMode == "hourly" ? _offerPrice : (decimal?)null,
-                    sessionRate = _offerBillingMode == "perSession" ? _offerPrice : (decimal?)null
+                    billingMode = isMonthly ? "monthly" : "hourly",
+                    hourlyRate = isMonthly ? (decimal?)null : _offerPrice,
+                    sessionRate = (decimal?)null,
+                    hoursPerWeek = isMonthly ? _offerHoursPerWeek : (decimal?)null
                 }
             });
             if (!result.IsSuccess)
@@ -685,41 +725,36 @@
                 return;
             }
 
-            _offerSuccess = "Offre créée avec agenda et package.";
+            _offerSuccess = "Offre créée (facturation + plages horaires).";
             _offerTitle = "";
             _offerSubject = null;
             _offerPrice = 0;
+            _offerBillingMode = "hourly";
+            _offerHoursPerWeek = 2;
+            foreach (var day in OfferDays)
+                _offerDaySlots[day] = new OfferDaySlot();
             _offerings = await Api.GetAsync<List<TeacherOfferingItem>>($"api/expert/teachers/{tenantId}/offerings") ?? [];
         }
         catch (Exception ex) { _offerError = ex.Message; }
         finally { _offerBusy = false; }
     }
 
-    private void RecalcOfferSessions()
+    private void SetTeacherOfferBilling(string mode)
     {
-        var weeks = _offerPeriod switch
-        {
-            "semaine" => 1,
-            "mois" => 4,
-            "trimestre" => 12,
-            "semestre" => 24,
-            "an" => 48,
-            _ => 4
-        };
-        var perWeek = _offerCadence == "biweekly" ? 0.5m : 1m;
-        var enabledDays = _offerDaySlots.Count(kv => kv.Value.Enabled);
-        if (enabledDays <= 0) enabledDays = 1;
-        _offerSessionCount = Math.Max(1, (int)Math.Round(weeks * perWeek * enabledDays));
-        _offerDurationDays = _offerPeriod switch
-        {
-            "semaine" => 7,
-            "mois" => 30,
-            "trimestre" => 90,
-            "semestre" => 180,
-            "an" => 365,
-            _ => 30
-        };
+        _offerBillingMode = mode is "monthly" ? "monthly" : "hourly";
     }
+
+    private string OfferDayFullLabel(string day) => day switch
+    {
+        "Lundi" => L["Day_Monday"],
+        "Mardi" => L["Day_Tuesday"],
+        "Mercredi" => L["Day_Wednesday"],
+        "Jeudi" => L["Day_Thursday"],
+        "Vendredi" => L["Day_Friday"],
+        "Samedi" => L["Day_Saturday"],
+        "Dimanche" => L["Day_Sunday"],
+        _ => day
+    };
 
     private void OnOfferDayToggle(string day, ChangeEventArgs e)
     {
@@ -728,7 +763,6 @@
         slot.Enabled = on;
         if (on && string.IsNullOrWhiteSpace(slot.Time))
             slot.Time = "17:00";
-        RecalcOfferSessions();
     }
 
     private void SetOfferDayTime(string day, string? time)
