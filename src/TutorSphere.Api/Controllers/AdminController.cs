@@ -88,8 +88,20 @@ public class AdminController : ControllerBase
         var tenantIds = users.Where(u => u.TenantId.HasValue).Select(u => u.TenantId!.Value).Distinct().ToList();
         var tenants = _db.Tenants.AsNoTracking()
             .Where(t => tenantIds.Contains(t.Id))
-            .Select(t => new { t.Id, t.Name, t.Country, t.City })
+            .Select(t => new { t.Id, t.Name, t.Country, t.City, t.OwnerUserId })
             .ToDictionary(t => t.Id);
+
+        // Enseignants sans ApplicationUser.TenantId mais propriétaires d'une école.
+        var missingOwnerIds = users
+            .Where(u => !u.TenantId.HasValue)
+            .Select(u => u.Id)
+            .ToList();
+        var ownedByUser = _db.Tenants.AsNoTracking()
+            .Where(t => t.OwnerUserId != null && t.OwnerUserId != "" && missingOwnerIds.Contains(t.OwnerUserId))
+            .Select(t => new { t.Id, t.Name, t.Country, t.City, t.OwnerUserId })
+            .ToList()
+            .GroupBy(t => t.OwnerUserId!)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
 
         var roleCache = new Dictionary<string, string>();
         async Task<string> ResolveRoleAsync(ApplicationUser u)
@@ -108,7 +120,25 @@ public class AdminController : ControllerBase
         foreach (var u in users)
         {
             var userRole = await ResolveRoleAsync(u);
-            tenants.TryGetValue(u.TenantId ?? Guid.Empty, out var tenant);
+            Guid? resolvedTenantId = u.TenantId;
+            string? schoolName = null;
+            string? country = null;
+            string? city = null;
+
+            if (resolvedTenantId is Guid tid && tenants.TryGetValue(tid, out var tenant))
+            {
+                schoolName = tenant.Name;
+                country = tenant.Country;
+                city = tenant.City;
+            }
+            else if (ownedByUser.TryGetValue(u.Id, out var owned))
+            {
+                resolvedTenantId = owned.Id;
+                schoolName = owned.Name;
+                country = owned.Country;
+                city = owned.City;
+            }
+
             result.Add(new AdminUserDto(
                 u.Id,
                 u.Email ?? string.Empty,
@@ -116,10 +146,10 @@ public class AdminController : ControllerBase
                 userRole,
                 u.LockoutEnd == null || u.LockoutEnd <= DateTimeOffset.UtcNow,
                 u.PhoneNumber,
-                tenant?.Country,
-                tenant?.City,
-                tenant?.Name,
-                u.TenantId,
+                country,
+                city,
+                schoolName,
+                resolvedTenantId,
                 null,
                 null));
         }
@@ -521,29 +551,79 @@ public class AdminController : ControllerBase
         return Ok(list);
     }
 
-    /// <summary>Approves a pending school/tenant and notifies the owner.</summary>
+    /// <summary>Approves a pending school/tenant and notifies the owner.
+    /// Accepte un tenantId OU un userId (GUID Identity) — résout / crée l'école si besoin.</summary>
     [HttpPost("tenants/{tenantId:guid}/approve")]
     public async Task<IActionResult> ApproveTenant(Guid tenantId, CancellationToken ct)
     {
         var tenant = _db.Tenants.FirstOrDefault(t => t.Id == tenantId);
+        ApplicationUser? linkedUser = null;
 
         if (tenant is null)
         {
-            var user = await _userManager.FindByIdAsync(tenantId.ToString());
-            if (user?.TenantId is Guid userTenantId)
+            linkedUser = await _userManager.FindByIdAsync(tenantId.ToString());
+            if (linkedUser?.TenantId is Guid userTenantId)
                 tenant = _db.Tenants.FirstOrDefault(t => t.Id == userTenantId);
         }
 
         if (tenant is null)
             tenant = _db.Tenants.FirstOrDefault(t => t.OwnerUserId == tenantId.ToString());
 
-        if (tenant is null) return NotFound(new { error = "Tenant introuvable." });
+        // Compte enseignant sans école : créer un profil minimal puis approuver.
+        if (tenant is null)
+        {
+            linkedUser ??= await _userManager.FindByIdAsync(tenantId.ToString());
+            if (linkedUser is null)
+                return NotFound(new { error = "Tenant / enseignant introuvable." });
+
+            var roles = await _userManager.GetRolesAsync(linkedUser);
+            if (!roles.Contains(UserRoles.Tutor) && !roles.Contains(UserRoles.TeachingAssistant))
+                return BadRequest(new { error = "Cet utilisateur n'est pas un enseignant — aucun profil école à approuver." });
+
+            var baseSlug = Slugify(linkedUser.FullName);
+            if (string.IsNullOrWhiteSpace(baseSlug))
+                baseSlug = "enseignant";
+            var slug = baseSlug;
+            var n = 0;
+            while (_db.Tenants.Any(t => t.Slug == slug))
+            {
+                n++;
+                slug = $"{baseSlug}-{n}";
+            }
+
+            tenant = new Domain.Entities.Tenant
+            {
+                Name = string.IsNullOrWhiteSpace(linkedUser.FullName) ? linkedUser.Email ?? "Enseignant" : linkedUser.FullName,
+                Slug = slug,
+                OwnerUserId = linkedUser.Id,
+                Status = TenantStatus.PendingValidation,
+                Language = string.IsNullOrWhiteSpace(linkedUser.PreferredLanguage) ? "fr" : linkedUser.PreferredLanguage,
+                Currency = "XAF",
+                Branding = new Domain.Entities.TenantBranding()
+            };
+            _db.Add(tenant);
+            await _db.SaveChangesAsync(ct);
+
+            linkedUser.TenantId = tenant.Id;
+            await _userManager.UpdateAsync(linkedUser);
+        }
 
         if (string.IsNullOrWhiteSpace(tenant.OwnerUserId))
         {
             var owner = _userManager.Users.FirstOrDefault(u => u.TenantId == tenant.Id);
             if (owner is not null)
                 tenant.OwnerUserId = owner.Id;
+        }
+
+        // Relier le user au tenant s'il manquait.
+        if (!string.IsNullOrWhiteSpace(tenant.OwnerUserId))
+        {
+            var ownerUser = await _userManager.FindByIdAsync(tenant.OwnerUserId);
+            if (ownerUser is not null && ownerUser.TenantId != tenant.Id)
+            {
+                ownerUser.TenantId = tenant.Id;
+                await _userManager.UpdateAsync(ownerUser);
+            }
         }
 
         tenant.Status = TenantStatus.Active;
@@ -556,17 +636,31 @@ public class AdminController : ControllerBase
         tenant.ExpertApprovalNotes ??= "Approuvé par un administrateur plateforme.";
         await _db.SaveChangesAsync(ct);
 
-        var ownerUser = string.IsNullOrWhiteSpace(tenant.OwnerUserId)
+        var notifyUser = string.IsNullOrWhiteSpace(tenant.OwnerUserId)
             ? null
             : await _userManager.FindByIdAsync(tenant.OwnerUserId);
-        if (ownerUser is not null)
+        if (notifyUser is not null)
         {
             var webBase = (_configuration["WebBaseUrl"] ?? "https://app.tutorsphere.gisebs.com").TrimEnd('/');
             var loginUrl = $"{webBase}/login";
-            await _email.SendSchoolApprovedAsync(ownerUser.Email ?? string.Empty, ownerUser.FirstName, tenant.Name, loginUrl, ct);
+            await _email.SendSchoolApprovedAsync(notifyUser.Email ?? string.Empty, notifyUser.FirstName, tenant.Name, loginUrl, ct);
         }
 
-        return Ok(new { message = "Tenant approuvé." });
+        return Ok(new { message = "Profil enseignant approuvé.", tenantId = tenant.Id });
+    }
+
+    private static string Slugify(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "";
+        var s = value.Trim().ToLowerInvariant();
+        var sb = new System.Text.StringBuilder(s.Length);
+        foreach (var ch in s)
+        {
+            if (char.IsLetterOrDigit(ch)) sb.Append(ch);
+            else if (ch is ' ' or '-' or '_' && sb.Length > 0 && sb[^1] != '-')
+                sb.Append('-');
+        }
+        return sb.ToString().Trim('-');
     }
 
     [HttpGet("schools")]

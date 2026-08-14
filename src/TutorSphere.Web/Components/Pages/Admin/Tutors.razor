@@ -126,7 +126,7 @@
                                                     <button class="btn btn-sm btn-outline-primary"
                                                             title="Approuver le profil"
                                                             disabled="@(_approvingTenant == tutor.Id)"
-                                                            @onclick="() => ApproveSchoolAsync(tutor.Id)">
+                                                            @onclick="() => ApproveSchoolAsync(tutor)">
                                                         @if (_approvingTenant == tutor.Id)
                                                         {
                                                             <span class="spinner-border spinner-border-sm me-1"></span>
@@ -245,18 +245,30 @@
         finally { _pendingUserId = null; }
     }
 
-    private async Task ApproveSchoolAsync(string userId)
+    private async Task ApproveSchoolAsync(AdminUserItem tutor)
     {
-        _approvingTenant = userId;
+        _approvingTenant = tutor.Id;
         _successMessage = null;
         _errorMessage = null;
         try
         {
-            var result = await Api.PostAsync<object>($"api/admin/tenants/{userId}/approve", new { });
-            if (result != null) _successMessage = "Profil approuvé avec succès.";
-            else _errorMessage = "Impossible d'approuver le profil. Vérifiez que le tenantId est correct.";
+            // Préférer le tenantId réel ; à défaut l'API accepte aussi le userId (GUID).
+            var key = tutor.TenantId?.ToString() ?? tutor.Id;
+            var result = await Api.PostWithErrorAsync<object>($"api/admin/tenants/{key}/approve", new { });
+            if (result.Error is not null)
+            {
+                _errorMessage = result.Error;
+                return;
+            }
+
+            _successMessage = $"Profil de {tutor.FullName} approuvé.";
+            // Recharger pour récupérer TenantId / école si créée à la volée.
+            _tutors = await AdminSvc.GetUsersAsync("Tutor");
         }
-        catch { _errorMessage = "Erreur lors de l'approbation du profil."; }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
         finally { _approvingTenant = null; }
     }
 
