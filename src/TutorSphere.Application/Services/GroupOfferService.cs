@@ -124,14 +124,21 @@ public class GroupOfferService(
         db.Add(offer);
         await db.SaveChangesAsync(ct);
 
-        await audit.RecordAsync(
-            ExpertGovernanceEventType.GroupOfferCreated,
-            userId,
-            $"Offre brouillon « {offer.Name} »",
-            groupId,
-            relatedEntityId: offer.Id,
-            isNotification: false,
-            ct: ct);
+        try
+        {
+            await audit.RecordAsync(
+                ExpertGovernanceEventType.GroupOfferCreated,
+                userId,
+                $"Offre brouillon « {offer.Name} »",
+                groupId,
+                relatedEntityId: offer.Id,
+                isNotification: false,
+                ct: ct);
+        }
+        catch
+        {
+            // L'offre est déjà persistée — ne pas faire échouer la création pour l'audit.
+        }
 
         return ToDto(offer, 0);
     }
@@ -151,6 +158,8 @@ public class GroupOfferService(
 
         if (offer.Status is GroupOfferStatus.Archived)
             throw new InvalidOperationException("Une offre archivée ne peut pas être modifiée.");
+        if (offer.Status is GroupOfferStatus.Suspended)
+            throw new InvalidOperationException("Une offre suspendue ne peut pas être modifiée. Republiez-la ou créez une nouvelle offre.");
         if (string.IsNullOrWhiteSpace(request.Name))
             throw new InvalidOperationException("Le nom de l'offre est requis.");
 
@@ -460,25 +469,25 @@ public class GroupOfferService(
 
     private IReadOnlyList<GroupOfferListItemDto> MapList(Guid groupId)
     {
-        // Materialize first — nested CountQueries during AsEnumerable enumeration
-        // throw with Npgsql (no concurrent readers on the same connection).
         var offers = db.GroupOffers
             .Where(o => o.ExpertGroupId == groupId)
-            .OrderByDescending(o => o.UpdatedAt)
+            .OrderByDescending(o => o.UpdatedAt ?? o.CreatedAt)
             .ToList();
 
         if (offers.Count == 0)
             return Array.Empty<GroupOfferListItemDto>();
 
         var offerIds = offers.Select(o => o.Id).ToList();
-        var counts = db.GroupOfferTeachers
+        var assignmentRows = db.GroupOfferTeachers
             .Where(a => offerIds.Contains(a.GroupOfferId)
                         && a.AssignmentStatus != GroupOfferTeacherAssignmentStatus.Removed
                         && a.AssignmentStatus != GroupOfferTeacherAssignmentStatus.Declined)
-            .GroupBy(a => a.GroupOfferId)
-            .Select(g => new { OfferId = g.Key, Count = g.Count() })
-            .ToList()
-            .ToDictionary(x => x.OfferId, x => x.Count);
+            .Select(a => a.GroupOfferId)
+            .ToList();
+
+        var counts = assignmentRows
+            .GroupBy(id => id)
+            .ToDictionary(g => g.Key, g => g.Count());
 
         return offers
             .Select(o => ToDto(o, counts.GetValueOrDefault(o.Id)))

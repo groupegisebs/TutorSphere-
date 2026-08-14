@@ -14,7 +14,16 @@
         <div class="cc-toolbar">
             <div>
                 <h1 class="cc-page-title">Catalogue — Offres du groupe</h1>
-                <p class="cc-page-sub">Créez des offres, affectez-les aux enseignants du groupe — ils pourront programmer leur agenda sur la plateforme.</p>
+                <p class="cc-page-sub">
+                    @if (_canManage)
+                    {
+                        <text>Créez, modifiez ou supprimez les offres, puis affectez-les aux enseignants du groupe.</text>
+                    }
+                    else
+                    {
+                        <text>Consultation des offres du groupe. La gestion (création / modification / suppression) est réservée au Responsable.</text>
+                    }
+                </p>
             </div>
             @if (!string.IsNullOrWhiteSpace(_groupCurrencyLabel))
             {
@@ -38,57 +47,60 @@
             <div class="alert alert-success">@_info</div>
         }
 
-        <div class="cc-card mb-3">
-            <h2 class="cc-card-title">@(_editId is null ? "Nouvelle offre (brouillon)" : "Modifier l'offre")</h2>
-            <div class="row g-2">
-                <div class="col-md-6">
-                    <label class="form-label">Nom *</label>
-                    <input class="form-control" @bind="_name" />
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label">Code</label>
-                    <input class="form-control" @bind="_code" />
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label">Prix recommandé (@PreviewCurrencyLabel)</label>
-                    <input class="form-control" type="number" @bind="_price" />
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">Portée *</label>
-                    <select class="form-select" @bind="_scope" @bind:after="OnScopeChanged">
-                        <option value="local">Locale (pays du groupe)</option>
-                        <option value="international">Internationale</option>
-                    </select>
-                </div>
-                @if (IsInternational)
-                {
-                    <div class="col-md-4">
-                        <label class="form-label">Pays de marché *</label>
-                        <CountrySelect Value="@_marketCountry" ValueChanged="OnMarketCountryChanged" Placeholder="Pays cible" />
+        @if (_canManage)
+        {
+            <div class="cc-card mb-3">
+                <h2 class="cc-card-title">@(_editId is null ? "Nouvelle offre (brouillon)" : "Modifier l'offre")</h2>
+                <div class="row g-2">
+                    <div class="col-md-6">
+                        <label class="form-label">Nom *</label>
+                        <input class="form-control" @bind="_name" />
                     </div>
-                }
-                <div class="col-md-4">
-                    <label class="form-label">Devise (automatique)</label>
-                    <input class="form-control" value="@PreviewCurrencyLabel" disabled readonly />
+                    <div class="col-md-3">
+                        <label class="form-label">Code</label>
+                        <input class="form-control" @bind="_code" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Prix recommandé (@PreviewCurrencyLabel)</label>
+                        <input class="form-control" type="number" @bind="_price" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Portée *</label>
+                        <select class="form-select" @bind="_scope" @bind:after="OnScopeChanged">
+                            <option value="local">Locale (pays du groupe)</option>
+                            <option value="international">Internationale</option>
+                        </select>
+                    </div>
+                    @if (IsInternational)
+                    {
+                        <div class="col-md-4">
+                            <label class="form-label">Pays de marché *</label>
+                            <CountrySelect Value="@_marketCountry" ValueChanged="OnMarketCountryChanged" Placeholder="Pays cible" />
+                        </div>
+                    }
+                    <div class="col-md-4">
+                        <label class="form-label">Devise (automatique)</label>
+                        <input class="form-control" value="@PreviewCurrencyLabel" disabled readonly />
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Description courte</label>
+                        <input class="form-control" @bind="_short" />
+                    </div>
                 </div>
-                <div class="col-12">
-                    <label class="form-label">Description courte</label>
-                    <input class="form-control" @bind="_short" />
+                <div class="d-flex gap-2 mt-2">
+                    <button type="button" class="cc-btn cc-btn-primary" disabled="@_busy" @onclick="SaveAsync">
+                        @(_editId is null ? "Créer" : "Enregistrer")
+                    </button>
+                    @if (_editId is not null)
+                    {
+                        <button type="button" class="cc-btn" disabled="@_busy" @onclick="CancelEdit">Annuler</button>
+                    }
                 </div>
+                <p class="small text-muted mt-2 mb-0">
+                    Devise internationale : Europe → EUR · Canada → $CAD · USA → $USD · Cameroun / Afrique → XAF.
+                </p>
             </div>
-            <div class="d-flex gap-2 mt-2">
-                <button type="button" class="cc-btn cc-btn-primary" disabled="@_busy" @onclick="SaveAsync">
-                    @(_editId is null ? "Créer" : "Enregistrer")
-                </button>
-                @if (_editId is not null)
-                {
-                    <button type="button" class="cc-btn" disabled="@_busy" @onclick="CancelEdit">Annuler</button>
-                }
-            </div>
-            <p class="small text-muted mt-2 mb-0">
-                Devise internationale : Europe → EUR · Canada → $CAD · USA → $USD · Cameroun / Afrique → XAF.
-            </p>
-        </div>
+        }
 
         <div class="cc-card">
             @if (_loading)
@@ -131,12 +143,15 @@
                                 <td>@o.AssignedTeacherCount</td>
                                 <td>@(o.RecommendedPrice?.ToString("N0") ?? "—") @GroupOfferCurrencyRules.FormatCurrencyLabel(o.Currency)</td>
                                 <td class="text-end text-nowrap">
-                                    <button type="button" class="cc-btn btn-sm" @onclick="() => OpenAssignAsync(o)">Affecter</button>
-                                    <button type="button" class="cc-btn btn-sm" @onclick="() => BeginEdit(o)">Modifier</button>
-                                    <button type="button" class="cc-btn btn-sm" @onclick="() => DeleteAsync(o)">Supprimer</button>
-                                    @if (o.Status is 0 or 1 or 2)
+                                    @if (_canManage)
                                     {
-                                        <button type="button" class="cc-btn btn-sm" @onclick="() => PublishAsync(o.Id)">Publier</button>
+                                        <button type="button" class="cc-btn btn-sm" @onclick="() => OpenAssignAsync(o)">Affecter</button>
+                                        <button type="button" class="cc-btn btn-sm" @onclick="() => BeginEdit(o)">Modifier</button>
+                                        <button type="button" class="cc-btn btn-sm" @onclick="() => DeleteAsync(o)">Supprimer</button>
+                                        @if (o.Status is 0 or 1 or 2)
+                                        {
+                                            <button type="button" class="cc-btn btn-sm" @onclick="() => PublishAsync(o.Id)">Publier</button>
+                                        }
                                     }
                                 </td>
                             </tr>
@@ -218,6 +233,7 @@
 @code {
     private bool _loading = true;
     private bool _busy;
+    private bool _canManage;
     private string? _error;
     private string? _info;
     private string _name = "";
@@ -245,6 +261,18 @@
     protected override async Task OnInitializedAsync()
     {
         try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        try { await Auth.RestoreActAsGroupAsync(); } catch { }
+        try
+        {
+            var ctx = await Api.GetAsync<MeContext>("api/expert/me-context");
+            _canManage = ctx?.IsGroupManager == true
+                         || Auth.IsInRole("GroupManager")
+                         || Auth.IsActingAsGroupAdmin;
+        }
+        catch
+        {
+            _canManage = Auth.IsInRole("GroupManager") || Auth.IsActingAsGroupAdmin;
+        }
         await ReloadAsync();
     }
 
@@ -314,6 +342,12 @@
 
     private async Task SaveAsync()
     {
+        if (!_canManage)
+        {
+            _error = "Seul le Responsable peut créer ou modifier une offre.";
+            return;
+        }
+
         _busy = true;
         _info = null;
         _error = null;
@@ -474,6 +508,8 @@
         5 => "Archived",
         _ => s.ToString()
     };
+
+    private sealed record MeContext(bool IsGroupManager, Guid? GroupId, string? GroupName, bool IsPlatformActAs = false);
 
     private sealed record CatalogDto(
         Guid ExpertGroupId,

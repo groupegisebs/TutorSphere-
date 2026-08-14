@@ -81,10 +81,18 @@ public class GroupGovernanceController : ControllerBase
         {
             return BadRequest(new { error = ex.Message });
         }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new
+            {
+                error = "Impossible de charger le catalogue d'offres. Vérifiez que les migrations base de données sont à jour.",
+                detail = ex.GetBaseException().Message
+            });
+        }
     }
 
     [HttpPost("expert/group-offers")]
-    [Authorize(Roles = ExpertOrManagerOrPlatform)]
+    [Authorize(Roles = ManagerOrPlatform)]
     public async Task<ActionResult<GroupOfferListItemDto>> CreateOffer(
         [FromBody] CreateGroupOfferRequest? request,
         CancellationToken ct)
@@ -104,10 +112,18 @@ public class GroupGovernanceController : ControllerBase
         {
             return BadRequest(new { error = ex.Message });
         }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new
+            {
+                error = "Impossible de créer l'offre. Vérifiez que les migrations base de données sont à jour.",
+                detail = ex.GetBaseException().Message
+            });
+        }
     }
 
     [HttpPut("expert/group-offers/{offerId:guid}")]
-    [Authorize(Roles = ExpertOrManagerOrPlatform)]
+    [Authorize(Roles = ManagerOrPlatform)]
     public async Task<ActionResult<GroupOfferListItemDto>> UpdateOffer(
         Guid offerId,
         [FromBody] UpdateGroupOfferRequest? request,
@@ -125,10 +141,18 @@ public class GroupGovernanceController : ControllerBase
         {
             return BadRequest(new { error = ex.Message });
         }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new
+            {
+                error = "Impossible de modifier l'offre.",
+                detail = ex.GetBaseException().Message
+            });
+        }
     }
 
     [HttpDelete("expert/group-offers/{offerId:guid}")]
-    [Authorize(Roles = ExpertOrManagerOrPlatform)]
+    [Authorize(Roles = ManagerOrPlatform)]
     public async Task<IActionResult> DeleteOffer(Guid offerId, CancellationToken ct)
     {
         if (UserId is null) return Unauthorized();
@@ -142,10 +166,18 @@ public class GroupGovernanceController : ControllerBase
         {
             return BadRequest(new { error = ex.Message });
         }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new
+            {
+                error = "Impossible de supprimer l'offre.",
+                detail = ex.GetBaseException().Message
+            });
+        }
     }
 
     [HttpPost("expert/group-offers/{offerId:guid}/publish")]
-    [Authorize(Roles = ExpertOrManagerOrPlatform)]
+    [Authorize(Roles = ManagerOrPlatform)]
     public async Task<IActionResult> PublishOffer(Guid offerId, CancellationToken ct)
     {
         if (UserId is null) return Unauthorized();
@@ -195,7 +227,7 @@ public class GroupGovernanceController : ControllerBase
     }
 
     [HttpPost("expert/group-offers/{offerId:guid}/teachers")]
-    [Authorize(Roles = ExpertOrManagerOrPlatform)]
+    [Authorize(Roles = ManagerOrPlatform)]
     public async Task<ActionResult<GroupOfferTeacherAssignmentDto>> AssignOfferTeacher(
         Guid offerId,
         [FromBody] AssignGroupOfferTeacherRequest? request,
@@ -216,7 +248,7 @@ public class GroupGovernanceController : ControllerBase
     }
 
     [HttpDelete("expert/group-offers/{offerId:guid}/teachers/{teacherTenantId:guid}")]
-    [Authorize(Roles = ExpertOrManagerOrPlatform)]
+    [Authorize(Roles = ManagerOrPlatform)]
     public async Task<IActionResult> UnassignOfferTeacher(Guid offerId, Guid teacherTenantId, CancellationToken ct)
     {
         if (UserId is null) return Unauthorized();

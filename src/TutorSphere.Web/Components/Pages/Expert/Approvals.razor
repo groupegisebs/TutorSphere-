@@ -6,36 +6,73 @@
 @inject AuthService Auth
 @inject ApiClient Api
 @inject IStringLocalizer<SharedResources> L
+@inject NavigationManager Nav
 
 <ApplyRequestCulture />
 
-<PageTitle>File d'attente — TutorSphere</PageTitle>
+<PageTitle>Nourrir le groupe — Enseignants</PageTitle>
 
 <AuthorizeView Roles="Expert,GroupManager,SuperAdmin,PlatformAdmin">
     <Authorized>
         <div class="cc-toolbar">
             <div>
-                <h1 class="cc-page-title">Enseignants — File d'attente</h1>
-                <p class="cc-page-sub">Invitations, création directe et revue des dossiers du groupe.</p>
+                <h1 class="cc-page-title">Nourrir le groupe — Enseignants</h1>
+                <p class="cc-page-sub">
+                    Deux façons d'ajouter un <strong>enseignant</strong> : le créer vous-même, ou l'inviter à s'inscrire.
+                    Ensuite, suivez les dossiers en revue. Ceci ne concerne <strong>pas</strong> l'admission d'un membre Expert.
+                </p>
             </div>
         </div>
 
+        <div class="cc-path-grid mb-3" role="navigation" aria-label="Parcours enseignants">
+            <button type="button" class="cc-path-card @(_activeTab == "register" ? "active" : null)"
+                    @onclick='() => SetTab("register")'>
+                <span class="cc-path-num">1</span>
+                <div>
+                    <strong>Créer un enseignant</strong>
+                    <p>Vous créez le compte tout de suite (identifiants générés). Idéal si vous avez les infos sous la main.</p>
+                </div>
+            </button>
+            <button type="button" class="cc-path-card @(_activeTab == "invite" ? "active" : null)"
+                    @onclick='() => SetTab("invite")'>
+                <span class="cc-path-num">2</span>
+                <div>
+                    <strong>Inviter un enseignant</strong>
+                    <p>Vous envoyez un lien : l'enseignant s'inscrit et dépose son dossier. Idéal pour un premier contact.</p>
+                </div>
+            </button>
+            <button type="button" class="cc-path-card @(_activeTab == "queue" ? "active" : null)"
+                    @onclick='() => SetTab("queue")'>
+                <span class="cc-path-num">3</span>
+                <div>
+                    <strong>Dossiers en revue</strong>
+                    <p>Traitez les candidatures et profils déjà créés ou soumis (validation du groupe).</p>
+                </div>
+            </button>
+        </div>
+
+        <div class="alert alert-secondary small mb-3">
+            <strong>À ne pas confondre :</strong>
+            ici = <em>enseignants</em> (vivier pédagogique).
+            Pour inviter un <em>membre Expert</em> du groupe → menu Responsable → Admissions (Responsable uniquement).
+        </div>
+
         <div class="cc-tabs" role="tablist">
+            <button type="button" role="tab" class="cc-tab @(_activeTab == "register" ? "active" : null)"
+                    aria-selected="@(_activeTab == "register")" @onclick='() => SetTab("register")'>
+                <i class="bi bi-person-plus me-1" aria-hidden="true"></i>Créer un enseignant
+            </button>
             <button type="button" role="tab" class="cc-tab @(_activeTab == "invite" ? "active" : null)"
-                    aria-selected="@(_activeTab == "invite")" @onclick='() => _activeTab = "invite"'>
-                <i class="bi bi-envelope me-1" aria-hidden="true"></i>@L["Expert_InviteTitle"]
+                    aria-selected="@(_activeTab == "invite")" @onclick='() => SetTab("invite")'>
+                <i class="bi bi-envelope me-1" aria-hidden="true"></i>Inviter un enseignant
                 @if (!_invitesLoading && _invites.Count > 0)
                 {
                     <span class="cc-pill cc-pill-type ms-1">@_invites.Count</span>
                 }
             </button>
-            <button type="button" role="tab" class="cc-tab @(_activeTab == "register" ? "active" : null)"
-                    aria-selected="@(_activeTab == "register")" @onclick='() => _activeTab = "register"'>
-                <i class="bi bi-person-plus me-1" aria-hidden="true"></i>@L["Expert_RegisterTeacherTitle"]
-            </button>
             <button type="button" role="tab" class="cc-tab @(_activeTab == "queue" ? "active" : null)"
-                    aria-selected="@(_activeTab == "queue")" @onclick='() => _activeTab = "queue"'>
-                <i class="bi bi-inbox me-1" aria-hidden="true"></i>@L["Expert_Queue"]
+                    aria-selected="@(_activeTab == "queue")" @onclick='() => SetTab("queue")'>
+                <i class="bi bi-inbox me-1" aria-hidden="true"></i>Dossiers en revue
                 @if (!_loading && _queue.Count > 0)
                 {
                     <span class="cc-pill cc-pill-type ms-1">@_queue.Count</span>
@@ -46,12 +83,11 @@
         @if (_activeTab == "register")
         {
         <div class="cc-card mb-3">
-            <h2 class="cc-card-title">@L["Expert_RegisterTeacherTitle"]</h2>
-            <p class="small text-muted mb-2">@L["Expert_RegisterTeacherSubtitle"]</p>
-            <p class="small mb-3">
-                <button type="button" class="btn btn-link p-0 align-baseline" @onclick='() => _activeTab = "invite"'>
-                    @L["Expert_RegisterOrInviteLink"]
-                </button>
+            <h2 class="cc-card-title">Créer un enseignant (compte immédiat)</h2>
+            <p class="small text-muted mb-2">
+                Vous créez le profil et le compte maintenant. Les identifiants sont générés automatiquement.
+                Préférez <button type="button" class="btn btn-link p-0 align-baseline" @onclick='() => SetTab("invite")'>inviter l'enseignant</button>
+                s'il doit plutôt s'inscrire lui-même.
             </p>
 
             @if (!string.IsNullOrEmpty(_regError))
@@ -303,8 +339,11 @@
         else if (_activeTab == "invite")
         {
         <div class="cc-card mb-3">
-            <h2 class="cc-card-title">@L["Expert_InviteTitle"]</h2>
-            <p class="small text-muted mb-3">@L["Expert_InviteSubtitle"]</p>
+            <h2 class="cc-card-title">Inviter un enseignant (lien de candidature)</h2>
+            <p class="small text-muted mb-3">
+                L'enseignant reçoit un e-mail avec un lien pour créer son compte et déposer son dossier.
+                Ce n'est <strong>pas</strong> une invitation de membre Expert.
+            </p>
 
             @if (!string.IsNullOrEmpty(_inviteError))
             {
@@ -542,7 +581,7 @@
 </AuthorizeView>
 
 @code {
-    private string _activeTab = "queue";
+    private string _activeTab = "register";
     private List<QueueItem> _queue = [];
     private List<TeacherInviteItem> _invites = [];
     private bool _loading = true;
@@ -621,7 +660,30 @@
     protected override async Task OnInitializedAsync()
     {
         try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        ApplyTabFromQuery();
         await Task.WhenAll(LoadQueueAsync(), LoadInvitesAsync(), LoadMyGroupAsync(), LoadAssignContextAsync());
+    }
+
+    private void ApplyTabFromQuery()
+    {
+        try
+        {
+            var uri = Nav.ToAbsoluteUri(Nav.Uri);
+            var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
+            if (query.TryGetValue("tab", out var tab))
+                SetTab(tab.ToString());
+        }
+        catch { }
+    }
+
+    private void SetTab(string tab)
+    {
+        _activeTab = tab switch
+        {
+            "invite" => "invite",
+            "queue" => "queue",
+            _ => "register"
+        };
     }
 
     private async Task LoadAssignContextAsync()

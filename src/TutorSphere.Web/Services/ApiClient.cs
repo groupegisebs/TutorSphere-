@@ -395,24 +395,38 @@ public sealed class ApiClient
         try
         {
             using var doc = JsonDocument.Parse(body);
+            string? error = null;
             if (doc.RootElement.TryGetProperty("error", out var e) && e.ValueKind == JsonValueKind.String)
-                return e.GetString();
+                error = e.GetString();
 
-            if (doc.RootElement.TryGetProperty("title", out var title) && title.ValueKind == JsonValueKind.String)
-                return title.GetString();
+            if (string.IsNullOrWhiteSpace(error)
+                && doc.RootElement.TryGetProperty("title", out var title) && title.ValueKind == JsonValueKind.String)
+                error = title.GetString();
 
-            if (doc.RootElement.TryGetProperty("errors", out var errors) && errors.ValueKind == JsonValueKind.Object)
+            if (string.IsNullOrWhiteSpace(error)
+                && doc.RootElement.TryGetProperty("errors", out var errors) && errors.ValueKind == JsonValueKind.Object)
             {
                 var messages = errors.EnumerateObject()
                     .SelectMany(p => p.Value.EnumerateArray().Select(v => v.GetString()))
                     .Where(m => !string.IsNullOrWhiteSpace(m))
                     .ToList();
                 if (messages.Count > 0)
-                    return string.Join(" ", messages!);
+                    error = string.Join(" ", messages!);
             }
-        }
-        catch (JsonException) { return body.Trim(); }
 
-        return null;
+            if (!string.IsNullOrWhiteSpace(error)
+                && doc.RootElement.TryGetProperty("detail", out var detail)
+                && detail.ValueKind == JsonValueKind.String
+                && !string.IsNullOrWhiteSpace(detail.GetString()))
+            {
+                return $"{error} ({detail.GetString()})";
+            }
+
+            return error;
+        }
+        catch (JsonException)
+        {
+            return body.Trim();
+        }
     }
 }
