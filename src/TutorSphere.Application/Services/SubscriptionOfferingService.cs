@@ -317,19 +317,26 @@ public class SubscriptionOfferingService : ISubscriptionOfferingService
 
     private static string BuildFrequencySummary(OfferingScheduleDto schedule)
     {
-        var cadenceLabel = schedule.Cadence switch
+        var mode = (schedule.BillingMode ?? "").Trim().ToLowerInvariant();
+        var modeLabel = mode switch
         {
-            "biweekly" or "fortnightly" => "Toutes les 2 semaines",
-            _ => "Chaque semaine"
+            "monthly" => "Taux mensuel",
+            "hourly" => "Taux horaire",
+            _ => schedule.BillingPeriod
         };
 
-        var days = string.Join(", ", schedule.Slots.Select(s =>
-        {
-            var shortDay = s.Day.Length <= 3 ? s.Day : s.Day[..3];
-            return $"{shortDay} {s.Time}";
-        }));
+        if (mode == "monthly" && schedule.HoursPerWeek is > 0)
+            modeLabel = $"{modeLabel} · {schedule.HoursPerWeek:0.##} h/semaine";
 
-        return $"{schedule.BillingPeriod} · {cadenceLabel} · {days}";
+        var days = schedule.Slots.Count == 0
+            ? ""
+            : " · " + string.Join(", ", schedule.Slots.Select(s =>
+            {
+                var shortDay = s.Day.Length <= 3 ? s.Day : s.Day[..Math.Min(3, s.Day.Length)];
+                return $"{shortDay} {s.Time}";
+            }));
+
+        return $"{modeLabel}{days}";
     }
 
     private static LessonMode ParseMode(string? mode) => mode?.Trim() switch
