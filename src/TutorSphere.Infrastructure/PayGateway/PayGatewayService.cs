@@ -493,19 +493,16 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             .FirstOrDefaultAsync(s => s.Id == subscription.StudentId, ct)
             ?? throw new InvalidOperationException("Élève introuvable.");
 
-        if (string.Equals(student.UserId, userId, StringComparison.Ordinal))
-            return;
-
+        string? parentUserId = null;
         if (student.ParentProfileId is Guid parentId)
         {
             var parent = await _db.ParentProfilesForAnyTenant
                 .FirstOrDefaultAsync(p => p.Id == parentId, ct);
-            if (parent is not null && string.Equals(parent.UserId, userId, StringComparison.Ordinal))
-                return;
+            parentUserId = parent?.UserId;
         }
 
         var tenant = await _db.Tenants.FirstOrDefaultAsync(t => t.Id == subscription.TenantId, ct);
-        if (tenant is not null && string.Equals(tenant.OwnerUserId, userId, StringComparison.Ordinal))
+        if (PackPaymentProcess.CanCallerPay(userId, student.UserId, parentUserId, tenant?.OwnerUserId))
             return;
 
         throw new UnauthorizedAccessException("Vous n'êtes pas autorisé à payer cet abonnement.");
@@ -563,9 +560,9 @@ internal sealed class PayGatewayService : IPaymentGatewayService
         CancellationToken ct)
     {
         var previousStatus = payment.Status;
-        var mapped = MapPaymentStatus(gatewayPayment.Status);
+        var mapped = PackPaymentProcess.MapGatewayStatus(gatewayPayment.Status);
 
-        if (previousStatus == PaymentStatus.Completed)
+        if (PackPaymentProcess.Decide(previousStatus, mapped, null) == PackPaymentProcess.Decision.AlreadyApplied)
             return;
 
         if (mapped == payment.Status && mapped != PaymentStatus.Completed)
@@ -608,7 +605,8 @@ internal sealed class PayGatewayService : IPaymentGatewayService
 
                 if (subscription is not null)
                 {
-                    if (subscription.Status is SubscriptionStatus.Rejected or SubscriptionStatus.Cancelled)
+                    var gate = PackPaymentProcess.Decide(previousStatus, mapped, subscription.Status);
+                    if (gate == PackPaymentProcess.Decision.RefundClosedSubscription)
                     {
                         _logger.LogWarning(
                             "Paiement {PaymentId} encaissé après {Status} — remboursement du forfait {SubscriptionId}",
@@ -633,27 +631,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
                         .FirstOrDefaultAsync(o => o.Id == subscription.OfferingId, ct);
                     var durationDays = offering?.DurationDays > 0 ? offering.DurationDays : 30;
                     var credits = offering is null ? 0 : Math.Max(0, offering.SessionCount);
-                    var firstActivation = subscription.Status is SubscriptionStatus.AwaitingPayment
-                        or SubscriptionStatus.Pending
-                        or SubscriptionStatus.Expired;
-                    var periodStart = DateTime.UtcNow;
-                    if (!firstActivation
-                        && subscription.Status == SubscriptionStatus.Active
-                        && subscription.EndDate > periodStart)
-                    {
-                        periodStart = subscription.EndDate;
-                    }
-
-                    subscription.Status = SubscriptionStatus.Active;
-                    subscription.StartDate = periodStart;
-                    subscription.EndDate = periodStart.AddDays(durationDays);
-                    subscription.RenewalReminderSentAt = null;
-                    subscription.LowSessionsReminderSentAt = null;
-                    subscription.LessonAccessReminderSentAt = null;
-                    if (firstActivation)
-                        subscription.SessionsRemaining = credits;
-                    else
-                        subscription.SessionsRemaining += credits;
+                    PackPaymentProcess.ActivatePack(subscription, credits, durationDays, DateTime.UtcNow);
 
                     await TryLinkGatewaySubscriptionAsync(subscription, gatewayPayment.CustomerCode, ct);
                     await _db.SaveChangesAsync(ct);
@@ -714,26 +692,8 @@ internal sealed class PayGatewayService : IPaymentGatewayService
 
     private static void EnsureSubscriptionPayable(
         StudentSubscription subscription,
-        SubscriptionOffering offering)
-    {
-        if (subscription.Status == SubscriptionStatus.AwaitingPayment)
-            return;
-
-        if (subscription.Status is SubscriptionStatus.Active or SubscriptionStatus.Paused)
-        {
-            var windowDays = SubscriptionPackRules.RenewalWindowDays(
-                offering.DurationDays > 0 ? offering.DurationDays : 30);
-            var windowStart = subscription.EndDate.AddDays(-windowDays);
-            if (DateTime.UtcNow >= windowStart)
-                return;
-
-            throw new InvalidOperationException(
-                $"Le renouvellement sera disponible {windowDays} jour(s) avant la fin du forfait.");
-        }
-
-        throw new InvalidOperationException(
-            "Le paiement n'est possible qu'après acceptation de la demande par l'enseignant, ou pour un renouvellement.");
-    }
+        SubscriptionOffering offering) =>
+        PackPaymentProcess.EnsurePayable(subscription, offering.DurationDays, DateTime.UtcNow);
 
     private static string ToProductCode(Guid offeringId) =>
         $"OFF-{offeringId:N}".ToUpperInvariant();
@@ -742,14 +702,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
         Math.Clamp(percent, MinCommissionPercent, MaxCommissionPercent);
 
     private static PaymentStatus MapPaymentStatus(string gatewayStatus) =>
-        gatewayStatus.ToUpperInvariant() switch
-        {
-            "SUCCEEDED" => PaymentStatus.Completed,
-            "FAILED" or "CANCELLED" or "EXPIRED" => PaymentStatus.Failed,
-            "REFUNDED" or "PARTIALLYREFUNDED" => PaymentStatus.Refunded,
-            // PendingCustomerConfirmation / Processing / RequiresReview → Pending local
-            _ => PaymentStatus.Pending
-        };
+        PackPaymentProcess.MapGatewayStatus(gatewayStatus);
 
     private static SubscriptionStatus MapSubscriptionStatus(string gatewayStatus) =>
         gatewayStatus.ToUpperInvariant() switch

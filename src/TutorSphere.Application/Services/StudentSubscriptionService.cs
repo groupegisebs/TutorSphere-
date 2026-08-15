@@ -1,3 +1,4 @@
+using TutorSphere.Application.Common;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.StudentSubscriptions;
 using TutorSphere.Domain.Enums;
@@ -139,7 +140,7 @@ public class StudentSubscriptionService : IStudentSubscriptionService
             Status = SubscriptionStatus.Pending,
             StartDate = now,
             EndDate = endDate,
-            SessionsRemaining = 0
+            SessionsRemaining = PackPaymentProcess.EnrollmentSessionsRemaining
         };
 
         _db.Add(subscription);
@@ -396,7 +397,7 @@ public class StudentSubscriptionService : IStudentSubscriptionService
         if (offering.Price <= 0)
         {
             sub.Status = SubscriptionStatus.Active;
-            sub.SessionsRemaining = Math.Max(0, offering.SessionCount);
+            sub.SessionsRemaining = PackPaymentProcess.SessionsOnFreeAccept(offering.SessionCount);
             sub.UpdatedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync(ct);
             await _lessonScheduler.EnsureScheduledAsync(sub.Id, ct);
@@ -457,8 +458,7 @@ public class StudentSubscriptionService : IStudentSubscriptionService
         var now = DateTime.UtcNow;
         foreach (var payment in pending)
         {
-            payment.Status = PaymentStatus.Failed;
-            payment.UpdatedAt = now;
+            PackPaymentProcess.ClosePendingPayment(payment, now);
         }
     }
 
