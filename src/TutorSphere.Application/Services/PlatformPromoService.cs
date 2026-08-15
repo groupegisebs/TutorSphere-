@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using TutorSphere.Application.Common;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.PlatformBilling;
 using TutorSphere.Application.DTOs.PlatformPromo;
@@ -14,6 +15,13 @@ public interface IPlatformPromoService
     Task<IReadOnlyList<PlatformPromoCodeDto>> CreateAsync(CreatePlatformPromoCodeRequest request, CancellationToken ct = default);
     Task<PlatformPromoCodeDto> SetActiveAsync(Guid id, bool isActive, CancellationToken ct = default);
     Task<PlatformLicensePaymentStatusDto> RedeemForOwnerAsync(string ownerUserId, string code, CancellationToken ct = default);
+    Task<PlatformLicensePaymentStatusDto> RedeemForTenantAsync(
+        Guid tenantId,
+        string code,
+        string actorUserId,
+        bool skipRenewalWindow = false,
+        bool createIfMissing = false,
+        CancellationToken ct = default);
 }
 
 public sealed class PlatformPromoService(IApplicationDbContext db) : IPlatformPromoService
@@ -182,56 +190,70 @@ public sealed class PlatformPromoService(IApplicationDbContext db) : IPlatformPr
         CancellationToken ct = default)
     {
         var tenant = db.Tenants.FirstOrDefault(t => t.OwnerUserId == ownerUserId)
-            ?? throw new InvalidOperationException("Aucun établissement associé à ce compte.");
+            ?? throw new InvalidOperationException("Aucun profil enseignant associé à ce compte.");
 
-        if (tenant.HasPaidLicense() && tenant.RequiresOnboarding())
+        return await RedeemForTenantAsync(tenant.Id, code, ownerUserId, skipRenewalWindow: false, createIfMissing: false, ct);
+    }
+
+    public async Task<PlatformLicensePaymentStatusDto> RedeemForTenantAsync(
+        Guid tenantId,
+        string code,
+        string actorUserId,
+        bool skipRenewalWindow,
+        bool createIfMissing,
+        CancellationToken ct = default)
+    {
+        var tenant = db.Tenants.FirstOrDefault(t => t.Id == tenantId)
+            ?? throw new InvalidOperationException("Aucun profil enseignant associé à ce compte.");
+
+        if (tenant.HasPaidLicense() && tenant.RequiresOnboarding() && !skipRenewalWindow)
         {
             throw new InvalidOperationException(
-                "Votre licence est déjà active. Complétez l'auto-formation pour ouvrir votre établissement.");
+                "La session est déjà active. L'enseignant doit compléter l'auto-formation.");
         }
 
-        if (tenant.HasPaidLicense()
+        if (!skipRenewalWindow
+            && tenant.HasPaidLicense()
             && tenant.OnboardingCompletedAt is not null
             && tenant.LicenseExpiresAt is { } expires
             && expires > DateTime.UtcNow.AddDays(30))
         {
             throw new InvalidOperationException(
-                "Votre établissement est déjà actif. Le code promo n'est pas nécessaire pour le moment.");
+                "La session enseignant est déjà active. Le renouvellement sera disponible 1 mois avant l'échéance.");
         }
 
         var normalized = NormalizeCode(code);
         if (string.IsNullOrWhiteSpace(normalized))
             throw new InvalidOperationException("Code promo invalide.");
 
-        var promo = db.PlatformPromoCodes.FirstOrDefault(c => c.Code == normalized)
-            ?? throw new InvalidOperationException("Code promo invalide ou déjà utilisé.");
+        var promo = db.PlatformPromoCodes.FirstOrDefault(c => c.Code == normalized);
+        if (promo is null)
+        {
+            if (!createIfMissing)
+                throw new InvalidOperationException("Code promo invalide ou déjà utilisé.");
+            EnsureCodeFormat(normalized);
+            promo = new PlatformPromoCode
+            {
+                Code = normalized,
+                LicenseYears = 1,
+                IsActive = true,
+                Notes = "Créé à l'activation de session enseignant."
+            };
+            db.Add(promo);
+        }
 
         if (!promo.IsAvailable())
             throw new InvalidOperationException("Code promo invalide, expiré ou déjà utilisé.");
 
-        var periodStart = DateTime.UtcNow;
-        if (tenant.LicenseExpiresAt is { } current && current > periodStart)
-            periodStart = current;
+        var now = DateTime.UtcNow;
+        LicenseFeeWithholding.GrantLicenseYears(tenant, promo.LicenseYears, now);
+        tenant.LicenseFeeWithholdingRemainingUsd = 0;
+        tenant.LicenseSettlementKind = LicenseFeeWithholding.SettlementPromo;
 
-        var periodEnd = periodStart.AddYears(promo.LicenseYears);
-
-        promo.RedeemedAt = DateTime.UtcNow;
+        promo.RedeemedAt = now;
         promo.RedeemedByTenantId = tenant.Id;
-        promo.RedeemedByUserId = ownerUserId;
-        promo.UpdatedAt = DateTime.UtcNow;
-
-        tenant.LicenseExpiresAt = periodEnd;
-        tenant.UpdatedAt = DateTime.UtcNow;
-        if (tenant.OnboardingCompletedAt is null)
-        {
-            tenant.Status = TenantStatus.AwaitingOnboarding;
-            tenant.IsPublicProfile = false;
-        }
-        else
-        {
-            tenant.Status = TenantStatus.Active;
-            tenant.IsPublicProfile = true;
-        }
+        promo.RedeemedByUserId = actorUserId;
+        promo.UpdatedAt = now;
 
         var payment = new PlatformLicensePayment
         {
@@ -240,9 +262,9 @@ public sealed class PlatformPromoService(IApplicationDbContext db) : IPlatformPr
             Currency = "USD",
             Status = PaymentStatus.Completed,
             GatewayPaymentCode = $"PROMO:{promo.Code}",
-            PeriodStart = periodStart,
-            PeriodEnd = periodEnd,
-            CompletedAt = DateTime.UtcNow
+            PeriodStart = now,
+            PeriodEnd = tenant.LicenseExpiresAt,
+            CompletedAt = now
         };
         db.Add(payment);
 

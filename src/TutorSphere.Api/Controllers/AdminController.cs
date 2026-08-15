@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
+using System.Security.Claims;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.Admin;
 using TutorSphere.Application.DTOs.PlatformPromo;
@@ -32,6 +33,7 @@ public class AdminController : ControllerBase
     private readonly ISubscriptionOfferingService _offerings;
     private readonly ITeacherSchoolAdminService _teacherSchools;
     private readonly IExpertApprovalService _approvals;
+    private readonly ITeacherLicenseActivationService _licenseActivation;
 
     public AdminController(
         UserManager<ApplicationUser> userManager,
@@ -45,7 +47,8 @@ public class AdminController : ControllerBase
         IAdminUserProvisioningService provisioning,
         ISubscriptionOfferingService offerings,
         ITeacherSchoolAdminService teacherSchools,
-        IExpertApprovalService approvals)
+        IExpertApprovalService approvals,
+        ITeacherLicenseActivationService licenseActivation)
     {
         _userManager = userManager;
         _email = email;
@@ -59,6 +62,7 @@ public class AdminController : ControllerBase
         _offerings = offerings;
         _teacherSchools = teacherSchools;
         _approvals = approvals;
+        _licenseActivation = licenseActivation;
     }
 
     /// <summary>Returns users belonging to a given role.</summary>
@@ -631,8 +635,6 @@ public class AdminController : ControllerBase
 
         tenant.Status = TenantStatus.Active;
         tenant.IsPublicProfile = true;
-        // Ops override : licence + formation + validation expert considérées complètes.
-        tenant.LicenseExpiresAt = DateTime.UtcNow.AddYears(1);
         tenant.OnboardingCompletedAt ??= DateTime.UtcNow;
         tenant.ExpertApprovalStatus = ExpertApprovalStatus.Approved;
         tenant.ExpertApprovedAt ??= DateTime.UtcNow;
@@ -650,6 +652,37 @@ public class AdminController : ControllerBase
         }
 
         return Ok(new { message = "Profil enseignant approuvé.", tenantId = tenant.Id });
+    }
+
+    /// <summary>Active la session enseignant à tout moment (code promo ou retenue 10 $ USD).</summary>
+    [HttpPost("tenants/{tenantId:guid}/activate-session")]
+    public async Task<IActionResult> ActivateTeacherSession(
+        Guid tenantId,
+        [FromBody] ActivateTeacherSessionRequest? request,
+        CancellationToken ct)
+    {
+        var userId = User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier);
+        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        if (request is null)
+            return BadRequest(new { error = "Indiquez un code promo ou la retenue à la source." });
+
+        try
+        {
+            var tenant = _db.Tenants.FirstOrDefault(t => t.Id == tenantId);
+            if (tenant is null)
+            {
+                var linked = await _userManager.FindByIdAsync(tenantId.ToString());
+                if (linked?.TenantId is Guid tid)
+                    tenantId = tid;
+            }
+
+            return Ok(await _licenseActivation.ActivateSessionAsync(
+                tenantId, userId, request, asPlatformAdmin: true, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
     }
 
     private static string Slugify(string? value)

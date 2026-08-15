@@ -109,7 +109,7 @@ public class TutorOnboardingService(
 
     private Domain.Entities.Tenant RequireOwner(string ownerUserId) =>
         db.Tenants.FirstOrDefault(t => t.OwnerUserId == ownerUserId)
-        ?? throw new InvalidOperationException("Aucun établissement associé à ce compte.");
+            ?? throw new InvalidOperationException("Aucun profil enseignant associé à ce compte.");
 
     private static TutorOnboardingStatusDto ToStatus(
         Domain.Entities.Tenant tenant,

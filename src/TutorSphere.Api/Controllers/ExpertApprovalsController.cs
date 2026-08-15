@@ -26,6 +26,7 @@ public class ExpertApprovalsController : ControllerBase
     private readonly IBrandingService _branding;
     private readonly IExpertDisciplineService _disciplines;
     private readonly IExpertGroupService _expertGroups;
+    private readonly ITeacherLicenseActivationService _licenseActivation;
     private readonly IWebHostEnvironment _env;
 
     public ExpertApprovalsController(
@@ -40,6 +41,7 @@ public class ExpertApprovalsController : ControllerBase
         IBrandingService branding,
         IExpertDisciplineService disciplines,
         IExpertGroupService expertGroups,
+        ITeacherLicenseActivationService licenseActivation,
         IWebHostEnvironment env)
     {
         _approvals = approvals;
@@ -53,6 +55,7 @@ public class ExpertApprovalsController : ControllerBase
         _branding = branding;
         _disciplines = disciplines;
         _expertGroups = expertGroups;
+        _licenseActivation = licenseActivation;
         _env = env;
     }
 
@@ -196,8 +199,40 @@ public class ExpertApprovalsController : ControllerBase
         {
             var asPlatform = _groupAccess.IsPlatformAdmin(User) && ActAsGroupId.HasValue;
             await _approvals.ApproveAsync(
-                tenantId, UserId, request?.Notes, ct, asPlatformAdmin: asPlatform, actAsGroupId: ActAsGroupId);
+                tenantId,
+                UserId,
+                request?.Notes,
+                ct,
+                asPlatformAdmin: asPlatform,
+                actAsGroupId: ActAsGroupId,
+                licenseSettlement: request?.LicenseSettlement,
+                promoCode: request?.PromoCode);
             return Ok(new { message = "Enseignant approuvé." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("teachers/{tenantId:guid}/activate-session")]
+    [Authorize(Roles = $"{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
+    public async Task<IActionResult> ActivateTeacherSession(
+        Guid tenantId,
+        [FromBody] ActivateTeacherSessionRequest? request,
+        CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        if (request is null)
+            return BadRequest(new { error = "Indiquez un code promo ou la retenue à la source." });
+        try
+        {
+            var asPlatform = _groupAccess.IsPlatformAdmin(User);
+            if (!asPlatform)
+                await _groupAccess.RequireManagedGroupIdAsync(User, ActAsGroupId, ct);
+
+            return Ok(await _licenseActivation.ActivateSessionAsync(
+                tenantId, UserId, request, asPlatformAdmin: asPlatform, ct));
         }
         catch (InvalidOperationException ex)
         {

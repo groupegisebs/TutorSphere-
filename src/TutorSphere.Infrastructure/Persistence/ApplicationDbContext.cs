@@ -186,6 +186,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             e.HasIndex(t => t.Slug).IsUnique();
             e.HasIndex(t => t.Subdomain).IsUnique();
             e.Property(t => t.PlatformCommissionPercent).HasPrecision(5, 2);
+            e.Property(t => t.LicenseFeeWithholdingRemainingUsd).HasPrecision(18, 2);
             e.HasOne(t => t.Branding).WithOne(b => b.Tenant).HasForeignKey<TenantBranding>(b => b.TenantId);
             e.HasOne(t => t.ApprovedByExpertGroup)
                 .WithMany()

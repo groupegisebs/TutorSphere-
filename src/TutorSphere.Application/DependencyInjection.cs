@@ -36,6 +36,7 @@ public static class DependencyInjection
         services.AddScoped<IBillingEmailOrchestrator, BillingEmailOrchestrator>();
         services.AddScoped<IPlatformBillingService, PlatformBillingService>();
         services.AddScoped<IPlatformPromoService, PlatformPromoService>();
+        services.AddScoped<ITeacherLicenseActivationService, TeacherLicenseActivationService>();
         services.AddScoped<ITutorOnboardingService, TutorOnboardingService>();
         services.AddScoped<IExpertGroupService, ExpertGroupService>();
         services.AddScoped<IExpertGroupManagerService, ExpertGroupManagerService>();

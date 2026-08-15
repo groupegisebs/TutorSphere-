@@ -13,7 +13,8 @@ public record PlatformLicenseStatusDto(
     int? DaysUntilExpiry,
     decimal AnnualFee,
     string Currency,
-    bool RenewalSoon);
+    bool RenewalSoon,
+    decimal LicenseFeeWithholdingRemainingUsd = 0m);
 
 public record CreatePlatformLicenseCheckoutRequest(
     string SuccessUrl,

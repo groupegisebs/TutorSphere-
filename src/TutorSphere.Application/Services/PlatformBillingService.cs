@@ -52,13 +52,13 @@ public class PlatformBillingService(
             && tenant.OnboardingCompletedAt is not null)
         {
             throw new InvalidOperationException(
-                "Votre établissement est déjà actif. Le renouvellement sera disponible 1 mois avant l'échéance.");
+                "Votre session enseignant est déjà active. Le renouvellement sera disponible 1 mois avant l'échéance.");
         }
 
         if (tenant.HasPaidLicense() && tenant.RequiresOnboarding())
         {
             throw new InvalidOperationException(
-                "Votre licence est déjà payée. Complétez l'auto-formation pour activer votre établissement.");
+                "Votre licence est déjà payée. Complétez l'auto-formation pour activer votre session enseignant.");
         }
 
         return await paymentGateway.CreatePlatformLicenseCheckoutAsync(tenant.Id, request, ct);
@@ -159,7 +159,7 @@ public class PlatformBillingService(
 
     private Domain.Entities.Tenant RequireOwnerTenant(string ownerUserId) =>
         db.Tenants.FirstOrDefault(t => t.OwnerUserId == ownerUserId)
-        ?? throw new InvalidOperationException("Aucun établissement associé à ce compte.");
+        ?? throw new InvalidOperationException("Aucun profil enseignant associé à ce compte.");
 
     private PlatformLicenseStatusDto ToStatus(Domain.Entities.Tenant tenant)
     {
@@ -187,6 +187,7 @@ public class PlatformBillingService(
             days,
             options.AnnualFeeCad,
             options.Currency,
-            renewalSoon);
+            renewalSoon,
+            tenant.LicenseFeeWithholdingRemainingUsd);
     }
 }

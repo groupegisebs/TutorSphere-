@@ -129,7 +129,10 @@ public record TeacherReviewDetailDto(
     Guid? SuggestedExpertGroupId,
     string? SuggestedExpertGroupName);
 
-public record ExpertDecisionRequest(string? Notes);
+public record ExpertDecisionRequest(
+    string? Notes,
+    string? LicenseSettlement = null,
+    string? PromoCode = null);
 
 public record InviteTeacherApplicationRequest(
     string Email,

@@ -214,6 +214,30 @@
                             <label class="form-label">@L["Expert_Notes"]</label>
                             <textarea class="form-control mb-3" rows="4" @bind="_notes"
                                       placeholder="@L["Expert_NotesPlaceholder"]"></textarea>
+                            <p class="form-label fw-semibold">Activation de la session</p>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="rev-settle" id="rev-pay"
+                                       checked="@(_licenseSettlement == "pay")"
+                                       @onchange='() => _licenseSettlement = "pay"' />
+                                <label class="form-check-label" for="rev-pay">L’enseignant paie 10 $ USD</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="rev-settle" id="rev-promo"
+                                       checked="@(_licenseSettlement == "promo")"
+                                       @onchange='() => _licenseSettlement = "promo"' />
+                                <label class="form-check-label" for="rev-promo">Code promo</label>
+                            </div>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="radio" name="rev-settle" id="rev-hold"
+                                       checked="@(_licenseSettlement == "withhold")"
+                                       @onchange='() => _licenseSettlement = "withhold"' />
+                                <label class="form-check-label" for="rev-hold">Retenue à la source (10 $ USD)</label>
+                            </div>
+                            @if (_licenseSettlement == "promo")
+                            {
+                                <input class="form-control font-monospace text-uppercase mb-3" placeholder="Code promo"
+                                       @bind="_licensePromo" />
+                            }
                             <div class="d-grid gap-2">
                                 <button type="button" class="cc-btn cc-btn-primary" disabled="@_busy" @onclick="ApproveAsync">
                                     <i class="bi bi-check2"></i> @L["Expert_Approve"]
@@ -266,6 +290,8 @@
     private string? _error;
     private string? _success;
     private string? _notes;
+    private string _licenseSettlement = "pay";
+    private string _licensePromo = "";
 
     private string _inviteEmail = "";
     private string _inviteFirstName = "";
@@ -300,7 +326,12 @@
         _success = null;
         try
         {
-            var ok = await Api.PostAsync<object>($"api/expert/teachers/{TenantId}/approve", new { notes = _notes });
+            var ok = await Api.PostAsync<object>($"api/expert/teachers/{TenantId}/approve", new
+            {
+                notes = _notes,
+                licenseSettlement = _licenseSettlement,
+                promoCode = _licensePromo
+            });
             if (ok is null) { _error = L["Expert_ActionFailed"]; return; }
             _success = L["Expert_ApproveSuccess"];
             await Task.Delay(700);

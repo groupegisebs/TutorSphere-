@@ -450,6 +450,32 @@
                             {
                                 <p class="small text-warning mb-2">@ProcessGap(sel)</p>
                             }
+                            <div class="mb-3">
+                                <p class="form-label fw-semibold mb-2">Activation de la session</p>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="license-settle" id="settle-pay"
+                                           checked="@(_licenseSettlement == "pay")"
+                                           @onchange='() => _licenseSettlement = "pay"' />
+                                    <label class="form-check-label" for="settle-pay">L’enseignant paie 10 $ USD</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="radio" name="license-settle" id="settle-promo"
+                                           checked="@(_licenseSettlement == "promo")"
+                                           @onchange='() => _licenseSettlement = "promo"' />
+                                    <label class="form-check-label" for="settle-promo">Code promo</label>
+                                </div>
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="radio" name="license-settle" id="settle-hold"
+                                           checked="@(_licenseSettlement == "withhold")"
+                                           @onchange='() => _licenseSettlement = "withhold"' />
+                                    <label class="form-check-label" for="settle-hold">Retenue à la source (10 $ USD sur les premiers paiements)</label>
+                                </div>
+                                @if (_licenseSettlement == "promo")
+                                {
+                                    <input class="form-control font-monospace text-uppercase" placeholder="Code promo"
+                                           @bind="_licensePromo" />
+                                }
+                            </div>
                             <div class="ex-drawer-actions">
                                 <button type="button" class="ex-btn-danger" disabled="@_busy" @onclick="RejectAsync">Refuser le dossier</button>
                                 <button type="button" class="cc-btn" disabled="@_busy" @onclick="ScheduleInterviewAsync">Programmer un entretien</button>
@@ -525,6 +551,8 @@
     private string _inviteFirstName = "";
     private string _inviteMessage = "";
     private string _notes = "";
+    private string _licenseSettlement = "pay";
+    private string _licensePromo = "";
     private string _assignUserId = "";
     private DateTime? _interviewAt;
     private int _page = 1;
@@ -758,7 +786,12 @@
         _error = _success = null;
         try
         {
-            var r = await Api.PostWithErrorAsync<object>($"api/expert/teachers/{_selected.TenantId}/approve", new { notes = _notes });
+            var r = await Api.PostWithErrorAsync<object>($"api/expert/teachers/{_selected.TenantId}/approve", new
+            {
+                notes = _notes,
+                licenseSettlement = _licenseSettlement,
+                promoCode = _licensePromo
+            });
             if (r.Error is not null) { _error = r.Error; return; }
             _success = "Dossier approuvé.";
             CloseDrawer();

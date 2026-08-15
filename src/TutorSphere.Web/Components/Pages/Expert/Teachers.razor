@@ -428,6 +428,47 @@
                                                 </button>
                                             }
                                         </div>
+                                        @if (CanActivateSession)
+                                        {
+                                            <div class="border rounded p-3 mt-3 bg-light">
+                                                <h4 class="h6">Session enseignant</h4>
+                                                <p class="small text-muted mb-2">
+                                                    Licence :
+                                                    @if (_school.HasValidLicense)
+                                                    {
+                                                        <span>active jusqu’au @_school.LicenseExpiresAt?.ToLocalTime().ToString("d")</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span>non activée</span>
+                                                    }
+                                                    @if (_school.LicenseFeeWithholdingRemainingUsd > 0)
+                                                    {
+                                                        <span> — retenue restante @_school.LicenseFeeWithholdingRemainingUsd.ToString("0.##") $ USD</span>
+                                                    }
+                                                </p>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="radio" name="t-settle" id="t-promo"
+                                                           checked="@(_sessionSettlement == "promo")"
+                                                           @onchange='() => _sessionSettlement = "promo"' />
+                                                    <label class="form-check-label" for="t-promo">Code promo</label>
+                                                </div>
+                                                <div class="form-check mb-2">
+                                                    <input class="form-check-input" type="radio" name="t-settle" id="t-hold"
+                                                           checked="@(_sessionSettlement == "withhold")"
+                                                           @onchange='() => _sessionSettlement = "withhold"' />
+                                                    <label class="form-check-label" for="t-hold">Retenue 10 $ USD sur les premiers paiements</label>
+                                                </div>
+                                                @if (_sessionSettlement == "promo")
+                                                {
+                                                    <input class="form-control form-control-sm font-monospace text-uppercase mb-2"
+                                                           placeholder="Code promo" @bind="_sessionPromo" />
+                                                }
+                                                <button type="button" class="cc-btn cc-btn-primary btn-sm" disabled="@_sessionBusy" @onclick="ActivateSessionAsync">
+                                                    Activer / renouveler la session
+                                                </button>
+                                            </div>
+                                        }
                                     }
                                 </div>
                             </div>
@@ -781,6 +822,11 @@
     private bool _schoolBusy;
     private string? _schoolError;
     private string? _schoolSuccess;
+    private string _sessionSettlement = "promo";
+    private string _sessionPromo = "";
+    private bool _sessionBusy;
+    private bool CanActivateSession =>
+        Auth.IsInRole("GroupManager") || Auth.IsInRole("SuperAdmin") || Auth.IsInRole("PlatformAdmin") || Auth.IsActingAsGroupAdmin;
 
     private string? _photoUrl;
     private bool _photoBusy;
@@ -1231,6 +1277,32 @@
         finally { _schoolBusy = false; }
     }
 
+    private async Task ActivateSessionAsync()
+    {
+        if (_selectedTenantId is not Guid tenantId) return;
+        _sessionBusy = true;
+        _schoolError = null;
+        _schoolSuccess = null;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<object>($"api/expert/teachers/{tenantId}/activate-session", new
+            {
+                settlement = _sessionSettlement,
+                promoCode = _sessionPromo
+            });
+            if (result.Error is not null)
+            {
+                _schoolError = result.Error;
+                return;
+            }
+
+            _schoolSuccess = "Session enseignant activée.";
+            _school = await Api.GetAsync<TeacherSchoolVm>($"api/expert/teachers/{tenantId}/school") ?? _school;
+        }
+        catch (Exception ex) { _schoolError = ex.Message; }
+        finally { _sessionBusy = false; }
+    }
+
     private void PrepareRemarkFor(TeacherMaterialItem m)
     {
         _formCategory = 2; // CourseMaterial
@@ -1553,7 +1625,8 @@
         DateTime? LicenseExpiresAt,
         int ExpertApprovalStatus,
         Guid? ApprovedByExpertGroupId,
-        string? ApprovedByExpertGroupName);
+        string? ApprovedByExpertGroupName,
+        decimal LicenseFeeWithholdingRemainingUsd = 0m);
 
     private sealed record PublishSchoolResult(Guid TenantId, string Slug, bool IsPublicProfile, string PublicPath);
 

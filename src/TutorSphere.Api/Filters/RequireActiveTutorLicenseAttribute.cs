@@ -62,7 +62,7 @@ public sealed class RequireActiveTutorLicenseAttribute : Attribute, IAsyncAction
             var url = code == "ONBOARDING_REQUIRED" ? "/tutor/onboarding" : "/tutor/activate";
             var message = code == "ONBOARDING_REQUIRED"
                 ? "Auto-formation obligatoire avant d'utiliser le système."
-                : "Licence annuelle requise pour activer l'établissement.";
+                : "Licence annuelle requise pour activer la session enseignant.";
 
             context.Result = new ObjectResult(new
             {

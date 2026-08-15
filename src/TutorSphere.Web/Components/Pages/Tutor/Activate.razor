@@ -32,6 +32,10 @@
                 @L["Activate_ExpiresOn"]
                 <strong>@_status.LicenseExpiresAt?.ToLocalTime().ToString("d")</strong>
             </p>
+            @if (_status.LicenseFeeWithholdingRemainingUsd > 0)
+            {
+                <p class="mb-3">@L["Activate_WithholdNotice", _status.LicenseFeeWithholdingRemainingUsd.ToString("0.##")]</p>
+            }
             <a class="btn btn-primary" href="/tutor/dashboard">@L["Activate_GoDashboard"]</a>
         </div>
     }
@@ -146,7 +150,8 @@
             Navigation.NavigateTo("/tutor/onboarding", forceLoad: true);
             return;
         }
-        if (_status?.HasValidLicense == true && !_renewalMode && !paid)
+        if (_status?.HasValidLicense == true && !_renewalMode && !paid
+            && (_status.LicenseFeeWithholdingRemainingUsd <= 0))
         {
             Navigation.NavigateTo("/tutor/dashboard", forceLoad: true);
             return;
@@ -234,6 +239,7 @@
         public decimal AnnualFee { get; set; }
         public string Currency { get; set; } = "USD";
         public bool RenewalSoon { get; set; }
+        public decimal LicenseFeeWithholdingRemainingUsd { get; set; }
     }
 
     private sealed class PlatformLicensePaymentStatusVm

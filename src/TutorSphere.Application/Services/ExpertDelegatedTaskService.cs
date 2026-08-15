@@ -112,7 +112,8 @@ public class ExpertDelegatedTaskService(
                 teacher.IsPublicProfile = true;
                 teacher.OnboardingCompletedAt ??= DateTime.UtcNow;
                 if (teacher.LicenseExpiresAt is null || teacher.LicenseExpiresAt <= DateTime.UtcNow)
-                    teacher.LicenseExpiresAt = DateTime.UtcNow.AddYears(1);
+                    throw new InvalidOperationException(
+                        "Activez d'abord la session enseignant (paiement, code promo ou retenue à la source).");
                 teacher.UpdatedAt = DateTime.UtcNow;
                 break;
             case ExpertDelegatedTaskType.CreateTeacherProfile:

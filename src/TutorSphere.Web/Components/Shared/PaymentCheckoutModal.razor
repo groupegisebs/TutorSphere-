@@ -65,9 +65,28 @@
                             @(_error ?? L["PayMethod_MmFailed"])
                         </div>
                     }
-                    else
-                    {
-                        <div class="pay-method-list mb-3" role="radiogroup" aria-label="@L["PayMethod_Title"]">
+                        else
+                        {
+                            @if (IsPlatformLicense)
+                            {
+                                <div class="mb-3">
+                                    <label class="form-label" for="pay-promo">@L["Activate_PromoLabel"]</label>
+                                    <div class="input-group">
+                                        <input id="pay-promo" class="form-control font-monospace text-uppercase"
+                                               placeholder="@L["Activate_PromoPlaceholder"]"
+                                               disabled="@_busy"
+                                               @bind="_promoCode" @bind:event="oninput" />
+                                        <button type="button" class="btn btn-outline-primary"
+                                                disabled="@(_busy || string.IsNullOrWhiteSpace(_promoCode))"
+                                                @onclick="RedeemPromoAsync">
+                                            @L["Activate_PromoCta"]
+                                        </button>
+                                    </div>
+                                    <div class="form-text">@L["Activate_PromoHint"]</div>
+                                </div>
+                                <p class="small text-muted text-center">— ou payer maintenant —</p>
+                            }
+                            <div class="pay-method-list mb-3" role="radiogroup" aria-label="@L["PayMethod_Title"]">
                             <button type="button"
                                     class="pay-method-option @SelectedClass(PaymentMethodCodes.Card)"
                                     disabled="@_busy"
@@ -218,6 +237,7 @@
     private string? _error;
     private Phase _phase = Phase.Select;
     private string _phoneLocal = "";
+    private string _promoCode = "";
     private Guid? _paymentId;
     private string? _instruction;
     private string? _ussdHint;
@@ -340,11 +360,47 @@
         _busy = false;
         _phase = Phase.Select;
         _phoneLocal = "";
+        _promoCode = "";
         _paymentId = null;
         _instruction = null;
         _ussdHint = null;
         _idempotencyKey = Guid.NewGuid().ToString("N");
         _taxQuote = null;
+    }
+
+    private async Task RedeemPromoAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_promoCode))
+        {
+            _error = L["Activate_PromoRequired"];
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<CheckoutVm>("api/platform-billing/redeem-promo", new { code = _promoCode.Trim() });
+            if (result.Value is null)
+            {
+                _error = result.Error ?? L["Activate_PromoInvalid"];
+                await OnError.InvokeAsync(_error);
+                return;
+            }
+
+            await OnPaid.InvokeAsync();
+            if (!string.IsNullOrWhiteSpace(SuccessUrl))
+                await JS.InvokeVoidAsync("open", SuccessUrl, "_self");
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            await OnError.InvokeAsync(ex.Message);
+        }
+        finally
+        {
+            _busy = false;
+        }
     }
 
     private Task RetryAsync()

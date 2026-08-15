@@ -32,6 +32,15 @@ public class Tenant : BaseEntity
     /// <summary>Fin de validité de la licence annuelle plateforme (UTC). Null = jamais payée.</summary>
     public DateTime? LicenseExpiresAt { get; set; }
 
+    /// <summary>
+    /// Solde restant de la retenue à la source (équivalent 10 $ USD) à prélever
+    /// sur les premiers paiements dus à l'enseignant. 0 = rien à retenir.
+    /// </summary>
+    public decimal LicenseFeeWithholdingRemainingUsd { get; set; }
+
+    /// <summary>pay | promo | withhold — dernier mode d'activation de session.</summary>
+    public string? LicenseSettlementKind { get; set; }
+
     /// <summary>Dernier e-mail « renouvellement dans 1 mois » envoyé pour la licence plateforme.</summary>
     public DateTime? LicenseRenewalReminderSentAt { get; set; }
 
@@ -115,7 +124,7 @@ public class Tenant : BaseEntity
         return LicenseExpiresAt is { } expires && expires > now;
     }
 
-    /// <summary>Établissement pleinement opérationnel et visible (payé + formation terminée).</summary>
+    /// <summary>Session enseignant pleinement opérationnelle et visible (licence + formation terminée).</summary>
     public bool HasValidLicense(DateTime? utcNow = null)
     {
         var now = utcNow ?? DateTime.UtcNow;

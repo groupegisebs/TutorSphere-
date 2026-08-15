@@ -130,11 +130,13 @@ public sealed class TeacherSchoolAdminService(
             EnsureExpertCanManageTeacher(tenantId, actorUserId);
 
         var now = DateTime.UtcNow;
+        if (!tenant.HasPaidLicense(now))
+            throw new InvalidOperationException(
+                "Activez d'abord la session enseignant (paiement, code promo ou retenue à la source de 10 $ USD).");
+
         tenant.Status = TenantStatus.Active;
         tenant.IsPublicProfile = true;
         tenant.OnboardingCompletedAt ??= now;
-        if (tenant.LicenseExpiresAt is null || tenant.LicenseExpiresAt <= now)
-            tenant.LicenseExpiresAt = now.AddYears(1);
 
         // Assurer une zone de visibilité (pays d'origine) pour l'annuaire parent.
         if (string.IsNullOrWhiteSpace(tenant.VisibleCountryCodes))
@@ -300,6 +302,7 @@ public sealed class TeacherSchoolAdminService(
             tenant.LicenseExpiresAt,
             (int)tenant.ExpertApprovalStatus,
             tenant.ApprovedByExpertGroupId,
-            groupName);
+            groupName,
+            tenant.LicenseFeeWithholdingRemainingUsd);
     }
 }

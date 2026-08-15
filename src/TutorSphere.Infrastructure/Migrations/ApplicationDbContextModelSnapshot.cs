@@ -3272,6 +3272,13 @@ namespace TutorSphere.Infrastructure.Migrations
                     b.Property<DateTime?>("LicenseExpiresAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<decimal>("LicenseFeeWithholdingRemainingUsd")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<string>("LicenseSettlementKind")
+                        .HasColumnType("text");
+
                     b.Property<DateTime?>("LicenseRenewalReminderSentAt")
                         .HasColumnType("timestamp with time zone");
 

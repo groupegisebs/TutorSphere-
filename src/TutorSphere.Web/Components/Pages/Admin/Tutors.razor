@@ -133,9 +133,15 @@
                                                         }
                                                         else
                                                         {
-                                                            <i class="bi bi-building-check me-1"></i>
+                                                            <i class="bi bi-person-check me-1"></i>
                                                         }
                                                         Approuver profil
+                                                    </button>
+                                                    <button class="btn btn-sm btn-primary"
+                                                            title="Activer la session enseignant"
+                                                            disabled="@(_activatingTenant == tutor.Id)"
+                                                            @onclick="() => OpenActivateAsync(tutor)">
+                                                        <i class="bi bi-key me-1"></i>Activer session
                                                     </button>
                                                     <button type="button" class="btn btn-sm btn-outline-danger"
                                                             title="Supprimer définitivement"
@@ -163,6 +169,48 @@
     </NotAuthorized>
 </AuthorizeView>
 
+@if (_activateTarget is not null)
+{
+    <div class="modal fade show d-block" tabindex="-1" role="dialog" aria-modal="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Activer la session de @_activateTarget.FullName</h5>
+                    <button type="button" class="btn-close" @onclick="CloseActivate"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-muted small">À tout moment : code promo (gratuit) ou retenue de 10 $ USD sur les premiers paiements dus à l’enseignant.</p>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="adm-settle" id="adm-promo"
+                               checked="@(_activateSettlement == "promo")"
+                               @onchange='() => _activateSettlement = "promo"' />
+                        <label class="form-check-label" for="adm-promo">Code promo</label>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="radio" name="adm-settle" id="adm-hold"
+                               checked="@(_activateSettlement == "withhold")"
+                               @onchange='() => _activateSettlement = "withhold"' />
+                        <label class="form-check-label" for="adm-hold">Retenue à la source (10 $ USD)</label>
+                    </div>
+                    @if (_activateSettlement == "promo")
+                    {
+                        <input class="form-control font-monospace text-uppercase" placeholder="TS-ABCD1234"
+                               @bind="_activatePromo" />
+                    }
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" @onclick="CloseActivate">Annuler</button>
+                    <button type="button" class="btn btn-primary" disabled="@_activateBusy" @onclick="ConfirmActivateAsync">
+                        @if (_activateBusy) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                        Activer
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop fade show"></div>
+}
+
 @code {
     private string _search = "";
     private bool _isLoading;
@@ -170,6 +218,11 @@
     private string? _successMessage;
     private string? _pendingUserId;
     private string? _approvingTenant;
+    private string? _activatingTenant;
+    private AdminUserItem? _activateTarget;
+    private string _activateSettlement = "promo";
+    private string _activatePromo = "";
+    private bool _activateBusy;
     private List<AdminUserItem> _tutors = [];
 
     private IEnumerable<AdminUserItem> FilteredTutors =>
@@ -261,7 +314,7 @@
                 return;
             }
 
-            _successMessage = $"Profil de {tutor.FullName} approuvé.";
+            _successMessage = $"Profil de {tutor.FullName} approuvé. Activez ensuite la session (code promo ou retenue).";
             // Recharger pour récupérer TenantId / école si créée à la volée.
             _tutors = await AdminSvc.GetUsersAsync("Tutor");
         }
@@ -270,6 +323,57 @@
             _errorMessage = ex.Message;
         }
         finally { _approvingTenant = null; }
+    }
+
+    private void OpenActivateAsync(AdminUserItem tutor)
+    {
+        _activateTarget = tutor;
+        _activateSettlement = "promo";
+        _activatePromo = "";
+        _errorMessage = null;
+    }
+
+    private void CloseActivate()
+    {
+        _activateTarget = null;
+        _activateBusy = false;
+    }
+
+    private async Task ConfirmActivateAsync()
+    {
+        if (_activateTarget is null) return;
+        var tutor = _activateTarget;
+        _activatingTenant = tutor.Id;
+        _activateBusy = true;
+        _errorMessage = null;
+        _successMessage = null;
+        try
+        {
+            var key = tutor.TenantId?.ToString() ?? tutor.Id;
+            var result = await Api.PostWithErrorAsync<object>($"api/admin/tenants/{key}/activate-session", new
+            {
+                settlement = _activateSettlement,
+                promoCode = _activatePromo
+            });
+            if (result.Error is not null)
+            {
+                _errorMessage = result.Error;
+                return;
+            }
+
+            _successMessage = $"Session de {tutor.FullName} activée.";
+            CloseActivate();
+            _tutors = await AdminSvc.GetUsersAsync("Tutor");
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _activatingTenant = null;
+            _activateBusy = false;
+        }
     }
 
     private static string Initials(string fullName)

@@ -35,7 +35,9 @@ public interface IExpertApprovalService
         string? notes,
         CancellationToken ct = default,
         bool asPlatformAdmin = false,
-        Guid? actAsGroupId = null);
+        Guid? actAsGroupId = null,
+        string? licenseSettlement = null,
+        string? promoCode = null);
     Task RejectAsync(
         Guid tenantId,
         string expertUserId,
@@ -101,6 +103,7 @@ public class ExpertApprovalService(
     IAppUrlProvider urls,
     IExpertGovernanceAuditService audit,
     ITeacherLoginIssuer teacherLogins,
+    ITeacherLicenseActivationService licenseActivation,
     ILogger<ExpertApprovalService> logger) : IExpertApprovalService
 {
     public Task<IReadOnlyList<Guid>> GetExpertGroupIdsAsync(string expertUserId, CancellationToken ct = default)
@@ -383,11 +386,25 @@ public class ExpertApprovalService(
         string? notes,
         CancellationToken ct = default,
         bool asPlatformAdmin = false,
-        Guid? actAsGroupId = null)
+        Guid? actAsGroupId = null,
+        string? licenseSettlement = null,
+        string? promoCode = null)
     {
         var (tenant, group) = await RequireReviewableContextAsync(
             tenantId, expertUserId, ct, asPlatformAdmin, actAsGroupId);
         EnsureApprovalTrackSatisfied(group, tenant.Id);
+
+        var settlement = string.IsNullOrWhiteSpace(licenseSettlement)
+            ? LicenseFeeWithholding.SettlementPay
+            : licenseSettlement.Trim().ToLowerInvariant();
+        if (!LicenseFeeWithholding.IsKnownSettlement(settlement))
+            throw new InvalidOperationException(
+                "À la validation, choisissez le paiement par l'enseignant, un code promo, ou la retenue à la source.");
+        if (settlement == LicenseFeeWithholding.SettlementPromo && string.IsNullOrWhiteSpace(promoCode))
+            throw new InvalidOperationException("Saisissez le code promo pour activer la session.");
+
+        await licenseActivation.ApplySettlementOnApprovalAsync(
+            tenant.Id, expertUserId, settlement, promoCode, asPlatformAdmin, ct);
 
         tenant.ExpertApprovalStatus = ExpertApprovalStatus.Approved;
         tenant.ApprovedByExpertGroupId = group.Id;
@@ -888,7 +905,7 @@ public class ExpertApprovalService(
     public Task<TeacherApprovalStatusDto> GetStatusForOwnerAsync(string ownerUserId, CancellationToken ct = default)
     {
         var tenant = db.Tenants.FirstOrDefault(t => t.OwnerUserId == ownerUserId)
-            ?? throw new InvalidOperationException("Aucun établissement associé à ce compte.");
+            ?? throw new InvalidOperationException("Aucun profil enseignant associé à ce compte.");
 
         ExpertGroup? group = null;
         if (tenant.ApprovedByExpertGroupId is Guid gid)

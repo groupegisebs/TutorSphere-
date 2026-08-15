@@ -633,6 +633,13 @@ internal sealed class PayGatewayService : IPaymentGatewayService
                     var credits = offering is null ? 0 : Math.Max(0, offering.SessionCount);
                     PackPaymentProcess.ActivatePack(subscription, credits, durationDays, DateTime.UtcNow);
 
+                    if (previousStatus != PaymentStatus.Completed)
+                    {
+                        var teacher = await _db.Tenants.FirstOrDefaultAsync(t => t.Id == payment.TenantId, ct);
+                        if (teacher is not null)
+                            LicenseFeeWithholding.TakeFromTutorShare(teacher, payment);
+                    }
+
                     await TryLinkGatewaySubscriptionAsync(subscription, gatewayPayment.CustomerCode, ct);
                     await _db.SaveChangesAsync(ct);
                     try
@@ -654,6 +661,16 @@ internal sealed class PayGatewayService : IPaymentGatewayService
         }
 
         await _db.SaveChangesAsync(ct);
+
+        if (mapped == PaymentStatus.Completed && previousStatus != PaymentStatus.Completed)
+        {
+            var teacher = await _db.Tenants.FirstOrDefaultAsync(t => t.Id == payment.TenantId, ct);
+            if (teacher is not null)
+            {
+                LicenseFeeWithholding.TakeFromTutorShare(teacher, payment);
+                await _db.SaveChangesAsync(ct);
+            }
+        }
 
         if (mapped == PaymentStatus.Completed && !payment.InvoiceId.HasValue)
         {
@@ -720,7 +737,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
         CancellationToken ct = default)
     {
         var tenant = await _db.Tenants.FirstOrDefaultAsync(t => t.Id == tenantId, ct)
-            ?? throw new InvalidOperationException("Établissement introuvable.");
+            ?? throw new InvalidOperationException("Profil enseignant introuvable.");
 
         var contact = await _contacts.GetAsync(tenant.OwnerUserId, ct)
             ?? throw new InvalidOperationException("Coordonnées du propriétaire introuvables.");
@@ -738,8 +755,8 @@ internal sealed class PayGatewayService : IPaymentGatewayService
 
         await _gateway.CreateCatalogItemAsync(new GatewayCreateCatalogItemRequest(
             productCode,
-            "Licence annuelle TutorSphere",
-            "Activation / renouvellement de l'établissement (10 $ USD / an)",
+            "Licence annuelle enseignant",
+            "Activation / renouvellement de la session enseignant (10 $ USD / an)",
             planCode,
             "Annuel",
             amount,
@@ -928,6 +945,8 @@ internal sealed class PayGatewayService : IPaymentGatewayService
 
                 tenant.LicenseExpiresAt = periodEnd;
                 tenant.LicenseRenewalReminderSentAt = null;
+                tenant.LicenseFeeWithholdingRemainingUsd = 0;
+                tenant.LicenseSettlementKind = LicenseFeeWithholding.SettlementPay;
                 tenant.UpdatedAt = DateTime.UtcNow;
 
                 // Première activation : formation obligatoire avant visibilité publique.

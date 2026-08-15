@@ -16,6 +16,14 @@
     </div>
 </div>
 
+@if (_licenseWithholdRemaining > 0)
+{
+    <div class="alert alert-info mb-4">
+        Un montant équivalent à 10 $ USD sera retenu à la source sur vos premiers paiements
+        jusqu’à solde de <strong>@_licenseWithholdRemaining.ToString("0.##") $ USD</strong>.
+    </div>
+}
+
 <div class="row g-3 mb-4">
     <div class="col-sm-6 col-xl">
         <StatCard Label="@L["Stat_MonthlyRevenue"]" Value="@FormatMoney(_monthlyRevenue)" Icon="bi-currency-dollar" Variant="revenue" />
@@ -181,6 +189,10 @@
     private record LessonItem(string Student, string Subject, string Time, string Initials, string Mode, string ModeClass);
     private record ActivityItem(string Title, string Description, string Time, string Icon, string IconVariant);
     private record DashboardDto(decimal MonthlyRevenue, int ActiveStudents, int ActiveSubscriptions, int UpcomingLessons, int PendingPayments);
+    private sealed class LicenseStatusVm
+    {
+        public decimal LicenseFeeWithholdingRemainingUsd { get; set; }
+    }
     private record RemarkItem(string CategoryLabel, string Excerpt, string Time);
     private sealed record ExpertRemarkDto(
         Guid Id, Guid TenantId, int Category, string Message, Guid? RelatedHomeworkId,
@@ -194,6 +206,7 @@
     private int _upcomingLessonsCount;
     private decimal _pendingPayments;
     private int _unreadMessages;
+    private decimal _licenseWithholdRemaining;
     private int _unreadRemarks;
     private List<LessonItem> UpcomingLessons = [];
     private List<ActivityItem> RecentActivity = [];
@@ -227,6 +240,13 @@
                 _upcomingLessonsCount = stats.UpcomingLessons;
                 _pendingPayments = stats.PendingPayments;
             }
+
+            try
+            {
+                var license = await Api.GetAsync<LicenseStatusVm>("api/platform-billing/status");
+                _licenseWithholdRemaining = license?.LicenseFeeWithholdingRemainingUsd ?? 0;
+            }
+            catch { /* ignore */ }
         }
 
         try

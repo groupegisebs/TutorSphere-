@@ -3,7 +3,7 @@ using TutorSphere.Domain.Enums;
 
 namespace TutorSphere.Domain.Entities;
 
-/// <summary>Paiement de la licence annuelle plateforme (activation / renouvellement de l'établissement).</summary>
+/// <summary>Paiement de la licence annuelle plateforme (activation / renouvellement de la session enseignant).</summary>
 public class PlatformLicensePayment : BaseEntity, ITenantEntity
 {
     public Guid TenantId { get; set; }

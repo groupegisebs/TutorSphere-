@@ -25,7 +25,8 @@ public record TeacherSchoolRecordDto(
     DateTime? LicenseExpiresAt,
     int ExpertApprovalStatus,
     Guid? ApprovedByExpertGroupId,
-    string? ApprovedByExpertGroupName);
+    string? ApprovedByExpertGroupName,
+    decimal LicenseFeeWithholdingRemainingUsd = 0m);
 
 public record UpdateTeacherSchoolRecordRequest(
     string? FirstName = null,
