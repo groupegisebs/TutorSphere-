@@ -179,20 +179,31 @@
                         <div class="row g-3">
                             <div class="col-12">
                                 <label class="form-label">Offre du groupe <span class="text-danger">*</span></label>
-                                <select class="form-select" @bind="_offerPick" @bind:after="OnCatalogOfferChanged">
-                                    <option value="">— Choisir une offre du catalogue —</option>
-                                    @foreach (var o in SelectableOffers)
-                                    {
-                                        <option value="@o.Id.ToString()">@OfferOptionLabel(o)</option>
-                                    }
+                                <div class="input-group">
+                                    <select class="form-select" @bind="_offerPick" @bind:after="OnCatalogOfferChanged">
+                                        <option value="">— Choisir une offre du catalogue —</option>
+                                        @foreach (var o in SelectableOffers)
+                                        {
+                                            <option value="@o.Id.ToString()">@OfferOptionLabel(o)</option>
+                                        }
+                                        @if (_canManageOffers)
+                                        {
+                                            <option value="new">+ Créer une nouvelle offre…</option>
+                                        }
+                                    </select>
                                     @if (_canManageOffers)
                                     {
-                                        <option value="new">+ Créer une nouvelle offre…</option>
+                                        <button type="button" class="btn btn-outline-secondary" title="Créer une offre"
+                                                @onclick="BeginCreateCatalogOffer">+</button>
                                     }
-                                </select>
-                                <div class="form-text">
-                                    Une offre existante applique son prix et sa visibilité. Sinon, créez-la dans le catalogue du groupe.
                                 </div>
+                                <div class="form-text">
+                                    Une offre existante applique son prix et sa visibilité (locale = pays du groupe, internationale = pays de marché).
+                                </div>
+                                @if (_groupOffers.Count == 0 && !_canManageOffers)
+                                {
+                                    <div class="form-text text-danger">Aucune offre dans le catalogue. Demandez au Responsable d’en créer une.</div>
+                                }
                             </div>
 
                             @if (_offerPick == "new")
@@ -206,12 +217,12 @@
                                     <input class="form-control" @bind="_newOfferCode" placeholder="MAA" />
                                 </div>
                                 <div class="col-md-3">
-                                    <label class="form-label">Prix recommandé (@_currency)</label>
+                                    <label class="form-label">Prix recommandé (@GroupOfferCurrencyRules.FormatCurrencyLabel(NewOfferCurrency))</label>
                                     <input class="form-control" type="number" min="0" step="0.01" @bind="_price" />
                                 </div>
                                 <div class="col-md-4">
                                     <label class="form-label">Portée *</label>
-                                    <select class="form-select" @bind="_newOfferScope">
+                                    <select class="form-select" @bind="_newOfferScope" @bind:after="OnNewScopeChanged">
                                         <option value="local">Locale (pays du groupe)</option>
                                         <option value="international">Internationale</option>
                                     </select>
@@ -245,10 +256,6 @@
                                         <div>Visibilité : @OfferScopeLabel(selected)</div>
                                         <div class="form-text mb-0">Prix et visibilité du catalogue — non modifiables ici.</div>
                                     </div>
-                                </div>
-                                <div class="col-md-6">
-                                    <label class="form-label">Titre de l’offre</label>
-                                    <input class="form-control" value="@_offerTitle" disabled readonly />
                                 </div>
                             }
 
@@ -906,6 +913,7 @@
         }
         _busy = true;
         _error = _success = null;
+        var assignNote = "";
         try
         {
             var ranges = FlattenAvailabilities();
@@ -944,7 +952,9 @@
                     description = string.IsNullOrWhiteSpace(_inviteMessage) ? _presentation : _inviteMessage,
                     subject = string.IsNullOrWhiteSpace(_offerSubject) ? null : _offerSubject,
                     price = _price,
-                    currency = string.IsNullOrWhiteSpace(_currency) ? "CAD" : _currency,
+                    currency = string.IsNullOrWhiteSpace(_currency)
+                        ? GroupOfferCurrencyRules.ResolveCurrency(_country)
+                        : _currency,
                     durationDays = monthly ? 30 : 7,
                     sessionCount,
                     frequency = monthly
@@ -999,7 +1009,7 @@
                             subscriptionOfferingId = _created.OfferingId
                         });
                     if (assign.Error is not null)
-                        _error = string.IsNullOrWhiteSpace(_error) ? assign.Error : _error;
+                        assignNote = " · affectation à l’offre du groupe : " + assign.Error;
                 }
                 if (_publishPublic && !_created.IsPublicProfile)
                 {
@@ -1014,7 +1024,8 @@
                 : $"Compte créé. Login : {_created.Email}"
                   + (string.IsNullOrWhiteSpace(_created.TemporaryPassword) ? "" : $" · MDP temporaire : {_created.TemporaryPassword}")
                   + (_created.CredentialsSent ? " · e-mail envoyé." : " · e-mail non envoyé.")
-                  + (_created.IsPublicProfile ? " Fiche publique publiée." : "");
+                  + (_created.IsPublicProfile ? " Fiche publique publiée." : "")
+                  + assignNote;
             _done = true;
             _step = 6;
         }
@@ -1289,6 +1300,139 @@
         public string? Error { get; set; }
     }
 
+    private IEnumerable<CatalogOffer> SelectableOffers => _groupOffers;
+
+    private CatalogOffer? SelectedCatalogOffer =>
+        _selectedGroupOfferId is Guid id ? _groupOffers.FirstOrDefault(o => o.Id == id) : null;
+
+    private string NewOfferCurrency =>
+        _newOfferScope == "international"
+            ? GroupOfferCurrencyRules.ResolveCurrency(_newOfferMarket)
+            : GroupOfferCurrencyRules.ResolveCurrency(_country);
+
+    private string OfferOptionLabel(CatalogOffer o)
+    {
+        var price = o.RecommendedPrice is decimal p ? p.ToString("N0") : "—";
+        var cur = GroupOfferCurrencyRules.FormatCurrencyLabel(o.Currency);
+        var scope = OfferScopeLabel(o);
+        return string.IsNullOrWhiteSpace(o.Code)
+            ? $"{o.Name} · {price} {cur} · {scope}"
+            : $"{o.Name} ({o.Code}) · {price} {cur} · {scope}";
+    }
+
+    private string OfferScopeLabel(CatalogOffer o)
+    {
+        if (o.IsInternational)
+        {
+            var market = CountryCatalog.Find(o.MarketCountryCode)?.Name ?? o.MarketCountryCode;
+            return string.IsNullOrWhiteSpace(market) ? "Internationale" : $"Internationale · {market}";
+        }
+
+        var local = CountryCatalog.Find(_country)?.Name ?? _country;
+        return string.IsNullOrWhiteSpace(local) ? "Locale (pays du groupe)" : $"Locale · {local}";
+    }
+
+    private Task OnNewMarketChanged(string? code)
+    {
+        _newOfferMarket = code;
+        _currency = NewOfferCurrency;
+        return Task.CompletedTask;
+    }
+
+    private void OnNewScopeChanged()
+    {
+        if (_newOfferScope != "international")
+            _newOfferMarket = null;
+        _currency = NewOfferCurrency;
+    }
+
+    private void BeginCreateCatalogOffer()
+    {
+        _offerPick = "new";
+        OnCatalogOfferChanged();
+    }
+
+    private void OnCatalogOfferChanged()
+    {
+        if (_offerPick == "new" || string.IsNullOrWhiteSpace(_offerPick))
+        {
+            _selectedGroupOfferId = null;
+            _catalogLocked = false;
+            return;
+        }
+
+        if (Guid.TryParse(_offerPick, out var id)
+            && _groupOffers.FirstOrDefault(o => o.Id == id) is { } offer)
+        {
+            ApplyCatalogOffer(offer);
+        }
+    }
+
+    private void ApplyCatalogOffer(CatalogOffer offer)
+    {
+        _selectedGroupOfferId = offer.Id;
+        _offerPick = offer.Id.ToString();
+        _offerTitle = offer.Name;
+        if (string.IsNullOrWhiteSpace(_offerSubject))
+            _offerSubject = offer.Name;
+        if (offer.RecommendedPrice is decimal price && price > 0)
+            _price = price;
+        if (!string.IsNullOrWhiteSpace(offer.Currency))
+            _currency = offer.Currency;
+        _catalogLocked = true;
+        var vis = offer.IsInternational
+            ? offer.MarketCountryCode
+            : (string.IsNullOrWhiteSpace(offer.MarketCountryCode) ? _country : offer.MarketCountryCode);
+        _visible = string.IsNullOrWhiteSpace(vis) ? [] : [vis.Trim().ToUpperInvariant()];
+    }
+
+    private async Task<bool> EnsureNewCatalogOfferAsync()
+    {
+        if (!_canManageOffers)
+        {
+            _error = "Seul le Responsable peut créer une offre du groupe.";
+            return false;
+        }
+        if (string.IsNullOrWhiteSpace(_offerTitle))
+        {
+            _error = "Indiquez le nom de la nouvelle offre.";
+            return false;
+        }
+        if (_price <= 0)
+        {
+            _error = "Indiquez le prix recommandé de l’offre.";
+            return false;
+        }
+        if (_newOfferScope == "international" && string.IsNullOrWhiteSpace(_newOfferMarket))
+        {
+            _error = "Sélectionnez un pays de marché pour une offre internationale.";
+            return false;
+        }
+
+        var international = _newOfferScope == "international";
+        _currency = NewOfferCurrency;
+        var result = await Api.PostWithErrorAsync<CatalogOffer>("api/expert/group-offers", new
+        {
+            name = _offerTitle.Trim(),
+            code = _newOfferCode,
+            shortDescription = _newOfferShort,
+            pricingModel = 0,
+            fixedPrice = _price,
+            recommendedPrice = _price,
+            isInternational = international,
+            marketCountryCode = international ? _newOfferMarket : null
+        });
+        if (result.Error is not null || result.Value is null)
+        {
+            _error = result.Error ?? "Impossible de créer l’offre du groupe.";
+            return false;
+        }
+
+        _groupOffers = _groupOffers.Where(o => o.Id != result.Value.Id).Prepend(result.Value).ToList();
+        ApplyCatalogOffer(result.Value);
+        return true;
+    }
+
     private void ApplyGroupCountry(string? countryCode, bool isInternational)
     {
         _groupInternational = isInternational;
@@ -1346,4 +1490,28 @@
     private sealed class PhotoPatch { public string? LogoUrl { get; set; } }
     private sealed class PublishPatch { public bool IsPublicProfile { get; set; } }
     private sealed record QueuePeek(Guid TenantId);
+    private sealed record MeCtx(bool IsGroupManager, Guid? GroupId, string? GroupName, bool IsPlatformActAs = false);
+    private sealed record OfferCatalog(
+        Guid ExpertGroupId,
+        string GroupName,
+        string? GroupCountryCode,
+        string GroupCurrency,
+        bool GroupIsInternational,
+        List<CatalogOffer>? Offers);
+    private sealed record CatalogOffer(
+        Guid Id,
+        Guid ExpertGroupId,
+        string Name,
+        string? Code,
+        int Status,
+        int PricingModel,
+        string Currency,
+        decimal? RecommendedPrice,
+        DateTime CreatedAt,
+        DateTime? PublishedAtUtc,
+        string? ShortDescription = null,
+        bool IsInternational = false,
+        string? MarketCountryCode = null,
+        int AssignedTeacherCount = 0);
+    private sealed class AssignResult { public Guid Id { get; set; } }
 }
