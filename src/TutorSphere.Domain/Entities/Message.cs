@@ -26,4 +26,15 @@ public class Message : BaseEntity, ITenantEntity
     public bool SenderArchived { get; set; }
     public bool RecipientArchived { get; set; }
     public Guid? InReplyToMessageId { get; set; }
+
+    /// <summary>Canal parent : teacher | group | admin. Null = fil générique.</summary>
+    public string? ParentChannel { get; set; }
+    public Guid? StudentId { get; set; }
+    public string? ParentReason { get; set; }
+    /// <summary>Numéro de dossier assistance (ex. TS-2048).</summary>
+    public string? CaseNumber { get; set; }
+    /// <summary>homework | document | appointment</summary>
+    public string? AttachmentType { get; set; }
+    public Guid? AttachmentId { get; set; }
+    public string? AttachmentLabel { get; set; }
 }

@@ -2401,6 +2401,32 @@ namespace TutorSphere.Infrastructure.Migrations
                     b.Property<bool>("IsStarred")
                         .HasColumnType("boolean");
 
+                    b.Property<string>("ParentChannel")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("ParentReason")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<Guid?>("StudentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CaseNumber")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("AttachmentType")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid?>("AttachmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AttachmentLabel")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<DateTime?>("ReadAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -2446,6 +2472,8 @@ namespace TutorSphere.Infrastructure.Migrations
                     b.HasIndex("SenderUserId");
 
                     b.HasIndex("RecipientUserId", "IsRead");
+
+                    b.HasIndex("ParentChannel", "StudentId");
 
                     b.ToTable("MessagesSet");
                 });
@@ -2530,6 +2558,17 @@ namespace TutorSphere.Infrastructure.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("character varying(256)");
 
+                    b.Property<string>("CaseNumber")
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<Guid?>("StudentId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -2560,6 +2599,10 @@ namespace TutorSphere.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ParentProfileId");
+
+                    b.HasIndex("CaseNumber")
+                        .IsUnique()
+                        .HasFilter("\"CaseNumber\" IS NOT NULL");
 
                     b.ToTable("ParentSupportRequestsSet");
                 });

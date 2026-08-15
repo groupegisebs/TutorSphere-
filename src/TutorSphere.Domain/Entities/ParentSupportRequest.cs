@@ -18,6 +18,9 @@ public class ParentSupportRequest : BaseEntity
     public string Message { get; set; } = string.Empty;
     public string? ContactEmail { get; set; }
     public ParentSupportRequestStatus Status { get; set; } = ParentSupportRequestStatus.Open;
+    public string? CaseNumber { get; set; }
+    public Guid? StudentId { get; set; }
+    public string? Reason { get; set; }
 
     public ParentProfile Parent { get; set; } = null!;
 }

@@ -582,6 +582,12 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             e.HasIndex(m => m.RecipientUserId);
             e.HasIndex(m => m.CreatedAt);
             e.HasIndex(m => new { m.RecipientUserId, m.IsRead });
+            e.Property(m => m.ParentChannel).HasMaxLength(20);
+            e.Property(m => m.ParentReason).HasMaxLength(40);
+            e.Property(m => m.CaseNumber).HasMaxLength(20);
+            e.Property(m => m.AttachmentType).HasMaxLength(20);
+            e.Property(m => m.AttachmentLabel).HasMaxLength(200);
+            e.HasIndex(m => new { m.ParentChannel, m.StudentId });
         });
 
         builder.Entity<Unavailability>(e => e.HasIndex(u => u.TenantId));
@@ -618,6 +624,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             e.Property(r => r.Message).HasMaxLength(4000);
             e.Property(r => r.ContactEmail).HasMaxLength(256);
             e.Property(r => r.UserId).HasMaxLength(450);
+            e.Property(r => r.CaseNumber).HasMaxLength(20);
+            e.Property(r => r.Reason).HasMaxLength(40);
+            e.HasIndex(r => r.CaseNumber).IsUnique().HasFilter("\"CaseNumber\" IS NOT NULL");
             e.HasOne(r => r.Parent).WithMany(p => p.SupportRequests).HasForeignKey(r => r.ParentProfileId)
                 .OnDelete(DeleteBehavior.Cascade);
         });

@@ -24,19 +24,22 @@ public class ParentPortalController : ControllerBase
     private readonly IStudentSubscriptionService _subscriptions;
     private readonly IInvoiceService _invoices;
     private readonly IParentEngagementService _engagement;
+    private readonly IParentMailboxService _mailbox;
 
     public ParentPortalController(
         IParentService parentService,
         IAuthService authService,
         IStudentSubscriptionService subscriptions,
         IInvoiceService invoices,
-        IParentEngagementService engagement)
+        IParentEngagementService engagement,
+        IParentMailboxService mailbox)
     {
         _parentService = parentService;
         _authService = authService;
         _subscriptions = subscriptions;
         _invoices = invoices;
         _engagement = engagement;
+        _mailbox = mailbox;
     }
 
     [HttpGet("me")]
@@ -407,6 +410,97 @@ public class ParentPortalController : ControllerBase
             return NotFound(new { error = "Rapport introuvable." });
 
         return File(pdf.Value.Content, "application/pdf", pdf.Value.FileName);
+    }
+
+    /// <summary>Messagerie parent : enseignants assignés, groupe responsable, administration. Aucune coordonnée personnelle.</summary>
+    [HttpGet("mailbox")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<ActionResult<ParentMailboxDto>> Mailbox(CancellationToken ct)
+    {
+        var userId = await ResolveParentUserIdAsync(ct);
+        if (userId is null)
+            return Unauthorized();
+
+        return Ok(await _mailbox.GetMailboxAsync(userId, ct));
+    }
+
+    [HttpGet("mailbox/directory")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<ActionResult<ParentMailboxDirectoryDto>> MailboxDirectory(
+        [FromQuery] Guid childId,
+        CancellationToken ct)
+    {
+        var userId = await ResolveParentUserIdAsync(ct);
+        if (userId is null)
+            return Unauthorized();
+
+        var directory = await _mailbox.GetDirectoryAsync(userId, childId, ct);
+        return directory is null ? NotFound(new { error = "Enfant introuvable." }) : Ok(directory);
+    }
+
+    [HttpGet("mailbox/threads/{threadId}")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<ActionResult<ParentMailboxThreadDetailDto>> MailboxThread(
+        string threadId,
+        CancellationToken ct)
+    {
+        var userId = await ResolveParentUserIdAsync(ct);
+        if (userId is null)
+            return Unauthorized();
+
+        var thread = await _mailbox.GetThreadAsync(userId, threadId, ct);
+        return thread is null ? NotFound(new { error = "Conversation introuvable." }) : Ok(thread);
+    }
+
+    [HttpPost("mailbox")]
+    public async Task<ActionResult<ParentMailboxThreadDetailDto>> ComposeMailbox(
+        [FromBody] ParentMailboxComposeRequest request,
+        CancellationToken ct)
+    {
+        var userId = await ResolveParentUserIdAsync(ct);
+        if (userId is null)
+            return Unauthorized();
+
+        try
+        {
+            var created = await _mailbox.ComposeAsync(userId, request, ct);
+            return Ok(created);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("mailbox/threads/{threadId}/messages")]
+    public async Task<ActionResult<ParentMailboxMessageDto>> ReplyMailbox(
+        string threadId,
+        [FromBody] ParentMailboxReplyRequest request,
+        CancellationToken ct)
+    {
+        var userId = await ResolveParentUserIdAsync(ct);
+        if (userId is null)
+            return Unauthorized();
+
+        try
+        {
+            return Ok(await _mailbox.ReplyAsync(userId, threadId, request, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPut("mailbox/threads/{threadId}/read")]
+    public async Task<IActionResult> MarkMailboxRead(string threadId, CancellationToken ct)
+    {
+        var userId = await ResolveParentUserIdAsync(ct);
+        if (userId is null)
+            return Unauthorized();
+
+        await _mailbox.MarkReadAsync(userId, threadId, ct);
+        return NoContent();
     }
 
     [HttpGet("teachers")]

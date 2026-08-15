@@ -165,4 +165,55 @@ public class ParentChildFollowUpPrivacyTests
         Assert.Contains("hasGroupBenchmark", json);
         Assert.Contains("groupAveragePercent", json);
     }
+
+    [Fact]
+    public void Parent_mailbox_contracts_do_not_expose_contact_pii()
+    {
+        var names = typeof(ParentMailboxThreadDto).GetProperties().Select(p => p.Name)
+            .Concat(typeof(ParentMailboxTeacherDto).GetProperties().Select(p => p.Name))
+            .Concat(typeof(ParentMailboxGroupDto).GetProperties().Select(p => p.Name))
+            .Concat(typeof(ParentMailboxMessageDto).GetProperties().Select(p => p.Name))
+            .Concat(typeof(ParentMailboxComposeRequest).GetProperties().Select(p => p.Name))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var name in new[] { "Email", "Phone", "Address", "DateOfBirth", "AccessCode", "ContactEmail", "ContactPhone" })
+            Assert.DoesNotContain(name, names);
+
+        Assert.Contains("CaseNumber", names);
+        Assert.Contains("Channel", names);
+        Assert.Contains("ChildFirstName", names);
+    }
+
+    [Fact]
+    public void Parent_mailbox_json_has_no_email_or_phone()
+    {
+        var dto = new ParentMailboxThreadDto(
+            "teacher:abc:peer",
+            "teacher",
+            Guid.NewGuid(),
+            "Junior",
+            "peer",
+            "Enseignant de maths",
+            "Enseignant",
+            "homework",
+            "Excellence Education",
+            true,
+            "slug",
+            "TS-2048",
+            "homework",
+            "Bonjour",
+            DateTime.UtcNow,
+            1);
+
+        var json = JsonSerializer.Serialize(dto, new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+        });
+
+        Assert.DoesNotContain("email", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("phone", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("@", json);
+        Assert.Contains("caseNumber", json);
+        Assert.Contains("childFirstName", json);
+    }
 }
