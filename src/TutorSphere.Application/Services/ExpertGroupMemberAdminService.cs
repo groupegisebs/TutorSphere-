@@ -525,13 +525,14 @@ public class ExpertGroupMemberAdminService(
         return string.IsNullOrWhiteSpace(c?.DisplayName) ? "un membre" : c.Value.DisplayName;
     }
 
-    private static string CurrentRoleLabel(ExpertGroupMember member)
+    private string CurrentRoleLabel(ExpertGroupMember member)
     {
-        if (!string.IsNullOrWhiteSpace(member.DefinedRole?.Name))
-            return member.DefinedRole!.Name;
-        var built = GroupDefinedRoleCatalog.Find(member.DefinedRole?.SystemKey);
-        if (built is not null)
-            return built.Name;
+        if (member.DefinedRoleId is Guid id)
+        {
+            var defined = db.ExpertGroupDefinedRoles.FirstOrDefault(r => r.Id == id);
+            if (!string.IsNullOrWhiteSpace(defined?.Name))
+                return defined!.Name;
+        }
         return RoleFr(member.MemberRole);
     }
 

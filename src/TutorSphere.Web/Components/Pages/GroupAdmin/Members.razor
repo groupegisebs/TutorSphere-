@@ -194,7 +194,7 @@
                                                         </div>
                                                     </div>
                                                 </td>
-                                                <td><span class="ex-role @RoleClass(row.Role, row.IsManager)">@RoleLabel(row.Role, row.IsManager)</span></td>
+                                                <td><span class="ex-role @RoleClass(row)" style="@RoleStyle(row)">@RoleLabel(row)</span></td>
                                                 <td>
                                                     @if (string.IsNullOrWhiteSpace(row.Specialty))
                                                     {
@@ -301,7 +301,7 @@
                                 <span class="ex-gm-avatar" data-status="@StatusClass(sel)">@Initials(sel.FullName)</span>
                                 <button type="button" class="ex-more-btn" style="position:absolute;right:0;top:0" @onclick="() => _selected = null"><i class="bi bi-x-lg"></i></button>
                                 <strong>@(string.IsNullOrWhiteSpace(sel.FullName) ? "—" : sel.FullName)</strong>
-                                <span class="ex-role @RoleClass(sel.Role, sel.IsManager)">@RoleLabel(sel.Role, sel.IsManager)</span>
+                                <span class="ex-role @RoleClass(sel)" style="@RoleStyle(sel)">@RoleLabel(sel)</span>
                                 <span class="text-muted">@(string.IsNullOrWhiteSpace(sel.Specialty) ? "—" : sel.Specialty)</span>
                             </div>
                             @if (sel.Kind == "invite")
@@ -409,23 +409,142 @@
 
             @if (_roleTarget is not null)
             {
-                <div class="ex-gm-modal-back" @onclick="() => _roleTarget = null"></div>
-                <div class="cc-card ex-gm-modal">
+                <div class="ex-gm-modal-back" @onclick="CloseRoleModal"></div>
+                <div class="cc-card ex-gm-modal" @onclick:stopPropagation="true" @onclick="() => _roleOpen = false">
                     <h2 class="cc-card-title">Modifier le rôle</h2>
                     <div class="ex-teacher-id mb-3">
                         <span class="ex-teacher-avatar">@Initials(_roleTarget.FullName)</span>
-                        <div><strong>@_roleTarget.FullName</strong><span>Rôle actuel : @RoleLabel(_roleTarget.Role, false)</span></div>
+                        <div>
+                            <strong>@_roleTarget.FullName</strong>
+                            <span>Rôle actuel : @RoleLabel(_roleTarget)</span>
+                        </div>
                     </div>
-                    <label class="form-label">Nouveau rôle</label>
-                    <select class="form-select" @bind="_newRole">
-                        <option value="0">Expert</option>
-                        <option value="4">Expert senior</option>
-                        <option value="5">Observateur</option>
-                    </select>
+                    <label class="form-label" id="role-combo-label">Nouveau rôle</label>
+                    <div class="ex-combo" @onclick:stopPropagation="true">
+                        <div class="ex-combo-input"
+                             role="combobox"
+                             aria-labelledby="role-combo-label"
+                             aria-expanded="@_roleOpen"
+                             aria-controls="role-combo-list"
+                             aria-haspopup="listbox">
+                            @if (_rolePick is { } picked && string.IsNullOrWhiteSpace(_roleQuery) && !_roleOpen)
+                            {
+                                <span class="ex-combo-dot" style="background:@picked.BadgeColor"></span>
+                            }
+                            <input @ref="_roleInput"
+                                   @bind="_roleQuery"
+                                   @bind:event="oninput"
+                                   @bind:after="OnRoleQueryChanged"
+                                   @onfocus="OpenRoleMenu"
+                                   @onkeydown="OnRoleKeyDown"
+                                   aria-autocomplete="list"
+                                   aria-controls="role-combo-list"
+                                   aria-activedescendant="@(_roleOpen && _roleHighlight >= 0 ? $"role-opt-{_roleHighlight}" : null)"
+                                   placeholder="@(_rolePick?.Name ?? "Rechercher un rôle…")" />
+                            <i class="bi bi-chevron-down ex-combo-caret" aria-hidden="true"></i>
+                        </div>
+                        @if (_roleOpen)
+                        {
+                            <div class="ex-combo-menu" id="role-combo-list" role="listbox">
+                                @if (!FilteredRoles.Any())
+                                {
+                                    <div class="ex-combo-empty">Aucun rôle ne correspond à « @_roleQuery ».</div>
+                                }
+                                else
+                                {
+                                    var i = 0;
+                                    @foreach (var r in FilteredRoles)
+                                    {
+                                        var idx = i++;
+                                        var on = _roleHighlight == idx || string.Equals(_rolePick?.Key, r.Key, StringComparison.Ordinal);
+                                        <button type="button" class="ex-combo-opt @(on ? "is-on" : null)"
+                                                id="role-opt-@idx" role="option" aria-selected="@on"
+                                                @onclick="() => SelectRole(r)">
+                                            <span class="ex-combo-dot" style="background:@r.BadgeColor"></span>
+                                            <span>
+                                                @r.Name
+                                                @if (!string.IsNullOrWhiteSpace(r.Description))
+                                                {
+                                                    <small>@r.Description</small>
+                                                }
+                                            </span>
+                                        </button>
+                                    }
+                                }
+                                <div class="ex-combo-add">
+                                    <button type="button" class="ex-combo-opt" id="role-opt-add" @onclick="OpenCreateRole">
+                                        <i class="bi bi-plus-lg" aria-hidden="true"></i>
+                                        <span>+ Ajouter un nouveau rôle</span>
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                    </div>
                     <p class="small text-muted mt-2 mb-0">Le transfert vers Responsable n’est pas disponible ici.</p>
+                    <div class="d-flex gap-2 mt-3 flex-wrap">
+                        <button type="button" class="cc-btn" @onclick="CloseRoleModal">Annuler</button>
+                        <button type="button" class="cc-btn cc-btn-primary"
+                                disabled="@(_busy || !RoleChanged)"
+                                @onclick="TrySaveRoleAsync">Enregistrer les modifications</button>
+                    </div>
+                </div>
+            }
+
+            @if (_showCreateRole)
+            {
+                <div class="ex-gm-modal-back is-nested" @onclick="() => _showCreateRole = false"></div>
+                <div class="cc-card ex-gm-modal is-nested" @onclick:stopPropagation="true">
+                    <h2 class="cc-card-title">Ajouter un nouveau rôle</h2>
+                    <p class="small text-muted">Ce rôle n’existera que dans le groupe actuel.</p>
+                    <label class="form-label">Nom du rôle *</label>
+                    <input class="form-control mb-2" @bind="_createName" maxlength="120" aria-required="true" />
+                    <label class="form-label">Description</label>
+                    <textarea class="form-control mb-2" rows="2" @bind="_createDesc"></textarea>
+                    <label class="form-label">Couleur du badge</label>
+                    <div class="ex-swatches mb-2" role="radiogroup" aria-label="Couleur du badge">
+                        @foreach (var c in BadgeColors)
+                        {
+                            <button type="button" class="ex-swatch @(_createColor == c ? "is-on" : null)"
+                                    style="background:@c" aria-label="@c"
+                                    aria-checked="@(_createColor == c)" role="radio"
+                                    @onclick="() => _createColor = c"></button>
+                        }
+                    </div>
+                    <label class="form-label">Permissions</label>
+                    <div class="ex-perm-grid mb-2">
+                        @foreach (var cat in Perms.GroupBy(p => p.Cat))
+                        {
+                            <h3 class="h6 mt-2">@cat.Key</h3>
+                            @foreach (var p in cat)
+                            {
+                                var on = _createPerms.Contains(p.Key);
+                                <label class="d-flex gap-2 align-items-center small mb-1">
+                                    <input type="checkbox" checked="@on" @onchange="e => ToggleCreatePerm(p.Key, e.Value is bool b && b)" />
+                                    @p.Label
+                                </label>
+                            }
+                        }
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(_createError))
+                    {
+                        <div class="alert alert-danger py-2">@_createError</div>
+                    }
+                    <div class="d-flex gap-2 mt-3 flex-wrap">
+                        <button type="button" class="cc-btn" @onclick="() => _showCreateRole = false">Annuler</button>
+                        <button type="button" class="cc-btn cc-btn-primary" disabled="@(_busy || string.IsNullOrWhiteSpace(_createName))" @onclick="CreateRoleAsync">Créer et sélectionner</button>
+                    </div>
+                </div>
+            }
+
+            @if (_showRoleConfirm && _roleTarget is not null)
+            {
+                <div class="ex-gm-modal-back is-nested" @onclick="() => _showRoleConfirm = false"></div>
+                <div class="cc-card ex-gm-modal is-nested" @onclick:stopPropagation="true">
+                    <h2 class="cc-card-title">Confirmer le changement de rôle</h2>
+                    <p>Ce changement retire des permissions importantes à <strong>@_roleTarget.FullName</strong> (@string.Join(", ", _lostElevated)).</p>
                     <div class="d-flex gap-2 mt-3">
-                        <button type="button" class="cc-btn" @onclick="() => _roleTarget = null">Annuler</button>
-                        <button type="button" class="cc-btn cc-btn-primary" disabled="@_busy" @onclick="SaveRoleAsync">Enregistrer les modifications</button>
+                        <button type="button" class="cc-btn" @onclick="() => _showRoleConfirm = false">Annuler</button>
+                        <button type="button" class="cc-btn cc-btn-primary" disabled="@_busy" @onclick="SaveRoleAsync">Confirmer</button>
                     </div>
                 </div>
             }
@@ -598,13 +717,29 @@
     private MemberRow? _selected;
     private ActivityDto? _activity;
     private MemberRow? _roleTarget;
+    private List<RoleOption> _roles = [];
+    private RoleOption? _rolePick;
+    private string _roleOriginalKey = "";
+    private string _roleQuery = "";
+    private bool _roleOpen;
+    private int _roleHighlight;
+    private bool _showCreateRole;
+    private bool _showRoleConfirm;
+    private string _createName = "";
+    private string _createDesc = "";
+    private string _createColor = "#006D44";
+    private string? _createError;
+    private readonly HashSet<string> _createPerms = new(StringComparer.Ordinal);
+    private List<string> _lostElevated = [];
+    private ElementReference _roleInput;
+    private static readonly string[] BadgeColors =
+        ["#006D44", "#2563EB", "#0f766e", "#1d4ed8", "#7c3aed", "#b45309", "#be123c", "#64748b"];
     private MemberRow? _permTarget;
     private MemberRow? _taskTarget;
     private MemberRow? _suspendTarget;
     private MemberRow? _removeTarget;
     private RemovalDto? _removeCheck;
     private readonly HashSet<string> _permSet = new(StringComparer.Ordinal);
-    private int _newRole = 0;
     private string _suspendReason = "";
     private string _invEmail = "";
     private string _invFirst = "";
@@ -628,6 +763,13 @@
     private int ToRow => Math.Min(_filtered.Count, _page * _pageSize);
     private string MemberWord => _filtered.Count > 1 ? "membres" : "membre";
     private IEnumerable<MemberRow> Paged => _filtered.Skip((_page - 1) * _pageSize).Take(_pageSize);
+    private IEnumerable<RoleOption> FilteredRoles =>
+        string.IsNullOrWhiteSpace(_roleQuery)
+            ? _roles
+            : _roles.Where(r => r.Name.Contains(_roleQuery.Trim(), StringComparison.OrdinalIgnoreCase)
+                             || (r.Description?.Contains(_roleQuery.Trim(), StringComparison.OrdinalIgnoreCase) ?? false));
+    private bool RoleChanged =>
+        _rolePick is not null && !string.Equals(_rolePick.Key, _roleOriginalKey, StringComparison.Ordinal);
     private IEnumerable<string> SpecialtyOptions =>
         (_dir.Items ?? []).Select(i => i.Specialty).Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s!).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(s => s);
 
@@ -741,11 +883,122 @@
     private bool IsSelf(MemberRow row) =>
         !string.IsNullOrWhiteSpace(_meId) && string.Equals(row.UserId, _meId, StringComparison.Ordinal);
 
-    private void OpenRole(MemberRow row)
+    private async Task OpenRole(MemberRow row)
     {
         _roleTarget = row;
-        _newRole = row.Role is 4 or 5 ? row.Role : 0;
         _menuId = null;
+        _roleOpen = false;
+        _roleQuery = "";
+        _showCreateRole = _showRoleConfirm = false;
+        _lostElevated = [];
+        _roleOriginalKey = CurrentRoleKey(row);
+        try
+        {
+            _roles = await Api.GetAsync<List<RoleOption>>("api/expert/membership/roles") ?? [];
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _roles = [];
+        }
+        _rolePick = _roles.FirstOrDefault(r => string.Equals(r.Key, _roleOriginalKey, StringComparison.Ordinal))
+            ?? _roles.FirstOrDefault(r => row.DefinedRoleId is Guid id && r.Id == id)
+            ?? _roles.FirstOrDefault(r => string.Equals(r.Name, RoleLabel(row), StringComparison.OrdinalIgnoreCase));
+        if (_rolePick is not null)
+            _roleOriginalKey = _rolePick.Key;
+    }
+
+    private void CloseRoleModal()
+    {
+        if (_showCreateRole || _showRoleConfirm) return;
+        _roleTarget = null;
+        _roleOpen = false;
+        _roleQuery = "";
+    }
+
+    private void OpenRoleMenu() => _roleOpen = true;
+
+    private void OnRoleQueryChanged()
+    {
+        _roleOpen = true;
+        _roleHighlight = 0;
+    }
+
+    private void SelectRole(RoleOption role)
+    {
+        _rolePick = role;
+        _roleQuery = "";
+        _roleOpen = false;
+    }
+
+    private void OpenCreateRole()
+    {
+        _roleOpen = false;
+        _showCreateRole = true;
+        _createError = null;
+        _createName = "";
+        _createDesc = "";
+        _createColor = "#006D44";
+        _createPerms.Clear();
+        foreach (var p in Perms.Where(x => x.Key is "teachers.view" or "demos.view" or "group.members.view" or "admissions.view"))
+            _createPerms.Add(p.Key);
+    }
+
+    private void ToggleCreatePerm(string key, bool on)
+    {
+        if (on) _createPerms.Add(key);
+        else _createPerms.Remove(key);
+    }
+
+    private async Task OnRoleKeyDown(KeyboardEventArgs e)
+    {
+        var items = FilteredRoles.ToList();
+        if (e.Key == "ArrowDown")
+        {
+            _roleOpen = true;
+            _roleHighlight = Math.Min(_roleHighlight + 1, Math.Max(0, items.Count - 1));
+        }
+        else if (e.Key == "ArrowUp")
+        {
+            _roleOpen = true;
+            _roleHighlight = Math.Max(_roleHighlight - 1, 0);
+        }
+        else if (e.Key == "Enter")
+        {
+            if (!_roleOpen) { _roleOpen = true; return; }
+            if (_roleHighlight >= 0 && _roleHighlight < items.Count)
+                SelectRole(items[_roleHighlight]);
+        }
+        else if (e.Key == "Escape")
+        {
+            if (_roleOpen) _roleOpen = false;
+            else CloseRoleModal();
+        }
+        else if (e.Key == "Home")
+        {
+            _roleOpen = true;
+            _roleHighlight = 0;
+        }
+        else if (e.Key == "End" && items.Count > 0)
+        {
+            _roleOpen = true;
+            _roleHighlight = items.Count - 1;
+        }
+        await Task.CompletedTask;
+    }
+
+    private static string CurrentRoleKey(MemberRow row)
+    {
+        if (!string.IsNullOrWhiteSpace(row.DefinedRoleKey)) return row.DefinedRoleKey!;
+        if (row.DefinedRoleId is Guid id) return $"custom:{id:N}";
+        return row.Role switch
+        {
+            5 => "member",
+            2 => "teachers",
+            3 => "admissions",
+            4 => "pedagogy",
+            _ => "expert"
+        };
     }
 
     private void OpenPerms(MemberRow row)
@@ -816,16 +1069,74 @@
         finally { _busy = false; }
     }
 
-    private async Task SaveRoleAsync()
+    private Task TrySaveRoleAsync()
     {
-        if (_roleTarget?.UserId is null) return;
+        if (_roleTarget?.UserId is null || _rolePick is null || !RoleChanged) return Task.CompletedTask;
+        var next = _rolePick.Permissions ?? [];
+        _lostElevated = LostElevated(_roleTarget.Permissions ?? [], next);
+        if (_lostElevated.Count > 0)
+        {
+            _showRoleConfirm = true;
+            return Task.CompletedTask;
+        }
+        return SaveRoleAsync();
+    }
+
+    private async Task CreateRoleAsync()
+    {
+        _createError = null;
+        if (string.IsNullOrWhiteSpace(_createName))
+        {
+            _createError = "Le nom du rôle est obligatoire.";
+            return;
+        }
         _busy = true;
         try
         {
-            var r = await Api.PutWithErrorAsync<object>($"api/expert/membership/members/{_roleTarget.UserId}/role", new { role = _newRole });
+            var created = await Api.PostWithErrorAsync<RoleOption>("api/expert/membership/roles", new
+            {
+                name = _createName.Trim(),
+                description = NullIfBlank(_createDesc),
+                badgeColor = _createColor,
+                permissions = _createPerms.ToArray()
+            });
+            if (created.Error is not null)
+            {
+                _createError = created.Error;
+                return;
+            }
+            if (created.Value is null)
+            {
+                _createError = "Impossible de créer le rôle.";
+                return;
+            }
+            _roles = await Api.GetAsync<List<RoleOption>>("api/expert/membership/roles") ?? _roles;
+            _rolePick = _roles.FirstOrDefault(r => r.Id == created.Value.Id)
+                ?? _roles.FirstOrDefault(r => string.Equals(r.Name, created.Value.Name, StringComparison.OrdinalIgnoreCase))
+                ?? created.Value;
+            _showCreateRole = false;
+            _roleQuery = "";
+        }
+        catch (Exception ex) { _createError = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task SaveRoleAsync()
+    {
+        if (_roleTarget?.UserId is null || _rolePick is null) return;
+        _busy = true;
+        try
+        {
+            var r = await Api.PutWithErrorAsync<object>($"api/expert/membership/members/{_roleTarget.UserId}/role", new
+            {
+                definedRoleId = _rolePick.Id,
+                systemKey = _rolePick.Id is null ? _rolePick.Key : null
+            });
             if (r.Error is not null) { _error = r.Error; return; }
             _success = "Rôle mis à jour.";
             _roleTarget = null;
+            _showRoleConfirm = false;
+            _roleOpen = false;
             await LoadAsync();
         }
         catch (Exception ex) { _error = ex.Message; }
@@ -936,7 +1247,7 @@
         foreach (var r in _filtered)
         {
             sb.AppendLine(string.Join(';',
-                Csv(r.FullName), Csv(r.Email), Csv(RoleLabel(r.Role, r.IsManager)), Csv(r.Specialty),
+                Csv(r.FullName), Csv(r.Email), Csv(RoleLabel(r)), Csv(r.Specialty),
                 Csv(StatusLabel(r)), r.OpenTaskCount, r.JoinedAtUtc?.ToLocalTime().ToString("yyyy-MM-dd") ?? ""));
         }
         var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
@@ -955,20 +1266,57 @@
         return list;
     }
 
-    private static string RoleLabel(int role, bool manager) => manager || role == 1 ? "Responsable" : role switch
+    private static List<string> LostElevated(IEnumerable<string> previous, IEnumerable<string> next)
     {
-        2 => "Chef discipline",
-        3 => "Chef comité",
-        4 => "Expert senior",
-        5 => "Observateur",
-        _ => "Expert"
-    };
-    private static string RoleClass(int role, bool manager) => manager || role == 1 ? "is-mgr" : role switch
+        var elevated = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "teachers.approve", "teachers.suspend", "admissions.review", "group.tasks.assign", "group.documents.manage"
+        };
+        var labels = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["teachers.approve"] = "approuver un enseignant",
+            ["teachers.suspend"] = "suspendre un enseignant",
+            ["admissions.review"] = "examiner une candidature",
+            ["group.tasks.assign"] = "attribuer des tâches",
+            ["group.documents.manage"] = "gérer les documents"
+        };
+        var nextSet = next.ToHashSet(StringComparer.Ordinal);
+        return previous.Where(k => elevated.Contains(k) && !nextSet.Contains(k))
+            .Select(k => labels.GetValueOrDefault(k, k))
+            .Distinct()
+            .ToList();
+    }
+
+    private static string RoleLabel(MemberRow row)
     {
-        4 or 2 or 3 => "is-senior",
-        5 => "is-obs",
-        _ => "is-exp"
-    };
+        if (row.IsManager || row.Role == 1) return "Responsable";
+        if (!string.IsNullOrWhiteSpace(row.DefinedRoleName)) return row.DefinedRoleName!;
+        return row.Role switch
+        {
+            2 => "Chef discipline",
+            3 => "Chef comité",
+            4 => "Expert senior",
+            5 => "Observateur",
+            _ => "Expert"
+        };
+    }
+    private static string RoleClass(MemberRow row)
+    {
+        if (row.IsManager || row.Role == 1) return "is-mgr";
+        if (!string.IsNullOrWhiteSpace(row.DefinedRoleColor)) return "";
+        return row.Role switch
+        {
+            4 or 2 or 3 => "is-senior",
+            5 => "is-obs",
+            _ => "is-exp"
+        };
+    }
+    private static string RoleStyle(MemberRow row)
+    {
+        if (row.IsManager || row.Role == 1 || string.IsNullOrWhiteSpace(row.DefinedRoleColor))
+            return "";
+        return $"background:{row.DefinedRoleColor}22;color:{row.DefinedRoleColor}";
+    }
     private static string StatusLabel(MemberRow r) => r.Kind == "invite" ? "Invitation envoyée" : r.Status switch
     {
         1 => "Suspendu",
@@ -990,7 +1338,15 @@
     private static string Csv(string? s) => $"\"{(s ?? "").Replace("\"", "\"\"")}\"";
 
     private sealed record DirectoryDto(List<MemberRow> Items, int ActiveCount, int JoinedThisMonth, int ExpertCount, int SeniorCount, int SuspendedCount, int PendingInviteCount);
-    private sealed record MemberRow(Guid Id, string Kind, Guid ExpertGroupId, string? UserId, string Email, string FullName, string? Phone, string? Specialty, int Role, int Status, DateTime? JoinedAtUtc, string? InvitedByUserId, string? InvitedByName, int OpenTaskCount, List<string>? Permissions, bool IsManager, Guid? InviteId = null);
+    private sealed record MemberRow(
+        Guid Id, string Kind, Guid ExpertGroupId, string? UserId, string Email, string FullName,
+        string? Phone, string? Specialty, int Role, int Status, DateTime? JoinedAtUtc,
+        string? InvitedByUserId, string? InvitedByName, int OpenTaskCount, List<string>? Permissions,
+        bool IsManager, Guid? InviteId = null, Guid? DefinedRoleId = null, string? DefinedRoleName = null,
+        string? DefinedRoleColor = null, string? DefinedRoleKey = null);
+    private sealed record RoleOption(
+        Guid? Id, string Key, string Name, string? Description, string BadgeColor,
+        List<string>? Permissions, bool IsCustom, bool SuperAdminOnly);
     private sealed record ActivityDto(int EvaluationsCompleted, int TeachersApproved, int OpenTasks, int PendingVotes);
     private sealed record RemovalDto(int OpenTasks, int OpenEvaluations, int AssignedDemonstrations, int PendingVotes, bool CanRemove);
     private sealed record TeacherItem(Guid TenantId, string? SchoolName = null, string? DisplayName = null)

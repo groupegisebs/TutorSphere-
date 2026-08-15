@@ -570,6 +570,9 @@ namespace TutorSphere.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<Guid?>("DefinedRoleId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime?>("EndedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
@@ -614,12 +617,76 @@ namespace TutorSphere.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("DefinedRoleId");
+
                     b.HasIndex("ExpertGroupId", "MemberRole");
 
                     b.HasIndex("ExpertGroupId", "UserId")
                         .IsUnique();
 
                     b.ToTable("ExpertGroupMembersSet");
+                });
+
+            modelBuilder.Entity("TutorSphere.Domain.Entities.ExpertGroupDefinedRole", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("BadgeColor")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid>("ExpertGroupId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("PermissionsJson")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<bool>("SuperAdminOnly")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("SystemKey")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpertGroupId", "NormalizedName")
+                        .IsUnique();
+
+                    b.HasIndex("ExpertGroupId", "SystemKey")
+                        .IsUnique()
+                        .HasFilter("\"SystemKey\" IS NOT NULL");
+
+                    b.ToTable("ExpertGroupDefinedRolesSet");
                 });
 
             modelBuilder.Entity("TutorSphere.Domain.Entities.ExpertMembershipInvite", b =>
@@ -2932,8 +2999,26 @@ namespace TutorSphere.Infrastructure.Migrations
 
             modelBuilder.Entity("TutorSphere.Domain.Entities.ExpertGroupMember", b =>
                 {
+                    b.HasOne("TutorSphere.Domain.Entities.ExpertGroupDefinedRole", "DefinedRole")
+                        .WithMany()
+                        .HasForeignKey("DefinedRoleId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("TutorSphere.Domain.Entities.ExpertGroup", "ExpertGroup")
                         .WithMany("Members")
+                        .HasForeignKey("ExpertGroupId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("DefinedRole");
+
+                    b.Navigation("ExpertGroup");
+                });
+
+            modelBuilder.Entity("TutorSphere.Domain.Entities.ExpertGroupDefinedRole", b =>
+                {
+                    b.HasOne("TutorSphere.Domain.Entities.ExpertGroup", "ExpertGroup")
+                        .WithMany("DefinedRoles")
                         .HasForeignKey("ExpertGroupId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -3408,6 +3493,8 @@ namespace TutorSphere.Infrastructure.Migrations
 
             modelBuilder.Entity("TutorSphere.Domain.Entities.ExpertGroup", b =>
                 {
+                    b.Navigation("DefinedRoles");
+
                     b.Navigation("ManagerMandates");
 
                     b.Navigation("Members");

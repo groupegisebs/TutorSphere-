@@ -22,6 +22,7 @@ public class ExpertMembershipController(
     private string? UserId => User.FindFirstValue(ClaimTypes.NameIdentifier);
     private Guid? ActAsGroupId => GroupAdminActAs.ReadGroupId(Request);
     private bool AsPlatformActAs => groupAccess.IsPlatformAdmin(User) && ActAsGroupId.HasValue;
+    private bool CanManageRestrictedRoles => groupAccess.IsPlatformAdmin(User);
 
     private const string ManagerOrPlatform =
         $"{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}";
@@ -141,7 +142,8 @@ public class ExpertMembershipController(
         if (request is null) return BadRequest(new { error = "Requête invalide." });
         try
         {
-            await memberAdmin.UpdateRoleAsync(UserId, userId, request, ct, AsPlatformActAs, ActAsGroupId);
+            await memberAdmin.UpdateRoleAsync(
+                UserId, userId, request, ct, AsPlatformActAs || CanManageRestrictedRoles, ActAsGroupId);
             return Ok(new { message = "Rôle mis à jour." });
         }
         catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
@@ -154,7 +156,8 @@ public class ExpertMembershipController(
         if (UserId is null) return Unauthorized();
         try
         {
-            return Ok(await memberAdmin.ListDefinedRolesAsync(UserId, ct, AsPlatformActAs, ActAsGroupId));
+            return Ok(await memberAdmin.ListDefinedRolesAsync(
+                UserId, ct, AsPlatformActAs || CanManageRestrictedRoles, ActAsGroupId));
         }
         catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
     }
@@ -165,10 +168,11 @@ public class ExpertMembershipController(
         [FromBody] CreateGroupDefinedRoleRequest? request, CancellationToken ct)
     {
         if (UserId is null) return Unauthorized();
-        if (request is null) return BadRequest(new { error = "Requête invalite." });
+        if (request is null) return BadRequest(new { error = "Requête invalide." });
         try
         {
-            return Ok(await memberAdmin.CreateDefinedRoleAsync(UserId, request, ct, AsPlatformActAs, ActAsGroupId));
+            return Ok(await memberAdmin.CreateDefinedRoleAsync(
+                UserId, request, ct, AsPlatformActAs || CanManageRestrictedRoles, ActAsGroupId));
         }
         catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
     }
