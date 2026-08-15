@@ -12,23 +12,34 @@ umask 077
 : "${PAYGATEWAY_BASE_URL:?PAYGATEWAY_BASE_URL requis}"
 : "${PAYGATEWAY_API_KEY:?PAYGATEWAY_API_KEY requis}"
 
+# docker-compose (v1) interpole $VAR dans .env. Un $ littéral dans un secret
+# est vu comme une variable vide → PostgreSQL / JWT cassés, API unhealthy.
+# $$ est restauré en $ à la lecture Compose.
+escape_compose_env() {
+  printf '%s' "$1" | sed 's/\$/$$/g'
+}
+
+put() {
+  printf '%s=%s\n' "$1" "$(escape_compose_env "$2")"
+}
+
 {
   printf 'ASPNETCORE_ENVIRONMENT=Production\n'
-  printf 'CONNECTIONSTRINGS__DEFAULTCONNECTION=%s\n' "${CONNECTION_STRING}"
-  printf 'JWT__KEY=%s\n' "${JWT_KEY}"
-  printf 'JWT__ISSUER=%s\n' "${JWT__ISSUER:-TutorSphere}"
-  printf 'JWT__AUDIENCE=%s\n' "${JWT__AUDIENCE:-TutorSphere}"
-  printf 'PAYGATEWAY__BASEURL=%s\n' "${PAYGATEWAY_BASE_URL}"
-  printf 'PAYGATEWAY__APPCODE=%s\n' "${PAYGATEWAY_APP_CODE:-TUTORSPHERE}"
-  printf 'PAYGATEWAY__APIKEY=%s\n' "${PAYGATEWAY_API_KEY}"
+  put CONNECTIONSTRINGS__DEFAULTCONNECTION "${CONNECTION_STRING}"
+  put JWT__KEY "${JWT_KEY}"
+  put JWT__ISSUER "${JWT__ISSUER:-TutorSphere}"
+  put JWT__AUDIENCE "${JWT__AUDIENCE:-TutorSphere}"
+  put PAYGATEWAY__BASEURL "${PAYGATEWAY_BASE_URL}"
+  put PAYGATEWAY__APPCODE "${PAYGATEWAY_APP_CODE:-TUTORSPHERE}"
+  put PAYGATEWAY__APIKEY "${PAYGATEWAY_API_KEY}"
   # true = Stripe Test (X-Stripe-Env: DEV) ; false = Stripe Live (pas de header)
   # Défaut true tant que les paiements réels ne sont pas activés.
-  printf 'PAYGATEWAY__USESANDBOX=%s\n' "${PAYGATEWAY_USE_SANDBOX:-true}"
-  printf 'EMAIL__BASEURL=%s\n' "${EMAIL_BASE_URL:-https://gisemailsender.gisebs.com}"
-  printf 'EMAIL__APIKEY=%s\n' "${EMAIL_API_KEY:-}"
-  printf 'EMAIL__CLIENTCODE=%s\n' "${EMAIL_CLIENT_CODE:-TUTORSPHERE}"
-  printf 'APIBASEURL=%s\n' "${API_BASE_URL:-https://api.tutorsphere.gisebs.com}"
-  printf 'WEBBASEURL=%s\n' "${WEB_BASE_URL:-https://tutorsphere.gisebs.com}"
+  put PAYGATEWAY__USESANDBOX "${PAYGATEWAY_USE_SANDBOX:-true}"
+  put EMAIL__BASEURL "${EMAIL_BASE_URL:-https://gisemailsender.gisebs.com}"
+  put EMAIL__APIKEY "${EMAIL_API_KEY:-}"
+  put EMAIL__CLIENTCODE "${EMAIL_CLIENT_CODE:-TUTORSPHERE}"
+  put APIBASEURL "${API_BASE_URL:-https://api.tutorsphere.gisebs.com}"
+  put WEBBASEURL "${WEB_BASE_URL:-https://tutorsphere.gisebs.com}"
   printf 'INTERNALAPIBASEURL=http://127.0.0.1:%s\n' "${API_PORT:-55099}"
   printf 'API_PORT=%s\n' "${API_PORT:-55099}"
   printf 'WEB_PORT=%s\n' "${WEB_PORT:-55010}"
@@ -40,11 +51,11 @@ umask 077
   _bs_password="${SEED_BOOTSTRAP_ADMIN_PASSWORD:-}"
   [ -z "$_bs_email" ] && _bs_email="tutorsphere@gisebs.com"
   [ -z "$_bs_password" ] && _bs_password="Mcd!123456789"
-  printf 'SEED__BOOTSTRAPADMIN__ENABLED=%s\n' "$_bs_enabled"
-  printf 'SEED__BOOTSTRAPADMIN__EMAIL=%s\n' "$_bs_email"
-  printf 'SEED__BOOTSTRAPADMIN__PASSWORD=%s\n' "$_bs_password"
-  printf 'SEED__BOOTSTRAPADMIN__FIRSTNAME=%s\n' "${SEED_BOOTSTRAP_ADMIN_FIRSTNAME:-Admin}"
-  printf 'SEED__BOOTSTRAPADMIN__LASTNAME=%s\n' "${SEED_BOOTSTRAP_ADMIN_LASTNAME:-TutorSphere}"
+  put SEED__BOOTSTRAPADMIN__ENABLED "$_bs_enabled"
+  put SEED__BOOTSTRAPADMIN__EMAIL "$_bs_email"
+  put SEED__BOOTSTRAPADMIN__PASSWORD "$_bs_password"
+  put SEED__BOOTSTRAPADMIN__FIRSTNAME "${SEED_BOOTSTRAP_ADMIN_FIRSTNAME:-Admin}"
+  put SEED__BOOTSTRAPADMIN__LASTNAME "${SEED_BOOTSTRAP_ADMIN_LASTNAME:-TutorSphere}"
 } >> "$OUT"
 
 chmod 600 "$OUT"

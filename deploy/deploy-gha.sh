@@ -245,7 +245,15 @@ echo "Build images Docker..."
 compose build --pull
 
 echo "Démarrage conteneurs..."
-compose up -d --remove-orphans
+# --no-deps : ne pas bloquer sur depends_on: service_healthy (API peut migrer ~1 min).
+# Le healthcheck HTTP ci-dessous attend /health et dump les logs en cas d'échec.
+if ! compose up -d --no-deps --remove-orphans api web; then
+  echo "::error::docker compose up a échoué"
+  compose logs --tail=80 api web 2>/dev/null || true
+  docker logs tutorsphere-api --tail=80 2>/dev/null || true
+  docker inspect tutorsphere-api --format '{{.State.Status}} {{.State.ExitCode}} {{.State.Error}}' 2>/dev/null || true
+  exit 1
+fi
 
 compose ps
 REMOTE_DEPLOY
@@ -267,11 +275,13 @@ resolve_compose() {
 }
 
 COMPOSE_BIN=\$(resolve_compose)
+export COMPOSE_PROJECT_NAME='${COMPOSE_PROJECT_NAME}'
+cd '${APP_DIR}'
 compose() {
   if [[ "\${COMPOSE_BIN}" == "docker compose" ]]; then
-    docker compose -f '${APP_DIR}/docker-compose.yml' -f '${APP_DIR}/docker-compose.prod.yml' "\$@"
+    docker compose -f docker-compose.yml -f docker-compose.prod.yml "\$@"
   else
-    docker-compose -f '${APP_DIR}/docker-compose.yml' -f '${APP_DIR}/docker-compose.prod.yml' "\$@"
+    docker-compose -f docker-compose.yml -f docker-compose.prod.yml "\$@"
   fi
 }
 
@@ -298,9 +308,8 @@ for i in \$(seq 1 45); do
   sleep 2
 done
 echo "::error::TutorSphere ne répond pas sur /health après 90 s" >&2
-cd '${APP_DIR}'
-export COMPOSE_PROJECT_NAME='${COMPOSE_PROJECT_NAME}'
-compose logs --tail=40 2>/dev/null || true
+compose logs --tail=80 api web 2>/dev/null || true
+docker logs tutorsphere-api --tail=80 2>/dev/null || true
 exit 1
 REMOTE_HEALTH
 

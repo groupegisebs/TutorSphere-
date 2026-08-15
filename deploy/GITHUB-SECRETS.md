@@ -197,6 +197,8 @@ Réponse attendue sur `/api/auth/token` : **200** (token) ou **401** (mauvaise c
 | `unknown shorthand flag: 'f'` | Plugin `docker compose` absent — Docker interprète `-f` comme option de `docker` | Le script détecte automatiquement `docker-compose` (tiret) ; installer l’un des deux sur le serveur |
 | **502** sur `tutorsphere.gisebs.com` | NPM pointe vers `:5010` (dev) au lieu de **`:55010`** | NPM → Forward `172.17.0.1:55010` (Web) et `:55099` (API) |
 | Healthcheck 127.0.0.1 OK, 172.17.0.1 KO | Apps écoutent sur `127.0.0.1` seulement | `docker-compose.prod.yml` doit avoir `ASPNETCORE_URLS=http://0.0.0.0:55010` (déjà le cas) |
+| `The "…" variable is not set` + API **unhealthy** | Un `$` dans un secret (mot de passe PG, JWT, clé API) est interpolé par docker-compose | `build-app-env.sh` échappe en `$$` — relancer **Deploy Production** |
+| `compose ps` vide après échec | Mauvais `COMPOSE_PROJECT_NAME` (répertoire `app` vs projet `tutorsphere`) | Exporter `COMPOSE_PROJECT_NAME=tutorsphere` puis `docker-compose ps -a` |
 
 ---
 

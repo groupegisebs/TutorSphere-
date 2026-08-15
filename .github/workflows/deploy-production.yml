@@ -298,16 +298,22 @@ jobs:
 
       - name: Container status
         if: always() && steps.ssh.outcome == 'success'
+        env:
+          COMPOSE_PROJECT_NAME: tutorsphere
         run: |
           ssh -i "$SSH_KEY_PATH" -p "$SSH_PORT" -o BatchMode=yes "${SSH_USER}@${SSH_HOST}" bash -s <<REMOTE
           set -eu
           cd "${APP_ROOT}/app"
+          export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-tutorsphere}"
           if docker compose version >/dev/null 2>&1; then
-            docker compose -f docker-compose.yml -f docker-compose.prod.yml ps || true
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml ps -a || true
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml logs --tail=80 api web || true
           elif command -v docker-compose >/dev/null 2>&1; then
-            docker-compose -f docker-compose.yml -f docker-compose.prod.yml ps || true
+            docker-compose -f docker-compose.yml -f docker-compose.prod.yml ps -a || true
+            docker-compose -f docker-compose.yml -f docker-compose.prod.yml logs --tail=80 api web || true
           else
             echo "Docker Compose introuvable sur le serveur"
-            ls -la . || true
+            docker ps -a --filter name=tutorsphere || true
+            docker logs tutorsphere-api --tail=80 2>/dev/null || true
           fi
           REMOTE
