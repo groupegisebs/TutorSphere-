@@ -14,13 +14,18 @@ public interface IPlatformPromoService
     Task<IReadOnlyList<PlatformPromoCodeDto>> ListAsync(CancellationToken ct = default);
     Task<IReadOnlyList<PlatformPromoCodeDto>> CreateAsync(CreatePlatformPromoCodeRequest request, CancellationToken ct = default);
     Task<PlatformPromoCodeDto> SetActiveAsync(Guid id, bool isActive, CancellationToken ct = default);
-    Task<PlatformLicensePaymentStatusDto> RedeemForOwnerAsync(string ownerUserId, string code, CancellationToken ct = default);
+    Task<PlatformLicensePaymentStatusDto> RedeemForOwnerAsync(
+        string ownerUserId,
+        string code,
+        bool autoRenewAtSource = false,
+        CancellationToken ct = default);
     Task<PlatformLicensePaymentStatusDto> RedeemForTenantAsync(
         Guid tenantId,
         string code,
         string actorUserId,
         bool skipRenewalWindow = false,
         bool createIfMissing = false,
+        bool autoRenewAtSource = false,
         CancellationToken ct = default);
 }
 
@@ -187,12 +192,20 @@ public sealed class PlatformPromoService(IApplicationDbContext db) : IPlatformPr
     public async Task<PlatformLicensePaymentStatusDto> RedeemForOwnerAsync(
         string ownerUserId,
         string code,
+        bool autoRenewAtSource = false,
         CancellationToken ct = default)
     {
         var tenant = db.Tenants.FirstOrDefault(t => t.OwnerUserId == ownerUserId)
             ?? throw new InvalidOperationException("Aucun profil enseignant associé à ce compte.");
 
-        return await RedeemForTenantAsync(tenant.Id, code, ownerUserId, skipRenewalWindow: false, createIfMissing: false, ct);
+        return await RedeemForTenantAsync(
+            tenant.Id,
+            code,
+            ownerUserId,
+            skipRenewalWindow: false,
+            createIfMissing: false,
+            autoRenewAtSource: autoRenewAtSource,
+            ct);
     }
 
     public async Task<PlatformLicensePaymentStatusDto> RedeemForTenantAsync(
@@ -201,6 +214,7 @@ public sealed class PlatformPromoService(IApplicationDbContext db) : IPlatformPr
         string actorUserId,
         bool skipRenewalWindow,
         bool createIfMissing,
+        bool autoRenewAtSource = false,
         CancellationToken ct = default)
     {
         var tenant = db.Tenants.FirstOrDefault(t => t.Id == tenantId)
@@ -249,6 +263,7 @@ public sealed class PlatformPromoService(IApplicationDbContext db) : IPlatformPr
         LicenseFeeWithholding.GrantLicenseYears(tenant, promo.LicenseYears, now);
         tenant.LicenseFeeWithholdingRemainingUsd = 0;
         tenant.LicenseSettlementKind = LicenseFeeWithholding.SettlementPromo;
+        tenant.LicenseAutoRenewAtSource = autoRenewAtSource;
 
         promo.RedeemedAt = now;
         promo.RedeemedByTenantId = tenant.Id;

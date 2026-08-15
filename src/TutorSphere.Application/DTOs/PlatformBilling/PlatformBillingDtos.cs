@@ -14,12 +14,14 @@ public record PlatformLicenseStatusDto(
     decimal AnnualFee,
     string Currency,
     bool RenewalSoon,
-    decimal LicenseFeeWithholdingRemainingUsd = 0m);
+    decimal LicenseFeeWithholdingRemainingUsd = 0m,
+    bool LicenseAutoRenewAtSource = false);
 
 public record CreatePlatformLicenseCheckoutRequest(
     string SuccessUrl,
     string CancelUrl,
-    string? PaymentMethod = "card");
+    string? PaymentMethod = "card",
+    bool AutoRenewAtSource = false);
 
 public record PlatformLicenseCheckoutResponse(
     Guid PaymentId,

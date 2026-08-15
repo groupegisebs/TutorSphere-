@@ -206,7 +206,8 @@ public class ExpertApprovalsController : ControllerBase
                 asPlatformAdmin: asPlatform,
                 actAsGroupId: ActAsGroupId,
                 licenseSettlement: request?.LicenseSettlement,
-                promoCode: request?.PromoCode);
+                promoCode: request?.PromoCode,
+                autoRenewAtSource: request?.AutoRenewAtSource ?? false);
             return Ok(new { message = "Enseignant approuvé." });
         }
         catch (InvalidOperationException ex)

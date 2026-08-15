@@ -41,6 +41,12 @@ public class Tenant : BaseEntity
     /// <summary>pay | promo | withhold — dernier mode d'activation de session.</summary>
     public string? LicenseSettlementKind { get; set; }
 
+    /// <summary>
+    /// Renouvellement annuel automatique par retenue à la source (10 $ USD)
+    /// sur les paiements dus à l'enseignant, notamment après un code promo.
+    /// </summary>
+    public bool LicenseAutoRenewAtSource { get; set; }
+
     /// <summary>Dernier e-mail « renouvellement dans 1 mois » envoyé pour la licence plateforme.</summary>
     public DateTime? LicenseRenewalReminderSentAt { get; set; }
 

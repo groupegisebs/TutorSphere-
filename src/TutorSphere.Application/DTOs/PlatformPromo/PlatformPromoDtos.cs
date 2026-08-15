@@ -23,4 +23,4 @@ public record CreatePlatformPromoCodeRequest(
 
 public record DeactivatePlatformPromoCodeRequest(bool IsActive);
 
-public record RedeemPlatformPromoRequest(string Code);
+public record RedeemPlatformPromoRequest(string Code, bool AutoRenewAtSource = false);

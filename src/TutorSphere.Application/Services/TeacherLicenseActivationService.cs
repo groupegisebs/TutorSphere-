@@ -9,7 +9,8 @@ namespace TutorSphere.Application.Services;
 
 public record ActivateTeacherSessionRequest(
     string Settlement,
-    string? PromoCode = null);
+    string? PromoCode = null,
+    bool AutoRenewAtSource = false);
 
 public interface ITeacherLicenseActivationService
 {
@@ -31,6 +32,7 @@ public interface ITeacherLicenseActivationService
         string? settlement,
         string? promoCode,
         bool asPlatformAdmin,
+        bool autoRenewAtSource = false,
         CancellationToken ct = default);
 
     /// <summary>Annule la retenue restante (licence payée ou code promo).</summary>
@@ -66,10 +68,11 @@ public sealed class TeacherLicenseActivationService(
                 actorUserId,
                 skipRenewalWindow: true,
                 createIfMissing: asPlatformAdmin,
+                autoRenewAtSource: request.AutoRenewAtSource,
                 ct);
 
         if (settlement is LicenseFeeWithholding.SettlementWithhold)
-            return await ActivateWithWithholdingAsync(tenantId, actorUserId, ct);
+            return await ActivateWithWithholdingAsync(tenantId, actorUserId, request.AutoRenewAtSource, ct);
 
         throw new InvalidOperationException(
             "Indiquez un code promo ou choisissez la retenue à la source (équivalent 10 $ USD).");
@@ -81,6 +84,7 @@ public sealed class TeacherLicenseActivationService(
         string? settlement,
         string? promoCode,
         bool asPlatformAdmin,
+        bool autoRenewAtSource = false,
         CancellationToken ct = default)
     {
         var kind = (settlement ?? LicenseFeeWithholding.SettlementPay).Trim().ToLowerInvariant();
@@ -90,7 +94,7 @@ public sealed class TeacherLicenseActivationService(
         await ActivateSessionAsync(
             tenantId,
             actorUserId,
-            new ActivateTeacherSessionRequest(kind, promoCode),
+            new ActivateTeacherSessionRequest(kind, promoCode, autoRenewAtSource),
             asPlatformAdmin,
             ct);
     }
@@ -110,6 +114,7 @@ public sealed class TeacherLicenseActivationService(
     private async Task<PlatformLicensePaymentStatusDto> ActivateWithWithholdingAsync(
         Guid tenantId,
         string actorUserId,
+        bool autoRenewAtSource,
         CancellationToken ct)
     {
         var tenant = db.Tenants.FirstOrDefault(t => t.Id == tenantId)
@@ -122,6 +127,7 @@ public sealed class TeacherLicenseActivationService(
             2,
             MidpointRounding.AwayFromZero);
         tenant.LicenseSettlementKind = LicenseFeeWithholding.SettlementWithhold;
+        tenant.LicenseAutoRenewAtSource = true;
 
         var payment = new PlatformLicensePayment
         {

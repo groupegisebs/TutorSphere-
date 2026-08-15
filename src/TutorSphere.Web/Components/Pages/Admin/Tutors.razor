@@ -196,6 +196,14 @@
                     {
                         <input class="form-control font-monospace text-uppercase" placeholder="TS-ABCD1234"
                                @bind="_activatePromo" />
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" id="adm-autorenew"
+                                   @bind="_autoRenewAtSource" />
+                            <label class="form-check-label" for="adm-autorenew">
+                                J’autorise le renouvellement annuel automatique par retenue à la source
+                            </label>
+                        </div>
+                        <p class="form-text">Chaque année, 10 $ USD sont prélevés sur les premiers paiements dus à l’enseignant.</p>
                     }
                 </div>
                 <div class="modal-footer">
@@ -222,6 +230,7 @@
     private AdminUserItem? _activateTarget;
     private string _activateSettlement = "promo";
     private string _activatePromo = "";
+    private bool _autoRenewAtSource = true;
     private bool _activateBusy;
     private List<AdminUserItem> _tutors = [];
 
@@ -330,6 +339,7 @@
         _activateTarget = tutor;
         _activateSettlement = "promo";
         _activatePromo = "";
+        _autoRenewAtSource = true;
         _errorMessage = null;
     }
 
@@ -353,7 +363,8 @@
             var result = await Api.PostWithErrorAsync<object>($"api/admin/tenants/{key}/activate-session", new
             {
                 settlement = _activateSettlement,
-                promoCode = _activatePromo
+                promoCode = _activatePromo,
+                autoRenewAtSource = _activateSettlement == "promo" && _autoRenewAtSource
             });
             if (result.Error is not null)
             {

@@ -61,6 +61,10 @@ public class PlatformBillingService(
                 "Votre licence est déjà payée. Complétez l'auto-formation pour activer votre session enseignant.");
         }
 
+        tenant.LicenseAutoRenewAtSource = request.AutoRenewAtSource;
+        tenant.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+
         return await paymentGateway.CreatePlatformLicenseCheckoutAsync(tenant.Id, request, ct);
     }
 
@@ -96,6 +100,18 @@ public class PlatformBillingService(
 
         foreach (var tenant in expired)
         {
+            if (tenant.LicenseAutoRenewAtSource)
+            {
+                LicenseFeeWithholding.GrantLicenseYears(tenant, 1, now);
+                tenant.LicenseFeeWithholdingRemainingUsd = decimal.Round(
+                    tenant.LicenseFeeWithholdingRemainingUsd + LicenseFeeWithholding.AnnualFeeUsd,
+                    2,
+                    MidpointRounding.AwayFromZero);
+                tenant.LicenseSettlementKind = LicenseFeeWithholding.SettlementWithhold;
+                tenant.UpdatedAt = now;
+                continue;
+            }
+
             tenant.Status = TenantStatus.AwaitingRenewal;
             tenant.IsPublicProfile = false;
             tenant.UpdatedAt = now;
@@ -188,6 +204,7 @@ public class PlatformBillingService(
             options.AnnualFeeCad,
             options.Currency,
             renewalSoon,
-            tenant.LicenseFeeWithholdingRemainingUsd);
+            tenant.LicenseFeeWithholdingRemainingUsd,
+            tenant.LicenseAutoRenewAtSource);
     }
 }

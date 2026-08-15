@@ -81,7 +81,13 @@
                         @L["Activate_PromoCta"]
                     </button>
                 </div>
-                <p class="small text-muted mb-0">@L["Activate_PromoHint"]</p>
+                <p class="small text-muted mb-2">@L["Activate_PromoHint"]</p>
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="activate-autorenew"
+                           disabled="@_busy" @bind="_autoRenewAtSource" />
+                    <label class="form-check-label" for="activate-autorenew">@L["Activate_AutoRenewLabel"]</label>
+                </div>
+                <p class="form-text mt-0">@L["Activate_AutoRenewHint"]</p>
 
                 <p class="small text-muted mt-3 mb-0 text-center">@L["Activate_SecurePay"]</p>
             </div>
@@ -91,6 +97,7 @@
 
 <PaymentCheckoutModal @bind-Visible="_payModalVisible"
                       IsPlatformLicense="true"
+                      PayerName="@(_status?.SchoolName)"
                       Amount="@(_status?.AnnualFee ?? 10m)"
                       Currency="@(_status?.Currency ?? "USD")"
                       SuccessUrl="@_paySuccessUrl"
@@ -105,6 +112,7 @@
     private bool _renewalMode;
     private string? _error;
     private string _promoCode = "";
+    private bool _autoRenewAtSource;
     private bool _payModalVisible;
     private string _paySuccessUrl = "";
     private string _payCancelUrl = "";
@@ -197,7 +205,7 @@
         {
             var result = await Api.PostWithErrorAsync<PlatformLicensePaymentStatusVm>(
                 "api/platform-billing/redeem-promo",
-                new { code = _promoCode.Trim() });
+                new { code = _promoCode.Trim(), autoRenewAtSource = _autoRenewAtSource });
 
             if (result.Value is null)
             {

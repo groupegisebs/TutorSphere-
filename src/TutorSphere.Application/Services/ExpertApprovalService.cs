@@ -37,7 +37,8 @@ public interface IExpertApprovalService
         bool asPlatformAdmin = false,
         Guid? actAsGroupId = null,
         string? licenseSettlement = null,
-        string? promoCode = null);
+        string? promoCode = null,
+        bool autoRenewAtSource = false);
     Task RejectAsync(
         Guid tenantId,
         string expertUserId,
@@ -388,7 +389,8 @@ public class ExpertApprovalService(
         bool asPlatformAdmin = false,
         Guid? actAsGroupId = null,
         string? licenseSettlement = null,
-        string? promoCode = null)
+        string? promoCode = null,
+        bool autoRenewAtSource = false)
     {
         var (tenant, group) = await RequireReviewableContextAsync(
             tenantId, expertUserId, ct, asPlatformAdmin, actAsGroupId);
@@ -404,7 +406,7 @@ public class ExpertApprovalService(
             throw new InvalidOperationException("Saisissez le code promo pour activer la session.");
 
         await licenseActivation.ApplySettlementOnApprovalAsync(
-            tenant.Id, expertUserId, settlement, promoCode, asPlatformAdmin, ct);
+            tenant.Id, expertUserId, settlement, promoCode, asPlatformAdmin, autoRenewAtSource, ct);
 
         tenant.ExpertApprovalStatus = ExpertApprovalStatus.Approved;
         tenant.ApprovedByExpertGroupId = group.Id;

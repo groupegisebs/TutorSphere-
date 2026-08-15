@@ -235,8 +235,16 @@
                             </div>
                             @if (_licenseSettlement == "promo")
                             {
-                                <input class="form-control font-monospace text-uppercase mb-3" placeholder="Code promo"
+                                <input class="form-control font-monospace text-uppercase mb-2" placeholder="Code promo"
                                        @bind="_licensePromo" />
+                                <div class="form-check mb-1">
+                                    <input class="form-check-input" type="checkbox" id="rev-autorenew"
+                                           @bind="_autoRenewAtSource" />
+                                    <label class="form-check-label" for="rev-autorenew">
+                                        J’autorise le renouvellement annuel automatique par retenue à la source
+                                    </label>
+                                </div>
+                                <p class="form-text mb-3">Chaque année, 10 $ USD sont prélevés sur les premiers paiements dus à l’enseignant.</p>
                             }
                             <div class="d-grid gap-2">
                                 <button type="button" class="cc-btn cc-btn-primary" disabled="@_busy" @onclick="ApproveAsync">
@@ -292,6 +300,7 @@
     private string? _notes;
     private string _licenseSettlement = "pay";
     private string _licensePromo = "";
+    private bool _autoRenewAtSource = true;
 
     private string _inviteEmail = "";
     private string _inviteFirstName = "";
@@ -330,7 +339,8 @@
             {
                 notes = _notes,
                 licenseSettlement = _licenseSettlement,
-                promoCode = _licensePromo
+                promoCode = _licensePromo,
+                autoRenewAtSource = _licenseSettlement == "promo" && _autoRenewAtSource
             });
             if (ok is null) { _error = L["Expert_ActionFailed"]; return; }
             _success = L["Expert_ApproveSuccess"];

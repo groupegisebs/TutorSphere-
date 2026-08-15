@@ -463,6 +463,14 @@
                                                 {
                                                     <input class="form-control form-control-sm font-monospace text-uppercase mb-2"
                                                            placeholder="Code promo" @bind="_sessionPromo" />
+                                                    <div class="form-check mb-1">
+                                                        <input class="form-check-input" type="checkbox" id="t-autorenew"
+                                                               @bind="_autoRenewAtSource" />
+                                                        <label class="form-check-label" for="t-autorenew">
+                                                            Renouvellement automatique par retenue à la source
+                                                        </label>
+                                                    </div>
+                                                    <p class="form-text mb-2">Chaque année, 10 $ USD sont prélevés sur les premiers paiements dus à l’enseignant.</p>
                                                 }
                                                 <button type="button" class="cc-btn cc-btn-primary btn-sm" disabled="@_sessionBusy" @onclick="ActivateSessionAsync">
                                                     Activer / renouveler la session
@@ -824,6 +832,7 @@
     private string? _schoolSuccess;
     private string _sessionSettlement = "promo";
     private string _sessionPromo = "";
+    private bool _autoRenewAtSource = true;
     private bool _sessionBusy;
     private bool CanActivateSession =>
         Auth.IsInRole("GroupManager") || Auth.IsInRole("SuperAdmin") || Auth.IsInRole("PlatformAdmin") || Auth.IsActingAsGroupAdmin;
@@ -1288,7 +1297,8 @@
             var result = await Api.PostWithErrorAsync<object>($"api/expert/teachers/{tenantId}/activate-session", new
             {
                 settlement = _sessionSettlement,
-                promoCode = _sessionPromo
+                promoCode = _sessionPromo,
+                autoRenewAtSource = _sessionSettlement == "promo" && _autoRenewAtSource
             });
             if (result.Error is not null)
             {

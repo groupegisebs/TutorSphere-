@@ -5,34 +5,20 @@
 @if (Visible)
 {
     <div class="modal fade show d-block" tabindex="-1" role="dialog" aria-modal="true">
-        <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-dialog modal-dialog-centered modal-lg pay-checkout-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">@L["PayMethod_Title"]</h5>
+                    <div>
+                        <h5 class="modal-title">@L["PayMethod_Title"]</h5>
+                        <p class="pay-checkout-secure mb-0">
+                            <i class="bi bi-shield-check" aria-hidden="true"></i>
+                            @L["PayMethod_SecureBy"]
+                        </p>
+                    </div>
                     <button type="button" class="btn-close" disabled="@_busy" @onclick="CloseAsync" aria-label="@L["PayMethod_Cancel"]"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="mb-3">
-                        @if (_taxQuote is not null && PaymentMethodCodes.IsMobileMoney(_method))
-                        {
-                            <span class="d-block text-muted small">HT : @_taxQuote.AmountExclusive.ToString("N0") @_taxQuote.Currency</span>
-                            @if (_taxQuote.TaxRatePercent == 0)
-                            {
-                                <span class="d-block text-muted small">@_taxQuote.TaxName : exonéré (0 %)</span>
-                            }
-                            else
-                            {
-                                <span class="d-block text-muted small">@_taxQuote.TaxName (@_taxQuote.TaxRatePercent.ToString("0.##") %) : @_taxQuote.TaxAmount.ToString("N0") @_taxQuote.Currency</span>
-                            }
-                            <strong>TTC : @_taxQuote.AmountInclusive.ToString("N0") @_taxQuote.Currency</strong>
-                        }
-                        else
-                        {
-                            <strong class="text-muted">@FormatAmount()</strong>
-                        }
-                    </p>
-
-                    @if (!string.IsNullOrEmpty(_error))
+                    @if (!string.IsNullOrEmpty(_error) && _phase != Phase.Failed)
                     {
                         <div class="alert alert-danger py-2">@_error</div>
                     }
@@ -65,152 +51,242 @@
                             @(_error ?? L["PayMethod_MmFailed"])
                         </div>
                     }
-                        else
-                        {
-                            @if (IsPlatformLicense)
-                            {
-                                <div class="mb-3">
-                                    <label class="form-label" for="pay-promo">@L["Activate_PromoLabel"]</label>
-                                    <div class="input-group">
-                                        <input id="pay-promo" class="form-control font-monospace text-uppercase"
-                                               placeholder="@L["Activate_PromoPlaceholder"]"
-                                               disabled="@_busy"
-                                               @bind="_promoCode" @bind:event="oninput" />
-                                        <button type="button" class="btn btn-outline-primary"
-                                                disabled="@(_busy || string.IsNullOrWhiteSpace(_promoCode))"
-                                                @onclick="RedeemPromoAsync">
-                                            @L["Activate_PromoCta"]
-                                        </button>
+                    else
+                    {
+                        <div class="pay-checkout-grid">
+                            <div>
+                                @if (IsPlatformLicense)
+                                {
+                                    <div class="mb-3">
+                                        <label class="form-label" for="pay-promo">@L["Activate_PromoLabel"]</label>
+                                        <div class="input-group">
+                                            <input id="pay-promo" class="form-control font-monospace text-uppercase"
+                                                   placeholder="@L["Activate_PromoPlaceholder"]"
+                                                   disabled="@_busy"
+                                                   @bind="_promoCode" @bind:event="oninput" />
+                                            <button type="button" class="btn btn-outline-primary"
+                                                    disabled="@(_busy || string.IsNullOrWhiteSpace(_promoCode))"
+                                                    @onclick="RedeemPromoAsync">
+                                                @L["Activate_PromoCta"]
+                                            </button>
+                                        </div>
+                                        <div class="form-text">@L["Activate_PromoHint"]</div>
                                     </div>
-                                    <div class="form-text">@L["Activate_PromoHint"]</div>
+                                    <div class="form-check pay-autorenew mb-3">
+                                        <input class="form-check-input" type="checkbox" id="pay-autorenew-promo"
+                                               disabled="@_busy"
+                                               @bind="_autoRenewAtSource" />
+                                        <label class="form-check-label" for="pay-autorenew-promo">
+                                            @L["Activate_AutoRenewLabel"]
+                                            <i class="bi bi-info-circle ms-1" title="@L["Activate_AutoRenewHint"]"></i>
+                                        </label>
+                                    </div>
+                                    <p class="small text-muted text-center">— @L["PayMethod_OrPayNow"] —</p>
+                                }
+
+                                <div class="pay-method-list mb-3" role="radiogroup" aria-label="@L["PayMethod_Title"]">
+                                    <button type="button"
+                                            class="pay-method-option @FamilyClass("card")"
+                                            disabled="@_busy"
+                                            role="radio"
+                                            aria-checked="@(_family == "card" ? "true" : "false")"
+                                            @onclick='() => SelectFamilyAsync("card")'>
+                                        <span class="pay-method-radio" aria-hidden="true"></span>
+                                        <span class="pay-method-icon pay-method-icon--card" aria-hidden="true">@CardIcon</span>
+                                        <span class="pay-method-label">@L["PayMethod_Card"]</span>
+                                        <span class="pay-method-brands" aria-hidden="true">
+                                            <span class="pay-method-brand">Visa</span>
+                                            <span class="pay-method-brand">Mastercard</span>
+                                            <span class="pay-method-brand">Amex</span>
+                                        </span>
+                                    </button>
+                                    <button type="button"
+                                            class="pay-method-option @FamilyClass("paypal")"
+                                            disabled="@_busy"
+                                            role="radio"
+                                            aria-checked="@(_family == "paypal" ? "true" : "false")"
+                                            @onclick='() => SelectFamilyAsync("paypal")'>
+                                        <span class="pay-method-radio" aria-hidden="true"></span>
+                                        <span class="pay-method-icon pay-method-icon--paypal" aria-hidden="true">@PayPalIcon</span>
+                                        <span class="pay-method-label">@L["PayMethod_PayPal"]</span>
+                                    </button>
+                                    @if (ShowMobileMoney)
+                                    {
+                                        <div class="@(_family == "momo" ? "pay-method-block is-selected" : "")">
+                                            <button type="button"
+                                                    class="pay-method-option @FamilyClass("momo")"
+                                                    disabled="@_busy"
+                                                    role="radio"
+                                                    aria-checked="@(_family == "momo" ? "true" : "false")"
+                                                    @onclick='() => SelectFamilyAsync("momo")'>
+                                                <span class="pay-method-radio" aria-hidden="true"></span>
+                                                <span class="pay-method-icon pay-method-icon--momo" aria-hidden="true">@OrangeIcon</span>
+                                                <span class="pay-method-label">@L["PayMethod_MobileMoney"]</span>
+                                                <span class="pay-method-brands" aria-hidden="true">
+                                                    <span class="pay-method-brand">OM</span>
+                                                    <span class="pay-method-brand">MTN</span>
+                                                    <span class="pay-method-brand">Airtel</span>
+                                                    <span class="pay-method-brand">Wave</span>
+                                                </span>
+                                            </button>
+                                            @if (_family == "momo")
+                                            {
+                                                <div class="pay-momo-panel">
+                                                    <div class="mb-2">
+                                                        <label class="form-label" for="mm-country">@L["PayMethod_Country"]</label>
+                                                        <select id="mm-country"
+                                                                class="form-select"
+                                                                disabled="@_busy"
+                                                                @bind="_billingCountry"
+                                                                @bind:after="OnBillingCountryChangedAsync">
+                                                            @if (_africaRates.Count == 0)
+                                                            {
+                                                                <option value="CM">Cameroun</option>
+                                                            }
+                                                            else
+                                                            {
+                                                                @foreach (var rate in _africaRates)
+                                                                {
+                                                                    <option value="@rate.CountryCode">@rate.CountryName</option>
+                                                                }
+                                                            }
+                                                        </select>
+                                                    </div>
+                                                    <div class="mb-2">
+                                                        <label class="form-label" for="mm-operator">@L["PayMethod_Operator"]</label>
+                                                        <select id="mm-operator"
+                                                                class="form-select"
+                                                                disabled="@_busy"
+                                                                @bind="_momoOperator"
+                                                                @bind:after="OnOperatorChanged">
+                                                            <option value="@PaymentMethodCodes.OrangeMoney">Orange Money</option>
+                                                            <option value="@PaymentMethodCodes.MtnMomo">MTN MoMo</option>
+                                                            <option value="airtel">Airtel Money</option>
+                                                            <option value="wave">Wave</option>
+                                                        </select>
+                                                    </div>
+                                                    <div class="mb-0">
+                                                        <label class="form-label" for="mm-phone">@L["PayMethod_PhoneLabel"]</label>
+                                                        <div class="input-group">
+                                                            <span class="input-group-text">@_dialCode</span>
+                                                            <input id="mm-phone"
+                                                                   class="form-control"
+                                                                   type="tel"
+                                                                   inputmode="numeric"
+                                                                   maxlength="9"
+                                                                   placeholder="6 .. .. .. .."
+                                                                   disabled="@_busy"
+                                                                   @bind="_phoneLocal"
+                                                                   @bind:event="oninput" />
+                                                        </div>
+                                                        <div class="form-text">@L["PayMethod_MmConfirmHint"]</div>
+                                                    </div>
+                                                </div>
+                                            }
+                                        </div>
+                                    }
                                 </div>
-                                <p class="small text-muted text-center">— ou payer maintenant —</p>
-                            }
-                            <div class="pay-method-list mb-3" role="radiogroup" aria-label="@L["PayMethod_Title"]">
-                            <button type="button"
-                                    class="pay-method-option @SelectedClass(PaymentMethodCodes.Card)"
-                                    disabled="@_busy"
-                                    role="radio"
-                                    aria-checked="@(_method == PaymentMethodCodes.Card ? "true" : "false")"
-                                    @onclick='() => SelectMethod(PaymentMethodCodes.Card)'>
-                                <span class="pay-method-icon pay-method-icon--card" aria-hidden="true">@CardIcon</span>
-                                <span class="pay-method-label">@L["PayMethod_Card"]</span>
-                            </button>
-                            <button type="button"
-                                    class="pay-method-option @SelectedClass(PaymentMethodCodes.PayPal)"
-                                    disabled="@_busy"
-                                    role="radio"
-                                    aria-checked="@(_method == PaymentMethodCodes.PayPal ? "true" : "false")"
-                                    @onclick='() => SelectMethod(PaymentMethodCodes.PayPal)'>
-                                <span class="pay-method-icon pay-method-icon--paypal" aria-hidden="true">@PayPalIcon</span>
-                                <span class="pay-method-label">@L["PayMethod_PayPal"]</span>
-                            </button>
-                            @if (ShowMobileMoney)
-                            {
-                                <button type="button"
-                                        class="pay-method-option @SelectedClass(PaymentMethodCodes.OrangeMoney)"
-                                        disabled="@_busy"
-                                        role="radio"
-                                        aria-checked="@(_method == PaymentMethodCodes.OrangeMoney ? "true" : "false")"
-                                        @onclick='() => SelectMethod(PaymentMethodCodes.OrangeMoney)'>
-                                    <span class="pay-method-icon pay-method-icon--momo" aria-hidden="true">@OrangeIcon</span>
-                                    <span class="pay-method-label">@L["PayMethod_OrangeMoney"]</span>
-                                </button>
-                                <button type="button"
-                                        class="pay-method-option @SelectedClass(PaymentMethodCodes.MtnMomo)"
-                                        disabled="@_busy"
-                                        role="radio"
-                                        aria-checked="@(_method == PaymentMethodCodes.MtnMomo ? "true" : "false")"
-                                        @onclick='() => SelectMethod(PaymentMethodCodes.MtnMomo)'>
-                                    <span class="pay-method-icon pay-method-icon--momo" aria-hidden="true">@MtnIcon</span>
-                                    <span class="pay-method-label">@L["PayMethod_MtnMomo"]</span>
-                                </button>
-                            }
+
+                                @if (IsPlatformLicense)
+                                {
+                                    <div class="form-check pay-autorenew">
+                                        <input class="form-check-input" type="checkbox" id="pay-autorenew-method"
+                                               disabled="@_busy"
+                                               @bind="_autoRenewAtSource" />
+                                        <label class="form-check-label" for="pay-autorenew-method">
+                                            @L["PayMethod_AutoRenew"]
+                                            <i class="bi bi-info-circle ms-1" title="@L["PayMethod_AutoRenewHint"]"></i>
+                                        </label>
+                                    </div>
+                                }
+                            </div>
+
+                            <aside class="pay-summary-card">
+                                <h6>@L["PayMethod_Summary"]</h6>
+                                <div class="pay-summary-row">
+                                    <span>@SummaryProduct</span>
+                                </div>
+                                @if (!string.IsNullOrWhiteSpace(PayerName))
+                                {
+                                    <div class="pay-summary-row text-muted"><span>@PayerName</span></div>
+                                }
+                                @if (IsPlatformLicense)
+                                {
+                                    <div class="pay-summary-row text-muted"><span>@L["PayMethod_Duration12"]</span></div>
+                                }
+                                <div class="pay-summary-row">
+                                    <span>@L["PayMethod_Subtotal"]</span>
+                                    <span>@FormatMoney(AmountExclusive)</span>
+                                </div>
+                                <div class="pay-summary-row">
+                                    <span>@L["PayMethod_Taxes"]</span>
+                                    <span>@FormatMoney(TaxAmount)</span>
+                                </div>
+                                <div class="pay-summary-row pay-summary-total">
+                                    <span>@L["PayMethod_TotalToday"]</span>
+                                    <span>@FormatMoney(AmountInclusive)</span>
+                                </div>
+                                @if (ShowFxEstimate)
+                                {
+                                    <div class="pay-summary-fx">
+                                        @L["PayMethod_EstimatedDebit", EstimatedFcfa.ToString("N0")]
+                                    </div>
+                                }
+                                @if (IsPlatformLicense)
+                                {
+                                    <p class="pay-summary-renew mb-0">
+                                        <i class="bi bi-calendar3 me-1" aria-hidden="true"></i>
+                                        @L["PayMethod_NextRenewal", NextRenewalLabel, FormatMoney(Amount)]
+                                        <span class="d-block mt-1">@L["PayMethod_NextRenewalNote"]</span>
+                                    </p>
+                                }
+                            </aside>
                         </div>
 
-                        @if (PaymentMethodCodes.IsMobileMoney(_method))
-                        {
-                            <div class="mb-3">
-                                <label class="form-label" for="mm-country">Pays du payeur (taxe)</label>
-                                <select id="mm-country"
-                                        class="form-select"
-                                        disabled="@_busy"
-                                        @bind="_billingCountry"
-                                        @bind:after="OnBillingCountryChangedAsync">
-                                    @if (_africaRates.Count == 0)
-                                    {
-                                        <option value="CM">Cameroun (TVA 19,25 %)</option>
-                                    }
-                                    else
-                                    {
-                                        @foreach (var rate in _africaRates)
-                                        {
-                                            <option value="@rate.CountryCode">
-                                                @rate.CountryName — @rate.TaxName @rate.RatePercent.ToString("0.##") %
-                                            </option>
-                                        }
-                                    }
-                                </select>
-                            </div>
-                            @if (_method == PaymentMethodCodes.MtnMomo)
-                            {
-                                <div class="mb-3">
-                                    <label class="form-label" for="mm-phone">@L["PayMethod_PhoneLabel"]</label>
-                                    <div class="input-group">
-                                        <span class="input-group-text">+237</span>
-                                        <input id="mm-phone"
-                                               class="form-control"
-                                               type="tel"
-                                               inputmode="numeric"
-                                               maxlength="9"
-                                               placeholder="6XXXXXXXX"
-                                               disabled="@_busy"
-                                               @bind="_phoneLocal"
-                                               @bind:event="oninput" />
-                                    </div>
-                                    <div class="form-text">@L["PayMethod_PhoneHint"]</div>
-                                </div>
-                            }
-                            else if (_method == PaymentMethodCodes.OrangeMoney)
-                            {
-                                <p class="small text-muted mb-3">
-                                    Orange Money : vous serez redirigé vers la page sécurisée Orange pour payer.
-                                </p>
-                            }
-                        }
+                        <div class="pay-checkout-banner">
+                            <span>@L["PayMethod_SecurityBanner"]</span>
+                            <span class="badges">
+                                <span>@L["PayMethod_Ssl"]</span>
+                                <span>GiseBsPayGateway</span>
+                            </span>
+                        </div>
                     }
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-secondary" disabled="@_busy" @onclick="CloseAsync">
-                        @L["PayMethod_Cancel"]
-                    </button>
+                <div class="modal-footer justify-content-between">
+                    <span class="small text-muted">@L["PayMethod_FooterHint"]</span>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-link text-decoration-none" disabled="@_busy" @onclick="CloseAsync">
+                            @L["PayMethod_Cancel"]
+                        </button>
 
-                    @if (_phase == Phase.Waiting)
-                    {
-                        <button type="button" class="btn btn-primary" disabled="@_busy" @onclick="VerifyAsync">
-                            @if (_busy)
-                            {
-                                <span class="spinner-border spinner-border-sm me-1"></span>
-                            }
-                            @L["PayMethod_Verify"]
-                        </button>
-                    }
-                    else if (_phase == Phase.Failed)
-                    {
-                        <button type="button" class="btn btn-outline-primary" disabled="@_busy" @onclick="RetryAsync">
-                            @L["PayMethod_Retry"]
-                        </button>
-                    }
-                    else if (_phase == Phase.Select)
-                    {
-                        <button type="button" class="btn btn-primary" disabled="@_busy" @onclick="PayAsync">
-                            @if (_busy)
-                            {
-                                <span class="spinner-border spinner-border-sm me-1"></span>
-                            }
-                            @L["PayMethod_Continue"]
-                        </button>
-                    }
+                        @if (_phase == Phase.Waiting)
+                        {
+                            <button type="button" class="btn btn-primary" disabled="@_busy" @onclick="VerifyAsync">
+                                @if (_busy)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1"></span>
+                                }
+                                @L["PayMethod_Verify"]
+                            </button>
+                        }
+                        else if (_phase == Phase.Failed)
+                        {
+                            <button type="button" class="btn btn-outline-primary" disabled="@_busy" @onclick="RetryAsync">
+                                @L["PayMethod_Retry"]
+                            </button>
+                        }
+                        else if (_phase == Phase.Select)
+                        {
+                            <button type="button" class="btn btn-primary" disabled="@_busy" @onclick="PayAsync">
+                                @if (_busy)
+                                {
+                                    <span class="spinner-border spinner-border-sm me-1"></span>
+                                }
+                                @ContinueLabel
+                                <i class="bi bi-arrow-right ms-1" aria-hidden="true"></i>
+                            </button>
+                        }
+                    </div>
                 </div>
             </div>
         </div>
@@ -220,6 +296,7 @@
 
 @code {
     private enum Phase { Select, Waiting, Success, Failed }
+    private const decimal UsdToXafDisplay = 610m;
 
     [Parameter] public bool Visible { get; set; }
     [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
@@ -229,11 +306,16 @@
     [Parameter] public string Currency { get; set; } = "CAD";
     [Parameter] public string SuccessUrl { get; set; } = "";
     [Parameter] public string CancelUrl { get; set; } = "";
+    [Parameter] public string? PayerName { get; set; }
+    [Parameter] public string? ProductTitle { get; set; }
     [Parameter] public EventCallback OnPaid { get; set; }
     [Parameter] public EventCallback<string> OnError { get; set; }
 
+    private string _family = "card";
     private string _method = PaymentMethodCodes.Card;
+    private string _momoOperator = PaymentMethodCodes.OrangeMoney;
     private bool _busy;
+    private bool _autoRenewAtSource;
     private string? _error;
     private Phase _phase = Phase.Select;
     private string _phoneLocal = "";
@@ -243,35 +325,102 @@
     private string? _ussdHint;
     private string _idempotencyKey = Guid.NewGuid().ToString("N");
     private string _billingCountry = "CM";
+    private string _dialCode = "+237";
     private TaxQuoteVm? _taxQuote;
     private List<AfricaRateVm> _africaRates = [];
 
     private bool ShowMobileMoney =>
-        !IsPlatformLicense
-        && SubscriptionId.HasValue
-        && Currency.Equals("XAF", StringComparison.OrdinalIgnoreCase);
+        IsPlatformLicense
+        || (SubscriptionId.HasValue && Currency.Equals("XAF", StringComparison.OrdinalIgnoreCase));
 
-    private string FormatAmount() =>
-        Currency.Equals("XAF", StringComparison.OrdinalIgnoreCase)
-            ? $"{Amount:N0} {Currency}"
-            : $"{Amount:N2} {Currency}";
+    private bool ShowFxEstimate =>
+        IsPlatformLicense && Currency.Equals("USD", StringComparison.OrdinalIgnoreCase);
 
-    private async Task SelectMethod(string method)
+    private string SummaryProduct =>
+        !string.IsNullOrWhiteSpace(ProductTitle)
+            ? ProductTitle
+            : IsPlatformLicense ? L["PayMethod_LicenseProduct"] : L["PayMethod_SubscriptionProduct"];
+
+    private decimal AmountExclusive => _taxQuote?.AmountExclusive ?? Amount;
+    private decimal TaxAmount => _taxQuote?.TaxAmount ?? 0m;
+    private decimal AmountInclusive => _taxQuote?.AmountInclusive ?? Amount;
+    private decimal EstimatedFcfa => Math.Round(Amount * UsdToXafDisplay, 0, MidpointRounding.AwayFromZero);
+    private string NextRenewalLabel => DateTime.Today.AddYears(1).ToString("d MMMM yyyy");
+
+    private string ContinueLabel => _family switch
     {
-        _method = method;
-        _error = null;
-        if (PaymentMethodCodes.IsMobileMoney(method))
-        {
-            await EnsureAfricaRatesAsync();
-            await RefreshTaxQuoteAsync();
-        }
-        else
-            _taxQuote = null;
+        "paypal" => L["PayMethod_ContinuePayPal"],
+        "momo" => L["PayMethod_ContinueMomo"],
+        _ => L["PayMethod_ContinueCard"]
+    };
+
+    private string FamilyClass(string family) =>
+        _family == family ? "is-selected" : "";
+
+    private string FormatMoney(decimal amount)
+    {
+        if (Currency.Equals("USD", StringComparison.OrdinalIgnoreCase))
+            return $"{amount:N2} $ US";
+        if (Currency.Equals("XAF", StringComparison.OrdinalIgnoreCase))
+            return $"{amount:N0} {Currency}";
+        return $"{amount:N2} {Currency}";
     }
+
+    private async Task SelectFamilyAsync(string family)
+    {
+        _family = family;
+        _error = null;
+        if (family == "card")
+        {
+            _method = PaymentMethodCodes.Card;
+            _taxQuote = null;
+            return;
+        }
+        if (family == "paypal")
+        {
+            _method = PaymentMethodCodes.PayPal;
+            _taxQuote = null;
+            return;
+        }
+
+        ApplyOperatorToMethod();
+        await EnsureAfricaRatesAsync();
+        await RefreshTaxQuoteAsync();
+    }
+
+    private void OnOperatorChanged()
+    {
+        ApplyOperatorToMethod();
+    }
+
+    private void ApplyOperatorToMethod()
+    {
+        _method = _momoOperator is PaymentMethodCodes.OrangeMoney or PaymentMethodCodes.MtnMomo
+            ? _momoOperator
+            : PaymentMethodCodes.OrangeMoney;
+    }
+
+    private static string DialCodeFor(string countryCode) =>
+        countryCode.ToUpperInvariant() switch
+        {
+            "CI" => "+225",
+            "SN" => "+221",
+            "BF" => "+226",
+            "ML" => "+223",
+            "NE" => "+227",
+            "TG" => "+228",
+            "BJ" => "+229",
+            "GN" => "+224",
+            "GA" => "+241",
+            "CG" => "+242",
+            "CD" => "+243",
+            _ => "+237"
+        };
 
     private async Task OnBillingCountryChangedAsync()
     {
-        if (PaymentMethodCodes.IsMobileMoney(_method))
+        _dialCode = DialCodeFor(_billingCountry);
+        if (_family == "momo")
             await RefreshTaxQuoteAsync();
     }
 
@@ -287,7 +436,7 @@
         }
         catch
         {
-            // Fallback : liste vide → option Cameroun seule dans le markup
+            // Fallback : option Cameroun seule
         }
     }
 
@@ -305,9 +454,6 @@
             _taxQuote = null;
         }
     }
-
-    private string SelectedClass(string method) =>
-        _method == method ? "is-selected" : "";
 
     private static readonly MarkupString CardIcon = new(
         """
@@ -338,14 +484,6 @@
         </svg>
         """);
 
-    private static readonly MarkupString MtnIcon = new(
-        """
-        <svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" focusable="false">
-          <rect x="4" y="4" width="32" height="32" rx="8" fill="#ffcc00"/>
-          <text x="20" y="25" text-anchor="middle" fill="#000" font-size="11" font-weight="700">MTN</text>
-        </svg>
-        """);
-
     private async Task CloseAsync()
     {
         if (_busy) return;
@@ -355,9 +493,12 @@
 
     private void ResetForm()
     {
+        _family = "card";
         _method = PaymentMethodCodes.Card;
+        _momoOperator = PaymentMethodCodes.OrangeMoney;
         _error = null;
         _busy = false;
+        _autoRenewAtSource = false;
         _phase = Phase.Select;
         _phoneLocal = "";
         _promoCode = "";
@@ -366,6 +507,8 @@
         _ussdHint = null;
         _idempotencyKey = Guid.NewGuid().ToString("N");
         _taxQuote = null;
+        _dialCode = "+237";
+        _billingCountry = "CM";
     }
 
     private async Task RedeemPromoAsync()
@@ -380,7 +523,11 @@
         _busy = true;
         try
         {
-            var result = await Api.PostWithErrorAsync<CheckoutVm>("api/platform-billing/redeem-promo", new { code = _promoCode.Trim() });
+            var result = await Api.PostWithErrorAsync<CheckoutVm>("api/platform-billing/redeem-promo", new
+            {
+                code = _promoCode.Trim(),
+                autoRenewAtSource = _autoRenewAtSource
+            });
             if (result.Value is null)
             {
                 _error = result.Error ?? L["Activate_PromoInvalid"];
@@ -423,8 +570,20 @@
             return;
         }
 
-        if (PaymentMethodCodes.IsMobileMoney(_method))
+        if (_family == "momo")
         {
+            if (IsPlatformLicense)
+            {
+                _error = L["PayMethod_LicenseMmHint"];
+                return;
+            }
+
+            if (_momoOperator is "airtel" or "wave")
+            {
+                _error = L["PayMethod_OperatorUnavailable"];
+                return;
+            }
+
             await PayMobileMoneyAsync();
             return;
         }
@@ -432,23 +591,27 @@
         _busy = true;
         try
         {
-            var body = new
-            {
-                successUrl = SuccessUrl,
-                cancelUrl = CancelUrl,
-                paymentMethod = _method
-            };
-
             if (IsPlatformLicense)
             {
-                var result = await Api.PostWithErrorAsync<CheckoutVm>("api/platform-billing/checkout", body);
+                var result = await Api.PostWithErrorAsync<CheckoutVm>("api/platform-billing/checkout", new
+                {
+                    successUrl = SuccessUrl,
+                    cancelUrl = CancelUrl,
+                    paymentMethod = _method,
+                    autoRenewAtSource = _autoRenewAtSource
+                });
                 await HandleCheckoutResultAsync(result.Value, result.Error);
             }
             else if (SubscriptionId.HasValue)
             {
                 var result = await Api.PostWithErrorAsync<CheckoutVm>(
                     $"api/payments/subscriptions/{SubscriptionId}/checkout",
-                    body);
+                    new
+                    {
+                        successUrl = SuccessUrl,
+                        cancelUrl = CancelUrl,
+                        paymentMethod = _method
+                    });
                 await HandleCheckoutResultAsync(result.Value, result.Error);
             }
             else
@@ -490,7 +653,7 @@
             {
                 subscriptionId = SubscriptionId.Value,
                 channel = _method,
-                phoneNumber = isMtn ? "+237" + digits : null,
+                phoneNumber = isMtn ? _dialCode + digits : null,
                 idempotencyKey = _idempotencyKey,
                 billingCountryCode = _billingCountry,
                 returnUrl = SuccessUrl,
@@ -570,9 +733,6 @@
                 _error = L["PayMethod_MmFailed"];
                 return;
             }
-
-            // toujours en attente
-            _error = null;
         }
         catch (Exception ex)
         {

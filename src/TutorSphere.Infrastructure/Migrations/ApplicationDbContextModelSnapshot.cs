@@ -3279,6 +3279,9 @@ namespace TutorSphere.Infrastructure.Migrations
                     b.Property<string>("LicenseSettlementKind")
                         .HasColumnType("text");
 
+                    b.Property<bool>("LicenseAutoRenewAtSource")
+                        .HasColumnType("boolean");
+
                     b.Property<DateTime?>("LicenseRenewalReminderSentAt")
                         .HasColumnType("timestamp with time zone");
 

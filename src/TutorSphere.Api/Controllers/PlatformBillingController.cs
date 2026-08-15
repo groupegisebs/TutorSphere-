@@ -69,7 +69,7 @@ public class PlatformBillingController(
     {
         try
         {
-            return Ok(await promoCodes.RedeemForOwnerAsync(UserId, request.Code, ct));
+            return Ok(await promoCodes.RedeemForOwnerAsync(UserId, request.Code, request.AutoRenewAtSource, ct));
         }
         catch (InvalidOperationException ex)
         {

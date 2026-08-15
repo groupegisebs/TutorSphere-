@@ -132,7 +132,8 @@ public record TeacherReviewDetailDto(
 public record ExpertDecisionRequest(
     string? Notes,
     string? LicenseSettlement = null,
-    string? PromoCode = null);
+    string? PromoCode = null,
+    bool AutoRenewAtSource = false);
 
 public record InviteTeacherApplicationRequest(
     string Email,
