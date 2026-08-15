@@ -42,6 +42,9 @@ public static class InvoicePdfGenerator
         return BuildPdf(lines!);
     }
 
+    public static byte[] FromTextLines(IReadOnlyList<string> lines) =>
+        BuildPdf(lines.Select(l => l is null ? "" : Sanitize(l)).ToList());
+
     private static string Sanitize(string value)
     {
         // PDF WinAnsi-ish: strip non-latin1 for Helvetica

@@ -1,13 +1,616 @@
 @page "/parent/progress"
 @layout ParentLayout
 @rendermode InteractiveServer
+@using System.Globalization
+@using System.Net
+@using System.Text
+@using Microsoft.AspNetCore.WebUtilities
+@using TutorSphere.Application.DTOs.Parents
 @inject IStringLocalizer<SharedResources> L
+@inject ApiClient Api
+@inject AuthService Auth
+@inject NavigationManager Nav
+@inject IJSRuntime JS
 
-<PageTitle>@L["Nav_Progress"] — TutorSphere</PageTitle>
+<PageTitle>@L["Nav_Progress"] – TutorSphere</PageTitle>
 
-<div class="parent-stub-page">
-    <i class="bi bi-graph-up-arrow d-block" aria-hidden="true"></i>
-    <h1>@L["Nav_Progress"]</h1>
-    <p>@L["Skeleton_ComingSoon"]</p>
-    <a href="/parent/dashboard" class="btn btn-outline-primary">@L["Nav_Dashboard"]</a>
+<div class="parent-dashboard pd-mock pprog-page">
+    <header class="pc-header">
+        <div>
+            <h1>@L["Nav_Progress"]</h1>
+            <p class="ts-page-subtitle">@L["ParentProg_Subtitle"]</p>
+        </div>
+    </header>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="alert alert-warning mb-3 d-flex flex-wrap align-items-center gap-2" role="alert">
+            <span>@_error</span>
+            @if (_sessionExpired)
+            {
+                <a class="btn btn-sm btn-outline-dark" href="/login/parent">@L["Common_ReLogin"]</a>
+            }
+        </div>
+    }
+
+    @if (_loading)
+    {
+        <div class="pd-loading">
+            <span class="spinner-border spinner-border-sm" role="status"></span>
+            <span>@L["Common_Loading"]</span>
+        </div>
+    }
+    else if (_children.Count == 0)
+    {
+        <p class="text-muted">@L["ParentProg_EmptyChildren"]</p>
+    }
+    else
+    {
+        <div class="pprog-toolbar">
+            <div class="pcal-chips pprog-chips" role="tablist" aria-label="@L["Parent_MyChildren_Title"]">
+                @foreach (var child in _children)
+                {
+                    var active = _childId == child.Id;
+                    <button type="button"
+                            class="pcal-chip pprog-chip @(active ? "is-active" : "")"
+                            style="@(active ? $"--pprog-chip:{ChildColor(child.Id)}" : null)"
+                            @onclick="() => SelectChildAsync(child.Id)">
+                        <span class="pcal-dot" style="background:@ChildColor(child.Id)"></span>
+                        @ChildInitials(child) @child.FirstName
+                    </button>
+                }
+            </div>
+            <div class="pprog-actions">
+                <select class="pc-period pprog-period" @bind="_period" @bind:after="OnPeriodChangedAsync" aria-label="@L["ParentProg_PeriodTerm"]">
+                    <option value="month">@L["ParentProg_PeriodMonth"]</option>
+                    <option value="term">@L["ParentProg_PeriodTerm"]</option>
+                    <option value="year">@L["ParentProg_PeriodYear"]</option>
+                    <option value="all">@L["ParentProg_PeriodAll"]</option>
+                </select>
+                <button type="button" class="pc-add-btn pprog-download" disabled="@(_downloading || Report is null)" @onclick="DownloadAsync">
+                    @if (_downloading)
+                    {
+                        <span class="spinner-border spinner-border-sm"></span>
+                    }
+                    else
+                    {
+                        <i class="bi bi-download" aria-hidden="true"></i>
+                    }
+                    @(_downloading ? L["ParentProg_Downloading"] : L["ParentProg_Download"])
+                </button>
+            </div>
+        </div>
+
+        @if (Report is { } report)
+        {
+            <p class="pprog-identity">
+                @report.FirstName @report.LastName
+                @if (!string.IsNullOrWhiteSpace(report.SchoolLevel))
+                {
+                    <span> • @report.SchoolLevel</span>
+                }
+            </p>
+
+            <div class="pd-kpi-row">
+                <article class="pd-kpi">
+                    <div class="pd-kpi-icon pd-kpi-icon--purple"><i class="bi bi-graph-up-arrow"></i></div>
+                    <div class="pd-kpi-text">
+                        <span class="pd-kpi-label">@L["ParentProg_KpiProgress"]</span>
+                        <span class="pd-kpi-value">@FormatPercent(report.ProgressPercent)</span>
+                        <span class="pd-kpi-hint @TrendClass(report.ProgressDelta)">@DeltaText(report.ProgressDelta, "%")</span>
+                    </div>
+                </article>
+                <article class="pd-kpi">
+                    <div class="pd-kpi-icon pd-kpi-icon--amber"><i class="bi bi-star"></i></div>
+                    <div class="pd-kpi-text">
+                        <span class="pd-kpi-label">@L["ParentProg_KpiAverage"]</span>
+                        <span class="pd-kpi-value">@FormatAverage(report.AverageGrade)</span>
+                        <span class="pd-kpi-hint @TrendClass(report.AverageDelta)">@DeltaAverage(report.AverageDelta)</span>
+                    </div>
+                </article>
+                <article class="pd-kpi">
+                    <div class="pd-kpi-icon pd-kpi-icon--blue"><i class="bi bi-people"></i></div>
+                    <div class="pd-kpi-text">
+                        <span class="pd-kpi-label">@L["ParentProg_KpiAttendance"]</span>
+                        <span class="pd-kpi-value">@FormatPercent(report.AttendancePercent)</span>
+                        <span class="pd-kpi-hint @TrendClass(report.AttendanceDelta)">@DeltaText(report.AttendanceDelta, "%")</span>
+                    </div>
+                </article>
+                <article class="pd-kpi">
+                    <div class="pd-kpi-icon pd-kpi-icon--green"><i class="bi bi-mortarboard"></i></div>
+                    <div class="pd-kpi-text">
+                        <span class="pd-kpi-label">@L["ParentProg_KpiSkills"]</span>
+                        <span class="pd-kpi-value">@report.SkillsAcquired/@report.SkillsTotal</span>
+                        <span class="pd-kpi-hint @TrendClass(report.SkillsAcquiredDelta)">@DeltaSkills(report.SkillsAcquiredDelta)</span>
+                    </div>
+                </article>
+            </div>
+
+            <div class="pprog-mid">
+                <article class="pc-card">
+                    <div class="pc-card-head">
+                        <h3>@L["ParentProg_Timeline"]</h3>
+                    </div>
+                    <div class="pc-card-body">
+                        @if (report.Timeline.Count == 0)
+                        {
+                            <p class="text-muted mb-0">@L["ParentProg_EmptyTimeline"]</p>
+                        }
+                        else
+                        {
+                            @TimelineChartSvg(report)
+                            <div class="pprog-legend">
+                                <span><i class="pprog-legend-line" style="background:@Accent"></i> @report.FirstName</span>
+                                @if (report.HasGroupBenchmark)
+                                {
+                                    <span><i class="pprog-legend-line is-dashed"></i> @L["ParentProg_GroupAvg"]</span>
+                                }
+                            </div>
+                        }
+                    </div>
+                </article>
+
+                <article class="pc-card">
+                    <div class="pc-card-head">
+                        <h3>@L["ParentProg_Subjects"]</h3>
+                    </div>
+                    <div class="pc-card-body">
+                        @if (report.Subjects.Count == 0)
+                        {
+                            <p class="text-muted mb-0">@L["Children_ProgressEmpty"]</p>
+                        }
+                        else
+                        {
+                            @foreach (var row in report.Subjects)
+                            {
+                                <div class="pc-subject">
+                                    <div class="pc-subject-row">
+                                        <span>@row.Subject</span>
+                                        <span class="pprog-subject-meta">
+                                            @FormatPercent(row.Percent)
+                                            <span class="pc-pill @BandCss(row.Band)">@BandLabel(row.Band)</span>
+                                        </span>
+                                    </div>
+                                    <div class="pd-progress-track" style="height:10px">
+                                        <div class="pd-progress-fill" style="width:@(row.Percent ?? 0)%;background:@Accent"></div>
+                                    </div>
+                                </div>
+                            }
+                        }
+                    </div>
+                </article>
+            </div>
+
+            <div class="pprog-bottom">
+                <article class="pc-card">
+                    <div class="pc-card-head">
+                        <h3>@L["ParentProg_Skills"]</h3>
+                    </div>
+                    <nav class="pc-tabs" style="margin:0 1rem .4rem">
+                        <button type="button" class="pc-tab @(_skillTab == "acquired" ? "is-active" : "")" @onclick='() => _skillTab = "acquired"'>
+                            @L["ParentProg_TabAcquired"] (@CountSkills("acquired"))
+                        </button>
+                        <button type="button" class="pc-tab @(_skillTab == "progress" ? "is-active" : "")" @onclick='() => _skillTab = "progress"'>
+                            @L["ParentProg_TabProgress"] (@CountSkills("progress"))
+                        </button>
+                        <button type="button" class="pc-tab @(_skillTab == "reinforce" ? "is-active" : "")" @onclick='() => _skillTab = "reinforce"'>
+                            @L["ParentProg_TabReinforce"] (@CountSkills("reinforce"))
+                        </button>
+                    </nav>
+                    <div class="pc-card-body">
+                        @{
+                            var skills = report.Skills.Where(s => s.Status == _skillTab).ToList();
+                        }
+                        @if (skills.Count == 0)
+                        {
+                            <p class="text-muted mb-0">@L["ParentProg_EmptySkills"]</p>
+                        }
+                        else
+                        {
+                            <ul class="pprog-skill-list">
+                                @foreach (var skill in skills)
+                                {
+                                    <li>
+                                        <div>
+                                            <strong>@skill.Name</strong>
+                                            @if (!string.IsNullOrWhiteSpace(skill.Subject))
+                                            {
+                                                <span class="pprog-skill-sub">@skill.Subject</span>
+                                            }
+                                        </div>
+                                        <span class="pc-pill @BandCss(SkillBand(skill.Status))">
+                                            @SkillLabel(skill.Status)
+                                            @if (skill.Percent is int pct && skill.Status == "progress")
+                                            {
+                                                <text> @pct%</text>
+                                            }
+                                        </span>
+                                    </li>
+                                }
+                            </ul>
+                        }
+                    </div>
+                </article>
+
+                <article class="pc-card">
+                    <div class="pc-card-head">
+                        <h3>@L["ParentProg_Observations"]</h3>
+                    </div>
+                    <div class="pc-card-body">
+                        @if (report.Observations.Count == 0)
+                        {
+                            <p class="text-muted mb-0">@L["ParentProg_EmptyObs"]</p>
+                        }
+                        else
+                        {
+                            @foreach (var obs in VisibleObservations)
+                            {
+                                <div class="pprog-obs">
+                                    <div class="pprog-obs-head">
+                                        <strong>@obs.TeacherName</strong>
+                                        @if (!string.IsNullOrWhiteSpace(obs.Subject))
+                                        {
+                                            <span>(@obs.Subject)</span>
+                                        }
+                                        <time>@ToLocal(obs.CreatedAt).ToString("d")</time>
+                                    </div>
+                                    <p>@obs.Text</p>
+                                </div>
+                            }
+                        }
+                        <div class="pprog-obs-actions">
+                            @if (report.Observations.Count > 3)
+                            {
+                                <button type="button" class="pd-link" @onclick="() => _showAllObs = !_showAllObs">
+                                    @(_showAllObs ? L["ParentProg_ViewLessObs"] : L["ParentProg_ViewAllObs"])
+                                </button>
+                            }
+                            @if (FirstTeacherId is string teacherId)
+                            {
+                                <a class="pd-link" href="@($"/parent/messages?to={Uri.EscapeDataString(teacherId)}")">@L["ParentProg_SendMessage"]</a>
+                            }
+                        </div>
+                    </div>
+                </article>
+
+                <div class="pprog-side">
+                    <article class="pc-card pprog-attention">
+                        <div class="pc-card-head">
+                            <h3>@L["ParentProg_Attention"]</h3>
+                        </div>
+                        <div class="pc-card-body">
+                            @if (report.Attention.Count == 0)
+                            {
+                                <p class="text-muted mb-0">@L["ParentHw_AttentionEmpty"]</p>
+                            }
+                            else
+                            {
+                                var focus = report.Attention[0];
+                                <p class="pprog-attention-title">@focus.Title</p>
+                                <p class="pprog-attention-rec">@focus.Recommendation</p>
+                                @if (report.Attention.Count > 1)
+                                {
+                                    <ul class="pprog-attention-more">
+                                        @foreach (var item in report.Attention.Skip(1))
+                                        {
+                                            <li>@item.Title</li>
+                                        }
+                                    </ul>
+                                }
+                                <button type="button" class="pd-link" @onclick='() => _skillTab = "reinforce"'>@L["ParentProg_ViewRecos"]</button>
+                            }
+                        </div>
+                    </article>
+
+                    <article class="pc-card">
+                        <div class="pc-card-head">
+                            <h3>@L["ParentProg_Goals"]</h3>
+                            <i class="bi bi-bullseye pprog-goal-icon" aria-hidden="true"></i>
+                        </div>
+                        <div class="pc-card-body">
+                            <p class="pprog-goal-count">@L["ParentProg_GoalsCount", report.GoalsAchieved, report.GoalsTotal]</p>
+                            <div class="pd-progress-track" style="height:10px">
+                                <div class="pd-progress-fill" style="width:@GoalPercent%;background:@Accent"></div>
+                            </div>
+                            <ul class="pprog-goal-list">
+                                @foreach (var goal in report.Goals)
+                                {
+                                    <li class="@(goal.Achieved ? "is-done" : "")">
+                                        <i class="bi @(goal.Achieved ? "bi-check-circle-fill" : "bi-circle")" aria-hidden="true"></i>
+                                        @goal.Title
+                                    </li>
+                                }
+                            </ul>
+                        </div>
+                    </article>
+                </div>
+            </div>
+        }
+    }
 </div>
+
+@code {
+    private static readonly string[] ChildPalette = ["#5831E0", "#2563EB", "#7c3aed", "#0ea5e9", "#ec4899"];
+    private bool _loading = true;
+    private bool _sessionExpired;
+    private bool _initialLoadDone;
+    private bool _downloading;
+    private bool _showAllObs;
+    private string? _error;
+    private string _period = "term";
+    private string _skillTab = "acquired";
+    private Guid? _childId;
+    private List<ParentProgressChildDto> _children = [];
+    private ParentProgressDto? _dto;
+
+    private ParentProgressReportDto? Report => _dto?.Report;
+    private string Accent => _childId is Guid id ? ChildColor(id) : ChildPalette[0];
+    private int GoalPercent =>
+        Report is { GoalsTotal: > 0 } r ? (int)Math.Round(r.GoalsAchieved * 100.0 / r.GoalsTotal) : 0;
+    private IEnumerable<ParentProgressObservationDto> VisibleObservations =>
+        Report is null ? [] : (_showAllObs ? Report.Observations : Report.Observations.Take(3));
+    private string? FirstTeacherId =>
+        Report?.Observations.Select(o => o.TeacherUserId).FirstOrDefault(id => !string.IsNullOrWhiteSpace(id));
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _initialLoadDone)
+            return;
+        _initialLoadDone = true;
+        ReadQuery();
+        await Auth.EnsureSessionRestoredAsync(forceJs: true);
+        await LoadAsync();
+        StateHasChanged();
+    }
+
+    private void ReadQuery()
+    {
+        var query = QueryHelpers.ParseQuery(Nav.ToAbsoluteUri(Nav.Uri).Query);
+        if (query.TryGetValue("childId", out var raw) && Guid.TryParse(raw, out var id))
+            _childId = id;
+        if (query.TryGetValue("period", out var period) && !string.IsNullOrWhiteSpace(period))
+            _period = period.ToString();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        _showAllObs = false;
+        try
+        {
+            await Auth.EnsureSessionRestoredAsync();
+            if (string.IsNullOrEmpty(Auth.Token))
+            {
+                if (Auth.IsSessionExpired)
+                {
+                    _sessionExpired = true;
+                    _error = ApiClient.SessionExpiredMessage;
+                }
+                return;
+            }
+
+            var url = $"api/parent/progress?period={Uri.EscapeDataString(_period)}";
+            if (_childId is Guid childId)
+                url += $"&childId={childId}";
+
+            var result = await Api.GetWithErrorAsync<ParentProgressDto>(url);
+            if (result.Error == ApiClient.SessionExpiredMessage)
+            {
+                _sessionExpired = true;
+                _error = result.Error;
+                return;
+            }
+            if (result.Error is not null || result.Value is null)
+            {
+                _error = result.Error ?? L["ParentProg_LoadError"];
+                return;
+            }
+
+            _dto = result.Value;
+            _children = result.Value.Children.ToList();
+            if (result.Value.Report is not null)
+                _childId = result.Value.Report.StudentId;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally { _loading = false; }
+    }
+
+    private async Task SelectChildAsync(Guid id)
+    {
+        if (_childId == id)
+            return;
+        _childId = id;
+        _skillTab = "acquired";
+        PushQuery();
+        await LoadAsync();
+    }
+
+    private async Task OnPeriodChangedAsync()
+    {
+        _skillTab = "acquired";
+        PushQuery();
+        await LoadAsync();
+    }
+
+    private void PushQuery()
+    {
+        var qs = $"period={Uri.EscapeDataString(_period)}";
+        if (_childId is Guid id)
+            qs += $"&childId={id}";
+        Nav.NavigateTo($"/parent/progress?{qs}", replace: true);
+    }
+
+    private async Task DownloadAsync()
+    {
+        if (_childId is not Guid id)
+            return;
+        _downloading = true;
+        _error = null;
+        try
+        {
+            var result = await Api.GetBytesWithErrorAsync(
+                $"api/parent/progress/{id}/report?period={Uri.EscapeDataString(_period)}");
+            if (result.Error is not null || result.Value is null || result.Value.Length == 0)
+            {
+                _error = result.Error ?? L["ParentProg_DownloadError"];
+                return;
+            }
+
+            var child = _children.FirstOrDefault(c => c.Id == id);
+            var safe = child is null
+                ? "enfant"
+                : $"{child.FirstName}-{child.LastName}".Trim().Replace(' ', '-');
+            var fileName = $"progression-{safe}-{DateTime.Today:yyyyMMdd}.pdf";
+            await JS.InvokeVoidAsync("downloadFileFromBase64", fileName, "application/pdf", Convert.ToBase64String(result.Value));
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally { _downloading = false; }
+    }
+
+    private MarkupString TimelineChartSvg(ParentProgressReportDto report)
+    {
+        const double width = 520;
+        const double height = 200;
+        const double padL = 36;
+        const double padR = 16;
+        const double padT = 18;
+        const double padB = 32;
+        var points = report.Timeline;
+        var values = points.Select(p => p.Percent)
+            .Concat(points.Where(p => p.GroupAveragePercent.HasValue).Select(p => p.GroupAveragePercent!.Value))
+            .ToList();
+        var min = Math.Max(0, (int)Math.Floor((values.DefaultIfEmpty(0).Min() - 8) / 10.0) * 10);
+        var max = 100;
+        var span = Math.Max(1, max - min);
+        var innerW = width - padL - padR;
+        var innerH = height - padT - padB;
+        double X(int i) => points.Count == 1
+            ? padL + innerW / 2
+            : padL + i * (innerW / Math.Max(1, points.Count - 1));
+        double Y(int pct) => padT + (max - pct) / (double)span * innerH;
+        string Line(Func<ParentProgressPointDto, int?> getter)
+        {
+            var pts = new List<string>();
+            for (var i = 0; i < points.Count; i++)
+            {
+                var v = getter(points[i]);
+                if (v is null) continue;
+                pts.Add(string.Create(CultureInfo.InvariantCulture, $"{X(i):0.##},{Y(v.Value):0.##}"));
+            }
+            return string.Join(" ", pts);
+        }
+
+        var label = WebUtility.HtmlEncode(L["ParentProg_Timeline"]);
+        var sb = new StringBuilder();
+        sb.Append(CultureInfo.InvariantCulture,
+            $"<svg class=\"pprog-chart\" viewBox=\"0 0 {width} {height}\" role=\"img\" aria-label=\"{label}\">");
+        for (var g = min; g <= max; g += 20)
+        {
+            var y = Y(g);
+            sb.Append(CultureInfo.InvariantCulture,
+                $"<line class=\"pprog-grid\" x1=\"{padL}\" y1=\"{y}\" x2=\"{width - padR}\" y2=\"{y}\"></line>");
+            sb.Append(CultureInfo.InvariantCulture,
+                $"<text class=\"pprog-axis\" x=\"4\" y=\"{y + 4}\">{g}</text>");
+        }
+        if (report.HasGroupBenchmark)
+            sb.Append($"<polyline class=\"pprog-line pprog-line-group\" fill=\"none\" points=\"{Line(p => p.GroupAveragePercent)}\"></polyline>");
+        sb.Append($"<polyline class=\"pprog-line\" style=\"stroke:{Accent}\" fill=\"none\" points=\"{Line(p => p.Percent)}\"></polyline>");
+        for (var i = 0; i < points.Count; i++)
+        {
+            var p = points[i];
+            var month = WebUtility.HtmlEncode(ToLocal(p.MonthStart).ToString("MMM", CultureInfo.CurrentCulture));
+            var x = X(i);
+            var y = Y(p.Percent);
+            sb.Append(CultureInfo.InvariantCulture,
+                $"<circle class=\"pprog-dot\" cx=\"{x}\" cy=\"{y}\" r=\"5\" fill=\"{Accent}\"><title>{month} {p.Percent}%</title></circle>");
+            sb.Append(CultureInfo.InvariantCulture,
+                $"<text class=\"pprog-axis pprog-axis-x\" x=\"{x}\" y=\"{height - 8}\">{month}</text>");
+        }
+        sb.Append("</svg>");
+        return (MarkupString)sb.ToString();
+    }
+
+    private int CountSkills(string status) => Report?.Skills.Count(s => s.Status == status) ?? 0;
+
+    private string ChildColor(Guid id)
+    {
+        var i = _children.FindIndex(c => c.Id == id);
+        return ChildPalette[Math.Max(0, i) % ChildPalette.Length];
+    }
+
+    private static string ChildInitials(ParentProgressChildDto child)
+    {
+        var a = string.IsNullOrWhiteSpace(child.FirstName) ? "" : child.FirstName.Trim()[..1];
+        var b = string.IsNullOrWhiteSpace(child.LastName) ? "" : child.LastName.Trim()[..1];
+        var s = (a + b).ToUpperInvariant();
+        return string.IsNullOrEmpty(s) ? "?" : s;
+    }
+
+    private static string FormatPercent(int? value) => value is null ? "—" : $"{value}%";
+
+    private static string FormatAverage(decimal? value) =>
+        value is null ? "—" : $"{value.Value.ToString("0.0", CultureInfo.CurrentCulture)} / 20";
+
+    private string DeltaText(int? delta, string unit)
+    {
+        if (delta is null)
+            return L["ParentProg_VsOwn"];
+        var sign = delta.Value > 0 ? "+" : "";
+        return $"{sign}{delta}{unit} {L["ParentProg_VsPrevious"]}";
+    }
+
+    private string DeltaAverage(decimal? delta)
+    {
+        if (delta is null)
+            return L["ParentProg_VsOwn"];
+        var sign = delta.Value > 0 ? "+" : "";
+        return $"{sign}{delta.Value.ToString("0.0", CultureInfo.CurrentCulture)} {L["ParentProg_Point"]} {L["ParentProg_VsPrevious"]}";
+    }
+
+    private string DeltaSkills(int delta)
+    {
+        var sign = delta > 0 ? "+" : "";
+        return L["ParentProg_DeltaSkills", $"{sign}{delta}"];
+    }
+
+    private static string? TrendClass(decimal? delta) =>
+        delta is null ? null : delta >= 0 ? "pc-trend-up" : "pc-trend-down";
+
+    private string BandLabel(string band) => band switch
+    {
+        "verygood" => L["ParentProg_BandVeryGood"],
+        "reinforce" => L["ParentProg_BandReinforce"],
+        _ => L["ParentProg_BandProgress"]
+    };
+
+    private static string BandCss(string band) => band switch
+    {
+        "verygood" => "pc-pill-ok",
+        "reinforce" => "pc-pill-warn",
+        _ => "pprog-pill-info"
+    };
+
+    private static string SkillBand(string status) => status switch
+    {
+        "acquired" => "verygood",
+        "reinforce" => "reinforce",
+        _ => "progress"
+    };
+
+    private string SkillLabel(string status) => status switch
+    {
+        "acquired" => L["ParentProg_TabAcquired"],
+        "reinforce" => L["ParentProg_TabReinforce"],
+        _ => L["ParentProg_TabProgress"]
+    };
+
+    private static DateTime ToLocal(DateTime value) =>
+        value.Kind == DateTimeKind.Utc ? value.ToLocalTime() : DateTime.SpecifyKind(value, DateTimeKind.Local);
+}

@@ -1,4 +1,5 @@
 using TutorSphere.Application.Common.Interfaces;
+using TutorSphere.Application.DTOs.Homework;
 using TutorSphere.Application.DTOs.Lessons;
 using TutorSphere.Application.DTOs.Messages;
 using TutorSphere.Application.DTOs.Parents;
@@ -45,6 +46,22 @@ public interface IParentService
         string userId,
         DateTime start,
         DateTime end,
+        CancellationToken ct = default);
+    Task<ParentHomeworkBoardDto> GetHomeworkBoardForUserAsync(string userId, CancellationToken ct = default);
+    Task<ParentHomeworkDetailDto?> GetHomeworkDetailForUserAsync(
+        string userId,
+        Guid homeworkId,
+        CancellationToken ct = default);
+    Task RemindHomeworkForUserAsync(string userId, Guid homeworkId, CancellationToken ct = default);
+    Task<ParentProgressDto> GetProgressForUserAsync(
+        string userId,
+        Guid? childId,
+        string? period,
+        CancellationToken ct = default);
+    Task<(byte[] Content, string FileName)?> BuildProgressReportPdfForUserAsync(
+        string userId,
+        Guid childId,
+        string? period,
         CancellationToken ct = default);
 }
 
@@ -669,6 +686,742 @@ public class ParentService : IParentService
         var local = due.Kind == DateTimeKind.Utc ? due.ToLocalTime() : DateTime.SpecifyKind(due, DateTimeKind.Local);
         var start = local.TimeOfDay == TimeSpan.Zero ? local.Date.AddHours(17) : local;
         return (DateTime.SpecifyKind(start, DateTimeKind.Local), DateTime.SpecifyKind(start.AddHours(1), DateTimeKind.Local));
+    }
+
+    public Task<ParentHomeworkBoardDto> GetHomeworkBoardForUserAsync(string userId, CancellationToken ct = default)
+    {
+        var parent = _db.ParentProfilesForAnyTenant.FirstOrDefault(p => p.UserId == userId);
+        if (parent is null)
+            return Task.FromResult(new ParentHomeworkBoardDto([], [], []));
+
+        var children = _db.StudentsForAnyTenant
+            .Where(s => s.ParentProfileId == parent.Id)
+            .OrderBy(s => s.LastName).ThenBy(s => s.FirstName)
+            .ToList();
+        if (children.Count == 0)
+            return Task.FromResult(new ParentHomeworkBoardDto([], [], []));
+
+        var childIds = children.Select(c => c.Id).ToList();
+        var childLookup = children.ToDictionary(c => c.Id);
+        var homeworks = _db.HomeworksForAnyTenant
+            .Where(h => childIds.Contains(h.StudentId) && !h.IsDraft)
+            .OrderBy(h => h.DueDate ?? DateTime.MaxValue)
+            .ToList();
+
+        var tenantIds = homeworks.Select(h => h.TenantId).Distinct().ToList();
+        var lessonsById = homeworks
+            .Where(h => h.LessonId.HasValue)
+            .Select(h => h.LessonId!.Value)
+            .Distinct()
+            .ToList();
+        var lessons = lessonsById.Count == 0
+            ? new Dictionary<Guid, Lesson>()
+            : _db.LessonsForAnyTenant.Where(l => lessonsById.Contains(l.Id)).ToDictionary(l => l.Id);
+        foreach (var lesson in lessons.Values)
+            tenantIds.Add(lesson.TenantId);
+
+        var tenants = tenantIds.Count == 0
+            ? new Dictionary<Guid, Tenant>()
+            : _db.Tenants.Where(t => tenantIds.Contains(t.Id)).ToDictionary(t => t.Id);
+
+        var now = DateTime.UtcNow;
+        var items = new List<ParentHomeworkItemDto>();
+        foreach (var homework in homeworks)
+        {
+            if (!childLookup.TryGetValue(homework.StudentId, out var student))
+                continue;
+            var (teacherName, teacherId) = ResolveHomeworkTeacher(userId, homework, lessons, tenants);
+            var content = HomeworkService.MapPublic(homework).Content;
+            var submission = HomeworkJson.TryParseSubmission(homework.SubmissionNotes);
+            var files = content.Count(b => b.Type is "file" or "link" && !string.IsNullOrWhiteSpace(b.Url))
+                        + (submission?.Attachments.Count ?? 0);
+            items.Add(new ParentHomeworkItemDto(
+                homework.Id,
+                student.Id,
+                student.FirstName,
+                homework.Title,
+                homework.Subject,
+                teacherName,
+                teacherId,
+                homework.DueDate,
+                ResolveParentHomeworkStatus(homework, now),
+                files,
+                CanRemindHomework(homework, student)));
+        }
+
+        var childDtos = children.Select(child =>
+        {
+            var own = homeworks.Where(h => h.StudentId == child.Id).ToList();
+            return new ParentHomeworkChildDto(
+                child.Id,
+                child.FirstName,
+                child.LastName,
+                child.PhotoUrl,
+                child.SchoolLevel,
+                ComputeOnTimePercent(own, now));
+        }).ToList();
+
+        var results = homeworks
+            .Where(h => h.IsGraded && h.Grade.HasValue && childLookup.ContainsKey(h.StudentId))
+            .OrderByDescending(h => h.UpdatedAt ?? h.CreatedAt)
+            .Take(5)
+            .Select(h => new ParentHomeworkResultDto(
+                h.Id,
+                h.StudentId,
+                childLookup[h.StudentId].FirstName,
+                h.Title,
+                h.Grade!.Value,
+                h.Feedback,
+                h.UpdatedAt ?? h.CreatedAt))
+            .ToList();
+
+        return Task.FromResult(new ParentHomeworkBoardDto(childDtos, items, results));
+    }
+
+    public Task<ParentHomeworkDetailDto?> GetHomeworkDetailForUserAsync(
+        string userId,
+        Guid homeworkId,
+        CancellationToken ct = default)
+    {
+        var parent = _db.ParentProfilesForAnyTenant.FirstOrDefault(p => p.UserId == userId);
+        if (parent is null)
+            return Task.FromResult<ParentHomeworkDetailDto?>(null);
+
+        var homework = _db.HomeworksForAnyTenant.FirstOrDefault(h => h.Id == homeworkId && !h.IsDraft);
+        if (homework is null)
+            return Task.FromResult<ParentHomeworkDetailDto?>(null);
+
+        var student = _db.StudentsForAnyTenant
+            .FirstOrDefault(s => s.Id == homework.StudentId && s.ParentProfileId == parent.Id);
+        if (student is null)
+            return Task.FromResult<ParentHomeworkDetailDto?>(null);
+
+        Dictionary<Guid, Lesson> lessons = [];
+        if (homework.LessonId is Guid lessonId)
+        {
+            var lesson = _db.LessonsForAnyTenant.FirstOrDefault(l => l.Id == lessonId);
+            if (lesson is not null)
+                lessons[lesson.Id] = lesson;
+        }
+
+        var tenantIds = new List<Guid> { homework.TenantId };
+        tenantIds.AddRange(lessons.Values.Select(l => l.TenantId));
+        var tenants = _db.Tenants.Where(t => tenantIds.Contains(t.Id)).ToDictionary(t => t.Id);
+        var (teacherName, teacherId) = ResolveHomeworkTeacher(userId, homework, lessons, tenants);
+        var mapped = HomeworkService.MapPublic(homework);
+        var submission = HomeworkJson.TryParseSubmission(homework.SubmissionNotes);
+        var attachments = submission?.Attachments ?? [];
+        var missingIds = attachments.Where(a => string.IsNullOrWhiteSpace(a.Url) && a.DocumentId != Guid.Empty)
+            .Select(a => a.DocumentId)
+            .ToList();
+        var docs = missingIds.Count == 0
+            ? []
+            : _db.DocumentsForAnyTenant.Where(d => missingIds.Contains(d.Id)).ToList();
+
+        var files = attachments.Select(a =>
+        {
+            var url = a.Url;
+            if (string.IsNullOrWhiteSpace(url))
+                url = docs.FirstOrDefault(d => d.Id == a.DocumentId)?.FileUrl;
+            return new ParentHomeworkFileDto(a.FileName, url);
+        }).ToList();
+
+        return Task.FromResult<ParentHomeworkDetailDto?>(new ParentHomeworkDetailDto(
+            homework.Id,
+            student.Id,
+            student.FirstName,
+            homework.Title,
+            homework.Subject,
+            homework.Description,
+            homework.Instructions,
+            mapped.Content.Select(b => new ParentHomeworkBlockDto(b.Type, b.Title, b.Body, b.Url)).ToList(),
+            homework.DueDate,
+            ResolveParentHomeworkStatus(homework, DateTime.UtcNow),
+            teacherName,
+            teacherId,
+            homework.SubmittedAt,
+            submission?.Text,
+            files,
+            homework.Grade,
+            homework.Feedback,
+            homework.IsGraded,
+            CanRemindHomework(homework, student)));
+    }
+
+    public async Task RemindHomeworkForUserAsync(string userId, Guid homeworkId, CancellationToken ct = default)
+    {
+        var parent = _db.ParentProfilesForAnyTenant.FirstOrDefault(p => p.UserId == userId)
+            ?? throw new InvalidOperationException("Profil parent introuvable.");
+        var homework = _db.HomeworksForAnyTenant.FirstOrDefault(h => h.Id == homeworkId && !h.IsDraft)
+            ?? throw new InvalidOperationException("Devoir introuvable.");
+        var student = _db.StudentsForAnyTenant
+            .FirstOrDefault(s => s.Id == homework.StudentId && s.ParentProfileId == parent.Id)
+            ?? throw new InvalidOperationException("Enfant introuvable.");
+
+        if (!CanRemindHomework(homework, student))
+            throw new InvalidOperationException(
+                "Impossible d'envoyer un rappel : activez l'accès espace Élève, ou le devoir est déjà remis.");
+
+        var due = homework.DueDate.HasValue
+            ? $" pour le {homework.DueDate.Value.ToLocalTime():d}"
+            : "";
+        _db.Add(new Message
+        {
+            TenantId = student.TenantId,
+            SenderUserId = userId,
+            RecipientUserId = student.UserId!,
+            Subject = $"Rappel devoir : {homework.Title}",
+            Body =
+                $"Rappel : le devoir « {homework.Title} » est à remettre{due}. " +
+                "Connecte-toi à l'espace Élève pour le réaliser. Ton parent ne peut pas le remettre à ta place."
+        });
+        await _db.SaveChangesAsync(ct);
+    }
+
+    public Task<ParentProgressDto> GetProgressForUserAsync(
+        string userId,
+        Guid? childId,
+        string? period,
+        CancellationToken ct = default)
+    {
+        var parent = _db.ParentProfilesForAnyTenant.FirstOrDefault(p => p.UserId == userId);
+        if (parent is null)
+            return Task.FromResult(new ParentProgressDto([], null));
+
+        var children = _db.StudentsForAnyTenant
+            .Where(s => s.ParentProfileId == parent.Id)
+            .OrderBy(s => s.LastName).ThenBy(s => s.FirstName)
+            .ToList();
+        var childDtos = children
+            .Select(s => new ParentProgressChildDto(s.Id, s.FirstName, s.LastName, s.SchoolLevel, s.PhotoUrl))
+            .ToList();
+        if (children.Count == 0)
+            return Task.FromResult(new ParentProgressDto(childDtos, null));
+
+        var student = childId.HasValue
+            ? children.FirstOrDefault(s => s.Id == childId.Value) ?? children[0]
+            : children[0];
+
+        var report = BuildProgressReport(userId, parent.Id, student, period);
+        return Task.FromResult(new ParentProgressDto(childDtos, report));
+    }
+
+    public async Task<(byte[] Content, string FileName)?> BuildProgressReportPdfForUserAsync(
+        string userId,
+        Guid childId,
+        string? period,
+        CancellationToken ct = default)
+    {
+        var dto = await GetProgressForUserAsync(userId, childId, period, ct);
+        if (dto.Report is null)
+            return null;
+
+        var r = dto.Report;
+        var lines = new List<string>
+        {
+            "TutorSphere — Rapport de progression",
+            "",
+            $"{r.FirstName} {r.LastName}".Trim(),
+            string.IsNullOrWhiteSpace(r.SchoolLevel) ? "" : r.SchoolLevel,
+            $"Periode : {DescribePeriod(period)}",
+            $"Edite le {DateTime.Now:dd/MM/yyyy}",
+            "",
+            $"Progression generale : {(r.ProgressPercent.HasValue ? r.ProgressPercent + " %" : "—")}",
+            $"Moyenne : {(r.AverageGrade.HasValue ? r.AverageGrade.Value.ToString("0.0") + " / 20" : "—")}",
+            $"Assiduite : {(r.AttendancePercent.HasValue ? r.AttendancePercent + " %" : "—")}",
+            $"Competences acquises : {r.SkillsAcquired}/{r.SkillsTotal}",
+            r.HasGroupBenchmark ? "Comparaison : moyenne de reference anonymisee (meme niveau)." : "Comparaison : resultats anterieurs de l'enfant uniquement.",
+            "",
+            "Progression par matiere"
+        };
+        foreach (var s in r.Subjects)
+            lines.Add($"- {s.Subject} : {(s.Percent.HasValue ? s.Percent + " % (" + BandLabel(s.Band) + ")" : "—")}");
+
+        lines.Add("");
+        lines.Add("Observations");
+        if (r.Observations.Count == 0)
+            lines.Add("- Aucune observation sur la periode.");
+        foreach (var o in r.Observations.Take(8))
+            lines.Add($"- {o.CreatedAt:dd/MM} {o.TeacherName} : {o.Text}");
+
+        lines.Add("");
+        lines.Add("Points d'attention");
+        if (r.Attention.Count == 0)
+            lines.Add("- Aucun point critique.");
+        foreach (var a in r.Attention)
+            lines.Add($"- {a.Title} — {a.Recommendation}");
+
+        lines.Add("");
+        lines.Add($"Objectifs : {r.GoalsAchieved} sur {r.GoalsTotal} atteints");
+        foreach (var g in r.Goals)
+            lines.Add($"- [{(g.Achieved ? "x" : " ")}] {g.Title}");
+
+        lines.Add("");
+        lines.Add("Document genere pour le parent. Aucune comparaison nominative entre enfants.");
+
+        var safeName = $"{r.FirstName}-{r.LastName}".Trim().Replace(' ', '-');
+        return (InvoicePdfGenerator.FromTextLines(lines), $"progression-{safeName}-{DateTime.Today:yyyyMMdd}.pdf");
+    }
+
+    private ParentProgressReportDto BuildProgressReport(
+        string userId,
+        Guid parentId,
+        Student student,
+        string? period)
+    {
+        var (startUtc, endUtc, prevStartUtc, prevEndUtc) = ResolveProgressWindow(period);
+
+        var attendances = _db.LessonAttendancesForAnyTenant.Where(a => a.StudentId == student.Id).ToList();
+        var lessonIds = attendances.Select(a => a.LessonId).Distinct().ToList();
+        var lessons = lessonIds.Count == 0
+            ? []
+            : _db.LessonsForAnyTenant
+                .Where(l => lessonIds.Contains(l.Id) && l.SettlementStatus != LessonSettlementStatus.CancelledFree)
+                .ToList();
+
+        var homeworks = _db.HomeworksForAnyTenant
+            .Where(h => h.StudentId == student.Id && !h.IsDraft)
+            .ToList();
+        var reports = _db.LessonReportsForAnyTenant.Where(r => r.StudentId == student.Id).ToList();
+
+        int? AttendanceFor(DateTime from, DateTime to)
+        {
+            var monthLessons = lessons.Where(l => l.StartTime >= from && l.StartTime < to).ToList();
+            if (monthLessons.Count == 0) return null;
+            var present = monthLessons.Count(l => attendances.Any(a => a.LessonId == l.Id && a.IsPresent));
+            return (int)Math.Round(present * 100.0 / monthLessons.Count);
+        }
+
+        List<decimal> GradesIn(DateTime from, DateTime to) =>
+            homeworks.Where(h => h.IsGraded && h.Grade.HasValue && Timestamp(h) >= from && Timestamp(h) < to)
+                .Select(h => h.Grade!.Value)
+                .ToList();
+
+        var currentGrades = GradesIn(startUtc, endUtc);
+        var prevGrades = GradesIn(prevStartUtc, prevEndUtc);
+        var average = currentGrades.Count > 0 ? Math.Round(currentGrades.Average(), 1) : (decimal?)null;
+        var prevAverage = prevGrades.Count > 0 ? Math.Round(prevGrades.Average(), 1) : (decimal?)null;
+        var progress = ToProgressPercent(currentGrades);
+        var prevProgress = ToProgressPercent(prevGrades);
+        var attendance = AttendanceFor(startUtc, endUtc);
+        var prevAttendance = AttendanceFor(prevStartUtc, prevEndUtc);
+
+        var tenantIds = homeworks.Select(h => h.TenantId).Concat(lessons.Select(l => l.TenantId)).Distinct().ToList();
+        var tenants = tenantIds.Count == 0
+            ? new Dictionary<Guid, Tenant>()
+            : _db.Tenants
+                .Where(t => tenantIds.Contains(t.Id) && t.Slug != "platform-parents")
+                .ToDictionary(t => t.Id);
+
+        var familyIds = _db.StudentsForAnyTenant
+            .Where(s => s.ParentProfileId == parentId)
+            .Select(s => s.Id)
+            .ToHashSet();
+
+        var parentReports = reports.Where(r => r.SentToParent || r.SentAt.HasValue).ToList();
+        var timeline = BuildTimeline(student, familyIds, startUtc, endUtc, tenantIds);
+        var subjects = BuildSubjects(homeworks, student, startUtc, endUtc);
+        var subjectsPrev = BuildSubjects(homeworks, student, prevStartUtc, prevEndUtc);
+        var skillsNow = BuildSkills(homeworks, parentReports, subjects, startUtc, endUtc);
+        var skillsPrev = BuildSkills(homeworks, parentReports, subjectsPrev, prevStartUtc, prevEndUtc);
+        var acquiredNow = skillsNow.Count(s => s.Status == "acquired");
+        var acquiredPrev = skillsPrev.Count(s => s.Status == "acquired");
+
+        var observations = BuildObservations(userId, parentReports, lessons, tenants, startUtc, endUtc);
+        var attention = subjects
+            .Where(s => s.Band == "reinforce")
+            .Select(s => new ParentProgressAttentionDto(
+                $"{s.Subject}",
+                "Planifier 15 minutes de revision, 3 fois par semaine."))
+            .Concat(skillsNow.Where(s => s.Status == "reinforce")
+                .Select(s => new ParentProgressAttentionDto(
+                    s.Name,
+                    "Revenir sur cette competence avec des exercices courts et reguliers.")))
+            .GroupBy(a => a.Title, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.First())
+            .Take(5)
+            .ToList();
+
+        var goals = BuildGoals(student, subjects);
+
+        return new ParentProgressReportDto(
+            student.Id,
+            student.FirstName,
+            student.LastName,
+            student.SchoolLevel,
+            progress,
+            progress.HasValue && prevProgress.HasValue ? progress.Value - prevProgress.Value : null,
+            average,
+            average.HasValue && prevAverage.HasValue ? Math.Round(average.Value - prevAverage.Value, 1) : null,
+            attendance,
+            attendance.HasValue && prevAttendance.HasValue ? attendance.Value - prevAttendance.Value : null,
+            acquiredNow,
+            skillsNow.Count,
+            acquiredNow - acquiredPrev,
+            timeline.Any(p => p.GroupAveragePercent.HasValue),
+            timeline,
+            subjects,
+            skillsNow,
+            observations,
+            attention,
+            goals.Count(g => g.Achieved),
+            goals.Count,
+            goals);
+    }
+
+    private List<ParentProgressPointDto> BuildTimeline(
+        Student student,
+        HashSet<Guid> familyIds,
+        DateTime startUtc,
+        DateTime endUtc,
+        List<Guid> tenantIds)
+    {
+        var points = new List<ParentProgressPointDto>();
+        var cursor = new DateTime(startUtc.Year, startUtc.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        if (cursor < startUtc)
+            cursor = new DateTime(startUtc.ToLocalTime().Year, startUtc.ToLocalTime().Month, 1, 0, 0, 0, DateTimeKind.Local).ToUniversalTime();
+
+        var own = _db.HomeworksForAnyTenant
+            .Where(h => h.StudentId == student.Id && h.IsGraded && h.Grade.HasValue && !h.IsDraft)
+            .ToList();
+
+        List<Homework>? peers = null;
+        if (!string.IsNullOrWhiteSpace(student.SchoolLevel) && tenantIds.Count > 0)
+        {
+            var level = student.SchoolLevel;
+            var peerStudents = _db.StudentsForAnyTenant
+                .Where(s => s.SchoolLevel == level && !familyIds.Contains(s.Id))
+                .Select(s => s.Id)
+                .ToList();
+            if (peerStudents.Count >= 3)
+            {
+                peers = _db.HomeworksForAnyTenant
+                    .Where(h => peerStudents.Contains(h.StudentId)
+                                && tenantIds.Contains(h.TenantId)
+                                && h.IsGraded && h.Grade.HasValue && !h.IsDraft)
+                    .ToList();
+                var distinctPeers = peers.Select(h => h.StudentId).Distinct().Count();
+                if (distinctPeers < 3)
+                    peers = null;
+            }
+        }
+
+        for (var month = cursor; month < endUtc; month = month.AddMonths(1))
+        {
+            var next = month.AddMonths(1);
+            var grades = own.Where(h => Timestamp(h) >= month && Timestamp(h) < next).Select(h => h.Grade!.Value).ToList();
+            if (grades.Count == 0)
+                continue;
+            var pct = ToProgressPercent(grades);
+            if (!pct.HasValue)
+                continue;
+
+            int? group = null;
+            if (peers is not null)
+            {
+                var g = peers.Where(h => Timestamp(h) >= month && Timestamp(h) < next).Select(h => h.Grade!.Value).ToList();
+                if (g.Count >= 3)
+                    group = ToProgressPercent(g);
+            }
+
+            points.Add(new ParentProgressPointDto(month, pct.Value, group));
+        }
+
+        return points;
+    }
+
+    private List<ParentProgressSubjectDto> BuildSubjects(
+        IReadOnlyList<Homework> homeworks,
+        Student student,
+        DateTime startUtc,
+        DateTime endUtc)
+    {
+        var graded = homeworks.Where(h => h.IsGraded && h.Grade.HasValue && Timestamp(h) >= startUtc && Timestamp(h) < endUtc).ToList();
+        var map = graded
+            .GroupBy(h => string.IsNullOrWhiteSpace(h.Subject) ? "Autre" : h.Subject.Trim())
+            .Select(g =>
+            {
+                var pct = ToProgressPercent(g.Select(x => x.Grade!.Value).ToList());
+                return new ParentProgressSubjectDto(g.Key, pct, BandFor(pct));
+            })
+            .OrderBy(s => s.Subject)
+            .ToList();
+
+        if (map.Count == 0)
+        {
+            map = ParseSubjects(student.Subjects)
+                .Select(s => new ParentProgressSubjectDto(s, null, "progress"))
+                .ToList();
+        }
+
+        return map;
+    }
+
+    private static List<ParentProgressSkillDto> BuildSkills(
+        IReadOnlyList<Homework> homeworks,
+        IReadOnlyList<LessonReport> reports,
+        IReadOnlyList<ParentProgressSubjectDto> subjects,
+        DateTime startUtc,
+        DateTime endUtc)
+    {
+        var skills = new Dictionary<string, ParentProgressSkillDto>(StringComparer.OrdinalIgnoreCase);
+
+        void Upsert(string name, string? subject, string status, int? percent)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                return;
+            var key = name.Trim();
+            if (skills.TryGetValue(key, out var existing) && Rank(existing.Status) <= Rank(status))
+                return;
+            skills[key] = new ParentProgressSkillDto(key, subject, status, percent);
+        }
+
+        foreach (var h in homeworks.Where(h => Timestamp(h) >= startUtc && Timestamp(h) < endUtc))
+        {
+            var mapped = HomeworkService.MapPublic(h);
+            foreach (var c in mapped.Criteria)
+            {
+                string status;
+                int? pct = null;
+                if (h.IsGraded && h.Grade.HasValue)
+                {
+                    pct = (int)Math.Round(h.Grade.Value / 20m * 100m);
+                    status = BandToSkill(BandFor(pct));
+                }
+                else
+                    status = "progress";
+                Upsert(c.Name, h.Subject, status, pct);
+            }
+        }
+
+        foreach (var report in reports.Where(r => r.CreatedAt >= startUtc && r.CreatedAt < endUtc))
+        {
+            foreach (var s in SplitBits(report.Strengths))
+                Upsert(s, null, "acquired", 100);
+            foreach (var s in SplitBits(report.Weaknesses))
+                Upsert(s, null, "reinforce", null);
+        }
+
+        if (skills.Count == 0)
+        {
+            foreach (var sub in subjects.Where(s => s.Percent.HasValue))
+                Upsert(sub.Subject, sub.Subject, BandToSkill(sub.Band), sub.Percent);
+        }
+
+        return skills.Values.OrderBy(s => Rank(s.Status)).ThenBy(s => s.Name).ToList();
+    }
+
+    private List<ParentProgressObservationDto> BuildObservations(
+        string parentUserId,
+        IReadOnlyList<LessonReport> reports,
+        IReadOnlyList<Lesson> lessons,
+        IReadOnlyDictionary<Guid, Tenant> tenants,
+        DateTime startUtc,
+        DateTime endUtc)
+    {
+        var lessonMap = lessons.ToDictionary(l => l.Id);
+        var list = new List<ParentProgressObservationDto>();
+        foreach (var report in reports.Where(r => r.CreatedAt >= startUtc && r.CreatedAt < endUtc)
+                     .OrderByDescending(r => r.CreatedAt)
+                     .Take(8))
+        {
+            lessonMap.TryGetValue(report.LessonId, out var lesson);
+            tenants.TryGetValue(lesson?.TenantId ?? report.TenantId, out var tenant);
+            var teacherId = string.IsNullOrWhiteSpace(tenant?.OwnerUserId) || tenant!.OwnerUserId == parentUserId
+                ? null
+                : tenant.OwnerUserId;
+            var teacherName = teacherId is null
+                ? (string.IsNullOrWhiteSpace(tenant?.Name) ? "Enseignant" : tenant.Name)
+                : ResolveUserDisplayName(teacherId);
+            if (string.IsNullOrWhiteSpace(teacherName) || teacherName == "Utilisateur")
+                teacherName = string.IsNullOrWhiteSpace(tenant?.Name) ? "Enseignant" : tenant.Name;
+            var bits = new[] { report.Observations, report.Strengths, report.Weaknesses }
+                .Where(s => !string.IsNullOrWhiteSpace(s));
+            var text = string.Join(" ", bits);
+            if (string.IsNullOrWhiteSpace(text))
+                continue;
+            list.Add(new ParentProgressObservationDto(
+                report.Id,
+                report.CreatedAt,
+                teacherName,
+                teacherId,
+                lesson?.Subject,
+                text.Trim()));
+        }
+
+        return list;
+    }
+
+    private static List<ParentProgressGoalDto> BuildGoals(
+        Student student,
+        IReadOnlyList<ParentProgressSubjectDto> subjects)
+    {
+        var raw = ParseLines(student.Goals);
+        if (raw.Count == 0)
+        {
+            return subjects.Select(s => new ParentProgressGoalDto(
+                    $"Progresser en {s.Subject}",
+                    s.Percent >= 80))
+                .Take(5)
+                .ToList();
+        }
+
+        return raw.Select(goal =>
+        {
+            var match = subjects.FirstOrDefault(s =>
+                goal.Contains(s.Subject, StringComparison.OrdinalIgnoreCase));
+            return new ParentProgressGoalDto(goal, match?.Percent >= 80);
+        }).ToList();
+    }
+
+    private static (DateTime Start, DateTime End, DateTime PrevStart, DateTime PrevEnd) ResolveProgressWindow(string? period)
+    {
+        var now = DateTime.UtcNow;
+        var local = now.ToLocalTime();
+        DateTime startLocal;
+        DateTime endLocal = local;
+        DateTime prevStart;
+        DateTime prevEnd;
+
+        switch ((period ?? "term").ToLowerInvariant())
+        {
+            case "month":
+                startLocal = new DateTime(local.Year, local.Month, 1);
+                prevStart = startLocal.AddMonths(-1);
+                prevEnd = startLocal;
+                break;
+            case "year":
+                startLocal = local.Month >= 9
+                    ? new DateTime(local.Year, 9, 1)
+                    : new DateTime(local.Year - 1, 9, 1);
+                prevStart = startLocal.AddYears(-1);
+                prevEnd = startLocal;
+                break;
+            case "all":
+                startLocal = new DateTime(local.AddMonths(-11).Year, local.AddMonths(-11).Month, 1);
+                prevStart = startLocal.AddMonths(-12);
+                prevEnd = startLocal;
+                break;
+            default:
+                if (local.Month >= 9)
+                {
+                    startLocal = new DateTime(local.Year, 9, 1);
+                    prevStart = new DateTime(local.Year, 4, 1);
+                    prevEnd = new DateTime(local.Year, 7, 1);
+                }
+                else if (local.Month <= 3)
+                {
+                    startLocal = new DateTime(local.Year, 1, 1);
+                    prevStart = new DateTime(local.Year - 1, 9, 1);
+                    prevEnd = startLocal;
+                }
+                else
+                {
+                    startLocal = new DateTime(local.Year, 4, 1);
+                    prevStart = new DateTime(local.Year, 1, 1);
+                    prevEnd = startLocal;
+                }
+                break;
+        }
+
+        static DateTime Utc(DateTime localDt) =>
+            DateTime.SpecifyKind(localDt, DateTimeKind.Local).ToUniversalTime();
+
+        return (Utc(startLocal), Utc(endLocal.Date.AddDays(1)), Utc(prevStart), Utc(prevEnd));
+    }
+
+    private static DateTime Timestamp(Homework h) => h.UpdatedAt ?? h.CreatedAt;
+
+    private static string BandFor(int? percent) =>
+        percent is null ? "progress" : percent >= 80 ? "verygood" : percent >= 70 ? "progress" : "reinforce";
+
+    private static string BandToSkill(string band) => band == "verygood" ? "acquired" : band == "reinforce" ? "reinforce" : "progress";
+
+    private static int Rank(string status) => status switch
+    {
+        "acquired" => 0,
+        "progress" => 1,
+        _ => 2
+    };
+
+    private static string BandLabel(string band) => band switch
+    {
+        "verygood" => "Tres bien",
+        "reinforce" => "A renforcer",
+        _ => "En progres"
+    };
+
+    private static string DescribePeriod(string? period) => (period ?? "term") switch
+    {
+        "month" => "ce mois",
+        "year" => "cette annee",
+        "all" => "12 derniers mois",
+        _ => "ce trimestre"
+    };
+
+    private static IReadOnlyList<string> ParseLines(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return [];
+        return value.Split(new[] { '\n', '\r', ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    }
+
+    private static IEnumerable<string> SplitBits(string? value) => ParseLines(value);
+
+    private static bool CanRemindHomework(Homework homework, Student student) =>
+        !homework.IsGraded
+        && !homework.SubmittedAt.HasValue
+        && !string.IsNullOrWhiteSpace(student.UserId);
+
+    private static int? ComputeOnTimePercent(IReadOnlyList<Homework> homeworks, DateTime nowUtc)
+    {
+        var relevant = homeworks
+            .Where(h => h.DueDate.HasValue && (h.SubmittedAt.HasValue || h.DueDate < nowUtc))
+            .ToList();
+        if (relevant.Count == 0)
+            return null;
+
+        var onTime = relevant.Count(h =>
+            h.SubmittedAt.HasValue && h.DueDate.HasValue && h.SubmittedAt.Value <= h.DueDate.Value);
+        return (int)Math.Round(onTime * 100.0 / relevant.Count);
+    }
+
+    private static string ResolveParentHomeworkStatus(Homework homework, DateTime nowUtc)
+    {
+        if (homework.IsGraded)
+            return "done";
+        if (homework.SubmittedAt.HasValue)
+            return "grading";
+        if (homework.DueDate is DateTime due)
+        {
+            var dueLocal = due.Kind == DateTimeKind.Utc ? due.ToLocalTime() : DateTime.SpecifyKind(due, DateTimeKind.Local);
+            var today = DateTime.Now.Date;
+            if (dueLocal.Date < today)
+                return "overdue";
+            if (dueLocal.Date <= today.AddDays(1))
+                return "urgent";
+        }
+
+        return "todo";
+    }
+
+    private static (string Name, string? UserId) ResolveHomeworkTeacher(
+        string parentUserId,
+        Homework homework,
+        IReadOnlyDictionary<Guid, Lesson> lessons,
+        IReadOnlyDictionary<Guid, Tenant> tenants)
+    {
+        Guid tenantId = homework.TenantId;
+        if (homework.LessonId is Guid lessonId && lessons.TryGetValue(lessonId, out var lesson))
+            tenantId = lesson.TenantId;
+
+        if (!tenants.TryGetValue(tenantId, out var tenant) || string.IsNullOrWhiteSpace(tenant.Name))
+            return ("Enseignant", null);
+
+        var teacherId = string.IsNullOrWhiteSpace(tenant.OwnerUserId) || tenant.OwnerUserId == parentUserId
+            ? null
+            : tenant.OwnerUserId;
+        return (tenant.Name, teacherId);
     }
 
     public async Task<IReadOnlyList<ParentPaymentDto>> GetPaymentsForUserAsync(

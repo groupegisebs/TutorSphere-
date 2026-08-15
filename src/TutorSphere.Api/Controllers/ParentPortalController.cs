@@ -334,6 +334,81 @@ public class ParentPortalController : ControllerBase
         }
     }
 
+    [HttpGet("homework")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<ActionResult<ParentHomeworkBoardDto>> Homework(CancellationToken ct)
+    {
+        var userId = await ResolveParentUserIdAsync(ct);
+        if (userId is null)
+            return Unauthorized();
+
+        return Ok(await _parentService.GetHomeworkBoardForUserAsync(userId, ct));
+    }
+
+    [HttpGet("homework/{id:guid}")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<ActionResult<ParentHomeworkDetailDto>> HomeworkDetail(Guid id, CancellationToken ct)
+    {
+        var userId = await ResolveParentUserIdAsync(ct);
+        if (userId is null)
+            return Unauthorized();
+
+        var detail = await _parentService.GetHomeworkDetailForUserAsync(userId, id, ct);
+        return detail is null ? NotFound(new { error = "Devoir introuvable." }) : Ok(detail);
+    }
+
+    /// <summary>Rappel à l'enfant. Le parent ne peut pas remettre le devoir.</summary>
+    [HttpPost("homework/{id:guid}/remind")]
+    public async Task<IActionResult> RemindHomework(Guid id, CancellationToken ct)
+    {
+        var userId = await ResolveParentUserIdAsync(ct);
+        if (userId is null)
+            return Unauthorized();
+
+        try
+        {
+            await _parentService.RemindHomeworkForUserAsync(userId, id, ct);
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>Progression d'un seul enfant. Pas de comparaison nominative entre frères et sœurs.</summary>
+    [HttpGet("progress")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<ActionResult<ParentProgressDto>> Progress(
+        [FromQuery] Guid? childId,
+        [FromQuery] string? period,
+        CancellationToken ct)
+    {
+        var userId = await ResolveParentUserIdAsync(ct);
+        if (userId is null)
+            return Unauthorized();
+
+        return Ok(await _parentService.GetProgressForUserAsync(userId, childId, period, ct));
+    }
+
+    [HttpGet("progress/{childId:guid}/report")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> ProgressReport(
+        Guid childId,
+        [FromQuery] string? period,
+        CancellationToken ct)
+    {
+        var userId = await ResolveParentUserIdAsync(ct);
+        if (userId is null)
+            return Unauthorized();
+
+        var pdf = await _parentService.BuildProgressReportPdfForUserAsync(userId, childId, period, ct);
+        if (pdf is null)
+            return NotFound(new { error = "Rapport introuvable." });
+
+        return File(pdf.Value.Content, "application/pdf", pdf.Value.FileName);
+    }
+
     [HttpGet("teachers")]
     public async Task<ActionResult<IReadOnlyList<TutorSphere.Application.DTOs.Messages.ConversationDto>>> Teachers(
         CancellationToken ct)

@@ -156,3 +156,137 @@ public record ParentCalendarEventDto(
     string? Status,
     string? MeetingUrl,
     string? Title);
+
+public record ParentHomeworkBoardDto(
+    IReadOnlyList<ParentHomeworkChildDto> Children,
+    IReadOnlyList<ParentHomeworkItemDto> Items,
+    IReadOnlyList<ParentHomeworkResultDto> RecentResults);
+
+public record ParentHomeworkChildDto(
+    Guid Id,
+    string FirstName,
+    string LastName,
+    string? PhotoUrl,
+    string? SchoolLevel,
+    int? OnTimePercent);
+
+public record ParentHomeworkItemDto(
+    Guid Id,
+    Guid StudentId,
+    string ChildFirstName,
+    string Title,
+    string? Subject,
+    string TeacherName,
+    string? TeacherUserId,
+    DateTime? DueDate,
+    string Status,
+    int AttachmentCount,
+    bool CanRemind);
+
+public record ParentHomeworkResultDto(
+    Guid Id,
+    Guid StudentId,
+    string ChildFirstName,
+    string Title,
+    decimal Grade,
+    string? Feedback,
+    DateTime GradedAt);
+
+public record ParentHomeworkDetailDto(
+    Guid Id,
+    Guid StudentId,
+    string ChildFirstName,
+    string Title,
+    string? Subject,
+    string? Description,
+    string? Instructions,
+    IReadOnlyList<ParentHomeworkBlockDto> Content,
+    DateTime? DueDate,
+    string Status,
+    string TeacherName,
+    string? TeacherUserId,
+    DateTime? SubmittedAt,
+    string? SubmissionText,
+    IReadOnlyList<ParentHomeworkFileDto> SubmissionFiles,
+    decimal? Grade,
+    string? Feedback,
+    bool IsGraded,
+    bool CanRemind);
+
+public record ParentHomeworkBlockDto(
+    string Type,
+    string? Title,
+    string? Body,
+    string? Url);
+
+public record ParentHomeworkFileDto(
+    string Name,
+    string? Url);
+
+/// <summary>Progression d'un seul enfant. Pas de comparaison nominative entre frères et sœurs.</summary>
+public record ParentProgressDto(
+    IReadOnlyList<ParentProgressChildDto> Children,
+    ParentProgressReportDto? Report);
+
+public record ParentProgressChildDto(
+    Guid Id,
+    string FirstName,
+    string LastName,
+    string? SchoolLevel,
+    string? PhotoUrl);
+
+public record ParentProgressReportDto(
+    Guid StudentId,
+    string FirstName,
+    string LastName,
+    string? SchoolLevel,
+    int? ProgressPercent,
+    int? ProgressDelta,
+    decimal? AverageGrade,
+    decimal? AverageDelta,
+    int? AttendancePercent,
+    int? AttendanceDelta,
+    int SkillsAcquired,
+    int SkillsTotal,
+    int SkillsAcquiredDelta,
+    bool HasGroupBenchmark,
+    IReadOnlyList<ParentProgressPointDto> Timeline,
+    IReadOnlyList<ParentProgressSubjectDto> Subjects,
+    IReadOnlyList<ParentProgressSkillDto> Skills,
+    IReadOnlyList<ParentProgressObservationDto> Observations,
+    IReadOnlyList<ParentProgressAttentionDto> Attention,
+    int GoalsAchieved,
+    int GoalsTotal,
+    IReadOnlyList<ParentProgressGoalDto> Goals);
+
+public record ParentProgressPointDto(
+    DateTime MonthStart,
+    int Percent,
+    int? GroupAveragePercent);
+
+public record ParentProgressSubjectDto(
+    string Subject,
+    int? Percent,
+    string Band);
+
+public record ParentProgressSkillDto(
+    string Name,
+    string? Subject,
+    string Status,
+    int? Percent);
+
+public record ParentProgressObservationDto(
+    Guid Id,
+    DateTime CreatedAt,
+    string TeacherName,
+    string? TeacherUserId,
+    string? Subject,
+    string Text);
+
+public record ParentProgressAttentionDto(
+    string Title,
+    string Recommendation);
+
+public record ParentProgressGoalDto(
+    string Title,
+    bool Achieved);

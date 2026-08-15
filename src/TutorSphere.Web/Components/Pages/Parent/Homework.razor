@@ -1,13 +1,596 @@
 @page "/parent/homework"
 @layout ParentLayout
 @rendermode InteractiveServer
+@using System.Globalization
+@using TutorSphere.Application.DTOs.Parents
+@using TutorSphere.Web.Services
 @inject IStringLocalizer<SharedResources> L
+@inject ApiClient Api
+@inject AuthService Auth
+@inject IConfiguration Config
+@inject NavigationManager Nav
 
-<PageTitle>@L["Nav_Homework"] — TutorSphere</PageTitle>
+<PageTitle>@L["Nav_Homework"] – TutorSphere</PageTitle>
 
-<div class="parent-stub-page">
-    <i class="bi bi-journal-text d-block" aria-hidden="true"></i>
-    <h1>@L["Nav_Homework"]</h1>
-    <p>@L["Skeleton_ComingSoon"]</p>
-    <a href="/parent/dashboard" class="btn btn-outline-primary">@L["Nav_Dashboard"]</a>
+<div class="parent-dashboard pd-mock phw-page">
+    <header class="pc-header">
+        <div>
+            <h1>@L["Nav_Homework"]</h1>
+            <p class="ts-page-subtitle">@L["ParentHw_Subtitle"]</p>
+        </div>
+    </header>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="alert alert-warning mb-3 d-flex flex-wrap align-items-center gap-2" role="alert">
+            <span>@_error</span>
+            @if (_sessionExpired)
+            {
+                <a class="btn btn-sm btn-outline-dark" href="/login/parent">@L["Common_ReLogin"]</a>
+            }
+        </div>
+    }
+
+    @if (_loading)
+    {
+        <div class="pd-loading">
+            <span class="spinner-border spinner-border-sm" role="status"></span>
+            <span>@L["Common_Loading"]</span>
+        </div>
+    }
+    else
+    {
+        <div class="pcal-chips" role="tablist">
+            <button type="button" class="pcal-chip @(_focusChildId is null ? "is-active" : "")" @onclick="() => _focusChildId = null">
+                @L["ParentCal_AllChildren"]
+            </button>
+            @foreach (var child in _children)
+            {
+                <button type="button" class="pcal-chip @(_focusChildId == child.Id ? "is-active" : "")" @onclick="() => _focusChildId = child.Id">
+                    <span class="pcal-dot" style="background:@ChildColor(child.Id)"></span>
+                    @ChildInitials(child) @child.FirstName
+                </button>
+            }
+        </div>
+
+        <div class="phw-tools">
+            <div class="messages-search phw-search">
+                <i class="bi bi-search"></i>
+                <input class="form-control form-control-sm" placeholder="@L["ParentHw_Search"]" @bind="_search" @bind:event="oninput" />
+            </div>
+        </div>
+
+        <div class="pd-kpi-row">
+            <article class="pd-kpi">
+                <div class="pd-kpi-icon pd-kpi-icon--amber"><i class="bi bi-send"></i></div>
+                <div class="pd-kpi-text">
+                    <span class="pd-kpi-label">@L["ParentHw_KpiDue"]</span>
+                    <span class="pd-kpi-value">@CountStatus("todo", "urgent")</span>
+                    <span class="pd-kpi-hint">@L["ParentHw_KpiDueHint", DueThisWeek]</span>
+                </div>
+            </article>
+            <article class="pd-kpi">
+                <div class="pd-kpi-icon" style="background:#fef2f2;color:#b91c1c"><i class="bi bi-exclamation-triangle"></i></div>
+                <div class="pd-kpi-text">
+                    <span class="pd-kpi-label">@L["ParentHw_KpiLate"]</span>
+                    <span class="pd-kpi-value">@CountStatus("overdue")</span>
+                    <span class="pd-kpi-hint">@L["ParentHw_KpiLateHint"]</span>
+                </div>
+            </article>
+            <article class="pd-kpi">
+                <div class="pd-kpi-icon pd-kpi-icon--blue"><i class="bi bi-arrow-repeat"></i></div>
+                <div class="pd-kpi-text">
+                    <span class="pd-kpi-label">@L["ParentHw_KpiGrading"]</span>
+                    <span class="pd-kpi-value">@CountStatus("grading")</span>
+                    <span class="pd-kpi-hint">@L["ParentHw_KpiGradingHint"]</span>
+                </div>
+            </article>
+            <article class="pd-kpi">
+                <div class="pd-kpi-icon pd-kpi-icon--green"><i class="bi bi-check2-circle"></i></div>
+                <div class="pd-kpi-text">
+                    <span class="pd-kpi-label">@L["ParentHw_KpiDone"]</span>
+                    <span class="pd-kpi-value">@DoneThisMonth</span>
+                    <span class="pd-kpi-hint">@L["Children_KpiThisMonth"]</span>
+                </div>
+            </article>
+        </div>
+
+        <div class="phw-layout">
+            <article class="pc-card">
+                <div class="pc-card-head">
+                    <h3>@L["ParentHw_Upcoming"]</h3>
+                </div>
+                <nav class="pc-tabs" style="margin:0 1rem .4rem">
+                    <button type="button" class="pc-tab @(_tab == "todo" ? "is-active" : "")" @onclick='() => _tab = "todo"'>@L["ParentHw_TabTodo"]</button>
+                    <button type="button" class="pc-tab @(_tab == "grading" ? "is-active" : "")" @onclick='() => _tab = "grading"'>@L["ParentHw_TabSubmitted"]</button>
+                    <button type="button" class="pc-tab @(_tab == "done" ? "is-active" : "")" @onclick='() => _tab = "done"'>@L["ParentHw_TabGraded"]</button>
+                    <button type="button" class="pc-tab @(_tab == "all" ? "is-active" : "")" @onclick='() => _tab = "all"'>@L["ParentHw_TabAll"]</button>
+                </nav>
+                <div class="table-responsive">
+                    <table class="phw-table">
+                        <thead>
+                            <tr>
+                                <th>@L["ParentCal_Child"]</th>
+                                <th>@L["ParentHw_ColTask"]</th>
+                                <th>@L["ParentHw_ColTeacher"]</th>
+                                <th>@L["ParentHw_ColDue"]</th>
+                                <th>@L["ParentHw_ColStatus"]</th>
+                                <th>@L["ParentHw_ColFiles"]</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @if (!FilteredRows.Any())
+                            {
+                                <tr><td colspan="7" class="text-muted p-4">@L["ParentHw_Empty"]</td></tr>
+                            }
+                            @foreach (var row in FilteredRows)
+                            {
+                                var child = ChildOf(row.StudentId);
+                                <tr>
+                                    <td>
+                                        <div class="phw-child">
+                                            @ChildAvatar(child, row.StudentId)
+                                            <span>@row.ChildFirstName</span>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <strong>@(row.Subject ?? "—")</strong>
+                                        <div class="text-muted small">@row.Title</div>
+                                    </td>
+                                    <td>@row.TeacherName</td>
+                                    <td>@FormatDue(row.DueDate, row.Status)</td>
+                                    <td><span class="pc-pill @StatusCss(row.Status)">@StatusLabel(row.Status)</span></td>
+                                    <td>@(row.AttachmentCount > 0 ? row.AttachmentCount.ToString() : "—")</td>
+                                    <td>
+                                        <button type="button" class="pd-btn pd-btn--ghost pd-btn--sm" @onclick="() => OpenDetailAsync(row.Id)">
+                                            @L["ParentHw_View"]
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <div class="pc-card-body">
+                    <button type="button" class="pc-kpi-link" @onclick='() => _tab = "all"'>@L["ParentHw_ViewAll"]</button>
+                </div>
+            </article>
+
+            <div class="d-flex flex-column gap-3">
+                <article class="pc-card">
+                    <div class="pc-card-head"><h3>@L["ParentHw_ThisWeek"]</h3></div>
+                    <div class="pc-card-body">
+                        <div class="phw-week">
+                            @foreach (var day in WeekDays)
+                            {
+                                <div>
+                                    <span class="phw-week-dow">@day.ToString("ddd")[..1]</span>
+                                    @foreach (var child in VisibleChildren)
+                                    {
+                                        var n = CountDueOn(day, child.Id);
+                                        if (n > 0)
+                                        {
+                                            <span class="phw-week-mark" style="--pcal-accent:@ChildColor(child.Id)">@n</span>
+                                        }
+                                    }
+                                </div>
+                            }
+                        </div>
+                        <div class="pcal-footer-stats mt-3">
+                            @foreach (var child in VisibleChildren)
+                            {
+                                <span class="pcal-stat-badge" style="--pcal-accent:@ChildColor(child.Id)">@child.FirstName : @CountDueThisWeek(child.Id)</span>
+                            }
+                        </div>
+                    </div>
+                </article>
+
+                <article class="pc-card">
+                    <div class="pc-card-head"><h3>@L["ParentHw_Results"]</h3></div>
+                    <div class="pc-card-body">
+                        @if (!VisibleResults.Any())
+                        {
+                            <p class="text-muted mb-0">@L["ParentHw_ResultsEmpty"]</p>
+                        }
+                        @foreach (var result in VisibleResults)
+                        {
+                            <div class="phw-result">
+                                <div class="phw-child">@ChildAvatar(ChildOf(result.StudentId), result.StudentId)<strong>@result.ChildFirstName</strong></div>
+                                <span>@result.Title</span>
+                                <strong class="phw-grade">@result.Grade.ToString("0.#") / 20</strong>
+                                @if (!string.IsNullOrWhiteSpace(result.Feedback))
+                                {
+                                    <p class="text-muted small mb-2">@result.Feedback</p>
+                                }
+                                <button type="button" class="pd-btn pd-btn--ghost pd-btn--sm" @onclick="() => OpenDetailAsync(result.Id)">@L["ParentHw_ViewCorrection"]</button>
+                            </div>
+                        }
+                    </div>
+                </article>
+
+                <article class="pc-card">
+                    <div class="pc-card-head"><h3>@L["ParentHw_Attention"]</h3></div>
+                    <div class="pc-card-body">
+                        @{
+                            var late = VisibleItems.Where(i => i.Status == "overdue").ToList();
+                        }
+                        @if (late.Count == 0)
+                        {
+                            <p class="text-muted mb-0">@L["ParentHw_AttentionEmpty"]</p>
+                        }
+                        @foreach (var item in late)
+                        {
+                            <div class="phw-result">
+                                <div class="phw-child">@ChildAvatar(ChildOf(item.StudentId), item.StudentId)<strong>@item.ChildFirstName</strong></div>
+                                <span>@item.Title</span>
+                                <span class="pc-pill pc-pill-danger">@LateLabel(item.DueDate)</span>
+                                <button type="button" class="pd-btn pd-btn--ghost pd-btn--sm mt-2" @onclick="() => OpenDetailAsync(item.Id)">@L["ParentHw_View"]</button>
+                            </div>
+                        }
+                    </div>
+                </article>
+            </div>
+        </div>
+
+        <div class="phw-rates">
+            <h3>@L["ParentHw_OnTime"]</h3>
+            @foreach (var child in VisibleChildren)
+            {
+                <div class="phw-rate">
+                    <div class="phw-child">@ChildAvatar(child, child.Id)<strong>@child.FirstName</strong></div>
+                    <div class="pd-progress-track">
+                        <div class="pd-progress-fill" style="width:@(child.OnTimePercent ?? 0)%;background:@ChildColor(child.Id)"></div>
+                    </div>
+                    <strong>@(child.OnTimePercent.HasValue ? $"{child.OnTimePercent} %" : "—")</strong>
+                </div>
+            }
+        </div>
+    }
 </div>
+
+@if (_detail is not null)
+{
+    <div class="ts-modal-backdrop" @onclick="CloseDetail">
+        <div class="ts-modal ts-modal-lg" @onclick:stopPropagation="true">
+            <div class="ts-modal-header">
+                <h2>@_detail.ChildFirstName · @_detail.Title</h2>
+                <button type="button" class="ts-modal-close" @onclick="CloseDetail"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <div class="ts-modal-body">
+                <p class="mb-2">
+                    <span class="pcal-dot" style="background:@ChildColor(_detail.StudentId)"></span>
+                    @_detail.ChildFirstName
+                    · @(_detail.Subject ?? "—")
+                    · @_detail.TeacherName
+                    · <span class="pc-pill @StatusCss(_detail.Status)">@StatusLabel(_detail.Status)</span>
+                </p>
+                @if (_detail.DueDate is DateTime due)
+                {
+                    <p class="text-muted">@L["ParentHw_ColDue"] : @FormatDue(due, _detail.Status)</p>
+                }
+
+                <h3 class="h6 mt-3">@L["ParentHw_Instructions"]</h3>
+                <p>@(string.IsNullOrWhiteSpace(_detail.Instructions) ? _detail.Description : _detail.Instructions)</p>
+                @foreach (var block in _detail.Content.Where(b => b.Type is "text" or "form"))
+                {
+                    <p>@((block.Title ?? "") + " " + (block.Body ?? ""))</p>
+                }
+
+                <h3 class="h6 mt-3">@L["ParentHw_ColFiles"]</h3>
+                @{
+                    var files = _detail.Content.Where(b => (b.Type is "file" or "link" or "video") && !string.IsNullOrWhiteSpace(b.Url)).ToList();
+                }
+                @if (files.Count == 0)
+                {
+                    <p class="text-muted small">@L["ParentHw_NoFiles"]</p>
+                }
+                @foreach (var file in files)
+                {
+                    <a class="pc-doc" href="@MediaUrlHelper.Resolve(file.Url, Config, Nav)" target="_blank" rel="noopener">
+                        @(file.Title ?? L["ParentHw_ColFiles"])
+                    </a>
+                }
+
+                <h3 class="h6 mt-3">@L["ParentHw_Work"]</h3>
+                @if (string.IsNullOrWhiteSpace(_detail.SubmissionText) && _detail.SubmissionFiles.Count == 0)
+                {
+                    <p class="text-muted small">@L["ParentHw_NoWork"]</p>
+                }
+                else
+                {
+                    @if (!string.IsNullOrWhiteSpace(_detail.SubmissionText))
+                    {
+                        <p>@_detail.SubmissionText</p>
+                    }
+                    @foreach (var file in _detail.SubmissionFiles)
+                    {
+                        var href = MediaUrlHelper.Resolve(file.Url, Config, Nav);
+                        if (string.IsNullOrWhiteSpace(href))
+                        {
+                            <span>@file.Name</span>
+                        }
+                        else
+                        {
+                            <a class="pc-doc" href="@href" target="_blank" rel="noopener">@file.Name</a>
+                        }
+                    }
+                }
+
+                <h3 class="h6 mt-3">@L["ParentHw_Correction"]</h3>
+                @if (_detail.IsGraded)
+                {
+                    <p><strong>@($"{_detail.Grade?.ToString("0.#")} / 20")</strong></p>
+                    <p>@(_detail.Feedback ?? "—")</p>
+                }
+                else
+                {
+                    <p class="text-muted small">@L["ParentHw_NoCorrection"]</p>
+                }
+
+                @if (!string.IsNullOrEmpty(_remindHint))
+                {
+                    <div class="alert alert-info py-2 mt-3 mb-0">@_remindHint</div>
+                }
+                @if (!string.IsNullOrEmpty(_remindError))
+                {
+                    <div class="alert alert-danger py-2 mt-3 mb-0">@_remindError</div>
+                }
+            </div>
+            <div class="ts-modal-footer flex-wrap gap-2">
+                @if (!string.IsNullOrEmpty(_detail.TeacherUserId))
+                {
+                    <a class="btn btn-outline-primary" href="@($"/parent/messages?to={Uri.EscapeDataString(_detail.TeacherUserId)}")">@L["ParentCal_Contact"]</a>
+                }
+                @if (_detail.CanRemind)
+                {
+                    <button type="button" class="btn btn-outline-secondary" disabled="@_remindBusy" @onclick="RemindAsync">
+                        @if (_remindBusy)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        @L["ParentHw_Remind"]
+                    </button>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private static readonly string[] ChildPalette = ["#5831E0", "#2563EB", "#7c3aed", "#0ea5e9", "#ec4899"];
+    private bool _loading = true;
+    private bool _sessionExpired;
+    private bool _initialLoadDone;
+    private string? _error;
+    private string _search = "";
+    private string _tab = "todo";
+    private Guid? _focusChildId;
+    private List<ParentHomeworkChildDto> _children = [];
+    private List<ParentHomeworkItemDto> _items = [];
+    private List<ParentHomeworkResultDto> _results = [];
+    private ParentHomeworkDetailDto? _detail;
+    private bool _remindBusy;
+    private string? _remindHint;
+    private string? _remindError;
+
+    private IEnumerable<ParentHomeworkChildDto> VisibleChildren =>
+        _focusChildId is Guid id ? _children.Where(c => c.Id == id) : _children;
+
+    private IEnumerable<ParentHomeworkItemDto> VisibleItems =>
+        _items.Where(i => _focusChildId is null || i.StudentId == _focusChildId);
+
+    private IEnumerable<ParentHomeworkResultDto> VisibleResults =>
+        _results.Where(i => _focusChildId is null || i.StudentId == _focusChildId).Take(4);
+
+    private IEnumerable<ParentHomeworkItemDto> FilteredRows
+    {
+        get
+        {
+            var q = VisibleItems;
+            q = _tab switch
+            {
+                "todo" => q.Where(i => i.Status is "todo" or "urgent" or "overdue"),
+                "grading" => q.Where(i => i.Status == "grading"),
+                "done" => q.Where(i => i.Status == "done"),
+                _ => q
+            };
+            if (!string.IsNullOrWhiteSpace(_search))
+            {
+                q = q.Where(i =>
+                    i.Title.Contains(_search, StringComparison.OrdinalIgnoreCase)
+                    || (i.Subject?.Contains(_search, StringComparison.OrdinalIgnoreCase) ?? false)
+                    || i.TeacherName.Contains(_search, StringComparison.OrdinalIgnoreCase)
+                    || i.ChildFirstName.Contains(_search, StringComparison.OrdinalIgnoreCase));
+            }
+
+            return q.Take(_tab == "all" ? 50 : 8);
+        }
+    }
+
+    private int DueThisWeek => VisibleItems.Count(i =>
+        i.Status is "todo" or "urgent"
+        && i.DueDate is DateTime due
+        && ToLocal(due).Date >= WeekStart
+        && ToLocal(due).Date < WeekStart.AddDays(7));
+
+    private int DoneThisMonth => VisibleItems.Count(i =>
+        i.Status == "done"
+        && i.DueDate is DateTime due
+        && ToLocal(due).Month == DateTime.Today.Month
+        && ToLocal(due).Year == DateTime.Today.Year)
+        + VisibleItems.Count(i => i.Status == "done" && i.DueDate is null);
+
+    private static DateTime WeekStart
+    {
+        get
+        {
+            var today = DateTime.Today;
+            var dow = (int)today.DayOfWeek;
+            return today.AddDays(dow == 0 ? -6 : -(dow - 1));
+        }
+    }
+
+    private static IEnumerable<DateTime> WeekDays => Enumerable.Range(0, 7).Select(i => WeekStart.AddDays(i));
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _initialLoadDone)
+            return;
+        _initialLoadDone = true;
+        await Auth.EnsureSessionRestoredAsync(forceJs: true);
+        await LoadAsync();
+        StateHasChanged();
+    }
+
+    private RenderFragment ChildAvatar(ParentHomeworkChildDto? child, Guid id) => __builder =>
+    {
+        var color = ChildColor(id);
+        var initials = child is null ? "?" : ChildInitials(child);
+        if (!string.IsNullOrEmpty(child?.PhotoUrl))
+        {
+            <img class="pd-child-photo phw-avatar" src="@MediaUrlHelper.Resolve(child.PhotoUrl, Config, Nav)" alt="" />
+        }
+        else
+        {
+            <div class="pd-child-avatar phw-avatar" style="background:@color">@initials</div>
+        }
+    };
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            await Auth.EnsureSessionRestoredAsync();
+            if (string.IsNullOrEmpty(Auth.Token))
+            {
+                if (Auth.IsSessionExpired)
+                {
+                    _sessionExpired = true;
+                    _error = ApiClient.SessionExpiredMessage;
+                }
+                return;
+            }
+
+            var result = await Api.GetWithErrorAsync<ParentHomeworkBoardDto>("api/parent/homework");
+            if (result.Error == ApiClient.SessionExpiredMessage)
+            {
+                _sessionExpired = true;
+                _error = result.Error;
+                return;
+            }
+            if (result.Error is not null || result.Value is null)
+            {
+                _error = result.Error ?? L["ParentHw_LoadError"];
+                return;
+            }
+
+            _children = result.Value.Children.ToList();
+            _items = result.Value.Items.ToList();
+            _results = result.Value.RecentResults.ToList();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally { _loading = false; }
+    }
+
+    private async Task OpenDetailAsync(Guid id)
+    {
+        _remindHint = _remindError = null;
+        var result = await Api.GetWithErrorAsync<ParentHomeworkDetailDto>($"api/parent/homework/{id}");
+        if (result.Error is not null || result.Value is null)
+        {
+            _error = result.Error ?? L["ParentHw_LoadError"];
+            return;
+        }
+        _detail = result.Value;
+    }
+
+    private void CloseDetail() => _detail = null;
+
+    private async Task RemindAsync()
+    {
+        if (_detail is null || !_detail.CanRemind)
+            return;
+        _remindBusy = true;
+        _remindError = _remindHint = null;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<object>($"api/parent/homework/{_detail.Id}/remind", new { });
+            if (result.Error is not null)
+            {
+                _remindError = result.Error;
+                return;
+            }
+            _remindHint = L["ParentHw_Reminded"];
+        }
+        finally { _remindBusy = false; }
+    }
+
+    private int CountStatus(params string[] statuses) => VisibleItems.Count(i => statuses.Contains(i.Status));
+    private int CountDueOn(DateTime day, Guid childId) =>
+        _items.Count(i => i.StudentId == childId && i.DueDate is DateTime due && ToLocal(due).Date == day.Date);
+    private int CountDueThisWeek(Guid childId) =>
+        _items.Count(i => i.StudentId == childId && i.DueDate is DateTime due
+                          && ToLocal(due).Date >= WeekStart && ToLocal(due).Date < WeekStart.AddDays(7));
+
+    private ParentHomeworkChildDto? ChildOf(Guid id) => _children.FirstOrDefault(c => c.Id == id);
+
+    private string ChildColor(Guid id)
+    {
+        var i = _children.FindIndex(c => c.Id == id);
+        return ChildPalette[Math.Max(0, i) % ChildPalette.Length];
+    }
+
+    private static string ChildInitials(ParentHomeworkChildDto child)
+    {
+        var a = string.IsNullOrWhiteSpace(child.FirstName) ? "" : child.FirstName.Trim()[..1];
+        var b = string.IsNullOrWhiteSpace(child.LastName) ? "" : child.LastName.Trim()[..1];
+        var s = (a + b).ToUpperInvariant();
+        return string.IsNullOrEmpty(s) ? "?" : s;
+    }
+
+    private string StatusLabel(string status) => status switch
+    {
+        "urgent" => L["ParentHw_StatusUrgent"],
+        "overdue" => L["Children_HomeworkOverdue"],
+        "grading" => L["ParentHw_StatusGrading"],
+        "done" => L["Children_HomeworkDone"],
+        _ => L["ParentHw_StatusTodo"]
+    };
+
+    private static string StatusCss(string status) => status switch
+    {
+        "done" => "pc-pill-ok",
+        "overdue" or "urgent" => "pc-pill-danger",
+        "grading" => "pc-pill-ok",
+        _ => "pc-pill-warn"
+    };
+
+    private string FormatDue(DateTime? due, string status)
+    {
+        if (due is null)
+            return "—";
+        var local = ToLocal(due.Value);
+        if (status == "urgent" && local.Date == DateTime.Today.AddDays(1))
+            return L["ParentHw_DueTomorrow"];
+        if (local.Date == DateTime.Today)
+            return string.Format(CultureInfo.CurrentCulture, L["Children_TodayAt"], local.ToString("HH:mm"));
+        return local.ToString("d");
+    }
+
+    private string LateLabel(DateTime? due)
+    {
+        if (due is null)
+            return L["Children_HomeworkOverdue"];
+        var days = (DateTime.Today - ToLocal(due.Value).Date).Days;
+        return L["ParentHw_LateDays", Math.Max(1, days)];
+    }
+
+    private static DateTime ToLocal(DateTime value) =>
+        value.Kind == DateTimeKind.Utc ? value.ToLocalTime() : DateTime.SpecifyKind(value, DateTimeKind.Local);
+}
