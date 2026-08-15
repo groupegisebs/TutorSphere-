@@ -100,6 +100,7 @@ public class ExpertApprovalService(
     IUserContactLookup contacts,
     IAppUrlProvider urls,
     IExpertGovernanceAuditService audit,
+    ITeacherLoginIssuer teacherLogins,
     ILogger<ExpertApprovalService> logger) : IExpertApprovalService
 {
     public Task<IReadOnlyList<Guid>> GetExpertGroupIdsAsync(string expertUserId, CancellationToken ct = default)
@@ -931,13 +932,34 @@ public class ExpertApprovalService(
 
             if (approved)
             {
+                IssuedTeacherLogin? credentials = null;
+                try
+                {
+                    credentials = await teacherLogins.IssueTemporaryPasswordAsync(tenant.OwnerUserId, ct);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex,
+                        "Impossible de générer le mot de passe temporaire pour {TenantId}.", tenant.Id);
+                }
+
+                const string instructions =
+                    "Connectez-vous à l'espace enseignant avec l'adresse et le mot de passe temporaire ci-dessous, puis changez ce mot de passe à la première connexion.";
+                var notesWithLogin = credentials is null
+                    ? notes
+                    : $"{instructions}\n\nE-mail : {credentials.Email}\nMot de passe temporaire : {credentials.TemporaryPassword}"
+                      + (notes == "—" ? "" : "\n\n" + notes);
+
                 await email.SendExpertTeacherApprovedAsync(
                     contact.Value.Email,
                     firstName,
                     tenant.Name,
                     groupName,
-                    notes,
+                    notesWithLogin,
                     loginUrl,
+                    credentials?.Email,
+                    credentials?.TemporaryPassword,
+                    instructions,
                     ct);
             }
             else

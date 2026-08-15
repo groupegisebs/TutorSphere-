@@ -359,6 +359,9 @@ public class EmailService : IEmailService
         string groupName,
         string notes,
         string loginUrl,
+        string? loginEmail = null,
+        string? temporaryPassword = null,
+        string? loginInstructions = null,
         CancellationToken ct = default) =>
         SendAsync(to, EmailTemplates.ExpertTeacherApproved, new Dictionary<string, string>
         {
@@ -366,7 +369,10 @@ public class EmailService : IEmailService
             ["SchoolName"] = schoolName,
             ["GroupName"] = groupName,
             ["Notes"] = string.IsNullOrWhiteSpace(notes) ? "—" : notes.Trim(),
-            ["LoginUrl"] = loginUrl
+            ["LoginUrl"] = loginUrl,
+            ["Email"] = string.IsNullOrWhiteSpace(loginEmail) ? to : loginEmail.Trim(),
+            ["TemporaryPassword"] = temporaryPassword ?? "",
+            ["LoginInstructions"] = loginInstructions ?? ""
         }, ct);
 
     public Task SendExpertTeacherRejectedAsync(

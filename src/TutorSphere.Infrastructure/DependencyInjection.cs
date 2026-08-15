@@ -38,6 +38,7 @@ public static class DependencyInjection
             .AddDefaultTokenProviders();
 
         services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<ITeacherLoginIssuer>(sp => (ITeacherLoginIssuer)sp.GetRequiredService<IAuthService>());
         services.AddScoped<IMessageService, MessageService>();
         services.AddScoped<ISupportInboxResolver, SupportInboxResolver>();
         services.AddScoped<IAdminUserAccountService, AdminUserAccountService>();

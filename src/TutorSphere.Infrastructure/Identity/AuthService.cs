@@ -11,6 +11,7 @@ using TutorSphere.Application.Common;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.Auth;
 using TutorSphere.Application.DTOs.ExpertApproval;
+using TutorSphere.Application.DTOs.SubscriptionOfferings;
 using TutorSphere.Application.Services;
 using TutorSphere.Domain.Common;
 using TutorSphere.Domain.Entities;
@@ -44,7 +45,7 @@ public interface IAuthService
     Task EnsureParentProfileForUserAsync(string userId, CancellationToken ct = default);
 }
 
-public class AuthService : IAuthService
+public class AuthService : IAuthService, ITeacherLoginIssuer
 {
     private static readonly ConcurrentDictionary<string, DateTime> ConfirmResendCooldown = new(StringComparer.OrdinalIgnoreCase);
     private static readonly TimeSpan ConfirmResendMinInterval = TimeSpan.FromSeconds(60);
@@ -160,6 +161,17 @@ public class AuthService : IAuthService
 
         if (!await _userManager.CheckPasswordAsync(user, password))
             throw new UnauthorizedAccessException("Identifiants invalides.");
+
+        if (roles.Contains(UserRoles.Tutor) && user.TenantId is Guid tenantId)
+        {
+            var tenant = _db.Tenants.FirstOrDefault(t => t.Id == tenantId);
+            if (tenant is not null
+                && tenant.ExpertApprovalStatus is not ExpertApprovalStatus.Approved)
+            {
+                throw new UnauthorizedAccessException(
+                    "Votre candidature est en cours d'examen. Vous recevrez un e-mail d'acceptation avec vos identifiants de connexion.");
+            }
+        }
 
         // Groupe expert : Expert ou Responsable de groupe.
         if (role is UserRoles.Expert or UserRoles.GroupManager)
@@ -402,6 +414,8 @@ public class AuthService : IAuthService
         var inviteGroup = _db.ExpertGroups.FirstOrDefault(g => g.Id == invite.ExpertGroupId);
 
         var slug = request.Slug.Trim().ToLowerInvariant();
+        if (!Regex.IsMatch(slug, @"^[a-z0-9]([a-z0-9-]{1,48}[a-z0-9])?$"))
+            throw new InvalidOperationException("Sous-domaine invalide.");
 
         if (_db.Tenants.Any(t => t.Slug == slug))
             throw new InvalidOperationException("Cette adresse est déjà utilisée par un autre profil.");
@@ -413,16 +427,21 @@ public class AuthService : IAuthService
                 "Vous devez accepter le Code de conduite et d'éthique enseignant (version en vigueur) pour créer un compte.");
         }
 
+        var language = SupportedLanguageCodes.Normalize(request.PreferredLanguage);
         var user = new ApplicationUser
         {
             UserName = request.Email,
             Email = request.Email,
             FirstName = request.FirstName.Trim(),
             LastName = request.LastName.Trim(),
-            PreferredLanguage = SupportedLanguageCodes.Normalize(request.PreferredLanguage)
+            PhoneNumber = NormalizeOptionalPhone(request.Phone),
+            PreferredLanguage = language,
+            EmailConfirmed = true,
+            MustChangePassword = true
         };
 
-        var result = await _userManager.CreateAsync(user, request.Password);
+        var holdPassword = TeacherLoginProvisioning.GenerateTemporaryPassword();
+        var result = await _userManager.CreateAsync(user, holdPassword);
         if (!result.Succeeded)
             throw new InvalidOperationException(string.Join("; ", result.Errors.Select(e => e.Description)));
 
@@ -431,21 +450,51 @@ public class AuthService : IAuthService
         var country = ProfileVisibility.NormalizeCode(request.Country);
         if (country.Length != 2)
             country = ProfileVisibility.NormalizeCode(inviteGroup?.CountryCode);
-        if (country.Length != 2)
+        if (country.Length != 2 && inviteGroup?.IsInternational != true)
             country = "CA";
+
+        var timeZone = TimeZoneCatalog.Normalize(
+            string.IsNullOrWhiteSpace(request.TimeZone)
+                ? TimeZoneCatalog.DefaultForCountry(country)
+                : request.TimeZone);
+
+        GroupOffer? catalogOffer = null;
+        if (request.GroupOfferId is Guid offerId && offerId != Guid.Empty)
+        {
+            catalogOffer = _db.GroupOffers.FirstOrDefault(o =>
+                o.Id == offerId
+                && o.ExpertGroupId == invite.ExpertGroupId
+                && o.Status == GroupOfferStatus.Published)
+                ?? throw new InvalidOperationException("Offre du groupe introuvable ou non publiée.");
+        }
+
+        var currency = catalogOffer is not null
+            ? catalogOffer.Currency
+            : GroupOfferCurrencyRules.ResolveCurrency(country);
+
+        var presentation = TeacherContactPrivacy.RedactFromPublicText(request.Presentation?.Trim());
+        var privateNotes = BuildPrivateProfileNotes(request.Address, request.PostalCode, request.DateOfBirth);
 
         var tenant = new Tenant
         {
             Name = request.SchoolName.Trim(),
             Slug = slug,
             Subdomain = slug,
-            City = request.City,
+            Description = privateNotes,
+            City = string.IsNullOrWhiteSpace(request.City) ? null : request.City.Trim(),
             Country = country,
-            VisibleCountryCodes = ProfileVisibility.ToCsv(null, country),
+            VisibleCountryCodes = ProfileVisibility.ToCsv(
+                catalogOffer?.IsInternational == true && !string.IsNullOrWhiteSpace(catalogOffer.MarketCountryCode)
+                    ? new[] { catalogOffer.MarketCountryCode }
+                    : null,
+                country),
+            TimeZone = timeZone,
+            Currency = currency,
+            Language = language,
             Status = TenantStatus.PendingValidation,
             Plan = TenantPlan.Starter,
             OwnerUserId = user.Id,
-            Branding = new TenantBranding(),
+            Branding = new TenantBranding { Presentation = presentation },
             TeacherConductPolicyVersion = TeacherConductPolicy.CurrentVersion,
             TeacherConductAcceptedAt = DateTime.UtcNow,
             ExpertApprovalStatus = ExpertApprovalStatus.Pending,
@@ -458,15 +507,54 @@ public class AuthService : IAuthService
         await MarkInviteAcceptedIfAnyAsync(request.Email, tenant.Id, request.InviteToken, ct);
 
         user.TenantId = tenant.Id;
+        user.TimeZone = timeZone;
         await _userManager.UpdateAsync(user);
 
-        var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-        var confirmUrl = _urls.BuildEmailConfirmUrl(user.Id, token);
-        await _email.SendEmailConfirmationAsync(user.Email!, user.FirstName, confirmUrl, ct);
+        SaveTeacherAvailabilities(tenant.Id, request.Availabilities, request.InitialOffering?.Schedule);
+        await _db.SaveChangesAsync(ct);
+
+        var offering = await TryCreateInitialOfferingAsync(
+            tenant.Id,
+            catalogOffer,
+            request.InitialOffering,
+            currency,
+            timeZone,
+            ct);
+
+        if (catalogOffer is not null && offering is not null)
+        {
+            _db.Add(new GroupOfferTeacher
+            {
+                GroupOfferId = catalogOffer.Id,
+                TeacherTenantId = tenant.Id,
+                AssignmentStatus = GroupOfferTeacherAssignmentStatus.Applied,
+                TeacherPrice = offering.Price,
+                SubscriptionOfferingId = offering.Id
+            });
+            await _db.SaveChangesAsync(ct);
+        }
 
         await _expertNotify.NotifyExpertsIfNeededAsync(tenant.Id, ct);
 
         return new RegisterSchoolResponse(tenant.Id, tenant.Slug, user.Email!);
+    }
+
+    public async Task<IssuedTeacherLogin?> IssueTemporaryPasswordAsync(string userId, CancellationToken ct = default)
+    {
+        var user = await _userManager.FindByIdAsync(userId);
+        if (user is null || string.IsNullOrWhiteSpace(user.Email))
+            return null;
+
+        var password = TeacherLoginProvisioning.GenerateTemporaryPassword();
+        var token = await _userManager.GeneratePasswordResetTokenAsync(user);
+        var reset = await _userManager.ResetPasswordAsync(user, token, password);
+        if (!reset.Succeeded)
+            throw new InvalidOperationException(string.Join("; ", reset.Errors.Select(e => e.Description)));
+
+        user.EmailConfirmed = true;
+        user.MustChangePassword = true;
+        await _userManager.UpdateAsync(user);
+        return new IssuedTeacherLogin(user.Email, password);
     }
 
     public async Task<RegisterTeacherByExpertResponse> RegisterTeacherByExpertAsync(
@@ -601,7 +689,7 @@ public class AuthService : IAuthService
         user.TimeZone = tenant.TimeZone;
         await _userManager.UpdateAsync(user);
 
-        SaveTeacherAvailabilities(tenant.Id, request);
+        SaveTeacherAvailabilities(tenant.Id, request.Availabilities, request.InitialOffering?.Schedule);
         await _db.SaveChangesAsync(ct);
 
         Guid? offeringId = null;
@@ -676,15 +764,86 @@ public class AuthService : IAuthService
         return string.IsNullOrWhiteSpace(user?.Email) ? null : user.Email.Trim().ToLowerInvariant();
     }
 
-    private void SaveTeacherAvailabilities(Guid tenantId, RegisterTeacherByExpertRequest request)
+    private async Task<SubscriptionOfferingDto?> TryCreateInitialOfferingAsync(
+        Guid tenantId,
+        GroupOffer? catalogOffer,
+        CreateSubscriptionOfferingRequest? request,
+        string currency,
+        string timeZone,
+        CancellationToken ct)
     {
-        var ranges = request.Availabilities?
+        var title = !string.IsNullOrWhiteSpace(request?.Title)
+            ? request!.Title.Trim()
+            : catalogOffer?.Name?.Trim();
+        if (string.IsNullOrWhiteSpace(title))
+            return null;
+
+        var price = request?.Price is > 0
+            ? request.Price
+            : catalogOffer?.RecommendedPrice ?? catalogOffer?.FixedPrice ?? 0m;
+        var offerCurrency = string.IsNullOrWhiteSpace(request?.Currency)
+            ? currency
+            : request!.Currency.Trim();
+
+        var schedule = request?.Schedule is { } sched
+            ? sched with { TimeZone = string.IsNullOrWhiteSpace(sched.TimeZone) ? timeZone : sched.TimeZone }
+            : new OfferingScheduleDto(
+                "mois",
+                "weekly",
+                60,
+                null,
+                null,
+                Array.Empty<OfferingScheduleSlotDto>(),
+                TimeZone: timeZone);
+
+        return await _offerings.CreateForTenantAsync(
+            tenantId,
+            new CreateSubscriptionOfferingRequest(
+                Title: title,
+                Description: request?.Description ?? catalogOffer?.ShortDescription ?? catalogOffer?.FullDescription,
+                Subject: string.IsNullOrWhiteSpace(request?.Subject) ? catalogOffer?.Name : request!.Subject,
+                Price: price,
+                Currency: offerCurrency,
+                DurationDays: request is { DurationDays: > 0 } ? request.DurationDays : 30,
+                SessionCount: request is { SessionCount: > 0 } ? request.SessionCount : 4,
+                Frequency: request?.Frequency,
+                Mode: request?.Mode ?? "En ligne",
+                Conditions: request?.Conditions,
+                Schedule: schedule,
+                MaxCapacity: request is { MaxCapacity: > 0 } ? request.MaxCapacity : 20),
+            ct);
+    }
+
+    private static string? NormalizeOptionalPhone(string? phone)
+    {
+        var value = phone?.Trim();
+        return string.IsNullOrWhiteSpace(value) ? null : value;
+    }
+
+    private static string? BuildPrivateProfileNotes(string? address, string? postal, DateTime? birthDate)
+    {
+        var parts = new[]
+        {
+            string.IsNullOrWhiteSpace(address) ? null : address.Trim(),
+            string.IsNullOrWhiteSpace(postal) ? null : $"CP {postal.Trim()}",
+            birthDate is DateTime d ? $"Né(e) le {d:dd/MM/yyyy}" : null
+        }.Where(x => !string.IsNullOrWhiteSpace(x));
+        var notes = string.Join(" · ", parts);
+        return string.IsNullOrWhiteSpace(notes) ? null : notes;
+    }
+
+    private void SaveTeacherAvailabilities(
+        Guid tenantId,
+        IReadOnlyList<TeacherAvailabilityRangeDto>? availabilities,
+        OfferingScheduleDto? schedule = null)
+    {
+        var ranges = availabilities?
             .Where(a => !string.IsNullOrWhiteSpace(a.Day)
                         && !string.IsNullOrWhiteSpace(a.StartTime)
                         && !string.IsNullOrWhiteSpace(a.EndTime))
             .ToList() ?? [];
 
-        if (ranges.Count == 0 && request.InitialOffering?.Schedule?.Slots is { Count: > 0 } slots)
+        if (ranges.Count == 0 && schedule?.Slots is { Count: > 0 } slots)
         {
             ranges = slots
                 .Where(s => !string.IsNullOrWhiteSpace(s.Day) && !string.IsNullOrWhiteSpace(s.Time))
@@ -794,11 +953,14 @@ public class AuthService : IAuthService
             .Where(o => o.ExpertGroupId == group.Id && o.Status == GroupOfferStatus.Published)
             .OrderBy(o => o.Name)
             .Select(o => new TeacherInvitePublicOfferDto(
+                o.Id,
                 o.Name,
                 o.ShortDescription,
                 o.Currency,
                 o.RecommendedPrice ?? o.FixedPrice,
-                o.IsInternational))
+                o.IsInternational,
+                o.Code,
+                o.MarketCountryCode))
             .ToList();
 
         return new TeacherInviteInfoResponse(
@@ -907,6 +1069,14 @@ public class AuthService : IAuthService
     {
         var user = await _userManager.FindByEmailAsync(email);
         if (user is null) return; // silent — don't reveal whether email exists
+
+        if (user.TenantId is Guid tenantId)
+        {
+            var tenant = _db.Tenants.FirstOrDefault(t => t.Id == tenantId);
+            if (tenant is not null
+                && tenant.ExpertApprovalStatus is not ExpertApprovalStatus.Approved)
+                return;
+        }
 
         var token = await _userManager.GeneratePasswordResetTokenAsync(user);
         var resetUrl = $"{_urls.WebBaseUrl}/reset-password?userId={Uri.EscapeDataString(user.Id)}&token={Uri.EscapeDataString(token)}";

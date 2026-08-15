@@ -1,3 +1,6 @@
+using TutorSphere.Application.DTOs.ExpertApproval;
+using TutorSphere.Application.DTOs.SubscriptionOfferings;
+
 namespace TutorSphere.Application.DTOs.Auth;
 
 public record RegisterRequest(
@@ -23,7 +26,18 @@ public record RegisterSchoolRequest(
     string? PreferredLanguage = null,
     bool AcceptedTeacherConductPolicy = false,
     string? TeacherConductPolicyVersion = null,
-    string? InviteToken = null);
+    string? InviteToken = null,
+    string? Phone = null,
+    string? Address = null,
+    string? PostalCode = null,
+    DateTime? DateOfBirth = null,
+    string? Presentation = null,
+    string? TimeZone = null,
+    IReadOnlyList<TeacherAvailabilityRangeDto>? Availabilities = null,
+    CreateSubscriptionOfferingRequest? InitialOffering = null,
+    Guid? GroupOfferId = null,
+    string? PhotoBase64 = null,
+    string? PhotoContentType = null);
 
 public record RegisterSchoolResponse(
     Guid TenantId,
@@ -32,11 +46,14 @@ public record RegisterSchoolResponse(
 
 /// <summary>Infos publiques d'une invitation enseignant, utilisées pour préremplir le formulaire d'inscription.</summary>
 public record TeacherInvitePublicOfferDto(
+    Guid Id,
     string Name,
     string? ShortDescription,
     string Currency,
     decimal? RecommendedPrice,
-    bool IsInternational);
+    bool IsInternational,
+    string? Code = null,
+    string? MarketCountryCode = null);
 
 public record TeacherInviteInfoResponse(
     Guid ExpertGroupId,

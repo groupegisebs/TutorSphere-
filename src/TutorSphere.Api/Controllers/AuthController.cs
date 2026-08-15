@@ -5,6 +5,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using TutorSphere.Application.DTOs.Auth;
+using TutorSphere.Application.DTOs.Branding;
+using TutorSphere.Application.Services;
 using TutorSphere.Domain.Enums;
 using TutorSphere.Infrastructure.Identity;
 using TutorSphere.Infrastructure.Persistence;
@@ -19,17 +21,23 @@ public class AuthController : ControllerBase
     private readonly IConfiguration _configuration;
     private readonly ApplicationDbContext _db;
     private readonly UserManager<ApplicationUser> _userManager;
+    private readonly IWebHostEnvironment _env;
+    private readonly IBrandingService _branding;
 
     public AuthController(
         IAuthService authService,
         IConfiguration configuration,
         ApplicationDbContext db,
-        UserManager<ApplicationUser> userManager)
+        UserManager<ApplicationUser> userManager,
+        IWebHostEnvironment env,
+        IBrandingService branding)
     {
         _authService = authService;
         _configuration = configuration;
         _db = db;
         _userManager = userManager;
+        _env = env;
+        _branding = branding;
     }
 
     [HttpPost("register")]
@@ -48,6 +56,7 @@ public class AuthController : ControllerBase
 
     [HttpPost("register-school")]
     [AllowAnonymous]
+    [RequestSizeLimit(4 * 1024 * 1024)]
     public async Task<ActionResult<RegisterSchoolResponse>> RegisterSchool(
         [FromBody] RegisterSchoolRequest request,
         CancellationToken ct)
@@ -55,6 +64,7 @@ public class AuthController : ControllerBase
         try
         {
             var result = await _authService.RegisterSchoolAsync(request, ct);
+            await TrySaveTeacherPhotoAsync(result.TenantId, request, ct);
             return Ok(result);
         }
         catch (InvalidOperationException ex)
@@ -300,5 +310,45 @@ public class AuthController : ControllerBase
         {
             return BadRequest(new { error = ex.Message });
         }
+    }
+
+    private async Task TrySaveTeacherPhotoAsync(Guid tenantId, RegisterSchoolRequest request, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request.PhotoBase64))
+            return;
+
+        var raw = request.PhotoBase64.Trim();
+        var comma = raw.IndexOf(',');
+        if (raw.StartsWith("data:", StringComparison.OrdinalIgnoreCase) && comma > 0)
+            raw = raw[(comma + 1)..];
+
+        byte[] bytes;
+        try
+        {
+            bytes = Convert.FromBase64String(raw);
+        }
+        catch (FormatException)
+        {
+            return;
+        }
+
+        if (bytes.Length is 0 or > 2 * 1024 * 1024)
+            return;
+
+        var ext = (request.PhotoContentType ?? "").ToLowerInvariant() switch
+        {
+            "image/png" => ".png",
+            "image/webp" => ".webp",
+            "image/gif" => ".gif",
+            _ => ".jpg"
+        };
+
+        var uploadsRoot = UploadsPaths.GetRoot(_env);
+        var fileName = $"teacher-{tenantId:N}{ext}";
+        await System.IO.File.WriteAllBytesAsync(Path.Combine(uploadsRoot, fileName), bytes, ct);
+        await _branding.UpdateBrandingAsync(
+            tenantId,
+            new UpdateTenantBrandingRequest(LogoUrl: $"/uploads/{fileName}"),
+            ct);
     }
 }

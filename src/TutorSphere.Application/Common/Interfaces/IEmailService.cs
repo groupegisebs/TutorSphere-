@@ -116,6 +116,9 @@ public interface IEmailService
         string groupName,
         string notes,
         string loginUrl,
+        string? loginEmail = null,
+        string? temporaryPassword = null,
+        string? loginInstructions = null,
         CancellationToken ct = default);
 
     /// <summary>Notifie l'enseignant que son dossier a été rejeté par un groupe d'experts.</summary>
