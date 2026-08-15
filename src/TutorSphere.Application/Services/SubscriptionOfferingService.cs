@@ -273,23 +273,30 @@ public class SubscriptionOfferingService : ISubscriptionOfferingService
 
         var slots = schedule.Slots
             .Where(s => !string.IsNullOrWhiteSpace(s.Day) && !string.IsNullOrWhiteSpace(s.Time))
-            .Select(s => new OfferingScheduleSlotDto(s.Day.Trim(), s.Time.Trim()))
-            .DistinctBy(s => $"{s.Day}|{s.Time}")
+            .Select(s => new OfferingScheduleSlotDto(
+                s.Day.Trim(),
+                s.Time.Trim(),
+                string.IsNullOrWhiteSpace(s.EndTime) ? null : s.EndTime.Trim()))
+            .DistinctBy(s => $"{s.Day}|{s.Time}|{s.EndTime}")
             .ToList();
+
+        var sessionMin = schedule.SessionDurationMin > 0 ? schedule.SessionDurationMin : 60;
+        var windowsPerWeek = slots.Sum(s => CountAvailabilityWindows(s, sessionMin));
 
         var normalized = schedule with
         {
             BillingPeriod = string.IsNullOrWhiteSpace(schedule.BillingPeriod) ? "mois" : schedule.BillingPeriod.Trim().ToLowerInvariant(),
             Cadence = string.IsNullOrWhiteSpace(schedule.Cadence) ? "weekly" : schedule.Cadence.Trim().ToLowerInvariant(),
-            SessionDurationMin = schedule.SessionDurationMin > 0 ? schedule.SessionDurationMin : 60,
+            SessionDurationMin = sessionMin,
+            TimeZone = string.IsNullOrWhiteSpace(schedule.TimeZone) ? schedule.TimeZone : TimeZoneCatalog.Normalize(schedule.TimeZone),
             Slots = slots
         };
 
         var computedCount = sessionCount > 0
             ? sessionCount
-            : slots.Count == 0
+            : windowsPerWeek == 0
                 ? Math.Max(1, sessionCount)
-                : EstimateSessionCount(normalized.BillingPeriod, normalized.Cadence, slots.Count, durationDays);
+                : EstimateSessionCount(normalized.BillingPeriod, normalized.Cadence, windowsPerWeek, durationDays);
 
         var summary = slots.Count == 0
             ? $"{normalized.BillingPeriod} · {normalized.BillingMode ?? "horaire"}"
@@ -315,6 +322,15 @@ public class SubscriptionOfferingService : ISubscriptionOfferingService
         return Math.Max(1, weeks * Math.Max(1, slotsPerWeek));
     }
 
+    private static int CountAvailabilityWindows(OfferingScheduleSlotDto slot, int sessionMin)
+    {
+        if (!AvailabilityWindows.TryParseTime(slot.Time, out var start))
+            return 0;
+        if (AvailabilityWindows.TryParseTime(slot.EndTime, out var end) && end > start)
+            return AvailabilityWindows.CountBookingSlots(start, end, sessionMin);
+        return 1;
+    }
+
     private static string BuildFrequencySummary(OfferingScheduleDto schedule)
     {
         var mode = (schedule.BillingMode ?? "").Trim().ToLowerInvariant();
@@ -333,7 +349,9 @@ public class SubscriptionOfferingService : ISubscriptionOfferingService
             : " · " + string.Join(", ", schedule.Slots.Select(s =>
             {
                 var shortDay = s.Day.Length <= 3 ? s.Day : s.Day[..Math.Min(3, s.Day.Length)];
-                return $"{shortDay} {s.Time}";
+                return string.IsNullOrWhiteSpace(s.EndTime)
+                    ? $"{shortDay} {s.Time}"
+                    : $"{shortDay} {s.Time}–{s.EndTime}";
             }));
 
         return $"{modeLabel}{days}";

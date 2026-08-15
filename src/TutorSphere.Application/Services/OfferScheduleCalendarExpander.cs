@@ -1,6 +1,6 @@
-using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using TutorSphere.Application.Common;
 using TutorSphere.Application.DTOs.Calendar;
 using TutorSphere.Application.DTOs.SubscriptionOfferings;
 using TutorSphere.Domain.Entities;
@@ -47,9 +47,13 @@ public static class OfferScheduleCalendarExpander
 
             foreach (var slot in schedule.Slots)
             {
-                if (!TryParseDayOfWeek(slot.Day, out var dayOfWeek))
+                if (!AvailabilityWindows.TryParseDay(slot.Day, out var dayOfWeek))
                     continue;
-                if (!TryParseTime(slot.Time, out var time))
+                if (!AvailabilityWindows.TryParseTime(slot.Time, out var startTime))
+                    continue;
+
+                var windows = SlotWindows(slot, startTime, durationMin);
+                if (windows.Count == 0)
                     continue;
 
                 for (var day = startDate; day < rangeEnd; day = day.AddDays(1))
@@ -59,19 +63,22 @@ public static class OfferScheduleCalendarExpander
                     if (!MatchesCadence(day, cadence, cadenceAnchor))
                         continue;
 
-                    var start = DateTime.SpecifyKind(day.Add(time), DateTimeKind.Unspecified);
-                    var end = start.AddMinutes(durationMin);
-                    if (end <= rangeStart || start >= rangeEnd)
-                        continue;
+                    foreach (var (winStart, winEnd) in windows)
+                    {
+                        var start = DateTime.SpecifyKind(day.Add(winStart), DateTimeKind.Unspecified);
+                        var end = DateTime.SpecifyKind(day.Add(winEnd), DateTimeKind.Unspecified);
+                        if (end <= rangeStart || start >= rangeEnd)
+                            continue;
 
-                    results.Add(new OfferAvailabilityDto(
-                        offering.Id,
-                        offering.Title,
-                        offering.Subject,
-                        start,
-                        end,
-                        mode,
-                        cadence));
+                        results.Add(new OfferAvailabilityDto(
+                            offering.Id,
+                            offering.Title,
+                            offering.Subject,
+                            start,
+                            end,
+                            mode,
+                            cadence));
+                    }
                 }
             }
         }
@@ -96,42 +103,19 @@ public static class OfferScheduleCalendarExpander
         return date.Date.AddDays(-diff);
     }
 
-    private static bool TryParseDayOfWeek(string? day, out DayOfWeek dayOfWeek)
+    /// <summary>
+    /// Plage stockée : créneaux de réservation générés dynamiquement.
+    /// Ancien format (heure seule) : un créneau de la durée de séance.
+    /// </summary>
+    private static IReadOnlyList<(TimeSpan Start, TimeSpan End)> SlotWindows(
+        OfferingScheduleSlotDto slot,
+        TimeSpan startTime,
+        int durationMin)
     {
-        dayOfWeek = default;
-        if (string.IsNullOrWhiteSpace(day))
-            return false;
+        if (AvailabilityWindows.TryParseTime(slot.EndTime, out var endTime) && endTime > startTime)
+            return AvailabilityWindows.ToBookingSlots(startTime, endTime, durationMin);
 
-        var key = day.Trim().ToLowerInvariant();
-        dayOfWeek = key switch
-        {
-            "lundi" or "lun" or "monday" or "mon" => DayOfWeek.Monday,
-            "mardi" or "mar" or "tuesday" or "tue" => DayOfWeek.Tuesday,
-            "mercredi" or "mer" or "wednesday" or "wed" => DayOfWeek.Wednesday,
-            "jeudi" or "jeu" or "thursday" or "thu" => DayOfWeek.Thursday,
-            "vendredi" or "ven" or "friday" or "fri" => DayOfWeek.Friday,
-            "samedi" or "sam" or "saturday" or "sat" => DayOfWeek.Saturday,
-            "dimanche" or "dim" or "sunday" or "sun" => DayOfWeek.Sunday,
-            _ => (DayOfWeek)(-1)
-        };
-        return (int)dayOfWeek >= 0;
-    }
-
-    private static bool TryParseTime(string? time, out TimeSpan span)
-    {
-        span = default;
-        if (string.IsNullOrWhiteSpace(time))
-            return false;
-
-        if (TimeSpan.TryParse(time.Trim(), CultureInfo.InvariantCulture, out span))
-            return true;
-        if (TimeOnly.TryParse(time.Trim(), CultureInfo.InvariantCulture, out var t))
-        {
-            span = t.ToTimeSpan();
-            return true;
-        }
-
-        return false;
+        return [(startTime, startTime.Add(TimeSpan.FromMinutes(durationMin)))];
     }
 
     public static OfferingScheduleDto? TryParseSchedule(string? conditions)
@@ -172,9 +156,13 @@ public static class OfferScheduleCalendarExpander
 
         foreach (var slot in schedule.Slots)
         {
-            if (!TryParseDayOfWeek(slot.Day, out var dayOfWeek))
+            if (!AvailabilityWindows.TryParseDay(slot.Day, out var dayOfWeek))
                 continue;
-            if (!TryParseTime(slot.Time, out var time))
+            if (!AvailabilityWindows.TryParseTime(slot.Time, out var startTime))
+                continue;
+
+            var windows = SlotWindows(slot, startTime, durationMin);
+            if (windows.Count == 0)
                 continue;
 
             for (var day = startDate; day < rangeEnd; day = day.AddDays(1))
@@ -184,12 +172,15 @@ public static class OfferScheduleCalendarExpander
                 if (!MatchesCadence(day, cadence, cadenceAnchor))
                     continue;
 
-                var start = DateTime.SpecifyKind(day.Add(time), DateTimeKind.Unspecified);
-                var end = start.AddMinutes(durationMin);
-                if (end <= rangeStart || start >= rangeEnd)
-                    continue;
+                foreach (var (winStart, winEnd) in windows)
+                {
+                    var start = DateTime.SpecifyKind(day.Add(winStart), DateTimeKind.Unspecified);
+                    var end = DateTime.SpecifyKind(day.Add(winEnd), DateTimeKind.Unspecified);
+                    if (end <= rangeStart || start >= rangeEnd)
+                        continue;
 
-                results.Add((start, end));
+                    results.Add((start, end));
+                }
             }
         }
 

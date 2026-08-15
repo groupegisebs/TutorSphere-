@@ -22,6 +22,8 @@ public interface IApplicationDbContext
     /// <summary>Lessons without tenant filter (parent portal across schools).</summary>
     IQueryable<Lesson> LessonsForAnyTenant { get; }
     IQueryable<Unavailability> Unavailabilities { get; }
+    IQueryable<TeacherAvailability> TeacherAvailabilities { get; }
+    IQueryable<TeacherAvailability> TeacherAvailabilitiesForAnyTenant { get; }
     IQueryable<Holiday> Holidays { get; }
     IQueryable<Vacation> Vacations { get; }
     IQueryable<LessonReport> LessonReports { get; }

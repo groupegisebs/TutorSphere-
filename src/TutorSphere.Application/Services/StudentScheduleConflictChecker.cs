@@ -1,3 +1,4 @@
+using TutorSphere.Application.Common;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.SubscriptionOfferings;
 using TutorSphere.Domain.Enums;
@@ -140,7 +141,7 @@ public static class StudentScheduleConflictChecker
         {
             if (!TryParseDay(slotA.Day, out var dayA) || !TryParseTime(slotA.Time, out var timeA))
                 continue;
-            var endA = timeA.Add(TimeSpan.FromMinutes(durA));
+            var windowsA = SlotWindows(slotA, timeA, durA);
 
             foreach (var slotB in b.Slots ?? [])
             {
@@ -149,17 +150,33 @@ public static class StudentScheduleConflictChecker
                 if (dayA != dayB)
                     continue;
 
-                var endB = timeB.Add(TimeSpan.FromMinutes(durB));
-                if (timeA < endB && timeB < endA)
+                var windowsB = SlotWindows(slotB, timeB, durB);
+                foreach (var (startA, endA) in windowsA)
                 {
-                    dayLabel = DayLabelFr(dayA);
-                    timeLabel = $"{FormatTime(timeA)}–{FormatTime(endA)}";
-                    return true;
+                    foreach (var (startB, endB) in windowsB)
+                    {
+                        if (startA < endB && startB < endA)
+                        {
+                            dayLabel = DayLabelFr(dayA);
+                            timeLabel = $"{FormatTime(startA)}–{FormatTime(endA)}";
+                            return true;
+                        }
+                    }
                 }
             }
         }
 
         return false;
+    }
+
+    private static IReadOnlyList<(TimeSpan Start, TimeSpan End)> SlotWindows(
+        OfferingScheduleSlotDto slot,
+        TimeSpan start,
+        int durationMin)
+    {
+        if (TryParseTime(slot.EndTime, out var end) && end > start)
+            return AvailabilityWindows.ToBookingSlots(start, end, durationMin);
+        return [(start, start.Add(TimeSpan.FromMinutes(durationMin)))];
     }
 
     private static string FormatLessonConflict(string title, DateTime start, DateTime end)

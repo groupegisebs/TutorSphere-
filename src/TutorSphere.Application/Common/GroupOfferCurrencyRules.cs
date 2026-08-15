@@ -29,6 +29,7 @@ public static class GroupOfferCurrencyRules
             "SWITZERLAND" or "SUISSE" => "CH",
             "FRANCE" => "FR",
             "CAMEROON" or "CAMEROUN" => "CM",
+            "IVORY COAST" or "COTE D'IVOIRE" or "CÔTE D'IVOIRE" => "CI",
             _ => c.Length >= 2 ? c[..2] : c
         };
     }

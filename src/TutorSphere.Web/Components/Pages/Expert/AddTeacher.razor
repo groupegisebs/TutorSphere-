@@ -2,6 +2,8 @@
 @layout ExpertLayout
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using TutorSphere.Web.Common
+@using TutorSphere.Application.DTOs.ExpertApproval
+@using TutorSphere.Application.DTOs.Branding
 @inject AuthService Auth
 @inject ApiClient Api
 @inject IStringLocalizer<SharedResources> L
@@ -73,8 +75,8 @@
                             <div class="col-md-6">
                                 <label class="form-label">Téléphone</label>
                                 <div class="input-group">
-                                    <span class="input-group-text">@(CountryCatalog.Find(_country)?.Flag ?? "🌐")</span>
-                                    <input class="form-control" @bind="_phone" placeholder="+237 6 00 00 00 00" />
+                                    <span class="input-group-text">@PhoneAddon</span>
+                                    <input class="form-control" @bind="_phone" placeholder="@PhonePlaceholder" />
                                 </div>
                             </div>
                             <div class="col-md-6">
@@ -198,22 +200,21 @@
                     else if (_step == 4)
                     {
                         <h2 class="cc-card-title mb-3">Disponibilités &amp; tarifs</h2>
-                        <p class="small text-muted">@L["Expert_OfferBillingHint"]</p>
                         <div class="ex-billing-toggle mb-3" role="group">
                             <button type="button" class="ex-billing-option @(_billing == "hourly" ? "active" : null)"
                                     @onclick='() => _billing = "hourly"'>
-                                <strong>@L["Billing_Hourly"]</strong>
-                                <span>Taux à l’heure</span>
+                                <strong>Taux horaire</strong>
+                                <span>Facturé à l’heure</span>
                             </button>
                             <button type="button" class="ex-billing-option @(_billing == "monthly" ? "active" : null)"
                                     @onclick='() => _billing = "monthly"'>
-                                <strong>@L["Billing_Monthly"]</strong>
-                                <span>Forfait + heures / semaine</span>
+                                <strong>Taux mensuel</strong>
+                                <span>Forfait mensuel</span>
                             </button>
                         </div>
                         <div class="row g-3">
                             <div class="col-md-4">
-                                <label class="form-label">@(_billing == "monthly" ? "Taux mensuel" : "Taux horaire") *</label>
+                                <label class="form-label">@(_billing == "monthly" ? "Taux mensuel" : "Taux horaire") <span class="text-danger">*</span></label>
                                 <div class="input-group">
                                     <input type="number" min="0" step="0.01" class="form-control" @bind="_price" />
                                     <span class="input-group-text">@_currency @(_billing == "monthly" ? "/ mois" : "/ h")</span>
@@ -227,31 +228,139 @@
                                 </div>
                             }
                             <div class="col-md-4">
-                                <label class="form-label">Durée séance (min)</label>
-                                <select class="form-select" @bind="_sessionMin">
-                                    <option value="30">30</option>
-                                    <option value="45">45</option>
-                                    <option value="60">60</option>
-                                    <option value="90">90</option>
+                                <label class="form-label">Durée d’une séance <span class="text-danger">*</span></label>
+                                <div class="input-group">
+                                    <select class="form-select" @bind="_sessionMin">
+                                        <option value="30">30</option>
+                                        <option value="45">45</option>
+                                        <option value="60">60</option>
+                                        <option value="90">90</option>
+                                    </select>
+                                    <span class="input-group-text">min</span>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Fuseau horaire de l’enseignant</label>
+                                <select class="form-select" @bind="_timeZone">
+                                    @foreach (var tz in TimeZoneCatalog.All)
+                                    {
+                                        <option value="@tz.Id">@tz.Id (@TimeZoneCatalog.UtcOffsetLabel(tz.Id))</option>
+                                    }
                                 </select>
+                                <div class="form-text">Les horaires sont enregistrés dans le fuseau horaire de l’enseignant.</div>
                             </div>
                             <div class="col-12">
-                                <label class="form-label">Plages horaires de la semaine *</label>
-                                <div class="offer-day-grid">
+                                <div class="ex-avail-head">
+                                    <div>
+                                        <label class="form-label mb-0">Plages horaires de disponibilité</label>
+                                        <div class="form-text mt-0">Les créneaux de réservation seront générés selon la durée d’une séance, pas stockés ici.</div>
+                                    </div>
+                                    <div class="ex-avail-toolbar">
+                                        <select class="form-select form-select-sm" value=""
+                                                @onchange="e => CopyFromFirstEnabled(e.Value?.ToString())">
+                                            <option value="">Copier les horaires ▾</option>
+                                            @foreach (var d in Days)
+                                            {
+                                                <option value="@d">@d</option>
+                                            }
+                                            <option value="*">Tous les jours</option>
+                                        </select>
+                                        <button type="button" class="cc-btn cc-btn-sm ex-avail-off-all" @onclick="DisableAllDays">Tout désactiver</button>
+                                    </div>
+                                </div>
+                                <button type="button" class="ex-avail-apply-toggle" @onclick="() => _applyCopyOpen = !_applyCopyOpen">
+                                    Appliquer les mêmes horaires à plusieurs jours
+                                </button>
+                                @if (_applyCopyOpen)
+                                {
+                                    <div class="ex-avail-apply">
+                                        <label class="form-label">Jour source</label>
+                                        <select class="form-select form-select-sm" @bind="_copySource">
+                                            @foreach (var d in Days)
+                                            {
+                                                <option value="@d">@d</option>
+                                            }
+                                        </select>
+                                        <div class="ex-avail-apply-days">
+                                            @foreach (var d in Days.Where(x => x != _copySource))
+                                            {
+                                                var target = d;
+                                                <label>
+                                                    <input type="checkbox" checked="@_copyTargets.Contains(target)"
+                                                           @onchange="e => ToggleCopyTarget(target, e)" />
+                                                    @target
+                                                </label>
+                                            }
+                                        </div>
+                                        <button type="button" class="cc-btn cc-btn-primary cc-btn-sm" @onclick="ApplyCopiedHours">Appliquer</button>
+                                    </div>
+                                }
+                                <div class="ex-avail-table">
+                                    <div class="ex-avail-cols">
+                                        <span>Jour</span>
+                                        <span>Plages horaires</span>
+                                    </div>
                                     @foreach (var day in Days)
                                     {
-                                        var slot = _slots[day];
-                                        <div class="offer-day-row @(slot.Enabled ? "is-on" : null)">
-                                            <label class="offer-day-check">
-                                                <input type="checkbox" checked="@slot.Enabled"
+                                        var sched = _avail[day];
+                                        <div class="ex-avail-day @(sched.Enabled ? "is-on" : null)">
+                                            <label class="ex-avail-check">
+                                                <input type="checkbox" checked="@sched.Enabled"
                                                        @onchange="e => ToggleDay(day, e)" />
                                                 <span>@day</span>
                                             </label>
-                                            <input type="time" class="form-control form-control-sm offer-day-time"
-                                                   disabled="@(!slot.Enabled)" value="@slot.Time"
-                                                   @onchange="e => SetTime(day, e.Value?.ToString())" />
+                                            <div class="ex-avail-ranges">
+                                                @if (!sched.Enabled)
+                                                {
+                                                    <span class="ex-avail-off">Indisponible</span>
+                                                }
+                                                else
+                                                {
+                                                    @for (var i = 0; i < sched.Ranges.Count; i++)
+                                                    {
+                                                        var idx = i;
+                                                        var range = sched.Ranges[idx];
+                                                        <div class="ex-avail-range">
+                                                            <span>De</span>
+                                                            <input type="time" class="form-control form-control-sm"
+                                                                   value="@range.Start"
+                                                                   @onchange="e => SetRange(day, idx, true, e.Value?.ToString())" />
+                                                            <span>à</span>
+                                                            <input type="time" class="form-control form-control-sm"
+                                                                   value="@range.End"
+                                                                   @onchange="e => SetRange(day, idx, false, e.Value?.ToString())" />
+                                                            <button type="button" class="ex-avail-del" title="Supprimer la plage"
+                                                                    @onclick="() => RemoveRange(day, idx)">
+                                                                <i class="bi bi-trash"></i>
+                                                            </button>
+                                                            @if (!string.IsNullOrWhiteSpace(range.Error))
+                                                            {
+                                                                <div class="ex-avail-error">@range.Error</div>
+                                                            }
+                                                        </div>
+                                                    }
+                                                    <div class="ex-avail-row-actions">
+                                                        <button type="button" class="ex-avail-add" @onclick="() => AddRange(day)">
+                                                            + Ajouter une plage
+                                                        </button>
+                                                        <select class="form-select form-select-sm ex-avail-copy"
+                                                                value=""
+                                                                @onchange="e => CopyDayTo(day, e.Value?.ToString())">
+                                                            <option value="">Copier vers ▾</option>
+                                                            @foreach (var other in Days.Where(d => d != day))
+                                                            {
+                                                                <option value="@other">@other</option>
+                                                            }
+                                                            <option value="*">Tous les jours</option>
+                                                        </select>
+                                                    </div>
+                                                }
+                                            </div>
                                         </div>
                                     }
+                                </div>
+                                <div class="ex-avail-banner">
+                                    Les créneaux de réservation seront générés automatiquement selon la durée d’une séance (@_sessionMin min).
                                 </div>
                             </div>
                         </div>
@@ -277,20 +386,44 @@
                     }
                     else
                     {
-                        <h2 class="cc-card-title mb-3">Aperçu &amp; validation</h2>
-                        <ul class="list-unstyled mb-0">
-                            <li class="mb-2"><strong>Enseignant :</strong> @_firstName @_lastName — @_email</li>
-                            <li class="mb-2"><strong>Ville :</strong> @_city · @CountryDisplay</li>
-                            <li class="mb-2"><strong>Profil :</strong> @($"https://{_slug}.tutorsphere.com")</li>
-                            <li class="mb-2"><strong>Offre :</strong> @_offerTitle (@_offerSubject)</li>
-                            <li class="mb-2"><strong>Tarif :</strong> @_price @_currency @(_billing == "monthly" ? "/ mois" : "/ h")</li>
-                            <li><strong>Fiche publique :</strong> @(_publishPublic ? "Oui" : "Non")</li>
-                        </ul>
+                        <h2 class="cc-card-title mb-1">Aperçu &amp; validation</h2>
+                        <p class="small text-muted mb-3">
+                            Voici la fiche telle que les parents la verront
+                            @if (!string.IsNullOrWhiteSpace(_slug))
+                            {
+                                <text> sur <code>/profil/@_slug</code></text>
+                            }
+                            . L’e-mail et le téléphone restent privés.
+                        </p>
+                        @if (!_publishPublic)
+                        {
+                            <div class="alert alert-warning py-2">
+                                Fiche en brouillon : elle ne sera pas visible dans la recherche ni à l’adresse publique tant que vous ne la publiez pas.
+                            </div>
+                        }
+                        <div class="ex-public-preview">
+                            <div class="ex-public-preview-bar">
+                                <span><i class="bi bi-globe2"></i> Vue parents</span>
+                                <span class="ex-public-preview-url">tutorsphere.com/profil/@_slug</span>
+                                <span class="cc-pill @(_publishPublic ? "cc-pill-ok" : "cc-pill-type")">
+                                    @(_publishPublic ? "Publiée" : "Brouillon")
+                                </span>
+                            </div>
+                            <div class="ex-public-preview-frame tutor-detail-public">
+                                <TutorDetailView Profile="BuildPublicPreview()" PreviewMode="true" />
+                            </div>
+                        </div>
                         @if (_done && _created is not null)
                         {
                             <div class="d-flex flex-wrap gap-2 mt-3">
                                 <a class="cc-btn cc-btn-primary" href="expert/teachers">Voir la liste des enseignants</a>
                                 <a class="cc-btn" href="@($"expert/teachers/{_created.TenantId}")">Ouvrir le dossier</a>
+                                @if (_created.IsPublicProfile && !string.IsNullOrWhiteSpace(_created.TenantSlug))
+                                {
+                                    <a class="cc-btn" href="@($"/profil/{_created.TenantSlug}")" target="_blank" rel="noopener">
+                                        Ouvrir la fiche publique
+                                    </a>
+                                }
                             </div>
                         }
                     }
@@ -342,7 +475,7 @@
                 </div>
                 <div class="ex-hint-box mb-3">
                     <strong>Bon à savoir</strong>
-                    <p>Une fois créé, l’enseignant reçoit un e-mail pour accéder à son espace et compléter sa fiche.</p>
+                    <p>@HintText</p>
                 </div>
                 <div class="cc-card">
                     <h2 class="cc-card-title">Actions rapides</h2>
@@ -385,7 +518,7 @@
         "Compétences et niveaux enseignés",
         "Taux horaire ou mensuel, plages",
         "Message et code de conduite",
-        "Vérifier puis créer le compte"
+        "Vérifier la fiche publique, puis créer le compte"
     ];
     private static readonly string[] Days = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
     private bool _showGuide;
@@ -409,8 +542,10 @@
     private string? _postal;
     private string _language = "fr";
     private string _schoolName = "";
-    private string _country = "CM";
-    private List<string> _visible = ["CM"];
+    private string _country = "";
+    private bool _groupInternational;
+    private bool _groupLoaded;
+    private List<string> _visible = [];
     private string _slug = "";
     private string? _autoSlug;
     private bool? _slugAvailable;
@@ -425,18 +560,63 @@
     private decimal _price;
     private decimal _hoursPerWeek = 2;
     private int _sessionMin = 60;
-    private string _currency = "CAD";
+    private string _currency = "XAF";
+    private string _timeZone = "America/Montreal";
+    private bool _applyCopyOpen;
+    private string _copySource = "Lundi";
+    private readonly HashSet<string> _copyTargets = [];
     private string? _inviteMessage;
     private string? _photoName;
     private IBrowserFile? _photo;
-    private readonly Dictionary<string, Slot> _slots = Days.ToDictionary(d => d, _ => new Slot());
+    private byte[]? _photoBytes;
+    private string? _photoContentType;
+    private string? _photoDataUrl;
+    private readonly Dictionary<string, DaySchedule> _avail = Days.ToDictionary(d => d, _ => new DaySchedule());
 
     private string CountryDisplay
     {
         get
         {
+            if (!_groupLoaded) return "Chargement…";
+            if (string.IsNullOrWhiteSpace(_schoolName))
+                return "Pays du groupe indisponible";
+            if (_groupInternational || string.IsNullOrWhiteSpace(_country))
+                return "🌐 International";
             var info = CountryCatalog.Find(_country);
             return info is null ? _country : $"{info.Flag} {info.Name}";
+        }
+    }
+
+    private string PhoneAddon
+    {
+        get
+        {
+            var flag = CountryCatalog.Find(_country)?.Flag ?? "🌐";
+            var dial = CountryCatalog.DialPrefix(_country);
+            return string.IsNullOrWhiteSpace(dial) ? flag : $"{flag} {dial}";
+        }
+    }
+
+    private string PhonePlaceholder =>
+        CountryCatalog.DialPrefix(_country) is { Length: > 0 } dial
+            ? $"{dial} …"
+            : "Numéro de téléphone";
+
+    private string HintText => _step switch
+    {
+        4 => "Définir plusieurs plages par jour permet à l’enseignant d’avoir des pauses entre ses cours.",
+        6 => "Cette vue est celle des parents : pas d’e-mail, pas de téléphone, uniquement ce qui sera public.",
+        _ => "Une fois créé, l’enseignant reçoit un e-mail pour accéder à son espace et compléter sa fiche."
+    };
+
+    private string AvailabilitySummary
+    {
+        get
+        {
+            var parts = Days
+                .Where(d => _avail[d].Enabled && _avail[d].Ranges.Count > 0)
+                .Select(d => $"{d[..3]} {string.Join(", ", _avail[d].Ranges.Select(r => $"{r.Start}–{r.End}"))}");
+            return parts.Any() ? string.Join(" · ", parts) : "Aucune";
         }
     }
 
@@ -452,14 +632,11 @@
             if (group is not null)
             {
                 _schoolName = group.Name;
-                if (!string.IsNullOrWhiteSpace(group.CountryCode))
-                {
-                    _country = group.CountryCode.Trim().ToUpperInvariant();
-                    _visible = [_country];
-                }
+                ApplyGroupCountry(group.CountryCode, group.IsInternational);
             }
         }
         catch { }
+        _groupLoaded = true;
         try
         {
             var q = await Api.GetAsync<List<QueuePeek>>("api/expert/approvals-queue") ?? [];
@@ -510,8 +687,12 @@
             if (_price <= 0) { _error = "Indiquez le tarif."; return; }
             if (_billing == "monthly" && _hoursPerWeek <= 0)
             { _error = L["Expert_OfferHoursPerWeekRequired"]; return; }
-            if (!_slots.Values.Any(s => s.Enabled))
-            { _error = L["Expert_OfferSlotsRequired"]; return; }
+            var availError = ValidateAvailabilities();
+            if (availError is not null)
+            {
+                _error = availError;
+                return;
+            }
         }
         else if (_step == 5 && !_acceptedConduct)
         {
@@ -535,13 +716,14 @@
         _error = _success = null;
         try
         {
-            var slots = _slots.Where(kv => kv.Value.Enabled)
-                .Select(kv => new { day = kv.Key, time = kv.Value.Time }).ToList();
+            var ranges = FlattenAvailabilities();
+            var slots = ranges.Select(r => new { day = r.Day, time = r.StartTime, endTime = r.EndTime }).ToList();
             var monthly = _billing == "monthly";
             var sessionMinutes = _sessionMin > 0 ? _sessionMin : 60;
+            var windowsPerWeek = ranges.Sum(r => CountWindows(r.StartTime, r.EndTime, sessionMinutes));
             var sessionsPerWeek = monthly
                 ? Math.Max(1, (int)Math.Ceiling((double)_hoursPerWeek * 60 / sessionMinutes))
-                : slots.Count;
+                : Math.Max(1, windowsPerWeek);
             var sessionCount = Math.Max(1, sessionsPerWeek * 4);
             var schoolNotes = string.Join(" · ", new[]
             {
@@ -558,9 +740,12 @@
                 schoolName = _schoolName,
                 slug = _slug.Trim().ToLowerInvariant(),
                 city = _city,
+                country = string.IsNullOrWhiteSpace(_country) ? null : _country,
                 visibleCountryCodes = _visible,
                 acceptedTeacherConductPolicy = true,
                 publishPublicProfile = _publishPublic,
+                timeZone = _timeZone,
+                availabilities = ranges.Select(r => new { day = r.Day, startTime = r.StartTime, endTime = r.EndTime }),
                 initialOffering = new
                 {
                     title = _offerTitle.Trim(),
@@ -584,7 +769,8 @@
                         slots,
                         billingMode = _billing,
                         hourlyRate = monthly ? (decimal?)null : _price,
-                        hoursPerWeek = monthly ? _hoursPerWeek : (decimal?)null
+                        hoursPerWeek = monthly ? _hoursPerWeek : (decimal?)null,
+                        timeZone = _timeZone
                     }
                 }
             });
@@ -694,18 +880,246 @@
     private void ToggleDay(string day, ChangeEventArgs e)
     {
         var on = e.Value is bool x ? x : bool.TryParse(e.Value?.ToString(), out var p) && p;
-        _slots[day].Enabled = on;
-        if (on && string.IsNullOrWhiteSpace(_slots[day].Time)) _slots[day].Time = "16:00";
+        var sched = _avail[day];
+        sched.Enabled = on;
+        if (on && sched.Ranges.Count == 0)
+            sched.Ranges.Add(new TimeRange());
+        ValidateDay(day);
     }
 
-    private void SetTime(string day, string? time)
+    private void AddRange(string day)
     {
-        if (_slots.TryGetValue(day, out var s))
-            s.Time = string.IsNullOrWhiteSpace(time) ? "16:00" : time!;
+        var sched = _avail[day];
+        sched.Enabled = true;
+        var start = "14:00";
+        var end = "18:00";
+        if (sched.Ranges.Count > 0 && AvailabilityWindows.TryParseTime(sched.Ranges[^1].End, out var lastEnd))
+        {
+            var next = lastEnd.Add(TimeSpan.FromHours(2));
+            if (next < TimeSpan.FromHours(22))
+            {
+                start = FormatClock(next);
+                end = FormatClock(next.Add(TimeSpan.FromHours(4)));
+            }
+        }
+        sched.Ranges.Add(new TimeRange { Start = start, End = end });
+        ValidateDay(day);
     }
 
-    private sealed class Slot { public bool Enabled { get; set; } public string Time { get; set; } = "16:00"; }
-    private sealed record Grp(Guid Id, string Name, string? CountryCode);
+    private void RemoveRange(string day, int index)
+    {
+        var sched = _avail[day];
+        if (index < 0 || index >= sched.Ranges.Count) return;
+        sched.Ranges.RemoveAt(index);
+        if (sched.Ranges.Count == 0)
+            sched.Enabled = false;
+        ValidateDay(day);
+    }
+
+    private void SetRange(string day, int index, bool isStart, string? value)
+    {
+        var sched = _avail[day];
+        if (index < 0 || index >= sched.Ranges.Count) return;
+        if (isStart) sched.Ranges[index].Start = string.IsNullOrWhiteSpace(value) ? "08:00" : value;
+        else sched.Ranges[index].End = string.IsNullOrWhiteSpace(value) ? "12:00" : value;
+        ValidateDay(day);
+    }
+
+    private void DisableAllDays()
+    {
+        foreach (var d in Days)
+            _avail[d].Enabled = false;
+    }
+
+    private void CopyDayTo(string source, string? target)
+    {
+        if (string.IsNullOrWhiteSpace(target)) return;
+        if (target == "*")
+        {
+            foreach (var d in Days.Where(x => x != source))
+                CopyRanges(source, d);
+            return;
+        }
+        CopyRanges(source, target);
+    }
+
+    private void CopyFromFirstEnabled(string? target)
+    {
+        if (string.IsNullOrWhiteSpace(target)) return;
+        var source = Days.FirstOrDefault(d => _avail[d].Enabled && _avail[d].Ranges.Count > 0);
+        if (source is null) return;
+        if (target == "*")
+        {
+            foreach (var d in Days.Where(x => x != source))
+                CopyRanges(source, d);
+            return;
+        }
+        CopyRanges(source, target);
+    }
+
+    private void ToggleCopyTarget(string day, ChangeEventArgs e)
+    {
+        var on = e.Value is bool x ? x : bool.TryParse(e.Value?.ToString(), out var p) && p;
+        if (on) _copyTargets.Add(day);
+        else _copyTargets.Remove(day);
+    }
+
+    private void ApplyCopiedHours()
+    {
+        foreach (var d in _copyTargets.ToList())
+            CopyRanges(_copySource, d);
+        _applyCopyOpen = false;
+    }
+
+    private void CopyRanges(string source, string target)
+    {
+        if (!_avail.TryGetValue(source, out var from) || !_avail.TryGetValue(target, out var to) || source == target)
+            return;
+        to.Enabled = true;
+        to.Ranges = from.Ranges.Select(r => new TimeRange { Start = r.Start, End = r.End }).ToList();
+        if (to.Ranges.Count == 0)
+            to.Ranges.Add(new TimeRange());
+        ValidateDay(target);
+    }
+
+    private string? ValidateAvailabilities()
+    {
+        var any = false;
+        foreach (var day in Days)
+        {
+            ValidateDay(day);
+            var sched = _avail[day];
+            if (!sched.Enabled) continue;
+            if (sched.Ranges.Count == 0)
+                return $"Ajoutez au moins une plage pour {day}, ou décochez le jour.";
+            foreach (var r in sched.Ranges)
+            {
+                if (!string.IsNullOrWhiteSpace(r.Error))
+                    return r.Error;
+            }
+            any = true;
+        }
+        return any ? null : "Cochez au moins un jour de disponibilité.";
+    }
+
+    private void ValidateDay(string day)
+    {
+        var sched = _avail[day];
+        foreach (var r in sched.Ranges)
+            r.Error = null;
+        if (!sched.Enabled) return;
+
+        var parsed = new List<(TimeRange Row, TimeSpan Start, TimeSpan End)>();
+        foreach (var r in sched.Ranges)
+        {
+            if (!AvailabilityWindows.TryParseTime(r.Start, out var start)
+                || !AvailabilityWindows.TryParseTime(r.End, out var end))
+            {
+                r.Error = "Indiquez une heure de début et de fin.";
+                continue;
+            }
+            if (end <= start)
+            {
+                r.Error = "L’heure de fin doit être après l’heure de début.";
+                continue;
+            }
+            parsed.Add((r, start, end));
+        }
+
+        for (var i = 0; i < parsed.Count; i++)
+        {
+            for (var j = i + 1; j < parsed.Count; j++)
+            {
+                if (!AvailabilityWindows.Overlaps(parsed[i].Start, parsed[i].End, parsed[j].Start, parsed[j].End))
+                    continue;
+                parsed[j].Row.Error = "Cette plage chevauche une disponibilité existante.";
+            }
+        }
+    }
+
+    private List<TeacherAvailabilityRangeDto> FlattenAvailabilities()
+    {
+        var list = new List<TeacherAvailabilityRangeDto>();
+        foreach (var day in Days)
+        {
+            var sched = _avail[day];
+            if (!sched.Enabled) continue;
+            foreach (var r in sched.Ranges)
+                list.Add(new TeacherAvailabilityRangeDto(day, r.Start, r.End));
+        }
+        return list;
+    }
+
+    private static int CountWindows(string start, string end, int sessionMin)
+    {
+        if (!AvailabilityWindows.TryParseTime(start, out var s)
+            || !AvailabilityWindows.TryParseTime(end, out var e) || e <= s)
+            return 0;
+        return AvailabilityWindows.CountBookingSlots(s, e, sessionMin);
+    }
+
+    private static string FormatClock(TimeSpan t)
+    {
+        var clamped = t > TimeSpan.FromHours(23.5) ? TimeSpan.FromHours(23) : t;
+        return $"{(int)clamped.TotalHours:D2}:{clamped.Minutes:D2}";
+    }
+
+    private sealed class DaySchedule
+    {
+        public bool Enabled { get; set; }
+        public List<TimeRange> Ranges { get; set; } = [];
+    }
+
+    private sealed class TimeRange
+    {
+        public string Start { get; set; } = "08:00";
+        public string End { get; set; } = "12:00";
+        public string? Error { get; set; }
+    }
+
+    private void ApplyGroupCountry(string? countryCode, bool isInternational)
+    {
+        _groupInternational = isInternational;
+        var iso = ResolveGroupCountryCode(countryCode);
+        if (!string.IsNullOrWhiteSpace(iso) && !isInternational)
+        {
+            _country = iso;
+            _visible = [iso];
+        }
+        else
+        {
+            _country = "";
+            _visible = [];
+        }
+
+        _currency = GroupOfferCurrencyRules.ResolveCurrency(_country);
+        if (string.IsNullOrWhiteSpace(_timeZone) || _timeZone == "America/Montreal")
+            _timeZone = TimeZoneCatalog.DefaultForCountry(_country);
+        _groupLoaded = true;
+    }
+
+    private static string? ResolveGroupCountryCode(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var trimmed = raw.Trim();
+        var exact = CountryCatalog.Find(trimmed);
+        if (exact is not null) return exact.Code;
+
+        var normalized = GroupOfferCurrencyRules.NormalizeCountryCode(trimmed);
+        var byNorm = CountryCatalog.Find(normalized);
+        if (byNorm is not null) return byNorm.Code;
+
+        var named = CountryCatalog.Search(trimmed);
+        return named.Count == 1 ? named[0].Code : null;
+    }
+
+    private sealed record Grp(
+        Guid Id,
+        string Name,
+        string? CountryCode,
+        string? Description = null,
+        bool IsInternational = false,
+        int TeacherApprovalTrack = 0);
     private sealed class SlugOkDto { public bool Available { get; set; } }
     private sealed record Created(
         Guid TenantId,

@@ -147,10 +147,16 @@ public record RegisterTeacherByExpertRequest(
     string? Country = null,
     IReadOnlyList<string>? VisibleCountryCodes = null,
     bool AcceptedTeacherConductPolicy = false,
+    /// <summary>IANA — fuseau de l’enseignant (plages horaires).</summary>
+    string? TimeZone = null,
+    /// <summary>Plages de disponibilité hebdomadaires (plusieurs plages par jour possibles).</summary>
+    IReadOnlyList<TeacherAvailabilityRangeDto>? Availabilities = null,
     /// <summary>Offre de service initiale (optionnelle) créée pour le profil.</summary>
     TutorSphere.Application.DTOs.SubscriptionOfferings.CreateSubscriptionOfferingRequest? InitialOffering = null,
     /// <summary>Publie immédiatement la fiche publique (recherche parents / cours).</summary>
     bool PublishPublicProfile = false);
+
+public record TeacherAvailabilityRangeDto(string Day, string StartTime, string EndTime);
 
 public record RegisterTeacherByExpertResponse(
     Guid TenantId,

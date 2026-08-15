@@ -2,7 +2,7 @@ using TutorSphere.Domain.Enums;
 
 namespace TutorSphere.Application.DTOs.SubscriptionOfferings;
 
-public record OfferingScheduleSlotDto(string Day, string Time);
+public record OfferingScheduleSlotDto(string Day, string Time, string? EndTime = null);
 
 public record OfferingScheduleDto(
     string BillingPeriod,
@@ -18,7 +18,9 @@ public record OfferingScheduleDto(
     /// <summary>URL de la vidéo de présentation du cours (document uploadé ou lien).</summary>
     string? PresentationVideoUrl = null,
     /// <summary>Heures de cours par semaine (surtout pour le taux mensuel).</summary>
-    decimal? HoursPerWeek = null);
+    decimal? HoursPerWeek = null,
+    /// <summary>IANA (ex. Africa/Abidjan). Les plages sont exprimées dans ce fuseau.</summary>
+    string? TimeZone = null);
 
 public record SubscriptionOfferingDto(
     Guid Id,

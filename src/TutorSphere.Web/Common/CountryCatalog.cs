@@ -18,6 +18,14 @@ public static class CountryCatalog
     public static CountryInfo? Find(string? code) =>
         !string.IsNullOrWhiteSpace(code) && ByCode.TryGetValue(code.Trim(), out var c) ? c : null;
 
+    /// <summary>Indicatif téléphonique ITU (ex. CI → +225). Null si inconnu.</summary>
+    public static string? DialPrefix(string? iso2)
+    {
+        var code = string.IsNullOrWhiteSpace(iso2) ? null : iso2.Trim().ToUpperInvariant();
+        if (code is null || code.Length != 2) return null;
+        return DialByIso.TryGetValue(code, out var prefix) ? prefix : null;
+    }
+
     public static List<CountryInfo> Search(string? query)
     {
         if (string.IsNullOrWhiteSpace(query)) return All.ToList();
@@ -28,6 +36,18 @@ public static class CountryCatalog
                 c.Code.Contains(q, StringComparison.OrdinalIgnoreCase))
             .ToList();
     }
+
+    private static readonly IReadOnlyDictionary<string, string> DialByIso = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["CI"] = "+225", ["CM"] = "+237", ["SN"] = "+221", ["GA"] = "+241", ["CG"] = "+242",
+        ["CD"] = "+243", ["BJ"] = "+229", ["BF"] = "+226", ["ML"] = "+223", ["NE"] = "+227",
+        ["TG"] = "+228", ["GN"] = "+224", ["GW"] = "+245", ["GQ"] = "+240", ["TD"] = "+235",
+        ["CF"] = "+236", ["MA"] = "+212", ["DZ"] = "+213", ["TN"] = "+216", ["EG"] = "+20",
+        ["CA"] = "+1", ["US"] = "+1", ["FR"] = "+33", ["BE"] = "+32", ["CH"] = "+41",
+        ["GB"] = "+44", ["DE"] = "+49", ["ES"] = "+34", ["IT"] = "+39", ["PT"] = "+351",
+        ["NL"] = "+31", ["IE"] = "+353", ["LU"] = "+352", ["AT"] = "+43", ["PL"] = "+48",
+        ["HT"] = "+509", ["GP"] = "+590", ["MQ"] = "+596", ["GF"] = "+594", ["RE"] = "+262"
+    };
 
     /// <summary>Converts a 2-letter ISO code (e.g. "CA") into its regional-indicator flag emoji (e.g. 🇨🇦).</summary>
     public static string FlagEmoji(string? iso2)

@@ -24,6 +24,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     public DbSet<StudentSubscription> StudentSubscriptionsSet => Set<StudentSubscription>();
     public DbSet<Lesson> LessonsSet => Set<Lesson>();
     public DbSet<Unavailability> UnavailabilitiesSet => Set<Unavailability>();
+    public DbSet<TeacherAvailability> TeacherAvailabilitiesSet => Set<TeacherAvailability>();
     public DbSet<Holiday> HolidaysSet => Set<Holiday>();
     public DbSet<Vacation> VacationsSet => Set<Vacation>();
     public DbSet<LessonReport> LessonReportsSet => Set<LessonReport>();
@@ -74,6 +75,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     IQueryable<Lesson> IApplicationDbContext.Lessons => LessonsSet;
     IQueryable<Lesson> IApplicationDbContext.LessonsForAnyTenant => LessonsSet.IgnoreQueryFilters();
     IQueryable<Unavailability> IApplicationDbContext.Unavailabilities => UnavailabilitiesSet;
+    IQueryable<TeacherAvailability> IApplicationDbContext.TeacherAvailabilities => TeacherAvailabilitiesSet;
+    IQueryable<TeacherAvailability> IApplicationDbContext.TeacherAvailabilitiesForAnyTenant =>
+        TeacherAvailabilitiesSet.IgnoreQueryFilters();
     IQueryable<Holiday> IApplicationDbContext.Holidays => HolidaysSet;
     IQueryable<Vacation> IApplicationDbContext.Vacations => VacationsSet;
     IQueryable<LessonReport> IApplicationDbContext.LessonReports => LessonReportsSet;
@@ -521,6 +525,14 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
         });
 
         builder.Entity<Unavailability>(e => e.HasIndex(u => u.TenantId));
+        builder.Entity<TeacherAvailability>(e =>
+        {
+            e.HasIndex(a => a.TenantId);
+            e.HasIndex(a => new { a.TenantId, a.DayOfWeek, a.StartTime });
+            e.HasOne(a => a.Tenant).WithMany(t => t.Availabilities)
+                .HasForeignKey(a => a.TenantId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
         builder.Entity<Holiday>(e => e.HasIndex(h => h.TenantId));
         builder.Entity<Vacation>(e => e.HasIndex(v => v.TenantId));
 

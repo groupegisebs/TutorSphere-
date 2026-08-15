@@ -500,7 +500,7 @@ public class AuthService : IAuthService
         // Pays enseignant = pays du groupe d'experts (non modifiable à la création).
         var country = ProfileVisibility.NormalizeCode(group.CountryCode);
         if (country.Length != 2)
-            country = "CM";
+            country = group.IsInternational ? "" : country;
 
         var visibleCsv = ProfileVisibility.ToCsv(request.VisibleCountryCodes, country);
 
@@ -541,6 +541,10 @@ public class AuthService : IAuthService
             Status = TenantStatus.PendingValidation,
             Plan = TenantPlan.Starter,
             OwnerUserId = user.Id,
+            TimeZone = TimeZoneCatalog.Normalize(request.TimeZone),
+            Currency = string.IsNullOrWhiteSpace(request.InitialOffering?.Currency)
+                ? GroupOfferCurrencyRules.ResolveCurrency(country)
+                : request.InitialOffering!.Currency.Trim(),
             Branding = new TenantBranding(),
             ExpertApprovalStatus = ExpertApprovalStatus.Approved,
             ApprovedByExpertGroupId = group.Id,
@@ -570,7 +574,11 @@ public class AuthService : IAuthService
         await _db.SaveChangesAsync(ct);
 
         user.TenantId = tenant.Id;
+        user.TimeZone = tenant.TimeZone;
         await _userManager.UpdateAsync(user);
+
+        SaveTeacherAvailabilities(tenant.Id, request);
+        await _db.SaveChangesAsync(ct);
 
         Guid? offeringId = null;
         if (request.InitialOffering is { } offerReq && !string.IsNullOrWhiteSpace(offerReq.Title))
@@ -642,6 +650,45 @@ public class AuthService : IAuthService
 
         var user = await _userManager.FindByIdAsync(manager.UserId);
         return string.IsNullOrWhiteSpace(user?.Email) ? null : user.Email.Trim().ToLowerInvariant();
+    }
+
+    private void SaveTeacherAvailabilities(Guid tenantId, RegisterTeacherByExpertRequest request)
+    {
+        var ranges = request.Availabilities?
+            .Where(a => !string.IsNullOrWhiteSpace(a.Day)
+                        && !string.IsNullOrWhiteSpace(a.StartTime)
+                        && !string.IsNullOrWhiteSpace(a.EndTime))
+            .ToList() ?? [];
+
+        if (ranges.Count == 0 && request.InitialOffering?.Schedule?.Slots is { Count: > 0 } slots)
+        {
+            ranges = slots
+                .Where(s => !string.IsNullOrWhiteSpace(s.Day) && !string.IsNullOrWhiteSpace(s.Time))
+                .Select(s => new TeacherAvailabilityRangeDto(
+                    s.Day,
+                    s.Time,
+                    string.IsNullOrWhiteSpace(s.EndTime) ? s.Time : s.EndTime!))
+                .ToList();
+        }
+
+        foreach (var range in ranges)
+        {
+            if (!AvailabilityWindows.TryParseDay(range.Day, out var day))
+                continue;
+            if (!AvailabilityWindows.TryParseTime(range.StartTime, out var start)
+                || !AvailabilityWindows.TryParseTime(range.EndTime, out var end)
+                || end <= start)
+                continue;
+
+            _db.Add(new TeacherAvailability
+            {
+                TenantId = tenantId,
+                DayOfWeek = day,
+                StartTime = TimeOnly.FromTimeSpan(start),
+                EndTime = TimeOnly.FromTimeSpan(end),
+                IsActive = true
+            });
+        }
     }
 
     private string AllocateUniqueSlug(string schoolName)
