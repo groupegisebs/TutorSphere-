@@ -6,7 +6,7 @@
 @inject ApiClient Api
 @inject ParentProfileState ParentProfile
 
-<PageTitle>@(Profile?.TutorFullName ?? Profile?.SchoolName ?? L["Nav_FindTutor"]) — TutorSphere</PageTitle>
+<PageTitle>@(Profile?.DisplayName ?? L["Nav_FindTutor"]) — TutorSphere</PageTitle>
 
 <div class="ts-page-header">
     <div>
@@ -48,7 +48,7 @@ else
 @code {
     [Parameter] public string Slug { get; set; } = "";
 
-    private PublicTutorDetailDto? Profile { get; set; }
+    private TeacherPublicProfileDto? Profile { get; set; }
     private bool _loading = true;
     private bool _notFound;
     private string? _error;
@@ -64,7 +64,7 @@ else
         {
             try { await ParentProfile.EnsureLoadedAsync(); } catch { }
             var url = $"api/branding/{Uri.EscapeDataString(Slug)}/tutor";
-            Profile = await Api.GetAsync<PublicTutorDetailDto>(url);
+            Profile = await Api.GetAsync<TeacherPublicProfileDto>(url);
             _notFound = Profile is null;
         }
         catch

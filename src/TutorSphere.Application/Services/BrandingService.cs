@@ -14,14 +14,19 @@ public interface IBrandingService
     Task<TenantBrandingDto?> GetBrandingAsync(Guid tenantId, CancellationToken ct = default);
     Task<TenantBrandingDto> UpdateBrandingAsync(Guid tenantId, UpdateTenantBrandingRequest request, CancellationToken ct = default);
     Task<PublicTenantSiteDto?> GetPublicSiteBySlugAsync(string slug, string? viewerCountry = null, CancellationToken ct = default);
-    Task<PublicTutorDetailDto?> GetPublicTutorDetailAsync(string slug, string? viewerCountry = null, CancellationToken ct = default);
+    Task<TeacherPublicProfileDto?> GetPublicTutorDetailAsync(string slug, string? viewerCountry = null, CancellationToken ct = default);
 }
 
 public class BrandingService : IBrandingService
 {
     private readonly IApplicationDbContext _db;
+    private readonly ITeacherPublicIdentityLookup _identities;
 
-    public BrandingService(IApplicationDbContext db) => _db = db;
+    public BrandingService(IApplicationDbContext db, ITeacherPublicIdentityLookup identities)
+    {
+        _db = db;
+        _identities = identities;
+    }
 
     public Task<TenantBrandingDto?> GetBrandingAsync(Guid tenantId, CancellationToken ct = default)
     {
@@ -128,7 +133,7 @@ public class BrandingService : IBrandingService
         return Task.FromResult<PublicTenantSiteDto?>(site);
     }
 
-    public Task<PublicTutorDetailDto?> GetPublicTutorDetailAsync(string slug, string? viewerCountry = null, CancellationToken ct = default)
+    public async Task<TeacherPublicProfileDto?> GetPublicTutorDetailAsync(string slug, string? viewerCountry = null, CancellationToken ct = default)
     {
         var normalizedSlug = slug.ToLowerInvariant().Trim();
         var now = DateTime.UtcNow;
@@ -151,17 +156,16 @@ public class BrandingService : IBrandingService
                 t.VisibleCountryCodes,
                 t.Language,
                 t.Currency,
-                t.IsPublicProfile,
                 t.OwnerUserId,
                 t.ApprovedByExpertGroupId
             })
             .FirstOrDefault();
 
         if (tenant is null)
-            return Task.FromResult<PublicTutorDetailDto?>(null);
+            return null;
 
         if (!ProfileVisibility.IsVisibleTo(tenant.VisibleCountryCodes, tenant.Country, viewerCountry))
-            return Task.FromResult<PublicTutorDetailDto?>(null);
+            return null;
 
         var branding = _db.TenantBrandings.FirstOrDefault(b => b.TenantId == tenant.Id);
         ExpertGroup? approvedGroup = null;
@@ -202,7 +206,7 @@ public class BrandingService : IBrandingService
             .OrderBy(o => o.Title)
             .ToList();
 
-        var portfolio = ParsePortfolio(branding?.Portfolio);
+        var portfolio = ParsePortfolio(TeacherContactPrivacy.StripPortfolioPii(branding?.Portfolio));
 
         var offeringSubjects = offerings
             .SelectMany(o => ExtractSubjects(o.Subject, o.Title))
@@ -238,8 +242,6 @@ public class BrandingService : IBrandingService
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        // Presentation = approche / CV narratif; Description école = résumé court.
-        // Jamais d'e-mail / téléphone enseignant dans les textes publics.
         var fullBio = TeacherContactPrivacy.RedactFromPublicText(
             FirstNonEmpty(branding?.Presentation, tenant.Description));
         var shortBio = TeacherContactPrivacy.RedactFromPublicText(
@@ -265,39 +267,68 @@ public class BrandingService : IBrandingService
                 slots);
         }).ToList();
 
-        var detail = new PublicTutorDetailDto(
-            tenant.Id,
-            tenant.Name,
-            tenant.Slug,
-            shortBio,
-            tenant.City,
-            tenant.Country,
-            tenant.Language,
-            tenant.Currency,
-            tenant.IsPublicProfile,
-            string.IsNullOrWhiteSpace(tenant.OwnerUserId) ? null : tenant.OwnerUserId,
-            null,
-            null,
-            null,
-            branding?.LogoUrl,
-            branding?.BannerUrl,
-            branding?.PrimaryColor ?? "#2563eb",
-            branding?.SecondaryColor ?? "#1e40af",
-            fullBio,
-            portfolio.YearsExperience,
-            portfolio.HourlyRate,
-            portfolio.Status,
-            portfolio.Diplomas,
-            portfolio.Certifications,
-            subjects,
-            levels,
-            availability,
-            publicOfferings,
-            approvedGroup?.Name,
-            approvedGroup?.LogoUrl,
-            publicDisciplines);
+        TeacherPublicNameParts? names = null;
+        if (!string.IsNullOrWhiteSpace(tenant.OwnerUserId))
+        {
+            var map = await _identities.GetByUserIdsAsync([tenant.OwnerUserId], ct);
+            map.TryGetValue(tenant.OwnerUserId, out names);
+        }
 
-        return Task.FromResult<PublicTutorDetailDto?>(detail);
+        var given = TeacherPublicName.FirstToken(names?.FirstName);
+        if (given.Length == 0)
+            given = TeacherPublicName.FirstToken(tenant.Name);
+        var display = TeacherPublicName.Format(names?.FirstName, names?.LastName, tenant.Name);
+        var initials = TeacherPublicName.Initials(names?.FirstName, names?.LastName, tenant.Name);
+        var photo = TeacherPublicPhotoResolver.Resolve(branding?.LogoUrl, approvedGroup?.LogoUrl, initials);
+        var languages = new List<string>();
+        if (!string.IsNullOrWhiteSpace(tenant.Language))
+            languages.Add(tenant.Language.Trim());
+        foreach (var lang in portfolio.Languages)
+        {
+            if (languages.All(x => !string.Equals(x, lang, StringComparison.OrdinalIgnoreCase)))
+                languages.Add(lang);
+        }
+
+        var primary = ColorHex.Normalize(approvedGroup?.PrimaryColor, ColorHex.TutorSpherePrimary);
+        var secondary = ColorHex.Normalize(approvedGroup?.SecondaryColor, ColorHex.TutorSphereSecondary);
+
+        return new TeacherPublicProfileDto
+        {
+            Slug = tenant.Slug,
+            DisplayName = string.IsNullOrWhiteSpace(display) ? given : display,
+            GivenName = given,
+            PublicInitials = initials,
+            Location = TeacherPublicName.GeneralLocation(tenant.City, tenant.Country),
+            City = TeacherPublicName.GeneralLocation(tenant.City, null),
+            Country = TeacherPublicName.GeneralLocation(null, tenant.Country),
+            Language = tenant.Language,
+            Currency = tenant.Currency,
+            PhotoUrl = photo.Url,
+            PhotoKind = TeacherPublicPhotoResolver.ToApi(photo.Kind),
+            PhotoIsGroupLogoFallback = photo.IsGroupLogoFallback,
+            BannerUrl = string.IsNullOrWhiteSpace(approvedGroup?.BannerUrl) ? null : approvedGroup.BannerUrl,
+            PrimaryColor = primary,
+            SecondaryColor = secondary,
+            ShortBio = shortBio,
+            FullBio = fullBio,
+            YearsExperience = portfolio.YearsExperience,
+            HourlyRate = portfolio.HourlyRate,
+            Status = TeacherContactPrivacy.RedactFromPublicText(portfolio.Status),
+            Diplomas = portfolio.Diplomas,
+            Certifications = portfolio.Certifications,
+            Subjects = subjects,
+            Levels = levels,
+            Languages = languages,
+            Availability = availability,
+            Offerings = publicOfferings,
+            ExpertGroupName = approvedGroup?.Name,
+            ExpertGroupLogoUrl = approvedGroup?.LogoUrl,
+            ExpertGroupCountryCode = approvedGroup?.CountryCode,
+            IsVerified = tenant.ApprovedByExpertGroupId is not null,
+            Rating = null,
+            ReviewCount = 0,
+            Disciplines = publicDisciplines
+        };
     }
 
     private static string CycleLabel(SchoolCycle cycle) => cycle switch
@@ -387,7 +418,8 @@ public class BrandingService : IBrandingService
                 ReadCredentials(root, "certifications", "Certifications"),
                 ReadStringList(root, "subjects", "Subjects"),
                 ReadStringList(root, "levels", "Levels"),
-                ReadStringList(root, "availability", "Availability"));
+                ReadStringList(root, "availability", "Availability"),
+                ReadStringList(root, "languages", "Languages"));
         }
         catch (JsonException)
         {
@@ -524,9 +556,10 @@ public class BrandingService : IBrandingService
         List<PublicCredentialDto> Certifications,
         List<string> Subjects,
         List<string> Levels,
-        List<string> Availability)
+        List<string> Availability,
+        List<string> Languages)
     {
-        public static PortfolioParsed Empty { get; } = new(0, 0, null, [], [], [], [], []);
+        public static PortfolioParsed Empty { get; } = new(0, 0, null, [], [], [], [], [], []);
     }
 
     private static TenantBrandingDto MapToDto(TenantBranding branding) => new(
@@ -544,18 +577,11 @@ public class BrandingService : IBrandingService
         var dto = MapToDto(branding);
         return dto with
         {
-            Presentation = TeacherContactPrivacy.RedactFromPublicText(dto.Presentation)
+            Presentation = TeacherContactPrivacy.RedactFromPublicText(dto.Presentation),
+            Portfolio = null
         };
     }
 
-    private static string NormalizeColor(string? color, string fallback)
-    {
-        if (string.IsNullOrWhiteSpace(color))
-            return fallback;
-
-        var trimmed = color.Trim();
-        return trimmed.StartsWith('#') && (trimmed.Length == 7 || trimmed.Length == 4)
-            ? trimmed
-            : fallback;
-    }
+    private static string NormalizeColor(string? color, string fallback) =>
+        ColorHex.Normalize(color, fallback);
 }

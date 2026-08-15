@@ -54,6 +54,7 @@ public static class DependencyInjection
         services.AddScoped<IEmailService, EmailService>();
         services.AddScoped<IAdminMailboxService, AdminMailboxService>();
         services.AddScoped<IUserContactLookup, IdentityUserContactLookup>();
+        services.AddScoped<ITeacherPublicIdentityLookup, TeacherPublicIdentityLookup>();
         services.AddScoped<IExpertIdentityActions, ExpertIdentityActions>();
         services.AddSingleton<IAppUrlProvider, ConfigurationAppUrlProvider>();
         services.AddApplication(configuration);

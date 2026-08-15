@@ -1,3 +1,4 @@
+using TutorSphere.Application.Common;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.ExpertApproval;
 using TutorSphere.Domain.Entities;
@@ -13,6 +14,8 @@ public interface IExpertGroupService
     Task<ExpertGroupDto> UpdateAsync(Guid id, UpdateExpertGroupRequest request, CancellationToken ct = default);
     /// <summary>Met à jour uniquement le logo (évite les règles d'activation / pays).</summary>
     Task<ExpertGroupDto> SetLogoUrlAsync(Guid id, string? logoUrl, CancellationToken ct = default);
+    Task<ExpertGroupDto> SetBannerUrlAsync(Guid id, string? bannerUrl, CancellationToken ct = default);
+    Task<ExpertGroupDto> SetBrandColorsAsync(Guid id, string? primaryColor, string? secondaryColor, CancellationToken ct = default);
     Task DeleteAsync(Guid id, CancellationToken ct = default);
     Task ArchiveAsync(Guid id, CancellationToken ct = default);
     Task<bool> CanHardDeleteAsync(Guid id, CancellationToken ct = default);
@@ -207,11 +210,40 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
         entity.LogoUrl = TrimOrNull(logoUrl);
         entity.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
+        return MapCurrent(entity);
+    }
 
-        var count = db.ExpertGroupMembers.Count(m => m.ExpertGroupId == id && m.Status != ExpertMembershipStatus.Removed);
+    public async Task<ExpertGroupDto> SetBannerUrlAsync(Guid id, string? bannerUrl, CancellationToken ct = default)
+    {
+        var entity = db.ExpertGroups.FirstOrDefault(g => g.Id == id)
+            ?? throw new InvalidOperationException("Groupe d'experts introuvable.");
+
+        entity.BannerUrl = TrimOrNull(bannerUrl);
+        entity.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return MapCurrent(entity);
+    }
+
+    public async Task<ExpertGroupDto> SetBrandColorsAsync(Guid id, string? primaryColor, string? secondaryColor, CancellationToken ct = default)
+    {
+        var entity = db.ExpertGroups.FirstOrDefault(g => g.Id == id)
+            ?? throw new InvalidOperationException("Groupe d'experts introuvable.");
+
+        if (primaryColor is not null)
+            entity.PrimaryColor = ColorHex.NormalizeOrNull(primaryColor);
+        if (secondaryColor is not null)
+            entity.SecondaryColor = ColorHex.NormalizeOrNull(secondaryColor);
+        entity.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return MapCurrent(entity);
+    }
+
+    private ExpertGroupDto MapCurrent(ExpertGroup entity)
+    {
+        var count = db.ExpertGroupMembers.Count(m => m.ExpertGroupId == entity.Id && m.Status != ExpertMembershipStatus.Removed);
         var mandate = db.ExpertGroupManagerMandates.FirstOrDefault(m =>
-            m.ExpertGroupId == id && m.Status == ExpertGroupManagerMandateStatus.Active);
-        return Map(entity, count, mandate, CanHardDelete(id));
+            m.ExpertGroupId == entity.Id && m.Status == ExpertGroupManagerMandateStatus.Active);
+        return Map(entity, count, mandate, CanHardDelete(entity.Id));
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
@@ -442,6 +474,9 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
             ManagerUserId: mandate?.UserId,
             ManagerFullName: g.ContactName,
             ManagerEmail: g.ContactEmail,
+            BannerUrl: g.BannerUrl,
+            PrimaryColor: g.PrimaryColor,
+            SecondaryColor: g.SecondaryColor,
             CanHardDelete: canHardDelete);
 
     private static string? NormalizeCountry(string? code)

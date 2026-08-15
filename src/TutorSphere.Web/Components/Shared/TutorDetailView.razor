@@ -14,54 +14,72 @@
 
 <div class="tutor-detail"
      style="--ts-primary: @Profile.PrimaryColor; --ts-primary-dark: @Profile.SecondaryColor;">
-    <div class="tutor-detail-banner @(string.IsNullOrWhiteSpace(Profile.BannerUrl) ? "tutor-detail-banner--fallback" : null)"
-         style="@(!string.IsNullOrWhiteSpace(Profile.BannerUrl) ? $"background-image:url('{Profile.BannerUrl.Replace("'", "%27")}')" : null)">
+    <div class="tutor-detail-banner @(string.IsNullOrWhiteSpace(ResolvedBannerUrl) ? "tutor-detail-banner--fallback" : null)"
+         style="@BannerStyle">
         <div class="tutor-detail-banner-overlay"></div>
+        <div class="tutor-detail-banner-meta">
+            @if (!string.IsNullOrWhiteSpace(Profile.ExpertGroupName))
+            {
+                @if (!string.IsNullOrWhiteSpace(ResolvedGroupLogoUrl))
+                {
+                    <img src="@ResolvedGroupLogoUrl" alt="" class="tutor-detail-banner-logo" />
+                }
+                <span class="tutor-detail-banner-group">@Profile.ExpertGroupName</span>
+            }
+            @if (!string.IsNullOrWhiteSpace(Profile.ExpertGroupCountryCode) || !string.IsNullOrWhiteSpace(Profile.Country))
+            {
+                <span class="tutor-detail-banner-country">@((Profile.ExpertGroupCountryCode ?? Profile.Country))</span>
+            }
+            @if (Profile.IsVerified)
+            {
+                <span class="tutor-detail-banner-verified">
+                    <i class="bi bi-patch-check-fill" aria-hidden="true"></i>
+                    @L["Search_VerifiedTeacher"]
+                </span>
+            }
+        </div>
     </div>
 
     <div class="tutor-detail-body">
         <div class="tutor-detail-header">
-            @if (!string.IsNullOrWhiteSpace(Profile.PhotoUrl))
+            @if (!string.IsNullOrWhiteSpace(ResolvedPhotoUrl))
             {
-                <div class="tutor-detail-avatar tutor-detail-avatar--photo"
-                     style="background-image:url('@Profile.PhotoUrl.Replace("'", "%27")')"></div>
+                <div class="tutor-detail-avatar tutor-detail-avatar--photo @(Profile.PhotoIsGroupLogoFallback ? "tutor-detail-avatar--group-fallback" : null)"
+                     style="background-image:url('@CssUrl(ResolvedPhotoUrl)')">
+                    @if (Profile.PhotoIsGroupLogoFallback)
+                    {
+                        <span class="tutor-photo-fallback-label">@L["Search_GroupLogoFallback"]</span>
+                    }
+                </div>
             }
             else
             {
-                <div class="tutor-detail-avatar">@Initials</div>
+                <div class="tutor-detail-avatar">@Profile.PublicInitials</div>
             }
 
             <div class="tutor-detail-info">
-                <h1>@DisplayName</h1>
-                @if (!string.IsNullOrWhiteSpace(Profile.SchoolName) &&
-                    !string.Equals(Profile.SchoolName, DisplayName, StringComparison.OrdinalIgnoreCase))
+                <h1>@Profile.DisplayName</h1>
+                @if (!string.IsNullOrWhiteSpace(Profile.ExpertGroupName))
                 {
                     <p class="tutor-detail-school">
-                        <i class="bi bi-person-badge"></i> @Profile.SchoolName
-                    </p>
-                }
-                @if (!string.IsNullOrWhiteSpace(Location))
-                {
-                    <p class="tutor-detail-location"><i class="bi bi-geo-alt"></i> @Location</p>
-                }
-                @if (!string.IsNullOrWhiteSpace(Profile.Status))
-                {
-                    <span class="tutor-detail-status">@Profile.Status</span>
-                }
-                @if (!string.IsNullOrWhiteSpace(Profile.ApprovedByExpertGroupName))
-                {
-                    <div class="tutor-expert-badge mt-2 d-inline-flex align-items-center gap-2">
-                        @if (!string.IsNullOrWhiteSpace(Profile.ApprovedByExpertGroupLogoUrl))
+                        @if (!string.IsNullOrWhiteSpace(ResolvedGroupLogoUrl))
                         {
-                            <img src="@MediaUrlHelper.Resolve(Profile.ApprovedByExpertGroupLogoUrl, Config, Navigation)" alt=""
-                                 style="width:28px;height:28px;object-fit:contain;border-radius:4px;" />
+                            <img src="@ResolvedGroupLogoUrl" alt="" class="tutor-detail-group-thumb" />
                         }
                         else
                         {
                             <i class="bi bi-patch-check-fill text-success"></i>
                         }
-                        <span class="small">@L["ExpertApproval_ApprovedBy", Profile.ApprovedByExpertGroupName]</span>
-                    </div>
+                        <span>@Profile.ExpertGroupName</span>
+                    </p>
+                }
+                @if (!string.IsNullOrWhiteSpace(Profile.Location))
+                {
+                    <p class="tutor-detail-location"><i class="bi bi-geo-alt"></i> @Profile.Location</p>
+                }
+                @if (!string.IsNullOrWhiteSpace(Profile.Status))
+                {
+                    <span class="tutor-detail-status">@Profile.Status</span>
                 }
                 @if (Profile.Subjects.Count > 0)
                 {
@@ -85,7 +103,7 @@
                 @if (PreviewMode)
                 {
                     <button type="button" class="btn btn-primary" disabled title="Aperçu — action parents">
-                        <i class="bi bi-plus-lg me-1"></i>@L["PublicProfile_Subscribe"]
+                        <i class="bi bi-plus-lg me-1"></i>@L["PublicProfile_ChooseOffer"]
                     </button>
                     <p class="small text-muted mt-2 mb-0">
                         <i class="bi bi-shield-lock me-1"></i>@L["PublicProfile_ContactPrivacy"]
@@ -94,7 +112,7 @@
                 else if ((AllowSubscribe || AllowSelfSubscribe) && Profile.Offerings.Count > 0)
                 {
                     <button type="button" class="btn btn-primary" @onclick="() => OpenSubscribe(Profile.Offerings[0])">
-                        <i class="bi bi-plus-lg me-1"></i>@L["PublicProfile_Subscribe"]
+                        <i class="bi bi-plus-lg me-1"></i>@L["PublicProfile_ChooseOffer"]
                     </button>
                     <p class="small text-muted mt-2 mb-0">
                         <i class="bi bi-shield-lock me-1"></i>@L["PublicProfile_ContactPrivacy"]
@@ -103,7 +121,7 @@
                 else if (!string.IsNullOrWhiteSpace(SubscribeHref))
                 {
                     <a class="btn btn-primary" href="@SubscribeHref">
-                        <i class="bi bi-plus-lg me-1"></i>@L["PublicProfile_Subscribe"]
+                        <i class="bi bi-plus-lg me-1"></i>@L["PublicProfile_ChooseOffer"]
                     </a>
                     <p class="small text-muted mt-2 mb-0">
                         <i class="bi bi-shield-lock me-1"></i>@L["PublicProfile_ContactPrivacy"]
@@ -401,7 +419,7 @@
                                     {
                                         <button type="button" class="btn btn-primary btn-sm w-100 mt-3"
                                                 @onclick="() => OpenSubscribe(offer)">
-                                            <i class="bi bi-cart-plus me-1"></i>@L["PublicProfile_Subscribe"]
+                                            <i class="bi bi-cart-plus me-1"></i>@L["PublicProfile_ChooseOffer"]
                                         </button>
                                     }
                                 </div>
@@ -514,7 +532,7 @@
 }
 
 @code {
-    [Parameter] public PublicTutorDetailDto Profile { get; set; } = default!;
+    [Parameter] public TeacherPublicProfileDto Profile { get; set; } = default!;
     [Parameter] public string? SubscribeHref { get; set; }
     [Parameter] public bool AllowSubscribe { get; set; }
     /// <summary>Élève autonome (14+) — s'abonne pour lui-même.</summary>
@@ -555,33 +573,16 @@
     }
 
     private string DisplayName =>
-        !string.IsNullOrWhiteSpace(Profile.TutorFullName) ? Profile.TutorFullName! : Profile.SchoolName;
+        !string.IsNullOrWhiteSpace(Profile.DisplayName) ? Profile.DisplayName : Profile.GivenName;
 
-    private string Location
-    {
-        get
-        {
-            if (string.IsNullOrWhiteSpace(Profile.City) && string.IsNullOrWhiteSpace(Profile.Country))
-                return "";
-            if (string.IsNullOrWhiteSpace(Profile.City))
-                return Profile.Country!;
-            if (string.IsNullOrWhiteSpace(Profile.Country))
-                return Profile.City!;
-            return $"{Profile.City}, {Profile.Country}";
-        }
-    }
+    private string ResolvedPhotoUrl => MediaUrlHelper.Resolve(Profile.PhotoUrl, Config, Navigation);
+    private string ResolvedBannerUrl => MediaUrlHelper.Resolve(Profile.BannerUrl, Config, Navigation);
+    private string ResolvedGroupLogoUrl => MediaUrlHelper.Resolve(Profile.ExpertGroupLogoUrl, Config, Navigation);
+    private string? BannerStyle => string.IsNullOrWhiteSpace(ResolvedBannerUrl)
+        ? $"background:linear-gradient(135deg,{Profile.PrimaryColor} 0%,{Profile.SecondaryColor} 100%);"
+        : $"background-image:url('{CssUrl(ResolvedBannerUrl)}')";
 
-    private string Initials
-    {
-        get
-        {
-            var name = DisplayName;
-            var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            return parts.Length >= 2
-                ? $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[^1][0])}"
-                : name.Length > 0 ? char.ToUpperInvariant(name[0]).ToString() : "?";
-        }
-    }
+    private static string CssUrl(string url) => url.Replace("'", "%27");
 
     private async Task OpenSubscribe(PublicOfferingDto offer)
     {

@@ -6,7 +6,20 @@
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
 
-<PageTitle>@L["PageTitle_School", Profile?.SchoolName ?? Profile?.TutorFullName ?? L["School_DefaultName"]]</PageTitle>
+<PageTitle>@L["PageTitle_School", Profile?.DisplayName ?? L["School_DefaultName"]]</PageTitle>
+@if (Profile is not null)
+{
+    <HeadContent>
+        <meta name="description" content="@SeoDescription" />
+        <meta name="robots" content="index,follow" />
+        <meta property="og:title" content="@($"{Profile.DisplayName} — TutorSphere")" />
+        <meta property="og:description" content="@SeoDescription" />
+        @if (!string.IsNullOrWhiteSpace(Profile.PhotoUrl) && !Profile.PhotoIsGroupLogoFallback)
+        {
+            <meta property="og:image" content="@Profile.PhotoUrl" />
+        }
+    </HeadContent>
+}
 
 @if (_loading)
 {
@@ -39,7 +52,7 @@ else
     [Parameter]
     public string Slug { get; set; } = "";
 
-    private PublicTutorDetailDto? Profile { get; set; }
+    private TeacherPublicProfileDto? Profile { get; set; }
     private bool _loading = true;
     private bool _notFound;
     private string? _error;
@@ -54,7 +67,7 @@ else
         try
         {
             // Fiche riche (enseignant + badge groupe d'experts + offres), pas la landing minimale.
-            Profile = await Api.GetAsync<PublicTutorDetailDto>($"api/branding/{Uri.EscapeDataString(Slug)}/tutor");
+            Profile = await Api.GetAsync<TeacherPublicProfileDto>($"api/branding/{Uri.EscapeDataString(Slug)}/tutor");
             _notFound = Profile is null;
         }
         catch
@@ -64,6 +77,17 @@ else
         finally
         {
             _loading = false;
+        }
+    }
+
+    private string SeoDescription
+    {
+        get
+        {
+            var bio = Profile?.ShortBio ?? Profile?.FullBio;
+            if (string.IsNullOrWhiteSpace(bio))
+                return $"{Profile?.DisplayName} — TutorSphere";
+            return bio.Length <= 160 ? bio : bio[..157] + "…";
         }
     }
 }

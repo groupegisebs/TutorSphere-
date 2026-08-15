@@ -3,6 +3,9 @@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject AuthService Auth
 @inject ApiClient Api
+@inject IJSRuntime JS
+@inject IConfiguration Config
+@inject NavigationManager Navigation
 
 <PageTitle>Paramètres du groupe — TutorSphere</PageTitle>
 
@@ -66,6 +69,69 @@
                 </fieldset>
                 <button type="button" class="cc-btn cc-btn-primary" disabled="@_busy" @onclick="SaveAsync">Enregistrer</button>
             </div>
+
+            <div class="cc-card mt-3">
+                <h2 class="cc-card-title">Identité visuelle</h2>
+                <p class="cc-page-sub mb-3">Logo, bannière et couleurs du groupe, affichés sur les fiches publiques des enseignants.</p>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Couleur principale</label>
+                        <div class="d-flex gap-2 align-items-center">
+                            <input type="color" class="form-control form-control-color" @bind="_primaryColor" />
+                            <input class="form-control" @bind="_primaryColor" maxlength="7" />
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Couleur secondaire</label>
+                        <div class="d-flex gap-2 align-items-center">
+                            <input type="color" class="form-control form-control-color" @bind="_secondaryColor" />
+                            <input class="form-control" @bind="_secondaryColor" maxlength="7" />
+                        </div>
+                    </div>
+                    <div class="col-md-5">
+                        <label class="form-label">Logo (512 × 512 px)</label>
+                        <p class="small text-muted">PNG, JPG ou WebP — max. 5 Mo. Carré recadré au centre.</p>
+                        <div class="group-visual-logo-frame mb-2">
+                            @if (!string.IsNullOrWhiteSpace(_logoPreview))
+                            {
+                                <img src="@_logoPreview" alt="Aperçu logo" />
+                            }
+                            else
+                            {
+                                <span class="text-muted">Aucun logo</span>
+                            }
+                        </div>
+                        <InputFile OnChange="e => OnPickImageAsync(e, banner: false)" accept="image/png,image/jpeg,image/webp" class="form-control mb-2" />
+                        @if (!string.IsNullOrWhiteSpace(_logoUrl))
+                        {
+                            <button type="button" class="cc-btn" disabled="@_uploadBusy" @onclick="() => RemoveImageAsync(false)">Supprimer le logo</button>
+                        }
+                    </div>
+                    <div class="col-md-7">
+                        <label class="form-label">Bannière (1600 × 500 px)</label>
+                        <p class="small text-muted">PNG, JPG ou WebP — max. 5 Mo. Recadrée au format 16:5.</p>
+                        <div class="group-visual-banner-frame mb-2" style="background:linear-gradient(135deg,@_primaryColor,@_secondaryColor);">
+                            @if (!string.IsNullOrWhiteSpace(_bannerPreview))
+                            {
+                                <img src="@_bannerPreview" alt="Aperçu bannière" />
+                            }
+                            else
+                            {
+                                <span class="text-muted">Fond générique aux couleurs du groupe</span>
+                            }
+                        </div>
+                        <InputFile OnChange="e => OnPickImageAsync(e, banner: true)" accept="image/png,image/jpeg,image/webp" class="form-control mb-2" />
+                        @if (!string.IsNullOrWhiteSpace(_bannerUrl))
+                        {
+                            <button type="button" class="cc-btn" disabled="@_uploadBusy" @onclick="() => RemoveImageAsync(true)">Supprimer la bannière</button>
+                        }
+                    </div>
+                </div>
+                @if (!string.IsNullOrEmpty(_uploadError))
+                {
+                    <div class="alert alert-danger mt-3 mb-0">@_uploadError</div>
+                }
+            </div>
         }
     </Authorized>
     <NotAuthorized>
@@ -82,6 +148,14 @@
     private string? _country;
     private string? _description;
     private int _track;
+    private string _primaryColor = "#5831E0";
+    private string _secondaryColor = "#4419c8";
+    private string? _logoUrl;
+    private string? _bannerUrl;
+    private string? _logoPreview;
+    private string? _bannerPreview;
+    private bool _uploadBusy;
+    private string? _uploadError;
 
     protected override async Task OnInitializedAsync()
     {
@@ -94,6 +168,12 @@
             _country = settings.CountryCode;
             _description = settings.Description;
             _track = settings.TeacherApprovalTrack;
+            _primaryColor = string.IsNullOrWhiteSpace(settings.PrimaryColor) ? "#5831E0" : settings.PrimaryColor;
+            _secondaryColor = string.IsNullOrWhiteSpace(settings.SecondaryColor) ? "#4419c8" : settings.SecondaryColor;
+            _logoUrl = settings.LogoUrl;
+            _bannerUrl = settings.BannerUrl;
+            _logoPreview = MediaUrlHelper.Resolve(_logoUrl, Config, Navigation);
+            _bannerPreview = MediaUrlHelper.Resolve(_bannerUrl, Config, Navigation);
         }
         catch (Exception ex) { _error = ex.Message; }
         finally { _loading = false; }
@@ -109,13 +189,19 @@
             var result = await Api.PutWithErrorAsync<GroupSettings>("api/expert/my-group/settings", new
             {
                 description = _description,
-                teacherApprovalTrack = _track
+                teacherApprovalTrack = _track,
+                primaryColor = _primaryColor,
+                secondaryColor = _secondaryColor
             });
             if (result.Error is not null) { _error = result.Error; return; }
             if (result.Value is not null)
             {
                 _description = result.Value.Description;
                 _track = result.Value.TeacherApprovalTrack;
+                if (!string.IsNullOrWhiteSpace(result.Value.PrimaryColor))
+                    _primaryColor = result.Value.PrimaryColor;
+                if (!string.IsNullOrWhiteSpace(result.Value.SecondaryColor))
+                    _secondaryColor = result.Value.SecondaryColor;
             }
             _flash = "Paramètres enregistrés.";
         }
@@ -124,5 +210,82 @@
     }
 
     private sealed record GroupSettings(
-        Guid Id, string Name, string? CountryCode, string? Description, bool IsInternational, int TeacherApprovalTrack = 0);
+        Guid Id, string Name, string? CountryCode, string? Description, bool IsInternational, int TeacherApprovalTrack = 0,
+        string? LogoUrl = null, string? BannerUrl = null, string? PrimaryColor = null, string? SecondaryColor = null);
+
+    private async Task OnPickImageAsync(InputFileChangeEventArgs e, bool banner)
+    {
+        _uploadError = null;
+        var file = e.File;
+        if (file is null) return;
+        if (file.Size > 5 * 1024 * 1024)
+        {
+            _uploadError = "Fichier trop volumineux (max. 5 Mo).";
+            return;
+        }
+
+        _uploadBusy = true;
+        try
+        {
+            await using var source = file.OpenReadStream(5 * 1024 * 1024);
+            using var ms = new MemoryStream();
+            await source.CopyToAsync(ms);
+            var bytes = ms.ToArray();
+            var contentType = string.IsNullOrWhiteSpace(file.ContentType) ? "image/png" : file.ContentType;
+            string croppedB64;
+            try
+            {
+                croppedB64 = await JS.InvokeAsync<string>(
+                    "tsImageCrop.cropCenter",
+                    Convert.ToBase64String(bytes),
+                    contentType,
+                    banner ? 16 : 1,
+                    banner ? 5 : 1,
+                    banner ? 1600 : 512,
+                    banner ? 500 : 512);
+            }
+            catch { croppedB64 = Convert.ToBase64String(bytes); }
+
+            var cropped = Convert.FromBase64String(croppedB64);
+            using var content = new MultipartFormDataContent();
+            using var part = new ByteArrayContent(cropped);
+            part.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/webp");
+            content.Add(part, "file", banner ? "banner.webp" : "logo.webp");
+            var path = banner ? "api/expert/my-group/banner" : "api/expert/my-group/logo";
+            var result = await Api.PostMultipartAsync<VisualUploadResult>(path, content);
+            if (result.Error is not null) { _uploadError = result.Error; return; }
+            if (banner)
+            {
+                _bannerUrl = result.Value?.BannerUrl;
+                _bannerPreview = MediaUrlHelper.Resolve(_bannerUrl, Config, Navigation);
+            }
+            else
+            {
+                _logoUrl = result.Value?.LogoUrl;
+                _logoPreview = MediaUrlHelper.Resolve(_logoUrl, Config, Navigation);
+            }
+            _flash = banner ? "Bannière mise à jour." : "Logo mis à jour.";
+        }
+        catch (Exception ex) { _uploadError = ex.Message; }
+        finally { _uploadBusy = false; }
+    }
+
+    private async Task RemoveImageAsync(bool banner)
+    {
+        _uploadBusy = true;
+        _uploadError = null;
+        try
+        {
+            var path = banner ? "api/expert/my-group/banner" : "api/expert/my-group/logo";
+            var result = await Api.DeleteWithErrorAsync(path);
+            if (result.Error is not null) { _uploadError = result.Error; return; }
+            if (banner) { _bannerUrl = _bannerPreview = null; }
+            else { _logoUrl = _logoPreview = null; }
+            _flash = banner ? "Bannière supprimée." : "Logo supprimé.";
+        }
+        catch (Exception ex) { _uploadError = ex.Message; }
+        finally { _uploadBusy = false; }
+    }
+
+    private sealed record VisualUploadResult(string? LogoUrl, string? BannerUrl);
 }

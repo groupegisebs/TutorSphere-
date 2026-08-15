@@ -25,6 +25,7 @@ public class ExpertApprovalsController : ControllerBase
     private readonly IGroupAdminAccessService _groupAccess;
     private readonly IBrandingService _branding;
     private readonly IExpertDisciplineService _disciplines;
+    private readonly IExpertGroupService _expertGroups;
     private readonly IWebHostEnvironment _env;
 
     public ExpertApprovalsController(
@@ -38,6 +39,7 @@ public class ExpertApprovalsController : ControllerBase
         IGroupAdminAccessService groupAccess,
         IBrandingService branding,
         IExpertDisciplineService disciplines,
+        IExpertGroupService expertGroups,
         IWebHostEnvironment env)
     {
         _approvals = approvals;
@@ -50,6 +52,7 @@ public class ExpertApprovalsController : ControllerBase
         _groupAccess = groupAccess;
         _branding = branding;
         _disciplines = disciplines;
+        _expertGroups = expertGroups;
         _env = env;
     }
 
@@ -367,9 +370,7 @@ public class ExpertApprovalsController : ControllerBase
             {
                 var g = await _groupAccess.ResolveManagedGroupAsync(User, gid, ct)
                     ?? throw new InvalidOperationException("Groupe introuvable.");
-                return Ok(new ExpertMyGroupDto(
-                    g.Id, g.Name, g.CountryCode, g.Description, g.IsInternational,
-                    (int)g.TeacherApprovalTrack));
+                return Ok(g);
             }
             return Ok(await _approvals.GetMyGroupSettingsAsync(UserId, ct));
         }
@@ -392,10 +393,75 @@ public class ExpertApprovalsController : ControllerBase
                 // Platform act-as: update via approvals using group resolution
                 var group = await _groupAccess.RequireManagedGroupIdAsync(User, gid, ct);
                 return Ok(await _approvals.UpdateGroupSettingsAsAdminAsync(
-                    group, request?.Description, request?.TeacherApprovalTrack, ct));
+                    group, request?.Description, request?.TeacherApprovalTrack,
+                    request?.PrimaryColor, request?.SecondaryColor, ct));
             }
             return Ok(await _approvals.UpdateMyGroupSettingsAsync(
-                UserId, request?.Description, request?.TeacherApprovalTrack, ct));
+                UserId, request?.Description, request?.TeacherApprovalTrack,
+                request?.PrimaryColor, request?.SecondaryColor, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("my-group/logo")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(5 * 1024 * 1024)]
+    [Authorize(Roles = $"{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
+    public async Task<ActionResult<object>> UploadMyGroupLogo(IFormFile file, CancellationToken ct) =>
+        await UploadMyGroupImageAsync(file, banner: false, ct);
+
+    [HttpDelete("my-group/logo")]
+    [Authorize(Roles = $"{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
+    public async Task<ActionResult<object>> DeleteMyGroupLogo(CancellationToken ct) =>
+        await ClearMyGroupImageAsync(banner: false, ct);
+
+    [HttpPost("my-group/banner")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(5 * 1024 * 1024)]
+    [Authorize(Roles = $"{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
+    public async Task<ActionResult<object>> UploadMyGroupBanner(IFormFile file, CancellationToken ct) =>
+        await UploadMyGroupImageAsync(file, banner: true, ct);
+
+    [HttpDelete("my-group/banner")]
+    [Authorize(Roles = $"{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
+    public async Task<ActionResult<object>> DeleteMyGroupBanner(CancellationToken ct) =>
+        await ClearMyGroupImageAsync(banner: true, ct);
+
+    private async Task<ActionResult<object>> UploadMyGroupImageAsync(IFormFile file, bool banner, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        var error = PublicImageUpload.Validate(file);
+        if (error is not null)
+            return BadRequest(new { error = error.Message });
+        try
+        {
+            var groupId = await _groupAccess.RequireManagedGroupIdAsync(User, ActAsGroupId, ct);
+            var prefix = banner ? $"expert-group-banner-{groupId:N}" : $"expert-group-{groupId:N}";
+            var url = await PublicImageUpload.SaveAsync(_env, file, prefix, ct);
+            var updated = banner
+                ? await _expertGroups.SetBannerUrlAsync(groupId, url, ct)
+                : await _expertGroups.SetLogoUrlAsync(groupId, url, ct);
+            return Ok(new { logoUrl = updated.LogoUrl, bannerUrl = updated.BannerUrl });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    private async Task<ActionResult<object>> ClearMyGroupImageAsync(bool banner, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        try
+        {
+            var groupId = await _groupAccess.RequireManagedGroupIdAsync(User, ActAsGroupId, ct);
+            var updated = banner
+                ? await _expertGroups.SetBannerUrlAsync(groupId, null, ct)
+                : await _expertGroups.SetLogoUrlAsync(groupId, null, ct);
+            return Ok(new { logoUrl = updated.LogoUrl, bannerUrl = updated.BannerUrl });
         }
         catch (InvalidOperationException ex)
         {

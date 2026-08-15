@@ -21,6 +21,9 @@ public record ExpertGroupDto(
     string? ManagerEmail = null,
     string? ManagerPhone = null,
     string? ManagerUserId = null,
+    string? BannerUrl = null,
+    string? PrimaryColor = null,
+    string? SecondaryColor = null,
     bool CanHardDelete = true);
 
 public record ExpertGroupMemberDto(
@@ -176,9 +179,17 @@ public record ExpertMyGroupDto(
     string? CountryCode,
     string? Description = null,
     bool IsInternational = false,
-    int TeacherApprovalTrack = 0);
+    int TeacherApprovalTrack = 0,
+    string? LogoUrl = null,
+    string? BannerUrl = null,
+    string? PrimaryColor = null,
+    string? SecondaryColor = null);
 
-public record UpdateManagerGroupSettingsRequest(string? Description, int? TeacherApprovalTrack = null);
+public record UpdateManagerGroupSettingsRequest(
+    string? Description,
+    int? TeacherApprovalTrack = null,
+    string? PrimaryColor = null,
+    string? SecondaryColor = null);
 
 public record TeacherApplicationInviteDto(
     Guid Id,

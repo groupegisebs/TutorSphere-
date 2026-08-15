@@ -1,178 +1,117 @@
 @using TutorSphere.Application.DTOs.Search
 @inject IStringLocalizer<SharedResources> L
+@inject IConfiguration Config
+@inject NavigationManager Navigation
 
-<article class="tutor-card tutor-card--directory">
-    @if (Tutor.Rating.HasValue)
-    {
-        <div class="tutor-rating-badge" title="@L["Search_Satisfaction", Tutor.Rating.Value.ToString("0")]">
-            <i class="bi bi-star-fill" aria-hidden="true"></i>
-            <span>@Tutor.Rating.Value.ToString("0.0")</span>
-        </div>
-    }
+<article class="tutor-card tutor-card--directory" style="@CardTheme">
+    <div class="tutor-card-banner @(string.IsNullOrWhiteSpace(BannerUrl) ? "tutor-card-banner--fallback" : null)"
+         style="@BannerStyle">
+        @if (Tutor.Rating.HasValue)
+        {
+            <div class="tutor-rating-badge" title="@L["Search_Satisfaction", Tutor.Rating.Value.ToString("0")]">
+                <i class="bi bi-star-fill" aria-hidden="true"></i>
+                <span>@Tutor.Rating.Value.ToString("0.0")</span>
+                @if (Tutor.ReviewCount > 0)
+                {
+                    <span class="tutor-rating-count">(@Tutor.ReviewCount)</span>
+                }
+            </div>
+        }
+    </div>
 
     <div class="tutor-card-identity">
-        @if (!string.IsNullOrWhiteSpace(Tutor.PhotoUrl))
+        @if (!string.IsNullOrWhiteSpace(PhotoUrl))
         {
-            <img class="tutor-avatar tutor-avatar-photo" src="@Tutor.PhotoUrl" alt="@Tutor.Name" />
+            <div class="tutor-avatar-wrap">
+                <img class="tutor-avatar tutor-avatar-photo @(Tutor.PhotoIsGroupLogoFallback ? "tutor-avatar--group-fallback" : null)"
+                     src="@PhotoUrl" alt="@Tutor.Name" />
+                @if (Tutor.PhotoIsGroupLogoFallback)
+                {
+                    <span class="tutor-photo-fallback-label">@L["Search_GroupLogoFallback"]</span>
+                }
+            </div>
         }
         else
         {
-            <div class="tutor-avatar" aria-hidden="true">@GetInitials(Tutor.Name)</div>
+            <div class="tutor-avatar" aria-hidden="true">@(Tutor.PublicInitials ?? GetInitials(Tutor.Name))</div>
         }
         <div class="tutor-card-header">
-            <h3>@Tutor.Name</h3>
-            <div class="tutor-location-row">
-                @if (!string.IsNullOrWhiteSpace(Tutor.City) || !string.IsNullOrWhiteSpace(Tutor.Country))
+            <div class="tutor-card-group">
+                @if (!string.IsNullOrWhiteSpace(GroupLogoUrl))
                 {
-                    <span class="tutor-location">
-                        <i class="bi bi-geo-alt" aria-hidden="true"></i>
-                        @FormatLocation(Tutor.City, Tutor.Country)
-                    </span>
+                    <img class="tutor-card-group-logo" src="@GroupLogoUrl" alt="" />
                 }
-                @if (Tutor.IsVerified)
+                @if (!string.IsNullOrWhiteSpace(Tutor.ExpertGroupName))
                 {
-                    <span class="tutor-verified-icon" title="@L["Search_VerifiedTeacher"]">
-                        <i class="bi bi-patch-check-fill" aria-hidden="true"></i>
-                    </span>
+                    <span>@Tutor.ExpertGroupName</span>
                 }
             </div>
+            <h3>@Tutor.Name</h3>
+            @if (!string.IsNullOrWhiteSpace(Location))
+            {
+                <span class="tutor-location">
+                    <i class="bi bi-geo-alt" aria-hidden="true"></i>
+                    @Location
+                </span>
+            }
         </div>
     </div>
 
-    @if (!string.IsNullOrWhiteSpace(Tutor.Description))
-    {
-        <blockquote class="tutor-quote">
-            <i class="bi bi-quote" aria-hidden="true"></i>
-            <span>@Tutor.Description</span>
-        </blockquote>
-    }
-
-    <ul class="tutor-stats" aria-label="@L["Search_StatsLabel"]">
-        <li>
-            <i class="bi bi-clock" aria-hidden="true"></i>
-            <span>@FormatDurationLabel()</span>
-        </li>
-        <li>
-            <i class="bi bi-people" aria-hidden="true"></i>
-            <span>@L["Search_CurrentStudents", Tutor.CurrentStudentCount]</span>
-        </li>
-        @if (Tutor.IsVerified)
+    <div class="tutor-tags tutor-tags--primary">
+        @foreach (var subject in Tutor.Subjects.Take(3))
         {
-            <li>
-                <i class="bi bi-shield-check" aria-hidden="true"></i>
-                <span>@L["Search_VerifiedTeacher"]</span>
-            </li>
+            <span class="tutor-pill">@subject</span>
         }
-    </ul>
+        @foreach (var level in (Tutor.Levels ?? []).Take(2))
+        {
+            <span class="tutor-level-chip">@level</span>
+        }
+        @foreach (var lang in Langs)
+        {
+            <span class="tutor-pill tutor-pill--soft">@lang</span>
+        }
+    </div>
 
-    @if (Tutor.Subjects.Count > 0)
+    @if (!string.IsNullOrWhiteSpace(Tutor.OfferTitle) || !string.IsNullOrWhiteSpace(Tutor.Description))
     {
-        <div class="tutor-tags tutor-tags--primary">
-            @foreach (var subject in Tutor.Subjects.Take(2))
+        <div class="tutor-card-offer">
+            @if (!string.IsNullOrWhiteSpace(Tutor.OfferTitle))
             {
-                <span class="tutor-pill">@subject</span>
+                <h4>@Tutor.OfferTitle</h4>
             }
-        </div>
-    }
-
-    @if (Tutor.Levels is { Count: > 0 })
-    {
-        <div class="tutor-side-block">
-            <span class="tutor-side-label">@L["Label_Level"]</span>
-            <div class="tutor-level-chips">
-                @foreach (var level in Tutor.Levels.Take(4))
+            @if (!string.IsNullOrWhiteSpace(Tutor.Description))
+            {
+                <p>@Tutor.Description</p>
+            }
+            <div class="tutor-card-offer-meta">
+                @if (Tutor.SessionDurationMin is > 0)
                 {
-                    <span class="tutor-level-chip">@level</span>
+                    <span><i class="bi bi-clock" aria-hidden="true"></i> @FormatDurationLabel()</span>
                 }
-                @if (Tutor.Levels.Count > 4)
+                @if (!string.IsNullOrWhiteSpace(Tutor.OfferMode) || Tutor.Modes.Count > 0)
                 {
-                    <span class="tutor-level-chip tutor-level-chip--more">+@(Tutor.Levels.Count - 4)</span>
+                    <span><i class="bi bi-laptop" aria-hidden="true"></i> @(Tutor.OfferMode ?? Tutor.Modes[0])</span>
                 }
             </div>
-        </div>
-    }
-
-    @{
-        var specialties = Tutor.Specialties is { Count: > 0 }
-            ? Tutor.Specialties
-            : Tutor.Subjects.Skip(1).ToList();
-        var visibleSpecs = specialties.Take(3).ToList();
-        var extraSpecs = specialties.Count - visibleSpecs.Count;
-    }
-    @if (visibleSpecs.Count > 0)
-    {
-        <div class="tutor-side-block">
-            <span class="tutor-side-label">@L["Search_Specialties"]</span>
-            <div class="tutor-tags">
-                @foreach (var item in visibleSpecs)
-                {
-                    <span class="tutor-pill tutor-pill--soft">@item</span>
-                }
-                @if (extraSpecs > 0)
-                {
-                    <span class="tutor-pill tutor-pill--more">+@extraSpecs</span>
-                }
-            </div>
-        </div>
-    }
-
-    @{
-        var langs = (Tutor.Languages is { Count: > 0 } ? Tutor.Languages : [Tutor.Language])
-            .Where(l => !string.IsNullOrWhiteSpace(l))
-            .Select(FormatLanguage)
-            .Distinct()
-            .Take(2)
-            .ToList();
-    }
-    @if (langs.Count > 0)
-    {
-        <div class="tutor-side-block">
-            <span class="tutor-side-label">@L["Search_Language"]</span>
-            <div class="tutor-tags">
-                @foreach (var lang in langs)
-                {
-                    <span class="tutor-pill tutor-pill--soft">@lang</span>
-                }
-            </div>
-        </div>
-    }
-
-    @if (Tutor.HasFlexibleSessions || Tutor.Modes.Count > 0)
-    {
-        <div class="tutor-side-footer">
-            @if (Tutor.HasFlexibleSessions)
-            {
-                <span class="tutor-side-meta">
-                    <i class="bi bi-calendar3" aria-hidden="true"></i>
-                    @L["Search_FlexibleSessions"]
-                </span>
-            }
-            @if (Tutor.Modes.Count > 0)
-            {
-                <span class="tutor-side-meta">
-                    <i class="bi bi-laptop" aria-hidden="true"></i>
-                    @string.Join(" · ", Tutor.Modes.Take(2))
-                </span>
-            }
         </div>
     }
 
     @if (Tutor.MinPrice.HasValue)
     {
         <p class="tutor-price">
-            <strong>@L["Search_Price"]</strong>
-            <span>@FormatPrice()</span>
+            <strong>@FormatPrice()</strong>
+            <span>@Tutor.Currency / h</span>
         </p>
     }
 
-    <div class="tutor-card-footer">
+    <div class="tutor-card-footer tutor-card-footer--row">
         <a class="btn btn-outline-primary btn-sm" href="@ProfileHref">
-            <i class="bi bi-arrow-right me-1"></i>@L["Button_ViewProfile"]
+            @L["Button_ViewProfile"]
         </a>
         @if (ShowSubscribe)
         {
             <a class="btn btn-primary btn-sm" href="@(SubscribeHref ?? ProfileHref)">
-                <i class="bi bi-plus-lg me-1"></i>@L["PublicProfile_Subscribe"]
+                @L["PublicProfile_ChooseOffer"]
             </a>
         }
     </div>
@@ -184,43 +123,62 @@
     [Parameter] public bool ShowSubscribe { get; set; }
     [Parameter] public string? SubscribeHref { get; set; }
 
+    private string PhotoUrl => MediaUrlHelper.Resolve(Tutor.PhotoUrl, Config, Navigation);
+    private string BannerUrl => MediaUrlHelper.Resolve(Tutor.ExpertGroupBannerUrl, Config, Navigation);
+    private string GroupLogoUrl => MediaUrlHelper.Resolve(Tutor.ExpertGroupLogoUrl, Config, Navigation);
+    private string? Location => FormatLocation(Tutor.City, Tutor.Country);
+
+    private string CardTheme
+    {
+        get
+        {
+            var p = string.IsNullOrWhiteSpace(Tutor.ExpertGroupPrimaryColor) ? "#5831E0" : Tutor.ExpertGroupPrimaryColor;
+            var s = string.IsNullOrWhiteSpace(Tutor.ExpertGroupSecondaryColor) ? "#4419c8" : Tutor.ExpertGroupSecondaryColor;
+            return $"--tutor-group-primary:{p};--tutor-group-secondary:{s};";
+        }
+    }
+
+    private string? BannerStyle => string.IsNullOrWhiteSpace(BannerUrl)
+        ? null
+        : $"background-image:url('{BannerUrl.Replace("'", "%27")}')";
+
+    private IReadOnlyList<string> Langs =>
+        (Tutor.Languages is { Count: > 0 } ? Tutor.Languages : [Tutor.Language])
+        .Where(l => !string.IsNullOrWhiteSpace(l))
+        .Select(FormatLanguage)
+        .Distinct()
+        .Take(2)
+        .ToList();
+
     private static string GetInitials(string name)
     {
         if (string.IsNullOrWhiteSpace(name)) return "?";
         var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         return parts.Length >= 2
-            ? $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant()
+            ? $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[^1][0])}"
             : parts[0][0].ToString().ToUpperInvariant();
     }
 
-    private static string FormatLocation(string? city, string? country)
+    private static string? FormatLocation(string? city, string? country)
     {
         if (!string.IsNullOrWhiteSpace(city) && !string.IsNullOrWhiteSpace(country))
             return $"{city}, {country}";
-        return city ?? country ?? "";
+        return string.IsNullOrWhiteSpace(city) ? country : city;
     }
 
     private string FormatDurationLabel()
     {
-        if (Tutor.SessionDurationMin is > 0)
-        {
-            var hours = Tutor.SessionDurationMin.Value / 60.0;
-            var label = hours % 1 == 0 ? hours.ToString("0") : hours.ToString("0.#");
-            return L["Search_HoursPerSession", label];
-        }
-
-        var weekly = Tutor.WeeklyHours % 1m == 0
-            ? Tutor.WeeklyHours.ToString("0")
-            : Tutor.WeeklyHours.ToString("0.#");
-        return L["Search_WeeklyHours", weekly];
+        var hours = Tutor.SessionDurationMin!.Value / 60.0;
+        var label = hours % 1 == 0 ? hours.ToString("0") : hours.ToString("0.#");
+        return L["Search_HoursPerSession", label];
     }
 
     private string FormatPrice()
     {
         var amount = Tutor.MinPrice!.Value.ToString("0.##");
         if (Tutor.MaxPrice.HasValue && Tutor.MaxPrice != Tutor.MinPrice)
-            return $"{amount}–{Tutor.MaxPrice.Value.ToString("0.##")} {Tutor.Currency}/h";
-        return $"{amount} {Tutor.Currency}/h";
+            return $"{amount}–{Tutor.MaxPrice.Value.ToString("0.##")}";
+        return amount;
     }
 
     private string FormatLanguage(string language) => language.Trim().ToLowerInvariant() switch

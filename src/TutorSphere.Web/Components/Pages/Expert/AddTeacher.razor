@@ -4,6 +4,7 @@
 @using TutorSphere.Web.Common
 @using TutorSphere.Application.DTOs.ExpertApproval
 @using TutorSphere.Application.DTOs.Branding
+@using TutorSphere.Application.Common
 @inject AuthService Auth
 @inject ApiClient Api
 @inject IStringLocalizer<SharedResources> L
@@ -721,11 +722,11 @@
         }
     }
 
-    private PublicTutorDetailDto BuildPublicPreview()
+    private TeacherPublicProfileDto BuildPublicPreview()
     {
-        var fullName = $"{_firstName} {_lastName}".Trim();
-        if (string.IsNullOrWhiteSpace(fullName))
-            fullName = "Enseignant";
+        var display = TeacherPublicName.Format(_firstName, _lastName);
+        if (string.IsNullOrWhiteSpace(display))
+            display = "Enseignant";
         var countryName = CountryCatalog.Find(_country)?.Name ?? (string.IsNullOrWhiteSpace(_country) ? null : _country);
         var subject = string.IsNullOrWhiteSpace(_offerSubject) ? null : _offerSubject.Trim();
         var subjects = new List<string>();
@@ -761,35 +762,34 @@
             string.IsNullOrWhiteSpace(_offerMode) ? "En ligne" : _offerMode,
             AvailabilitySummary == "Aucune" ? null : AvailabilitySummary,
             availability);
-        return new PublicTutorDetailDto(
-            Guid.Empty,
-            fullName,
-            string.IsNullOrWhiteSpace(_slug) ? "enseignant" : _slug,
-            bio,
-            string.IsNullOrWhiteSpace(_city) ? null : _city,
-            countryName,
-            _language,
-            string.IsNullOrWhiteSpace(_currency) ? "XAF" : _currency,
-            _publishPublic,
-            null,
-            _firstName,
-            _lastName,
-            fullName,
-            _photoDataUrl,
-            null,
-            "#2563eb",
-            "#1d4ed8",
-            bio,
-            0,
-            monthly ? 0 : _price,
-            _publishPublic ? "Disponible" : "Brouillon",
-            Array.Empty<PublicCredentialDto>(),
-            Array.Empty<PublicCredentialDto>(),
-            subjects,
-            levels,
-            availability,
-            [offering],
-            string.IsNullOrWhiteSpace(_schoolName) ? null : _schoolName);
+        var photo = TeacherPublicPhotoResolver.Resolve(_photoDataUrl, null, TeacherPublicName.Initials(_firstName, _lastName));
+        return new TeacherPublicProfileDto
+        {
+            Slug = string.IsNullOrWhiteSpace(_slug) ? "enseignant" : _slug,
+            DisplayName = display,
+            GivenName = TeacherPublicName.FirstToken(_firstName),
+            PublicInitials = photo.Initials,
+            Location = TeacherPublicName.GeneralLocation(_city, countryName),
+            City = _city,
+            Country = countryName,
+            Language = _language,
+            Currency = string.IsNullOrWhiteSpace(_currency) ? "XAF" : _currency,
+            PhotoUrl = photo.Url,
+            PhotoKind = TeacherPublicPhotoResolver.ToApi(photo.Kind),
+            PhotoIsGroupLogoFallback = photo.IsGroupLogoFallback,
+            PrimaryColor = ColorHex.TutorSpherePrimary,
+            SecondaryColor = ColorHex.TutorSphereSecondary,
+            ShortBio = bio,
+            FullBio = bio,
+            HourlyRate = monthly ? 0 : _price,
+            Status = _publishPublic ? "Disponible" : "Brouillon",
+            Subjects = subjects,
+            Levels = levels,
+            Availability = availability,
+            Offerings = [offering],
+            ExpertGroupName = string.IsNullOrWhiteSpace(_schoolName) ? null : _schoolName,
+            IsVerified = true
+        };
     }
 
     private bool SlugOk => !string.IsNullOrWhiteSpace(_slug)

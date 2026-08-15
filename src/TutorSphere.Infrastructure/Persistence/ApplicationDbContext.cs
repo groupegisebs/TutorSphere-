@@ -265,6 +265,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
         {
             e.Property(g => g.Name).HasMaxLength(200).IsRequired();
             e.Property(g => g.LogoUrl).HasMaxLength(500);
+            e.Property(g => g.BannerUrl).HasMaxLength(500);
+            e.Property(g => g.PrimaryColor).HasMaxLength(16);
+            e.Property(g => g.SecondaryColor).HasMaxLength(16);
             e.Property(g => g.Description).HasMaxLength(4000);
             e.Property(g => g.ContactName).HasMaxLength(200);
             e.Property(g => g.ContactEmail).HasMaxLength(256);

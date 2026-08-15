@@ -10,6 +10,7 @@ namespace TutorSphere.Api.Controllers;
 
 [ApiController]
 [Route("api/search")]
+[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public class SearchController : ControllerBase
 {
     private readonly ISearchService _searchService;

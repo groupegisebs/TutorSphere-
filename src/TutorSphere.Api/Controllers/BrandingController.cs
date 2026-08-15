@@ -1,34 +1,30 @@
 using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using TutorSphere.Application.Common;
 using TutorSphere.Application.DTOs.Branding;
 using TutorSphere.Application.Services;
 using TutorSphere.Domain.Common;
 using TutorSphere.Domain.Enums;
-using TutorSphere.Infrastructure.Identity;
 
 namespace TutorSphere.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public class BrandingController : ControllerBase
 {
     private readonly IBrandingService _brandingService;
     private readonly IParentService _parentService;
     private readonly IStudentPortalService _studentPortal;
-    private readonly UserManager<ApplicationUser> _userManager;
 
     public BrandingController(
         IBrandingService brandingService,
         IParentService parentService,
-        IStudentPortalService studentPortal,
-        UserManager<ApplicationUser> userManager)
+        IStudentPortalService studentPortal)
     {
         _brandingService = brandingService;
         _parentService = parentService;
         _studentPortal = studentPortal;
-        _userManager = userManager;
     }
 
     [HttpGet("{slug}")]
@@ -46,45 +42,20 @@ public class BrandingController : ControllerBase
         return site is null ? NotFound() : Ok(site);
     }
 
-    /// <summary>Full public tutor/school profile for directory "View profile".</summary>
+    /// <summary>Fiche publique enseignant — aucun PII personnel.</summary>
     [HttpGet("{slug}/tutor")]
     [AllowAnonymous]
-    public async Task<ActionResult<PublicTutorDetailDto>> GetPublicTutorDetail(
+    public async Task<ActionResult<TeacherPublicProfileDto>> GetPublicTutorDetail(
         string slug,
         [FromQuery] string? viewerCountry,
         CancellationToken ct)
     {
         var country = await ResolveViewerCountryAsync(viewerCountry, ct);
-        // Parent / élève : pays obligatoire (même règle que la recherche).
         if (RequiresCountryFilter() && country is null)
             return NotFound();
 
         var detail = await _brandingService.GetPublicTutorDetailAsync(slug, country, ct);
-        if (detail is null)
-            return NotFound();
-
-        ApplicationUser? owner = null;
-        if (!string.IsNullOrWhiteSpace(detail.OwnerUserId))
-            owner = await _userManager.FindByIdAsync(detail.OwnerUserId);
-
-        owner ??= _userManager.Users.FirstOrDefault(u => u.TenantId == detail.TenantId);
-
-        if (owner is null)
-            return Ok(detail with { TutorFullName = detail.SchoolName });
-
-        var fullName = owner.FullName;
-        if (string.IsNullOrWhiteSpace(fullName))
-            fullName = detail.SchoolName;
-
-        return Ok(detail with
-        {
-            TutorFirstName = owner.FirstName,
-            TutorLastName = owner.LastName,
-            TutorFullName = fullName,
-            Language = string.IsNullOrWhiteSpace(owner.PreferredLanguage)
-                ? detail.Language
-                : owner.PreferredLanguage
-        });
+        return detail is null ? NotFound() : Ok(detail);
     }
 
     [HttpGet("tenant/{tenantId:guid}")]

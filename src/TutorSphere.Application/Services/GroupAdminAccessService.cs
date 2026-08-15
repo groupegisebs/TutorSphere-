@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.ExpertApproval;
+using TutorSphere.Domain.Entities;
 using TutorSphere.Domain.Enums;
 
 namespace TutorSphere.Application.Services;
@@ -46,8 +47,7 @@ public sealed class GroupAdminAccessService(
         {
             var group = db.ExpertGroups.FirstOrDefault(g => g.Id == gid && g.IsActive);
             if (group is null) return Task.FromResult<ExpertMyGroupDto?>(null);
-            return Task.FromResult<ExpertMyGroupDto?>(new ExpertMyGroupDto(
-                group.Id, group.Name, group.CountryCode, group.Description, group.IsInternational));
+            return Task.FromResult<ExpertMyGroupDto?>(Map(group));
         }
 
         // Mandat Active uniquement — un rôle Identity orphelin ne suffit plus.
@@ -60,8 +60,7 @@ public sealed class GroupAdminAccessService(
 
         var managed = db.ExpertGroups.FirstOrDefault(g => g.Id == mandate.ExpertGroupId && g.IsActive);
         if (managed is null) return Task.FromResult<ExpertMyGroupDto?>(null);
-        return Task.FromResult<ExpertMyGroupDto?>(new ExpertMyGroupDto(
-            managed.Id, managed.Name, managed.CountryCode, managed.Description, managed.IsInternational));
+        return Task.FromResult<ExpertMyGroupDto?>(Map(managed));
     }
 
     public async Task<Guid> RequireManagedGroupIdAsync(
@@ -74,4 +73,8 @@ public sealed class GroupAdminAccessService(
                 "Accès réservé au Responsable du groupe (ou administrateur plateforme en mode suppléant).");
         return group.Id;
     }
+
+    private static ExpertMyGroupDto Map(ExpertGroup group) =>
+        new(group.Id, group.Name, group.CountryCode, group.Description, group.IsInternational,
+            (int)group.TeacherApprovalTrack, group.LogoUrl, group.BannerUrl, group.PrimaryColor, group.SecondaryColor);
 }

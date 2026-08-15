@@ -26,10 +26,15 @@ public class SearchService : ISearchService
     };
 
     private readonly IApplicationDbContext _db;
+    private readonly ITeacherPublicIdentityLookup _identities;
 
-    public SearchService(IApplicationDbContext db) => _db = db;
+    public SearchService(IApplicationDbContext db, ITeacherPublicIdentityLookup identities)
+    {
+        _db = db;
+        _identities = identities;
+    }
 
-    public Task<IReadOnlyList<TutorSearchResultDto>> SearchTutorsAsync(
+    public async Task<IReadOnlyList<TutorSearchResultDto>> SearchTutorsAsync(
         TutorSearchFilters filters,
         CancellationToken ct = default)
     {
@@ -71,7 +76,7 @@ public class SearchService : ISearchService
         }
 
         if (tenants.Count == 0)
-            return Task.FromResult<IReadOnlyList<TutorSearchResultDto>>([]);
+            return [];
 
         var tenantIds = tenants.Select(t => t.Id).ToList();
 
@@ -102,7 +107,7 @@ public class SearchService : ISearchService
         // Toujours exclure les enseignants sans offre active (et ceux qui ne matchent pas les filtres d'offre).
         tenants = tenants.Where(t => offeringsByTenant.ContainsKey(t.Id)).ToList();
         if (tenants.Count == 0)
-            return Task.FromResult<IReadOnlyList<TutorSearchResultDto>>([]);
+            return [];
         tenantIds = tenants.Select(t => t.Id).ToList();
 
         var groupIds = tenants
@@ -110,11 +115,19 @@ public class SearchService : ISearchService
             .Select(t => t.ApprovedByExpertGroupId!.Value)
             .Distinct()
             .ToList();
-        var groupNames = _db.ExpertGroups
+        var groups = _db.ExpertGroups
             .Where(g => groupIds.Contains(g.Id))
-            .Select(g => new { g.Id, g.Name })
+            .Select(g => new { g.Id, g.Name, g.LogoUrl, g.BannerUrl, g.PrimaryColor, g.SecondaryColor })
             .ToList()
-            .ToDictionary(g => g.Id, g => g.Name);
+            .ToDictionary(g => g.Id);
+
+        var ownerIds = tenants
+            .Select(t => t.OwnerUserId)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Cast<string>()
+            .Distinct()
+            .ToList();
+        var ownerNames = await _identities.GetByUserIdsAsync(ownerIds, ct);
 
         var brandings = _db.TenantBrandings
             .Where(b => tenantIds.Contains(b.TenantId))
@@ -135,31 +148,6 @@ public class SearchService : ISearchService
             .GroupBy(b => b.TenantId)
             .ToDictionary(g => g.Key, g => ParsePortfolioExtras(g.First().Portfolio));
 
-        var studentCounts = _db.StudentsForAnyTenant
-            .Where(s => tenantIds.Contains(s.TenantId) && s.IsActive)
-            .GroupBy(s => s.TenantId)
-            .Select(g => new { TenantId = g.Key, Count = g.Count() })
-            .ToList()
-            .ToDictionary(x => x.TenantId, x => x.Count);
-
-        var (weekStart, weekEnd) = GetUtcWeekBounds(DateTime.UtcNow);
-        var weekLessons = _db.LessonsForAnyTenant
-            .Where(l => tenantIds.Contains(l.TenantId)
-                        && l.SettlementStatus != LessonSettlementStatus.CancelledFree
-                        && l.StartTime >= weekStart
-                        && l.StartTime < weekEnd)
-            .Select(l => new { l.TenantId, l.StartTime, l.EndTime })
-            .ToList();
-
-        var weeklyHoursByTenant = weekLessons
-            .GroupBy(l => l.TenantId)
-            .ToDictionary(
-                g => g.Key,
-                g => Math.Round(
-                    (decimal)g.Sum(l => (l.EndTime - l.StartTime).TotalHours),
-                    1,
-                    MidpointRounding.AwayFromZero));
-
         var levelFilter = filters.Level?.Trim();
         var subjectFilter = filters.Subject?.Trim();
 
@@ -168,13 +156,21 @@ public class SearchService : ISearchService
             {
                 offeringsByTenant.TryGetValue(t.Id, out var tenantOfferings);
                 tenantOfferings ??= [];
-
-                studentCounts.TryGetValue(t.Id, out var studentCount);
-                weeklyHoursByTenant.TryGetValue(t.Id, out var weeklyHours);
-                logosByTenant.TryGetValue(t.Id, out var photoUrl);
+                logosByTenant.TryGetValue(t.Id, out var teacherPhotoUrl);
                 portfolioByTenant.TryGetValue(t.Id, out var portfolio);
                 portfolio ??= PortfolioExtras.Empty;
                 presentationByTenant.TryGetValue(t.Id, out var presentation);
+
+                var group = t.ApprovedByExpertGroupId is Guid gid && groups.TryGetValue(gid, out var g) ? g : null;
+                TeacherPublicNameParts? names = null;
+                if (!string.IsNullOrWhiteSpace(t.OwnerUserId))
+                    ownerNames.TryGetValue(t.OwnerUserId, out names);
+
+                var displayName = TeacherPublicName.Format(names?.FirstName, names?.LastName, t.Name);
+                if (string.IsNullOrWhiteSpace(displayName))
+                    displayName = TeacherPublicName.FirstToken(t.Name);
+                var initials = TeacherPublicName.Initials(names?.FirstName, names?.LastName, t.Name);
+                var photo = TeacherPublicPhotoResolver.Resolve(teacherPhotoUrl, group?.LogoUrl, initials);
 
                 var offeringLevels = tenantOfferings
                     .Select(o => ExtractOfferingLevel(o.Conditions))
@@ -246,12 +242,18 @@ public class SearchService : ISearchService
                 decimal? minPrice = tenantOfferings.Count > 0 ? tenantOfferings.Min(o => o.Price) : null;
                 decimal? maxPrice = tenantOfferings.Count > 0 ? tenantOfferings.Max(o => o.Price) : null;
 
+                var primaryOffer = tenantOfferings.OrderBy(o => o.Price).FirstOrDefault();
+                var offerTitle = TeacherContactPrivacy.RedactFromPublicText(primaryOffer?.Title);
+                var offerMode = primaryOffer is null ? (modes.FirstOrDefault() ?? "") : FormatMode(primaryOffer.Mode);
+                if (sessionDuration is null && primaryOffer is not null)
+                    sessionDuration = ExtractSessionDuration(primaryOffer.Conditions);
+
                 return new TutorSearchResultDto(
                     t.Id,
-                    t.Name,
+                    displayName,
                     t.Slug,
-                    t.City,
-                    t.Country,
+                    TeacherPublicName.GeneralLocation(t.City, null),
+                    TeacherPublicName.GeneralLocation(null, t.Country),
                     blurb,
                     t.Language,
                     t.Currency,
@@ -260,30 +262,39 @@ public class SearchService : ISearchService
                     subjects,
                     modes,
                     null,
-                    string.IsNullOrWhiteSpace(photoUrl) ? null : photoUrl,
-                    studentCount,
-                    weeklyHours,
+                    photo.Url,
+                    0,
+                    0m,
                     levels,
                     specialties,
                     languages,
                     sessionDuration,
-                    portfolio.IsVerified,
+                    t.ApprovedByExpertGroupId is not null || portfolio.IsVerified,
                     hasFlexible,
                     t.ApprovedByExpertGroupId,
-                    t.ApprovedByExpertGroupId is Guid gid && groupNames.TryGetValue(gid, out var gn) ? gn : null);
+                    group?.Name,
+                    group?.LogoUrl,
+                    group?.BannerUrl,
+                    group?.PrimaryColor,
+                    group?.SecondaryColor,
+                    TeacherPublicPhotoResolver.ToApi(photo.Kind),
+                    photo.IsGroupLogoFallback,
+                    initials,
+                    offerTitle,
+                    string.IsNullOrWhiteSpace(offerMode) ? null : offerMode,
+                    0);
             })
             .Where(r => !filters.MinRating.HasValue || (r.Rating ?? 0) >= filters.MinRating.Value)
             .Where(r =>
             {
                 if (string.IsNullOrWhiteSpace(levelFilter))
                     return true;
-                // Niveau renseigné : match ; sinon exclure seulement si le filtre est actif.
                 return MatchesLevelFilter(r.Levels ?? [], levelFilter!);
             })
             .OrderBy(r => r.Name)
             .ToList();
 
-        return Task.FromResult<IReadOnlyList<TutorSearchResultDto>>(results);
+        return results;
     }
 
     public Task<IReadOnlyList<ExpertGroupSearchOptionDto>> ListActiveExpertGroupsAsync(
@@ -296,15 +307,6 @@ public class SearchService : ISearchService
             .Select(g => new ExpertGroupSearchOptionDto(g.Id, g.Name, g.CountryCode, g.IsInternational))
             .ToList();
         return Task.FromResult(list);
-    }
-
-    /// <summary>Semaine calendaire lundi → dimanche (UTC).</summary>
-    private static (DateTime Start, DateTime End) GetUtcWeekBounds(DateTime utcNow)
-    {
-        var today = utcNow.Date;
-        var offset = today.DayOfWeek == DayOfWeek.Sunday ? 6 : (int)today.DayOfWeek - 1;
-        var weekStart = today.AddDays(-offset);
-        return (weekStart, weekStart.AddDays(7));
     }
 
     private static bool MatchesLevelFilter(IReadOnlyList<string> levels, string filter)

@@ -40,7 +40,17 @@ public record TutorSearchResultDto(
     bool IsVerified = false,
     bool HasFlexibleSessions = false,
     Guid? ExpertGroupId = null,
-    string? ExpertGroupName = null);
+    string? ExpertGroupName = null,
+    string? ExpertGroupLogoUrl = null,
+    string? ExpertGroupBannerUrl = null,
+    string? ExpertGroupPrimaryColor = null,
+    string? ExpertGroupSecondaryColor = null,
+    string PhotoKind = "initials",
+    bool PhotoIsGroupLogoFallback = false,
+    string? PublicInitials = null,
+    string? OfferTitle = null,
+    string? OfferMode = null,
+    int ReviewCount = 0);
 
 /// <summary>Option de filtre publique pour l'annuaire.</summary>
 public record ExpertGroupSearchOptionDto(

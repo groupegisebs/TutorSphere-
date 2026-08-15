@@ -401,7 +401,7 @@
 
     private AdminUserDetail? _user;
     private TeacherSchoolVm? _teacher;
-    private PublicTutorDetailDto? _publicDetail;
+    private TeacherPublicProfileDto? _publicDetail;
     private bool _loading = true;
     private bool _isSuperAdmin;
     private bool _canEditTeacher;
@@ -482,7 +482,7 @@
             return;
         try
         {
-            _publicDetail = await Api.GetAsync<PublicTutorDetailDto>(
+            _publicDetail = await Api.GetAsync<TeacherPublicProfileDto>(
                 $"api/branding/{Uri.EscapeDataString(_teacher.Slug)}/tutor");
         }
         catch
@@ -491,8 +491,8 @@
         }
     }
 
-    /// <summary>Rendu parents : champs éditables + offres/photo publiées si disponibles. Jamais e-mail/téléphone.</summary>
-    private PublicTutorDetailDto BuildParentPreview()
+    /// <summary>Rendu parents : champs éditables + offres/photo publiées. Jamais e-mail/téléphone/nom complet.</summary>
+    private TeacherPublicProfileDto BuildParentPreview()
     {
         var t = _teacher!;
         var editing = _editingPublicProfile;
@@ -501,9 +501,7 @@
             : t.SchoolName;
         var first = editing ? _editFirstName.Trim() : t.FirstName;
         var last = editing ? _editLastName.Trim() : t.LastName;
-        var fullName = $"{first} {last}".Trim();
-        if (string.IsNullOrWhiteSpace(fullName))
-            fullName = schoolName;
+        var display = TeacherPublicName.Format(first, last, schoolName);
 
         var presentation = editing ? _editPresentation : (t.Presentation ?? t.Description);
         var description = editing ? _editDescription : t.Description;
@@ -520,37 +518,47 @@
             : t.Currency;
 
         var baseDto = _publicDetail;
-        return new PublicTutorDetailDto(
-            t.TenantId,
-            schoolName,
-            t.Slug,
-            shortBio,
-            city,
-            country,
-            language,
-            currency,
-            t.IsPublicProfile,
-            null, // OwnerUserId masqué dans l'aperçu admin
-            first,
-            last,
-            fullName,
+        var photo = TeacherPublicPhotoResolver.Resolve(
             baseDto?.PhotoUrl,
-            baseDto?.BannerUrl,
-            baseDto?.PrimaryColor ?? "#2563eb",
-            baseDto?.SecondaryColor ?? "#1e40af",
-            fullBio,
-            baseDto?.YearsExperience ?? 0,
-            baseDto?.HourlyRate ?? 0,
-            baseDto?.Status,
-            baseDto?.Diplomas ?? Array.Empty<PublicCredentialDto>(),
-            baseDto?.Certifications ?? Array.Empty<PublicCredentialDto>(),
-            baseDto?.Subjects ?? Array.Empty<string>(),
-            baseDto?.Levels ?? Array.Empty<string>(),
-            baseDto?.Availability ?? Array.Empty<string>(),
-            baseDto?.Offerings ?? Array.Empty<PublicOfferingDto>(),
-            t.ApprovedByExpertGroupName ?? baseDto?.ApprovedByExpertGroupName,
-            baseDto?.ApprovedByExpertGroupLogoUrl,
-            baseDto?.Disciplines);
+            baseDto?.ExpertGroupLogoUrl,
+            TeacherPublicName.Initials(first, last, schoolName));
+        return new TeacherPublicProfileDto
+        {
+            Slug = t.Slug,
+            DisplayName = display,
+            GivenName = TeacherPublicName.FirstToken(first),
+            PublicInitials = photo.Initials,
+            Location = TeacherPublicName.GeneralLocation(city, country),
+            City = city,
+            Country = country,
+            Language = language,
+            Currency = currency,
+            PhotoUrl = photo.Url,
+            PhotoKind = TeacherPublicPhotoResolver.ToApi(photo.Kind),
+            PhotoIsGroupLogoFallback = photo.IsGroupLogoFallback,
+            BannerUrl = baseDto?.BannerUrl,
+            PrimaryColor = baseDto?.PrimaryColor ?? ColorHex.TutorSpherePrimary,
+            SecondaryColor = baseDto?.SecondaryColor ?? ColorHex.TutorSphereSecondary,
+            ShortBio = shortBio,
+            FullBio = fullBio,
+            YearsExperience = baseDto?.YearsExperience ?? 0,
+            HourlyRate = baseDto?.HourlyRate ?? 0,
+            Status = baseDto?.Status,
+            Diplomas = baseDto?.Diplomas ?? Array.Empty<PublicCredentialDto>(),
+            Certifications = baseDto?.Certifications ?? Array.Empty<PublicCredentialDto>(),
+            Subjects = baseDto?.Subjects ?? Array.Empty<string>(),
+            Levels = baseDto?.Levels ?? Array.Empty<string>(),
+            Languages = baseDto?.Languages ?? Array.Empty<string>(),
+            Availability = baseDto?.Availability ?? Array.Empty<string>(),
+            Offerings = baseDto?.Offerings ?? Array.Empty<PublicOfferingDto>(),
+            ExpertGroupName = t.ApprovedByExpertGroupName ?? baseDto?.ExpertGroupName,
+            ExpertGroupLogoUrl = baseDto?.ExpertGroupLogoUrl,
+            ExpertGroupCountryCode = baseDto?.ExpertGroupCountryCode,
+            IsVerified = true,
+            Rating = baseDto?.Rating,
+            ReviewCount = baseDto?.ReviewCount ?? 0,
+            Disciplines = baseDto?.Disciplines
+        };
     }
 
     private void FillEditFromTeacher()

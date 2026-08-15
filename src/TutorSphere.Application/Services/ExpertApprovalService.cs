@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using TutorSphere.Application.Common;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.ExpertApproval;
 using TutorSphere.Application.DTOs.ExpertGroupGovernance;
@@ -76,9 +77,19 @@ public interface IExpertApprovalService
     Task<ExpertMyGroupDto?> GetMyGroupAsync(string expertUserId, CancellationToken ct = default);
     Task<ExpertMyGroupDto> GetMyGroupSettingsAsync(string managerUserId, CancellationToken ct = default);
     Task<ExpertMyGroupDto> UpdateMyGroupSettingsAsync(
-        string managerUserId, string? description, int? teacherApprovalTrack = null, CancellationToken ct = default);
+        string managerUserId,
+        string? description,
+        int? teacherApprovalTrack = null,
+        string? primaryColor = null,
+        string? secondaryColor = null,
+        CancellationToken ct = default);
     Task<ExpertMyGroupDto> UpdateGroupSettingsAsAdminAsync(
-        Guid groupId, string? description, int? teacherApprovalTrack = null, CancellationToken ct = default);
+        Guid groupId,
+        string? description,
+        int? teacherApprovalTrack = null,
+        string? primaryColor = null,
+        string? secondaryColor = null,
+        CancellationToken ct = default);
 }
 
 public class ExpertApprovalService(
@@ -124,22 +135,37 @@ public class ExpertApprovalService(
     }
 
     public async Task<ExpertMyGroupDto> UpdateMyGroupSettingsAsync(
-        string managerUserId, string? description, int? teacherApprovalTrack = null, CancellationToken ct = default)
+        string managerUserId,
+        string? description,
+        int? teacherApprovalTrack = null,
+        string? primaryColor = null,
+        string? secondaryColor = null,
+        CancellationToken ct = default)
     {
         var group = RequireManagedGroup(managerUserId);
-        return await UpdateGroupSettingsCoreAsync(group, description, teacherApprovalTrack, ct);
+        return await UpdateGroupSettingsCoreAsync(group, description, teacherApprovalTrack, primaryColor, secondaryColor, ct);
     }
 
     public async Task<ExpertMyGroupDto> UpdateGroupSettingsAsAdminAsync(
-        Guid groupId, string? description, int? teacherApprovalTrack = null, CancellationToken ct = default)
+        Guid groupId,
+        string? description,
+        int? teacherApprovalTrack = null,
+        string? primaryColor = null,
+        string? secondaryColor = null,
+        CancellationToken ct = default)
     {
         var group = db.ExpertGroups.FirstOrDefault(g => g.Id == groupId && g.IsActive)
             ?? throw new InvalidOperationException("Groupe introuvable ou inactif.");
-        return await UpdateGroupSettingsCoreAsync(group, description, teacherApprovalTrack, ct);
+        return await UpdateGroupSettingsCoreAsync(group, description, teacherApprovalTrack, primaryColor, secondaryColor, ct);
     }
 
     private async Task<ExpertMyGroupDto> UpdateGroupSettingsCoreAsync(
-        ExpertGroup group, string? description, int? teacherApprovalTrack, CancellationToken ct)
+        ExpertGroup group,
+        string? description,
+        int? teacherApprovalTrack,
+        string? primaryColor,
+        string? secondaryColor,
+        CancellationToken ct)
     {
         group.Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
         if (teacherApprovalTrack.HasValue)
@@ -148,6 +174,10 @@ public class ExpertApprovalService(
                 throw new InvalidOperationException("Processus d'approbation inconnu.");
             group.TeacherApprovalTrack = (TeacherApprovalTrack)teacherApprovalTrack.Value;
         }
+        if (primaryColor is not null)
+            group.PrimaryColor = ColorHex.NormalizeOrNull(primaryColor);
+        if (secondaryColor is not null)
+            group.SecondaryColor = ColorHex.NormalizeOrNull(secondaryColor);
         group.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
         return MapGroup(group);
@@ -155,7 +185,7 @@ public class ExpertApprovalService(
 
     private static ExpertMyGroupDto MapGroup(ExpertGroup group) =>
         new(group.Id, group.Name, group.CountryCode, group.Description, group.IsInternational,
-            (int)group.TeacherApprovalTrack);
+            (int)group.TeacherApprovalTrack, group.LogoUrl, group.BannerUrl, group.PrimaryColor, group.SecondaryColor);
 
     private ExpertGroup RequireManagedGroup(string managerUserId)
     {

@@ -466,6 +466,31 @@ public class ExpertGroupsController : ControllerBase
         }
     }
 
+    [HttpPost("{id:guid}/banner")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(5 * 1024 * 1024)]
+    public async Task<ActionResult<object>> UploadBanner(Guid id, IFormFile file, CancellationToken ct)
+    {
+        var error = PublicImageUpload.Validate(file);
+        if (error is not null)
+            return BadRequest(new { error = error.Message });
+
+        var group = await _groups.GetByIdAsync(id, ct);
+        if (group is null)
+            return NotFound(new { error = "Groupe introuvable." });
+
+        var url = await PublicImageUpload.SaveAsync(_env, file, $"expert-group-banner-{id:N}", ct);
+        try
+        {
+            var updated = await _groups.SetBannerUrlAsync(id, url, ct);
+            return Ok(new { bannerUrl = updated.BannerUrl });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     [HttpGet("{id:guid}/members")]
     public async Task<ActionResult<IReadOnlyList<ExpertGroupMemberDto>>> ListMembers(Guid id, CancellationToken ct)
     {
