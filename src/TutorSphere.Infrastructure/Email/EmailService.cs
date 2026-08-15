@@ -433,10 +433,10 @@ public class EmailService : IEmailService
         SendAsync(to, EmailTemplates.ExpertMembershipInvite, new Dictionary<string, string>
         {
             ["FirstName"] = string.IsNullOrWhiteSpace(firstName) ? "candidat" : firstName.Trim(),
-            ["InviterName"] = string.IsNullOrWhiteSpace(inviterName) ? "un expert" : inviterName.Trim(),
+            ["InviterName"] = string.IsNullOrWhiteSpace(inviterName) ? "un Responsable" : inviterName.Trim(),
             ["GroupName"] = groupName,
             ["PersonalMessage"] = string.IsNullOrWhiteSpace(personalMessage)
-                ? "Vous êtes invité(e) à rejoindre le groupe d'experts TutorSphere."
+                ? "—"
                 : personalMessage.Trim(),
             ["JoinUrl"] = joinUrl
         }, ct);

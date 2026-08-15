@@ -22,7 +22,8 @@ public record SubmitExpertMembershipCandidacyRequest(
     string? Specialty = null,
     string? Presentation = null,
     bool AcceptedConduct = false,
-    bool AcceptedPrivacy = false);
+    bool AcceptedPrivacy = false,
+    bool AcceptedAdmissionRules = false);
 
 public record CastExpertMembershipVoteRequest(
     ExpertMembershipVoteChoice Choice,
@@ -32,6 +33,14 @@ public record AdminExpertMembershipActionRequest(
     string? Notes = null,
     int? ExtendInviteDays = null,
     int? ExtendVoteDays = null);
+
+public record ExpertMembershipInvitePublicOfferDto(
+    string Name,
+    string? ShortDescription,
+    string Currency,
+    decimal? RecommendedPrice,
+    bool IsInternational,
+    string? MarketCountryCode);
 
 public record ExpertMembershipInvitePublicDto(
     Guid Id,
@@ -43,7 +52,15 @@ public record ExpertMembershipInvitePublicDto(
     string LastName,
     ExpertMembershipInviteStatus Status,
     DateTime InviteExpiresAtUtc,
-    bool RequiresAccountCreation);
+    bool RequiresAccountCreation,
+    string? PersonalMessage = null,
+    string? GroupDescription = null,
+    string? GroupLogoUrl = null,
+    bool GroupIsInternational = false,
+    int GroupMemberCount = 0,
+    IReadOnlyList<ExpertMembershipInvitePublicOfferDto>? Offers = null,
+    string? Specialty = null,
+    string? Presentation = null);
 
 public record ExpertMembershipVoteDto(
     string VoterUserId,

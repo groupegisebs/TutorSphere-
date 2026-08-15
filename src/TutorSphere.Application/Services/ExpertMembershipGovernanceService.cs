@@ -192,6 +192,19 @@ public class ExpertMembershipGovernanceService(
             ?? throw new InvalidOperationException("Groupe introuvable.");
         var inviter = await contacts.GetAsync(invite.InvitedByUserId, ct);
         var needsAccount = await identity.FindUserIdByEmailAsync(invite.Email, ct) is null;
+        var memberCount = db.ExpertGroupMembers.Count(m =>
+            m.ExpertGroupId == group.Id && m.Status == ExpertMembershipStatus.Active);
+        var offers = db.GroupOffers
+            .Where(o => o.ExpertGroupId == group.Id && o.Status == GroupOfferStatus.Published)
+            .OrderBy(o => o.Name)
+            .Select(o => new ExpertMembershipInvitePublicOfferDto(
+                o.Name,
+                o.ShortDescription,
+                o.Currency,
+                o.RecommendedPrice ?? o.FixedPrice,
+                o.IsInternational,
+                o.MarketCountryCode))
+            .ToList();
 
         return new ExpertMembershipInvitePublicDto(
             invite.Id,
@@ -203,15 +216,24 @@ public class ExpertMembershipGovernanceService(
             invite.LastName,
             invite.Status,
             invite.InviteExpiresAtUtc,
-            needsAccount);
+            needsAccount,
+            invite.PersonalMessage,
+            group.Description,
+            group.LogoUrl,
+            group.IsInternational,
+            memberCount,
+            offers,
+            invite.Specialty,
+            invite.Presentation);
     }
 
     public async Task<ExpertMembershipInviteDto> SubmitCandidacyAsync(
         SubmitExpertMembershipCandidacyRequest request,
         CancellationToken ct = default)
     {
-        if (!request.AcceptedConduct || !request.AcceptedPrivacy)
-            throw new InvalidOperationException("Vous devez accepter le code de conduite et la politique de confidentialité.");
+        if (!request.AcceptedConduct || !request.AcceptedPrivacy || !request.AcceptedAdmissionRules)
+            throw new InvalidOperationException(
+                "Vous devez accepter le code de conduite, la politique de confidentialité et les conditions d'admission.");
 
         var invite = GetByToken(request.Token);
         ExpireIfNeeded(invite);
@@ -234,6 +256,10 @@ public class ExpertMembershipGovernanceService(
         if (!string.IsNullOrWhiteSpace(request.Presentation)) invite.Presentation = request.Presentation.Trim();
         invite.FirstName = firstName;
         invite.LastName = lastName;
+
+        var needsAccount = await identity.FindUserIdByEmailAsync(invite.Email, ct) is null;
+        if (needsAccount && string.IsNullOrWhiteSpace(request.Password))
+            throw new InvalidOperationException("Créez un mot de passe pour ouvrir votre compte Expert.");
 
         var userId = await identity.EnsureCandidateUserAsync(
             invite.Email, firstName, lastName, request.Password, ct);
