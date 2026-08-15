@@ -62,6 +62,34 @@ public class SubscriptionOfferingsController : ControllerBase
         }
     }
 
+    /// <summary>Met un abonnement actif en pause.</summary>
+    [HttpPost("subscribers/{subscriptionId:guid}/pause")]
+    public async Task<ActionResult<StudentSubscriptionDto>> PauseSubscriber(Guid subscriptionId, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _subscriptions.PauseAsync(subscriptionId, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>Réactive un abonnement en pause.</summary>
+    [HttpPost("subscribers/{subscriptionId:guid}/resume")]
+    public async Task<ActionResult<StudentSubscriptionDto>> ResumeSubscriber(Guid subscriptionId, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _subscriptions.ResumeAsync(subscriptionId, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<SubscriptionOfferingDto>> GetById(Guid id, CancellationToken ct)
     {

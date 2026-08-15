@@ -32,6 +32,10 @@ public class LessonReportsController : ControllerBase
         }
     }
 
+    [HttpGet]
+    public async Task<ActionResult<IReadOnlyList<LessonReportDto>>> ListMine(CancellationToken ct)
+        => Ok(await _lessonReportService.GetMineAsync(ct));
+
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<LessonReportDto>> GetById(Guid id, CancellationToken ct)
     {
@@ -84,6 +88,20 @@ public class LessonReportsController : ControllerBase
         try
         {
             return Ok(await _lessonReportService.MarkSentToParentAsync(id, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpGet("{id:guid}/pdf")]
+    public async Task<IActionResult> DownloadPdf(Guid id, CancellationToken ct)
+    {
+        try
+        {
+            var (content, fileName) = await _lessonReportService.BuildPdfAsync(id, ct);
+            return File(content, "application/pdf", fileName);
         }
         catch (InvalidOperationException ex)
         {

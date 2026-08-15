@@ -17,6 +17,8 @@ public interface IStudentSubscriptionService
     Task CancelSelfAsync(string studentUserId, Guid subscriptionId, CancellationToken ct = default);
     Task<StudentSubscriptionDto> AcceptAsync(Guid subscriptionId, CancellationToken ct = default);
     Task<StudentSubscriptionDto> RejectAsync(Guid subscriptionId, CancellationToken ct = default);
+    Task<StudentSubscriptionDto> PauseAsync(Guid subscriptionId, CancellationToken ct = default);
+    Task<StudentSubscriptionDto> ResumeAsync(Guid subscriptionId, CancellationToken ct = default);
 }
 
 public class StudentSubscriptionService : IStudentSubscriptionService
@@ -448,6 +450,47 @@ public class StudentSubscriptionService : IStudentSubscriptionService
             offering?.Currency ?? "CAD",
             student is null ? "" : $"{student.FirstName} {student.LastName}".Trim(),
             parentName);
+    }
+
+    public async Task<StudentSubscriptionDto> PauseAsync(Guid subscriptionId, CancellationToken ct = default)
+    {
+        var sub = _db.StudentSubscriptions.FirstOrDefault(s => s.Id == subscriptionId)
+            ?? throw new InvalidOperationException("Abonnement introuvable.");
+        if (sub.Status != SubscriptionStatus.Active)
+            throw new InvalidOperationException("Seul un abonnement actif peut être mis en pause.");
+
+        sub.Status = SubscriptionStatus.Paused;
+        sub.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        return MapSubscription(sub);
+    }
+
+    public async Task<StudentSubscriptionDto> ResumeAsync(Guid subscriptionId, CancellationToken ct = default)
+    {
+        var sub = _db.StudentSubscriptions.FirstOrDefault(s => s.Id == subscriptionId)
+            ?? throw new InvalidOperationException("Abonnement introuvable.");
+        if (sub.Status != SubscriptionStatus.Paused)
+            throw new InvalidOperationException("Seul un abonnement en pause peut être réactivé.");
+
+        sub.Status = SubscriptionStatus.Active;
+        sub.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        await _lessonScheduler.EnsureScheduledAsync(sub.Id, ct);
+        return MapSubscription(sub);
+    }
+
+    private StudentSubscriptionDto MapSubscription(Domain.Entities.StudentSubscription sub)
+    {
+        var offering = _db.SubscriptionOfferings.FirstOrDefault(o => o.Id == sub.OfferingId);
+        var student = _db.StudentsForAnyTenant.FirstOrDefault(s => s.Id == sub.StudentId);
+        return Map(
+            sub,
+            offering?.Title ?? "Offre",
+            offering?.Subject,
+            offering?.Price ?? 0,
+            offering?.Currency ?? "CAD",
+            student is null ? "" : $"{student.FirstName} {student.LastName}".Trim(),
+            ResolveParentName(student));
     }
 
     private void ClosePendingPayments(Guid subscriptionId)

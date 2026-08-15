@@ -8,7 +8,8 @@ public record InvoiceDto(
     string Currency,
     string Status,
     DateTime IssuedAt,
-    DateTime? PaidAt);
+    DateTime? PaidAt,
+    string? ParentName = null);
 
 public record CreateInvoiceRequest(
     Guid ParentProfileId,

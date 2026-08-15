@@ -8,7 +8,8 @@ public record DocumentDto(
     DateTime UploadedAt,
     Guid? StudentId,
     Guid? LessonId,
-    string Url);
+    string Url,
+    string? Folder = null);
 
 public record UploadDocumentRequest(
     Guid? StudentId,

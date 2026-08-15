@@ -21,6 +21,8 @@ public interface IInvoiceService
         string parentUserId,
         Guid paymentId,
         CancellationToken ct = default);
+
+    Task<(byte[] Content, string FileName)> BuildPdfAsync(Guid invoiceId, CancellationToken ct = default);
 }
 
 public class InvoiceService : IInvoiceService
@@ -263,6 +265,35 @@ public class InvoiceService : IInvoiceService
         return (pdf, fileName);
     }
 
+    public Task<(byte[] Content, string FileName)> BuildPdfAsync(Guid invoiceId, CancellationToken ct = default)
+    {
+        var invoice = _db.Invoices.FirstOrDefault(i => i.Id == invoiceId)
+            ?? throw new InvalidOperationException("Facture introuvable.");
+        var parent = _db.ParentProfiles.FirstOrDefault(p => p.Id == invoice.ParentProfileId);
+        var tutor = _db.Tenants.FirstOrDefault(t => t.Id == invoice.TenantId);
+        var parentName = parent is null ? "Client" : $"{parent.FirstName} {parent.LastName}".Trim();
+        var statusLabel = invoice.Status switch
+        {
+            PaymentStatus.Completed => "Payé",
+            PaymentStatus.Pending => "En attente",
+            PaymentStatus.Failed => "Échoué",
+            PaymentStatus.Refunded => "Remboursé",
+            _ => invoice.Status.ToString()
+        };
+        var pdf = InvoicePdfGenerator.Generate(
+            invoice.InvoiceNumber,
+            parentName,
+            null,
+            tutor?.Name,
+            $"Facture {invoice.InvoiceNumber}",
+            invoice.Amount,
+            invoice.Currency,
+            invoice.IssuedAt,
+            invoice.PaidAt,
+            statusLabel);
+        return Task.FromResult((pdf, $"Facture-{invoice.InvoiceNumber}.pdf"));
+    }
+
     private Guid RequireTenantId()
     {
         if (!_tenantContext.HasTenant || _tenantContext.TenantId is null)
@@ -273,13 +304,19 @@ public class InvoiceService : IInvoiceService
     private static string GenerateInvoiceNumber()
         => $"INV-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid().ToString("N")[..6].ToUpperInvariant()}";
 
-    private static InvoiceDto MapToDto(Invoice i) => new(
-        i.Id,
-        i.InvoiceNumber,
-        i.ParentProfileId,
-        i.Amount,
-        i.Currency,
-        i.Status.ToString(),
-        i.IssuedAt,
-        i.PaidAt);
+    private InvoiceDto MapToDto(Invoice i)
+    {
+        var parent = _db.ParentProfiles.FirstOrDefault(p => p.Id == i.ParentProfileId);
+        var parentName = parent is null ? null : $"{parent.FirstName} {parent.LastName}".Trim();
+        return new(
+            i.Id,
+            i.InvoiceNumber,
+            i.ParentProfileId,
+            i.Amount,
+            i.Currency,
+            i.Status.ToString(),
+            i.IssuedAt,
+            i.PaidAt,
+            parentName);
+    }
 }

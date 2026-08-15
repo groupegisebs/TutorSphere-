@@ -109,5 +109,6 @@ public class DocumentService : IDocumentService
         d.CreatedAt,
         d.StudentId,
         d.LessonId,
-        d.FileUrl);
+        d.FileUrl,
+        d.Folder);
 }

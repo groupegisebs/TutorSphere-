@@ -32,4 +32,8 @@ public record LessonReportDto(
     bool SentToParent,
     DateTime? SentAt,
     DateTime CreatedAt,
-    DateTime? UpdatedAt);
+    DateTime? UpdatedAt,
+    string? StudentName = null,
+    string? LessonTitle = null,
+    string? Subject = null,
+    DateTime? SessionDate = null);

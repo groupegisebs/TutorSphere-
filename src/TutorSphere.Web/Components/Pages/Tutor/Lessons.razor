@@ -3,6 +3,7 @@
 @rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
 @inject LessonService LessonSvc
+@inject ApiClient Api
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
 
@@ -109,7 +110,10 @@
                                 }
                                 @if (l.Status is "Terminé" or "En cours" or "Validé")
                                 {
-                                    <button class="ts-icon-btn" title="@L["Lessons_Report"]"><i class="bi bi-file-earmark-text"></i></button>
+                                    <button class="ts-icon-btn" title="@L["Lessons_Report"]"
+                                            @onclick="() => OpenReport(l)">
+                                        <i class="bi bi-file-earmark-text"></i>
+                                    </button>
                                 }
                                 <button class="ts-icon-btn" title="@L["Lessons_Attendance"]" @onclick="() => OpenAttendance(l)">
                                     <i class="bi bi-person-check"></i>
@@ -163,7 +167,13 @@
                     <div class="col-12"><label class="form-label">@L["Common_Title"]</label>
                         <input class="form-control" @bind="_lf.Title" /></div>
                     <div class="col-6"><label class="form-label">@L["Common_Student"]</label>
-                        <input class="form-control" @bind="_lf.Student" /></div>
+                        <select class="form-select" @bind="_lf.StudentId">
+                            <option value="">@L["Common_Choose"]</option>
+                            @foreach (var s in _students)
+                            {
+                                <option value="@s.Id.ToString()">@s.Name</option>
+                            }
+                        </select></div>
                     <div class="col-6"><label class="form-label">@L["Lessons_SubjectRequired"]</label>
                         <input class="form-control" @bind="_lf.Subject" /></div>
                     <div class="col-6"><label class="form-label">@L["Lessons_DateRequired"]</label>
@@ -281,6 +291,9 @@
     private bool _attendanceLoading;
     private LessonVM? _attendanceLesson;
     private List<LessonAttendanceDto> _attendances = [];
+    private readonly List<StudentOpt> _students = [];
+
+    private sealed record StudentOpt(Guid Id, string Name);
 
     private static string StatusBadge(string s) => s switch {
         "Terminé" or "Validé" => "ts-badge-success",
@@ -307,6 +320,9 @@
             var dtos = await LessonSvc.GetLessonsAsync();
             if (dtos.Count > 0)
                 _lessons = dtos.Select(MapFromDto).ToList();
+            var students = await Api.GetAsync<List<TutorSphere.Application.DTOs.Students.StudentDto>>("api/students") ?? [];
+            _students.Clear();
+            _students.AddRange(students.Select(s => new StudentOpt(s.Id, $"{s.FirstName} {s.LastName}".Trim())));
         }
         catch { /* keep empty */ }
         finally { _loading = false; }
@@ -357,7 +373,7 @@
         _lf = new LessonForm
         {
             Title = l.Title,
-            Student = l.StudentName,
+            StudentId = "",
             Subject = l.Subject,
             Date = l.Date,
             StartTime = TimeOnly.FromDateTime(l.Date),
@@ -487,13 +503,15 @@
                     occurrences = Math.Clamp(_lf.Occurrences, 2, 52);
             }
 
+            var studentIds = Guid.TryParse(_lf.StudentId, out var sid) ? new[] { sid } : (IReadOnlyList<Guid>?)null;
             var created = await LessonSvc.CreateLessonAsync(
                 _lf.Title, _lf.Description, _lf.Subject,
                 start.ToUniversalTime(), end.ToUniversalTime(), _lf.Mode,
                 recurrenceFrequency: recurrence == "none" ? null : recurrence,
                 recurrenceOccurrences: occurrences,
                 recurrenceUntil: until?.ToUniversalTime(),
-                maxStudents: _lf.Type == "Individuel" ? 1 : Math.Clamp(_lf.MaxStudents, 1, 100));
+                maxStudents: _lf.Type == "Individuel" ? 1 : Math.Clamp(_lf.MaxStudents, 1, 100),
+                studentIds: studentIds);
 
             if (created.Count > 0)
             {
@@ -502,20 +520,8 @@
             }
             else
             {
-                _lessons.Add(new LessonVM
-                {
-                    Title          = _lf.Title,
-                    StudentName    = _lf.Student,
-                    Subject        = _lf.Subject,
-                    Date           = start,
-                    EndTime        = end.ToString("HH:mm"),
-                    Duration       = _lf.Duration,
-                    Mode           = _lf.Mode,
-                    Status         = "Planifié",
-                    AvatarColor    = "#7c3aed",
-                    StudentInitials = string.Join("",
-                        _lf.Student.Split(' ').Take(2).Select(x => x.Length > 0 ? x[0] : ' ')).Trim()
-                });
+                _error = L["Lessons_CancelError"];
+                return;
             }
         }
         else if (_editingLesson.ApiId.HasValue)
@@ -559,17 +565,24 @@
 
     private async Task StartLesson(LessonVM lesson)
     {
+        if (lesson.ApiId is Guid id)
+            await LessonSvc.NotifyLessonStartedAsync(id);
         lesson.Status = "En cours";
         var routeId = lesson.ApiId?.ToString() ?? lesson.Id;
         Navigation.NavigateTo(
             $"/tutor/classroom/{routeId}?student={Uri.EscapeDataString(lesson.StudentName)}&initials={Uri.EscapeDataString(lesson.StudentInitials)}&title={Uri.EscapeDataString(lesson.Title)}&subject={Uri.EscapeDataString(lesson.Subject)}");
-        await Task.CompletedTask;
+    }
+
+    private void OpenReport(LessonVM lesson)
+    {
+        if (lesson.ApiId is not Guid lid) return;
+        Navigation.NavigateTo($"/tutor/reports?lessonId={lid}");
     }
 
     private class LessonForm
     {
         public string Title { get; set; } = "";
-        public string Student { get; set; } = "";
+        public string StudentId { get; set; } = "";
         public string Subject { get; set; } = "";
         public DateTime Date { get; set; } = DateTime.Today;
         public TimeOnly StartTime { get; set; } = new TimeOnly(10, 0);

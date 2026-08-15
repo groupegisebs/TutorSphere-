@@ -84,6 +84,7 @@ else
                         <td>
                             <div class="ts-action-group">
                                 <button class="ts-icon-btn" title="@L["Common_View"]" @onclick="() => OpenDetail(p)"><i class="bi bi-eye"></i></button>
+                                <button class="ts-icon-btn" title="@L["Common_Edit"]" @onclick="() => OpenEdit(p)"><i class="bi bi-pencil"></i></button>
                             </div>
                         </td>
                     </tr>
@@ -145,7 +146,7 @@ else
     <div class="ts-modal-backdrop" @onclick="() => _showAdd = false">
         <div class="ts-modal" @onclick:stopPropagation="true">
             <div class="ts-modal-header">
-                <h2>@L["Parents_Add"]</h2>
+                <h2>@(_editingId is null ? L["Parents_Add"] : L["Common_Edit"])</h2>
                 <button class="ts-modal-close" @onclick="() => _showAdd = false"><i class="bi bi-x-lg"></i></button>
             </div>
             <div class="ts-modal-body">
@@ -179,6 +180,7 @@ else
     private ParentVM? _selected;
     private string _pTab = "info";
     private bool _showAdd;
+    private Guid? _editingId;
     private bool _loading = true;
     private bool _saving;
     private bool _childrenLoading;
@@ -188,7 +190,23 @@ else
     private readonly List<ParentVM> _parents = [];
     private static readonly string[] Colors = ["#7c3aed", "#0ea5e9", "#10b981", "#f59e0b"];
 
-    private void OpenAdd() { _pForm = new(); _addError = ""; _showAdd = true; }
+    private void OpenAdd() { _editingId = null; _pForm = new(); _addError = ""; _showAdd = true; }
+
+    private void OpenEdit(ParentVM p)
+    {
+        _editingId = p.Id;
+        var parts = p.FullName.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
+        _pForm = new ParentForm
+        {
+            First = parts.Length > 0 ? parts[0] : p.FullName,
+            Last = parts.Length > 1 ? parts[1] : "",
+            Phone = p.Phone ?? "",
+            Email = p.Email
+        };
+        _addError = "";
+        _selected = null;
+        _showAdd = true;
+    }
 
     private IEnumerable<ParentVM> FilteredParents => _parents
         .Where(p => string.IsNullOrEmpty(_search) ||
@@ -262,15 +280,24 @@ else
                 phone = string.IsNullOrWhiteSpace(_pForm.Phone) ? null : _pForm.Phone.Trim()
             };
 
-            var result = await Api.PostWithErrorAsync<ApiParentDto>("api/parents", req);
+            var result = _editingId is Guid id
+                ? await Api.PutWithErrorAsync<ApiParentDto>($"api/parents/{id}", req)
+                : await Api.PostWithErrorAsync<ApiParentDto>("api/parents", req);
             if (result.Error is not null || result.Value is null)
             {
                 _addError = result.Error ?? L["Parents_CreateFailed"].Value;
                 return;
             }
 
-            _parents.Add(MapParent(result.Value, _parents.Count));
+            if (_editingId is Guid edited)
+            {
+                var idx = _parents.FindIndex(x => x.Id == edited);
+                if (idx >= 0) _parents[idx] = MapParent(result.Value, idx);
+            }
+            else
+                _parents.Add(MapParent(result.Value, _parents.Count));
             _showAdd = false;
+            _editingId = null;
         }
         finally
         {

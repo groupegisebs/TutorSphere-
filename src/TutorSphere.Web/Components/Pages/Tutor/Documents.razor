@@ -4,6 +4,7 @@
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
 @inject AuthService Auth
+@inject IJSRuntime JS
 
 <PageTitle>@L["Documents_Title"] – TutorSphere</PageTitle>
 
@@ -89,8 +90,12 @@
                         <div class="doc-card-name" title="@f.Name">@f.Name</div>
                         <div class="doc-card-meta">@f.Size · @f.Modified</div>
                         <div class="doc-card-actions">
-                            <button class="ts-icon-btn" title="@L["Common_Download"]"><i class="bi bi-download"></i></button>
-                            <button class="ts-icon-btn" title="@L["Common_Share"]"><i class="bi bi-share"></i></button>
+                            <button class="ts-icon-btn" title="@L["Common_Download"]"
+                                    @onclick:stopPropagation="true"
+                                    @onclick="async () => await DownloadFile(f)"><i class="bi bi-download"></i></button>
+                            <button class="ts-icon-btn" title="@L["Common_Share"]"
+                                    @onclick:stopPropagation="true"
+                                    @onclick="async () => await ShareFile(f)"><i class="bi bi-share"></i></button>
                             <button class="ts-icon-btn ts-icon-btn--danger" title="@L["Common_Delete"]"
                                     @onclick:stopPropagation="true"
                                     @onclick="async () => await DeleteFile(f)">
@@ -136,8 +141,10 @@
                                 </td>
                                 <td>
                                     <div class="ts-action-group">
-                                        <button class="ts-icon-btn" title="@L["Common_Download"]"><i class="bi bi-download"></i></button>
-                                        <button class="ts-icon-btn" title="@L["Common_Share"]"><i class="bi bi-share"></i></button>
+                                        <button class="ts-icon-btn" title="@L["Common_Download"]"
+                                                @onclick="async () => await DownloadFile(f)"><i class="bi bi-download"></i></button>
+                                        <button class="ts-icon-btn" title="@L["Common_Share"]"
+                                                @onclick="async () => await ShareFile(f)"><i class="bi bi-share"></i></button>
                                         <button class="ts-icon-btn ts-icon-btn--danger" title="@L["Common_Delete"]"
                                                 @onclick="async () => await DeleteFile(f)">
                                             <i class="bi bi-trash"></i>
@@ -244,12 +251,13 @@
                     Name = d.FileName,
                     Type = string.IsNullOrEmpty(ext) ? "bin" : ext,
                     Size = FormatSize(d.FileSize),
-                    Folder = "Documents",
+                    Folder = string.IsNullOrWhiteSpace(d.Folder) ? "Documents" : d.Folder,
                     Modified = d.UploadedAt.ToLocalTime().ToString("dd/MM/yyyy"),
                     SharedWith = []
                 });
             }
         }
+        RebuildFolders();
     }
 
     private static string FormatSize(long bytes) => bytes switch
@@ -286,8 +294,50 @@
     private void NewFolder()
     {
         var n = $"{L["Documents_NewFolder"]} {_folders.Count + 1}";
-        _folders.Add(new DocFolder { Name = n, FileCount = 0 });
+        _folders.Add(new DocFolder { Name = n, FileCount = 0, IsOpen = true });
+        _selectedFolder = _folders[^1];
+        _uploadFolder = n;
     }
+
+    private void RebuildFolders()
+    {
+        var names = _files.Select(f => string.IsNullOrWhiteSpace(f.Folder) ? "Documents" : f.Folder)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (names.Count == 0)
+            names.Add("Documents");
+        _folders.Clear();
+        foreach (var name in names)
+        {
+            _folders.Add(new DocFolder
+            {
+                Name = name,
+                FileCount = _files.Count(f => f.Folder.Equals(name, StringComparison.OrdinalIgnoreCase)),
+                IsOpen = true
+            });
+        }
+        if (_selectedFolder is null || _folders.All(f => f.Name != _selectedFolder.Name))
+            _selectedFolder = _folders.FirstOrDefault();
+        _uploadFolder = _selectedFolder?.Name ?? "Documents";
+    }
+
+    private async Task DownloadFile(DocFile f)
+    {
+        if (f.ApiId is not Guid id) return;
+        var result = await Api.GetBytesWithErrorAsync($"api/documents/{id}/file");
+        if (result.Value is null) return;
+        await JS.InvokeVoidAsync("downloadFileFromBase64", f.Name, "application/octet-stream", Convert.ToBase64String(result.Value));
+    }
+
+    private async Task ShareFile(DocFile f)
+    {
+        var url = NavigationBase() + $"/tutor/documents";
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", $"Document : {f.Name}"); }
+        catch { /* ignore */ }
+        f.SharedWith = ["Copié"];
+    }
+
+    private static string NavigationBase() => "";
 
     private async Task UploadFiles()
     {
@@ -334,6 +384,7 @@
             _shareWith.Clear();
             _pendingUploadFiles.Clear();
             _pendingBrowserFiles.Clear();
+            RebuildFolders();
         }
     }
 
@@ -342,11 +393,12 @@
         if (f.ApiId.HasValue)
             await Api.DeleteAsync($"api/documents/{f.ApiId.Value}");
         _files.Remove(f);
+        RebuildFolders();
     }
 
     private record ApiDocumentDto(
         Guid Id, string FileName, long FileSize, string ContentType,
-        DateTime UploadedAt, Guid? StudentId, Guid? LessonId, string Url);
+        DateTime UploadedAt, Guid? StudentId, Guid? LessonId, string Url, string? Folder = null);
 
     private class DocFolder { public string Name { get; set; } = ""; public int FileCount { get; set; } public bool IsOpen { get; set; } }
     private class DocFile

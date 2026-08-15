@@ -8,6 +8,9 @@ public sealed class ReportService
 
     public ReportService(ApiClient api) => _api = api;
 
+    public async Task<List<LessonReportDto>> GetMineAsync() =>
+        await _api.GetAsync<List<LessonReportDto>>("api/lessonreports") ?? [];
+
     public async Task<List<LessonReportDto>> GetReportsByLessonAsync(Guid lessonId) =>
         await _api.GetAsync<List<LessonReportDto>>($"api/lessonreports/lesson/{lessonId}") ?? [];
 

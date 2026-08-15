@@ -3,6 +3,7 @@
 @rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
+@inject IJSRuntime JS
 
 <PageTitle>@L["Payments_Title"] – TutorSphere</PageTitle>
 
@@ -12,7 +13,7 @@
         <p class="ts-page-subtitle">@L["Payments_Subtitle"]</p>
     </div>
     <div class="d-flex gap-2">
-        <button class="btn btn-outline-secondary" @onclick="() => {}">
+        <button class="btn btn-outline-secondary" @onclick="ExportCsvAsync">
             <i class="bi bi-download me-1"></i>@L["Common_Export"]
         </button>
         <button class="btn btn-primary" @onclick="() => _showInvoiceModal = true">
@@ -97,8 +98,10 @@
                     <td><span class="ts-badge @PaymentBadge(p.Status)">@DisplayStatus(p.Status)</span></td>
                     <td>
                         <div class="ts-action-group">
-                            <button class="ts-icon-btn" title="@L["Payments_PdfInvoice"]"><i class="bi bi-file-pdf"></i></button>
-                            <button class="ts-icon-btn" title="@L["Payments_Receipt"]"><i class="bi bi-receipt"></i></button>
+                            <button class="ts-icon-btn" title="@L["Payments_PdfInvoice"]"
+                                    @onclick="async () => await DownloadInvoicePdf(p)"><i class="bi bi-file-pdf"></i></button>
+                            <button class="ts-icon-btn" title="@L["Payments_Receipt"]"
+                                    @onclick="async () => await DownloadInvoicePdf(p)"><i class="bi bi-receipt"></i></button>
                             @if (IsPending(p.Status))
                             {
                                 <button class="ts-icon-btn ts-icon-btn--success" title="@L["Payments_MarkPaid"]"
@@ -125,10 +128,12 @@
             <div class="ts-modal-body">
                 <div class="row g-3">
                     <div class="col-6"><label class="form-label">@L["Payments_ParentRequired"]</label>
-                        <select class="form-select" @bind="_invParent">
+                        <select class="form-select" @bind="_invParentId">
                             <option value="">—</option>
-                            <option>Marie Johnson</option><option>David Brown</option>
-                            <option>Laura Davis</option><option>Ana Martinez</option>
+                            @foreach (var parent in _parents)
+                            {
+                                <option value="@parent.Id.ToString()">@parent.Name</option>
+                            }
                         </select></div>
                     <div class="col-6"><label class="form-label">@L["Payments_OfferDesc"]</label>
                         <input class="form-control" @bind="_invOffer" /></div>
@@ -155,9 +160,11 @@
 @code {
     private string _search = "", _filterStatus = "", _filterMethod = "";
     private bool _showInvoiceModal;
-    private string _invParent = "", _invOffer = "", _invMethod = "card";
+    private string _invParentId = "", _invOffer = "", _invMethod = "card";
     private decimal _invAmount = 150;
     private DateTime _invDate = DateTime.Today;
+    private readonly List<ParentOpt> _parents = [];
+    private sealed record ParentOpt(Guid Id, string Name);
 
     private static bool IsPaid(string s) =>
         s is "paid" or "Payé" or "Paid" or "completed" or "Completed";
@@ -249,7 +256,9 @@
                 {
                     ApiId = inv.Id,
                     Date = inv.IssuedAt.ToLocalTime(),
-                    Parent = inv.ParentProfileId.ToString()[..8] + "…",
+                    Parent = string.IsNullOrWhiteSpace(inv.ParentName)
+                        ? inv.ParentProfileId.ToString()[..8] + "…"
+                        : inv.ParentName,
                     Student = "—",
                     OfferName = string.Format(L["Payments_InvoiceNumber"].Value, inv.InvoiceNumber),
                     Amount = inv.Amount,
@@ -258,6 +267,9 @@
                 });
             }
         }
+        var parents = await Api.GetAsync<List<TutorSphere.Application.DTOs.Parents.ParentDto>>("api/parents") ?? [];
+        _parents.Clear();
+        _parents.AddRange(parents.Select(p => new ParentOpt(p.Id, $"{p.FirstName} {p.LastName}".Trim())));
     }
 
     private async Task MarkPaid(PaymentVM p)
@@ -274,29 +286,55 @@
         }
     }
 
-    private Task CreateInvoice()
+    private async Task CreateInvoice()
     {
-        if (string.IsNullOrWhiteSpace(_invParent) || _invAmount <= 0)
-            return Task.CompletedTask;
+        if (!Guid.TryParse(_invParentId, out var parentId) || _invAmount <= 0)
+            return;
 
+        var created = await Api.PostWithErrorAsync<ApiInvoiceDto>("api/invoices", new
+        {
+            parentProfileId = parentId,
+            amount = _invAmount,
+            currency = "USD"
+        });
+        if (created.Value is null) return;
+
+        await Api.PostWithErrorAsync<ApiInvoiceDto>($"api/invoices/{created.Value.Id}/send", new { });
+        var inv = created.Value;
         _payments.Insert(0, new PaymentVM
         {
-            Date = _invDate,
-            Parent = _invParent,
+            ApiId = inv.Id,
+            Date = inv.IssuedAt.ToLocalTime(),
+            Parent = inv.ParentName ?? _parents.FirstOrDefault(p => p.Id == parentId)?.Name ?? "",
             Student = "—",
-            OfferName = _invOffer,
-            Amount = _invAmount,
+            OfferName = string.IsNullOrWhiteSpace(_invOffer) ? inv.InvoiceNumber : _invOffer,
+            Amount = inv.Amount,
             Method = _invMethod,
-            Status = "pending"
+            Status = MapStatus(inv.Status)
         });
         _showInvoiceModal = false;
-        return Task.CompletedTask;
+    }
+
+    private async Task DownloadInvoicePdf(PaymentVM p)
+    {
+        if (p.ApiId is not Guid id) return;
+        var result = await Api.GetBytesWithErrorAsync($"api/invoices/{id}/pdf");
+        if (result.Value is null) return;
+        await JS.InvokeVoidAsync("downloadFileFromBase64", $"facture-{p.Date:yyyyMMdd}.pdf", "application/pdf", Convert.ToBase64String(result.Value));
+    }
+
+    private async Task ExportCsvAsync()
+    {
+        var lines = new List<string> { "Date;Parent;Offre;Montant;Statut" };
+        lines.AddRange(_payments.Select(p => $"{p.Date:yyyy-MM-dd};{p.Parent};{p.OfferName};{p.Amount};{p.Status}"));
+        var bytes = System.Text.Encoding.UTF8.GetBytes(string.Join("\n", lines));
+        await JS.InvokeVoidAsync("downloadFileFromBase64", "paiements.csv", "text/csv;charset=utf-8", Convert.ToBase64String(bytes));
     }
 
     private record ApiInvoiceDto(
         Guid Id, string InvoiceNumber, Guid ParentProfileId,
         decimal Amount, string Currency, string Status,
-        DateTime IssuedAt, DateTime? PaidAt);
+        DateTime IssuedAt, DateTime? PaidAt, string? ParentName = null);
 
     private class PaymentVM
     {

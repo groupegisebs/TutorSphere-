@@ -119,30 +119,72 @@
                     <button type="button" class="cal-nav-btn" @onclick="NextWeekAsync"><i class="bi bi-chevron-right"></i></button>
                 </div>
                 <button type="button" class="cal-range-btn ms-2">
-                    @WeekStart.ToString("d") – @WeekStart.AddDays(6).ToString("d MMM yyyy")
+                    @(ViewMode == "day" ? FocusDate.ToString("d MMMM yyyy") : $"{WeekStart:d} – {WeekStart.AddDays(6):d MMM yyyy}")
                     <i class="bi bi-chevron-down ms-1" aria-hidden="true"></i>
                 </button>
             </div>
             <div class="cal-toolbar-right">
                 <div class="btn-group cal-view-toggle" role="group">
-                    <button type="button" class="btn btn-sm @(ViewMode == "day" ? "btn-primary" : "btn-outline-secondary")" @onclick='() => ViewMode = "day"'>@L["Calendar_Day"]</button>
-                    <button type="button" class="btn btn-sm @(ViewMode == "week" ? "btn-primary" : "btn-outline-secondary")" @onclick='() => ViewMode = "week"'>@L["Calendar_Week"]</button>
-                    <button type="button" class="btn btn-sm @(ViewMode == "month" ? "btn-primary" : "btn-outline-secondary")" @onclick='() => ViewMode = "month"'>@L["Calendar_Month"]</button>
+                    <button type="button" class="btn btn-sm @(ViewMode == "day" ? "btn-primary" : "btn-outline-secondary")" @onclick='() => SetViewMode("day")'>@L["Calendar_Day"]</button>
+                    <button type="button" class="btn btn-sm @(ViewMode == "week" ? "btn-primary" : "btn-outline-secondary")" @onclick='() => SetViewMode("week")'>@L["Calendar_Week"]</button>
+                    <button type="button" class="btn btn-sm @(ViewMode == "month" ? "btn-primary" : "btn-outline-secondary")" @onclick='() => SetViewMode("month")'>@L["Calendar_Month"]</button>
                 </div>
-                <button type="button" class="btn btn-sm btn-outline-secondary ms-2">
-                    <i class="bi bi-funnel me-1" aria-hidden="true"></i>@L["Calendar_Filter"]
+                <button type="button" class="btn btn-sm btn-outline-secondary ms-2" @onclick="ToggleOfferFilter">
+                    <i class="bi bi-funnel me-1" aria-hidden="true"></i>@L["Calendar_Filter"]@(_hideOffers ? " •" : "")
                 </button>
             </div>
         </div>
 
-        <!-- Week grid -->
+        <!-- Week / day grid -->
+        @if (ViewMode == "month")
+        {
+            <div class="ts-table-card mt-2">
+                <table class="table ts-table mb-0">
+                    <thead>
+                        <tr><th>Date</th><th>Événements</th></tr>
+                    </thead>
+                    <tbody>
+                        @for (var d = 1; d <= DateTime.DaysInMonth(DisplayMonth.Year, DisplayMonth.Month); d++)
+                        {
+                            var date = new DateTime(DisplayMonth.Year, DisplayMonth.Month, d);
+                            var evts = GetEventsForDay(date).ToList();
+                            <tr>
+                                <td>
+                                    <button type="button" class="btn btn-link p-0" @onclick="() => OpenDay(date)">
+                                        <strong>@date.ToString("ddd d")</strong>
+                                    </button>
+                                </td>
+                                <td>
+                                    @if (evts.Count == 0)
+                                    {
+                                        <span class="text-muted">—</span>
+                                    }
+                                    else
+                                    {
+                                        @foreach (var evt in evts)
+                                        {
+                                            <div>
+                                                <span class="text-muted">@evt.TimeLabel</span>
+                                                <strong class="ms-1">@evt.Title</strong>
+                                            </div>
+                                        }
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+        else
+        {
         <div class="cal-week-view">
             <!-- Day headers row -->
             <div class="cal-grid-header">
                 <div class="cal-time-gutter"></div>
-                @for (var d = 0; d < 7; d++)
+                @for (var d = 0; d < GridDays; d++)
                 {
-                    var date = WeekStart.AddDays(d);
+                    var date = GridStart.AddDays(d);
                     var isToday = date.Date == DateTime.Today;
                     <div class="cal-day-header @(isToday ? "today" : "")">
                         <span class="cal-day-name">@date.ToString("ddd").ToUpper()</span>
@@ -163,9 +205,9 @@
                     </div>
 
                     <!-- Day columns -->
-                    @for (var d = 0; d < 7; d++)
+                    @for (var d = 0; d < GridDays; d++)
                     {
-                        var date = WeekStart.AddDays(d);
+                        var date = GridStart.AddDays(d);
                         var isToday = date.Date == DateTime.Today;
                         <div class="cal-day-col @(isToday ? "today" : "")">
                             @foreach (var h in Hours)
@@ -204,6 +246,7 @@
                 </div>
             </div>
         </div>
+        }
 
         <!-- Stats bar -->
         <div class="cal-stat-bar">
@@ -431,6 +474,10 @@
 
     // ── State ──────────────────────────────────────────────────────────────────
     private string ViewMode { get; set; } = "week";
+    private DateTime FocusDate { get; set; } = DateTime.Today;
+    private bool _hideOffers;
+    private int GridDays => ViewMode == "day" ? 1 : 7;
+    private DateTime GridStart => ViewMode == "day" ? FocusDate.Date : WeekStart;
     private DateTime WeekStart { get; set; }
     private DateTime DisplayMonth { get; set; }
 
@@ -515,7 +562,7 @@
 
     // ── Derived ────────────────────────────────────────────────────────────────
     private IEnumerable<CalEvent> GetEventsForDay(DateTime date)
-        => _apiEvents.Where(e => e.Date.Date == date.Date);
+        => _apiEvents.Where(e => e.Date.Date == date.Date && !(_hideOffers && e.Type == "offer"));
 
     private int? NowTopPx
     {
@@ -1012,10 +1059,30 @@
     private void GoToToday()
     {
         var today = DateTime.Today;
+        FocusDate = today;
         var dow = (int)today.DayOfWeek;
         WeekStart = today.AddDays(dow == 0 ? -6 : -(dow - 1));
         DisplayMonth = new DateTime(today.Year, today.Month, 1);
     }
+
+    private void SetViewMode(string mode)
+    {
+        ViewMode = mode;
+        if (mode == "day" && FocusDate == default)
+            FocusDate = DateTime.Today;
+        if (mode != "day")
+            GoToWeek(FocusDate == default ? DateTime.Today : FocusDate);
+    }
+
+    private async Task OpenDay(DateTime date)
+    {
+        FocusDate = date.Date;
+        ViewMode = "day";
+        GoToWeek(date);
+        await LoadCalendarDataAsync();
+    }
+
+    private void ToggleOfferFilter() => _hideOffers = !_hideOffers;
 
     private void GoToWeek(DateTime date)
     {
@@ -1032,15 +1099,43 @@
 
     private async Task PreviousWeekAsync()
     {
-        WeekStart = WeekStart.AddDays(-7);
-        DisplayMonth = new DateTime(WeekStart.Year, WeekStart.Month, 1);
+        if (ViewMode == "day")
+        {
+            FocusDate = FocusDate.AddDays(-1);
+            GoToWeek(FocusDate);
+        }
+        else if (ViewMode == "month")
+        {
+            DisplayMonth = DisplayMonth.AddMonths(-1);
+            WeekStart = DisplayMonth;
+            FocusDate = DisplayMonth;
+        }
+        else
+        {
+            WeekStart = WeekStart.AddDays(-7);
+            DisplayMonth = new DateTime(WeekStart.Year, WeekStart.Month, 1);
+        }
         await LoadCalendarDataAsync();
     }
 
     private async Task NextWeekAsync()
     {
-        WeekStart = WeekStart.AddDays(7);
-        DisplayMonth = new DateTime(WeekStart.Year, WeekStart.Month, 1);
+        if (ViewMode == "day")
+        {
+            FocusDate = FocusDate.AddDays(1);
+            GoToWeek(FocusDate);
+        }
+        else if (ViewMode == "month")
+        {
+            DisplayMonth = DisplayMonth.AddMonths(1);
+            WeekStart = DisplayMonth;
+            FocusDate = DisplayMonth;
+        }
+        else
+        {
+            WeekStart = WeekStart.AddDays(7);
+            DisplayMonth = new DateTime(WeekStart.Year, WeekStart.Month, 1);
+        }
         await LoadCalendarDataAsync();
     }
 

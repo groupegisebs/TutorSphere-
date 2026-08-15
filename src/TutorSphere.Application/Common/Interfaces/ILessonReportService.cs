@@ -6,9 +6,11 @@ public interface ILessonReportService
 {
     Task<LessonReportDto> CreateAsync(CreateLessonReportRequest request, CancellationToken ct = default);
     Task<LessonReportDto?> GetByIdAsync(Guid id, CancellationToken ct = default);
+    Task<IReadOnlyList<LessonReportDto>> GetMineAsync(CancellationToken ct = default);
     Task<IReadOnlyList<LessonReportDto>> GetByLessonAsync(Guid lessonId, CancellationToken ct = default);
     Task<IReadOnlyList<LessonReportDto>> GetByStudentAsync(Guid studentId, CancellationToken ct = default);
     Task<LessonReportDto> UpdateAsync(Guid id, UpdateLessonReportRequest request, CancellationToken ct = default);
     Task DeleteAsync(Guid id, CancellationToken ct = default);
     Task<LessonReportDto> MarkSentToParentAsync(Guid id, CancellationToken ct = default);
+    Task<(byte[] Content, string FileName)> BuildPdfAsync(Guid id, CancellationToken ct = default);
 }

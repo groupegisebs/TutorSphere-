@@ -156,7 +156,7 @@
 
     private class SettingsVM
     {
-        public string Language { get; set; } = "Français";
+        public string Language { get; set; } = "fr";
         public string Timezone { get; set; } = "America/Montreal";
     }
     private SettingsVM _s = new();
@@ -164,15 +164,22 @@
     private record NotificationPreferencesDto(bool EmailLessonReminders);
     private record CalendarFeedDto(bool IsEnabled, string? FeedUrl, string? WebcalUrl, string Instructions);
 
-    protected override async Task OnInitializedAsync()
-    {
-        var prefs = await Api.GetAsync<NotificationPreferencesDto>("api/me/notification-preferences");
-        if (prefs is not null)
-            _emailLessonReminders = prefs.EmailLessonReminders;
+        protected override async Task OnInitializedAsync()
+        {
+            var prefs = await Api.GetAsync<NotificationPreferencesDto>("api/me/notification-preferences");
+            if (prefs is not null)
+                _emailLessonReminders = prefs.EmailLessonReminders;
 
-        _feed = await Api.GetAsync<CalendarFeedDto>("api/me/calendar-feed");
-        _feedLoading = false;
-    }
+            var profile = await Api.GetAsync<TutorSphere.Application.DTOs.Settings.UserProfileDto>("api/me/profile");
+            if (profile is not null)
+            {
+                _s.Language = string.IsNullOrWhiteSpace(profile.PreferredLanguage) ? "fr" : profile.PreferredLanguage;
+                _s.Timezone = string.IsNullOrWhiteSpace(profile.TimeZone) ? "America/Montreal" : profile.TimeZone;
+            }
+
+            _feed = await Api.GetAsync<CalendarFeedDto>("api/me/calendar-feed");
+            _feedLoading = false;
+        }
 
     private async Task SaveSettings()
     {
@@ -188,6 +195,22 @@
             {
                 _error = result.Error;
                 return;
+            }
+
+            var me = await Api.GetAsync<TutorSphere.Application.DTOs.Settings.UserProfileDto>("api/me/profile");
+            if (me is not null)
+            {
+                await Api.PutWithErrorAsync<TutorSphere.Application.DTOs.Settings.UserProfileDto>(
+                    "api/me/profile",
+                    new
+                    {
+                        firstName = me.FirstName,
+                        lastName = me.LastName,
+                        phone = me.Phone,
+                        bio = me.Bio,
+                        preferredLanguage = _s.Language,
+                        timeZone = _s.Timezone
+                    });
             }
             _saved = true;
         }

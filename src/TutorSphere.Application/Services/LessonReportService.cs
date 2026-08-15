@@ -58,6 +58,15 @@ public class LessonReportService : ILessonReportService
         return Task.FromResult(report is null ? null : MapToDto(report));
     }
 
+    public Task<IReadOnlyList<LessonReportDto>> GetMineAsync(CancellationToken ct = default)
+    {
+        RequireTenantId();
+        var reports = _db.LessonReports
+            .OrderByDescending(r => r.CreatedAt)
+            .ToList();
+        return Task.FromResult<IReadOnlyList<LessonReportDto>>(reports.Select(MapToDto).ToList());
+    }
+
     public Task<IReadOnlyList<LessonReportDto>> GetByLessonAsync(Guid lessonId, CancellationToken ct = default)
     {
         var items = _db.LessonReports
@@ -115,10 +124,49 @@ public class LessonReportService : ILessonReportService
         report.UpdatedAt = DateTime.UtcNow;
 
         await _db.SaveChangesAsync(ct);
-
         await SendReportEmailToParentAsync(report, ct);
-
         return MapToDto(report);
+    }
+
+    public Task<(byte[] Content, string FileName)> BuildPdfAsync(Guid id, CancellationToken ct = default)
+    {
+        var report = GetReportOrThrow(id);
+        var student = _db.Students.FirstOrDefault(s => s.Id == report.StudentId);
+        var lesson = _db.Lessons.FirstOrDefault(l => l.Id == report.LessonId);
+        var studentName = student is null ? "Eleve" : $"{student.FirstName} {student.LastName}".Trim();
+        var session = (lesson?.StartTime ?? report.CreatedAt).ToLocalTime();
+        var lines = new List<string>
+        {
+            "TutorSphere - Rapport de seance",
+            "",
+            $"Eleve : {studentName}",
+            $"Seance : {lesson?.Title ?? "Cours"}",
+            $"Matiere : {lesson?.Subject ?? "-"}",
+            $"Date : {session:dd/MM/yyyy HH:mm}",
+            report.SentToParent ? $"Envoye au parent le {report.SentAt:dd/MM/yyyy}" : "Brouillon",
+            "",
+            "Travail effectue",
+            report.TopicsStudied ?? "-",
+            "",
+            "Participation / evaluation",
+            report.Participation ?? "-",
+            "",
+            "Points forts",
+            report.Strengths ?? "-",
+            "",
+            "Axes d'amelioration",
+            report.Weaknesses ?? "-",
+            "",
+            "Recommandations",
+            report.Observations ?? "-",
+            "",
+            "Devoirs",
+            report.HomeworkAssigned ?? "-"
+        };
+        var pdf = InvoicePdfGenerator.FromTextLines(lines);
+        var safe = new string(studentName.Where(c => char.IsLetterOrDigit(c) || c is '-' or '_').ToArray());
+        var fileName = $"Rapport-{session:yyyyMMdd}-{safe}.pdf";
+        return Task.FromResult((pdf, fileName));
     }
 
     private async Task SendReportEmailToParentAsync(LessonReport report, CancellationToken ct)
@@ -173,19 +221,29 @@ public class LessonReportService : ILessonReportService
         return Task.CompletedTask;
     }
 
-    private static LessonReportDto MapToDto(LessonReport report) => new(
-        report.Id,
-        report.TenantId,
-        report.LessonId,
-        report.StudentId,
-        report.TopicsStudied,
-        report.Participation,
-        report.Strengths,
-        report.Weaknesses,
-        report.HomeworkAssigned,
-        report.Observations,
-        report.SentToParent,
-        report.SentAt,
-        report.CreatedAt,
-        report.UpdatedAt);
+    private LessonReportDto MapToDto(LessonReport report)
+    {
+        var student = _db.Students.FirstOrDefault(s => s.Id == report.StudentId);
+        var lesson = _db.Lessons.FirstOrDefault(l => l.Id == report.LessonId);
+        var studentName = student is null ? null : $"{student.FirstName} {student.LastName}".Trim();
+        return new(
+            report.Id,
+            report.TenantId,
+            report.LessonId,
+            report.StudentId,
+            report.TopicsStudied,
+            report.Participation,
+            report.Strengths,
+            report.Weaknesses,
+            report.HomeworkAssigned,
+            report.Observations,
+            report.SentToParent,
+            report.SentAt,
+            report.CreatedAt,
+            report.UpdatedAt,
+            studentName,
+            lesson?.Title,
+            lesson?.Subject,
+            lesson?.StartTime);
+    }
 }

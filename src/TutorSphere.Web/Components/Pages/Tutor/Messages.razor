@@ -7,6 +7,7 @@
 @inject AuthService Auth
 @inject RealtimeMessagingClient Realtime
 @inject MessagingNotificationState NotifyState
+@inject NavigationManager Navigation
 
 <PageTitle>@L["Messages_Title"] – TutorSphere</PageTitle>
 
@@ -101,8 +102,8 @@
                     <span class="chat-role text-muted">@_active.Role</span>
                 </div>
                 <div class="ms-auto d-flex gap-2">
-                    <button class="ts-icon-btn" title="@L["Messages_VideoCall"]"><i class="bi bi-camera-video"></i></button>
-                    <button class="ts-icon-btn" title="@L["Messages_Call"]"><i class="bi bi-telephone"></i></button>
+                    <button class="ts-icon-btn" title="@L["Messages_VideoCall"]" @onclick='() => Navigation.NavigateTo("/tutor/lessons")'><i class="bi bi-camera-video"></i></button>
+                    <button class="ts-icon-btn" title="@L["Messages_Call"]" @onclick='() => Navigation.NavigateTo("/tutor/lessons")'><i class="bi bi-telephone"></i></button>
                 </div>
             </div>
 
@@ -117,7 +118,7 @@
             </div>
 
             <div class="chat-input-area">
-                <button class="ts-icon-btn" title="@L["Messages_Attachment"]"><i class="bi bi-paperclip"></i></button>
+                <button class="ts-icon-btn" title="@L["Messages_Attachment"]" @onclick='() => Navigation.NavigateTo("/tutor/documents")'><i class="bi bi-paperclip"></i></button>
                 <input class="form-control" placeholder="@L["Messages_Write"]"
                        @bind="_newMsg" @bind:event="oninput" @onkeydown="HandleKey" />
                 <button class="btn btn-primary btn-sm" @onclick="async () => await SendMessage()"

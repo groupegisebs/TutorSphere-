@@ -179,17 +179,17 @@
                                 }
                                 else if (s.Status == "Active")
                                 {
-                                    <button class="ts-icon-btn" title="@L["TutorSubs_Suspend"]" @onclick='() => s.Status = "Paused"'>
+                                    <button class="ts-icon-btn" title="@L["TutorSubs_Suspend"]" @onclick="async () => await PauseAsync(s)">
                                         <i class="bi bi-pause-circle text-warning"></i>
                                     </button>
                                 }
                                 else if (s.Status == "Paused")
                                 {
-                                    <button class="ts-icon-btn" title="@L["TutorSubs_Reactivate"]" @onclick='() => s.Status = "Active"'>
+                                    <button class="ts-icon-btn" title="@L["TutorSubs_Reactivate"]" @onclick="async () => await ResumeAsync(s)">
                                         <i class="bi bi-play-circle text-success"></i>
                                     </button>
                                 }
-                                <button class="ts-icon-btn" title="@L["TutorSubs_Invoice"]"><i class="bi bi-receipt"></i></button>
+                                <a class="ts-icon-btn" title="@L["TutorSubs_Invoice"]" href="/tutor/payments"><i class="bi bi-receipt"></i></a>
                             </div>
                         </td>
                     </tr>
@@ -392,6 +392,34 @@
         catch (Exception ex)
         {
             _actionError = ex.Message;
+        }
+        finally { _busyId = null; }
+    }
+
+    private async Task PauseAsync(SubVM sub)
+    {
+        _busyId = sub.Id;
+        _actionError = null;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<ApiSubscriberDto>(
+                $"api/subscription-offerings/subscribers/{sub.Id}/pause", new { });
+            if (result.Value is not null) ApplySubscriberUpdate(sub.Id, result.Value);
+            else _actionError = result.Error;
+        }
+        finally { _busyId = null; }
+    }
+
+    private async Task ResumeAsync(SubVM sub)
+    {
+        _busyId = sub.Id;
+        _actionError = null;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<ApiSubscriberDto>(
+                $"api/subscription-offerings/subscribers/{sub.Id}/resume", new { });
+            if (result.Value is not null) ApplySubscriberUpdate(sub.Id, result.Value);
+            else _actionError = result.Error;
         }
         finally { _busyId = null; }
     }

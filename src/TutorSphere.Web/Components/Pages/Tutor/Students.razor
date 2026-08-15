@@ -74,9 +74,15 @@ else
                     <span class="student-card-date">@string.Format(L["Students_Since"].Value, s.SinceDate)</span>
                 </div>
                 <div class="student-card-actions" @onclick:stopPropagation="true">
-                    <button class="ts-icon-btn" title="@L["Students_ViewProfile"]" @onclick="() => OpenProfile(s)">
-                        <i class="bi bi-eye"></i>
-                    </button>
+                                <button class="ts-icon-btn" title="@L["Students_ViewProfile"]" @onclick="() => OpenProfile(s)">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                                <button class="ts-icon-btn" title="@L["Common_Edit"]" @onclick="() => OpenEdit(s)">
+                                    <i class="bi bi-pencil"></i>
+                                </button>
+                                <button class="ts-icon-btn ts-icon-btn--danger" title="@L["Common_Delete"]" @onclick="async () => await DeleteStudent(s)">
+                                    <i class="bi bi-trash"></i>
+                                </button>
                 </div>
             </div>
         }
@@ -133,7 +139,7 @@ else
     <div class="ts-modal-backdrop" @onclick="CloseAddModal">
         <div class="ts-modal" @onclick:stopPropagation="true">
             <div class="ts-modal-header">
-                <h2>@L["Students_Add"]</h2>
+                <h2>@(_editingId is null ? L["Students_Add"] : L["Common_Edit"])</h2>
                 <button class="ts-modal-close" @onclick="CloseAddModal"><i class="bi bi-x-lg"></i></button>
             </div>
             <div class="ts-modal-body">
@@ -194,6 +200,7 @@ else
     private string _filterStatus = "";
     private StudentViewModel? _profileStudent;
     private bool _showAddModal;
+    private Guid? _editingId;
     private string _addError = "";
     private string _loadError = "";
     private bool _loading = true;
@@ -235,8 +242,34 @@ else
 
     private void OpenProfile(StudentViewModel s) => _profileStudent = s;
     private void CloseProfile() => _profileStudent = null;
-    private void OpenAddModal() { _form = new(); _addError = ""; _showAddModal = true; }
-    private void CloseAddModal() { _showAddModal = false; _addError = ""; }
+    private void OpenAddModal() { _editingId = null; _form = new(); _addError = ""; _showAddModal = true; }
+    private void CloseAddModal() { _showAddModal = false; _editingId = null; _addError = ""; }
+
+    private void OpenEdit(StudentViewModel s)
+    {
+        _editingId = s.Id;
+        _form = new StudentForm
+        {
+            FirstName = s.FirstName,
+            LastName = s.LastName,
+            BirthDate = s.BirthDateValue ?? default,
+            ParentProfileId = s.ParentProfileId?.ToString() ?? "",
+            School = s.School ?? "",
+            Level = s.Level ?? "",
+            Subject = s.Subject ?? "",
+            Email = s.Email ?? "",
+            Phone = s.Phone ?? "",
+            Observations = s.Observations ?? ""
+        };
+        _addError = "";
+        _showAddModal = true;
+    }
+
+    private async Task DeleteStudent(StudentViewModel s)
+    {
+        var ok = await Api.DeleteAsync($"api/students/{s.Id}");
+        if (ok) _students.Remove(s);
+    }
 
     private async Task SaveStudent()
     {
@@ -251,7 +284,7 @@ else
         try
         {
             Guid? parentId = Guid.TryParse(_form.ParentProfileId, out var pid) ? pid : null;
-            var created = await Api.PostAsync<StudentDto>("api/students", new
+            var payload = new
             {
                 firstName = _form.FirstName.Trim(),
                 lastName = _form.LastName.Trim(),
@@ -262,17 +295,31 @@ else
                 schoolLevel = string.IsNullOrWhiteSpace(_form.Level) ? null : _form.Level,
                 schoolName = string.IsNullOrWhiteSpace(_form.School) ? null : _form.School.Trim(),
                 subjects = string.IsNullOrWhiteSpace(_form.Subject) ? null : _form.Subject.Trim(),
-                notes = string.IsNullOrWhiteSpace(_form.Observations) ? null : _form.Observations.Trim()
-            });
+                notes = string.IsNullOrWhiteSpace(_form.Observations) ? null : _form.Observations.Trim(),
+                isActive = true
+            };
 
-            if (created is null)
+            StudentDto? saved;
+            if (_editingId is Guid id)
+                saved = await Api.PutAsync<StudentDto>($"api/students/{id}", payload);
+            else
+                saved = await Api.PostAsync<StudentDto>("api/students", payload);
+
+            if (saved is null)
             {
                 _addError = L["Search_Error_Load"];
                 return;
             }
 
-            _students.Insert(0, MapStudent(created, _students.Count));
+            if (_editingId is Guid edited)
+            {
+                var idx = _students.FindIndex(x => x.Id == edited);
+                if (idx >= 0) _students[idx] = MapStudent(saved, idx);
+            }
+            else
+                _students.Insert(0, MapStudent(saved, _students.Count));
             _showAddModal = false;
+            _editingId = null;
         }
         catch (Exception ex)
         {
@@ -289,9 +336,11 @@ else
         Email = d.Email,
         Phone = d.Phone,
         BirthDate = d.DateOfBirth?.ToString("dd/MM/yyyy") ?? "—",
+        BirthDateValue = d.DateOfBirth,
         Age = d.Age,
         IsAutonomous = d.IsAutonomous,
         ParentName = d.ParentName,
+        ParentProfileId = d.ParentProfileId,
         School = d.SchoolName,
         Level = d.SchoolLevel,
         Subject = d.Subjects is { Count: > 0 } ? string.Join(", ", d.Subjects) : null,
@@ -337,6 +386,8 @@ else
         public string? Email { get; set; }
         public string? Phone { get; set; }
         public string BirthDate { get; set; } = "—";
+        public DateTime? BirthDateValue { get; set; }
+        public Guid? ParentProfileId { get; set; }
         public int? Age { get; set; }
         public bool IsAutonomous { get; set; }
         public string? ParentName { get; set; }

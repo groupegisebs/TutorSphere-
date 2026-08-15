@@ -1,43 +1,64 @@
 @page "/tutor/reports"
 @layout TutorLayout
 @rendermode InteractiveServer
+@using TutorSphere.Application.DTOs.LessonReports
+@using TutorSphere.Application.DTOs.Students
 @inject IStringLocalizer<SharedResources> L
 @inject ReportService ReportSvc
+@inject LessonService LessonSvc
+@inject ApiClient Api
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
 
 <PageTitle>Rapports – TutorSphere</PageTitle>
 
 @if (_showForm)
 {
-    <!-- ── Write/View Report form ── -->
     <div class="ts-page-header">
         <div>
-            <h1><i class="bi bi-file-earmark-text me-2"></i>@(_viewReport != null ? L["Reports_SessionReport"] : L["Reports_NewReport"])</h1>
+            <h1><i class="bi bi-file-earmark-text me-2"></i>@(_viewOnly ? L["Reports_SessionReport"] : L["Reports_NewReport"])</h1>
         </div>
-        <button class="btn btn-outline-secondary" @onclick="() => { _showForm=false; _viewReport=null; }">
+        <button class="btn btn-outline-secondary" @onclick="CloseForm">
             <i class="bi bi-arrow-left me-1"></i>@L["Reports_Back"]
         </button>
     </div>
     <div class="report-form-card">
+        @if (!string.IsNullOrEmpty(_formError))
+        {
+            <div class="alert alert-danger py-2">@_formError</div>
+        }
         <div class="row g-4">
             <div class="col-md-6">
                 <label class="form-label">@L["Common_Student"] *</label>
-                <select class="form-select" @bind="_rf.Student" disabled="@(_viewReport!=null)">
-                    <option value="">@L["Common_Choose"]</option>
-                    <option value="">@L["Common_All"]</option>
-                    <option>Sophia Davis</option><option>Olivia Martinez</option>
+                <select class="form-select" @bind="_rf.StudentId" @bind:after="OnStudentChanged" disabled="@_viewOnly">
+                    <option value="@Guid.Empty">@L["Common_Choose"]</option>
+                    @foreach (var s in _students)
+                    {
+                        <option value="@s.Id">@s.Name</option>
+                    }
                 </select>
             </div>
             <div class="col-md-6">
-                <label class="form-label">@L["Common_Subject"]</label>
-                <input class="form-control" @bind="_rf.Subject" disabled="@(_viewReport!=null)" />
+                <label class="form-label">Séance *</label>
+                <select class="form-select" @bind="_rf.LessonId" @bind:after="OnLessonChanged" disabled="@_viewOnly">
+                    <option value="@Guid.Empty">@L["Common_Choose"]</option>
+                    @foreach (var lesson in LessonsForStudent)
+                    {
+                        <option value="@lesson.Id">@lesson.Label</option>
+                    }
+                </select>
+                @if (_rf.StudentId != Guid.Empty && !LessonsForStudent.Any())
+                {
+                    <div class="form-text text-warning">Aucun cours pour cet élève. Créez d’abord une séance.</div>
+                }
             </div>
             <div class="col-md-6">
                 <label class="form-label">@L["Reports_SessionDate"]</label>
-                <input type="date" class="form-control" @bind="_rf.SessionDate" disabled="@(_viewReport!=null)" />
+                <input type="date" class="form-control" @bind="_rf.SessionDate" disabled="true" />
             </div>
             <div class="col-md-6">
-                <label class="form-label">@L["Reports_Duration"]</label>
-                <input type="number" step="0.5" class="form-control" @bind="_rf.Duration" disabled="@(_viewReport!=null)" />
+                <label class="form-label">@L["Common_Subject"]</label>
+                <input class="form-control" @bind="_rf.Subject" disabled="true" />
             </div>
         </div>
 
@@ -51,10 +72,11 @@
                         @for (int i = 1; i <= 5; i++)
                         {
                             var score = i;
+                            var current = item;
                             <button type="button"
-                                    class="report-star @(item.Score >= score ? "active" : "")"
-                                    disabled="@(_viewReport!=null)"
-                                    @onclick="() => item.Score = score">
+                                    class="report-star @(current.Score >= score ? "active" : "")"
+                                    disabled="@_viewOnly"
+                                    @onclick="() => current.Score = score">
                                 <i class="bi bi-star-fill"></i>
                             </button>
                         }
@@ -68,41 +90,33 @@
             <div class="col-12">
                 <label class="form-label">@L["Reports_WorkDone"] *</label>
                 <textarea class="form-control" rows="3" @bind="_rf.WorkDone"
-                    disabled="@(_viewReport!=null)"
+                    disabled="@_viewOnly"
                     placeholder="Décrivez les exercices, chapitres, notions abordées…"></textarea>
             </div>
             <div class="col-md-6">
                 <label class="form-label">@L["Reports_Strengths"]</label>
-                <textarea class="form-control" rows="2" @bind="_rf.Strengths"
-                    disabled="@(_viewReport!=null)"
-                    placeholder="Ce que l'élève maîtrise bien…"></textarea>
+                <textarea class="form-control" rows="2" @bind="_rf.Strengths" disabled="@_viewOnly"></textarea>
             </div>
             <div class="col-md-6">
                 <label class="form-label">@L["Reports_Improvements"]</label>
-                <textarea class="form-control" rows="2" @bind="_rf.Improvements"
-                    disabled="@(_viewReport!=null)"
-                    placeholder="Difficultés rencontrées…"></textarea>
+                <textarea class="form-control" rows="2" @bind="_rf.Improvements" disabled="@_viewOnly"></textarea>
             </div>
             <div class="col-12">
                 <label class="form-label">@L["Reports_Recommendations"]</label>
-                <textarea class="form-control" rows="2" @bind="_rf.Recommendations"
-                    disabled="@(_viewReport!=null)"
-                    placeholder="Conseils pour la prochaine séance, travail à faire…"></textarea>
+                <textarea class="form-control" rows="2" @bind="_rf.Recommendations" disabled="@_viewOnly"></textarea>
             </div>
             <div class="col-12">
                 <label class="form-label">@L["Reports_Homework"]</label>
-                <input class="form-control" @bind="_rf.Homework"
-                    disabled="@(_viewReport!=null)"
-                    placeholder="Ex: Exercices 5 à 10 page 42" />
+                <input class="form-control" @bind="_rf.Homework" disabled="@_viewOnly" />
             </div>
         </div>
 
-        @if (_viewReport == null)
+        @if (!_viewOnly)
         {
             <div class="d-flex gap-2 mt-4">
-                <button class="btn btn-outline-secondary" @onclick="()=>_showForm=false">@L["Common_Cancel"]</button>
-                <button class="btn btn-outline-primary" @onclick="async () => await SaveDraft()">@L["Reports_SaveDraft"]</button>
-                <button class="btn btn-primary ms-auto" @onclick="async () => await SendReport()">
+                <button class="btn btn-outline-secondary" @onclick="CloseForm">@L["Common_Cancel"]</button>
+                <button class="btn btn-outline-primary" disabled="@_busy" @onclick="SaveDraftAsync">@L["Reports_SaveDraft"]</button>
+                <button class="btn btn-primary ms-auto" disabled="@_busy" @onclick="SendReportAsync">
                     <i class="bi bi-send me-1"></i>@L["Reports_SendToParents"]
                 </button>
             </div>
@@ -111,7 +125,6 @@
 }
 else
 {
-    <!-- ── Reports list ── -->
     <div class="ts-page-header">
         <div>
             <h1><i class="bi bi-file-earmark-bar-graph me-2"></i>@L["Reports_Title"]</h1>
@@ -149,6 +162,13 @@ else
                 <i class="bi bi-exclamation-triangle me-2"></i>@_error
             </div>
         }
+        else if (!FilteredReports.Any())
+        {
+            <div class="ts-empty-card">
+                <i class="bi bi-file-earmark-text ts-empty-icon"></i>
+                <p>Aucun rapport pour le moment. Rédigez le compte-rendu d’une séance pour l’envoyer aux parents.</p>
+            </div>
+        }
         else
         {
             <table class="table ts-table">
@@ -177,15 +197,21 @@ else
                                 @(r.Sent ? L["Reports_Sent"] : L["Reports_Draft"])</span></td>
                             <td>
                                 <div class="ts-action-group">
-                                    <button class="ts-icon-btn" title="@L["Common_View"]" @onclick="()=>ViewReport(r)"><i class="bi bi-eye"></i></button>
+                                    <button class="ts-icon-btn" title="@L["Common_View"]" @onclick="() => ViewReport(r)"><i class="bi bi-eye"></i></button>
                                     @if (!r.Sent)
                                     {
+                                        <button class="ts-icon-btn" title="@L["Common_Edit"]" @onclick="() => EditReport(r)">
+                                            <i class="bi bi-pencil"></i>
+                                        </button>
                                         <button class="ts-icon-btn" title="@L["Reports_Send"]"
-                                                @onclick="async () => await SendToParent(r)">
+                                                @onclick="async () => await SendToParentAsync(r)">
                                             <i class="bi bi-send text-primary"></i>
                                         </button>
                                     }
-                                    <button class="ts-icon-btn" title="@L["Reports_Pdf"]"><i class="bi bi-download"></i></button>
+                                    <button class="ts-icon-btn" title="@L["Reports_Pdf"]"
+                                            @onclick="async () => await DownloadPdfAsync(r)">
+                                        <i class="bi bi-download"></i>
+                                    </button>
                                 </div>
                             </td>
                         </tr>
@@ -197,92 +223,300 @@ else
 }
 
 @code {
+    [SupplyParameterFromQuery(Name = "lessonId")] public Guid? QueryLessonId { get; set; }
+    [SupplyParameterFromQuery(Name = "studentId")] public Guid? QueryStudentId { get; set; }
+
     private string _search = "", _filterSent = "";
     private bool _showForm;
+    private bool _viewOnly;
     private bool _loading = true;
+    private bool _busy;
     private string _error = "";
-    private ReportVM? _viewReport;
+    private string _formError = "";
     private ReportForm _rf = new();
+    private readonly List<ReportVM> _reports = [];
+    private readonly List<StudentOpt> _students = [];
+    private readonly List<LessonOpt> _lessons = [];
+
+    private IEnumerable<LessonOpt> LessonsForStudent =>
+        _rf.StudentId == Guid.Empty
+            ? []
+            : _lessons.Where(l => l.StudentIds.Contains(_rf.StudentId)
+                                  || l.Names.Any(n => string.Equals(n, StudentName(_rf.StudentId), StringComparison.OrdinalIgnoreCase)));
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
-            // No "list all reports for tutor" endpoint exists yet — keep mock data.
-            // When lesson/student IDs are available, use ReportSvc.GetReportsByStudentAsync(id).
-            await Task.CompletedTask;
+            var students = await Api.GetAsync<List<StudentDto>>("api/students") ?? [];
+            _students.AddRange(students.Select(s => new StudentOpt(s.Id, $"{s.FirstName} {s.LastName}".Trim())));
+
+            var lessons = await LessonSvc.GetLessonsAsync();
+            foreach (var d in lessons)
+            {
+                var names = d.StudentNames?.Where(n => !string.IsNullOrWhiteSpace(n)).ToList() ?? [];
+                var ids = new List<Guid>();
+                foreach (var name in names)
+                {
+                    var match = _students.FirstOrDefault(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
+                    if (match is not null) ids.Add(match.Id);
+                }
+                _lessons.Add(new LessonOpt(
+                    d.Id,
+                    $"{d.StartTime.ToLocalTime():dd/MM HH:mm} — {d.Title}",
+                    d.Subject ?? "",
+                    d.StartTime.ToLocalTime(),
+                    names,
+                    ids));
+            }
+
+            await ReloadReportsAsync();
+
+            if (QueryLessonId is Guid lid && lid != Guid.Empty)
+            {
+                NewReport();
+                _rf.LessonId = lid;
+                OnLessonChanged();
+                if (QueryStudentId is Guid sid && sid != Guid.Empty)
+                    _rf.StudentId = sid;
+            }
         }
-        catch { /* keep mock fallback */ }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
         finally { _loading = false; }
     }
 
-    private void NewReport() { _rf = new(); _viewReport = null; _showForm = true; }
-
-    private void ViewReport(ReportVM r)
+    private async Task ReloadReportsAsync()
     {
-        _viewReport = r;
-        _rf = new ReportForm
+        var dtos = await ReportSvc.GetMineAsync();
+        _reports.Clear();
+        _reports.AddRange(dtos.Select(MapFromDto));
+    }
+
+    private static ReportVM MapFromDto(LessonReportDto d)
+    {
+        var name = d.StudentName ?? "Élève";
+        return new ReportVM
         {
-            Student = r.Student, Subject = r.Subject, SessionDate = r.SessionDate,
-            Duration = r.Duration, WorkDone = r.WorkDone, Strengths = r.Strengths,
-            Improvements = r.Improvements, Recommendations = r.Recommendations, Homework = r.Homework
+            ApiId = d.Id,
+            LessonId = d.LessonId,
+            StudentId = d.StudentId,
+            Student = name,
+            Subject = d.Subject ?? "",
+            SessionDate = (d.SessionDate ?? d.CreatedAt).ToLocalTime(),
+            WorkDone = d.TopicsStudied ?? "",
+            Strengths = d.Strengths ?? "",
+            Improvements = d.Weaknesses ?? "",
+            Recommendations = d.Observations ?? "",
+            Homework = d.HomeworkAssigned ?? "",
+            Participation = d.Participation ?? "",
+            Sent = d.SentToParent,
+            Initials = string.Join("", name.Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(2).Select(x => x[0])),
+            AvatarColor = "#7c3aed"
         };
+    }
+
+    private string StudentName(Guid id) =>
+        _students.FirstOrDefault(s => s.Id == id)?.Name ?? "";
+
+    private void CloseForm()
+    {
+        _showForm = false;
+        _viewOnly = false;
+        _formError = "";
+    }
+
+    private void NewReport()
+    {
+        _rf = new();
+        _viewOnly = false;
+        _formError = "";
         _showForm = true;
     }
 
-    private async Task SaveDraft()
+    private void FillForm(ReportVM r, bool viewOnly)
     {
-        if (string.IsNullOrWhiteSpace(_rf.Student)) return;
-        _reports.Insert(0, CreateVM(false));
-        _showForm = false;
-        await Task.CompletedTask;
-    }
-
-    private async Task SendReport()
-    {
-        if (string.IsNullOrWhiteSpace(_rf.Student)) return;
-        _reports.Insert(0, CreateVM(true));
-        _showForm = false;
-        await Task.CompletedTask;
-    }
-
-    private async Task SendToParent(ReportVM r)
-    {
-        if (r.ApiId.HasValue)
+        _rf = new ReportForm
         {
-            var dto = await ReportSvc.SendToParentAsync(r.ApiId.Value);
-            if (dto != null) r.Sent = dto.SentToParent;
-            else r.Sent = true;
-        }
-        else
+            ApiId = r.ApiId,
+            StudentId = r.StudentId,
+            LessonId = r.LessonId,
+            Subject = r.Subject,
+            SessionDate = r.SessionDate,
+            WorkDone = r.WorkDone,
+            Strengths = r.Strengths,
+            Improvements = r.Improvements,
+            Recommendations = r.Recommendations,
+            Homework = r.Homework
+        };
+        ApplyRatings(r.Participation);
+        _viewOnly = viewOnly;
+        _formError = "";
+        _showForm = true;
+    }
+
+    private void ViewReport(ReportVM r) => FillForm(r, true);
+    private void EditReport(ReportVM r) => FillForm(r, false);
+
+    private void OnStudentChanged()
+    {
+        if (!LessonsForStudent.Any(l => l.Id == _rf.LessonId))
         {
-            r.Sent = true;
+            _rf.LessonId = Guid.Empty;
+            _rf.Subject = "";
         }
     }
 
-    private ReportVM CreateVM(bool sent) => new()
+    private void OnLessonChanged()
     {
-        Student = _rf.Student, Subject = _rf.Subject, SessionDate = _rf.SessionDate,
-        Duration = _rf.Duration, WorkDone = _rf.WorkDone, Strengths = _rf.Strengths,
-        Improvements = _rf.Improvements, Recommendations = _rf.Recommendations,
-        Homework = _rf.Homework, Sent = sent,
-        AvatarColor = "#7c3aed",
-        Initials = string.Join("", _rf.Student.Split(' ').Take(2).Select(x => x.Length > 0 ? x[0].ToString() : ""))
-    };
+        var lesson = _lessons.FirstOrDefault(l => l.Id == _rf.LessonId);
+        if (lesson is null) return;
+        _rf.Subject = lesson.Subject;
+        _rf.SessionDate = lesson.Start.Date;
+        if (_rf.StudentId == Guid.Empty && lesson.StudentIds.Count == 1)
+            _rf.StudentId = lesson.StudentIds[0];
+    }
+
+    private string EncodeRatings() =>
+        string.Join("; ", _rf.Ratings.Select(r => $"{r.Label}: {r.Score}/5"));
+
+    private void ApplyRatings(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return;
+        foreach (var item in _rf.Ratings)
+        {
+            var token = $"{item.Label}:";
+            var idx = raw.IndexOf(token, StringComparison.OrdinalIgnoreCase);
+            if (idx < 0) continue;
+            var slice = raw[(idx + token.Length)..];
+            var digits = new string(slice.TakeWhile(ch => char.IsDigit(ch) || char.IsWhiteSpace(ch)).ToArray());
+            if (int.TryParse(digits.Trim(), out var score))
+                item.Score = Math.Clamp(score, 1, 5);
+        }
+    }
+
+    private async Task<bool> PersistAsync()
+    {
+        _formError = "";
+        if (_rf.StudentId == Guid.Empty || _rf.LessonId == Guid.Empty)
+        {
+            _formError = "Choisissez un élève et une séance.";
+            return false;
+        }
+        if (string.IsNullOrWhiteSpace(_rf.WorkDone))
+        {
+            _formError = "Décrivez le travail effectué.";
+            return false;
+        }
+
+        _busy = true;
+        try
+        {
+            LessonReportDto? dto;
+            if (_rf.ApiId is Guid existing)
+            {
+                dto = await ReportSvc.UpdateReportAsync(existing, new UpdateLessonReportRequest(
+                    _rf.WorkDone, EncodeRatings(), _rf.Strengths, _rf.Improvements, _rf.Homework, _rf.Recommendations));
+            }
+            else
+            {
+                dto = await ReportSvc.CreateReportAsync(new CreateLessonReportRequest(
+                    _rf.LessonId, _rf.StudentId, _rf.WorkDone, EncodeRatings(),
+                    _rf.Strengths, _rf.Improvements, _rf.Homework, _rf.Recommendations));
+            }
+
+            if (dto is null)
+            {
+                _formError = "Impossible d'enregistrer le rapport.";
+                return false;
+            }
+            _rf.ApiId = dto.Id;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _formError = ex.Message;
+            return false;
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task SaveDraftAsync()
+    {
+        if (!await PersistAsync()) return;
+        await ReloadReportsAsync();
+        CloseForm();
+    }
+
+    private async Task SendReportAsync()
+    {
+        if (!await PersistAsync() || _rf.ApiId is not Guid id) return;
+        var sent = await ReportSvc.SendToParentAsync(id);
+        if (sent is null)
+        {
+            _formError = "Rapport enregistré, mais l'envoi au parent a échoué.";
+            return;
+        }
+        await ReloadReportsAsync();
+        CloseForm();
+    }
+
+    private async Task SendToParentAsync(ReportVM r)
+    {
+        if (r.ApiId is not Guid id) return;
+        var dto = await ReportSvc.SendToParentAsync(id);
+        if (dto is null) { _error = "Envoi impossible."; return; }
+        r.Sent = dto.SentToParent;
+    }
+
+    private async Task DownloadPdfAsync(ReportVM r)
+    {
+        if (r.ApiId is not Guid id) return;
+        var result = await Api.GetBytesWithErrorAsync($"api/lessonreports/{id}/pdf");
+        if (result.Value is null)
+        {
+            _error = result.Error ?? "PDF indisponible.";
+            return;
+        }
+        await JS.InvokeVoidAsync("downloadFileFromBase64",
+            $"rapport-{r.SessionDate:yyyyMMdd}.pdf", "application/pdf", Convert.ToBase64String(result.Value));
+    }
 
     private IEnumerable<ReportVM> FilteredReports => _reports
         .Where(r => string.IsNullOrEmpty(_search) ||
-            r.Student.Contains(_search, StringComparison.OrdinalIgnoreCase))
+            r.Student.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+            r.Subject.Contains(_search, StringComparison.OrdinalIgnoreCase))
         .Where(r => string.IsNullOrEmpty(_filterSent) ||
             (_filterSent == "sent" && r.Sent) ||
             (_filterSent == "draft" && !r.Sent));
 
+    private sealed class StudentOpt(Guid Id, string Name)
+    {
+        public Guid Id { get; } = Id;
+        public string Name { get; } = Name;
+    }
+
+    private sealed class LessonOpt(
+        Guid Id, string Label, string Subject, DateTime Start,
+        IReadOnlyList<string> Names, IReadOnlyList<Guid> StudentIds)
+    {
+        public Guid Id { get; } = Id;
+        public string Label { get; } = Label;
+        public string Subject { get; } = Subject;
+        public DateTime Start { get; } = Start;
+        public IReadOnlyList<string> Names { get; } = Names;
+        public IReadOnlyList<Guid> StudentIds { get; } = StudentIds;
+    }
+
     private class ReportForm
     {
-        public string Student { get; set; } = "";
+        public Guid? ApiId { get; set; }
+        public Guid StudentId { get; set; }
+        public Guid LessonId { get; set; }
         public string Subject { get; set; } = "";
         public DateTime SessionDate { get; set; } = DateTime.Today;
-        public double Duration { get; set; } = 1;
         public string WorkDone { get; set; } = "";
         public string Strengths { get; set; } = "";
         public string Improvements { get; set; } = "";
@@ -294,24 +528,28 @@ else
         ];
     }
 
-    private class RatingItem(string label) { public string Label { get; } = label; public int Score { get; set; } = 3; }
+    private class RatingItem(string label)
+    {
+        public string Label { get; } = label;
+        public int Score { get; set; } = 3;
+    }
 
     private class ReportVM
     {
         public Guid? ApiId { get; set; }
+        public Guid LessonId { get; set; }
+        public Guid StudentId { get; set; }
         public string Student { get; set; } = "";
         public string Initials { get; set; } = "";
         public string AvatarColor { get; set; } = "#7c3aed";
         public string Subject { get; set; } = "";
         public DateTime SessionDate { get; set; }
-        public double Duration { get; set; }
         public string WorkDone { get; set; } = "";
         public string Strengths { get; set; } = "";
         public string Improvements { get; set; } = "";
         public string Recommendations { get; set; } = "";
         public string Homework { get; set; } = "";
+        public string Participation { get; set; } = "";
         public bool Sent { get; set; }
     }
-
-    private List<ReportVM> _reports = [];
 }
