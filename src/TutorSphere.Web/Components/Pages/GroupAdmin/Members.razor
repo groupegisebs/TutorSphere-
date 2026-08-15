@@ -1,94 +1,955 @@
 @page "/group-admin/members"
 @layout GroupAdminLayout
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using System.Globalization
+@using System.Text
 @inject AuthService Auth
 @inject ApiClient Api
+@inject NavigationManager Nav
+@inject IJSRuntime JS
 
-<PageTitle>Membres du groupe — Responsable</PageTitle>
+<PageTitle>Membres du groupe — TutorSphere</PageTitle>
 
 <AuthorizeView Roles="GroupManager,SuperAdmin,PlatformAdmin">
     <Authorized>
-        <div class="cc-toolbar">
-            <div>
-                <h1 class="cc-page-title">Membres</h1>
-                <p class="cc-page-sub">Consultation. Invitation d'un Expert : Responsable uniquement (vote 75&nbsp;%). Création d'enseignants : tous les Experts.</p>
+        <div class="ex-gm">
+            <div class="cc-toolbar ex-toolbar">
+                <div>
+                    <p class="ex-crumb">Espace Responsable <span>/</span> Gestion du groupe <span>/</span> <strong>Membres</strong></p>
+                    <h1 class="cc-page-title"><i class="bi bi-people"></i> Membres du groupe</h1>
+                    <p class="cc-page-sub">Gérez les membres de votre groupe, leurs rôles, permissions et responsabilités. Les enseignants ne sont pas des membres du groupe.</p>
+                </div>
+                <div class="d-flex gap-2 flex-wrap">
+                    <button type="button" class="cc-btn" @onclick="ExportCsvAsync"><i class="bi bi-download"></i> Exporter</button>
+                    <button type="button" class="cc-btn cc-btn-primary" @onclick="() => _showInvite = true">
+                        <i class="bi bi-plus-lg"></i> Inviter un membre
+                    </button>
+                </div>
             </div>
-            <a class="cc-btn cc-btn-primary" href="expert/admissions">Inviter un candidat</a>
-        </div>
 
-        @if (_loading)
-        {
-            <span class="spinner-border"></span>
-        }
-        else if (!string.IsNullOrEmpty(_error))
-        {
-            <div class="alert alert-danger">@_error</div>
-        }
-        else
-        {
-            <div class="cc-card">
-                <table class="cc-table">
-                    <thead>
-                        <tr>
-                            <th>Nom</th>
-                            <th>E-mail</th>
-                            <th>Rôle</th>
-                            <th>Statut</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var m in _members.OrderByDescending(x => x.MemberRole == 1))
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <div class="alert alert-danger py-2">@_error</div>
+            }
+            @if (!string.IsNullOrEmpty(_success))
+            {
+                <div class="alert alert-success py-2">@_success</div>
+            }
+
+            @if (_loading)
+            {
+                <div class="ex-teachers-kpi mb-3">
+                    @for (var i = 0; i < 5; i++)
+                    {
+                        <div class="ex-kpi ex-skel"></div>
+                    }
+                </div>
+                <div class="cc-card ex-skel" style="height:18rem"></div>
+            }
+            else
+            {
+                <div class="ex-teachers-kpi">
+                    <div class="ex-kpi" data-tone="emerald">
+                        <i class="bi bi-people ex-kpi-icon"></i>
+                        <div>
+                            <div class="ex-kpi-label">Membres actifs</div>
+                            <div class="ex-kpi-value">@_dir.ActiveCount</div>
+                            @if (_dir.JoinedThisMonth > 0)
+                            {
+                                <div class="ex-kpi-hint">+@_dir.JoinedThisMonth ce mois-ci</div>
+                            }
+                        </div>
+                    </div>
+                    <div class="ex-kpi" data-tone="sky">
+                        <i class="bi bi-person-badge ex-kpi-icon"></i>
+                        <div>
+                            <div class="ex-kpi-label">Experts</div>
+                            <div class="ex-kpi-value">@_dir.ExpertCount</div>
+                            <div class="ex-kpi-hint">@Pct(_dir.ExpertCount) % du groupe</div>
+                        </div>
+                    </div>
+                    <div class="ex-kpi" data-tone="violet">
+                        <i class="bi bi-award ex-kpi-icon"></i>
+                        <div>
+                            <div class="ex-kpi-label">Experts seniors</div>
+                            <div class="ex-kpi-value">@_dir.SeniorCount</div>
+                            <div class="ex-kpi-hint">@Pct(_dir.SeniorCount) % du groupe</div>
+                        </div>
+                    </div>
+                    <button type="button" class="ex-kpi" data-tone="amber" @onclick="ShowPendingInvites">
+                        <i class="bi bi-envelope ex-kpi-icon"></i>
+                        <div>
+                            <div class="ex-kpi-label">Invitations en attente</div>
+                            <div class="ex-kpi-value">@_dir.PendingInviteCount</div>
+                            <div class="ex-kpi-hint">Voir les invitations</div>
+                        </div>
+                    </button>
+                    <div class="ex-kpi" data-tone="rose">
+                        <i class="bi bi-slash-circle ex-kpi-icon"></i>
+                        <div>
+                            <div class="ex-kpi-label">Suspendus</div>
+                            <div class="ex-kpi-value">@_dir.SuspendedCount</div>
+                            <div class="ex-kpi-hint">@Pct(_dir.SuspendedCount) % du groupe</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="ex-approve-layout @(_selected is not null ? "has-drawer" : null)">
+                    <div>
+                        <div class="cc-card ex-filter-bar ex-gm-filters mb-3">
+                            <div class="ex-filter-search">
+                                <i class="bi bi-search"></i>
+                                <input class="form-control" placeholder="Rechercher un membre..."
+                                       @bind="_search" @bind:event="oninput" @bind:after="OnFilterChanged" />
+                            </div>
+                            <select class="form-select" @bind="_roleFilter" @bind:after="OnFilterChanged">
+                                <option value="">Tous les rôles</option>
+                                <option value="1">Responsable</option>
+                                <option value="4">Expert senior</option>
+                                <option value="0">Expert</option>
+                                <option value="5">Observateur</option>
+                            </select>
+                            <select class="form-select" @bind="_statusFilter" @bind:after="OnFilterChanged">
+                                <option value="">Tous les statuts</option>
+                                <option value="0">Actif</option>
+                                <option value="1">Suspendu</option>
+                                <option value="invite">Invitation envoyée</option>
+                                <option value="2">Désactivé</option>
+                            </select>
+                            <select class="form-select" @bind="_specFilter" @bind:after="OnFilterChanged">
+                                <option value="">Toutes les spécialités</option>
+                                @foreach (var s in SpecialtyOptions)
+                                {
+                                    <option value="@s">@s</option>
+                                }
+                            </select>
+                            <button type="button" class="cc-btn" @onclick="() => _showAdvanced = !_showAdvanced">
+                                <i class="bi bi-funnel"></i> Filtres
+                            </button>
+                        </div>
+                        @if (_showAdvanced)
                         {
-                            <tr>
-                                <td><strong>@(string.IsNullOrWhiteSpace(m.FullName) ? m.UserId : m.FullName)</strong></td>
-                                <td>@(m.Email ?? "—")</td>
-                                <td>@RoleName(m.MemberRole)</td>
-                                <td>@m.Status</td>
-                            </tr>
+                            <div class="cc-card mb-3">
+                                <label class="form-label">Arrivé après</label>
+                                <input type="date" class="form-control" @bind="_joinedAfter" @bind:after="OnFilterChanged" />
+                                <button type="button" class="cc-btn btn-sm mt-2" @onclick="ResetFilters">Réinitialiser</button>
+                            </div>
                         }
-                    </tbody>
-                </table>
-            </div>
-        }
+
+                        <div class="cc-card ex-teachers-table-wrap">
+                            @if (_filtered.Count == 0)
+                            {
+                                <div class="cc-empty py-4">
+                                    <i class="bi bi-people"></i>
+                                    <p class="mb-1"><strong>@(string.IsNullOrWhiteSpace(_search) && string.IsNullOrWhiteSpace(_statusFilter) ? "Aucun membre dans ce groupe" : "Aucun résultat")</strong></p>
+                                    <p class="small text-muted">Invitez votre premier Expert pour commencer à constituer votre équipe.</p>
+                                    <button type="button" class="cc-btn cc-btn-primary" @onclick="() => _showInvite = true">Inviter un membre</button>
+                                </div>
+                            }
+                            else
+                            {
+                                <table class="cc-table ex-teachers-table ex-gm-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Membre</th>
+                                            <th>Rôle</th>
+                                            <th>Spécialité</th>
+                                            <th>Statut</th>
+                                            <th>Tâches en cours</th>
+                                            <th>Date d’arrivée</th>
+                                            <th></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var row in Paged)
+                                        {
+                                            <tr class="@(_selected?.Id == row.Id ? "is-picked" : null)"
+                                                @onclick="() => SelectAsync(row)" style="cursor:pointer">
+                                                <td>
+                                                    <div class="ex-teacher-id">
+                                                        <span class="ex-teacher-avatar">@Initials(row.FullName)</span>
+                                                        <div>
+                                                            <strong>@(string.IsNullOrWhiteSpace(row.FullName) ? "—" : row.FullName)</strong>
+                                                            <span>@(string.IsNullOrWhiteSpace(row.Email) ? "—" : row.Email)</span>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td><span class="ex-role @RoleClass(row.Role, row.IsManager)">@RoleLabel(row.Role, row.IsManager)</span></td>
+                                                <td>
+                                                    @if (string.IsNullOrWhiteSpace(row.Specialty))
+                                                    {
+                                                        <span class="text-muted">—</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        @foreach (var part in row.Specialty.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+                                                        {
+                                                            <span class="ex-subj">@part</span>
+                                                        }
+                                                    }
+                                                </td>
+                                                <td>
+                                                    <span class="ex-status @StatusClass(row)">
+                                                        <i></i> @StatusLabel(row)
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    @if (row.Kind == "invite")
+                                                    {
+                                                        <span class="text-muted">—</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <button type="button" class="ex-task-n @TaskTone(row.OpenTaskCount)"
+                                                                @onclick:stopPropagation="true"
+                                                                @onclick="() => Nav.NavigateTo("group-admin/tasks")">@row.OpenTaskCount</button>
+                                                    }
+                                                </td>
+                                                <td>@(row.JoinedAtUtc is { } d ? d.ToLocalTime().ToString("d MMMM yyyy", Fr) : "—")</td>
+                                                <td class="text-end" @onclick:stopPropagation="true">
+                                                    @if (row.Kind == "member")
+                                                    {
+                                                        <div class="ex-more">
+                                                            <button type="button" class="ex-more-btn" @onclick="() => _menuId = _menuId == row.Id ? null : row.Id">•••</button>
+                                                            @if (_menuId == row.Id)
+                                                            {
+                                                                <div class="ex-more-menu">
+                                                                    <button type="button" @onclick="() => SelectAsync(row)">Voir le profil</button>
+                                                                    @if (!row.IsManager && !IsSelf(row))
+                                                                    {
+                                                                        <button type="button" @onclick="() => OpenRole(row)">Modifier le rôle</button>
+                                                                        <button type="button" @onclick="() => OpenPerms(row)">Gérer les permissions</button>
+                                                                        <button type="button" @onclick="() => OpenTask(row)">Attribuer une tâche</button>
+                                                                    }
+                                                                    @if (!string.IsNullOrWhiteSpace(row.UserId))
+                                                                    {
+                                                                        <button type="button" @onclick="() => GoMessage(row.UserId)">Envoyer un message</button>
+                                                                    }
+                                                                    <button type="button" @onclick="() => SelectAsync(row)">Voir l’activité</button>
+                                                                    @if (!row.IsManager && !IsSelf(row))
+                                                                    {
+                                                                        <hr class="my-1" />
+                                                                        @if (row.Status == 1)
+                                                                        {
+                                                                            <button type="button" @onclick="() => ReactivateAsync(row)">Réactiver</button>
+                                                                        }
+                                                                        else
+                                                                        {
+                                                                            <button type="button" @onclick="() => OpenSuspend(row)">Suspendre</button>
+                                                                        }
+                                                                        <button type="button" class="text-danger" @onclick="() => OpenRemove(row)">Retirer du groupe</button>
+                                                                    }
+                                                                </div>
+                                                            }
+                                                        </div>
+                                                    }
+                                                    else
+                                                    {
+                                                        <a class="cc-btn btn-sm" href="expert/admissions">Admissions</a>
+                                                    }
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                                <div class="ex-table-foot">
+                                    <span>Affichage de @FromRow à @ToRow sur @_filtered.Count membre@(_filtered.Count > 1 ? "s" : "")</span>
+                                    <div class="ex-table-pager">
+                                        <select class="form-select form-select-sm" @bind="_pageSize" @bind:after="() => _page = 1">
+                                            <option value="10">10 par page</option>
+                                            <option value="20">20 par page</option>
+                                        </select>
+                                        <button type="button" class="cc-btn btn-sm" disabled="@(_page <= 1)" @onclick="() => _page--">‹</button>
+                                        <span>@_page / @PageCount</span>
+                                        <button type="button" class="cc-btn btn-sm" disabled="@(_page >= PageCount)" @onclick="() => _page++">›</button>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+
+                    @if (_selected is MemberRow sel)
+                    {
+                        <aside class="cc-card ex-approve-drawer">
+                            <div class="ex-gm-profile">
+                                <span class="ex-gm-avatar">@Initials(sel.FullName)</span>
+                                <button type="button" class="ex-more-btn" style="position:absolute;right:0;top:0" @onclick="() => _selected = null"><i class="bi bi-x-lg"></i></button>
+                                <strong>@(string.IsNullOrWhiteSpace(sel.FullName) ? "—" : sel.FullName)</strong>
+                                <span class="ex-role @RoleClass(sel.Role, sel.IsManager)">@RoleLabel(sel.Role, sel.IsManager)</span>
+                                <span class="text-muted">@(string.IsNullOrWhiteSpace(sel.Specialty) ? "—" : sel.Specialty)</span>
+                            </div>
+                            @if (sel.Kind == "invite")
+                            {
+                                <p class="small">Invitation en cours. Suivez le dossier dans Admissions.</p>
+                                <a class="cc-btn cc-btn-primary w-100" href="expert/admissions">Ouvrir les admissions</a>
+                            }
+                            else
+                            {
+                                <ul class="ex-gm-contact">
+                                    <li><i class="bi bi-envelope"></i> @(string.IsNullOrWhiteSpace(sel.Email) ? "—" : sel.Email)</li>
+                                    <li><i class="bi bi-telephone"></i> @(string.IsNullOrWhiteSpace(sel.Phone) ? "—" : sel.Phone)</li>
+                                    <li><i class="bi bi-geo-alt"></i> @(_groupCountry ?? "—")</li>
+                                </ul>
+                                <h3 class="h6">À propos</h3>
+                                <dl class="ex-demo-meta">
+                                    <div><dt>Membre depuis</dt><dd>@(sel.JoinedAtUtc is { } j ? j.ToLocalTime().ToString("d MMMM yyyy", Fr) : "—")</dd></div>
+                                    <div><dt>Invité par</dt><dd>@(sel.InvitedByName ?? "—")</dd></div>
+                                    <div><dt>Statut</dt><dd>@StatusLabel(sel)</dd></div>
+                                </dl>
+                                <h3 class="h6">Activité dans le groupe</h3>
+                                @if (_actLoading)
+                                {
+                                    <div class="ex-skel" style="height:4.5rem"></div>
+                                }
+                                else if (_activity is { } act)
+                                {
+                                    <dl class="ex-demo-meta">
+                                        <div><dt>Évaluations réalisées</dt><dd>@act.EvaluationsCompleted</dd></div>
+                                        <div><dt>Enseignants approuvés</dt><dd>@act.TeachersApproved</dd></div>
+                                        <div><dt>Tâches en cours</dt><dd>@act.OpenTasks</dd></div>
+                                        <div><dt>Votes en attente</dt><dd>@act.PendingVotes</dd></div>
+                                    </dl>
+                                }
+                                <h3 class="h6">Responsabilités</h3>
+                                <div class="ex-subj-wrap mb-3">
+                                    @foreach (var r in ResponsibilityLabels(sel.Permissions, sel.Role))
+                                    {
+                                        <span class="ex-subj">@r</span>
+                                    }
+                                    @if (ResponsibilityLabels(sel.Permissions, sel.Role).Count == 0)
+                                    {
+                                        <span class="text-muted">—</span>
+                                    }
+                                </div>
+                                <div class="ex-drawer-actions">
+                                    @if (!string.IsNullOrWhiteSpace(sel.UserId))
+                                    {
+                                        <a class="cc-btn" href="@($"expert/messages?to={sel.UserId}")">Envoyer un message</a>
+                                    }
+                                    @if (!sel.IsManager && !IsSelf(sel))
+                                    {
+                                        <button type="button" class="cc-btn" @onclick="() => OpenTask(sel)">Attribuer une tâche</button>
+                                        <button type="button" class="cc-btn ex-gm-outline" @onclick="() => OpenRole(sel)">Modifier le rôle</button>
+                                        <button type="button" class="cc-btn" @onclick="() => OpenPerms(sel)">Gérer les permissions</button>
+                                        @if (sel.Status == 1)
+                                        {
+                                            <button type="button" class="cc-btn" disabled="@_busy" @onclick="() => ReactivateAsync(sel)">Réactiver</button>
+                                        }
+                                        else
+                                        {
+                                            <button type="button" class="ex-btn-danger" @onclick="() => OpenSuspend(sel)">Suspendre</button>
+                                        }
+                                        <button type="button" class="ex-btn-danger" @onclick="() => OpenRemove(sel)">Retirer du groupe</button>
+                                    }
+                                    @if (sel.IsManager)
+                                    {
+                                        <button type="button" class="cc-btn" @onclick="() => _showTransfer = true">Transférer la responsabilité du groupe</button>
+                                    }
+                                </div>
+                            }
+                        </aside>
+                    }
+                </div>
+            }
+
+            @if (_showInvite)
+            {
+                <div class="ex-gm-modal-back" @onclick="() => _showInvite = false"></div>
+                <div class="cc-card ex-gm-modal">
+                    <h2 class="cc-card-title">Inviter un membre</h2>
+                    <p class="small text-muted">Cela invite un Expert dans le groupe, pas un enseignant.</p>
+                    <div class="row g-2">
+                        <div class="col-md-6"><label class="form-label">E-mail *</label><input class="form-control" type="email" @bind="_invEmail" /></div>
+                        <div class="col-md-3"><label class="form-label">Prénom *</label><input class="form-control" @bind="_invFirst" /></div>
+                        <div class="col-md-3"><label class="form-label">Nom *</label><input class="form-control" @bind="_invLast" /></div>
+                        <div class="col-md-4"><label class="form-label">Téléphone</label><input class="form-control" @bind="_invPhone" /></div>
+                        <div class="col-md-4"><label class="form-label">Spécialité</label><input class="form-control" @bind="_invSpec" /></div>
+                        <div class="col-md-4">
+                            <label class="form-label">Rôle envisagé</label>
+                            <select class="form-select" @bind="_invRole">
+                                <option value="Expert">Expert</option>
+                                <option value="Expert senior">Expert senior</option>
+                                <option value="Observateur">Observateur</option>
+                            </select>
+                        </div>
+                        <div class="col-12"><label class="form-label">Message personnel</label><textarea class="form-control" rows="3" @bind="_invMsg"></textarea></div>
+                    </div>
+                    <div class="d-flex gap-2 mt-3">
+                        <button type="button" class="cc-btn" @onclick="() => _showInvite = false">Annuler</button>
+                        <button type="button" class="cc-btn cc-btn-primary" disabled="@_busy" @onclick="InviteAsync">Envoyer l’invitation</button>
+                    </div>
+                </div>
+            }
+
+            @if (_roleTarget is not null)
+            {
+                <div class="ex-gm-modal-back" @onclick="() => _roleTarget = null"></div>
+                <div class="cc-card ex-gm-modal">
+                    <h2 class="cc-card-title">Modifier le rôle</h2>
+                    <div class="ex-teacher-id mb-3">
+                        <span class="ex-teacher-avatar">@Initials(_roleTarget.FullName)</span>
+                        <div><strong>@_roleTarget.FullName</strong><span>Rôle actuel : @RoleLabel(_roleTarget.Role, false)</span></div>
+                    </div>
+                    <label class="form-label">Nouveau rôle</label>
+                    <select class="form-select" @bind="_newRole">
+                        <option value="0">Expert</option>
+                        <option value="4">Expert senior</option>
+                        <option value="5">Observateur</option>
+                    </select>
+                    <p class="small text-muted mt-2 mb-0">Le transfert vers Responsable n’est pas disponible ici.</p>
+                    <div class="d-flex gap-2 mt-3">
+                        <button type="button" class="cc-btn" @onclick="() => _roleTarget = null">Annuler</button>
+                        <button type="button" class="cc-btn cc-btn-primary" disabled="@_busy" @onclick="SaveRoleAsync">Enregistrer les modifications</button>
+                    </div>
+                </div>
+            }
+
+            @if (_permTarget is not null)
+            {
+                <div class="ex-gm-modal-back" @onclick="() => _permTarget = null"></div>
+                <div class="cc-card ex-gm-modal">
+                    <h2 class="cc-card-title">Gérer les permissions</h2>
+                    <p class="small text-muted">Les permissions du Responsable ne sont pas négociables. Un Observateur ne reçoit pas les droits d’approbation.</p>
+                    @foreach (var cat in Perms.GroupBy(p => p.Cat))
+                    {
+                        <h3 class="h6 mt-3">@cat.Key</h3>
+                        @foreach (var p in cat)
+                        {
+                            var on = _permSet.Contains(p.Key);
+                            <label class="d-flex gap-2 align-items-center small mb-1">
+                                <input type="checkbox" checked="@on" @onchange="e => TogglePerm(p.Key, e.Value is bool b && b)" />
+                                @p.Label
+                            </label>
+                        }
+                    }
+                    <div class="d-flex gap-2 mt-3">
+                        <button type="button" class="cc-btn" @onclick="() => _permTarget = null">Annuler</button>
+                        <button type="button" class="cc-btn cc-btn-primary" disabled="@_busy" @onclick="SavePermsAsync">Enregistrer</button>
+                    </div>
+                </div>
+            }
+
+            @if (_taskTarget is not null)
+            {
+                <div class="ex-gm-modal-back" @onclick="() => _taskTarget = null"></div>
+                <div class="cc-card ex-gm-modal">
+                    <h2 class="cc-card-title">Attribuer une tâche</h2>
+                    <p class="small">Membre : <strong>@_taskTarget.FullName</strong></p>
+                    <label class="form-label">Titre *</label>
+                    <select class="form-select mb-2" @bind="_taskType">
+                        <option value="0">Compléter le profil enseignant</option>
+                        <option value="1">Organiser l’agenda</option>
+                        <option value="2">Publier le profil public</option>
+                    </select>
+                    <label class="form-label">Description</label>
+                    <textarea class="form-control mb-2" rows="3" @bind="_taskNotes"></textarea>
+                    <label class="form-label">Priorité</label>
+                    <select class="form-select mb-2" @bind="_taskPrio">
+                        <option value="normale">Normale</option>
+                        <option value="haute">Haute</option>
+                    </select>
+                    <label class="form-label">Échéance</label>
+                    <input type="datetime-local" class="form-control mb-2" @bind="_taskDue" />
+                    <label class="form-label">Objet lié (enseignant)</label>
+                    <select class="form-select mb-2" @bind="_taskTeacher">
+                        <option value="">— Choisir —</option>
+                        @foreach (var t in _teachers)
+                        {
+                            <option value="@t.TenantId">@t.Label</option>
+                        }
+                    </select>
+                    <p class="small text-muted">Les pièces jointes ne sont pas encore gérées sur les délégations du groupe.</p>
+                    <div class="d-flex gap-2 mt-3">
+                        <button type="button" class="cc-btn" @onclick="() => _taskTarget = null">Annuler</button>
+                        <button type="button" class="cc-btn cc-btn-primary" disabled="@_busy" @onclick="AssignTaskAsync">Attribuer la tâche</button>
+                    </div>
+                </div>
+            }
+
+            @if (_suspendTarget is not null)
+            {
+                <div class="ex-gm-modal-back" @onclick="() => _suspendTarget = null"></div>
+                <div class="cc-card ex-gm-modal">
+                    <h2 class="cc-card-title">Suspendre ce membre ?</h2>
+                    <p>Le membre ne pourra plus effectuer de nouvelles actions dans le groupe jusqu’à sa réactivation. L’historique est conservé.</p>
+                    <label class="form-label">Motif de la suspension *</label>
+                    <textarea class="form-control" rows="3" @bind="_suspendReason"></textarea>
+                    <div class="d-flex gap-2 mt-3">
+                        <button type="button" class="cc-btn" @onclick="() => _suspendTarget = null">Annuler</button>
+                        <button type="button" class="ex-btn-danger" disabled="@_busy" @onclick="SuspendAsync">Suspendre le membre</button>
+                    </div>
+                </div>
+            }
+
+            @if (_removeTarget is not null)
+            {
+                <div class="ex-gm-modal-back" @onclick="() => _removeTarget = null"></div>
+                <div class="cc-card ex-gm-modal">
+                    <h2 class="cc-card-title">Retirer du groupe</h2>
+                    @if (_removeCheck is null)
+                    {
+                        <span class="spinner-border spinner-border-sm"></span>
+                    }
+                    else if (!_removeCheck.CanRemove)
+                    {
+                        <p>Ce membre possède encore :</p>
+                        <ul>
+                            @if (_removeCheck.OpenTasks > 0) { <li>@_removeCheck.OpenTasks tâche(s) ouverte(s)</li> }
+                            @if (_removeCheck.OpenEvaluations > 0) { <li>@_removeCheck.OpenEvaluations évaluation(s) en cours</li> }
+                            @if (_removeCheck.AssignedDemonstrations > 0) { <li>@_removeCheck.AssignedDemonstrations démonstration(s) assignée(s)</li> }
+                            @if (_removeCheck.PendingVotes > 0) { <li>@_removeCheck.PendingVotes vote(s) actif(s)</li> }
+                        </ul>
+                        <p>Veuillez réattribuer ces éléments avant de retirer le membre. Les anciennes évaluations, votes et journaux resteront conservés.</p>
+                        <button type="button" class="cc-btn" @onclick="() => _removeTarget = null">Fermer</button>
+                    }
+                    else
+                    {
+                        <p>Confirmez le retrait de <strong>@_removeTarget.FullName</strong>. L’historique du groupe est conservé.</p>
+                        <div class="d-flex gap-2">
+                            <button type="button" class="cc-btn" @onclick="() => _removeTarget = null">Annuler</button>
+                            <button type="button" class="ex-btn-danger" disabled="@_busy" @onclick="RemoveAsync">Retirer du groupe</button>
+                        </div>
+                    }
+                </div>
+            }
+
+            @if (_showTransfer)
+            {
+                <div class="ex-gm-modal-back" @onclick="() => _showTransfer = false"></div>
+                <div class="cc-card ex-gm-modal">
+                    <h2 class="cc-card-title">Transférer la responsabilité du groupe</h2>
+                    <p>Vous ne pouvez pas vous retirer ni vous suspendre, ni vous attribuuer un successeur depuis « Modifier le rôle ». Le transfert du mandat Responsable est un workflow distinct, effectué par un Super Admin de TutorSphere.</p>
+                    <button type="button" class="cc-btn cc-btn-primary" @onclick="() => _showTransfer = false">Compris</button>
+                </div>
+            }
+        </div>
     </Authorized>
     <NotAuthorized>
-        <div class="cc-card cc-empty"><p>Accès réservé au Responsable.</p></div>
+        <div class="cc-card cc-empty"><p>Accès réservé au Responsable du groupe.</p></div>
     </NotAuthorized>
 </AuthorizeView>
 
 @code {
+    private static readonly CultureInfo Fr = new("fr-FR");
+    private static readonly (string Cat, string Key, string Label)[] Perms =
+    [
+        ("Enseignants", "teachers.view", "Voir les enseignants"),
+        ("Enseignants", "teachers.add", "Ajouter un enseignant"),
+        ("Enseignants", "teachers.evaluate", "Évaluer un enseignant"),
+        ("Enseignants", "teachers.approve", "Approuver un enseignant"),
+        ("Enseignants", "teachers.suspend", "Suspendre un enseignant"),
+        ("Admissions", "admissions.view", "Voir les admissions"),
+        ("Admissions", "admissions.vote", "Participer aux votes"),
+        ("Admissions", "admissions.review", "Examiner une candidature"),
+        ("Démonstrations", "demos.plan", "Planifier"),
+        ("Démonstrations", "demos.evaluate", "Évaluer"),
+        ("Démonstrations", "demos.view", "Consulter"),
+        ("Groupe", "group.members.view", "Voir les membres"),
+        ("Groupe", "group.tasks.assign", "Attribuer des tâches"),
+        ("Groupe", "group.documents.manage", "Gérer les documents")
+    ];
+
     private bool _loading = true;
+    private bool _busy;
+    private bool _actLoading;
+    private bool _showInvite;
+    private bool _showAdvanced;
+    private bool _showTransfer;
     private string? _error;
-    private List<MemberItem> _members = [];
+    private string? _success;
+    private string _meId = "";
+    private string? _groupCountry;
+    private string _search = "";
+    private string _roleFilter = "";
+    private string _statusFilter = "";
+    private string _specFilter = "";
+    private DateTime? _joinedAfter;
+    private int _page = 1;
+    private int _pageSize = 10;
+    private Guid? _menuId;
+    private DirectoryDto _dir = new([], 0, 0, 0, 0, 0, 0);
+    private List<MemberRow> _filtered = [];
+    private MemberRow? _selected;
+    private ActivityDto? _activity;
+    private MemberRow? _roleTarget;
+    private MemberRow? _permTarget;
+    private MemberRow? _taskTarget;
+    private MemberRow? _suspendTarget;
+    private MemberRow? _removeTarget;
+    private RemovalDto? _removeCheck;
+    private readonly HashSet<string> _permSet = new(StringComparer.Ordinal);
+    private int _newRole = 0;
+    private string _suspendReason = "";
+    private string _invEmail = "";
+    private string _invFirst = "";
+    private string _invLast = "";
+    private string _invPhone = "";
+    private string _invSpec = "";
+    private string _invRole = "Expert";
+    private string _invMsg = "";
+    private string _taskType = "0";
+    private string _taskNotes = "";
+    private string _taskPrio = "normale";
+    private string _taskTeacher = "";
+    private DateTime? _taskDue;
+    private List<TeacherItem> _teachers = [];
+
+    private int RosterSize => Math.Max(1, _dir.ActiveCount + _dir.SuspendedCount);
+    private int Pct(int n) => (int)Math.Round(100.0 * n / RosterSize);
+    private int PageCount => Math.Max(1, (int)Math.Ceiling(_filtered.Count / (double)_pageSize));
+    private int FromRow => _filtered.Count == 0 ? 0 : ((_page - 1) * _pageSize) + 1;
+    private int ToRow => Math.Min(_filtered.Count, _page * _pageSize);
+    private IEnumerable<MemberRow> Paged => _filtered.Skip((_page - 1) * _pageSize).Take(_pageSize);
+    private IEnumerable<string> SpecialtyOptions =>
+        _dir.Items.Select(i => i.Specialty).Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s!).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(s => s);
 
     protected override async Task OnInitializedAsync()
     {
         try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
         try
         {
-            _members = await Api.GetAsync<List<MemberItem>>("api/expert/membership/members") ?? [];
+            var ctx = await Api.GetAsync<MeCtx>("api/expert/me-context");
+            _meId = ctx?.UserId ?? Auth.UserId ?? "";
+            var g = await Api.GetAsync<GroupDto>("api/expert/my-group");
+            _groupCountry = string.IsNullOrWhiteSpace(g?.CountryCode) ? "International" : g.CountryCode;
+        }
+        catch { }
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _menuId = null;
+        try
+        {
+            _dir = await Api.GetAsync<DirectoryDto>("api/expert/membership/directory") ?? new([], 0, 0, 0, 0, 0, 0);
+            _teachers = (await Api.GetAsync<List<TeacherItem>>("api/expert/approvals-queue") ?? [])
+                .Concat(await Api.GetAsync<List<TeacherItem>>("api/expert/teacher-directory") ?? [])
+                .GroupBy(t => t.TenantId)
+                .Select(g => g.First())
+                .ToList();
+            if (_selected is not null)
+                _selected = _dir.Items.FirstOrDefault(i => i.Id == _selected.Id);
+            OnFilterChanged();
+            _error = null;
         }
         catch (Exception ex) { _error = ex.Message; }
         finally { _loading = false; }
     }
 
-    private static string RoleName(int role) => role switch
+    private void ShowPendingInvites()
     {
-        1 => "Responsable",
+        _statusFilter = "invite";
+        OnFilterChanged();
+    }
+
+    private void GoMessage(string? userId)
+    {
+        if (!string.IsNullOrWhiteSpace(userId))
+            Nav.NavigateTo($"expert/messages?to={userId}");
+    }
+
+    private void ResetFilters()
+    {
+        _search = _roleFilter = _statusFilter = _specFilter = "";
+        _joinedAfter = null;
+        OnFilterChanged();
+    }
+
+    private void OnFilterChanged()
+    {
+        IEnumerable<MemberRow> q = _dir.Items ?? [];
+        if (!string.IsNullOrWhiteSpace(_search))
+        {
+            var s = _search.Trim();
+            q = q.Where(r => (r.FullName ?? "").Contains(s, StringComparison.OrdinalIgnoreCase)
+                || (r.Email ?? "").Contains(s, StringComparison.OrdinalIgnoreCase)
+                || (r.Specialty ?? "").Contains(s, StringComparison.OrdinalIgnoreCase));
+        }
+        if (_roleFilter == "4")
+            q = q.Where(r => !r.IsManager && r.Role is 2 or 3 or 4);
+        else if (int.TryParse(_roleFilter, out var rf))
+            q = q.Where(r => r.IsManager ? rf == 1 : r.Role == rf);
+        if (_statusFilter == "invite") q = q.Where(r => r.Kind == "invite");
+        else if (int.TryParse(_statusFilter, out var st))
+            q = q.Where(r => r.Kind == "member" && r.Status == st);
+        if (!string.IsNullOrWhiteSpace(_specFilter))
+            q = q.Where(r => (r.Specialty ?? "").Contains(_specFilter, StringComparison.OrdinalIgnoreCase));
+        if (_joinedAfter is DateTime ja)
+            q = q.Where(r => r.JoinedAtUtc is { } d && d.ToLocalTime().Date >= ja.Date);
+        _filtered = q.ToList();
+        if (_page > PageCount) _page = PageCount;
+    }
+
+    private async Task SelectAsync(MemberRow row)
+    {
+        _selected = row;
+        _menuId = null;
+        _activity = null;
+        if (row.Kind != "member" || string.IsNullOrWhiteSpace(row.UserId)) return;
+        _actLoading = true;
+        try { _activity = await Api.GetAsync<ActivityDto>($"api/expert/membership/members/{row.UserId}/activity"); }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _actLoading = false; }
+    }
+
+    private bool IsSelf(MemberRow row) =>
+        !string.IsNullOrWhiteSpace(_meId) && string.Equals(row.UserId, _meId, StringComparison.Ordinal);
+
+    private void OpenRole(MemberRow row)
+    {
+        _roleTarget = row;
+        _newRole = row.Role is 4 or 5 ? row.Role : 0;
+        _menuId = null;
+    }
+
+    private void OpenPerms(MemberRow row)
+    {
+        _permTarget = row;
+        _permSet.Clear();
+        foreach (var p in row.Permissions ?? [])
+            _permSet.Add(p);
+        _menuId = null;
+    }
+
+    private void OpenTask(MemberRow row)
+    {
+        _taskTarget = row;
+        _taskNotes = _taskTeacher = "";
+        _taskType = "0";
+        _taskPrio = "normale";
+        _taskDue = null;
+        _menuId = null;
+    }
+
+    private void OpenSuspend(MemberRow row)
+    {
+        _suspendTarget = row;
+        _suspendReason = "";
+        _menuId = null;
+    }
+
+    private async Task OpenRemove(MemberRow row)
+    {
+        _removeTarget = row;
+        _removeCheck = null;
+        _menuId = null;
+        if (string.IsNullOrWhiteSpace(row.UserId)) return;
+        try { _removeCheck = await Api.GetAsync<RemovalDto>($"api/expert/membership/members/{row.UserId}/removal-check"); }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+
+    private void TogglePerm(string key, bool on)
+    {
+        if (on) _permSet.Add(key);
+        else _permSet.Remove(key);
+    }
+
+    private async Task InviteAsync()
+    {
+        _busy = true;
+        _error = _success = null;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<object>("api/expert/membership/invites", new
+            {
+                email = _invEmail,
+                firstName = _invFirst,
+                lastName = _invLast,
+                phone = NullIfBlank(_invPhone),
+                specialty = NullIfBlank(_invSpec),
+                intendedRole = _invRole,
+                personalMessage = NullIfBlank(_invMsg)
+            });
+            if (result.Error is not null) { _error = result.Error; return; }
+            _success = "Invitation envoyée.";
+            _showInvite = false;
+            _invEmail = _invFirst = _invLast = _invPhone = _invSpec = _invMsg = "";
+            await LoadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task SaveRoleAsync()
+    {
+        if (_roleTarget?.UserId is null) return;
+        _busy = true;
+        try
+        {
+            var r = await Api.PutWithErrorAsync<object>($"api/expert/membership/members/{_roleTarget.UserId}/role", new { role = _newRole });
+            if (r.Error is not null) { _error = r.Error; return; }
+            _success = "Rôle mis à jour.";
+            _roleTarget = null;
+            await LoadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task SavePermsAsync()
+    {
+        if (_permTarget?.UserId is null) return;
+        _busy = true;
+        try
+        {
+            var r = await Api.PutWithErrorAsync<object>($"api/expert/membership/members/{_permTarget.UserId}/permissions", new { permissions = _permSet.ToArray() });
+            if (r.Error is not null) { _error = r.Error; return; }
+            _success = "Permissions enregistrées.";
+            _permTarget = null;
+            await LoadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task AssignTaskAsync()
+    {
+        if (_taskTarget?.UserId is null) return;
+        if (!Guid.TryParse(_taskTeacher, out var tid))
+        {
+            _error = "Choisissez un enseignant (objet lié).";
+            return;
+        }
+        _busy = true;
+        try
+        {
+            var notes = _taskNotes;
+            if (_taskPrio == "haute")
+                notes = string.IsNullOrWhiteSpace(notes) ? "[Priorité : haute]" : $"[Priorité : haute]\n{notes}";
+            DateTime? due = _taskDue.HasValue ? DateTime.SpecifyKind(_taskDue.Value, DateTimeKind.Local).ToUniversalTime() : null;
+            var r = await Api.PostWithErrorAsync<object>("api/group-admin/tasks", new
+            {
+                teacherTenantId = tid,
+                assigneeExpertUserId = _taskTarget.UserId,
+                taskType = int.Parse(_taskType),
+                notes,
+                dueAtUtc = due
+            });
+            if (r.Error is not null) { _error = r.Error; return; }
+            _success = "Tâche attribuée.";
+            _taskTarget = null;
+            await LoadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task SuspendAsync()
+    {
+        if (_suspendTarget?.UserId is null) return;
+        _busy = true;
+        try
+        {
+            var r = await Api.PostWithErrorAsync<object>($"api/expert/membership/members/{_suspendTarget.UserId}/suspend", new { reason = _suspendReason });
+            if (r.Error is not null) { _error = r.Error; return; }
+            _success = "Membre suspendu.";
+            _suspendTarget = null;
+            _selected = null;
+            await LoadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task ReactivateAsync(MemberRow row)
+    {
+        if (row.UserId is null) return;
+        _busy = true;
+        try
+        {
+            var r = await Api.PostWithErrorAsync<object>($"api/expert/membership/members/{row.UserId}/reactivate", new { });
+            if (r.Error is not null) { _error = r.Error; return; }
+            _success = "Membre réactivé.";
+            await LoadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task RemoveAsync()
+    {
+        if (_removeTarget?.UserId is null) return;
+        _busy = true;
+        try
+        {
+            var r = await Api.PostWithErrorAsync<object>($"api/expert/membership/members/{_removeTarget.UserId}/remove", new { });
+            if (r.Error is not null) { _error = r.Error; return; }
+            _success = "Membre retiré du groupe.";
+            _removeTarget = null;
+            _selected = null;
+            await LoadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task ExportCsvAsync()
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("Nom;Email;Rôle;Spécialité;Statut;Tâches;Arrivée");
+        foreach (var r in _filtered)
+        {
+            sb.AppendLine(string.Join(';',
+                Csv(r.FullName), Csv(r.Email), Csv(RoleLabel(r.Role, r.IsManager)), Csv(r.Specialty),
+                Csv(StatusLabel(r)), r.OpenTaskCount, r.JoinedAtUtc?.ToLocalTime().ToString("yyyy-MM-dd") ?? ""));
+        }
+        var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
+        await JS.InvokeVoidAsync("downloadFileFromBase64", "membres-groupe.csv", "text/csv;charset=utf-8", Convert.ToBase64String(bytes));
+    }
+
+    private static List<string> ResponsibilityLabels(List<string>? keys, int role)
+    {
+        var set = (keys ?? []).ToHashSet(StringComparer.Ordinal);
+        if (role == 1)
+            return ["Évaluation enseignants", "Admissions experts", "Démonstrations pédagogiques"];
+        var list = new List<string>();
+        if (set.Contains("teachers.evaluate") || set.Contains("teachers.approve")) list.Add("Évaluation enseignants");
+        if (set.Contains("admissions.vote") || set.Contains("admissions.review")) list.Add("Admissions experts");
+        if (set.Contains("demos.plan") || set.Contains("demos.evaluate")) list.Add("Démonstrations pédagogiques");
+        return list;
+    }
+
+    private static string RoleLabel(int role, bool manager) => manager || role == 1 ? "Responsable" : role switch
+    {
         2 => "Chef discipline",
         3 => "Chef comité",
+        4 => "Expert senior",
+        5 => "Observateur",
         _ => "Expert"
     };
+    private static string RoleClass(int role, bool manager) => manager || role == 1 ? "is-mgr" : role switch
+    {
+        4 or 2 or 3 => "is-senior",
+        5 => "is-obs",
+        _ => "is-exp"
+    };
+    private static string StatusLabel(MemberRow r) => r.Kind == "invite" ? "Invitation envoyée" : r.Status switch
+    {
+        1 => "Suspendu",
+        2 => "Désactivé",
+        _ => "Actif"
+    };
+    private static string StatusClass(MemberRow r) => r.Kind == "invite" ? "is-wait" : r.Status == 1 ? "is-bad" : r.Status == 2 ? "" : "is-ok";
+    private static string TaskTone(int n) => n >= 3 ? "is-hot" : n >= 1 ? "is-ok" : "is-muted";
+    private static string Initials(string? name)
+    {
+        var parts = (name ?? "").Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length >= 2) return $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[^1][0])}";
+        return string.IsNullOrEmpty(name) ? "?" : name[..Math.Min(2, name.Length)].ToUpperInvariant();
+    }
+    private static string? NullIfBlank(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+    private static string Csv(string? s) => $"\"{(s ?? "").Replace("\"", "\"\"")}\"";
 
-    private sealed record MemberItem(
-        Guid Id,
-        Guid ExpertGroupId,
-        string UserId,
-        string Email,
-        string FullName,
-        int Status,
-        int AdmissionMethod,
-        string? Specialty,
-        DateTime? AdmittedAtUtc,
-        int MemberRole = 0);
+    private sealed record DirectoryDto(List<MemberRow> Items, int ActiveCount, int JoinedThisMonth, int ExpertCount, int SeniorCount, int SuspendedCount, int PendingInviteCount);
+    private sealed record MemberRow(Guid Id, string Kind, Guid ExpertGroupId, string? UserId, string Email, string FullName, string? Phone, string? Specialty, int Role, int Status, DateTime? JoinedAtUtc, string? InvitedByUserId, string? InvitedByName, int OpenTaskCount, List<string>? Permissions, bool IsManager, Guid? InviteId = null);
+    private sealed record ActivityDto(int EvaluationsCompleted, int TeachersApproved, int OpenTasks, int PendingVotes);
+    private sealed record RemovalDto(int OpenTasks, int OpenEvaluations, int AssignedDemonstrations, int PendingVotes, bool CanRemove);
+    private sealed record TeacherItem(Guid TenantId, string? SchoolName = null, string? DisplayName = null)
+    {
+        public string Label => string.IsNullOrWhiteSpace(DisplayName) ? (SchoolName ?? "—") : DisplayName;
+    }
+    private sealed record MeCtx(bool IsGroupManager, Guid? GroupId, string? GroupName, string? UserId);
+    private sealed record GroupDto(Guid Id, string Name, string? CountryCode);
 }

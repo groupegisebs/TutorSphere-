@@ -210,7 +210,9 @@ public class ExpertMembershipController(
         }
         catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
     }
-    [Authorize(Roles = UserRoles.Expert)]
+
+    [HttpPost("invites/{inviteId:guid}/vote")]
+    [Authorize(Roles = $"{UserRoles.Expert},{UserRoles.GroupManager}")]
     public async Task<ActionResult<ExpertMembershipInviteDto>> Vote(
         Guid inviteId,
         [FromBody] CastExpertMembershipVoteRequest? request,

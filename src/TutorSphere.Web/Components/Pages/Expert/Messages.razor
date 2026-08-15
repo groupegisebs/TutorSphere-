@@ -147,6 +147,8 @@
 </AuthorizeView>
 
 @code {
+    [SupplyParameterFromQuery(Name = "to")] public string? ToUserId { get; set; }
+
     private bool _isManager;
     private bool _loading = true;
     private bool _searching;
@@ -177,6 +179,11 @@
 
         await LoadConversationsAsync();
         await SearchUsersAsync();
+        if (!string.IsNullOrWhiteSpace(ToUserId))
+        {
+            var named = _conversations.FirstOrDefault(c => c.OtherUserId == ToUserId);
+            await OpenThreadAsync(ToUserId, named?.OtherUserName ?? "Membre");
+        }
     }
 
     private async Task LoadConversationsAsync()
