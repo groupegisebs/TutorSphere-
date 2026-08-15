@@ -317,30 +317,47 @@ public class GroupOfferService(
             ?? offer.FixedPrice
             ?? 0m;
 
-        // Matérialiser l'offre plateforme pour l'agenda / catalogue de l'enseignant.
-        var created = await offerings.CreateForTenantAsync(
-            tenant.Id,
-            new CreateSubscriptionOfferingRequest(
-                Title: offer.Name,
-                Description: offer.ShortDescription ?? offer.FullDescription,
-                Subject: offer.Name,
-                Price: price,
-                Currency: offer.Currency,
-                DurationDays: 30,
-                SessionCount: 4,
-                Frequency: null,
-                Mode: "En ligne",
-                Conditions: null,
-                Schedule: new OfferingScheduleDto(
-                    "mois",
-                    "weekly",
-                    60,
-                    null,
-                    null,
-                    Array.Empty<OfferingScheduleSlotDto>(),
-                    BillingMode: "hourly"),
-                MaxCapacity: request.Capacity is > 0 ? request.Capacity.Value : 20),
-            ct);
+        Guid offeringId;
+        if (request.SubscriptionOfferingId is Guid existingOfferingId)
+        {
+            var existingOffering = db.SubscriptionOfferingsForAnyTenant
+                .FirstOrDefault(o => o.Id == existingOfferingId && o.TenantId == tenant.Id)
+                ?? throw new InvalidOperationException("Offre enseignant introuvable pour ce compte.");
+            existingOffering.Title = offer.Name;
+            existingOffering.Description = offer.ShortDescription ?? offer.FullDescription ?? existingOffering.Description;
+            existingOffering.Subject = string.IsNullOrWhiteSpace(existingOffering.Subject) ? offer.Name : existingOffering.Subject;
+            existingOffering.Price = price;
+            existingOffering.Currency = offer.Currency;
+            existingOffering.UpdatedAt = DateTime.UtcNow;
+            offeringId = existingOffering.Id;
+        }
+        else
+        {
+            var created = await offerings.CreateForTenantAsync(
+                tenant.Id,
+                new CreateSubscriptionOfferingRequest(
+                    Title: offer.Name,
+                    Description: offer.ShortDescription ?? offer.FullDescription,
+                    Subject: offer.Name,
+                    Price: price,
+                    Currency: offer.Currency,
+                    DurationDays: 30,
+                    SessionCount: 4,
+                    Frequency: null,
+                    Mode: "En ligne",
+                    Conditions: null,
+                    Schedule: new OfferingScheduleDto(
+                        "mois",
+                        "weekly",
+                        60,
+                        null,
+                        null,
+                        Array.Empty<OfferingScheduleSlotDto>(),
+                        BillingMode: "hourly"),
+                    MaxCapacity: request.Capacity is > 0 ? request.Capacity.Value : 20),
+                ct);
+            offeringId = created.Id;
+        }
 
         GroupOfferTeacher assignment;
         if (existing is not null)
@@ -351,7 +368,7 @@ public class GroupOfferService(
             assignment.Capacity = request.Capacity;
             assignment.AvailableFrom = DateTime.UtcNow;
             assignment.ApprovedByUserId = managerUserId;
-            assignment.SubscriptionOfferingId = created.Id;
+            assignment.SubscriptionOfferingId = offeringId;
             assignment.UpdatedAt = DateTime.UtcNow;
         }
         else
@@ -365,7 +382,7 @@ public class GroupOfferService(
                 Capacity = request.Capacity,
                 AvailableFrom = DateTime.UtcNow,
                 ApprovedByUserId = managerUserId,
-                SubscriptionOfferingId = created.Id
+                SubscriptionOfferingId = offeringId
             };
             db.Add(assignment);
         }

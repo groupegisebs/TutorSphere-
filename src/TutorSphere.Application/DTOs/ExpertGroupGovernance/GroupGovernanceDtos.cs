@@ -121,7 +121,9 @@ public record GroupOfferTeacherAssignmentDto(
 public record AssignGroupOfferTeacherRequest(
     Guid TeacherTenantId,
     decimal? TeacherPrice = null,
-    int? Capacity = null);
+    int? Capacity = null,
+    /// <summary>Si renseigné, lie cette offre plateforme déjà créée au lieu d’en recréer une.</summary>
+    Guid? SubscriptionOfferingId = null);
 
 public record GroupAdminConversationDto(
     Guid Id,

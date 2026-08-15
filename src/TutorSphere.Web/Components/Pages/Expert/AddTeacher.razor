@@ -150,12 +150,20 @@
                             <div class="col-12">
                                 <label class="form-label">Pays de visibilité du profil</label>
                                 <div class="d-flex flex-wrap gap-2 mb-2">
+                                    @if (_visible.Count == 0)
+                                    {
+                                        <span class="badge text-bg-light border py-2 px-2">🌐 International</span>
+                                    }
                                     @foreach (var code in _visible)
                                     {
                                         var info = CountryCatalog.Find(code);
                                         <span class="badge text-bg-light border py-2 px-2">@(info?.Flag) @(info?.Name ?? code)</span>
                                     }
                                 </div>
+                                @if (_catalogLocked)
+                                {
+                                    <div class="form-text">Définie par l’offre du groupe (portée et pays de marché).</div>
+                                }
                             </div>
                             <div class="col-12">
                                 <div class="form-check">
@@ -169,10 +177,81 @@
                     {
                         <h2 class="cc-card-title mb-3">Matières &amp; niveaux</h2>
                         <div class="row g-3">
-                            <div class="col-md-6">
-                                <label class="form-label">Titre de l’offre <span class="text-danger">*</span></label>
-                                <input class="form-control" @bind="_offerTitle" placeholder="Ex. Français — soutien scolaire" />
+                            <div class="col-12">
+                                <label class="form-label">Offre du groupe <span class="text-danger">*</span></label>
+                                <select class="form-select" @bind="_offerPick" @bind:after="OnCatalogOfferChanged">
+                                    <option value="">— Choisir une offre du catalogue —</option>
+                                    @foreach (var o in SelectableOffers)
+                                    {
+                                        <option value="@o.Id.ToString()">@OfferOptionLabel(o)</option>
+                                    }
+                                    @if (_canManageOffers)
+                                    {
+                                        <option value="new">+ Créer une nouvelle offre…</option>
+                                    }
+                                </select>
+                                <div class="form-text">
+                                    Une offre existante applique son prix et sa visibilité. Sinon, créez-la dans le catalogue du groupe.
+                                </div>
                             </div>
+
+                            @if (_offerPick == "new")
+                            {
+                                <div class="col-md-6">
+                                    <label class="form-label">Nom de l’offre <span class="text-danger">*</span></label>
+                                    <input class="form-control" @bind="_offerTitle" placeholder="Ex. Français — soutien scolaire" />
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Code</label>
+                                    <input class="form-control" @bind="_newOfferCode" placeholder="MAA" />
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Prix recommandé (@_currency)</label>
+                                    <input class="form-control" type="number" min="0" step="0.01" @bind="_price" />
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Portée *</label>
+                                    <select class="form-select" @bind="_newOfferScope">
+                                        <option value="local">Locale (pays du groupe)</option>
+                                        <option value="international">Internationale</option>
+                                    </select>
+                                </div>
+                                @if (_newOfferScope == "international")
+                                {
+                                    <div class="col-md-4">
+                                        <label class="form-label">Pays de marché *</label>
+                                        <CountrySelect Value="@_newOfferMarket" ValueChanged="OnNewMarketChanged" Placeholder="Pays cible" />
+                                    </div>
+                                }
+                                <div class="col-md-4">
+                                    <label class="form-label">Devise</label>
+                                    <input class="form-control" value="@GroupOfferCurrencyRules.FormatCurrencyLabel(NewOfferCurrency)" disabled readonly />
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label">Description courte</label>
+                                    <input class="form-control" @bind="_newOfferShort" />
+                                </div>
+                            }
+                            else if (SelectedCatalogOffer is { } selected)
+                            {
+                                <div class="col-12">
+                                    <div class="ex-offer-recap">
+                                        <strong>@selected.Name</strong>
+                                        @if (!string.IsNullOrWhiteSpace(selected.Code))
+                                        {
+                                            <span class="small text-muted">@selected.Code</span>
+                                        }
+                                        <div>Prix : @(selected.RecommendedPrice?.ToString("N0") ?? "—") @GroupOfferCurrencyRules.FormatCurrencyLabel(selected.Currency)</div>
+                                        <div>Visibilité : @OfferScopeLabel(selected)</div>
+                                        <div class="form-text mb-0">Prix et visibilité du catalogue — non modifiables ici.</div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Titre de l’offre</label>
+                                    <input class="form-control" value="@_offerTitle" disabled readonly />
+                                </div>
+                            }
+
                             <div class="col-md-6">
                                 <label class="form-label">Matière</label>
                                 <input class="form-control" @bind="_offerSubject" placeholder="Mathématiques, Français…" />
@@ -216,9 +295,14 @@
                             <div class="col-md-4">
                                 <label class="form-label">@(_billing == "monthly" ? "Taux mensuel" : "Taux horaire") <span class="text-danger">*</span></label>
                                 <div class="input-group">
-                                    <input type="number" min="0" step="0.01" class="form-control" @bind="_price" />
+                                    <input type="number" min="0" step="0.01" class="form-control" @bind="_price"
+                                           disabled="@_catalogLocked" readonly="@_catalogLocked" />
                                     <span class="input-group-text">@_currency @(_billing == "monthly" ? "/ mois" : "/ h")</span>
                                 </div>
+                                @if (_catalogLocked)
+                                {
+                                    <div class="form-text">Prix défini par l’offre du groupe.</div>
+                                }
                             </div>
                             @if (_billing == "monthly")
                             {
@@ -556,6 +640,15 @@
     private string? _offerSubject;
     private string _offerLevel = "Tous niveaux";
     private string _offerMode = "En ligne";
+    private string _offerPick = "";
+    private Guid? _selectedGroupOfferId;
+    private bool _catalogLocked;
+    private bool _canManageOffers;
+    private List<CatalogOffer> _groupOffers = [];
+    private string? _newOfferCode;
+    private string _newOfferScope = "local";
+    private string? _newOfferMarket;
+    private string? _newOfferShort;
     private string _billing = "hourly";
     private decimal _price;
     private decimal _hoursPerWeek = 2;
@@ -604,6 +697,7 @@
 
     private string HintText => _step switch
     {
+        3 => "Choisissez une offre du catalogue (prix et visibilité) ou créez-en une nouvelle.",
         4 => "Définir plusieurs plages par jour permet à l’enseignant d’avoir des pauses entre ses cours.",
         6 => "Cette vue est celle des parents : pas d’e-mail, pas de téléphone, uniquement ce qui sera public.",
         _ => "Une fois créé, l’enseignant reçoit un e-mail pour accéder à son espace et compléter sa fiche."
@@ -618,6 +712,77 @@
                 .Select(d => $"{d[..3]} {string.Join(", ", _avail[d].Ranges.Select(r => $"{r.Start}–{r.End}"))}");
             return parts.Any() ? string.Join(" · ", parts) : "Aucune";
         }
+    }
+
+    private PublicTutorDetailDto BuildPublicPreview()
+    {
+        var fullName = $"{_firstName} {_lastName}".Trim();
+        if (string.IsNullOrWhiteSpace(fullName))
+            fullName = "Enseignant";
+        var countryName = CountryCatalog.Find(_country)?.Name ?? (string.IsNullOrWhiteSpace(_country) ? null : _country);
+        var subject = string.IsNullOrWhiteSpace(_offerSubject) ? null : _offerSubject.Trim();
+        var subjects = new List<string>();
+        if (!string.IsNullOrWhiteSpace(subject))
+            subjects.Add(subject);
+        var levels = string.IsNullOrWhiteSpace(_offerLevel) ? Array.Empty<string>() : new[] { _offerLevel };
+        var availability = Days
+            .Where(d => _avail[d].Enabled)
+            .SelectMany(d => _avail[d].Ranges.Select(r => $"{d}-{r.Start}–{r.End}"))
+            .ToList();
+        var sessionMinutes = _sessionMin > 0 ? _sessionMin : 60;
+        var windows = FlattenAvailabilities().Sum(r => CountWindows(r.StartTime, r.EndTime, sessionMinutes));
+        var monthly = _billing == "monthly";
+        var sessionsPerWeek = monthly
+            ? Math.Max(1, (int)Math.Ceiling((double)_hoursPerWeek * 60 / sessionMinutes))
+            : Math.Max(1, windows);
+        var sessionCount = Math.Max(1, sessionsPerWeek * 4);
+        var frequency = monthly
+            ? $"{_hoursPerWeek:0.##} h/semaine · forfait mensuel"
+            : $"Taux horaire · {sessionMinutes} min";
+        var offerTitle = string.IsNullOrWhiteSpace(_offerTitle) ? (subject ?? "Offre") : _offerTitle.Trim();
+        var bio = string.IsNullOrWhiteSpace(_presentation) ? _inviteMessage : _presentation;
+        var offering = new PublicOfferingDto(
+            Guid.Empty,
+            offerTitle,
+            string.IsNullOrWhiteSpace(_inviteMessage) ? _presentation : _inviteMessage,
+            subject,
+            _price,
+            string.IsNullOrWhiteSpace(_currency) ? "XAF" : _currency,
+            monthly ? 30 : 7,
+            sessionCount,
+            frequency,
+            string.IsNullOrWhiteSpace(_offerMode) ? "En ligne" : _offerMode,
+            AvailabilitySummary == "Aucune" ? null : AvailabilitySummary,
+            availability);
+        return new PublicTutorDetailDto(
+            Guid.Empty,
+            fullName,
+            string.IsNullOrWhiteSpace(_slug) ? "enseignant" : _slug,
+            bio,
+            string.IsNullOrWhiteSpace(_city) ? null : _city,
+            countryName,
+            _language,
+            string.IsNullOrWhiteSpace(_currency) ? "XAF" : _currency,
+            _publishPublic,
+            null,
+            _firstName,
+            _lastName,
+            fullName,
+            _photoDataUrl,
+            null,
+            "#2563eb",
+            "#1d4ed8",
+            bio,
+            0,
+            monthly ? 0 : _price,
+            _publishPublic ? "Disponible" : "Brouillon",
+            Array.Empty<PublicCredentialDto>(),
+            Array.Empty<PublicCredentialDto>(),
+            subjects,
+            levels,
+            availability,
+            [offering],
+            string.IsNullOrWhiteSpace(_schoolName) ? null : _schoolName);
     }
 
     private bool SlugOk => !string.IsNullOrWhiteSpace(_slug)
@@ -637,6 +802,23 @@
         }
         catch { }
         _groupLoaded = true;
+        try
+        {
+            var ctx = await Api.GetAsync<MeCtx>("api/expert/me-context");
+            _canManageOffers = ctx?.IsGroupManager == true
+                               || Auth.IsInRole("GroupManager")
+                               || Auth.IsActingAsGroupAdmin;
+        }
+        catch
+        {
+            _canManageOffers = Auth.IsInRole("GroupManager") || Auth.IsActingAsGroupAdmin;
+        }
+        try
+        {
+            var catalog = await Api.GetAsync<OfferCatalog>("api/expert/group-offers");
+            _groupOffers = catalog?.Offers?.Where(o => o.Status is not (4 or 5)).ToList() ?? [];
+        }
+        catch { }
         try
         {
             var q = await Api.GetAsync<List<QueuePeek>>("api/expert/approvals-queue") ?? [];
@@ -676,7 +858,17 @@
         }
         else if (_step == 3)
         {
-            if (string.IsNullOrWhiteSpace(_offerTitle))
+            if (_offerPick == "new")
+            {
+                if (!await EnsureNewCatalogOfferAsync())
+                    return;
+            }
+            else if (_selectedGroupOfferId is null)
+            {
+                _error = "Sélectionnez une offre du groupe ou créez-en une nouvelle.";
+                return;
+            }
+            else if (string.IsNullOrWhiteSpace(_offerTitle))
             {
                 _error = "Indiquez le titre de l’offre (matière / cours).";
                 return;
@@ -788,14 +980,26 @@
                     presentation = _presentation,
                     description = string.IsNullOrWhiteSpace(schoolNotes) ? null : schoolNotes
                 });
-                if (_photo is not null)
+                if (_photoBytes is { Length: > 0 })
                 {
-                    await using var stream = _photo.OpenReadStream(2 * 1024 * 1024);
                     using var content = new MultipartFormDataContent();
-                    var sc = new StreamContent(stream);
-                    sc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(_photo.ContentType ?? "image/jpeg");
-                    content.Add(sc, "file", _photo.Name);
+                    var sc = new ByteArrayContent(_photoBytes);
+                    sc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(_photoContentType ?? "image/jpeg");
+                    content.Add(sc, "file", _photoName ?? "photo.jpg");
                     await Api.PostMultipartAsync<PhotoPatch>($"api/expert/teachers/{_created.TenantId}/photo", content);
+                }
+                if (_selectedGroupOfferId is Guid groupOfferId)
+                {
+                    var assign = await Api.PostWithErrorAsync<AssignResult>(
+                        $"api/expert/group-offers/{groupOfferId}/teachers",
+                        new
+                        {
+                            teacherTenantId = _created.TenantId,
+                            teacherPrice = _price,
+                            subscriptionOfferingId = _created.OfferingId
+                        });
+                    if (assign.Error is not null)
+                        _error = string.IsNullOrWhiteSpace(_error) ? assign.Error : _error;
                 }
                 if (_publishPublic && !_created.IsPublicProfile)
                 {
@@ -818,7 +1022,7 @@
         finally { _busy = false; }
     }
 
-    private void OnPhotoSelected(InputFileChangeEventArgs e)
+    private async Task OnPhotoSelected(InputFileChangeEventArgs e)
     {
         var file = e.File;
         if (file is null) return;
@@ -826,12 +1030,20 @@
         {
             _error = "Photo trop volumineuse (max. 2 Mo).";
             _photo = null;
+            _photoBytes = null;
+            _photoDataUrl = null;
             _photoName = null;
             return;
         }
         _error = null;
         _photo = file;
         _photoName = file.Name;
+        _photoContentType = string.IsNullOrWhiteSpace(file.ContentType) ? "image/jpeg" : file.ContentType;
+        await using var stream = file.OpenReadStream(2 * 1024 * 1024);
+        using var ms = new MemoryStream();
+        await stream.CopyToAsync(ms);
+        _photoBytes = ms.ToArray();
+        _photoDataUrl = $"data:{_photoContentType};base64,{Convert.ToBase64String(_photoBytes)}";
     }
 
     private async Task OnNameChanged()
