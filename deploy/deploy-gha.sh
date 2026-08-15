@@ -245,15 +245,17 @@ echo "Build images Docker..."
 compose build --pull
 
 echo "Démarrage conteneurs..."
-# --no-deps : ne pas bloquer sur depends_on: service_healthy (API peut migrer ~1 min).
+# Démarrer api puis web séparément : --no-deps est ignoré si les deux services
+# sont listés ensemble (web.depends_on condition: service_healthy).
 # Le healthcheck HTTP ci-dessous attend /health et dump les logs en cas d'échec.
-if ! compose up -d --no-deps --remove-orphans api web; then
-  echo "::error::docker compose up a échoué"
-  compose logs --tail=80 api web 2>/dev/null || true
+if ! compose up -d --no-deps --remove-orphans api; then
+  echo "::error::docker compose up api a échoué"
+  compose logs --tail=80 api 2>/dev/null || true
   docker logs tutorsphere-api --tail=80 2>/dev/null || true
   docker inspect tutorsphere-api --format '{{.State.Status}} {{.State.ExitCode}} {{.State.Error}}' 2>/dev/null || true
   exit 1
 fi
+compose up -d --no-deps web || true
 
 compose ps
 REMOTE_DEPLOY
