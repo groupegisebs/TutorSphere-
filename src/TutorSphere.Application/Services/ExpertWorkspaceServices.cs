@@ -1,5 +1,6 @@
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.ExpertGroupGovernance;
+using TutorSphere.Application.DTOs.Lessons;
 using TutorSphere.Domain.Entities;
 using TutorSphere.Domain.Enums;
 
@@ -116,11 +117,16 @@ public interface IExpertWorkspaceService
         Guid id, string expertUserId, string? payloadJson, CancellationToken ct = default);
     Task<ExpertWorkspaceItemDto> CompleteAsync(
         Guid id, string expertUserId, CompleteExpertWorkspaceItemRequest request, CancellationToken ct = default);
+    Task<LessonDto> GetDemonstrationClassroomAsync(Guid lessonId, string expertUserId, CancellationToken ct = default);
 }
 
 public class ExpertWorkspaceService(
     IApplicationDbContext db,
-    IExpertGovernanceAuditService audit) : IExpertWorkspaceService
+    IExpertGovernanceAuditService audit,
+    IEmailService email,
+    IUserContactLookup contacts,
+    IAppUrlProvider urls,
+    IRealTimeMessaging realtime) : IExpertWorkspaceService
 {
     public Task<IReadOnlyList<ExpertWorkspaceItemDto>> ListAsync(
         string expertUserId, ExpertWorkspaceItemType type, CancellationToken ct = default)
@@ -149,6 +155,16 @@ public class ExpertWorkspaceService(
         if (!string.IsNullOrWhiteSpace(request.AssignedToUserId))
             EnsureMember(groupId, request.AssignedToUserId);
 
+        if (request.ItemType == ExpertWorkspaceItemType.Demonstration)
+        {
+            var preview = DemonstrationPayloadJson.Parse(request.PayloadJson);
+            if (preview.EvaluatorUserIds.Count == 0)
+                throw new InvalidOperationException(
+                    "Invitez au moins un expert du groupe à participer à la démonstration.");
+            foreach (var evaluatorId in preview.EvaluatorUserIds)
+                EnsureMember(groupId, evaluatorId);
+        }
+
         var item = new ExpertWorkspaceItem
         {
             ExpertGroupId = groupId,
@@ -163,6 +179,9 @@ public class ExpertWorkspaceService(
         };
         db.Add(item);
         await db.SaveChangesAsync(ct);
+
+        if (item.ItemType == ExpertWorkspaceItemType.Demonstration)
+            await ProvisionDemonstrationSessionAsync(item, expertUserId, ct);
 
         await audit.RecordAsync(
             ExpertGovernanceEventType.WorkspaceItemCreated,
@@ -193,6 +212,7 @@ public class ExpertWorkspaceService(
         }
         item.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
+        await NotifyDemonstrationStartedAsync(item, ct);
         return Map([item]).First();
     }
 
@@ -206,6 +226,37 @@ public class ExpertWorkspaceService(
         item.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
         return Map([item]).First();
+    }
+
+    public async Task<LessonDto> GetDemonstrationClassroomAsync(Guid lessonId, string expertUserId, CancellationToken ct = default)
+    {
+        var groupId = RequireGroupId(expertUserId);
+        var item = FindDemonstrationByLesson(groupId, lessonId)
+            ?? throw new InvalidOperationException("Séance de démonstration introuvable.");
+
+        var payload = DemonstrationPayloadJson.Parse(item.PayloadJson);
+        var isEvaluator = payload.EvaluatorUserIds.Contains(expertUserId, StringComparer.Ordinal);
+        var isCreator = string.Equals(item.CreatedByUserId, expertUserId, StringComparison.Ordinal);
+        if (!isEvaluator && !isCreator)
+            throw new InvalidOperationException("Vous n'êtes pas invité à cette démonstration.");
+
+        if (isEvaluator)
+        {
+            var inv = payload.Invitations.FirstOrDefault(i =>
+                string.Equals(i.UserId, expertUserId, StringComparison.Ordinal));
+            if (inv is not null && inv.Status == 0)
+            {
+                inv.Status = 1;
+                inv.RespondedAtUtc = DateTime.UtcNow;
+                item.PayloadJson = PersistPayload(payload);
+                item.UpdatedAt = DateTime.UtcNow;
+                await db.SaveChangesAsync(ct);
+            }
+        }
+
+        var lesson = db.LessonsForAnyTenant.FirstOrDefault(l => l.Id == lessonId)
+            ?? throw new InvalidOperationException("La salle de cours n'est plus disponible.");
+        return MapLesson(lesson);
     }
 
     public async Task<ExpertWorkspaceItemDto> CompleteAsync(
@@ -314,9 +365,182 @@ public class ExpertWorkspaceService(
     private static string PersistPayload(DemonstrationPayload payload)
     {
         var json = DemonstrationPayloadJson.Serialize(payload);
-        if (json.Length > 8000)
+        if (json.Length > 32000)
             throw new InvalidOperationException("Le compte rendu ou la grille dépasse la taille autorisée.");
         return json;
+    }
+
+    private async Task ProvisionDemonstrationSessionAsync(
+        ExpertWorkspaceItem item, string actorUserId, CancellationToken ct)
+    {
+        var payload = DemonstrationPayloadJson.Parse(item.PayloadJson);
+        if (payload.EvaluatorUserIds.Count == 0)
+            throw new InvalidOperationException("Invitez au moins un expert du groupe à participer à la démonstration.");
+
+        item.ScheduledAtUtc ??= DateTime.UtcNow.AddHours(1);
+        var start = item.ScheduledAtUtc.Value;
+        var end = start.AddMinutes(payload.DurationMinutes > 0 ? payload.DurationMinutes : 45);
+        var teacher = item.RelatedTeacherTenantId is Guid tid
+            ? db.Tenants.FirstOrDefault(t => t.Id == tid)
+            : null;
+        var teacherName = teacher?.Name ?? "Enseignant";
+        var subject = string.IsNullOrWhiteSpace(payload.Subject) ? item.Title : payload.Subject.Trim();
+
+        if (teacher is not null && payload.LessonId is null)
+        {
+            var lesson = new Lesson
+            {
+                TenantId = teacher.Id,
+                Title = item.Title,
+                Description = string.IsNullOrWhiteSpace(payload.Topic)
+                    ? "Démonstration pédagogique — évaluation par le groupe."
+                    : payload.Topic.Trim(),
+                Subject = subject,
+                StartTime = start,
+                EndTime = end,
+                Mode = IsDistant(payload.Location) ? LessonMode.Online
+                    : string.Equals(payload.Location, "Hybride", StringComparison.OrdinalIgnoreCase)
+                      || (payload.Location?.StartsWith("Hybride", StringComparison.OrdinalIgnoreCase) ?? false)
+                        ? LessonMode.Hybrid
+                        : LessonMode.InPerson,
+                Location = payload.Location,
+                SessionNotes = "demonstration",
+                MaxStudents = Math.Max(payload.EvaluatorUserIds.Count, 1)
+            };
+            db.Add(lesson);
+            await db.SaveChangesAsync(ct);
+            payload.LessonId = lesson.Id;
+            var web = urls.WebBaseUrl.TrimEnd('/');
+            lesson.MeetingUrl = $"{web}/expert/classroom/{lesson.Id}";
+            await db.SaveChangesAsync(ct);
+        }
+
+        var now = DateTime.UtcNow;
+        payload.Invitations = [];
+        foreach (var userId in payload.EvaluatorUserIds)
+        {
+            var contact = await contacts.GetAsync(userId, ct);
+            payload.Invitations.Add(new DemonstrationInvitation
+            {
+                UserId = userId,
+                Name = contact?.DisplayName,
+                Email = contact?.Email,
+                Status = 0,
+                InvitedAtUtc = now
+            });
+
+            if (contact is null) continue;
+            try
+            {
+                await email.SendLessonScheduledAsync(
+                    contact.Value.Email,
+                    contact.Value.DisplayName,
+                    teacherName,
+                    subject,
+                    start,
+                    ct);
+            }
+            catch
+            {
+                // L'invitation in-app reste disponible même si l'e-mail échoue.
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(teacher?.OwnerUserId))
+        {
+            var tutorContact = await contacts.GetAsync(teacher.OwnerUserId, ct);
+            if (tutorContact is not null)
+            {
+                try
+                {
+                    await email.SendLessonScheduledAsync(
+                        tutorContact.Value.Email,
+                        tutorContact.Value.DisplayName,
+                        teacherName,
+                        subject,
+                        start,
+                        ct);
+                }
+                catch { /* invitation calendrier déjà créée */ }
+            }
+        }
+
+        item.PayloadJson = PersistPayload(payload);
+        await db.SaveChangesAsync(ct);
+        _ = actorUserId;
+    }
+
+    private async Task NotifyDemonstrationStartedAsync(ExpertWorkspaceItem item, CancellationToken ct)
+    {
+        if (item.ItemType != ExpertWorkspaceItemType.Demonstration)
+            return;
+
+        var payload = DemonstrationPayloadJson.Parse(item.PayloadJson);
+        if (payload.LessonId is not Guid lessonId)
+            return;
+
+        var recipients = new HashSet<string>(payload.EvaluatorUserIds, StringComparer.Ordinal);
+        if (item.RelatedTeacherTenantId is Guid tid)
+        {
+            var owner = db.Tenants.Where(t => t.Id == tid).Select(t => t.OwnerUserId).FirstOrDefault();
+            if (!string.IsNullOrWhiteSpace(owner))
+                recipients.Add(owner);
+        }
+
+        if (recipients.Count == 0) return;
+        var teacherName = item.RelatedTeacherTenantId is Guid t2
+            ? db.Tenants.Where(t => t.Id == t2).Select(t => t.Name).FirstOrDefault() ?? "Enseignant"
+            : "Enseignant";
+        await realtime.NotifyLessonStartedAsync(
+            recipients,
+            new LessonStartedNotificationDto(
+                lessonId,
+                item.Title,
+                payload.Subject,
+                teacherName,
+                DateTime.UtcNow),
+            ct);
+    }
+
+    private ExpertWorkspaceItem? FindDemonstrationByLesson(Guid groupId, Guid lessonId)
+    {
+        var token = lessonId.ToString();
+        return db.ExpertWorkspaceItems
+            .Where(i => i.ExpertGroupId == groupId && i.ItemType == ExpertWorkspaceItemType.Demonstration)
+            .AsEnumerable()
+            .FirstOrDefault(i =>
+                i.PayloadJson is not null
+                && i.PayloadJson.Contains(token, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static LessonDto MapLesson(Lesson lesson) =>
+        new(
+            lesson.Id,
+            lesson.Title,
+            lesson.Description,
+            lesson.Subject,
+            lesson.StartTime,
+            lesson.EndTime,
+            lesson.Mode.ToString(),
+            lesson.Location,
+            lesson.MeetingUrl,
+            lesson.SessionNotes,
+            lesson.CreatedAt,
+            lesson.UpdatedAt,
+            lesson.SettlementStatus.ToString(),
+            lesson.CancelledAt,
+            lesson.SessionCounted,
+            lesson.TutorLiable,
+            lesson.TutorLiabilityResolution,
+            lesson.MaxStudents);
+
+    private static bool IsDistant(string? location)
+    {
+        if (string.IsNullOrWhiteSpace(location)) return true;
+        var loc = location.Trim();
+        return loc.Equals("Distant", StringComparison.OrdinalIgnoreCase)
+               || loc.Equals("Distance", StringComparison.OrdinalIgnoreCase)
+               || loc.Equals("En ligne", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string Truncate(string value, int max) =>

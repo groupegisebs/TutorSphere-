@@ -12,12 +12,26 @@ public sealed class DemonstrationPayload
     public int DurationMinutes { get; set; } = 45;
     public string? Location { get; set; }
     public List<string> EvaluatorUserIds { get; set; } = [];
+    /// <summary>Séance live (même salle que les cours enseignant–élève).</summary>
+    public Guid? LessonId { get; set; }
+    public List<DemonstrationInvitation> Invitations { get; set; } = [];
     /// <summary>1 Démarrage, 2 Présentation, 3 Évaluation, 4 Compte rendu, 5 Décision finale.</summary>
     public int Step { get; set; } = 1;
     public DateTime? SessionOpenedAtUtc { get; set; }
     public List<DemonstrationScoreSheet> Sheets { get; set; } = [];
     public string? ReportText { get; set; }
     public int Recommendation { get; set; }
+}
+
+public sealed class DemonstrationInvitation
+{
+    public string UserId { get; set; } = string.Empty;
+    public string? Name { get; set; }
+    public string? Email { get; set; }
+    /// <summary>0 invitée · 1 acceptée · 2 refusée.</summary>
+    public int Status { get; set; }
+    public DateTime InvitedAtUtc { get; set; }
+    public DateTime? RespondedAtUtc { get; set; }
 }
 
 public sealed class DemonstrationScoreSheet

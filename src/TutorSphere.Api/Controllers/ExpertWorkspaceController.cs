@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TutorSphere.Application.DTOs.ExpertGroupGovernance;
+using TutorSphere.Application.DTOs.Lessons;
 using TutorSphere.Application.Services;
 using TutorSphere.Domain.Enums;
 
@@ -56,6 +57,14 @@ public class ExpertWorkspaceController : ControllerBase
     {
         if (UserId is null) return Unauthorized();
         try { return Ok(await _workspace.UpdatePayloadAsync(id, UserId, request?.PayloadJson, ct)); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    [HttpGet("classroom/{lessonId:guid}")]
+    public async Task<ActionResult<LessonDto>> GetClassroom(Guid lessonId, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        try { return Ok(await _workspace.GetDemonstrationClassroomAsync(lessonId, UserId, ct)); }
         catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
     }
 

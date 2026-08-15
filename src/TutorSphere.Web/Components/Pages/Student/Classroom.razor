@@ -51,7 +51,7 @@
         </div>
 
         <div class="cr-pro-header-right">
-            <a class="cr-pro-link" href="/student/courses">@L["Nav_Courses"] <i class="bi bi-box-arrow-up-right"></i></a>
+            <a class="cr-pro-link" href="@(Navigation.ToBaseRelativePath(Navigation.Uri).StartsWith("expert/", StringComparison.OrdinalIgnoreCase) ? "/expert/demonstrations" : "/student/courses")">@L["Nav_Courses"] <i class="bi bi-box-arrow-up-right"></i></a>
             <button type="button" class="cr-pro-icon-btn" title='@L["Nav_Settings"]' @onclick='() => PushToast(L["ClassroomPro_SettingsSoon"])'>
                 <i class="bi bi-gear"></i>
             </button>
@@ -758,8 +758,17 @@
         {
             if (Guid.TryParse(LessonId, out var id))
             {
-                var lessons = await Api.GetAsync<List<LessonDto>>("api/students/me/lessons") ?? [];
-                dto = lessons.FirstOrDefault(l => l.Id == id);
+                try
+                {
+                    var lessons = await Api.GetAsync<List<LessonDto>>("api/students/me/lessons") ?? [];
+                    dto = lessons.FirstOrDefault(l => l.Id == id);
+                }
+                catch { /* portail élève indisponible — essai séance expert */ }
+                if (dto is null)
+                {
+                    try { dto = await Api.GetAsync<LessonDto>($"api/expert/classroom/{id}"); }
+                    catch { /* keep query defaults */ }
+                }
             }
         }
         catch { /* keep query defaults */ }
@@ -1321,16 +1330,21 @@
         return h > 0 ? $"{h}:{m:D2}:{sec:D2}" : $"{m:D2}:{sec:D2}";
     }
 
+    private string LeaveHref =>
+        Navigation.ToBaseRelativePath(Navigation.Uri).StartsWith("expert/", StringComparison.OrdinalIgnoreCase)
+            ? "/expert/demonstrations"
+            : "/student/courses";
+
     private async Task GoBack()
     {
         await StopLocalMediaAsync();
-        Navigation.NavigateTo("/student/courses");
+        Navigation.NavigateTo(LeaveHref);
     }
 
     private async Task EndSession()
     {
         await StopLocalMediaAsync();
-        Navigation.NavigateTo("/student/courses");
+        Navigation.NavigateTo(LeaveHref);
     }
 
     private async Task StartLocalMediaAsync()

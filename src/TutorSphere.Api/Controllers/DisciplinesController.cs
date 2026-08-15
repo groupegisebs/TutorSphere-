@@ -14,9 +14,12 @@ namespace TutorSphere.Api.Controllers;
 [ApiController]
 [Route("api/expert/disciplines")]
 [Authorize(Roles = $"{UserRoles.Expert},{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
-public class DisciplinesController(IExpertDisciplineService disciplines) : ControllerBase
+public class DisciplinesController(
+    IExpertDisciplineService disciplines,
+    IGroupAdminAccessService groupAccess) : ControllerBase
 {
     private string? UserId => User.FindFirstValue(ClaimTypes.NameIdentifier);
+    private Guid? ActAsGroupId => GroupAdminActAs.ReadGroupId(Request);
 
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<DisciplineDto>>> List(CancellationToken ct)
@@ -24,7 +27,8 @@ public class DisciplinesController(IExpertDisciplineService disciplines) : Contr
         if (UserId is null) return Unauthorized();
         try
         {
-            return Ok(await disciplines.ListForExpertAsync(UserId, ct));
+            var managed = await groupAccess.ResolveManagedGroupAsync(User, ActAsGroupId, ct);
+            return Ok(await disciplines.ListForExpertAsync(UserId, ct, managed?.Id));
         }
         catch (InvalidOperationException ex)
         {

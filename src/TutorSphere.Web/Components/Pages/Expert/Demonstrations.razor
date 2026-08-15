@@ -80,7 +80,7 @@
                                         <option value="@s">@s</option>
                                     }
                                 </optgroup>
-                                <optgroup label="Autres matières du groupe">
+                                <optgroup label="Matières du groupe">
                                     @foreach (var s in GroupSubjectNames.Where(n => !AssignedSubjectNames.Contains(n, StringComparer.OrdinalIgnoreCase)))
                                     {
                                         <option value="@s">@s</option>
@@ -98,14 +98,16 @@
                         @if (!GroupSubjectNames.Any())
                         {
                             <div class="form-text">
-                                Aucune matière dans le groupe.
-                                <a href="expert/disciplines">Définir les disciplines</a>
+                                Aucune matière chargée.
+                                <a href="expert/disciplines">Disciplines</a>
+                                ·
+                                <a href="expert/offers">Offres du groupe</a>
                             </div>
                         }
                     </div>
                     <div class="col-md-3">
                         <label class="form-label">Niveau</label>
-                        <select class="form-select" @bind="_planLevel" disabled="@(string.IsNullOrWhiteSpace(_planSubject) || !PlanLevelOptions.Any())">
+                        <select class="form-select" @bind="_planLevel">
                             <option value="">— Choisir —</option>
                             @foreach (var lv in PlanLevelOptions)
                             {
@@ -129,14 +131,28 @@
                         <label class="form-label">Date et heure</label>
                         <input type="datetime-local" class="form-control" @bind="_planAt" />
                     </div>
-                    <div class="col-md-6">
-                        <label class="form-label">Lieu / salle</label>
-                        <input class="form-control" @bind="_planLocation" placeholder="Salle 3 ou lien de session" />
+                    <div class="col-md-3">
+                        <label class="form-label">Lieu *</label>
+                        <select class="form-select" @bind="_planPlace">
+                            <option value="distant">Distant</option>
+                            <option value="presentiel">Présentiel</option>
+                            <option value="hybride">Hybride</option>
+                        </select>
                     </div>
+                    @if (_planPlace != "distant")
+                    {
+                        <div class="col-md-3">
+                            <label class="form-label">Salle (optionnel)</label>
+                            <input class="form-control" @bind="_planRoom" placeholder="Salle 3" />
+                        </div>
+                    }
                     <div class="col-12">
-                        <label class="form-label">Évaluateurs</label>
+                        <label class="form-label">Évaluateurs <span class="text-danger">*</span></label>
+                        <div class="form-text mb-2">
+                            Cochez les experts du groupe : chacun reçoit une invitation à la séance, comme pour un cours enseignant–élève.
+                        </div>
                         <div class="ex-eval-pick">
-                            @foreach (var m in _members)
+                            @foreach (var m in UniqueMembers)
                             {
                                 var on = _planEvaluators.Contains(m.UserId);
                                 <label>
@@ -144,7 +160,7 @@
                                     @(string.IsNullOrWhiteSpace(m.FullName) ? m.Email : m.FullName)
                                 </label>
                             }
-                            @if (_members.Count == 0)
+                            @if (UniqueMembers.Count == 0)
                             {
                                 <span class="text-muted">Aucun expert dans le groupe.</span>
                             }
@@ -359,7 +375,7 @@
                                                                 @if (row.Status is 0 or 1)
                                                                 {
                                                                     <button type="button" @onclick="() => OpenSessionFromRow(row)">
-                                                                        <i class="bi bi-box-arrow-up-right"></i> Ouvrir la session
+                                                                        <i class="bi bi-box-arrow-up-right"></i> Rejoindre la séance
                                                                     </button>
                                                                 }
                                                             </div>
@@ -407,12 +423,12 @@
                                 <span>@(dir?.OwnerEmail ?? "—")</span>
                                 <span>@(string.IsNullOrWhiteSpace(p.Subject) ? "—" : p.Subject)</span>
                             </div>
-                            @if (sel.Status is 0 or 1)
-                            {
-                                <button type="button" class="cc-btn btn-sm ex-session-btn" disabled="@_busy" @onclick="OpenSessionAsync">
-                                    <i class="bi bi-box-arrow-up-right"></i> Ouvrir la session
-                                </button>
-                            }
+                                @if (sel.Status is 0 or 1)
+                                {
+                                    <button type="button" class="cc-btn btn-sm ex-session-btn" disabled="@_busy" @onclick="OpenSessionAsync">
+                                        <i class="bi bi-box-arrow-up-right"></i> @(p.LessonId is Guid ? "Rejoindre la séance" : "Ouvrir la session")
+                                    </button>
+                                }
                             <button type="button" class="ex-more-btn" @onclick="() => _selected = null" aria-label="Fermer">
                                 <i class="bi bi-x-lg"></i>
                             </button>
@@ -427,7 +443,19 @@
                                 <dt>Experts</dt>
                                 <dd>
                                     @if (EvaluatorsOf(p).Count == 0) { <text>—</text> }
-                                    else { @string.Join(", ", EvaluatorsOf(p).Select(e => e.Name)) }
+                                    else
+                                    {
+                                        <ul class="ex-invite-list">
+                                            @foreach (var ev in EvaluatorsOf(p))
+                                            {
+                                                var st = InviteStatusOf(p, ev.Id);
+                                                <li>
+                                                    @ev.Name
+                                                    <span class="ex-invite-st @st.Css">@st.Label</span>
+                                                </li>
+                                            }
+                                        </ul>
+                                    }
                                 </dd>
                             </div>
                             <div><dt>Score</dt><dd>@(pct is int sc ? $"{sc} %" : "—")</dd></div>
@@ -543,6 +571,7 @@
     private List<DirItem> _directory = [];
     private List<MemberItem> _members = [];
     private List<DiscItem> _disciplines = [];
+    private List<string> _offerSubjects = [];
     private List<TeacherDisc> _teacherDisciplines = [];
     private WorkItem? _selected;
 
@@ -550,7 +579,8 @@
     private string _planSubject = "";
     private string _planLevel = "";
     private string _planTopic = "";
-    private string _planLocation = "";
+    private string _planPlace = "distant";
+    private string _planRoom = "";
     private int _planDuration = 45;
     private DateTime? _planAt;
     private readonly HashSet<string> _planEvaluators = new(StringComparer.Ordinal);
@@ -574,24 +604,52 @@
     private void NextPage() { if (_page < PageCount) _page++; }
     private void LastPage() => _page = PageCount;
     private void GoPage(int p) => _page = p;
-    private IReadOnlyList<string> GroupSubjectNames =>
-        _disciplines.Where(d => d.IsActive)
-            .Select(d => d.Name)
-            .Where(n => !string.IsNullOrWhiteSpace(n))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+    private static readonly string[] DefaultLevels =
+        ["Primaire", "Secondaire", "Collège", "Lycée", "Universitaire", "Formation pour adultes"];
 
-    private IReadOnlyList<string> AssignedSubjectNames =>
-        _teacherDisciplines.Where(d => d.IsAssigned && d.IsActive)
-            .Select(d => d.Name)
-            .Where(n => !string.IsNullOrWhiteSpace(n))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+    private IReadOnlyList<string> GroupSubjectNames
+    {
+        get
+        {
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var d in _disciplines.Where(x => !string.IsNullOrWhiteSpace(x.Name)))
+                names.Add(d.Name.Trim());
+            foreach (var s in _offerSubjects)
+                names.Add(s);
+            foreach (var dir in _directory)
+            {
+                if (dir.Subjects is null) continue;
+                foreach (var s in dir.Subjects.Where(x => !string.IsNullOrWhiteSpace(x)))
+                    names.Add(s.Trim());
+            }
+            return names.OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList();
+        }
+    }
+
+    private IReadOnlyList<string> AssignedSubjectNames
+    {
+        get
+        {
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var d in _teacherDisciplines.Where(x => x.IsAssigned && !string.IsNullOrWhiteSpace(x.Name)))
+                names.Add(d.Name.Trim());
+            if (Guid.TryParse(_planTeacherId, out var tid))
+            {
+                var dir = _directory.FirstOrDefault(d => d.TenantId == tid);
+                if (dir?.Subjects is not null)
+                {
+                    foreach (var s in dir.Subjects.Where(x => !string.IsNullOrWhiteSpace(x)))
+                        names.Add(s.Trim());
+                }
+            }
+            return names.ToList();
+        }
+    }
 
     private IEnumerable<string> PlanLevelOptions =>
-        ActiveForSubject(_planSubject)
-            .Select(d => CycleLabel(d.Cycle))
+        DefaultLevels
+            .Concat(ActiveForSubject(_planSubject).Select(d => CycleLabel(d.Cycle)))
+            .Where(s => !string.IsNullOrWhiteSpace(s) && s != "—")
             .Distinct(StringComparer.OrdinalIgnoreCase);
 
     private IEnumerable<string> SubjectOptions =>
@@ -631,9 +689,26 @@
             await Task.WhenAll(itemsT, dirT, memT, grpT, ctxT);
             _items = await itemsT ?? [];
             _directory = await dirT ?? [];
-            _members = await memT ?? [];
-            try { _disciplines = await Api.GetAsync<List<DiscItem>>("api/expert/disciplines") ?? []; }
+            _members = (await memT ?? [])
+                .GroupBy(m => m.UserId, StringComparer.Ordinal)
+                .Select(g => g.First())
+                .ToList();
+            try
+            {
+                var disc = await Api.GetWithErrorAsync<List<DiscItem>>("api/expert/disciplines");
+                _disciplines = disc.Value ?? [];
+            }
             catch { _disciplines = []; }
+            try
+            {
+                var catalog = await Api.GetAsync<OfferCatalog>("api/expert/group-offers");
+                _offerSubjects = catalog?.Offers?
+                    .Where(o => o.Status is not (4 or 5) && !string.IsNullOrWhiteSpace(o.Name))
+                    .Select(o => o.Name.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList() ?? [];
+            }
+            catch { _offerSubjects = []; }
             var grp = await grpT;
             _track = grp?.TeacherApprovalTrack ?? 0;
             var ctx = await ctxT;
@@ -718,6 +793,8 @@
     {
         _showPlan = true;
         _success = null;
+        if (string.IsNullOrWhiteSpace(_planPlace))
+            _planPlace = "distant";
     }
 
     private async Task OnPlanTeacherChanged()
@@ -739,7 +816,7 @@
             _teacherDisciplines = [];
         }
 
-        var assigned = _teacherDisciplines.Where(d => d.IsAssigned && d.IsActive).ToList();
+        var assigned = _teacherDisciplines.Where(d => d.IsAssigned).ToList();
         if (assigned.Count > 0)
         {
             var pick = assigned.FirstOrDefault(d =>
@@ -769,7 +846,7 @@
         if (string.IsNullOrWhiteSpace(subject))
             return [];
         return _disciplines.Where(d =>
-            d.IsActive && string.Equals(d.Name, subject, StringComparison.OrdinalIgnoreCase));
+            string.Equals(d.Name, subject, StringComparison.OrdinalIgnoreCase));
     }
 
     private void PrefillFrom(WorkItem item)
@@ -780,13 +857,15 @@
         _planLevel = p.Level ?? "";
         _planTopic = p.Topic ?? "";
         _planDuration = p.DurationMinutes <= 0 ? 45 : p.DurationMinutes;
-        _planLocation = p.Location ?? "";
+        ApplyLocation(p.Location);
         _planEvaluators.Clear();
         foreach (var id in p.EvaluatorUserIds)
             _planEvaluators.Add(id);
         OnPlanSubjectChanged();
         _showPlan = true;
     }
+
+    private IReadOnlyList<MemberItem> UniqueMembers => _members;
 
     private void ToggleEvaluator(string userId, bool on)
     {
@@ -799,6 +878,11 @@
         if (!Guid.TryParse(_planTeacherId, out var tenantId))
         {
             _error = "Choisissez un enseignant.";
+            return;
+        }
+        if (_planEvaluators.Count == 0)
+        {
+            _error = "Invitez au moins un expert du groupe. Chaque personne cochée recevra une invitation à la séance.";
             return;
         }
         if (GroupSubjectNames.Count > 0 && string.IsNullOrWhiteSpace(_planSubject))
@@ -819,7 +903,7 @@
             Level = NullIfBlank(_planLevel),
             Topic = NullIfBlank(_planTopic),
             DurationMinutes = _planDuration,
-            Location = NullIfBlank(_planLocation),
+            Location = FormatPlace(),
             EvaluatorUserIds = _planEvaluators.ToList(),
             Step = 1
         };
@@ -841,7 +925,7 @@
             });
             if (result.Error is not null) { _error = result.Error; return; }
             _showPlan = false;
-            _success = "Démonstration planifiée.";
+            _success = "Démonstration planifiée. Une invitation a été envoyée aux experts sélectionnés.";
             _error = null;
             await LoadAllAsync();
             if (result.Value is not null)
@@ -859,8 +943,14 @@
         {
             var result = await Api.PostWithErrorAsync<WorkItem>($"api/expert/workspace/{_selected.Id}/start", new { });
             if (result.Error is not null) { _error = result.Error; return; }
-            _success = "Session ouverte.";
+            _success = "Session ouverte. Les experts invités peuvent rejoindre la salle.";
             await LoadAllAsync();
+            var started = result.Value is not null ? PayloadOf(result.Value) : (_selected is null ? null : PayloadOf(_selected));
+            if (started?.LessonId is Guid lessonId)
+            {
+                Nav.NavigateTo($"/expert/classroom/{lessonId}");
+                return;
+            }
         }
         catch (Exception ex) { _error = ex.Message; }
         finally { _busy = false; }
@@ -1025,9 +1115,23 @@
         var ids = p.EvaluatorUserIds ?? [];
         return ids.Select(id =>
         {
-            var m = _members.FirstOrDefault(x => x.UserId == id);
-            return (id, m is null ? "Expert" : (string.IsNullOrWhiteSpace(m.FullName) ? m.Email : m.FullName));
+            var m = UniqueMembers.FirstOrDefault(x => x.UserId == id);
+            var inv = p.Invitations?.FirstOrDefault(i => string.Equals(i.UserId, id, StringComparison.Ordinal));
+            var name = inv?.Name
+                ?? (m is null ? "Expert" : (string.IsNullOrWhiteSpace(m.FullName) ? m.Email : m.FullName));
+            return (id, name);
         }).ToList();
+    }
+
+    private static (string Label, string Css) InviteStatusOf(DemonstrationPayload p, string userId)
+    {
+        var inv = p.Invitations?.FirstOrDefault(i => string.Equals(i.UserId, userId, StringComparison.Ordinal));
+        return inv?.Status switch
+        {
+            1 => ("A rejoint", "is-ok"),
+            2 => ("Refusée", "is-bad"),
+            _ => ("Invitée", "is-wait")
+        };
     }
 
     private static bool IsRedo(WorkItem item) =>
@@ -1102,6 +1206,37 @@
         return string.IsNullOrEmpty(name) ? "?" : name[..Math.Min(2, name.Length)].ToUpperInvariant();
     }
     private static int SubjectTone(string s) => Math.Abs(s.GetHashCode(StringComparison.OrdinalIgnoreCase)) % 5;
+    private string FormatPlace()
+    {
+        var room = string.IsNullOrWhiteSpace(_planRoom) ? null : _planRoom.Trim();
+        return _planPlace switch
+        {
+            "presentiel" => room is null ? "Présentiel" : $"Présentiel — {room}",
+            "hybride" => room is null ? "Hybride" : $"Hybride — {room}",
+            _ => "Distant"
+        };
+    }
+
+    private void ApplyLocation(string? location)
+    {
+        var loc = (location ?? "").Trim();
+        if (loc.StartsWith("Présentiel", StringComparison.OrdinalIgnoreCase))
+        {
+            _planPlace = "presentiel";
+            _planRoom = loc.Contains('—') ? loc[(loc.IndexOf('—') + 1)..].Trim() : "";
+        }
+        else if (loc.StartsWith("Hybride", StringComparison.OrdinalIgnoreCase))
+        {
+            _planPlace = "hybride";
+            _planRoom = loc.Contains('—') ? loc[(loc.IndexOf('—') + 1)..].Trim() : "";
+        }
+        else
+        {
+            _planPlace = "distant";
+            _planRoom = "";
+        }
+    }
+
     private static string? NullIfBlank(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
     private static string Csv(string? s) => $"\"{(s ?? "").Replace("\"", "\"\"")}\"";
 
@@ -1124,7 +1259,18 @@
 
     private sealed record MemberItem(Guid Id, Guid ExpertGroupId, string UserId, string Email, string FullName);
     private sealed record DiscItem(
-        Guid Id, Guid ExpertGroupId, string Name, int Cycle, bool IsActive, int AssignedTeacherCount, DateTime CreatedAt);
+        Guid Id,
+        Guid ExpertGroupId,
+        string Name,
+        int Cycle,
+        string? WorkMethod,
+        bool IsActive,
+        List<DiscService>? Services,
+        int AssignedTeacherCount,
+        DateTime CreatedAt);
+    private sealed record DiscService(Guid Id, string Title, string? Description, int SortOrder);
+    private sealed record OfferCatalog(List<OfferItem>? Offers);
+    private sealed record OfferItem(Guid Id, string Name, int Status);
     private sealed record TeacherDisc(Guid DisciplineId, string Name, int Cycle, bool IsActive, bool IsAssigned);
     private sealed record GroupDto(Guid Id, string Name, string? CountryCode, string? Description, bool IsInternational, int TeacherApprovalTrack);
     private sealed record MeCtx(bool IsGroupManager, Guid? GroupId, string? GroupName, string? UserId);

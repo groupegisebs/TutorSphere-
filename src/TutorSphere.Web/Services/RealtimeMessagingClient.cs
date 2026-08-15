@@ -111,6 +111,8 @@ public sealed class RealtimeMessagingClient : IAsyncDisposable
                 {
                     "Parent" => "parent/calendar",
                     "Student" => $"/student/classroom/{notification.LessonId}?title={Uri.EscapeDataString(notification.Title)}&subject={Uri.EscapeDataString(notification.Subject ?? "")}",
+                    "Expert" or "GroupManager" or "PlatformAdmin" or "SuperAdmin" =>
+                        $"/expert/classroom/{notification.LessonId}?title={Uri.EscapeDataString(notification.Title)}&subject={Uri.EscapeDataString(notification.Subject ?? "")}",
                     _ => $"/tutor/classroom/{notification.LessonId}"
                 };
                 _notifications.ShowLessonStarted(notification, href);

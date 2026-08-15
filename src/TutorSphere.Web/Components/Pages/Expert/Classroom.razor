@@ -1,0 +1,21 @@
+@page "/expert/classroom/{LessonId}"
+@layout ExpertLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+
+<PageTitle>Séance de démonstration — TutorSphere</PageTitle>
+
+<AuthorizeView Roles="Expert,GroupManager,SuperAdmin,PlatformAdmin">
+    <Authorized>
+        <TutorSphere.Web.Components.Pages.Student.Classroom LessonId="@LessonId" />
+    </Authorized>
+    <NotAuthorized>
+        <div class="cc-card cc-empty">
+            <p>Connectez-vous pour rejoindre la démonstration.</p>
+            <a class="cc-btn cc-btn-primary" href="/login/expert">Connexion</a>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    [Parameter] public string LessonId { get; set; } = "";
+}

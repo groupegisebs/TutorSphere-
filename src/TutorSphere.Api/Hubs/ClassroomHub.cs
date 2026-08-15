@@ -11,7 +11,7 @@ namespace TutorSphere.Api.Hubs;
 /// Presence / caméra / micro : SignalR (effet immédiat pour tous).
 /// Flux A/V : WebRTC mesh, signalé via SendRtcSignal.
 /// </summary>
-[Authorize(Roles = $"{UserRoles.Tutor},{UserRoles.Student},{UserRoles.TeachingAssistant},{UserRoles.SuperAdmin}")]
+[Authorize(Roles = $"{UserRoles.Tutor},{UserRoles.Student},{UserRoles.TeachingAssistant},{UserRoles.Expert},{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
 public class ClassroomHub : Hub
 {
     private static readonly ConcurrentDictionary<string, LessonBoardState> States = new(StringComparer.Ordinal);

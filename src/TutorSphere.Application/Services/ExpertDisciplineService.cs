@@ -11,7 +11,8 @@ namespace TutorSphere.Application.Services;
 /// </summary>
 public interface IExpertDisciplineService
 {
-    Task<IReadOnlyList<DisciplineDto>> ListForExpertAsync(string expertUserId, CancellationToken ct = default);
+    Task<IReadOnlyList<DisciplineDto>> ListForExpertAsync(
+        string expertUserId, CancellationToken ct = default, Guid? overrideGroupId = null);
     Task<DisciplineDto> GetByIdAsync(Guid disciplineId, string expertUserId, CancellationToken ct = default);
     Task<DisciplineDto> CreateAsync(string expertUserId, CreateDisciplineRequest request, CancellationToken ct = default);
     Task<DisciplineDto> UpdateAsync(Guid disciplineId, string expertUserId, UpdateDisciplineRequest request, CancellationToken ct = default);
@@ -24,9 +25,12 @@ public interface IExpertDisciplineService
 
 public class ExpertDisciplineService(IApplicationDbContext db, IUserContactLookup contacts) : IExpertDisciplineService
 {
-    public async Task<IReadOnlyList<DisciplineDto>> ListForExpertAsync(string expertUserId, CancellationToken ct = default)
+    public async Task<IReadOnlyList<DisciplineDto>> ListForExpertAsync(
+        string expertUserId, CancellationToken ct = default, Guid? overrideGroupId = null)
     {
-        var groupId = GetExpertGroupId(expertUserId);
+        var groupId = overrideGroupId is Guid og && og != Guid.Empty
+            ? og
+            : GetExpertGroupId(expertUserId);
 
         var disciplines = db.Disciplines
             .Where(d => d.ExpertGroupId == groupId)
@@ -259,9 +263,16 @@ public class ExpertDisciplineService(IApplicationDbContext db, IUserContactLooku
     private Guid GetExpertGroupId(string expertUserId)
     {
         var groupId = db.ExpertGroupMembers
-            .Where(m => m.UserId == expertUserId)
+            .Where(m => m.UserId == expertUserId && m.Status == ExpertMembershipStatus.Active)
             .Select(m => m.ExpertGroupId)
             .FirstOrDefault();
+        if (groupId == Guid.Empty)
+        {
+            groupId = db.ExpertGroupMembers
+                .Where(m => m.UserId == expertUserId)
+                .Select(m => m.ExpertGroupId)
+                .FirstOrDefault();
+        }
         if (groupId == Guid.Empty)
             throw new InvalidOperationException("Vous n'êtes membre d'aucun groupe d'experts.");
         return groupId;
