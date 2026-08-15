@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using TutorSphere.Application.Common;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Domain.Enums;
 using TutorSphere.Infrastructure.Persistence;
@@ -7,12 +8,10 @@ using TutorSphere.Infrastructure.Persistence;
 namespace TutorSphere.Api.BackgroundServices;
 
 /// <summary>
-/// Rappelle parents/élèves ~1 mois avant la fin d'un abonnement actif (renouvellement MM/carte/PayPal).
+/// Rappelle les parents avant la fin du forfait (fenêtre proportionnelle à DurationDays).
 /// </summary>
 public class SubscriptionRenewalReminderService : BackgroundService
 {
-    private static readonly TimeSpan ReminderWindow = TimeSpan.FromDays(30);
-
     private readonly IServiceProvider _services;
     private readonly ILogger<SubscriptionRenewalReminderService> _logger;
 
@@ -53,23 +52,27 @@ public class SubscriptionRenewalReminderService : BackgroundService
         var payUrl = $"{webBase}/parent/subscriptions";
 
         var now = DateTime.UtcNow;
-        var windowEnd = now.Add(ReminderWindow);
-
-        var due = await db.StudentSubscriptionsSet
+        var candidates = await db.StudentSubscriptionsSet
             .Where(s => s.Status == SubscriptionStatus.Active
                         && s.EndDate > now
-                        && s.EndDate <= windowEnd
                         && s.RenewalReminderSentAt == null)
             .ToListAsync(ct);
 
-        if (due.Count == 0)
+        if (candidates.Count == 0)
             return;
 
         var sent = 0;
-        foreach (var sub in due)
+        foreach (var sub in candidates)
         {
             try
             {
+                var offering = await db.SubscriptionOfferingsSet.AsNoTracking()
+                    .FirstOrDefaultAsync(o => o.Id == sub.OfferingId, ct);
+                var windowDays = SubscriptionPackRules.RenewalWindowDays(
+                    offering?.DurationDays > 0 ? offering.DurationDays : 30);
+                if (sub.EndDate > now.AddDays(windowDays))
+                    continue;
+
                 var student = await db.StudentsSet.AsNoTracking()
                     .FirstOrDefaultAsync(s => s.Id == sub.StudentId, ct);
                 if (student?.ParentProfileId is not Guid parentId)
@@ -79,9 +82,6 @@ public class SubscriptionRenewalReminderService : BackgroundService
                     .FirstOrDefaultAsync(p => p.Id == parentId, ct);
                 if (parent is null || string.IsNullOrWhiteSpace(parent.Email))
                     continue;
-
-                var offering = await db.SubscriptionOfferingsSet.AsNoTracking()
-                    .FirstOrDefaultAsync(o => o.Id == sub.OfferingId, ct);
 
                 await email.SendParentSubscriptionRenewalReminderAsync(
                     parent.Email,

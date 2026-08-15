@@ -54,6 +54,17 @@ public interface IPaymentGatewayService
     Task RefundCompletedPaymentAsync(Guid paymentId, CancellationToken ct = default);
 
     /// <summary>
+    /// Vérifie que l'appelant (parent de l'élève, élève autonome, tuteur propriétaire, admin) peut payer ce forfait.
+    /// </summary>
+    Task AssertUserCanPaySubscriptionAsync(string userId, Guid subscriptionId, CancellationToken ct = default);
+
+    /// <summary>Interroge la passerelle pour tous les paiements Pending encore liés à un code passerelle.</summary>
+    Task<int> SyncPendingPaymentsAsync(CancellationToken ct = default);
+
+    /// <summary>Webhook Pay Gateway : active le pack à partir du code de paiement passerelle.</summary>
+    Task SyncPaymentByGatewayCodeAsync(string paymentCode, CancellationToken ct = default);
+
+    /// <summary>
     /// Crée / met à jour le produit+plan dans Pay Gateway et Stripe (SyncToStripe).
     /// </summary>
     Task SyncOfferingCatalogAsync(Guid offeringId, CancellationToken ct = default);

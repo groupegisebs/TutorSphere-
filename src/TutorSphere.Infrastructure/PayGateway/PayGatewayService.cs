@@ -121,7 +121,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
         var tutorAmount = amount - platformFee;
 
         var productCode = ToProductCode(offering.Id);
-        var planCode = ResolvePlanCode(offering.DurationDays);
+        var planCode = SubscriptionPackRules.ResolvePlanCode(offering.DurationDays);
         await EnsureCatalogItemAsync(offering, productCode, planCode, ct);
 
         var paymentMethod = PaymentMethodCodes.Normalize(request.PaymentMethod);
@@ -446,7 +446,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             ?? throw new InvalidOperationException("Offre d'abonnement introuvable.");
 
         var productCode = ToProductCode(offering.Id);
-        var planCode = ResolvePlanCode(offering.DurationDays);
+        var planCode = SubscriptionPackRules.ResolvePlanCode(offering.DurationDays);
         await EnsureCatalogItemAsync(offering, productCode, planCode, ct);
     }
 
@@ -465,7 +465,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             offering.Title,
             offering.Price,
             offering.Currency.ToLowerInvariant(),
-            ResolveBillingInterval(offering.DurationDays),
+            SubscriptionPackRules.ResolveBillingInterval(offering.DurationDays),
             SyncToStripe: !isXaf), ct);
 
         _logger.LogInformation(
@@ -477,6 +477,86 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             offering.Currency);
     }
 
+    public async Task AssertUserCanPaySubscriptionAsync(
+        string userId,
+        Guid subscriptionId,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(userId))
+            throw new UnauthorizedAccessException("Authentification requise.");
+
+        var subscription = await _db.StudentSubscriptionsForAnyTenant
+            .FirstOrDefaultAsync(s => s.Id == subscriptionId, ct)
+            ?? throw new InvalidOperationException("Abonnement introuvable.");
+
+        var student = await _db.StudentsForAnyTenant
+            .FirstOrDefaultAsync(s => s.Id == subscription.StudentId, ct)
+            ?? throw new InvalidOperationException("Élève introuvable.");
+
+        if (string.Equals(student.UserId, userId, StringComparison.Ordinal))
+            return;
+
+        if (student.ParentProfileId is Guid parentId)
+        {
+            var parent = await _db.ParentProfilesForAnyTenant
+                .FirstOrDefaultAsync(p => p.Id == parentId, ct);
+            if (parent is not null && string.Equals(parent.UserId, userId, StringComparison.Ordinal))
+                return;
+        }
+
+        var tenant = await _db.Tenants.FirstOrDefaultAsync(t => t.Id == subscription.TenantId, ct);
+        if (tenant is not null && string.Equals(tenant.OwnerUserId, userId, StringComparison.Ordinal))
+            return;
+
+        throw new UnauthorizedAccessException("Vous n'êtes pas autorisé à payer cet abonnement.");
+    }
+
+    public async Task<int> SyncPendingPaymentsAsync(CancellationToken ct = default)
+    {
+        var cutoff = DateTime.UtcNow.AddDays(-14);
+        var pending = await _db.PaymentsForAnyTenant
+            .Where(p => p.Status == PaymentStatus.Pending
+                        && p.StripePaymentIntentId != null
+                        && p.StripePaymentIntentId != ""
+                        && p.CreatedAt >= cutoff)
+            .OrderBy(p => p.CreatedAt)
+            .Take(50)
+            .ToListAsync(ct);
+
+        var synced = 0;
+        foreach (var payment in pending)
+        {
+            try
+            {
+                await SyncPaymentStatusAsync(payment.Id, ct);
+                synced++;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Sync paiement en attente {PaymentId} échouée", payment.Id);
+            }
+        }
+
+        return synced;
+    }
+
+    public async Task SyncPaymentByGatewayCodeAsync(string paymentCode, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(paymentCode))
+            return;
+
+        var code = paymentCode.Trim();
+        var payment = await _db.PaymentsForAnyTenant
+            .FirstOrDefaultAsync(p => p.StripePaymentIntentId == code, ct);
+        if (payment is null)
+        {
+            _logger.LogInformation("Webhook paiement : code {PaymentCode} inconnu localement", code);
+            return;
+        }
+
+        await SyncPaymentStatusAsync(payment.Id, ct);
+    }
+
     private async Task ApplyGatewayPaymentStatusAsync(
         Payment payment,
         GatewayPaymentResponse gatewayPayment,
@@ -484,10 +564,23 @@ internal sealed class PayGatewayService : IPaymentGatewayService
     {
         var previousStatus = payment.Status;
         var mapped = MapPaymentStatus(gatewayPayment.Status);
+
+        if (previousStatus == PaymentStatus.Completed)
+            return;
+
         if (mapped == payment.Status && mapped != PaymentStatus.Completed)
             return;
 
         payment.Status = mapped;
+
+        if (mapped == PaymentStatus.Failed && previousStatus != PaymentStatus.Failed)
+        {
+            payment.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync(ct);
+            if (payment.SubscriptionId is Guid failedSubId)
+                await _billingEmail.NotifyPaymentFailedAsync(failedSubId, ct);
+            return;
+        }
 
         if (mapped == PaymentStatus.Completed)
         {
@@ -518,47 +611,66 @@ internal sealed class PayGatewayService : IPaymentGatewayService
                     if (subscription.Status is SubscriptionStatus.Rejected or SubscriptionStatus.Cancelled)
                     {
                         _logger.LogWarning(
-                            "Paiement {PaymentId} ignoré pour abonnement {SubscriptionId} (statut {Status})",
+                            "Paiement {PaymentId} encaissé après {Status} — remboursement du forfait {SubscriptionId}",
                             payment.Id,
-                            subscription.Id,
-                            subscription.Status);
-                    }
-                    else
-                    {
-                        var offering = await _db.SubscriptionOfferingsForAnyTenant
-                            .FirstOrDefaultAsync(o => o.Id == subscription.OfferingId, ct);
-                        var durationDays = offering?.DurationDays > 0 ? offering.DurationDays : 30;
-                        var periodStart = DateTime.UtcNow;
-                        if (subscription.Status == SubscriptionStatus.Active
-                            && subscription.EndDate > periodStart)
-                        {
-                            periodStart = subscription.EndDate;
-                        }
-
-                        subscription.Status = SubscriptionStatus.Active;
-                        subscription.StartDate = periodStart;
-                        subscription.EndDate = periodStart.AddDays(durationDays);
-                        subscription.RenewalReminderSentAt = null;
-                        if (offering is not null)
-                            subscription.SessionsRemaining += Math.Max(0, offering.SessionCount);
-
-                        await TryLinkGatewaySubscriptionAsync(subscription, gatewayPayment.CustomerCode, ct);
+                            subscription.Status,
+                            subscription.Id);
                         await _db.SaveChangesAsync(ct);
                         try
                         {
-                            await _invoices.EnsureInvoiceForPaymentAsync(payment.Id, ct);
+                            await RefundCompletedPaymentAsync(payment.Id, ct);
+                            await _billingEmail.NotifyPaymentRefundedAsync(payment.Id, "TutorSphere", ct);
                         }
                         catch (Exception ex)
                         {
-                            _logger.LogWarning(ex, "Facture non créée pour le paiement {PaymentId}", payment.Id);
+                            _logger.LogError(ex, "Remboursement auto échoué pour paiement {PaymentId}", payment.Id);
                         }
 
-                        await _lessonScheduler.EnsureScheduledAsync(subscription.Id, ct);
-
-                        if (previousStatus != PaymentStatus.Completed)
-                            await _billingEmail.NotifyPaymentSucceededAsync(payment.Id, ct);
                         return;
                     }
+
+                    var offering = await _db.SubscriptionOfferingsForAnyTenant
+                        .FirstOrDefaultAsync(o => o.Id == subscription.OfferingId, ct);
+                    var durationDays = offering?.DurationDays > 0 ? offering.DurationDays : 30;
+                    var credits = offering is null ? 0 : Math.Max(0, offering.SessionCount);
+                    var firstActivation = subscription.Status is SubscriptionStatus.AwaitingPayment
+                        or SubscriptionStatus.Pending
+                        or SubscriptionStatus.Expired;
+                    var periodStart = DateTime.UtcNow;
+                    if (!firstActivation
+                        && subscription.Status == SubscriptionStatus.Active
+                        && subscription.EndDate > periodStart)
+                    {
+                        periodStart = subscription.EndDate;
+                    }
+
+                    subscription.Status = SubscriptionStatus.Active;
+                    subscription.StartDate = periodStart;
+                    subscription.EndDate = periodStart.AddDays(durationDays);
+                    subscription.RenewalReminderSentAt = null;
+                    subscription.LowSessionsReminderSentAt = null;
+                    subscription.LessonAccessReminderSentAt = null;
+                    if (firstActivation)
+                        subscription.SessionsRemaining = credits;
+                    else
+                        subscription.SessionsRemaining += credits;
+
+                    await TryLinkGatewaySubscriptionAsync(subscription, gatewayPayment.CustomerCode, ct);
+                    await _db.SaveChangesAsync(ct);
+                    try
+                    {
+                        await _invoices.EnsureInvoiceForPaymentAsync(payment.Id, ct);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Facture non créée pour le paiement {PaymentId}", payment.Id);
+                    }
+
+                    await _lessonScheduler.EnsureScheduledAsync(subscription.Id, ct);
+
+                    if (previousStatus != PaymentStatus.Completed)
+                        await _billingEmail.NotifyPaymentSucceededAsync(payment.Id, ct);
+                    return;
                 }
             }
         }
@@ -600,9 +712,6 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             subscription.StripeSubscriptionId = match.SubscriptionCode;
     }
 
-    /// <summary>
-    /// Premier paiement (AwaitingPayment) ou renouvellement simulé (Active/Paused dans la fenêtre 30 j).
-    /// </summary>
     private static void EnsureSubscriptionPayable(
         StudentSubscription subscription,
         SubscriptionOffering offering)
@@ -612,12 +721,14 @@ internal sealed class PayGatewayService : IPaymentGatewayService
 
         if (subscription.Status is SubscriptionStatus.Active or SubscriptionStatus.Paused)
         {
-            var windowStart = subscription.EndDate.AddDays(-30);
+            var windowDays = SubscriptionPackRules.RenewalWindowDays(
+                offering.DurationDays > 0 ? offering.DurationDays : 30);
+            var windowStart = subscription.EndDate.AddDays(-windowDays);
             if (DateTime.UtcNow >= windowStart)
                 return;
 
             throw new InvalidOperationException(
-                "Le renouvellement sera disponible 1 mois avant la fin de l'abonnement.");
+                $"Le renouvellement sera disponible {windowDays} jour(s) avant la fin du forfait.");
         }
 
         throw new InvalidOperationException(
@@ -626,20 +737,6 @@ internal sealed class PayGatewayService : IPaymentGatewayService
 
     private static string ToProductCode(Guid offeringId) =>
         $"OFF-{offeringId:N}".ToUpperInvariant();
-
-    private static string ResolvePlanCode(int durationDays) => durationDays switch
-    {
-        <= 0 => "ONE-TIME",
-        <= 31 => "MONTHLY",
-        _ => "YEARLY"
-    };
-
-    private static string ResolveBillingInterval(int durationDays) => durationDays switch
-    {
-        <= 0 => "OneTime",
-        <= 31 => "Monthly",
-        _ => "Yearly"
-    };
 
     private static decimal ClampCommission(decimal percent) =>
         Math.Clamp(percent, MinCommissionPercent, MaxCommissionPercent);
@@ -980,7 +1077,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             : request.BillingCountryCode.Trim().ToUpperInvariant();
 
         var productCode = ToProductCode(offering.Id);
-        var planCode = ResolvePlanCode(offering.DurationDays);
+        var planCode = SubscriptionPackRules.ResolvePlanCode(offering.DurationDays);
         await EnsureCatalogItemAsync(offering, productCode, planCode, ct);
 
         var payment = new Payment

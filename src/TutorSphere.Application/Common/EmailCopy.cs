@@ -29,6 +29,18 @@ public static class EmailCopy
                 : "Votre inscription est acceptée et active. Les cours seront planifiés prochainement."
         };
 
+    public static string EnrollmentRejectedNote(string language) =>
+        SupportedLanguageCodes.Normalize(language) switch
+        {
+            SupportedLanguageCodes.English => "The teacher declined this enrollment. You can choose another offer.",
+            SupportedLanguageCodes.Spanish => "El docente rechazó esta inscripción. Puede elegir otra oferta.",
+            SupportedLanguageCodes.German => "Der Lehrer hat diese Anmeldung abgelehnt. Sie können ein anderes Angebot wählen.",
+            SupportedLanguageCodes.Portuguese => "O professor recusou esta inscrição. Pode escolher outra oferta.",
+            SupportedLanguageCodes.MandarinChinese => "教师已拒绝此次报名。您可以选择其他课程。",
+            SupportedLanguageCodes.Arabic => "رفض المعلم هذا التسجيل. يمكنك اختيار عرض آخر.",
+            _ => "L'enseignant a refusé cette inscription. Vous pouvez choisir une autre offre."
+        };
+
     public static string UnspecifiedReason(string language) =>
         SupportedLanguageCodes.Normalize(language) switch
         {

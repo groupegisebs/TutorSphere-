@@ -10,7 +10,9 @@ public interface IBillingEmailOrchestrator
 {
     Task NotifyEnrollmentRequestedAsync(Guid subscriptionId, CancellationToken ct = default);
     Task NotifyEnrollmentAcceptedAsync(Guid subscriptionId, CancellationToken ct = default);
+    Task NotifyEnrollmentRejectedAsync(Guid subscriptionId, CancellationToken ct = default);
     Task NotifyPaymentSucceededAsync(Guid paymentId, CancellationToken ct = default);
+    Task NotifyPaymentFailedAsync(Guid subscriptionId, CancellationToken ct = default);
     Task NotifyPaymentRefundedAsync(Guid paymentId, string tutorName, CancellationToken ct = default);
     Task NotifyPaymentLinkReadyAsync(Guid subscriptionId, string checkoutUrl, decimal amount, CancellationToken ct = default);
 }
@@ -96,6 +98,50 @@ public sealed class BillingEmailOrchestrator : IBillingEmailOrchestrator
         }
     }
 
+    public async Task NotifyEnrollmentRejectedAsync(Guid subscriptionId, CancellationToken ct = default)
+    {
+        try
+        {
+            var ctx = ResolveSubscription(subscriptionId);
+            if (ctx is null || ctx.Value.Parent is null || string.IsNullOrWhiteSpace(ctx.Value.Parent.Email))
+                return;
+
+            var lang = await _contacts.GetPreferredLanguageByEmailAsync(ctx.Value.Parent.Email, ct);
+            var note = EmailCopy.EnrollmentRejectedNote(lang);
+            await _email.SendCourseEnrollmentAcceptedAsync(
+                ctx.Value.Parent.Email,
+                ctx.Value.Parent.FirstName,
+                ctx.Value.StudentName,
+                ctx.Value.CourseTitle,
+                note,
+                $"{WebBase}/parent/search",
+                ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Échec e-mail rejet inscription {SubscriptionId}", subscriptionId);
+        }
+    }
+
+    public async Task NotifyPaymentFailedAsync(Guid subscriptionId, CancellationToken ct = default)
+    {
+        try
+        {
+            var ctx = ResolveSubscription(subscriptionId);
+            if (ctx?.Parent is null || string.IsNullOrWhiteSpace(ctx.Value.Parent.Email))
+                return;
+
+            await _email.SendParentPaymentFailedAsync(
+                ctx.Value.Parent.Email,
+                ctx.Value.Parent.FirstName,
+                ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Échec e-mail paiement refusé {SubscriptionId}", subscriptionId);
+        }
+    }
+
     public async Task NotifyPaymentLinkReadyAsync(
         Guid subscriptionId,
         string checkoutUrl,
@@ -142,7 +188,7 @@ public sealed class BillingEmailOrchestrator : IBillingEmailOrchestrator
 
             var invoiceUrl = payment.InvoiceId is Guid inv
                 ? $"{WebBase}/parent/invoices/{inv}"
-                : $"{WebBase}/parent/subscriptions";
+                : $"{WebBase}/parent/payments";
 
             if (ctx.Value.Parent is not null && !string.IsNullOrWhiteSpace(ctx.Value.Parent.Email))
             {

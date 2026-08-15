@@ -69,11 +69,13 @@ public class ParentService : IParentService
 {
     private readonly IApplicationDbContext _db;
     private readonly ITenantContext _tenantContext;
+    private readonly ILessonAccessService _access;
 
-    public ParentService(IApplicationDbContext db, ITenantContext tenantContext)
+    public ParentService(IApplicationDbContext db, ITenantContext tenantContext, ILessonAccessService access)
     {
         _db = db;
         _tenantContext = tenantContext;
+        _access = access;
     }
 
     public Task<IReadOnlyList<ParentDto>> GetAllAsync(CancellationToken ct = default)
@@ -606,6 +608,7 @@ public class ParentService : IParentService
                 : tenant.OwnerUserId;
             var teacherName = string.IsNullOrWhiteSpace(tenant?.Name) ? "Enseignant" : tenant.Name;
             var status = ResolveLessonStatus(lesson, attendance, now);
+            var canAttend = _access.CanAttendLesson(student.Id, lesson.Id);
 
             events.Add(new ParentCalendarEventDto(
                 attendance.Id,
@@ -618,8 +621,10 @@ public class ParentService : IParentService
                 teacherName,
                 teacherId,
                 status,
-                lesson.MeetingUrl,
-                lesson.Title));
+                canAttend ? lesson.MeetingUrl : null,
+                lesson.Title,
+                CanJoinLive: canAttend && !string.IsNullOrWhiteSpace(lesson.MeetingUrl),
+                PaymentRequired: !canAttend));
         }
 
         foreach (var homework in homeworks)

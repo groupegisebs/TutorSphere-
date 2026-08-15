@@ -60,6 +60,10 @@ public class PaymentsController : ControllerBase
     {
         try
         {
+            var gate = await EnsureCanPayAsync(subscriptionId, ct);
+            if (gate is not null)
+                return gate;
+
             var response = await _paymentGateway.CreateSubscriptionCheckoutAsync(subscriptionId, request, ct);
 
             // Lien de paiement (INVOICE_READY) — le reçu part uniquement après succès.
@@ -111,6 +115,10 @@ public class PaymentsController : ControllerBase
     {
         try
         {
+            var gate = await EnsureCanPayAsync(subscriptionId, ct);
+            if (gate is not null)
+                return gate;
+
             return Ok(await _paymentGateway.ConfirmSubscriptionPaymentAsync(subscriptionId, ct: ct));
         }
         catch (InvalidOperationException ex)
@@ -144,6 +152,10 @@ public class PaymentsController : ControllerBase
     {
         try
         {
+            var gate = await EnsureCanPayAsync(subscriptionId, ct);
+            if (gate is not null)
+                return gate;
+
             var response = await _paymentGateway.CancelSubscriptionAsync(subscriptionId, cancelImmediately, ct);
 
             var currentUserId = User.GetUserId();
@@ -177,6 +189,10 @@ public class PaymentsController : ControllerBase
     {
         try
         {
+            var gate = await EnsureCanPayAsync(request.SubscriptionId, ct);
+            if (gate is not null)
+                return gate;
+
             var idempotencyKey = Request.Headers.TryGetValue("Idempotency-Key", out var key)
                 ? key.ToString()
                 : request.IdempotencyKey;
@@ -233,4 +249,28 @@ public class PaymentsController : ControllerBase
     [Authorize(Roles = $"{UserRoles.Parent},{UserRoles.Student},{UserRoles.Tutor},{UserRoles.SuperAdmin}")]
     public async Task<ActionResult<IReadOnlyList<AfricanTaxRateDto>>> ListAfricanTaxRates(CancellationToken ct) =>
         Ok(await _paymentGateway.ListAfricanTaxRatesAsync(ct));
+
+    private async Task<ActionResult?> EnsureCanPayAsync(Guid subscriptionId, CancellationToken ct)
+    {
+        if (User.IsInRole(UserRoles.SuperAdmin) || User.IsInRole(UserRoles.PlatformAdmin))
+            return null;
+
+        var userId = User.GetUserId();
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        try
+        {
+            await _paymentGateway.AssertUserCanPaySubscriptionAsync(userId, subscriptionId, ct);
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
 }

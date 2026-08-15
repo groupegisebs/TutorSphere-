@@ -21,6 +21,7 @@ public interface IStudentPortalService
         DateTime? start = null,
         DateTime? end = null,
         CancellationToken ct = default);
+    Task<LessonAccessDto> GetLessonAccessAsync(string userId, Guid lessonId, CancellationToken ct = default);
     Task<IReadOnlyList<StudentAttendanceHistoryDto>> GetAttendanceHistoryAsync(
         string userId,
         CancellationToken ct = default);
@@ -51,8 +52,16 @@ public interface IStudentPortalService
 public class StudentPortalService : IStudentPortalService
 {
     private readonly IApplicationDbContext _db;
+    private readonly ILessonAccessService _access;
 
-    public StudentPortalService(IApplicationDbContext db) => _db = db;
+    public StudentPortalService(IApplicationDbContext db, ILessonAccessService access)
+    {
+        _db = db;
+        _access = access;
+    }
+
+    public Task<LessonAccessDto> GetLessonAccessAsync(string userId, Guid lessonId, CancellationToken ct = default) =>
+        Task.FromResult(_access.EvaluateForUser(userId, lessonId));
 
     public Task<StudentDto?> GetMeAsync(string userId, CancellationToken ct = default)
     {
@@ -191,7 +200,14 @@ public class StudentPortalService : IStudentPortalService
         var lessons = query
             .OrderBy(l => l.StartTime)
             .ToList()
-            .Select(l => MapLesson(l, presentByLesson.TryGetValue(l.Id, out var p) ? p : null))
+            .Select(l =>
+            {
+                var access = _access.Evaluate(student.Id, l.Id);
+                return MapLesson(
+                    l,
+                    presentByLesson.TryGetValue(l.Id, out var p) ? p : null,
+                    access);
+            })
             .ToList();
 
         return Task.FromResult<IReadOnlyList<LessonDto>>(lessons);
@@ -541,11 +557,19 @@ public class StudentPortalService : IStudentPortalService
             ? []
             : raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-    private static LessonDto MapLesson(Lesson l, bool? isPresent = null) => new(
+    private static LessonDto MapLesson(Lesson l, bool? isPresent, LessonAccessDto access) => new(
         l.Id, l.Title, l.Description, l.Subject, l.StartTime, l.EndTime,
-        l.Mode.ToString(), l.Location, l.MeetingUrl, l.SessionNotes, l.CreatedAt, l.UpdatedAt,
+        l.Mode.ToString(),
+        l.Location,
+        access.CanJoin ? l.MeetingUrl : null,
+        l.SessionNotes, l.CreatedAt, l.UpdatedAt,
         l.SettlementStatus.ToString(), l.CancelledAt, l.SessionCounted, l.TutorLiable, l.TutorLiabilityResolution,
-        IsPresent: isPresent);
+        IsPresent: isPresent,
+        CanJoin: access.CanJoin,
+        PaymentRequired: access.PaymentRequired);
+
+    private static LessonDto MapLesson(Lesson l, bool? isPresent = null) =>
+        MapLesson(l, isPresent, new LessonAccessDto(true, false, null));
 
     private static HomeworkDto MapHomework(Homework h) => HomeworkService.MapPublic(h);
 

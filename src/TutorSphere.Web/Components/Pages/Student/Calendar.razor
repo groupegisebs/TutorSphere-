@@ -188,9 +188,11 @@
                     ? l.EndTime.ToLocalTime()
                     : DateTime.SpecifyKind(l.EndTime, DateTimeKind.Local);
                 var dur = Math.Max(15, (int)(endLocal - local).TotalMinutes);
-                var href = !string.IsNullOrWhiteSpace(l.MeetingUrl)
-                    ? l.MeetingUrl!
-                    : $"/student/classroom/{l.Id}?title={Uri.EscapeDataString(l.Title)}&subject={Uri.EscapeDataString(l.Subject ?? "")}";
+                var href = l.PaymentRequired || !l.CanJoin
+                    ? "/student/subscriptions"
+                    : !string.IsNullOrWhiteSpace(l.MeetingUrl)
+                        ? l.MeetingUrl!
+                        : $"/student/classroom/{l.Id}?title={Uri.EscapeDataString(l.Title)}&subject={Uri.EscapeDataString(l.Subject ?? "")}";
                 return new CalEvent(l.Title, l.Subject ?? "", local.Hour, local.Minute, dur, href);
             });
 

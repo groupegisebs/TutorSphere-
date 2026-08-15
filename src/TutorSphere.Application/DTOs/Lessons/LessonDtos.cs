@@ -55,7 +55,12 @@ public record LessonDto(
     int MaxStudents = 1,
     IReadOnlyList<string>? StudentNames = null,
     /// <summary>Présence de l'élève courant (portail élève) ; null si non applicable.</summary>
-    bool? IsPresent = null);
+    bool? IsPresent = null,
+    bool CanJoin = true,
+    bool PaymentRequired = false);
+
+/// <summary>Droit d'entrée en salle (forfait payé / encore valide).</summary>
+public record LessonAccessDto(bool CanJoin, bool PaymentRequired, string? PayUrl);
 
 public record CancelLessonRequest(string? Reason = null);
 

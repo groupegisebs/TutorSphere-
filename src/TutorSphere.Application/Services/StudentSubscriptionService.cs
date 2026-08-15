@@ -1,3 +1,4 @@
+using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.StudentSubscriptions;
 using TutorSphere.Domain.Enums;
 
@@ -22,15 +23,18 @@ public class StudentSubscriptionService : IStudentSubscriptionService
     private readonly Common.Interfaces.IApplicationDbContext _db;
     private readonly ISubscriptionLessonScheduler _lessonScheduler;
     private readonly IBillingEmailOrchestrator _billingEmail;
+    private readonly IPaymentGatewayService _payments;
 
     public StudentSubscriptionService(
         Common.Interfaces.IApplicationDbContext db,
         ISubscriptionLessonScheduler lessonScheduler,
-        IBillingEmailOrchestrator billingEmail)
+        IBillingEmailOrchestrator billingEmail,
+        IPaymentGatewayService payments)
     {
         _db = db;
         _lessonScheduler = lessonScheduler;
         _billingEmail = billingEmail;
+        _payments = payments;
     }
 
     public async Task<StudentSubscriptionDto> EnrollAsync(
@@ -135,7 +139,7 @@ public class StudentSubscriptionService : IStudentSubscriptionService
             Status = SubscriptionStatus.Pending,
             StartDate = now,
             EndDate = endDate,
-            SessionsRemaining = Math.Max(0, offering.SessionCount)
+            SessionsRemaining = 0
         };
 
         _db.Add(subscription);
@@ -368,7 +372,11 @@ public class StudentSubscriptionService : IStudentSubscriptionService
 
         sub.Status = SubscriptionStatus.Cancelled;
         sub.UpdatedAt = DateTime.UtcNow;
+        ClosePendingPayments(sub.Id);
         await _db.SaveChangesAsync(ct);
+
+        await _payments.TryCancelGatewaySubscriptionAsync(sub.Id, cancelImmediately: true, ct);
+        await _lessonScheduler.CancelUnconsumedFutureAsync(sub.Id, ct);
     }
 
     public async Task<StudentSubscriptionDto> AcceptAsync(Guid subscriptionId, CancellationToken ct = default)
@@ -388,6 +396,7 @@ public class StudentSubscriptionService : IStudentSubscriptionService
         if (offering.Price <= 0)
         {
             sub.Status = SubscriptionStatus.Active;
+            sub.SessionsRemaining = Math.Max(0, offering.SessionCount);
             sub.UpdatedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync(ct);
             await _lessonScheduler.EnsureScheduledAsync(sub.Id, ct);
@@ -425,7 +434,10 @@ public class StudentSubscriptionService : IStudentSubscriptionService
 
         sub.Status = SubscriptionStatus.Rejected;
         sub.UpdatedAt = DateTime.UtcNow;
+        ClosePendingPayments(sub.Id);
         await _db.SaveChangesAsync(ct);
+
+        await _billingEmail.NotifyEnrollmentRejectedAsync(sub.Id, ct);
 
         return Map(
             sub,
@@ -435,6 +447,19 @@ public class StudentSubscriptionService : IStudentSubscriptionService
             offering?.Currency ?? "CAD",
             student is null ? "" : $"{student.FirstName} {student.LastName}".Trim(),
             parentName);
+    }
+
+    private void ClosePendingPayments(Guid subscriptionId)
+    {
+        var pending = _db.PaymentsForAnyTenant
+            .Where(p => p.SubscriptionId == subscriptionId && p.Status == PaymentStatus.Pending)
+            .ToList();
+        var now = DateTime.UtcNow;
+        foreach (var payment in pending)
+        {
+            payment.Status = PaymentStatus.Failed;
+            payment.UpdatedAt = now;
+        }
     }
 
     private string? ResolveParentName(Domain.Entities.Student? student)

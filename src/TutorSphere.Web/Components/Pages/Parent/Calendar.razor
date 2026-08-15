@@ -208,6 +208,10 @@
                 {
                     <a class="btn btn-primary" href="@_selected.MeetingUrl" target="_blank" rel="noopener">@L["ParentCal_Join"]</a>
                 }
+                else if (_selected.Kind == "lesson" && _selected.PaymentRequired)
+                {
+                    <a class="btn btn-warning" href="/parent/subscriptions">Paiement requis</a>
+                }
             </div>
         </div>
     </div>
@@ -650,7 +654,10 @@
     };
 
     private static bool CanJoin(ParentCalendarEventDto evt) =>
-        evt.Kind == "lesson" && !string.IsNullOrWhiteSpace(evt.MeetingUrl)
+        evt.Kind == "lesson"
+        && evt.CanJoinLive
+        && !evt.PaymentRequired
+        && !string.IsNullOrWhiteSpace(evt.MeetingUrl)
         && (evt.MeetingUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
             || evt.MeetingUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase));
 

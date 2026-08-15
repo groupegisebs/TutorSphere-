@@ -20,6 +20,12 @@ public class StudentSubscription : BaseEntity, ITenantEntity
     /// <summary>Dernier e-mail « fin d'abonnement dans 1 mois » (renouvellement).</summary>
     public DateTime? RenewalReminderSentAt { get; set; }
 
+    /// <summary>Dernier e-mail « 1–2 séances restantes ».</summary>
+    public DateTime? LowSessionsReminderSentAt { get; set; }
+
+    /// <summary>Dernier e-mail J-2 « paiement requis pour le prochain cours ».</summary>
+    public DateTime? LessonAccessReminderSentAt { get; set; }
+
     public Tenant Tenant { get; set; } = null!;
     public Student Student { get; set; } = null!;
     public SubscriptionOffering Offering { get; set; } = null!;

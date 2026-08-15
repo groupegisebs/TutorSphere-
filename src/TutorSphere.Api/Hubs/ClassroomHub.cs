@@ -1,7 +1,9 @@
 using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.DependencyInjection;
 using TutorSphere.Application.Common;
+using TutorSphere.Application.Services;
 using TutorSphere.Domain.Enums;
 
 namespace TutorSphere.Api.Hubs;
@@ -12,7 +14,7 @@ namespace TutorSphere.Api.Hubs;
 /// Flux A/V : WebRTC mesh, signalé via SendRtcSignal.
 /// </summary>
 [Authorize(Roles = $"{UserRoles.Tutor},{UserRoles.Student},{UserRoles.TeachingAssistant},{UserRoles.Expert},{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
-public class ClassroomHub : Hub
+public class ClassroomHub(IServiceScopeFactory scopes) : Hub
 {
     private static readonly ConcurrentDictionary<string, LessonBoardState> States = new(StringComparer.Ordinal);
     private static readonly ConcurrentDictionary<string, ConcurrentDictionary<string, ClassroomPeer>> PeersByLesson =
@@ -30,6 +32,28 @@ public class ClassroomHub : Hub
         bool micOn = true,
         bool camOn = false)
     {
+        var user = Context.User;
+        var isStaff = user is not null && (
+            user.IsInRole(UserRoles.Tutor)
+            || user.IsInRole(UserRoles.TeachingAssistant)
+            || user.IsInRole(UserRoles.Expert)
+            || user.IsInRole(UserRoles.GroupManager)
+            || user.IsInRole(UserRoles.SuperAdmin)
+            || user.IsInRole(UserRoles.PlatformAdmin));
+
+        if (!isStaff)
+        {
+            var userId = user?.GetUserId();
+            if (string.IsNullOrEmpty(userId))
+                throw new HubException("Authentification requise.");
+
+            await using var scope = scopes.CreateAsyncScope();
+            var access = scope.ServiceProvider.GetRequiredService<ILessonAccessService>();
+            var gate = access.EvaluateForUser(userId, lessonId);
+            if (!gate.CanJoin)
+                throw new HubException("PAYMENT_REQUIRED");
+        }
+
         var group = GroupName(lessonId);
         await Groups.AddToGroupAsync(Context.ConnectionId, group);
         ConnectionToLesson[Context.ConnectionId] = group;

@@ -14,6 +14,17 @@
 
 <PageTitle>@L["Classroom_Title"] – TutorSphere</PageTitle>
 
+@if (_paymentBlocked)
+{
+    <div class="d-flex flex-column align-items-center justify-content-center py-5 px-3 text-center" style="min-height:60vh">
+        <i class="bi bi-lock-fill fs-1 text-warning mb-3"></i>
+        <h1 class="h4">Paiement requis</h1>
+        <p class="text-muted mb-4">Activez ou renouvellez votre forfait pour rejoindre ce cours.</p>
+        <a class="btn btn-primary" href="/student/subscriptions">Aller au paiement</a>
+    </div>
+}
+else
+{
 <div class="cr-pro @(_wbCollapsed ? "cr-pro--wb-min" : null)">
     <header class="cr-pro-header">
         <div class="cr-pro-header-left">
@@ -496,6 +507,7 @@
         </div>
     }
 </div>
+}
 
 @code {
     [Parameter] public string LessonId { get; set; } = "";
@@ -526,6 +538,7 @@
     private bool _recording  = false;
     private bool _mediaReady = false;
     private bool _mediaStarted;
+    private bool _paymentBlocked;
     private string? _mediaError;
     private DotNetObjectReference<Classroom>? _jsRef;
     private bool _showBgMenu;
@@ -868,6 +881,24 @@
         if (firstRender && !_mediaStarted)
         {
             _mediaStarted = true;
+            if (Guid.TryParse(LessonId, out var accessLessonId))
+            {
+                try
+                {
+                    var access = await Api.GetAsync<LessonAccessDto>($"api/students/me/lessons/{accessLessonId}/access");
+                    if (access is not { CanJoin: true })
+                    {
+                        _paymentBlocked = true;
+                        StateHasChanged();
+                        return;
+                    }
+                }
+                catch
+                {
+                    /* contre-vérifié par ClassroomHub */
+                }
+            }
+
             _jsRef = DotNetObjectReference.Create(this);
             try { await JS.InvokeVoidAsync("classroomMedia.setEndedCallback", _jsRef); } catch { }
             try { await JS.InvokeVoidAsync("whiteboard.setStrokeDotNetRef", _jsRef); } catch { }
@@ -968,7 +999,16 @@
             catch { }
         }
 
-        await ClassroomRt.JoinLessonAsync(lid, SelfDisplayName, "Élève", micOn: false, camOn: false);
+        try
+        {
+            await ClassroomRt.JoinLessonAsync(lid, SelfDisplayName, "Élève", micOn: false, camOn: false);
+        }
+        catch (Exception)
+        {
+            _paymentBlocked = true;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
         await BroadcastOwnMediaStateAsync();
     }
 

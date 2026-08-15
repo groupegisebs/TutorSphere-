@@ -40,6 +40,9 @@ builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddHostedService<LessonReminderService>();
 builder.Services.AddHostedService<OverduePaymentReminderService>();
 builder.Services.AddHostedService<SubscriptionRenewalReminderService>();
+builder.Services.AddHostedService<PackAccessReminderService>();
+builder.Services.AddHostedService<SubscriptionPackExpiryService>();
+builder.Services.AddHostedService<PendingPaymentSyncService>();
 builder.Services.AddHostedService<PlatformLicenseExpiryService>();
 builder.Services.AddHostedService<MeetingReminderService>();
 

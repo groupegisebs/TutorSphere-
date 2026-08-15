@@ -155,7 +155,9 @@ public record ParentCalendarEventDto(
     string? TeacherUserId,
     string? Status,
     string? MeetingUrl,
-    string? Title);
+    string? Title,
+    bool CanJoinLive = false,
+    bool PaymentRequired = false);
 
 public record ParentHomeworkBoardDto(
     IReadOnlyList<ParentHomeworkChildDto> Children,

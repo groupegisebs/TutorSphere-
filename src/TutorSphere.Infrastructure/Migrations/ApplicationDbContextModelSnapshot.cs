@@ -2858,6 +2858,12 @@ namespace TutorSphere.Infrastructure.Migrations
                     b.Property<DateTime>("EndDate")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTime?>("LessonAccessReminderSentAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("LowSessionsReminderSentAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<Guid>("OfferingId")
                         .HasColumnType("uuid");
 

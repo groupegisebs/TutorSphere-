@@ -4,22 +4,25 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
+using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.Services;
 using TutorSphere.Infrastructure.PayGateway;
 
 namespace TutorSphere.Api.Controllers;
 
 /// <summary>
-/// Callbacks PayGateway pour les décaissements tuteur (après revue / rapprochement admin).
+/// Callbacks PayGateway : décaissements tuteur et paiements parent (activation du forfait sans retour navigateur).
 /// </summary>
 [ApiController]
 [Route("api/webhooks/paygateway")]
 public class PayGatewayPayoutWebhookController(
     ITutorEarningsService earnings,
+    IPaymentGatewayService payments,
     IOptions<PayGatewaySettings> options,
     ILogger<PayGatewayPayoutWebhookController> logger) : ControllerBase
 {
     [HttpPost("payouts")]
+    [HttpPost("payments")]
     [AllowAnonymous]
     public async Task<IActionResult> Receive(CancellationToken cancellationToken)
     {
@@ -58,12 +61,19 @@ public class PayGatewayPayoutWebhookController(
                 if (!string.IsNullOrWhiteSpace(key))
                     await earnings.RejectFromGatewayAsync(key, reason, cancellationToken);
             }
+            else if (eventType is "payment.succeeded" or "payment.failed"
+                     && root.TryGetProperty("data", out var paymentData))
+            {
+                var code = paymentData.TryGetProperty("paymentCode", out var pc) ? pc.GetString() : null;
+                if (!string.IsNullOrWhiteSpace(code))
+                    await payments.SyncPaymentByGatewayCodeAsync(code, cancellationToken);
+            }
 
             return Ok(new { status = "ok" });
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Webhook PayGateway payouts failed ({Event})", eventType);
+            logger.LogError(ex, "Webhook PayGateway failed ({Event})", eventType);
             return StatusCode(500);
         }
     }

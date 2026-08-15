@@ -33,6 +33,7 @@ public class LessonService : ILessonService
     private readonly ITenantContext _tenantContext;
     private readonly IEmailService _email;
     private readonly IRealTimeMessaging _realtime;
+    private readonly ILessonAccessService _access;
     private readonly ILogger<LessonService> _logger;
 
     public LessonService(
@@ -40,12 +41,14 @@ public class LessonService : ILessonService
         ITenantContext tenantContext,
         IEmailService email,
         IRealTimeMessaging realtime,
+        ILessonAccessService access,
         ILogger<LessonService> logger)
     {
         _db = db;
         _tenantContext = tenantContext;
         _email = email;
         _realtime = realtime;
+        _access = access;
         _logger = logger;
     }
 
@@ -69,6 +72,9 @@ public class LessonService : ILessonService
         }
 
         var tenantId = RequireTenantId();
+        foreach (var studentId in studentIds)
+            _access.EnsureStudentEligibleForManualLesson(studentId, tenantId);
+
         var created = new List<Lesson>();
 
         foreach (var (start, end) in slots)
@@ -573,6 +579,9 @@ public class LessonService : ILessonService
 
         foreach (var student in students)
         {
+            if (!_access.CanAttendLesson(student.Id, lessonId))
+                continue;
+
             if (!string.IsNullOrWhiteSpace(student.UserId))
                 recipientIds.Add(student.UserId);
 

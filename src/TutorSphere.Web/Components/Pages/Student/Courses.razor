@@ -99,13 +99,21 @@ else
                         <td>
                             @if (status != "done" && c.SettlementStatus is not "CancelledFree")
                             {
-                                @if (!string.IsNullOrWhiteSpace(c.MeetingUrl))
+                                @if (c.PaymentRequired)
+                                {
+                                    <a class="btn btn-sm btn-warning" href="/student/subscriptions">Paiement requis</a>
+                                }
+                                else if (!string.IsNullOrWhiteSpace(c.MeetingUrl) && c.CanJoin)
                                 {
                                     <a class="btn btn-sm btn-primary" href="@c.MeetingUrl" target="_blank" rel="noopener">@L["StudentCourses_Join"]</a>
                                 }
-                                else
+                                else if (c.CanJoin)
                                 {
                                     <a class="btn btn-sm btn-primary" href="@ClassroomHref(c)">@L["StudentCourses_Join"]</a>
+                                }
+                                else
+                                {
+                                    <a class="btn btn-sm btn-warning" href="/student/subscriptions">Paiement requis</a>
                                 }
                             }
                         </td>

@@ -9,9 +9,12 @@ public interface ISubscriptionLessonScheduler
 {
     /// <summary>
     /// Crée les séances (Lesson + attendance) à partir du planning de l'offre
-    /// lorsque l'abonnement devient Active. Idempotent.
+    /// lorsque l'abonnement devient Active. Idempotent par période.
     /// </summary>
     Task<int> EnsureScheduledAsync(Guid subscriptionId, CancellationToken ct = default);
+
+    /// <summary>Annule les cours futurs non consommés d'un forfait (annulation / expiration).</summary>
+    Task<int> CancelUnconsumedFutureAsync(Guid subscriptionId, CancellationToken ct = default);
 }
 
 public sealed class SubscriptionLessonScheduler : ISubscriptionLessonScheduler
@@ -30,6 +33,14 @@ public sealed class SubscriptionLessonScheduler : ISubscriptionLessonScheduler
     public static string MarkerFor(Guid subscriptionId) =>
         $"{SessionNotesMarkerPrefix}{subscriptionId:N}";
 
+    public static string MarkerForPeriod(Guid subscriptionId, DateTime periodStart)
+    {
+        var utc = periodStart.Kind == DateTimeKind.Utc
+            ? periodStart
+            : periodStart.ToUniversalTime();
+        return $"{MarkerFor(subscriptionId)}:p{utc:yyyyMMdd}";
+    }
+
     public async Task<int> EnsureScheduledAsync(Guid subscriptionId, CancellationToken ct = default)
     {
         var subscription = _db.StudentSubscriptionsForAnyTenant
@@ -40,7 +51,7 @@ public sealed class SubscriptionLessonScheduler : ISubscriptionLessonScheduler
         if (subscription.Status != SubscriptionStatus.Active)
             return 0;
 
-        var marker = MarkerFor(subscription.Id);
+        var marker = MarkerForPeriod(subscription.Id, subscription.StartDate);
         var alreadyScheduled = _db.LessonsForAnyTenant
             .Any(l => l.SessionNotes != null && l.SessionNotes.Contains(marker));
         if (alreadyScheduled)
@@ -163,5 +174,31 @@ public sealed class SubscriptionLessonScheduler : ISubscriptionLessonScheduler
             offering.Id);
 
         return created.Count;
+    }
+
+    public async Task<int> CancelUnconsumedFutureAsync(Guid subscriptionId, CancellationToken ct = default)
+    {
+        var marker = MarkerFor(subscriptionId);
+        var now = DateTime.UtcNow;
+        var lessons = _db.LessonsForAnyTenant
+            .Where(l => l.SessionNotes != null
+                        && l.SessionNotes.Contains(marker)
+                        && l.StartTime > now
+                        && !l.SessionCounted
+                        && l.SettlementStatus == LessonSettlementStatus.Scheduled)
+            .ToList();
+
+        if (lessons.Count == 0)
+            return 0;
+
+        foreach (var lesson in lessons)
+        {
+            lesson.SettlementStatus = LessonSettlementStatus.CancelledFree;
+            lesson.CancelledAt = now;
+            lesson.UpdatedAt = now;
+        }
+
+        await _db.SaveChangesAsync(ct);
+        return lessons.Count;
     }
 }
