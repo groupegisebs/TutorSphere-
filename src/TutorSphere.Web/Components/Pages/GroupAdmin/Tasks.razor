@@ -63,12 +63,20 @@
             <button type="button" class="cc-btn cc-btn-primary mt-2" disabled="@_busy" @onclick="CreateAsync">Déléguer</button>
         </div>
 
+        @if (!string.IsNullOrWhiteSpace(Assignee))
+        {
+            <div class="alert alert-info py-2">
+                Tâches filtrées pour un membre.
+                <a href="group-admin/tasks">Voir toutes les tâches</a>
+            </div>
+        }
+
         <div class="cc-card">
             @if (_loading)
             {
                 <span class="spinner-border"></span>
             }
-            else if (_tasks.Count == 0)
+            else if (VisibleTasks.Count == 0)
             {
                 <p class="text-muted mb-0">Aucune tâche.</p>
             }
@@ -85,7 +93,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var t in _tasks)
+                        @foreach (var t in VisibleTasks)
                         {
                             <tr>
                                 <td>
@@ -118,6 +126,8 @@
 </AuthorizeView>
 
 @code {
+    [SupplyParameterFromQuery(Name = "assignee")] public string? Assignee { get; set; }
+
     private bool _loading = true;
     private bool _busy;
     private string? _error;
@@ -129,6 +139,10 @@
     private List<TaskItem> _tasks = [];
     private List<TeacherItem> _teachers = [];
     private List<MemberItem> _members = [];
+    private List<TaskItem> VisibleTasks =>
+        string.IsNullOrWhiteSpace(Assignee)
+            ? _tasks
+            : _tasks.Where(t => t.AssigneeExpertUserId == Assignee).ToList();
 
     protected override async Task OnInitializedAsync()
     {
@@ -150,6 +164,8 @@
                     _teachers.Add(q);
             }
             _members = await Api.GetAsync<List<MemberItem>>("api/expert/membership/members") ?? [];
+            if (!string.IsNullOrWhiteSpace(Assignee))
+                _assigneeId = Assignee;
             _error = null;
         }
         catch (Exception ex) { _error = ex.Message; }

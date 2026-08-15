@@ -148,10 +148,12 @@ public class ExpertGroupMemberAdminService(
         member.PermissionsJson = WritePermissions(GroupMemberPermissionCatalog.Sanitize(role, ReadPermissions(member)));
         member.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
+        var actor = await DisplayNameAsync(callerUserId, ct);
+        var target = await DisplayNameAsync(memberUserId, ct);
         await audit.RecordAsync(
             ExpertGovernanceEventType.MemberRoleChanged,
             callerUserId,
-            $"Rôle modifié : {previous} → {role}",
+            $"{actor} a changé le rôle de {target} : {RoleFr(previous)} → {RoleFr(role)}.",
             groupId, relatedEntityId: member.Id, isNotification: false, ct: ct);
     }
 
@@ -165,10 +167,12 @@ public class ExpertGroupMemberAdminService(
         member.PermissionsJson = WritePermissions(GroupMemberPermissionCatalog.Sanitize(member.MemberRole, permissions));
         member.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
+        var actor = await DisplayNameAsync(callerUserId, ct);
+        var target = await DisplayNameAsync(memberUserId, ct);
         await audit.RecordAsync(
             ExpertGovernanceEventType.MemberPermissionsUpdated,
             callerUserId,
-            "Permissions mises à jour",
+            $"{actor} a mis à jour les permissions de {target}.",
             groupId, relatedEntityId: member.Id, isNotification: false, ct: ct);
     }
 
@@ -187,10 +191,12 @@ public class ExpertGroupMemberAdminService(
         member.SuspensionReason = reason.Trim();
         member.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
+        var actor = await DisplayNameAsync(callerUserId, ct);
+        var target = await DisplayNameAsync(memberUserId, ct);
         await audit.RecordAsync(
             ExpertGovernanceEventType.MemberSuspended,
             callerUserId,
-            $"Membre suspendu : {reason.Trim()}",
+            $"{actor} a suspendu {target}.",
             groupId, relatedEntityId: member.Id, isNotification: true, ct: ct);
     }
 
@@ -205,10 +211,12 @@ public class ExpertGroupMemberAdminService(
         member.EndedAtUtc = null;
         member.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
+        var actor = await DisplayNameAsync(callerUserId, ct);
+        var target = await DisplayNameAsync(memberUserId, ct);
         await audit.RecordAsync(
             ExpertGovernanceEventType.MemberReactivated,
             callerUserId,
-            "Membre réactivé",
+            $"{actor} a réactivé {target}.",
             groupId, relatedEntityId: member.Id, isNotification: false, ct: ct);
     }
 
@@ -237,10 +245,12 @@ public class ExpertGroupMemberAdminService(
         member.EndedAtUtc = DateTime.UtcNow;
         member.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
+        var actor = await DisplayNameAsync(callerUserId, ct);
+        var target = await DisplayNameAsync(memberUserId, ct);
         await audit.RecordAsync(
             ExpertGovernanceEventType.MemberRemovedFromGroup,
             callerUserId,
-            "Membre retiré du groupe",
+            $"{actor} a retiré {target} du groupe.",
             groupId, relatedEntityId: member.Id, isNotification: true, ct: ct);
     }
 
@@ -340,6 +350,22 @@ public class ExpertGroupMemberAdminService(
         if (check.PendingVotes > 0) parts.Add($"{check.PendingVotes} vote{(check.PendingVotes > 1 ? "s" : "")} actif{(check.PendingVotes > 1 ? "s" : "")}");
         return "Ce membre possède encore : " + string.Join(", ", parts) + ". Réattribuez ces éléments avant de le retirer.";
     }
+
+    private async Task<string> DisplayNameAsync(string userId, CancellationToken ct)
+    {
+        var c = await contacts.GetAsync(userId, ct);
+        return string.IsNullOrWhiteSpace(c?.DisplayName) ? "un membre" : c.Value.DisplayName;
+    }
+
+    private static string RoleFr(ExpertGroupMemberRole role) => role switch
+    {
+        ExpertGroupMemberRole.Manager => "Responsable",
+        ExpertGroupMemberRole.Senior => "Expert senior",
+        ExpertGroupMemberRole.Observer => "Observateur",
+        ExpertGroupMemberRole.DisciplineLead => "Chef discipline",
+        ExpertGroupMemberRole.CommitteeLead => "Chef comité",
+        _ => "Expert"
+    };
 
     private static bool IsSenior(ExpertGroupMemberRole role) =>
         role is ExpertGroupMemberRole.Senior or ExpertGroupMemberRole.DisciplineLead or ExpertGroupMemberRole.CommitteeLead;

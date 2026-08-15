@@ -78,16 +78,16 @@ public class ExpertMembershipGovernanceService(
         db.Add(invite);
         await db.SaveChangesAsync(ct);
 
+        var initiator = await contacts.GetAsync(initiatorUserId, ct);
+        var inviteeName = $"{firstName} {lastName}".Trim();
         await audit.RecordAsync(
             ExpertGovernanceEventType.MembershipInviteCreated,
             initiatorUserId,
-            $"Invitation expert {emailAddr}",
+            $"{initiator?.DisplayName ?? "Le Responsable"} a invité {inviteeName}.",
             group.Id,
             relatedEntityId: invite.Id,
             isNotification: false,
             ct: ct);
-
-        var initiator = await contacts.GetAsync(initiatorUserId, ct);
         var joinUrl = $"{urls.WebBaseUrl.TrimEnd('/')}/expert/join?invite={Uri.EscapeDataString(token)}";
         try
         {
