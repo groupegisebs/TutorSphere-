@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.DependencyInjection;
 using TutorSphere.Application.Services;
 
 namespace TutorSphere.Api.Hubs;
@@ -10,7 +11,7 @@ namespace TutorSphere.Api.Hubs;
 /// Salle de réunion : présence, chat, WebRTC, salle d’attente, réactions, IA.
 /// </summary>
 [AllowAnonymous]
-public class MeetingHub(IExpertMeetingService meetings) : Hub
+public class MeetingHub(IServiceScopeFactory scopes) : Hub
 {
     private static readonly ConcurrentDictionary<string, ConcurrentDictionary<string, MeetingPeer>> PeersByMeeting = new(StringComparer.Ordinal);
     private static readonly ConcurrentDictionary<string, string> ConnectionToMeeting = new(StringComparer.Ordinal);
@@ -26,7 +27,11 @@ public class MeetingHub(IExpertMeetingService meetings) : Hub
         string? guestToken = null)
     {
         var userId = Context.User?.FindFirstValue(ClaimTypes.NameIdentifier);
-        await meetings.EnsureCanJoinLiveAsync(userId, meetingId, guestToken, Context.ConnectionAborted);
+        await using (var scope = scopes.CreateAsyncScope())
+        {
+            var meetings = scope.ServiceProvider.GetRequiredService<IExpertMeetingService>();
+            await meetings.EnsureCanJoinLiveAsync(userId, meetingId, guestToken, Context.ConnectionAborted);
+        }
 
         var group = GroupName(meetingId);
         await Groups.AddToGroupAsync(Context.ConnectionId, group);
@@ -94,7 +99,9 @@ public class MeetingHub(IExpertMeetingService meetings) : Hub
         await Clients.Group(group).SendAsync("ChatMessage", msg);
         try
         {
-            await meetings.PersistChatAsync(meetingId, peer.UserId ?? peer.ConnectionId, peer.DisplayName, trimmed, Context.ConnectionAborted);
+            await using var scope = scopes.CreateAsyncScope();
+            var svc = scope.ServiceProvider.GetRequiredService<IExpertMeetingService>();
+            await svc.PersistChatAsync(meetingId, peer.UserId ?? peer.ConnectionId, peer.DisplayName, trimmed, Context.ConnectionAborted);
         }
         catch { /* non bloquant */ }
     }
@@ -156,7 +163,12 @@ public class MeetingHub(IExpertMeetingService meetings) : Hub
         var chunk = text.Trim();
         if (chunk.Length > 400) chunk = chunk[..400];
         await Clients.Group(group).SendAsync("Caption", meetingId, peer.DisplayName, chunk);
-        try { await meetings.AppendTranscriptAsync(meetingId, $"{peer.DisplayName}: {chunk}", Context.ConnectionAborted); }
+        try
+        {
+            await using var scope = scopes.CreateAsyncScope();
+            var svc = scope.ServiceProvider.GetRequiredService<IExpertMeetingService>();
+            await svc.AppendTranscriptAsync(meetingId, $"{peer.DisplayName}: {chunk}", Context.ConnectionAborted);
+        }
         catch { /* non bloquant */ }
     }
 

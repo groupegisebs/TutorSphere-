@@ -51,7 +51,6 @@ public interface IExpertMeetingService
 
 public class ExpertMeetingService(
     IApplicationDbContext db,
-    IGroupAdminAccessService groupAccess,
     IExpertGroupManagerService managers,
     IUserContactLookup contacts,
     IEmailService email,

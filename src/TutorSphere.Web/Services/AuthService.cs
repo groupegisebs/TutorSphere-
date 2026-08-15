@@ -663,6 +663,7 @@ public sealed class AuthService
     private static string RoleToRoute(string role) => role switch
     {
         "SuperAdmin" or "PlatformAdmin" => "/admin/dashboard",
+        "GroupManager" => "/expert/dashboard",
         "Expert" => "/expert/dashboard",
         "Tutor" => "/tutor/activate",
         "TeachingAssistant" => "/tutor/dashboard",

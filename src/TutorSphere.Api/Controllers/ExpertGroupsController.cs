@@ -820,7 +820,7 @@ public class ExpertGroupsController : ControllerBase
             groupName = group.Name,
             countryCode = group.CountryCode,
             isInternational = group.IsInternational,
-            portalPath = "/group-admin/dashboard"
+            portalPath = "/expert/dashboard"
         });
     }
 }

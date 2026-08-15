@@ -190,11 +190,11 @@
 
     <div class="mtg-create-bar">
         <button type="button" class="cc-btn" @onclick="() => Nav.NavigateTo(CancelHref)">Annuler</button>
-        <button type="button" class="cc-btn mtg-draft" disabled="@Busy" @onclick="() => SaveAsync("draft")">
+        <button type="button" class="cc-btn mtg-draft" disabled="@Busy" @onclick="SaveDraft">
             <i class="bi bi-bookmark"></i> Enregistrer comme brouillon
         </button>
-        <button type="button" class="cc-btn" disabled="@Busy" @onclick="() => SaveAsync("start")">Démarrer maintenant</button>
-        <button type="button" class="cc-btn cc-btn-primary" disabled="@Busy" @onclick="() => SaveAsync("schedule")">
+        <button type="button" class="cc-btn" disabled="@Busy" @onclick="SaveStart">Démarrer maintenant</button>
+        <button type="button" class="cc-btn cc-btn-primary" disabled="@Busy" @onclick="SaveSchedule">
             <i class="bi bi-send"></i> Programmer et envoyer les invitations
         </button>
     </div>
@@ -208,8 +208,8 @@
     internal string Description { get; set; } = "";
     internal string Agenda { get; set; } = "";
     internal DateTime Date { get; set; } = DateTime.Today;
-    internal TimeSpan StartTime { get; set; } = TimeSpan.FromHours(10);
-    internal TimeSpan EndTime { get; set; } = TimeSpan.FromHours(11);
+    internal TimeOnly StartTime { get; set; } = new(10, 0);
+    internal TimeOnly EndTime { get; set; } = new(11, 0);
     internal string TimeZoneId { get; set; } = "Africa/Douala";
     internal int Visibility { get; set; } = 1;
     internal bool Recurring;
@@ -320,6 +320,10 @@
         ShowGuest = false;
     }
 
+    private Task SaveDraft() => SaveAsync("draft");
+    private Task SaveStart() => SaveAsync("start");
+    private Task SaveSchedule() => SaveAsync("schedule");
+
     private async Task SaveAsync(string mode)
     {
         Error = null;
@@ -368,15 +372,15 @@
         finally { Busy = false; }
     }
 
-    private DateTime? ToUtc(DateTime date, TimeSpan time)
+    private DateTime? ToUtc(DateTime date, TimeOnly time)
     {
         try
         {
-            var local = DateTime.SpecifyKind(date.Date + time, DateTimeKind.Unspecified);
+            var local = DateTime.SpecifyKind(date.Date.Add(time.ToTimeSpan()), DateTimeKind.Unspecified);
             var tz = TimeZoneInfo.FindSystemTimeZoneById(TimeZoneId);
             return TimeZoneInfo.ConvertTimeToUtc(local, tz);
         }
-        catch { return DateTime.SpecifyKind(date.Date + time, DateTimeKind.Local).ToUniversalTime(); }
+        catch { return DateTime.SpecifyKind(date.Date.Add(time.ToTimeSpan()), DateTimeKind.Local).ToUniversalTime(); }
     }
 
     private static string Initials(string name)

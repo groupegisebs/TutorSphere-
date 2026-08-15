@@ -9,7 +9,7 @@
 
 <PageTitle>Tableau de bord Expert — TutorSphere</PageTitle>
 
-<AuthorizeView Roles="Expert">
+<AuthorizeView Roles="Expert,GroupManager,SuperAdmin,PlatformAdmin">
     <Authorized>
         <div class="cc-toolbar ex-toolbar">
             <div>
@@ -91,6 +91,7 @@
             </div>
 
             <div class="ex-panel-grid">
+                <div class="ex-panel-col">
                 <section class="ex-panel">
                     <div class="ex-panel-head">
                         <h2 class="ex-panel-title">Alertes</h2>
@@ -121,6 +122,52 @@
                         </div>
                     }
                 </section>
+
+                @if (_isManager)
+                {
+                    <section class="ex-panel">
+                        <div class="ex-panel-head">
+                            <h2 class="ex-panel-title"><i class="bi bi-camera-video" aria-hidden="true"></i> Réunions</h2>
+                            <a class="cc-btn btn-sm" href="expert/meetings">Voir tout</a>
+                        </div>
+                        @if (_meetings.Count == 0)
+                        {
+                            <div class="ex-empty">
+                                <i class="bi bi-calendar-plus" aria-hidden="true"></i>
+                                <strong>Aucune réunion programmée</strong>
+                                <span>Planifiez une rencontre avec les membres du groupe.</span>
+                            </div>
+                        }
+                        else
+                        {
+                            @foreach (var m in _meetings)
+                            {
+                                <div class="ex-meet-item">
+                                    <span class="ex-page-icon" style="width:2.1rem;height:2.1rem;font-size:0.95rem"><i class="bi bi-camera-video"></i></span>
+                                    <div style="flex:1;min-width:0">
+                                        <strong>@m.Title</strong>
+                                        <small>@StatusFr(m.Status) · @(m.StartAtUtc?.ToLocalTime().ToString("g") ?? "Brouillon")</small>
+                                    </div>
+                                    @if (m.Status is 1 or 2)
+                                    {
+                                        <a class="cc-btn cc-btn-primary btn-sm" href="@($"expert/meetings/{m.Id}/room")">Rejoindre</a>
+                                    }
+                                    else if (m.Status == 3)
+                                    {
+                                        <a class="cc-btn btn-sm" href="@($"expert/meetings/{m.Id}/minutes")">Compte rendu</a>
+                                    }
+                                </div>
+                            }
+                        }
+                        <div class="d-flex gap-2 mt-2 flex-wrap">
+                            <a class="cc-btn cc-btn-primary btn-sm" href="expert/meetings/create">
+                                <i class="bi bi-plus-lg"></i> Créer une réunion
+                            </a>
+                            <a class="cc-btn btn-sm" href="expert/meetings">Toutes les réunions</a>
+                        </div>
+                    </section>
+                }
+                </div>
 
                 <section class="ex-panel">
                     <div class="ex-panel-head">
@@ -169,6 +216,19 @@
                             <span>Enseignants approuvés</span>
                             <i class="bi bi-chevron-right" aria-hidden="true"></i>
                         </a>
+                        @if (_isManager)
+                        {
+                            <a class="ex-action" href="expert/meetings/create">
+                                <i class="bi bi-camera-video" aria-hidden="true"></i>
+                                <span>Créer une réunion</span>
+                                <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                            </a>
+                            <a class="ex-action" href="expert/meetings">
+                                <i class="bi bi-calendar-event" aria-hidden="true"></i>
+                                <span>Réunions du groupe</span>
+                                <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                            </a>
+                        }
                     </div>
 
                     <div class="ex-stat-grid">
@@ -219,22 +279,55 @@
 @code {
     private bool _loading = true;
     private string? _error;
+    private bool _isManager;
     private DashboardSummary? _summary;
+    private readonly List<MeetingItem> _meetings = [];
 
     protected override async Task OnInitializedAsync()
     {
         try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
         try
         {
+            try
+            {
+                var ctx = await Api.GetAsync<MeContext>("api/expert/me-context");
+                _isManager = ctx?.IsGroupManager == true || Auth.IsActingAsGroupAdmin;
+            }
+            catch { }
+
             _summary = await Api.GetAsync<DashboardSummary>("api/expert/dashboard-summary");
             if (_summary is null)
                 _error = "Impossible de charger le tableau de bord.";
+
+            if (_isManager)
+            {
+                var list = await Api.GetAsync<List<MeetingItem>>("api/expert/meetings") ?? [];
+                _meetings.AddRange(list.Where(m => m.Status is not 4).Take(4));
+            }
         }
         catch (Exception ex)
         {
             _error = ex.Message;
         }
         finally { _loading = false; }
+    }
+
+    private static string StatusFr(int s) => s switch
+    {
+        0 => "Brouillon",
+        1 => "Programmée",
+        2 => "En cours",
+        3 => "Terminée",
+        _ => "—"
+    };
+
+    private sealed record MeContext(bool IsGroupManager, Guid? GroupId, string? GroupName);
+    private sealed class MeetingItem
+    {
+        public Guid Id { get; set; }
+        public string Title { get; set; } = "";
+        public int Status { get; set; }
+        public DateTime? StartAtUtc { get; set; }
     }
 
     private sealed record DashboardAlert(string Severity, string Code, string Message, string? ActionUrl);

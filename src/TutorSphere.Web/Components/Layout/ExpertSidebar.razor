@@ -16,18 +16,11 @@
 
 <div class="cc-nav-scroll">
     <nav>
-        <CollapsibleNavSection Title="Pilotage" SectionKey="pilotage" DefaultOpen="true">
+        <CollapsibleNavSection Title="Pilotage" Icon="bi-speedometer2" SectionKey="pilotage" DefaultOpen="false">
             <NavLink class="cc-nav-link" href="expert/dashboard" Match="NavLinkMatch.All">
                 <i class="bi bi-speedometer2" aria-hidden="true"></i>
                 <span>Tableau de bord</span>
             </NavLink>
-            @if (_isManager)
-            {
-                <NavLink class="@SpaceNavClass" href="group-admin/dashboard" Match="NavLinkMatch.Prefix">
-                    <i class="bi bi-building-gear" aria-hidden="true"></i>
-                    <span>Espace Responsable</span>
-                </NavLink>
-            }
             <NavLink class="cc-nav-link" href="expert/reports" Match="NavLinkMatch.Prefix">
                 <i class="bi bi-file-earmark-bar-graph" aria-hidden="true"></i>
                 <span>Rapports</span>
@@ -38,7 +31,7 @@
             </NavLink>
         </CollapsibleNavSection>
 
-        <CollapsibleNavSection Title="Enseignants" SectionKey="enseignants" DefaultOpen="true">
+        <CollapsibleNavSection Title="Enseignants" Icon="bi-mortarboard" SectionKey="enseignants" DefaultOpen="false">
             <NavLink class="cc-nav-link" href="expert/teachers/add" Match="NavLinkMatch.Prefix">
                 <i class="bi bi-person-plus" aria-hidden="true"></i>
                 <span>Ajouter des enseignants</span>
@@ -85,7 +78,7 @@
 
         @if (_isManager)
         {
-            <CollapsibleNavSection Title="Gestion du groupe" SectionKey="gestion" DefaultOpen="true">
+            <CollapsibleNavSection Title="Gestion du groupe" Icon="bi-diagram-3" SectionKey="gestion" DefaultOpen="false">
                 <NavLink class="cc-nav-link" href="group-admin/members" Match="NavLinkMatch.Prefix">
                     <i class="bi bi-people" aria-hidden="true"></i>
                     <span>Membres</span>
@@ -109,7 +102,7 @@
             </CollapsibleNavSection>
         }
 
-        <CollapsibleNavSection Title="Communication" SectionKey="communication" DefaultOpen="@(!_isManager)">
+        <CollapsibleNavSection Title="Communication" Icon="bi-chat-dots" SectionKey="communication" DefaultOpen="false">
             @if (!_isManager)
             {
                 <NavLink class="cc-nav-link" href="expert/members" Match="NavLinkMatch.All">
@@ -125,7 +118,7 @@
                 <i class="bi bi-envelope" aria-hidden="true"></i>
                 <span>Messagerie du groupe</span>
             </NavLink>
-            @if (Modules.Meetings)
+            @if (_isManager && Modules.Meetings)
             {
                 <NavLink class="cc-nav-link" href="expert/meetings" Match="NavLinkMatch.Prefix">
                     <i class="bi bi-camera-video" aria-hidden="true"></i>
@@ -143,7 +136,7 @@
 
         @if (_isManager)
         {
-            <CollapsibleNavSection Title="Paramètres" SectionKey="parametres" DefaultOpen="false">
+            <CollapsibleNavSection Title="Paramètres" Icon="bi-gear" SectionKey="parametres" DefaultOpen="false">
                 <NavLink class="cc-nav-link" href="group-admin/settings" Match="NavLinkMatch.Prefix">
                     <i class="bi bi-gear" aria-hidden="true"></i>
                     <span>Paramètres du groupe</span>
@@ -162,7 +155,6 @@
 @code {
     private bool _isManager;
     private int _approvalCount;
-    private string SpaceNavClass => _isManager ? "cc-nav-link is-space" : "cc-nav-link";
 
     protected override async Task OnInitializedAsync()
     {

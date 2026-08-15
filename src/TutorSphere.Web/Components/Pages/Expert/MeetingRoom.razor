@@ -8,6 +8,7 @@
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 @inject RealtimeMeetingClient Rt
+@using Microsoft.AspNetCore.WebUtilities
 
 <PageTitle>@(_detail?.Title ?? "Réunion") — TutorSphere</PageTitle>
 
@@ -209,17 +210,32 @@ else if (_detail is not null)
 
     protected override async Task OnInitializedAsync()
     {
-        await Auth.EnsureSessionRestoredAsync(forceJs: true);
-        var r = await Api.GetWithErrorAsync<Detail>($"api/expert/meetings/{Id}");
-        if (r.Value is null && string.IsNullOrEmpty(GuestToken))
+        var qs = QueryHelpers.ParseQuery(Nav.ToAbsoluteUri(Nav.Uri).Query);
+        GuestToken = qs.TryGetValue("guest", out var g) ? g.ToString() : GuestToken;
+        GuestName = qs.TryGetValue("name", out var n) ? n.ToString() : GuestName;
+        _waiting = qs.TryGetValue("wait", out _);
+
+        if (string.IsNullOrEmpty(GuestToken))
+            await Auth.EnsureSessionRestoredAsync(forceJs: true);
+
+        if (string.IsNullOrEmpty(GuestToken))
         {
-            _error = r.Error ?? "Réunion introuvable.";
-            return;
+            var r = await Api.GetWithErrorAsync<Detail>($"api/expert/meetings/{Id}");
+            if (r.Value is null)
+            {
+                _error = r.Error ?? "Réunion introuvable.";
+                return;
+            }
+            _detail = r.Value;
+            _isOrganizer = _detail.OrganizerUserId == Auth.UserId;
+            _recording = _detail.RecordingEnabled;
         }
-        _detail = r.Value;
-        _selfName = GuestName ?? Auth.DisplayName ?? "Participant";
-        _isOrganizer = _detail?.OrganizerUserId == Auth.UserId;
-        _recording = _detail?.RecordingEnabled == true;
+        else
+        {
+            _detail = new Detail(Id, "Réunion", null, 2, DateTime.UtcNow, null, "", "", true, true, true, true, false, false, false, false, false, "fr");
+        }
+
+        _selfName = GuestName ?? Auth.UserName ?? "Participant";
         BindRt();
         await Rt.EnsureHubReadyAsync(GuestToken);
         _jsRef = DotNetObjectReference.Create(this);
@@ -248,20 +264,20 @@ else if (_detail is not null)
         Rt.ChatMessageReceived += m => _ = InvokeAsync(() => { _chat.Add(m); StateHasChanged(); });
         Rt.ChatHistoryReceived += (id, list) => _ = InvokeAsync(() => { _chat.Clear(); _chat.AddRange(list); });
         Rt.WaitingUpdated += (id, list) => _ = InvokeAsync(() => { _waitingList.Clear(); _waitingList.AddRange(list); StateHasChanged(); });
-        Rt.WaitingRoom += _ => _ = InvokeAsync(() => { _waiting = true; StateHasChanged(); });
-        Rt.Admitted += _ => _ = InvokeAsync(() => { _waiting = false; StateHasChanged(); });
-        Rt.Denied += _ => _ = InvokeAsync(() => Nav.NavigateTo("/expert/meetings"));
-        Rt.Kicked += _ => _ = InvokeAsync(() => Nav.NavigateTo("/expert/meetings"));
+        Rt.WaitingRoom += _id => { _ = InvokeAsync(() => { _waiting = true; StateHasChanged(); }); };
+        Rt.Admitted += _id => { _ = InvokeAsync(() => { _waiting = false; StateHasChanged(); }); };
+        Rt.Denied += _id => { _ = InvokeAsync(() => Nav.NavigateTo("/expert/meetings")); };
+        Rt.Kicked += _id => { _ = InvokeAsync(() => Nav.NavigateTo("/expert/meetings")); };
         Rt.Caption += (id, name, text) => _ = InvokeAsync(() => { _caption = $"{name} : {text}"; StateHasChanged(); });
-        Rt.ForceMute += _ => _ = InvokeAsync(async () => { _mic = false; await JS.InvokeVoidAsync("classroomMedia.setMic", false); });
-        Rt.AiEnabled += _ => _ = InvokeAsync(() => { if (_detail is not null) _detail = _detail with { AiActivatedByOrganizer = true }; _consentAsk = !_isOrganizer; StateHasChanged(); });
-        Rt.MeetingEnded += _ => _ = InvokeAsync(() => Nav.NavigateTo($"/expert/meetings/{Id}/minutes"));
+        Rt.ForceMute += _id => { _ = InvokeAsync(async () => { _mic = false; try { await JS.InvokeVoidAsync("classroomMedia.setAudioEnabled", false); } catch { } }); };
+        Rt.AiEnabled += _id => { _ = InvokeAsync(() => { if (_detail is not null) _detail = _detail with { AiActivatedByOrganizer = true }; _consentAsk = !_isOrganizer; StateHasChanged(); }); };
+        Rt.MeetingEnded += _id => { _ = InvokeAsync(() => Nav.NavigateTo($"/expert/meetings/{Id}/minutes")); };
         Rt.RecordingState += (id, on) => _ = InvokeAsync(() => { _recording = on; StateHasChanged(); });
         Rt.Reaction += (id, cid, name, emoji) => Toast($"{name} {emoji}");
         Rt.HandRaised += (id, cid, name, raised) => Toast(raised ? $"{name} lève la main" : $"{name} baisse la main");
         Rt.SharedNotes += (id, notes) => _ = InvokeAsync(() => { _notes = notes; StateHasChanged(); });
-        Rt.Poll += (id, q, _) => _ = InvokeAsync(() => { _pollQLive = q; StateHasChanged(); });
-        Rt.MediaSyncRequested += _ => _ = Rt.BroadcastMediaAsync(Id, _mic, _cam);
+        Rt.Poll += (id, q, opts) => { _ = InvokeAsync(() => { _pollQLive = q; StateHasChanged(); }); };
+        Rt.MediaSyncRequested += _id => { _ = Rt.BroadcastMediaAsync(Id, _mic, _cam); };
     }
 
     [JSInvokable] public Task OnRtcOutgoingSignal(string target, string type, string payload) => Rt.SendRtcAsync(Id, target, type, payload);
@@ -289,8 +305,18 @@ else if (_detail is not null)
         _ = JS.InvokeVoidAsync("classroomRtc.connect", p.ConnectionId, offer);
     }
 
-    private async Task ToggleMic() { _mic = !_mic; try { await JS.InvokeVoidAsync("classroomMedia.setMic", _mic); } catch { } await Rt.BroadcastMediaAsync(Id, _mic, _cam); }
-    private async Task ToggleCam() { _cam = !_cam; try { await JS.InvokeVoidAsync("classroomMedia.setCam", _cam); } catch { } await Rt.BroadcastMediaAsync(Id, _mic, _cam); }
+    private async Task ToggleMic() { _mic = !_mic; try { await JS.InvokeVoidAsync("classroomMedia.setAudioEnabled", _mic); } catch { } await Rt.BroadcastMediaAsync(Id, _mic, _cam); }
+    private async Task ToggleCam()
+    {
+        _cam = !_cam;
+        try
+        {
+            if (_cam) await JS.InvokeVoidAsync("classroomMedia.enableCamera");
+            else await JS.InvokeVoidAsync("classroomMedia.setVideoEnabled", false);
+        }
+        catch { }
+        await Rt.BroadcastMediaAsync(Id, _mic, _cam);
+    }
     private async Task ToggleHand() { _hand = !_hand; await Rt.RaiseHandAsync(Id, _hand); }
     private async Task ShareAsync()
     {

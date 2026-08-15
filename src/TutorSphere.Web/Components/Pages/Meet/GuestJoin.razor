@@ -1,0 +1,117 @@
+@page "/meet/join/{Token}"
+@layout LoginLayout
+@rendermode InteractiveServer
+@inject HttpClient Http
+@inject NavigationManager Nav
+
+<PageTitle>Rejoindre la réunion — TutorSphere</PageTitle>
+
+<div class="login-admin-page login-theme-admin">
+    <div class="login-admin-inner" style="max-width:520px">
+        <h1>Rejoindre la réunion</h1>
+        @if (!string.IsNullOrEmpty(_error)) { <div class="alert alert-danger">@_error</div> }
+        @if (_loading) { <span class="spinner-border"></span> }
+        else if (_preview is not null)
+        {
+            <p class="login-subtitle"><strong>@_preview.Title</strong><br />Organisateur : @_preview.OrganizerName</p>
+            @if (_preview.RecordingEnabled) { <p class="small">Un enregistrement pourra être réalisé.</p> }
+            @if (_preview.AiEnabled) { <p class="small">Un assistant IA pourra analyser la discussion avec votre consentement.</p> }
+            <div class="mb-3">
+                <label class="form-label">Votre nom</label>
+                <input class="form-control" @bind="_name" />
+            </div>
+            @if (_preview.RequiresAccessCode)
+            {
+                <div class="mb-3">
+                    <label class="form-label">Code d’accès</label>
+                    <input class="form-control" @bind="_access" />
+                </div>
+            }
+            @if (_codeSent)
+            {
+                <div class="mb-3">
+                    <label class="form-label">Code reçu par courriel</label>
+                    <input class="form-control" @bind="_emailCode" />
+                </div>
+            }
+            <button class="btn btn-primary w-100" type="button" disabled="@_busy" @onclick="EnterAsync">Rejoindre la réunion</button>
+            <p class="small text-muted mt-3">Lien personnel, temporaire et non transférable. Il ne donne pas accès au reste de TutorSphere.</p>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Token { get; set; } = "";
+    private Preview? _preview;
+    private string? _error;
+    private bool _loading = true, _busy, _codeSent;
+    private string _name = "", _access = "", _emailCode = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _preview = await Http.GetFromJsonAsync<Preview>($"api/meetings/guest/{Uri.EscapeDataString(Token)}");
+        }
+        catch { _error = "Invitation introuvable ou expirée."; }
+        _loading = false;
+    }
+
+    private async Task EnterAsync()
+    {
+        _error = null;
+        _busy = true;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync("api/meetings/guest/enter", new
+            {
+                token = Token,
+                displayName = _name,
+                accessCode = string.IsNullOrWhiteSpace(_access) ? null : _access,
+                emailCode = string.IsNullOrWhiteSpace(_emailCode) ? null : _emailCode
+            });
+            var body = await resp.Content.ReadAsStringAsync();
+            if ((int)resp.StatusCode == 202)
+            {
+                _codeSent = true;
+                _error = "Un code de vérification a été envoyé à votre courriel.";
+                return;
+            }
+            if (!resp.IsSuccessStatusCode)
+            {
+                _error = Extract(body) ?? "Impossible d’entrer.";
+                return;
+            }
+            var result = System.Text.Json.JsonSerializer.Deserialize<Enter>(body, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+            if (result is null) { _error = "Réponse invalide."; return; }
+            if (result.Waiting)
+                Nav.NavigateTo($"/expert/meetings/{result.MeetingId}/room?guest={Uri.EscapeDataString(Token)}&name={Uri.EscapeDataString(_name)}&wait=1");
+            else
+                Nav.NavigateTo($"/expert/meetings/{result.MeetingId}/room?guest={Uri.EscapeDataString(Token)}&name={Uri.EscapeDataString(_name)}");
+        }
+        finally { _busy = false; }
+    }
+
+    private static string? Extract(string json)
+    {
+        try
+        {
+            using var d = System.Text.Json.JsonDocument.Parse(json);
+            if (d.RootElement.TryGetProperty("error", out var e)) return e.GetString();
+        }
+        catch { }
+        return null;
+    }
+
+    private sealed class Preview
+    {
+        public Guid MeetingId { get; set; }
+        public string Title { get; set; } = "";
+        public string OrganizerName { get; set; } = "";
+        public bool RequiresAccessCode { get; set; }
+        public bool WaitingRoomEnabled { get; set; }
+        public bool RecordingEnabled { get; set; }
+        public bool AiEnabled { get; set; }
+    }
+    private sealed class Enter { public Guid MeetingId { get; set; } public string DisplayName { get; set; } = ""; public bool Waiting { get; set; } }
+}
