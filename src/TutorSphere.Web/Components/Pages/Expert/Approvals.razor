@@ -634,7 +634,7 @@
 </AuthorizeView>
 
 @code {
-    private string _activeTab = "register";
+    private string _activeTab = "queue";
     private List<QueueItem> _queue = [];
     private List<TeacherInviteItem> _invites = [];
     private bool _loading = true;
@@ -731,11 +731,17 @@
 
     private void SetTab(string tab)
     {
+        if (string.Equals(tab, "register", StringComparison.OrdinalIgnoreCase))
+        {
+            Nav.NavigateTo("expert/teachers/add");
+            return;
+        }
+
         _activeTab = tab switch
         {
             "invite" => "invite",
             "queue" => "queue",
-            _ => "register"
+            _ => "queue"
         };
     }
 

@@ -1,0 +1,709 @@
+@page "/expert/teachers/add"
+@layout ExpertLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using TutorSphere.Web.Common
+@inject AuthService Auth
+@inject ApiClient Api
+@inject IStringLocalizer<SharedResources> L
+@inject NavigationManager Nav
+
+<ApplyRequestCulture />
+
+<PageTitle>Ajouter un enseignant — TutorSphere</PageTitle>
+
+<AuthorizeView Roles="Expert,GroupManager,SuperAdmin,PlatformAdmin">
+    <Authorized>
+        <div class="cc-toolbar">
+            <div>
+                <p class="ex-crumb">Enseignants <span>/</span> <strong>Ajouter un enseignant</strong></p>
+                <h1 class="cc-page-title">Ajouter un enseignant</h1>
+                <p class="cc-page-sub">
+                    Créez le compte d’un enseignant qui donnera des cours, puis publiez sa fiche publique.
+                </p>
+            </div>
+        </div>
+
+        <div class="ex-add-layout">
+            <div>
+                <div class="cc-card ex-wizard-card">
+                    <StepIndicator Steps="_steps" CurrentStep="_step" />
+
+                    @if (!string.IsNullOrEmpty(_error))
+                    {
+                        <div class="alert alert-danger py-2">@_error</div>
+                    }
+                    @if (!string.IsNullOrEmpty(_success))
+                    {
+                        <div class="alert alert-success py-2">@_success</div>
+                    }
+
+                    @if (_step == 1)
+                    {
+                        <h2 class="cc-card-title mb-3">Informations personnelles</h2>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Prénom <span class="text-danger">*</span></label>
+                                <input class="form-control" @bind="_firstName" @bind:event="oninput" @bind:after="OnNameChanged" autocomplete="given-name" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Nom <span class="text-danger">*</span></label>
+                                <input class="form-control" @bind="_lastName" @bind:event="oninput" @bind:after="OnNameChanged" autocomplete="family-name" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Date de naissance</label>
+                                <input type="date" class="form-control" @bind="_birthDate" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">E-mail <span class="text-danger">*</span></label>
+                                <input type="email" class="form-control" @bind="_email" placeholder="exemple@courriel.com" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Téléphone</label>
+                                <div class="input-group">
+                                    <span class="input-group-text">@(CountryCatalog.Find(_country)?.Flag ?? "🌐")</span>
+                                    <input class="form-control" @bind="_phone" placeholder="+237 6 00 00 00 00" />
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Pays de résidence</label>
+                                <input class="form-control" value="@CountryDisplay" disabled readonly />
+                                <div class="form-text">Identique au pays du groupe.</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Ville <span class="text-danger">*</span></label>
+                                <input class="form-control" @bind="_city" />
+                            </div>
+                            <div class="col-md-8">
+                                <label class="form-label">Adresse</label>
+                                <input class="form-control" @bind="_address" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Code postal</label>
+                                <input class="form-control" @bind="_postal" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Langue de communication <span class="text-danger">*</span></label>
+                                <select class="form-select" @bind="_language">
+                                    <option value="fr">Français</option>
+                                    <option value="en">English</option>
+                                    <option value="es">Español</option>
+                                    <option value="de">Deutsch</option>
+                                    <option value="pt">Português</option>
+                                    <option value="zh">中文</option>
+                                    <option value="ar">العربية</option>
+                                </select>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Photo de profil (optionnel)</label>
+                                <label class="ex-upload">
+                                    <i class="bi bi-cloud-arrow-up"></i>
+                                    <span>PNG, JPG ou WEBP — max. 2 Mo</span>
+                                    @if (!string.IsNullOrWhiteSpace(_photoName))
+                                    {
+                                        <strong>@_photoName</strong>
+                                    }
+                                    <InputFile OnChange="OnPhotoSelected" accept=".png,.jpg,.jpeg,.webp" />
+                                </label>
+                            </div>
+                        </div>
+                    }
+                    else if (_step == 2)
+                    {
+                        <h2 class="cc-card-title mb-3">Informations professionnelles</h2>
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label">Groupe / école</label>
+                                <input class="form-control" value="@_schoolName" disabled readonly />
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Adresse du profil (URL) <span class="text-danger">*</span></label>
+                                <div class="subdomain-field">
+                                    <span class="subdomain-prefix">https://</span>
+                                    <input @bind="_slug" @bind:event="oninput" @bind:after="AfterSlugChanged" placeholder="jean" />
+                                    <span class="subdomain-suffix">.tutorsphere.com</span>
+                                </div>
+                                @if (_slugAvailable == false)
+                                {
+                                    <small class="text-danger">@L["Error_SlugTaken"]</small>
+                                }
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Présentation</label>
+                                <textarea class="form-control" rows="3" @bind="_presentation"
+                                          placeholder="Parcours, pédagogie, public visé…"></textarea>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Pays de visibilité du profil</label>
+                                <div class="d-flex flex-wrap gap-2 mb-2">
+                                    @foreach (var code in _visible)
+                                    {
+                                        var info = CountryCatalog.Find(code);
+                                        <span class="badge text-bg-light border py-2 px-2">@(info?.Flag) @(info?.Name ?? code)</span>
+                                    }
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="pub" @bind="_publishPublic" />
+                                    <label class="form-check-label" for="pub">@L["Expert_PublishPublicProfile"]</label>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    else if (_step == 3)
+                    {
+                        <h2 class="cc-card-title mb-3">Matières &amp; niveaux</h2>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Titre de l’offre <span class="text-danger">*</span></label>
+                                <input class="form-control" @bind="_offerTitle" placeholder="Ex. Français — soutien scolaire" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Matière</label>
+                                <input class="form-control" @bind="_offerSubject" placeholder="Mathématiques, Français…" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Niveau</label>
+                                <select class="form-select" @bind="_offerLevel">
+                                    <option>Tous niveaux</option>
+                                    <option>Primaire</option>
+                                    <option>Collège</option>
+                                    <option>Lycée</option>
+                                    <option>Université</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Mode</label>
+                                <select class="form-select" @bind="_offerMode">
+                                    <option value="En ligne">En ligne</option>
+                                    <option value="Présentiel">Présentiel</option>
+                                    <option value="Hybride">Hybride</option>
+                                </select>
+                            </div>
+                        </div>
+                    }
+                    else if (_step == 4)
+                    {
+                        <h2 class="cc-card-title mb-3">Disponibilités &amp; tarifs</h2>
+                        <p class="small text-muted">@L["Expert_OfferBillingHint"]</p>
+                        <div class="ex-billing-toggle mb-3" role="group">
+                            <button type="button" class="ex-billing-option @(_billing == "hourly" ? "active" : null)"
+                                    @onclick='() => _billing = "hourly"'>
+                                <strong>@L["Billing_Hourly"]</strong>
+                                <span>Taux à l’heure</span>
+                            </button>
+                            <button type="button" class="ex-billing-option @(_billing == "monthly" ? "active" : null)"
+                                    @onclick='() => _billing = "monthly"'>
+                                <strong>@L["Billing_Monthly"]</strong>
+                                <span>Forfait + heures / semaine</span>
+                            </button>
+                        </div>
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label">@(_billing == "monthly" ? "Taux mensuel" : "Taux horaire") *</label>
+                                <div class="input-group">
+                                    <input type="number" min="0" step="0.01" class="form-control" @bind="_price" />
+                                    <span class="input-group-text">@_currency @(_billing == "monthly" ? "/ mois" : "/ h")</span>
+                                </div>
+                            </div>
+                            @if (_billing == "monthly")
+                            {
+                                <div class="col-md-4">
+                                    <label class="form-label">Heures par semaine *</label>
+                                    <input type="number" min="0.5" step="0.5" class="form-control" @bind="_hoursPerWeek" />
+                                </div>
+                            }
+                            <div class="col-md-4">
+                                <label class="form-label">Durée séance (min)</label>
+                                <select class="form-select" @bind="_sessionMin">
+                                    <option value="30">30</option>
+                                    <option value="45">45</option>
+                                    <option value="60">60</option>
+                                    <option value="90">90</option>
+                                </select>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label">Plages horaires de la semaine *</label>
+                                <div class="offer-day-grid">
+                                    @foreach (var day in Days)
+                                    {
+                                        var slot = _slots[day];
+                                        <div class="offer-day-row @(slot.Enabled ? "is-on" : null)">
+                                            <label class="offer-day-check">
+                                                <input type="checkbox" checked="@slot.Enabled"
+                                                       @onchange="e => ToggleDay(day, e)" />
+                                                <span>@day</span>
+                                            </label>
+                                            <input type="time" class="form-control form-control-sm offer-day-time"
+                                                   disabled="@(!slot.Enabled)" value="@slot.Time"
+                                                   @onchange="e => SetTime(day, e.Value?.ToString())" />
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    }
+                    else if (_step == 5)
+                    {
+                        <h2 class="cc-card-title mb-3">Invitation &amp; message</h2>
+                        <p class="small text-muted">
+                            Un e-mail d’identifiants sera envoyé à <strong>@(string.IsNullOrWhiteSpace(_email) ? "l’adresse indiquée" : _email)</strong>.
+                        </p>
+                        <div class="mb-3">
+                            <label class="form-label">Message personnel (optionnel)</label>
+                            <textarea class="form-control" rows="4" @bind="_inviteMessage"
+                                      placeholder="Bienvenue dans le groupe. Merci de compléter votre fiche…"></textarea>
+                        </div>
+                        <div class="teacher-conduct-box">
+                            <strong>@L["TeacherConduct_Title"]</strong>
+                            <div class="form-check mt-2">
+                                <input class="form-check-input" type="checkbox" id="cond" @bind="_acceptedConduct" />
+                                <label class="form-check-label" for="cond">@L["TeacherConduct_AcceptCheckbox"]</label>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <h2 class="cc-card-title mb-3">Aperçu &amp; validation</h2>
+                        <ul class="list-unstyled mb-0">
+                            <li class="mb-2"><strong>Enseignant :</strong> @_firstName @_lastName — @_email</li>
+                            <li class="mb-2"><strong>Ville :</strong> @_city · @CountryDisplay</li>
+                            <li class="mb-2"><strong>Profil :</strong> @($"https://{_slug}.tutorsphere.com")</li>
+                            <li class="mb-2"><strong>Offre :</strong> @_offerTitle (@_offerSubject)</li>
+                            <li class="mb-2"><strong>Tarif :</strong> @_price @_currency @(_billing == "monthly" ? "/ mois" : "/ h")</li>
+                            <li><strong>Fiche publique :</strong> @(_publishPublic ? "Oui" : "Non")</li>
+                        </ul>
+                        @if (_done && _created is not null)
+                        {
+                            <div class="d-flex flex-wrap gap-2 mt-3">
+                                <a class="cc-btn cc-btn-primary" href="expert/teachers">Voir la liste des enseignants</a>
+                                <a class="cc-btn" href="@($"expert/teachers/{_created.TenantId}")">Ouvrir le dossier</a>
+                            </div>
+                        }
+                    }
+
+                    <div class="ex-wizard-actions">
+                        <button type="button" class="cc-btn" @onclick="CancelOrBack">
+                            @(_step == 1 ? "Annuler" : "Retour")
+                        </button>
+                        @if (_step < 6)
+                        {
+                            <button type="button" class="cc-btn cc-btn-primary" @onclick="NextAsync">Suivant →</button>
+                        }
+                        else
+                        {
+                            <button type="button" class="cc-btn cc-btn-primary" disabled="@(_busy || _done)" @onclick="SubmitAsync">
+                                @if (_busy) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                                Créer le compte et la fiche
+                            </button>
+                        }
+                    </div>
+                </div>
+
+                <div class="ex-why mt-3">
+                    <h3 class="h6 mb-3">Pourquoi ajouter un enseignant ?</h3>
+                    <div class="ex-why-grid">
+                        <div><i class="bi bi-envelope"></i><strong>Invitation par e-mail</strong><span>L’enseignant reçoit ses identifiants.</span></div>
+                        <div><i class="bi bi-folder2-open"></i><strong>Dossier complet</strong><span>Profil, matières, horaires et tarif.</span></div>
+                        <div><i class="bi bi-graph-up"></i><strong>Suivi et évaluation</strong><span>Le groupe accompagne la qualité.</span></div>
+                    </div>
+                </div>
+            </div>
+
+            <aside class="ex-add-aside">
+                <div class="cc-card mb-3">
+                    <h2 class="cc-card-title">Étapes d’ajout</h2>
+                    <ol class="ex-aside-steps">
+                        @for (var i = 0; i < _steps.Count; i++)
+                        {
+                            var n = i + 1;
+                            <li class="@(n == _step ? "is-on" : n < _step ? "is-done" : null)">
+                                <span>@n</span>
+                                <div>
+                                    <strong>@_steps[i]</strong>
+                                    <small>@_stepHints[i]</small>
+                                </div>
+                            </li>
+                        }
+                    </ol>
+                </div>
+                <div class="ex-hint-box mb-3">
+                    <strong>Bon à savoir</strong>
+                    <p>Une fois créé, l’enseignant reçoit un e-mail pour accéder à son espace et compléter sa fiche.</p>
+                </div>
+                <div class="cc-card">
+                    <h2 class="cc-card-title">Actions rapides</h2>
+                    <a class="ex-action" href="expert/teachers"><i class="bi bi-people"></i><span>Voir la liste des enseignants</span></a>
+                    <a class="ex-action" href="expert/approvals?tab=queue">
+                        <i class="bi bi-inbox"></i>
+                        <span>Enseignants en attente d’approbation</span>
+                        @if (_pendingCount > 0)
+                        {
+                            <span class="cc-pill cc-pill-type">@_pendingCount</span>
+                        }
+                    </a>
+                    <a class="ex-action" href="expert/approvals?tab=invite"><i class="bi bi-envelope"></i><span>Inviter plutôt par e-mail</span></a>
+                </div>
+            </aside>
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <div class="cc-card cc-empty">
+            <p>@L["Expert_LoginRequired"]</p>
+            <a class="cc-btn cc-btn-primary" href="/login/expert">@L["Nav_Login"]</a>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private static readonly List<string> _steps =
+    [
+        "Informations personnelles",
+        "Informations professionnelles",
+        "Matières & niveaux",
+        "Disponibilités & tarifs",
+        "Invitation & message",
+        "Aperçu & validation"
+    ];
+    private static readonly List<string> _stepHints =
+    [
+        "Identité et coordonnées",
+        "Profil public et visibilité",
+        "Compétences et niveaux enseignés",
+        "Taux horaire ou mensuel, plages",
+        "Message et code de conduite",
+        "Vérifier puis créer le compte"
+    ];
+    private static readonly string[] Days = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
+
+    private int _step = 1;
+    private bool _busy;
+    private bool _done;
+    private string? _error;
+    private string? _success;
+    private int _pendingCount;
+    private Created? _created;
+    private CancellationTokenSource? _slugCts;
+
+    private string _firstName = "";
+    private string _lastName = "";
+    private DateTime? _birthDate;
+    private string _email = "";
+    private string? _phone;
+    private string _city = "";
+    private string? _address;
+    private string? _postal;
+    private string _language = "fr";
+    private string _schoolName = "";
+    private string _country = "CM";
+    private List<string> _visible = ["CM"];
+    private string _slug = "";
+    private string? _autoSlug;
+    private bool? _slugAvailable;
+    private string? _presentation;
+    private bool _publishPublic = true;
+    private bool _acceptedConduct;
+    private string _offerTitle = "";
+    private string? _offerSubject;
+    private string _offerLevel = "Tous niveaux";
+    private string _offerMode = "En ligne";
+    private string _billing = "hourly";
+    private decimal _price;
+    private decimal _hoursPerWeek = 2;
+    private int _sessionMin = 60;
+    private string _currency = "CAD";
+    private string? _inviteMessage;
+    private string? _photoName;
+    private IBrowserFile? _photo;
+    private readonly Dictionary<string, Slot> _slots = Days.ToDictionary(d => d, _ => new Slot());
+
+    private string CountryDisplay
+    {
+        get
+        {
+            var info = CountryCatalog.Find(_country);
+            return info is null ? _country : $"{info.Flag} {info.Name}";
+        }
+    }
+
+    private bool SlugOk => !string.IsNullOrWhiteSpace(_slug)
+        && System.Text.RegularExpressions.Regex.IsMatch(_slug, @"^[a-z0-9]([a-z0-9-]{1,48}[a-z0-9])?$");
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        try
+        {
+            var group = await Api.GetAsync<Grp>("api/expert/my-group");
+            if (group is not null)
+            {
+                _schoolName = group.Name;
+                if (!string.IsNullOrWhiteSpace(group.CountryCode))
+                {
+                    _country = group.CountryCode.Trim().ToUpperInvariant();
+                    _visible = [_country];
+                }
+            }
+        }
+        catch { }
+        try
+        {
+            var q = await Api.GetAsync<List<QueuePeek>>("api/expert/approvals-queue") ?? [];
+            _pendingCount = q.Count;
+        }
+        catch { }
+    }
+
+    private void CancelOrBack()
+    {
+        if (_step == 1) { Nav.NavigateTo("expert/teachers"); return; }
+        _error = null;
+        _step--;
+    }
+
+    private async Task NextAsync()
+    {
+        _error = null;
+        if (_step == 1)
+        {
+            if (string.IsNullOrWhiteSpace(_firstName) || string.IsNullOrWhiteSpace(_lastName)
+                || string.IsNullOrWhiteSpace(_email) || string.IsNullOrWhiteSpace(_city))
+            {
+                _error = "Prénom, nom, e-mail et ville sont obligatoires.";
+                return;
+            }
+            if (!_email.Contains('@', StringComparison.Ordinal))
+            {
+                _error = "Indiquez une adresse e-mail valide.";
+                return;
+            }
+        }
+        else if (_step == 2)
+        {
+            if (!SlugOk) { _error = L["Error_InvalidSubdomain"]; return; }
+            if (_slugAvailable == false) { _error = L["Error_SlugTaken"]; return; }
+        }
+        else if (_step == 3)
+        {
+            if (string.IsNullOrWhiteSpace(_offerTitle))
+            {
+                _error = "Indiquez le titre de l’offre (matière / cours).";
+                return;
+            }
+        }
+        else if (_step == 4)
+        {
+            if (_price <= 0) { _error = "Indiquez le tarif."; return; }
+            if (_billing == "monthly" && _hoursPerWeek <= 0)
+            { _error = L["Expert_OfferHoursPerWeekRequired"]; return; }
+            if (!_slots.Values.Any(s => s.Enabled))
+            { _error = L["Expert_OfferSlotsRequired"]; return; }
+        }
+        else if (_step == 5 && !_acceptedConduct)
+        {
+            _error = L["TeacherConduct_MustAccept"];
+            return;
+        }
+        _step++;
+        await Task.CompletedTask;
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (_done) return;
+        if (!_acceptedConduct) { _error = L["TeacherConduct_MustAccept"]; return; }
+        if (string.IsNullOrWhiteSpace(_schoolName))
+        {
+            _error = "Le groupe n’a pas pu être chargé. Rechargez la page.";
+            return;
+        }
+        _busy = true;
+        _error = _success = null;
+        try
+        {
+            var slots = _slots.Where(kv => kv.Value.Enabled)
+                .Select(kv => new { day = kv.Key, time = kv.Value.Time }).ToList();
+            var monthly = _billing == "monthly";
+            var sessionMinutes = _sessionMin > 0 ? _sessionMin : 60;
+            var sessionsPerWeek = monthly
+                ? Math.Max(1, (int)Math.Ceiling((double)_hoursPerWeek * 60 / sessionMinutes))
+                : slots.Count;
+            var sessionCount = Math.Max(1, sessionsPerWeek * 4);
+            var schoolNotes = string.Join(" · ", new[]
+            {
+                string.IsNullOrWhiteSpace(_address) ? null : _address,
+                string.IsNullOrWhiteSpace(_postal) ? null : $"CP {_postal}",
+                _birthDate is DateTime d ? $"Né(e) le {d:dd/MM/yyyy}" : null
+            }.Where(x => !string.IsNullOrWhiteSpace(x)));
+
+            var result = await Api.PostWithErrorAsync<Created>("api/expert/register-teacher", new
+            {
+                email = _email.Trim(),
+                firstName = _firstName,
+                lastName = _lastName,
+                schoolName = _schoolName,
+                slug = _slug.Trim().ToLowerInvariant(),
+                city = _city,
+                visibleCountryCodes = _visible,
+                acceptedTeacherConductPolicy = true,
+                publishPublicProfile = _publishPublic,
+                initialOffering = new
+                {
+                    title = _offerTitle.Trim(),
+                    description = string.IsNullOrWhiteSpace(_inviteMessage) ? _presentation : _inviteMessage,
+                    subject = string.IsNullOrWhiteSpace(_offerSubject) ? null : _offerSubject,
+                    price = _price,
+                    currency = string.IsNullOrWhiteSpace(_currency) ? "CAD" : _currency,
+                    durationDays = monthly ? 30 : 7,
+                    sessionCount,
+                    frequency = monthly
+                        ? $"{_hoursPerWeek:0.##} h/semaine · forfait mensuel"
+                        : $"Taux horaire · {sessionMinutes} min",
+                    mode = _offerMode,
+                    maxCapacity = 20,
+                    schedule = new
+                    {
+                        billingPeriod = monthly ? "mois" : "semaine",
+                        cadence = "weekly",
+                        sessionDurationMin = sessionMinutes,
+                        level = _offerLevel,
+                        slots,
+                        billingMode = _billing,
+                        hourlyRate = monthly ? (decimal?)null : _price,
+                        hoursPerWeek = monthly ? _hoursPerWeek : (decimal?)null
+                    }
+                }
+            });
+            if (result.Error is not null) { _error = result.Error; return; }
+            _created = result.Value;
+            if (_created is not null)
+            {
+                await Api.PutWithErrorAsync<SchoolPatch>($"api/expert/teachers/{_created.TenantId}/school", new
+                {
+                    firstName = _firstName,
+                    lastName = _lastName,
+                    phone = _phone,
+                    city = _city,
+                    language = _language,
+                    presentation = _presentation,
+                    description = string.IsNullOrWhiteSpace(schoolNotes) ? null : schoolNotes
+                });
+                if (_photo is not null)
+                {
+                    await using var stream = _photo.OpenReadStream(2 * 1024 * 1024);
+                    using var content = new MultipartFormDataContent();
+                    var sc = new StreamContent(stream);
+                    sc.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(_photo.ContentType ?? "image/jpeg");
+                    content.Add(sc, "file", _photo.Name);
+                    await Api.PostMultipartAsync<PhotoPatch>($"api/expert/teachers/{_created.TenantId}/photo", content);
+                }
+                if (_publishPublic && !_created.IsPublicProfile)
+                {
+                    var pub = await Api.PostWithErrorAsync<PublishPatch>(
+                        $"api/expert/teachers/{_created.TenantId}/publish-profile", new { });
+                    if (pub.Error is null)
+                        _created = _created with { IsPublicProfile = true };
+                }
+            }
+            _success = _created is null
+                ? L["Expert_RegisterTeacherSuccess"]
+                : $"Compte créé. Login : {_created.Email}"
+                  + (string.IsNullOrWhiteSpace(_created.TemporaryPassword) ? "" : $" · MDP temporaire : {_created.TemporaryPassword}")
+                  + (_created.CredentialsSent ? " · e-mail envoyé." : " · e-mail non envoyé.")
+                  + (_created.IsPublicProfile ? " Fiche publique publiée." : "");
+            _done = true;
+            _step = 6;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private void OnPhotoSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null) return;
+        if (file.Size > 2 * 1024 * 1024)
+        {
+            _error = "Photo trop volumineuse (max. 2 Mo).";
+            _photo = null;
+            _photoName = null;
+            return;
+        }
+        _error = null;
+        _photo = file;
+        _photoName = file.Name;
+    }
+
+    private async Task OnNameChanged()
+    {
+        if (!string.IsNullOrWhiteSpace(_slug) && _slug != _autoSlug) return;
+        var generated = Slugify(_firstName, _lastName);
+        _autoSlug = generated;
+        _slug = generated;
+        await AfterSlugChanged();
+    }
+
+    private async Task AfterSlugChanged()
+    {
+        _slug = _slug.Trim().ToLowerInvariant();
+        _slugAvailable = null;
+        if (!SlugOk) return;
+
+        _slugCts?.Cancel();
+        _slugCts = new CancellationTokenSource();
+        var token = _slugCts.Token;
+        try
+        {
+            await Task.Delay(400, token);
+            var r = await Api.GetAsync<SlugOkDto>($"api/tenants/check-slug/{Uri.EscapeDataString(_slug)}");
+            if (!token.IsCancellationRequested && r is not null)
+                _slugAvailable = r.Available;
+        }
+        catch (OperationCanceledException) { }
+        catch { }
+    }
+
+    private static string Slugify(string a, string b)
+    {
+        var combined = $"{a} {b}".Trim();
+        if (string.IsNullOrWhiteSpace(combined)) return "";
+        var n = combined.Normalize(System.Text.NormalizationForm.FormD);
+        var sb = new System.Text.StringBuilder();
+        foreach (var c in n)
+            if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.NonSpacingMark)
+                sb.Append(c);
+        var slug = System.Text.RegularExpressions.Regex.Replace(
+            sb.ToString().Normalize(System.Text.NormalizationForm.FormC).ToLowerInvariant(), @"[^a-z0-9]+", "-").Trim('-');
+        return slug.Length > 40 ? slug[..40].Trim('-') : slug;
+    }
+
+    private void ToggleDay(string day, ChangeEventArgs e)
+    {
+        var on = e.Value is bool x ? x : bool.TryParse(e.Value?.ToString(), out var p) && p;
+        _slots[day].Enabled = on;
+        if (on && string.IsNullOrWhiteSpace(_slots[day].Time)) _slots[day].Time = "16:00";
+    }
+
+    private void SetTime(string day, string? time)
+    {
+        if (_slots.TryGetValue(day, out var s))
+            s.Time = string.IsNullOrWhiteSpace(time) ? "16:00" : time!;
+    }
+
+    private sealed class Slot { public bool Enabled { get; set; } public string Time { get; set; } = "16:00"; }
+    private sealed record Grp(Guid Id, string Name, string? CountryCode);
+    private sealed class SlugOkDto { public bool Available { get; set; } }
+    private sealed record Created(
+        Guid TenantId,
+        string TenantSlug,
+        string Email,
+        bool CredentialsSent,
+        Guid? OfferingId = null,
+        string? TemporaryPassword = null,
+        bool IsPublicProfile = false,
+        string? PublicPath = null);
+    private sealed class SchoolPatch { public Guid TenantId { get; set; } }
+    private sealed class PhotoPatch { public string? LogoUrl { get; set; } }
+    private sealed class PublishPatch { public bool IsPublicProfile { get; set; } }
+    private sealed record QueuePeek(Guid TenantId);
+}

@@ -1,0 +1,38 @@
+<div class="ex-vote" role="group" aria-label="Progression du vote">
+    <div class="ex-vote-meta">
+        <span>@Voted / @Eligible Experts ont voté</span>
+        <span>@(Percent.ToString("0")) %</span>
+    </div>
+    <div class="ex-vote-track" aria-hidden="true">
+        <div class="ex-vote-fill" style="width: @(Math.Clamp(Percent, 0, 100).ToString("0"))%"></div>
+    </div>
+    <div class="ex-vote-counts">
+        <span>Approuver : @Approve</span>
+        <span>Refuser : @Reject</span>
+        <span>Abstention : @Abstain</span>
+    </div>
+    <div class="small mt-1 @(ThresholdReached ? "text-success" : "text-muted")">
+        @StatusText
+    </div>
+</div>
+
+@code {
+    [Parameter] public int Approve { get; set; }
+    [Parameter] public int Reject { get; set; }
+    [Parameter] public int Abstain { get; set; }
+    [Parameter] public int Eligible { get; set; }
+    [Parameter] public int Required { get; set; }
+
+    private int Voted => Approve + Reject + Abstain;
+    private double Percent => Eligible <= 0 ? 0 : 100.0 * Voted / Eligible;
+    private bool ThresholdReached => Required > 0 && Approve >= Required;
+    private int Remaining => Math.Max(0, Required - Approve);
+
+    private string StatusText => Eligible <= 0
+        ? "Aucun votant éligible pour le moment."
+        : ThresholdReached
+            ? "Seuil atteint"
+            : Remaining == 1
+                ? "1 vote supplémentaire nécessaire"
+                : $"{Remaining} votes supplémentaires nécessaires";
+}

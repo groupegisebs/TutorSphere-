@@ -214,11 +214,11 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @if (_groups.Count == 0)
+                            @if (ActiveGroups.Count == 0)
                             {
-                                <tr><td colspan="6" class="text-muted">Aucun groupe. Créez d'abord le groupe international.</td></tr>
+                                <tr><td colspan="6" class="text-muted">Aucun groupe actif.</td></tr>
                             }
-                            @foreach (var g in _groups)
+                            @foreach (var g in ActiveGroups)
                             {
                                 <tr>
                                     <td>
@@ -333,53 +333,6 @@
                     </table>
                 </div>
             </div>
-
-            <div class="cc-card mt-3">
-                <div class="cc-card-header">
-                    <h2 class="cc-card-title">Enseignants en attente (tous pays)</h2>
-                </div>
-                @if (_pending.Count == 0)
-                {
-                    <p class="text-muted mb-0">Aucune fiche en attente.</p>
-                }
-                else
-                {
-                    <div class="cc-table-wrap">
-                        <table class="cc-table">
-                            <thead>
-                                <tr>
-                                    <th>Profil</th>
-                                    <th>Pays</th>
-                                    <th>Groupe suggéré</th>
-                                    <th>Docs</th>
-                                    <th>Inscrit</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var p in _pending)
-                                {
-                                    <tr>
-                                        <td><strong>@p.SchoolName</strong></td>
-                                        <td>
-                                            @if (!string.IsNullOrWhiteSpace(p.Country) && CountryCatalog.Find(p.Country) is { } pc)
-                                            {
-                                                <span aria-hidden="true">@pc.Flag</span> @pc.Name
-                                            }
-                                            else
-                                            {
-                                                @(p.Country ?? "—")
-                                            }
-                                        </td>
-                                        <td>@(p.AssignedExpertGroupName ?? "—")</td>
-                                        <td>@p.DocumentCount</td>
-                                        <td>@p.CreatedAt.ToLocalTime().ToString("dd MMM yyyy")</td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
-                    </div>
-                }
-            </div>
         }
         </div>
     </Authorized>
@@ -387,9 +340,10 @@
 
 @code {
     private List<ExpertGroupItem> _groups = [];
+    private List<ExpertGroupItem> ActiveGroups =>
+        _groups.Where(g => g.IsActive && g.LifecycleStatus != 3).ToList();
     private ExpertGroupItem? _historyGroup;
     private List<MandateHistoryItem> _mandateHistory = [];
-    private List<PendingTeacherItem> _pending = [];
     private bool _loading = true;
     private bool _showForm;
     private bool _saving;
@@ -435,13 +389,11 @@
         try
         {
             _groups = await AdminSvc.GetExpertGroupsAsync();
-            _pending = await AdminSvc.GetPendingTeacherApprovalsAsync();
         }
         catch (Exception ex)
         {
             _error = ex.Message;
             _groups = [];
-            _pending = [];
         }
         finally { _loading = false; }
     }
@@ -454,7 +406,7 @@
         _mgrFirstName = _mgrLastName = _mgrEmail = "";
         _mgrPhone = _mgrFunction = null;
         _mgrStartDate = DateTime.Today;
-        _formInternational = !_groups.Any(g => g.IsInternational);
+        _formInternational = !_groups.Any(g => g.IsInternational && g.IsActive && g.LifecycleStatus != 3);
         _formActive = true;
         _formError = null;
         _showForm = true;

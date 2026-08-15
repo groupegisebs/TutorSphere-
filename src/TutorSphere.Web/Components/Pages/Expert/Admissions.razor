@@ -7,26 +7,35 @@
 
 <ApplyRequestCulture />
 
-<PageTitle>Admissions Experts — TutorSphere</PageTitle>
+<PageTitle>Admissions des Experts — TutorSphere</PageTitle>
 
 <AuthorizeView Roles="Expert,GroupManager,SuperAdmin,PlatformAdmin">
     <Authorized>
         <div class="cc-toolbar">
-            <div>
-                <h1 class="cc-page-title">Admissions des Experts</h1>
-                <p class="cc-page-sub">
-                    @if (_canInvite)
-                    {
-                        <text>Invitation réservée au Responsable (administrateur du groupe). Les Experts votent ensuite (75&nbsp;%). Ne pas confondre avec l'enregistrement d'enseignants, ouvert à tous les Experts.</text>
-                    }
-                    else
-                    {
-                        <text>Votre rôle : nourrir le groupe en enseignants (menu « Ajouter des enseignants »). Ici vous votez les candidatures de nouveaux membres Experts — seul le Responsable peut les inviter.</text>
-                    }
-                </p>
+            <div class="d-flex align-items-start gap-3">
+                <span class="ex-kpi-icon" aria-hidden="true"><i class="bi bi-people"></i></span>
+                <div>
+                    <h1 class="cc-page-title">Admissions des Experts</h1>
+                    <p class="cc-page-sub">
+                        Invitez et gérez les candidatures des experts souhaitant rejoindre votre groupe.
+                    </p>
+                </div>
             </div>
+            @if (_canInvite)
+            {
+                <button type="button" class="cc-btn" @onclick="() => _showGuide = !_showGuide">
+                    <i class="bi bi-journal-text" aria-hidden="true"></i> Guide d’utilisation
+                </button>
+            }
         </div>
 
+        @if (_showGuide)
+        {
+            <div class="alert alert-secondary mb-3">
+                <strong>Parcours :</strong> Invitation → le candidat accepte → vote des Experts (seuil 75&nbsp;%) → Approuvé / Refusé → membership.
+                Ne pas confondre avec la création d’un <em>enseignant</em> (cours &amp; fiche publique).
+            </div>
+        }
         @if (!string.IsNullOrEmpty(_error))
         {
             <div class="alert alert-danger mb-3">@_error</div>
@@ -36,97 +45,238 @@
             <div class="alert alert-success mb-3">@_success</div>
         }
 
-        @if (_canInvite)
+        @if (_loading)
         {
-            <div class="cc-card mb-3">
-                <h2 class="cc-card-title">Inviter un candidat Expert</h2>
-                <p class="small text-muted mb-2">
-                    Ceci invite un <strong>membre du groupe d'experts</strong>. Pour un enseignant, utilisez plutôt la file enseignants (création de profil).
-                </p>
-                <div class="row g-2">
-                    <div class="col-md-4">
-                        <label class="form-label">E-mail *</label>
-                        <input class="form-control" type="email" @bind="_email" />
+            <div class="cc-empty"><span class="spinner-border"></span></div>
+        }
+        else
+        {
+            <div class="ex-kpi-grid">
+                <div class="ex-kpi">
+                    <span class="ex-kpi-icon"><i class="bi bi-inbox" aria-hidden="true"></i></span>
+                    <div>
+                        <div class="ex-kpi-label">Candidatures reçues</div>
+                        <div class="ex-kpi-value">@_receivedThisMonth</div>
+                        <div class="small text-muted">ce mois-ci</div>
                     </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Prénom *</label>
-                        <input class="form-control" @bind="_firstName" />
+                </div>
+                <div class="ex-kpi" data-tone="amber">
+                    <span class="ex-kpi-icon"><i class="bi bi-hourglass-split" aria-hidden="true"></i></span>
+                    <div>
+                        <div class="ex-kpi-label">En attente</div>
+                        <div class="ex-kpi-value">@_pending.Count</div>
+                        <div class="small text-muted">à examiner</div>
                     </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Nom *</label>
-                        <input class="form-control" @bind="_lastName" />
+                </div>
+                <div class="ex-kpi" data-tone="emerald">
+                    <span class="ex-kpi-icon"><i class="bi bi-check-circle" aria-hidden="true"></i></span>
+                    <div>
+                        <div class="ex-kpi-label">Approuvés</div>
+                        <div class="ex-kpi-value">@_invites.Count(i => i.Status == 3)</div>
+                        <div class="small text-muted">membres actifs</div>
                     </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Téléphone</label>
-                        <input class="form-control" @bind="_phone" />
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Spécialité</label>
-                        <input class="form-control" @bind="_specialty" />
-                    </div>
-                    <div class="col-md-4">
-                        <label class="form-label">Fonction envisagée</label>
-                        <input class="form-control" @bind="_role" />
-                    </div>
-                    <div class="col-12">
-                        <label class="form-label">Justification *</label>
-                        <textarea class="form-control" rows="2" @bind="_justification"></textarea>
-                    </div>
-                    <div class="col-12">
-                        <label class="form-label">Message personnel</label>
-                        <textarea class="form-control" rows="2" @bind="_message"></textarea>
-                    </div>
-                    <div class="col-12">
-                        <button type="button" class="cc-btn cc-btn-primary" disabled="@_busy" @onclick="InviteAsync">
-                            <i class="bi bi-envelope"></i> Envoyer l'invitation
-                        </button>
+                </div>
+                <div class="ex-kpi" data-tone="rose">
+                    <span class="ex-kpi-icon"><i class="bi bi-x-circle" aria-hidden="true"></i></span>
+                    <div>
+                        <div class="ex-kpi-label">Refusés</div>
+                        <div class="ex-kpi-value">@_invites.Count(i => i.Status == 4)</div>
+                        <div class="small text-muted">ce cycle</div>
                     </div>
                 </div>
             </div>
-        }
 
-        <div class="cc-card">
-            <h2 class="cc-card-title">Candidatures</h2>
-            @if (_loading)
-            {
-                <div class="cc-empty"><span class="spinner-border"></span></div>
-            }
-            else if (_invites.Count == 0)
-            {
-                <div class="cc-empty py-3"><p>Aucune candidature pour le moment.</p></div>
-            }
-            else
-            {
-                @foreach (var inv in _invites)
+            <div class="ex-admissions-grid">
+                @if (_canInvite)
                 {
-                    <div class="border-bottom border-secondary py-3">
-                        <div class="d-flex justify-content-between flex-wrap gap-2">
-                            <div>
-                                <strong>@inv.FirstName @inv.LastName</strong>
-                                <div class="small text-muted">@inv.Email · @StatusLabel(inv.Status)</div>
-                                <div class="small">Approbations : @inv.ApprovalCount / @inv.RequiredApprovalCount
-                                    (éligibles : @inv.EligibleVoterCount · rejets : @inv.RejectCount · abst. : @inv.AbstainCount)</div>
+                    <div class="cc-card">
+                        <h2 class="cc-card-title">Inviter un candidat Expert</h2>
+                        <p class="small text-muted mb-3">
+                            Ceci invite un membre du groupe d'experts. Pour un enseignant, utilisez plutôt le module « Ajouter un enseignant ».
+                        </p>
+                        <div class="row g-2">
+                            <div class="col-md-6">
+                                <label class="form-label" for="adm-email">E-mail *</label>
+                                <input id="adm-email" class="form-control" type="email" @bind="_email" />
                             </div>
-                            @if (inv.Status is 2 or 7)
-                            {
-                                <div class="d-flex gap-2 align-items-start">
-                                    <button type="button" class="cc-btn cc-btn-primary btn-sm" disabled="@_busy"
-                                            @onclick="() => VoteAsync(inv.Id, 0)">Approuver</button>
-                                    <button type="button" class="cc-btn btn-sm" disabled="@_busy"
-                                            @onclick="() => VoteAsync(inv.Id, 1)">Rejeter</button>
-                                    <button type="button" class="cc-btn btn-sm" disabled="@_busy"
-                                            @onclick="() => VoteAsync(inv.Id, 2)">S'abstenir</button>
-                                </div>
-                            }
+                            <div class="col-md-3">
+                                <label class="form-label" for="adm-first">Prénom *</label>
+                                <input id="adm-first" class="form-control" @bind="_firstName" />
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label" for="adm-last">Nom *</label>
+                                <input id="adm-last" class="form-control" @bind="_lastName" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="adm-phone">Téléphone</label>
+                                <input id="adm-phone" class="form-control" @bind="_phone" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="adm-spec">Spécialité</label>
+                                <input id="adm-spec" class="form-control" @bind="_specialty" />
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label" for="adm-role">Fonction envisagée</label>
+                                <select id="adm-role" class="form-select" @bind="_role">
+                                    <option value="">— Choisir —</option>
+                                    <option>Évaluateur</option>
+                                    <option>Mentor pédagogique</option>
+                                    <option>Coordinateur</option>
+                                    <option>Expert matière</option>
+                                    <option>Autre</option>
+                                </select>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label" for="adm-just">Justification *</label>
+                                <textarea id="adm-just" class="form-control" rows="3" @bind="_justification"
+                                          placeholder="Expliquez pourquoi cette personne est invitée à rejoindre le groupe."></textarea>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label" for="adm-msg">Message personnel</label>
+                                <textarea id="adm-msg" class="form-control" rows="2" @bind="_message"></textarea>
+                            </div>
+                            <div class="col-12">
+                                <button type="button" class="cc-btn cc-btn-primary" disabled="@_busy" @onclick="InviteAsync">
+                                    <i class="bi bi-send" aria-hidden="true"></i> Envoyer l’invitation
+                                </button>
+                            </div>
                         </div>
-                        @if (!string.IsNullOrWhiteSpace(inv.Justification))
-                        {
-                            <p class="small mb-0 mt-2">@inv.Justification</p>
-                        }
                     </div>
                 }
-            }
-        </div>
+                else
+                {
+                    <div class="cc-card">
+                        <h2 class="cc-card-title">Votre rôle</h2>
+                        <p class="mb-0">
+                            Vous votez les candidatures de nouveaux <strong>membres Experts</strong>.
+                            Seul le Responsable peut envoyer une invitation.
+                            Pour un enseignant, utilisez « Ajouter un enseignant ».
+                        </p>
+                    </div>
+                }
+
+                <div class="cc-card">
+                    <h2 class="cc-card-title">Candidatures en attente (@_pending.Count)</h2>
+                    @if (_pending.Count == 0)
+                    {
+                        <div class="cc-empty py-4">
+                            <p class="mb-2">Toutes les candidatures ont été traitées.</p>
+                            @if (_canInvite)
+                            {
+                                <p class="small text-muted mb-0">Utilisez le formulaire pour inviter un Expert.</p>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        @foreach (var inv in _pending)
+                        {
+                            <div class="ex-pending-card">
+                                <div class="ex-pending-head">
+                                    <span class="ex-avatar">@Initials(inv.FirstName, inv.LastName)</span>
+                                    <div class="flex-grow-1">
+                                        <strong>@inv.FirstName @inv.LastName</strong>
+                                        <div class="small text-muted">@inv.Email</div>
+                                        <div class="small">@(inv.Specialty ?? "—") · @(inv.IntendedRole ?? "—")</div>
+                                        <div class="small text-muted">Reçu le @inv.SentAtUtc.ToLocalTime().ToString("dd MMM yyyy")</div>
+                                        <span class="cc-pill @StatusPill(inv.Status)">@StatusLabel(inv.Status)</span>
+                                    </div>
+                                </div>
+                                <VoteProgress Approve="inv.ApprovalCount" Reject="inv.RejectCount"
+                                              Abstain="inv.AbstainCount" Eligible="inv.EligibleVoterCount"
+                                              Required="inv.RequiredApprovalCount" />
+                                @if (inv.Status is 2 or 7)
+                                {
+                                    <div class="d-flex gap-2 mt-2 flex-wrap">
+                                        <button type="button" class="cc-btn cc-btn-success btn-sm" disabled="@_busy"
+                                                @onclick="() => VoteAsync(inv.Id, 0)">Approuver</button>
+                                        <button type="button" class="cc-btn cc-btn-danger-text btn-sm" disabled="@_busy"
+                                                @onclick="() => AskReject(inv)">Refuser</button>
+                                        <button type="button" class="cc-btn btn-sm" disabled="@_busy"
+                                                @onclick="() => VoteAsync(inv.Id, 2)">S'abstenir</button>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    }
+                </div>
+            </div>
+
+            <div class="cc-card">
+                <div class="cc-card-header d-flex flex-wrap gap-2 align-items-center justify-content-between">
+                    <h2 class="cc-card-title mb-0">Candidatures récentes</h2>
+                    <div class="d-flex gap-2 flex-wrap">
+                        <input class="form-control form-control-sm" style="width:14rem" placeholder="Rechercher…"
+                               @bind="_search" @bind:event="oninput" />
+                        <select class="form-select form-select-sm" style="width:10rem" @bind="_statusFilter">
+                            <option value="">Toutes</option>
+                            <option value="pending">En attente</option>
+                            <option value="3">Approuvées</option>
+                            <option value="4">Refusées</option>
+                            <option value="6">Annulées</option>
+                            <option value="5">Expirées</option>
+                        </select>
+                    </div>
+                </div>
+                @if (_filtered.Count == 0)
+                {
+                    <p class="text-muted mb-0 p-3">Aucune candidature pour ces filtres.</p>
+                }
+                else
+                {
+                    <div class="cc-table-wrap">
+                        <table class="cc-table">
+                            <thead>
+                                <tr>
+                                    <th>Candidat</th>
+                                    <th>Spécialité</th>
+                                    <th>Fonction</th>
+                                    <th>Invité par</th>
+                                    <th>Date</th>
+                                    <th>Votes</th>
+                                    <th>Statut</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var inv in _filtered)
+                                {
+                                    <tr>
+                                        <td>
+                                            <div class="d-flex align-items-center gap-2">
+                                                <span class="ex-avatar">@Initials(inv.FirstName, inv.LastName)</span>
+                                                <div>
+                                                    <strong>@inv.FirstName @inv.LastName</strong>
+                                                    <div class="small text-muted">@inv.Email</div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td>@(inv.Specialty ?? "—")</td>
+                                        <td>@(inv.IntendedRole ?? "—")</td>
+                                        <td>@(inv.InvitedByName ?? "—")</td>
+                                        <td class="text-nowrap">@inv.SentAtUtc.ToLocalTime().ToString("dd MMM yyyy")</td>
+                                        <td>@inv.ApprovalCount / @Math.Max(inv.RequiredApprovalCount, inv.EligibleVoterCount)</td>
+                                        <td><span class="cc-pill @StatusPill(inv.Status)">@StatusLabel(inv.Status)</span></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        }
+
+        @if (_rejectTarget is not null)
+        {
+            <div class="cc-card mt-3">
+                <h2 class="cc-card-title">Refuser @_rejectTarget.FirstName @_rejectTarget.LastName ?</h2>
+                <p class="small text-muted">Cette action est enregistrée. Le candidat sera informé selon les règles du groupe.</p>
+                <div class="d-flex gap-2">
+                    <button type="button" class="cc-btn" @onclick="() => _rejectTarget = null">Annuler</button>
+                    <button type="button" class="cc-btn cc-btn-primary" disabled="@_busy"
+                            @onclick="ConfirmRejectAsync">Confirmer le refus</button>
+                </div>
+            </div>
+        }
     </Authorized>
     <NotAuthorized>
         <div class="cc-card cc-empty">
@@ -152,6 +302,45 @@
     private string _role = "";
     private string _justification = "";
     private string _message = "";
+    private string _search = "";
+    private string _statusFilter = "";
+    private InviteItem? _rejectTarget;
+    private bool _showGuide;
+
+    private List<InviteItem> _pending =>
+        _invites.Where(i => i.Status is 0 or 1 or 2 or 7).ToList();
+
+    private int _receivedThisMonth
+    {
+        get
+        {
+            var start = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+            return _invites.Count(i => i.SentAtUtc >= start);
+        }
+    }
+
+    private List<InviteItem> _filtered
+    {
+        get
+        {
+            IEnumerable<InviteItem> q = _invites;
+            if (_statusFilter == "pending")
+                q = q.Where(i => i.Status is 0 or 1 or 2 or 7);
+            else if (int.TryParse(_statusFilter, out var st))
+                q = q.Where(i => i.Status == st);
+
+            if (!string.IsNullOrWhiteSpace(_search))
+            {
+                var s = _search.Trim();
+                q = q.Where(i =>
+                    ($"{i.FirstName} {i.LastName}").Contains(s, StringComparison.OrdinalIgnoreCase)
+                    || (i.Email?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false)
+                    || (i.Specialty?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false));
+            }
+
+            return q.OrderByDescending(i => i.SentAtUtc).ToList();
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -211,7 +400,7 @@
                 personalMessage = string.IsNullOrWhiteSpace(_message) ? null : _message
             });
             if (result.Error is not null) { _error = result.Error; return; }
-            _success = "Invitation envoyée.";
+            _success = "Invitation envoyée avec succès.";
             _email = _firstName = _lastName = _phone = _specialty = _role = _justification = _message = "";
             await LoadAsync();
         }
@@ -234,6 +423,26 @@
         finally { _busy = false; }
     }
 
+    private void AskReject(InviteItem inv) => _rejectTarget = inv;
+
+    private async Task ConfirmRejectAsync()
+    {
+        if (_rejectTarget is null) return;
+        var id = _rejectTarget.Id;
+        _rejectTarget = null;
+        await VoteAsync(id, 1);
+        if (string.IsNullOrEmpty(_error))
+            _success = "Candidature refusée.";
+    }
+
+    private static string Initials(string? first, string? last)
+    {
+        var a = string.IsNullOrWhiteSpace(first) ? "" : first.Trim()[0].ToString().ToUpperInvariant();
+        var b = string.IsNullOrWhiteSpace(last) ? "" : last.Trim()[0].ToString().ToUpperInvariant();
+        var s = a + b;
+        return string.IsNullOrEmpty(s) ? "?" : s;
+    }
+
     private static string StatusLabel(int status) => status switch
     {
         0 => "Envoyée",
@@ -245,6 +454,14 @@
         6 => "Annulée",
         7 => "Validation admin",
         _ => status.ToString()
+    };
+
+    private static string StatusPill(int status) => status switch
+    {
+        3 => "cc-pill-ok",
+        4 or 6 => "cc-pill-bad",
+        5 => "cc-pill-bad",
+        _ => "cc-pill-type"
     };
 
     private sealed record MeContext(bool IsGroupManager, Guid? GroupId, string? GroupName, bool IsPlatformActAs = false);

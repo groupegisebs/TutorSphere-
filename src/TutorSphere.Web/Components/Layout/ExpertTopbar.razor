@@ -1,0 +1,164 @@
+@implements IDisposable
+@inject IStringLocalizer<SharedResources> L
+@inject AuthService Auth
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<div class="ex-topbar-left">
+    <span class="ex-topbar-kicker">@SpaceLabel</span>
+    <span class="ex-topbar-sep" aria-hidden="true"></span>
+    <span class="ex-topbar-hint">@ViewLabel</span>
+</div>
+<div class="ex-topbar-actions">
+    <ActingAsGroupAdminExitButton />
+    <LanguageSelector />
+    <a class="ex-topbar-icon" href="expert/notifications" title="Notifications" aria-label="Notifications">
+        <i class="bi bi-bell" aria-hidden="true"></i>
+        @if (_unread > 0)
+        {
+            <span class="ex-topbar-badge">@(_unread > 99 ? "99+" : _unread.ToString())</span>
+        }
+    </a>
+    <div class="ex-user-wrap">
+        <button type="button" class="ex-user-btn" aria-expanded="@_menuOpen" aria-haspopup="true"
+                @onclick="ToggleMenu" @onclick:stopPropagation="true">
+            <span class="ex-user-avatar" aria-hidden="true">@_initials</span>
+            <span class="ex-user-meta">
+                <strong>@DisplayName</strong>
+                <span>@RoleLabel@(!string.IsNullOrWhiteSpace(_groupName) ? $" · {_groupName}" : "")</span>
+            </span>
+            <i class="bi bi-chevron-down" aria-hidden="true"></i>
+        </button>
+        @if (_menuOpen)
+        {
+            <div class="ex-user-dropdown" @onclick:stopPropagation="true">
+                <div class="ex-user-dropdown-head">
+                    <strong>@DisplayName</strong>
+                    <span>@(Auth.UserEmail ?? "")</span>
+                </div>
+                <a class="ex-user-item" href="expert/profile" @onclick="CloseMenu">
+                    <i class="bi bi-person" aria-hidden="true"></i> Mon profil
+                </a>
+                @if (_isManager)
+                {
+                    <a class="ex-user-item" href="group-admin/settings" @onclick="CloseMenu">
+                        <i class="bi bi-gear" aria-hidden="true"></i> Paramètres du groupe
+                    </a>
+                }
+                <button type="button" class="ex-user-item ex-user-item--danger" @onclick="LogoutAsync">
+                    <i class="bi bi-box-arrow-left" aria-hidden="true"></i> @L["Nav_Logout"]
+                </button>
+            </div>
+        }
+    </div>
+</div>
+@if (_menuOpen)
+{
+    <div class="ex-user-backdrop" @onclick="CloseMenu"></div>
+}
+
+@code {
+    private bool _menuOpen;
+    private bool _isManager;
+    private string? _groupName;
+    private int _unread;
+
+    private string DisplayName =>
+        !string.IsNullOrWhiteSpace(Auth.UserName) ? Auth.UserName!
+        : (Auth.UserEmail ?? "Compte");
+
+    private string _initials
+    {
+        get
+        {
+            var parts = DisplayName.Trim().Split([' ', '@'], StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length >= 2)
+                return $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[^1][0])}";
+            return DisplayName[..Math.Min(2, DisplayName.Length)].ToUpperInvariant();
+        }
+    }
+
+    private string SpaceLabel => _isManager ? "Espace Responsable" : "Espace Expert";
+    private string RoleLabel => _isManager ? "Responsable du groupe" : "Expert";
+
+    private string ViewLabel
+    {
+        get
+        {
+            var path = Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0].Trim('/').ToLowerInvariant();
+            return path switch
+            {
+                "expert/dashboard" => "Tableau de bord",
+                "group-admin/dashboard" => "Tableau de bord du groupe",
+                "expert/activity" => "Activité",
+                "expert/reports" => "Rapports",
+                "expert/teachers/add" => "Enseignants / Ajouter un enseignant",
+                "expert/approvals" => "Approbations",
+                "expert/teachers" => "Enseignants",
+                var p when p.StartsWith("expert/teachers/") => "Dossier enseignant",
+                "expert/my-tasks" => "Mes tâches",
+                "expert/interviews" => "Entretiens",
+                "expert/demonstrations" => "Démonstrations",
+                "expert/renewals" => "Réévaluations",
+                "expert/documents" => "Documents",
+                "expert/disciplines" => "Disciplines",
+                "group-admin/members" or "expert/members" => "Membres",
+                "expert/admissions" => "Admissions des Experts",
+                "expert/offers" => "Offres du groupe",
+                "group-admin/tasks" => "Tâches & délégations",
+                "expert/messages" => "Messagerie du groupe",
+                "expert/admin-chat" => "Contacter TutorSphere",
+                "group-admin/settings" => "Paramètres du groupe",
+                "expert/notifications" => "Notifications",
+                "expert/profile" => "Mon profil",
+                _ => "Centre de gouvernance"
+            };
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        Nav.LocationChanged += OnLocationChanged;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await Auth.EnsureSessionRestoredAsync(forceJs: true);
+            var ctx = await Api.GetAsync<MeContext>("api/expert/me-context");
+            _isManager = ctx?.IsGroupManager == true || Auth.IsActingAsGroupAdmin;
+            _groupName = ctx?.GroupName ?? Auth.ActingAsExpertGroupName;
+        }
+        catch { }
+
+        try
+        {
+            var notes = await Api.GetAsync<List<NotifItem>>("api/expert/notifications") ?? [];
+            _unread = notes.Count(n => n.ReadAtUtc is null);
+        }
+        catch { }
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        _menuOpen = false;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void ToggleMenu() => _menuOpen = !_menuOpen;
+    private void CloseMenu() => _menuOpen = false;
+
+    private Task LogoutAsync()
+    {
+        _menuOpen = false;
+        Auth.Logout();
+        Nav.NavigateTo("/login/expert", forceLoad: true);
+        return Task.CompletedTask;
+    }
+
+    public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
+
+    private sealed record MeContext(bool IsGroupManager, Guid? GroupId, string? GroupName);
+    private sealed record NotifItem(DateTime? ReadAtUtc);
+}
