@@ -132,7 +132,7 @@ public sealed class TeacherSchoolAdminService(
         var now = DateTime.UtcNow;
         if (!tenant.HasPaidLicense(now))
             throw new InvalidOperationException(
-                "Activez d'abord la session enseignant (paiement, code promo ou retenue à la source de 10 $ USD).");
+                "Activez d'abord la session enseignant (paiement, clé d'activation ou retenue à la source de 10 $ USD).");
 
         tenant.Status = TenantStatus.Active;
         tenant.IsPublicProfile = true;

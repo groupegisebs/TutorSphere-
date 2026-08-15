@@ -401,9 +401,9 @@ public class ExpertApprovalService(
             : licenseSettlement.Trim().ToLowerInvariant();
         if (!LicenseFeeWithholding.IsKnownSettlement(settlement))
             throw new InvalidOperationException(
-                "À la validation, choisissez le paiement par l'enseignant, un code promo, ou la retenue à la source.");
+                "À la validation, choisissez le paiement par l'enseignant, une clé d'activation, ou la retenue à la source.");
         if (settlement == LicenseFeeWithholding.SettlementPromo && string.IsNullOrWhiteSpace(promoCode))
-            throw new InvalidOperationException("Saisissez le code promo pour activer la session.");
+            throw new InvalidOperationException("Saisissez la clé d'activation pour activer la session.");
 
         await licenseActivation.ApplySettlementOnApprovalAsync(
             tenant.Id, expertUserId, settlement, promoCode, asPlatformAdmin, autoRenewAtSource, ct);

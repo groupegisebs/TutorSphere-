@@ -254,7 +254,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
 
         builder.Entity<PlatformPromoCode>(e =>
         {
-            e.Property(p => p.Code).HasMaxLength(32).IsRequired();
+            e.Property(p => p.Code).HasMaxLength(64).IsRequired();
             e.Property(p => p.Notes).HasMaxLength(500);
             e.Property(p => p.RedeemedByUserId).HasMaxLength(450);
             e.HasIndex(p => p.Code).IsUnique();

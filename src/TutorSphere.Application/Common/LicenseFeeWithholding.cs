@@ -4,7 +4,7 @@ using TutorSphere.Domain.Enums;
 namespace TutorSphere.Application.Common;
 
 /// <summary>
-/// Licence annuelle enseignant : 10 $ USD, ou code promo, ou retenue à la source
+/// Licence annuelle enseignant : 10 $ USD, ou clé d'activation, ou retenue à la source
 /// sur les premiers montants dus à l'enseignant (équivalent 10 $ USD).
 /// </summary>
 public static class LicenseFeeWithholding

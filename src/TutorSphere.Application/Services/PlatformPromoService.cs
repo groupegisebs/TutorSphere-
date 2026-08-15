@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using TutorSphere.Application.Common;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.PlatformBilling;
@@ -69,10 +67,10 @@ public sealed class PlatformPromoService(IApplicationDbContext db) : IPlatformPr
 
         if (quantity == 1 && !string.IsNullOrWhiteSpace(request.Code))
         {
-            var code = NormalizeCode(request.Code);
-            EnsureCodeFormat(code);
+            var code = ActivationKeyFormat.Normalize(request.Code);
+            ActivationKeyFormat.EnsureFormat(code);
             if (db.PlatformPromoCodes.Any(c => c.Code == code))
-                throw new InvalidOperationException("Ce code promo existe déjà.");
+                throw new InvalidOperationException("Cette clé d'activation existe déjà.");
 
             var entity = new PlatformPromoCode
             {
@@ -92,7 +90,7 @@ public sealed class PlatformPromoService(IApplicationDbContext db) : IPlatformPr
                 string code;
                 do
                 {
-                    code = GenerateCode();
+                    code = ActivationKeyFormat.Generate();
                 } while (db.PlatformPromoCodes.Any(c => c.Code == code) || created.Any(c => c.Code == code));
 
                 var entity = new PlatformPromoCode
@@ -116,7 +114,7 @@ public sealed class PlatformPromoService(IApplicationDbContext db) : IPlatformPr
     public async Task<PlatformPromoCodeDto> SetActiveAsync(Guid id, bool isActive, CancellationToken ct = default)
     {
         var entity = db.PlatformPromoCodes.FirstOrDefault(c => c.Id == id)
-            ?? throw new InvalidOperationException("Code promo introuvable.");
+            ?? throw new InvalidOperationException("Clé d'activation introuvable.");
 
         entity.IsActive = isActive;
         entity.UpdatedAt = DateTime.UtcNow;
@@ -236,16 +234,16 @@ public sealed class PlatformPromoService(IApplicationDbContext db) : IPlatformPr
                 "La session enseignant est déjà active. Le renouvellement sera disponible 1 mois avant l'échéance.");
         }
 
-        var normalized = NormalizeCode(code);
+        var normalized = ActivationKeyFormat.Normalize(code);
         if (string.IsNullOrWhiteSpace(normalized))
-            throw new InvalidOperationException("Code promo invalide.");
+            throw new InvalidOperationException("Clé d'activation invalide.");
 
         var promo = db.PlatformPromoCodes.FirstOrDefault(c => c.Code == normalized);
         if (promo is null)
         {
             if (!createIfMissing)
-                throw new InvalidOperationException("Code promo invalide ou déjà utilisé.");
-            EnsureCodeFormat(normalized);
+                throw new InvalidOperationException("Clé d'activation invalide ou déjà utilisée.");
+            ActivationKeyFormat.EnsureFormat(normalized);
             promo = new PlatformPromoCode
             {
                 Code = normalized,
@@ -257,7 +255,7 @@ public sealed class PlatformPromoService(IApplicationDbContext db) : IPlatformPr
         }
 
         if (!promo.IsAvailable())
-            throw new InvalidOperationException("Code promo invalide, expiré ou déjà utilisé.");
+            throw new InvalidOperationException("Clé d'activation invalide, expirée ou déjà utilisée.");
 
         var now = DateTime.UtcNow;
         LicenseFeeWithholding.GrantLicenseYears(tenant, promo.LicenseYears, now);
@@ -312,18 +310,6 @@ public sealed class PlatformPromoService(IApplicationDbContext db) : IPlatformPr
             schoolName,
             c.IsAvailable(now));
 
-    private static string NormalizeCode(string? code) =>
-        (code ?? string.Empty).Trim().ToUpperInvariant().Replace(" ", "", StringComparison.Ordinal);
-
-    private static void EnsureCodeFormat(string code)
-    {
-        if (code.Length is < 4 or > 32)
-            throw new InvalidOperationException("Le code doit contenir entre 4 et 32 caractères.");
-
-        if (!code.All(ch => char.IsLetterOrDigit(ch) || ch is '-' or '_'))
-            throw new InvalidOperationException("Le code ne peut contenir que des lettres, chiffres, - ou _.");
-    }
-
     private static DateTime? NormalizeExpiry(DateTime? expiresAt)
     {
         if (expiresAt is null) return null;
@@ -331,17 +317,5 @@ public sealed class PlatformPromoService(IApplicationDbContext db) : IPlatformPr
             ? DateTime.SpecifyKind(expiresAt.Value, DateTimeKind.Utc)
             : expiresAt.Value.ToUniversalTime();
         return utc.Date.AddDays(1).AddTicks(-1);
-    }
-
-    private static string GenerateCode()
-    {
-        const string alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-        Span<byte> bytes = stackalloc byte[10];
-        RandomNumberGenerator.Fill(bytes);
-        var sb = new StringBuilder(12);
-        sb.Append("TS-");
-        for (var i = 0; i < 8; i++)
-            sb.Append(alphabet[bytes[i] % alphabet.Length]);
-        return sb.ToString();
     }
 }

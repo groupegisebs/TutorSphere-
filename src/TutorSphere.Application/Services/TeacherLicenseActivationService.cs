@@ -15,7 +15,7 @@ public record ActivateTeacherSessionRequest(
 public interface ITeacherLicenseActivationService
 {
     /// <summary>
-    /// Active ou prolonge la session enseignant (licence annuelle) : code promo ou retenue.
+    /// Active ou prolonge la session enseignant (licence annuelle) : clé d'activation ou retenue.
     /// Réservé au super-admin / admin plateforme, ou à l'admin du groupe, à tout moment.
     /// </summary>
     Task<PlatformLicensePaymentStatusDto> ActivateSessionAsync(
@@ -25,7 +25,7 @@ public interface ITeacherLicenseActivationService
         bool asPlatformAdmin,
         CancellationToken ct = default);
 
-    /// <summary>Applique paiement / promo / retenue au moment de la validation de candidature.</summary>
+    /// <summary>Applique paiement / clé d'activation / retenue au moment de la validation de candidature.</summary>
     Task ApplySettlementOnApprovalAsync(
         Guid tenantId,
         string actorUserId,
@@ -35,7 +35,7 @@ public interface ITeacherLicenseActivationService
         bool autoRenewAtSource = false,
         CancellationToken ct = default);
 
-    /// <summary>Annule la retenue restante (licence payée ou code promo).</summary>
+    /// <summary>Annule la retenue restante (licence payée ou clé d'activation).</summary>
     void ClearWithholding(Tenant tenant);
 
     /// <summary>Retenue à la source sur un paiement parent devenu Completed.</summary>
@@ -59,7 +59,7 @@ public sealed class TeacherLicenseActivationService(
         var settlement = (request.Settlement ?? "").Trim().ToLowerInvariant();
         if (settlement is LicenseFeeWithholding.SettlementPay)
             throw new InvalidOperationException(
-                "Le paiement par carte est effectué par l'enseignant. Utilisez un code promo ou la retenue à la source.");
+                "Le paiement par carte est effectué par l'enseignant. Utilisez une clé d'activation ou la retenue à la source.");
 
         if (settlement is LicenseFeeWithholding.SettlementPromo)
             return await promoCodes.RedeemForTenantAsync(
@@ -75,7 +75,7 @@ public sealed class TeacherLicenseActivationService(
             return await ActivateWithWithholdingAsync(tenantId, actorUserId, request.AutoRenewAtSource, ct);
 
         throw new InvalidOperationException(
-            "Indiquez un code promo ou choisissez la retenue à la source (équivalent 10 $ USD).");
+            "Indiquez une clé d'activation ou choisissez la retenue à la source (équivalent 10 $ USD).");
     }
 
     public async Task ApplySettlementOnApprovalAsync(

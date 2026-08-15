@@ -1,10 +1,14 @@
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
+using TutorSphere.Infrastructure.Persistence;
 
 #nullable disable
 
 namespace TutorSphere.Infrastructure.Migrations
 {
     /// <inheritdoc />
+    [DbContext(typeof(ApplicationDbContext))]
+    [Migration("20260816010000_AddTeacherLicenseWithholding")]
     public partial class AddTeacherLicenseWithholding : Migration
     {
         /// <inheritdoc />

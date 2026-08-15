@@ -3,11 +3,12 @@ using TutorSphere.Domain.Common;
 namespace TutorSphere.Domain.Entities;
 
 /// <summary>
-/// Code promo plateforme pour activer gratuitement la licence enseignant (usage unique).
+/// Clé d'activation plateforme pour activer gratuitement la licence enseignant (usage unique).
+/// Format : TUTOR-MM-AAAAA-DD-UNIQUEGUID.
 /// </summary>
 public class PlatformPromoCode : BaseEntity
 {
-    /// <summary>Code normalisé (majuscules, sans espaces).</summary>
+    /// <summary>Clé normalisée (majuscules, sans espaces).</summary>
     public string Code { get; set; } = string.Empty;
 
     public bool IsActive { get; set; } = true;

@@ -43,7 +43,7 @@ public class Tenant : BaseEntity
 
     /// <summary>
     /// Renouvellement annuel automatique par retenue à la source (10 $ USD)
-    /// sur les paiements dus à l'enseignant, notamment après un code promo.
+    /// sur les paiements dus à l'enseignant, notamment après une clé d'activation.
     /// </summary>
     public bool LicenseAutoRenewAtSource { get; set; }
 

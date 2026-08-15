@@ -179,12 +179,12 @@
                     <button type="button" class="btn-close" @onclick="CloseActivate"></button>
                 </div>
                 <div class="modal-body">
-                    <p class="text-muted small">À tout moment : code promo (gratuit) ou retenue de 10 $ USD sur les premiers paiements dus à l’enseignant.</p>
+                    <p class="text-muted small">À tout moment : clé d'activation (gratuit) ou retenue de 10 $ USD sur les premiers paiements dus à l’enseignant.</p>
                     <div class="form-check">
                         <input class="form-check-input" type="radio" name="adm-settle" id="adm-promo"
                                checked="@(_activateSettlement == "promo")"
                                @onchange='() => _activateSettlement = "promo"' />
-                        <label class="form-check-label" for="adm-promo">Code promo</label>
+                        <label class="form-check-label" for="adm-promo">Clé d'activation</label>
                     </div>
                     <div class="form-check mb-3">
                         <input class="form-check-input" type="radio" name="adm-settle" id="adm-hold"
@@ -194,7 +194,8 @@
                     </div>
                     @if (_activateSettlement == "promo")
                     {
-                        <input class="form-control font-monospace text-uppercase" placeholder="TS-ABCD1234"
+                        <input class="form-control font-monospace text-uppercase" maxlength="64"
+                               placeholder="TUTOR-MM-AAAAA-DD-UNIQUEGUID"
                                @bind="_activatePromo" />
                         <div class="form-check mt-2">
                             <input class="form-check-input" type="checkbox" id="adm-autorenew"
@@ -323,7 +324,7 @@
                 return;
             }
 
-            _successMessage = $"Profil de {tutor.FullName} approuvé. Activez ensuite la session (code promo ou retenue).";
+            _successMessage = $"Profil de {tutor.FullName} approuvé. Activez ensuite la session (clé d'activation ou retenue).";
             // Recharger pour récupérer TenantId / école si créée à la volée.
             _tutors = await AdminSvc.GetUsersAsync("Tutor");
         }

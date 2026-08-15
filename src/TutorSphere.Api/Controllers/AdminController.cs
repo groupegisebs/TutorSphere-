@@ -654,7 +654,7 @@ public class AdminController : ControllerBase
         return Ok(new { message = "Profil enseignant approuvé.", tenantId = tenant.Id });
     }
 
-    /// <summary>Active la session enseignant à tout moment (code promo ou retenue 10 $ USD).</summary>
+    /// <summary>Active la session enseignant à tout moment (clé d'activation ou retenue 10 $ USD).</summary>
     [HttpPost("tenants/{tenantId:guid}/activate-session")]
     public async Task<IActionResult> ActivateTeacherSession(
         Guid tenantId,
@@ -664,7 +664,7 @@ public class AdminController : ControllerBase
         var userId = User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier);
         if (string.IsNullOrEmpty(userId)) return Unauthorized();
         if (request is null)
-            return BadRequest(new { error = "Indiquez un code promo ou la retenue à la source." });
+            return BadRequest(new { error = "Indiquez une clé d'activation ou la retenue à la source." });
 
         try
         {

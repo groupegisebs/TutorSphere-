@@ -5,19 +5,19 @@
 @inject AuthService Auth
 @inject IJSRuntime JS
 
-<PageTitle>Codes promo — Control Center</PageTitle>
+<PageTitle>Clés d'activation — Control Center</PageTitle>
 
 <AuthorizeView Roles="SuperAdmin,PlatformAdmin">
     <Authorized>
         <div class="cc-toolbar">
             <div>
-                <h1 class="cc-page-title">Codes promo enseignants</h1>
+                <h1 class="cc-page-title">Clés d'activation enseignants</h1>
                 <p class="cc-page-sub">
-                    Créez des codes à usage unique pour offrir 1 an d'abonnement plateforme gratuitement.
+                    Créez des clés à usage unique au format TUTOR-MM-AAAAA-DD-UNIQUEGUID pour offrir 1 an d'abonnement.
                 </p>
             </div>
             <button type="button" class="cc-btn cc-btn-primary" @onclick="OpenCreate">
-                <i class="bi bi-plus-lg"></i> Nouveau code
+                <i class="bi bi-plus-lg"></i> Nouvelle clé
             </button>
         </div>
 
@@ -35,8 +35,8 @@
             <div class="cc-card mb-3 cc-promo-create">
                 <div class="cc-card-header">
                     <div>
-                        <h2 class="cc-card-title">Créer des codes promo</h2>
-                        <p class="cc-card-sub">Usage unique — l’enseignant, l’admin du groupe ou le super-admin saisit le code pour activer la session.</p>
+                        <h2 class="cc-card-title">Créer des clés d'activation</h2>
+                        <p class="cc-card-sub">Usage unique — l’enseignant, l’admin du groupe ou le super-admin saisit la clé pour activer la session.</p>
                     </div>
                     <button type="button" class="cc-btn" @onclick="CloseCreate" aria-label="Fermer">
                         <i class="bi bi-x-lg"></i>
@@ -49,10 +49,10 @@
                 }
 
                 <div class="mb-3">
-                    <label class="form-label">Code personnalisé (optionnel)</label>
-                    <input class="form-control font-monospace" @bind="_formCode"
-                           placeholder="Ex. RENTREE2026" disabled="@(_formQuantity > 1)" />
-                    <div class="form-text text-muted">Laissez vide pour générer automatiquement (TS-XXXXXXXX).</div>
+                    <label class="form-label">Clé personnalisée (optionnel)</label>
+                    <input class="form-control font-monospace" @bind="_formCode" maxlength="64"
+                           placeholder="TUTOR-MM-AAAAA-DD-UNIQUEGUID" disabled="@(_formQuantity > 1)" />
+                    <div class="form-text text-muted">Laissez vide pour générer automatiquement au format TUTOR-MM-AAAAA-DD-UNIQUEGUID.</div>
                 </div>
                 <div class="row g-2">
                     <div class="col-md-6 mb-3">
@@ -107,7 +107,7 @@
                     <table class="cc-table">
                         <thead>
                             <tr>
-                                <th>Code</th>
+                                <th>Clé</th>
                                 <th>Durée</th>
                                 <th>Expiration</th>
                                 <th>Statut</th>
@@ -121,9 +121,9 @@
                             {
                                 <tr>
                                     <td colspan="7" class="text-muted">
-                                        Aucun code promo pour le moment.
+                                        Aucune clé d'activation pour le moment.
                                         <button type="button" class="cc-btn cc-btn-primary btn-sm ms-2" @onclick="OpenCreate">
-                                            Créer le premier code
+                                            Créer la première clé
                                         </button>
                                     </td>
                                 </tr>
@@ -185,7 +185,7 @@
                                                 class="btn btn-sm @(c.IsActive ? "btn-outline-warning" : "btn-outline-success")"
                                                 title="@(c.RedeemedAt is not null && c.IsActive
                                                     ? "Désactiver : révoque la licence gratuite — l'enseignant devra payer"
-                                                    : c.IsActive ? "Empêche l'utilisation du code" : "Réactiver le code")"
+                                                    : c.IsActive ? "Empêche l'utilisation de la clé" : "Réactiver la clé")"
                                                 @onclick="() => ToggleActiveAsync(c)">
                                             @(c.IsActive ? "Désactiver" : "Réactiver")
                                         </button>
@@ -253,7 +253,7 @@
         _loading = true;
         _error = null;
         try { _codes = await AdminSvc.GetPromoCodesAsync(); }
-        catch { _codes = []; _error = "Impossible de charger les codes promo."; }
+        catch { _codes = []; _error = "Impossible de charger les clés d'activation."; }
         finally { _loading = false; }
     }
 
@@ -276,7 +276,7 @@
 
             if (created is null || created.Count == 0)
             {
-                _createError = "Création impossible. Vérifiez que le code est unique, ou laissez le champ vide.";
+                _createError = "Création impossible. Vérifiez que la clé est unique et au format TUTOR-MM-AAAAA-DD-UNIQUEGUID, ou laissez le champ vide.";
                 return;
             }
 
@@ -287,8 +287,8 @@
             _formExpires = null;
             _formNotes = null;
             _flash = created.Count == 1
-                ? $"Code créé : {created[0].Code}"
-                : $"{created.Count} codes créés.";
+                ? $"Clé créée : {created[0].Code}"
+                : $"{created.Count} clés créées.";
             await ReloadAsync();
         }
         catch (Exception ex)
@@ -311,11 +311,11 @@
         }
 
         if (!activate && item.RedeemedAt is not null)
-            _flash = $"Code {item.Code} désactivé — licence promo révoquée, l'enseignant doit payer pour continuer.";
+            _flash = $"Clé {item.Code} désactivée — licence révoquée, l'enseignant doit payer pour continuer.";
         else if (!activate)
-            _flash = $"Code {item.Code} désactivé — il ne peut plus être utilisé.";
+            _flash = $"Clé {item.Code} désactivée — elle ne peut plus être utilisée.";
         else
-            _flash = $"Code {item.Code} réactivé.";
+            _flash = $"Clé {item.Code} réactivée.";
 
         await ReloadAsync();
     }
@@ -325,7 +325,7 @@
         try
         {
             await JS.InvokeVoidAsync("navigator.clipboard.writeText", code);
-            _flash = $"Code copié : {code}";
+            _flash = $"Clé copiée : {code}";
         }
         catch
         {

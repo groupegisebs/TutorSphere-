@@ -225,7 +225,7 @@ public class ExpertApprovalsController : ControllerBase
     {
         if (UserId is null) return Unauthorized();
         if (request is null)
-            return BadRequest(new { error = "Indiquez un code promo ou la retenue à la source." });
+            return BadRequest(new { error = "Indiquez une clé d'activation ou la retenue à la source." });
         try
         {
             var asPlatform = _groupAccess.IsPlatformAdmin(User);
