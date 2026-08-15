@@ -1,0 +1,136 @@
+@page "/expert/meetings"
+@layout ExpertLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService Auth
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<PageTitle>Réunions — TutorSphere</PageTitle>
+
+<AuthorizeView Roles="Expert,GroupManager,SuperAdmin,PlatformAdmin">
+    <Authorized>
+        <div class="cc-toolbar">
+            <div class="ex-page-head">
+                <span class="ex-page-icon"><i class="bi bi-camera-video"></i></span>
+                <div>
+                    <h1 class="cc-page-title">Réunions</h1>
+                    <p class="cc-page-sub">Planifiez et tenez les réunions du groupe d’experts directement dans TutorSphere.</p>
+                </div>
+            </div>
+            <a class="cc-btn cc-btn-primary" href="/expert/meetings/create"><i class="bi bi-plus-lg"></i> Créer une réunion</a>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger">@_error</div>
+        }
+
+        <div class="cc-card">
+            @if (_loading)
+            {
+                <div class="cc-empty"><span class="spinner-border"></span></div>
+            }
+            else if (_items.Count == 0)
+            {
+                <p class="text-muted mb-0">Aucune réunion pour le moment. Créez la première pour votre groupe.</p>
+            }
+            else
+            {
+                <table class="cc-table">
+                    <thead>
+                        <tr>
+                            <th>Titre</th>
+                            <th>Statut</th>
+                            <th>Début</th>
+                            <th>Organisateur</th>
+                            <th>Participants</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var m in _items)
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@m.Title</strong>
+                                    @if (m.AiEnabled) { <span class="mtg-pill mtg-pill-ai">IA</span> }
+                                </td>
+                                <td><span class="mtg-status mtg-status-@((int)m.Status)">@StatusFr(m.Status)</span></td>
+                                <td>@(m.StartAtUtc?.ToLocalTime().ToString("g") ?? "—")</td>
+                                <td>@m.OrganizerName</td>
+                                <td>@m.ParticipantCount</td>
+                                <td class="text-end">
+                                    @if (m.Status is 1 or 2)
+                                    {
+                                        <a class="cc-btn cc-btn-primary cc-btn-sm" href="@($"/expert/meetings/{m.Id}/room")">Rejoindre</a>
+                                    }
+                                    @if (m.Status == 3)
+                                    {
+                                        <a class="cc-btn cc-btn-sm" href="@($"/expert/meetings/{m.Id}/minutes")">Compte rendu</a>
+                                    }
+                                    @if (m.Status is 0 or 1 && m.IsOrganizer)
+                                    {
+                                        <button type="button" class="cc-btn cc-btn-sm" @onclick="() => CancelAsync(m.Id)">Annuler</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <p class="text-muted">Connectez-vous pour voir les réunions.</p>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private readonly List<Item> _items = [];
+    private bool _loading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.EnsureSessionRestoredAsync();
+        try
+        {
+            _items.Clear();
+            _items.AddRange(await Api.GetAsync<List<Item>>("api/expert/meetings") ?? []);
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private async Task CancelAsync(Guid id)
+    {
+        var r = await Api.PostWithErrorAsync<object>($"api/expert/meetings/{id}/cancel", new { });
+        if (r.Error is not null) { _error = r.Error; return; }
+        await OnInitializedAsync();
+    }
+
+    private static string StatusFr(int s) => s switch
+    {
+        0 => "Brouillon",
+        1 => "Programmée",
+        2 => "En cours",
+        3 => "Terminée",
+        4 => "Annulée",
+        _ => "—"
+    };
+
+    private sealed class Item
+    {
+        public Guid Id { get; set; }
+        public string Title { get; set; } = "";
+        public int Status { get; set; }
+        public int Visibility { get; set; }
+        public DateTime? StartAtUtc { get; set; }
+        public DateTime? EndAtUtc { get; set; }
+        public string TimeZoneId { get; set; } = "";
+        public string OrganizerName { get; set; } = "";
+        public int ParticipantCount { get; set; }
+        public bool AiEnabled { get; set; }
+        public bool IsOrganizer { get; set; }
+    }
+}

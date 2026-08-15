@@ -55,6 +55,11 @@ internal static class EmailTemplates
     public const string ExpertMembershipRejected = "EXPERT_MEMBERSHIP_REJECTED";
     public const string SupportContact = "SUPPORT_CONTACT";
     public const string AdminDirectMessage = "ADMIN_DIRECT_MESSAGE";
+    public const string MeetingInvitation = "MEETING_INVITATION";
+    public const string MeetingCancelled = "MEETING_CANCELLED";
+    public const string MeetingGuestCode = "MEETING_GUEST_CODE";
+    public const string MeetingReminder = "MEETING_REMINDER";
+    public const string MeetingMinutes = "MEETING_MINUTES";
 }
 
 public class EmailService : IEmailService
@@ -493,6 +498,68 @@ public class EmailService : IEmailService
             ["Subject"] = subject,
             ["Message"] = messageBody,
             ["InboxUrl"] = inboxUrl
+        }, ct);
+
+    public Task SendMeetingInvitationAsync(
+        string to, string recipientName, string title, DateTime startAtUtc, string timeZoneId,
+        string organizerName, string? agenda, string joinUrl, bool recordingEnabled, bool aiEnabled,
+        bool isExternal, CancellationToken ct = default)
+    {
+        var culture = CultureInfo.GetCultureInfo("fr-FR");
+        var privacy = isExternal
+            ? "Ce lien est personnel, temporaire et non transférable. Il ne donne pas accès au reste de TutorSphere."
+            : "Réunion privée du groupe d’experts. Ne transférez pas le lien.";
+        var flags = new List<string>();
+        if (recordingEnabled) flags.Add("un enregistrement pourra être réalisé");
+        if (aiEnabled) flags.Add("un assistant IA pourra analyser la discussion (avec votre consentement)");
+        var notice = flags.Count == 0
+            ? "Aucun enregistrement ni assistant IA n’est prévu pour le moment."
+            : "Attention : " + string.Join(" et ", flags) + ".";
+        return SendAsync(to, EmailTemplates.MeetingInvitation, new Dictionary<string, string>
+        {
+            ["RecipientName"] = recipientName,
+            ["Title"] = title,
+            ["StartLocal"] = startAtUtc.ToString("f", culture),
+            ["TimeZone"] = timeZoneId,
+            ["OrganizerName"] = organizerName,
+            ["Agenda"] = agenda ?? "",
+            ["JoinUrl"] = joinUrl,
+            ["CalendarUrl"] = joinUrl,
+            ["Privacy"] = privacy,
+            ["RecordingAndAi"] = notice
+        }, ct, culture.Name);
+    }
+
+    public Task SendMeetingCancelledAsync(string to, string title, DateTime startAtUtc, CancellationToken ct = default) =>
+        SendAsync(to, EmailTemplates.MeetingCancelled, new Dictionary<string, string>
+        {
+            ["Title"] = title,
+            ["StartLocal"] = startAtUtc.ToString("f", CultureInfo.GetCultureInfo("fr-FR"))
+        }, ct);
+
+    public Task SendMeetingGuestCodeAsync(string to, string recipientName, string title, string code, CancellationToken ct = default) =>
+        SendAsync(to, EmailTemplates.MeetingGuestCode, new Dictionary<string, string>
+        {
+            ["RecipientName"] = recipientName,
+            ["Title"] = title,
+            ["Code"] = code
+        }, ct);
+
+    public Task SendMeetingReminderAsync(string to, string recipientName, string title, DateTime startAtUtc, string joinUrl, CancellationToken ct = default) =>
+        SendAsync(to, EmailTemplates.MeetingReminder, new Dictionary<string, string>
+        {
+            ["RecipientName"] = recipientName,
+            ["Title"] = title,
+            ["StartLocal"] = startAtUtc.ToString("f", CultureInfo.GetCultureInfo("fr-FR")),
+            ["JoinUrl"] = joinUrl
+        }, ct);
+
+    public Task SendMeetingMinutesAsync(string to, string recipientName, string title, string minutesUrl, CancellationToken ct = default) =>
+        SendAsync(to, EmailTemplates.MeetingMinutes, new Dictionary<string, string>
+        {
+            ["RecipientName"] = recipientName,
+            ["Title"] = title,
+            ["MinutesUrl"] = minutesUrl
         }, ct);
 
     private static Dictionary<string, string> LessonBody(

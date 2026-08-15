@@ -18,4 +18,5 @@ public class ExpertModuleFeatures(IExpertModuleFeatureService features)
     public bool Admissions => IsEnabled(ExpertModuleKeys.Admissions);
     public bool AdminChat => IsEnabled(ExpertModuleKeys.AdminChat);
     public bool GroupAdmin => IsEnabled(ExpertModuleKeys.GroupAdmin);
+    public bool Meetings => IsEnabled(ExpertModuleKeys.Meetings);
 }

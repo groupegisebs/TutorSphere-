@@ -76,6 +76,24 @@ public interface IApplicationDbContext
     IQueryable<DisciplineServiceItem> DisciplineServiceItems { get; }
     IQueryable<TeacherDisciplineAssignment> TeacherDisciplineAssignments { get; }
     IQueryable<ParentSupportRequest> ParentSupportRequests { get; }
+    IQueryable<Meeting> Meetings { get; }
+    IQueryable<MeetingRecurrence> MeetingRecurrences { get; }
+    IQueryable<MeetingGroup> MeetingGroups { get; }
+    IQueryable<MeetingParticipant> MeetingParticipants { get; }
+    IQueryable<MeetingExternalGuest> MeetingExternalGuests { get; }
+    IQueryable<MeetingInvitation> MeetingInvitations { get; }
+    IQueryable<MeetingSession> MeetingSessions { get; }
+    IQueryable<MeetingAttendance> MeetingAttendances { get; }
+    IQueryable<MeetingMessage> MeetingMessages { get; }
+    IQueryable<MeetingFile> MeetingFiles { get; }
+    IQueryable<MeetingRecording> MeetingRecordings { get; }
+    IQueryable<MeetingTranscript> MeetingTranscripts { get; }
+    IQueryable<MeetingAIConsent> MeetingAiConsents { get; }
+    IQueryable<MeetingAISummary> MeetingAiSummaries { get; }
+    IQueryable<MeetingDecision> MeetingDecisions { get; }
+    IQueryable<MeetingActionItem> MeetingActionItems { get; }
+    IQueryable<MeetingNotification> MeetingNotifications { get; }
+    IQueryable<MeetingAuditLog> MeetingAuditLogs { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     void Add<T>(T entity) where T : class;

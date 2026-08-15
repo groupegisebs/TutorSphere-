@@ -49,6 +49,7 @@ builder.Services.AddScoped<MessageService>();
 builder.Services.AddScoped<MessagingNotificationState>();
 builder.Services.AddScoped<RealtimeMessagingClient>();
 builder.Services.AddScoped<RealtimeClassroomClient>();
+builder.Services.AddScoped<RealtimeMeetingClient>();
 builder.Services.AddScoped<AdminService>();
 builder.Services.Configure<TutorSphere.Application.Options.ExpertModuleFeatureOptions>(
     builder.Configuration.GetSection(TutorSphere.Application.Options.ExpertModuleFeatureOptions.SectionName));

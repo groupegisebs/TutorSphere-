@@ -1,0 +1,406 @@
+@inject AuthService Auth
+@inject ApiClient Api
+@inject NavigationManager Nav
+
+<div class="mtg-create">
+    <div class="ex-page-head mb-3">
+        <span class="ex-page-icon"><i class="bi bi-calendar-plus"></i></span>
+        <div>
+            <h1 class="cc-page-title">Créer une réunion</h1>
+            <p class="cc-page-sub">Planifiez une rencontre avec les membres de votre groupe ou des invités externes.</p>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(Error))
+    {
+        <div class="alert alert-danger">@Error</div>
+    }
+
+    <div class="mtg-create-grid">
+        <div class="mtg-create-main">
+            <section class="cc-card mtg-section">
+                <h2 class="cc-card-title">Informations générales</h2>
+                <label class="form-label">Titre de la réunion</label>
+                <input class="form-control" @bind="Title" maxlength="200" />
+                <label class="form-label mt-3">Description</label>
+                <textarea class="form-control" rows="3" maxlength="500" @bind="Description"></textarea>
+                <div class="mtg-counter">@(Description?.Length ?? 0)/500</div>
+                <label class="form-label mt-2">Ordre du jour</label>
+                <textarea class="form-control" rows="4" maxlength="1000" @bind="Agenda"></textarea>
+                <div class="mtg-counter">@(Agenda?.Length ?? 0)/1000</div>
+            </section>
+
+            <section class="cc-card mtg-section">
+                <h2 class="cc-card-title">Date et heure</h2>
+                <div class="mtg-dt-grid">
+                    <div>
+                        <label class="form-label">Date</label>
+                        <input class="form-control" type="date" @bind="Date" />
+                    </div>
+                    <div>
+                        <label class="form-label">Heure de début</label>
+                        <input class="form-control" type="time" @bind="StartTime" />
+                    </div>
+                    <div>
+                        <label class="form-label">Heure de fin</label>
+                        <input class="form-control" type="time" @bind="EndTime" />
+                    </div>
+                    <div>
+                        <label class="form-label">Fuseau horaire</label>
+                        <select class="form-select" @bind="TimeZoneId">
+                            <option value="Africa/Douala">(UTC+01:00) Douala, Cameroun</option>
+                            <option value="Europe/Paris">(UTC+01:00) Paris, France</option>
+                            <option value="Africa/Dakar">(UTC+00:00) Dakar, Sénégal</option>
+                            <option value="Africa/Abidjan">(UTC+00:00) Abidjan, Côte d’Ivoire</option>
+                            <option value="Africa/Lagos">(UTC+01:00) Lagos, Nigeria</option>
+                            <option value="America/Montreal">(UTC−05:00) Montréal</option>
+                        </select>
+                    </div>
+                </div>
+                <label class="mtg-switch mt-3">
+                    <input type="checkbox" @bind="Recurring" />
+                    <span>Réunion récurrente</span>
+                </label>
+                @if (Recurring)
+                {
+                    <select class="form-select mt-2" @bind="RecurrenceFrequency">
+                        <option value="1">Quotidienne</option>
+                        <option value="2">Hebdomadaire</option>
+                        <option value="3">Mensuelle</option>
+                    </select>
+                }
+            </section>
+
+            <section class="cc-card mtg-section">
+                <h2 class="cc-card-title">Participants</h2>
+                <label class="form-label">Visibilité</label>
+                <select class="form-select" value="@Visibility" @onchange="OnVisibilityChanged">
+                    <option value="0">Privée — personnes sélectionnées seulement</option>
+                    <option value="1">Groupe actuel</option>
+                    <option value="2">Plusieurs groupes</option>
+                    @if (IsPlatform)
+                    {
+                        <option value="3">Internationale (Super Admin)</option>
+                    }
+                    <option value="4">Sur invitation</option>
+                </select>
+
+                @if (Visibility is 2 or 3)
+                {
+                    <label class="form-label mt-3">Groupes concernés</label>
+                    <div class="mtg-chips">
+                        @foreach (var g in Groups)
+                        {
+                            <label class="mtg-chip">
+                                <input type="checkbox" checked="@SelectedGroups.Contains(g.Id)" @onchange="e => ToggleGroup(g.Id, e)" />
+                                @g.Name @if (!string.IsNullOrWhiteSpace(g.Country)) { <span class="text-muted">(@g.Country)</span> }
+                            </label>
+                        }
+                    </div>
+                }
+
+                <div class="mtg-tabs mt-3">
+                    @foreach (var tab in Tabs)
+                    {
+                        <button type="button" class="mtg-tab @(Category == tab.Key ? "is-on" : "")" @onclick="() => SwitchTab(tab.Key)">@tab.Label</button>
+                    }
+                </div>
+                <div class="mtg-search">
+                    <i class="bi bi-search"></i>
+                    <input class="form-control" placeholder="Inviter des membres" @bind="Query" @bind:event="oninput" @onkeyup="SearchSoon" />
+                </div>
+                @if (Candidates.Count > 0)
+                {
+                    <div class="mtg-results">
+                        @foreach (var c in Candidates)
+                        {
+                            <button type="button" class="mtg-person" @onclick="() => Pick(c)">
+                                <span class="mtg-avatar">@Initials(c.DisplayName)</span>
+                                <span>
+                                    <strong>@c.DisplayName</strong>
+                                    <small>@c.RoleLabel · @c.GroupName · @c.Country · @c.Email</small>
+                                </span>
+                            </button>
+                        }
+                    </div>
+                }
+                <div class="mtg-tags">
+                    @foreach (var p in SelectedPeople)
+                    {
+                        <span class="mtg-tag">
+                            <span class="mtg-avatar sm">@Initials(p.DisplayName)</span>
+                            <span>@p.DisplayName <small>@p.RoleLabel, @p.Country</small></span>
+                            <button type="button" @onclick="() => SelectedPeople.Remove(p)">×</button>
+                        </span>
+                    }
+                </div>
+                <button type="button" class="cc-btn mtg-ghost-btn" @onclick="() => ShowGuest = !ShowGuest">
+                    <i class="bi bi-plus"></i> Inviter une personne externe
+                </button>
+                @if (ShowGuest)
+                {
+                    <div class="mtg-guest-row">
+                        <input class="form-control" placeholder="Nom" @bind="GuestName" />
+                        <input class="form-control" placeholder="Courriel" @bind="GuestEmail" />
+                        <button type="button" class="cc-btn cc-btn-primary" @onclick="AddGuest">Ajouter</button>
+                    </div>
+                }
+                @foreach (var g in ExternalGuests)
+                {
+                    <div class="mtg-tag">@g.FullName &lt;@g.Email&gt; <button type="button" @onclick="() => ExternalGuests.Remove(g)">×</button></div>
+                }
+                <p class="mtg-hint">Vous voyez uniquement les membres autorisés de votre groupe.</p>
+            </section>
+        </div>
+
+        <aside class="mtg-create-side">
+            <section class="cc-card mtg-section">
+                <h2 class="cc-card-title">Options de la réunion</h2>
+                <label class="mtg-switch"><input type="checkbox" @bind="WaitingRoom" /><span>Salle d’attente</span></label>
+                <label class="mtg-switch"><input type="checkbox" @bind="AllowMic" /><span>Autoriser les micros</span></label>
+                <label class="mtg-switch"><input type="checkbox" @bind="AllowCamera" /><span>Autoriser les caméras</span></label>
+                <label class="mtg-switch"><input type="checkbox" @bind="AllowShare" /><span>Autoriser le partage d’écran</span></label>
+                <label class="mtg-switch"><input type="checkbox" @bind="Recording" /><span>Enregistrer la réunion</span></label>
+                <label class="mtg-switch"><input type="checkbox" @bind="Transcription" /><span>Transcription en direct</span></label>
+                <label class="form-label mt-2">Code d’accès (optionnel)</label>
+                <input class="form-control" @bind="AccessCode" />
+                <label class="form-label mt-2">Langue principale</label>
+                <select class="form-select" @bind="Language">
+                    <option value="fr">Français</option>
+                    <option value="en">English</option>
+                </select>
+            </section>
+            <section class="cc-card mtg-section mtg-ai">
+                <label class="mtg-switch">
+                    <input type="checkbox" @bind="AiEnabled" />
+                    <span><i class="bi bi-stars"></i> Assistant IA</span>
+                </label>
+                <p>Capture les points clés, les décisions et les actions à suivre.</p>
+                <p class="mtg-hint">En activant cette option, vous acceptez le traitement des données de la réunion. L’IA restera désactivée jusqu’à confirmation dans la salle, et chaque participant devra consentir.</p>
+            </section>
+            <section class="cc-card mtg-section">
+                <h2 class="cc-card-title">Rappels et invitations</h2>
+                <label class="form-check"><input class="form-check-input" type="checkbox" @bind="Remind24h" /> 24 h avant</label>
+                <label class="form-check"><input class="form-check-input" type="checkbox" @bind="Remind1h" /> 1 h avant</label>
+                <label class="form-check"><input class="form-check-input" type="checkbox" @bind="Remind10m" /> 10 min avant</label>
+                <label class="form-check mt-2"><input class="form-check-input" type="checkbox" @bind="SendEmail" /> Envoyer une invitation par e-mail aux participants</label>
+            </section>
+        </aside>
+    </div>
+
+    <div class="mtg-create-bar">
+        <button type="button" class="cc-btn" @onclick="() => Nav.NavigateTo(CancelHref)">Annuler</button>
+        <button type="button" class="cc-btn mtg-draft" disabled="@Busy" @onclick="() => SaveAsync("draft")">
+            <i class="bi bi-bookmark"></i> Enregistrer comme brouillon
+        </button>
+        <button type="button" class="cc-btn" disabled="@Busy" @onclick="() => SaveAsync("start")">Démarrer maintenant</button>
+        <button type="button" class="cc-btn cc-btn-primary" disabled="@Busy" @onclick="() => SaveAsync("schedule")">
+            <i class="bi bi-send"></i> Programmer et envoyer les invitations
+        </button>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string CancelHref { get; set; } = "/expert/meetings";
+    [Parameter] public string RoomPrefix { get; set; } = "/expert/meetings";
+
+    internal string Title { get; set; } = "";
+    internal string Description { get; set; } = "";
+    internal string Agenda { get; set; } = "";
+    internal DateTime Date { get; set; } = DateTime.Today;
+    internal TimeSpan StartTime { get; set; } = TimeSpan.FromHours(10);
+    internal TimeSpan EndTime { get; set; } = TimeSpan.FromHours(11);
+    internal string TimeZoneId { get; set; } = "Africa/Douala";
+    internal int Visibility { get; set; } = 1;
+    internal bool Recurring;
+    internal int RecurrenceFrequency { get; set; } = 2;
+    internal bool WaitingRoom = true;
+    internal bool AllowMic = true;
+    internal bool AllowCamera = true;
+    internal bool AllowShare = true;
+    internal bool Recording;
+    internal bool Transcription;
+    internal bool AiEnabled;
+    internal string AccessCode { get; set; } = "";
+    internal string Language { get; set; } = "fr";
+    internal bool Remind24h = true;
+    internal bool Remind1h = true;
+    internal bool Remind10m = true;
+    internal bool SendEmail = true;
+    internal string Query { get; set; } = "";
+    internal string Category { get; set; } = "members";
+    internal bool ShowGuest;
+    internal string GuestName { get; set; } = "";
+    internal string GuestEmail { get; set; } = "";
+    internal string? Error;
+    internal bool Busy;
+    internal bool IsPlatform;
+    internal List<GroupOpt> Groups { get; } = [];
+    internal HashSet<Guid> SelectedGroups { get; } = [];
+    internal List<Person> Candidates { get; } = [];
+    internal List<Person> SelectedPeople { get; } = [];
+    internal List<Guest> ExternalGuests { get; } = [];
+
+    private static readonly (string Key, string Label)[] Tabs =
+    [
+        ("members", "Membres du groupe"),
+        ("experts", "Experts"),
+        ("admins", "Administrateurs"),
+        ("groups", "Groupes autorisés"),
+        ("external", "Invités externes")
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.EnsureSessionRestoredAsync();
+        IsPlatform = Auth.IsInRole("SuperAdmin") || Auth.IsInRole("PlatformAdmin");
+        Groups.AddRange(await Api.GetAsync<List<GroupOpt>>("api/expert/meetings/groups") ?? []);
+        await LoadCandidatesAsync();
+    }
+
+    private async Task OnVisibilityChanged(ChangeEventArgs e)
+    {
+        Visibility = int.TryParse(e.Value?.ToString(), out var v) ? v : 1;
+        await LoadCandidatesAsync();
+    }
+
+    private async Task SwitchTab(string key)
+    {
+        Category = key;
+        await LoadCandidatesAsync();
+    }
+
+    private CancellationTokenSource? _searchCts;
+    private async Task SearchSoon()
+    {
+        _searchCts?.Cancel();
+        _searchCts = new CancellationTokenSource();
+        try
+        {
+            await Task.Delay(250, _searchCts.Token);
+            await LoadCandidatesAsync();
+        }
+        catch (TaskCanceledException) { }
+    }
+
+    private async Task LoadCandidatesAsync()
+    {
+        var ids = string.Join("&", SelectedGroups.Select(id => $"groupIds={id}"));
+        var url = $"api/expert/meetings/candidates?category={Uri.EscapeDataString(Category)}&q={Uri.EscapeDataString(Query)}&page=1&pageSize=20&visibility={Visibility}";
+        if (!string.IsNullOrEmpty(ids)) url += "&" + ids;
+        var page = await Api.GetAsync<PageDto>(url);
+        Candidates.Clear();
+        Candidates.AddRange(page?.Items ?? []);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void ToggleGroup(Guid id, ChangeEventArgs e)
+    {
+        var on = e.Value is bool b && b || string.Equals(e.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+        if (on) SelectedGroups.Add(id); else SelectedGroups.Remove(id);
+        _ = LoadCandidatesAsync();
+    }
+
+    private void Pick(Person p)
+    {
+        if (string.IsNullOrWhiteSpace(p.UserId))
+        {
+            if (p.GroupId is Guid gid) SelectedGroups.Add(gid);
+            return;
+        }
+        if (SelectedPeople.Any(x => x.UserId == p.UserId)) return;
+        SelectedPeople.Add(p);
+    }
+
+    private void AddGuest()
+    {
+        if (string.IsNullOrWhiteSpace(GuestEmail)) return;
+        ExternalGuests.Add(new Guest { FullName = GuestName, Email = GuestEmail.Trim() });
+        GuestName = GuestEmail = "";
+        ShowGuest = false;
+    }
+
+    private async Task SaveAsync(string mode)
+    {
+        Error = null;
+        Busy = true;
+        try
+        {
+            DateTime? start = ToUtc(Date, StartTime);
+            DateTime? end = ToUtc(Date, EndTime);
+            var body = new
+            {
+                title = Title,
+                description = Description,
+                agenda = Agenda,
+                startAtUtc = start,
+                endAtUtc = end,
+                timeZoneId = TimeZoneId,
+                visibility = Visibility,
+                groupIds = SelectedGroups.ToArray(),
+                internalUserIds = SelectedPeople.Select(p => p.UserId).ToArray(),
+                externalGuests = ExternalGuests.Select(g => new { fullName = g.FullName, email = g.Email }).ToArray(),
+                recurring = Recurring,
+                recurrenceFrequency = RecurrenceFrequency,
+                waitingRoomEnabled = WaitingRoom,
+                accessCode = string.IsNullOrWhiteSpace(AccessCode) ? null : AccessCode,
+                allowMic = AllowMic,
+                allowCamera = AllowCamera,
+                allowScreenShare = AllowShare,
+                recordingEnabled = Recording,
+                transcriptionEnabled = Transcription,
+                aiEnabled = AiEnabled,
+                language = Language,
+                remind24h = Remind24h,
+                remind1h = Remind1h,
+                remind10m = Remind10m,
+                sendEmailInvites = SendEmail && mode != "draft",
+                saveMode = mode
+            };
+            var r = await Api.PostWithErrorAsync<Created>("api/expert/meetings", body);
+            if (r.Error is not null) { Error = r.Error; return; }
+            if (r.Value is null) { Error = "Création impossible."; return; }
+            if (mode == "start")
+                Nav.NavigateTo($"{RoomPrefix}/{r.Value.Id}/room");
+            else
+                Nav.NavigateTo(CancelHref);
+        }
+        finally { Busy = false; }
+    }
+
+    private DateTime? ToUtc(DateTime date, TimeSpan time)
+    {
+        try
+        {
+            var local = DateTime.SpecifyKind(date.Date + time, DateTimeKind.Unspecified);
+            var tz = TimeZoneInfo.FindSystemTimeZoneById(TimeZoneId);
+            return TimeZoneInfo.ConvertTimeToUtc(local, tz);
+        }
+        catch { return DateTime.SpecifyKind(date.Date + time, DateTimeKind.Local).ToUniversalTime(); }
+    }
+
+    private static string Initials(string name)
+    {
+        var p = (name ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (p.Length >= 2) return $"{char.ToUpperInvariant(p[0][0])}{char.ToUpperInvariant(p[^1][0])}";
+        return (name ?? "?").Trim().ToUpperInvariant()[..Math.Min(2, (name ?? "?").Trim().Length)];
+    }
+
+    internal sealed class GroupOpt { public Guid Id { get; set; } public string Name { get; set; } = ""; public string? Country { get; set; } }
+    internal sealed class Person
+    {
+        public string Key { get; set; } = "";
+        public string Kind { get; set; } = "";
+        public string? UserId { get; set; }
+        public Guid? GroupId { get; set; }
+        public string DisplayName { get; set; } = "";
+        public string? Email { get; set; }
+        public string? RoleLabel { get; set; }
+        public string? GroupName { get; set; }
+        public string? Country { get; set; }
+        public string? PhotoUrl { get; set; }
+    }
+    internal sealed class Guest { public string FullName { get; set; } = ""; public string Email { get; set; } = ""; }
+    internal sealed class PageDto { public List<Person> Items { get; set; } = []; public int Total { get; set; } }
+    internal sealed class Created { public Guid Id { get; set; } }
+}

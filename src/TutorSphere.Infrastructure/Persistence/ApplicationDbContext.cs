@@ -59,6 +59,24 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     public DbSet<Discipline> DisciplinesSet => Set<Discipline>();
     public DbSet<DisciplineServiceItem> DisciplineServiceItemsSet => Set<DisciplineServiceItem>();
     public DbSet<TeacherDisciplineAssignment> TeacherDisciplineAssignmentsSet => Set<TeacherDisciplineAssignment>();
+    public DbSet<Meeting> MeetingsSet => Set<Meeting>();
+    public DbSet<MeetingRecurrence> MeetingRecurrencesSet => Set<MeetingRecurrence>();
+    public DbSet<MeetingGroup> MeetingGroupsSet => Set<MeetingGroup>();
+    public DbSet<MeetingParticipant> MeetingParticipantsSet => Set<MeetingParticipant>();
+    public DbSet<MeetingExternalGuest> MeetingExternalGuestsSet => Set<MeetingExternalGuest>();
+    public DbSet<MeetingInvitation> MeetingInvitationsSet => Set<MeetingInvitation>();
+    public DbSet<MeetingSession> MeetingSessionsSet => Set<MeetingSession>();
+    public DbSet<MeetingAttendance> MeetingAttendancesSet => Set<MeetingAttendance>();
+    public DbSet<MeetingMessage> MeetingMessagesSet => Set<MeetingMessage>();
+    public DbSet<MeetingFile> MeetingFilesSet => Set<MeetingFile>();
+    public DbSet<MeetingRecording> MeetingRecordingsSet => Set<MeetingRecording>();
+    public DbSet<MeetingTranscript> MeetingTranscriptsSet => Set<MeetingTranscript>();
+    public DbSet<MeetingAIConsent> MeetingAiConsentsSet => Set<MeetingAIConsent>();
+    public DbSet<MeetingAISummary> MeetingAiSummariesSet => Set<MeetingAISummary>();
+    public DbSet<MeetingDecision> MeetingDecisionsSet => Set<MeetingDecision>();
+    public DbSet<MeetingActionItem> MeetingActionItemsSet => Set<MeetingActionItem>();
+    public DbSet<MeetingNotification> MeetingNotificationsSet => Set<MeetingNotification>();
+    public DbSet<MeetingAuditLog> MeetingAuditLogsSet => Set<MeetingAuditLog>();
 
     IQueryable<Tenant> IApplicationDbContext.Tenants => TenantsSet;
     IQueryable<TenantBranding> IApplicationDbContext.TenantBrandings => TenantBrandingsSet;
@@ -136,6 +154,24 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     IQueryable<DisciplineServiceItem> IApplicationDbContext.DisciplineServiceItems => DisciplineServiceItemsSet;
     IQueryable<TeacherDisciplineAssignment> IApplicationDbContext.TeacherDisciplineAssignments =>
         TeacherDisciplineAssignmentsSet;
+    IQueryable<Meeting> IApplicationDbContext.Meetings => MeetingsSet;
+    IQueryable<MeetingRecurrence> IApplicationDbContext.MeetingRecurrences => MeetingRecurrencesSet;
+    IQueryable<MeetingGroup> IApplicationDbContext.MeetingGroups => MeetingGroupsSet;
+    IQueryable<MeetingParticipant> IApplicationDbContext.MeetingParticipants => MeetingParticipantsSet;
+    IQueryable<MeetingExternalGuest> IApplicationDbContext.MeetingExternalGuests => MeetingExternalGuestsSet;
+    IQueryable<MeetingInvitation> IApplicationDbContext.MeetingInvitations => MeetingInvitationsSet;
+    IQueryable<MeetingSession> IApplicationDbContext.MeetingSessions => MeetingSessionsSet;
+    IQueryable<MeetingAttendance> IApplicationDbContext.MeetingAttendances => MeetingAttendancesSet;
+    IQueryable<MeetingMessage> IApplicationDbContext.MeetingMessages => MeetingMessagesSet;
+    IQueryable<MeetingFile> IApplicationDbContext.MeetingFiles => MeetingFilesSet;
+    IQueryable<MeetingRecording> IApplicationDbContext.MeetingRecordings => MeetingRecordingsSet;
+    IQueryable<MeetingTranscript> IApplicationDbContext.MeetingTranscripts => MeetingTranscriptsSet;
+    IQueryable<MeetingAIConsent> IApplicationDbContext.MeetingAiConsents => MeetingAiConsentsSet;
+    IQueryable<MeetingAISummary> IApplicationDbContext.MeetingAiSummaries => MeetingAiSummariesSet;
+    IQueryable<MeetingDecision> IApplicationDbContext.MeetingDecisions => MeetingDecisionsSet;
+    IQueryable<MeetingActionItem> IApplicationDbContext.MeetingActionItems => MeetingActionItemsSet;
+    IQueryable<MeetingNotification> IApplicationDbContext.MeetingNotifications => MeetingNotificationsSet;
+    IQueryable<MeetingAuditLog> IApplicationDbContext.MeetingAuditLogs => MeetingAuditLogsSet;
 
     public new void Add<T>(T entity) where T : class => Set<T>().Add(entity);
     public new void Remove<T>(T entity) where T : class => Set<T>().Remove(entity);
@@ -591,6 +627,151 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             e.HasOne(s => s.Parent).WithMany(p => p.Children).HasForeignKey(s => s.ParentProfileId)
                 .IsRequired(false)
                 .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        builder.Entity<Meeting>(e =>
+        {
+            e.Property(m => m.OrganizerUserId).HasMaxLength(450).IsRequired();
+            e.Property(m => m.Title).HasMaxLength(200).IsRequired();
+            e.Property(m => m.Description).HasMaxLength(500);
+            e.Property(m => m.Agenda).HasMaxLength(1000);
+            e.Property(m => m.TimeZoneId).HasMaxLength(80);
+            e.Property(m => m.AccessCodeHash).HasMaxLength(128);
+            e.Property(m => m.Language).HasMaxLength(16);
+            e.Property(m => m.RetentionPolicy).HasMaxLength(80);
+            e.HasIndex(m => m.OrganizerUserId);
+            e.HasIndex(m => m.OrganizerGroupId);
+            e.HasIndex(m => m.Status);
+            e.HasIndex(m => m.StartAtUtc);
+            e.HasOne(m => m.OrganizerGroup).WithMany().HasForeignKey(m => m.OrganizerGroupId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+        builder.Entity<MeetingRecurrence>(e =>
+        {
+            e.HasIndex(r => r.MeetingId).IsUnique();
+            e.HasOne(r => r.Meeting).WithOne(m => m.Recurrence).HasForeignKey<MeetingRecurrence>(r => r.MeetingId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        builder.Entity<MeetingGroup>(e =>
+        {
+            e.HasIndex(g => new { g.MeetingId, g.ExpertGroupId }).IsUnique();
+            e.HasOne(g => g.Meeting).WithMany(m => m.Groups).HasForeignKey(g => g.MeetingId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(g => g.ExpertGroup).WithMany().HasForeignKey(g => g.ExpertGroupId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<MeetingParticipant>(e =>
+        {
+            e.Property(p => p.UserId).HasMaxLength(450);
+            e.HasIndex(p => p.MeetingId);
+            e.HasIndex(p => new { p.MeetingId, p.UserId });
+            e.HasOne(p => p.Meeting).WithMany(m => m.Participants).HasForeignKey(p => p.MeetingId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(p => p.ExternalGuest).WithMany().HasForeignKey(p => p.ExternalGuestId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+        builder.Entity<MeetingExternalGuest>(e =>
+        {
+            e.Property(g => g.FullName).HasMaxLength(200);
+            e.Property(g => g.Email).HasMaxLength(256);
+            e.Property(g => g.TokenHash).HasMaxLength(128);
+            e.Property(g => g.EmailVerifyCodeHash).HasMaxLength(128);
+            e.HasIndex(g => g.TokenHash);
+            e.HasOne(g => g.Meeting).WithMany(m => m.ExternalGuests).HasForeignKey(g => g.MeetingId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        builder.Entity<MeetingInvitation>(e =>
+        {
+            e.Property(i => i.RecipientEmail).HasMaxLength(256);
+            e.Property(i => i.RecipientUserId).HasMaxLength(450);
+            e.Property(i => i.LastError).HasMaxLength(500);
+            e.HasIndex(i => i.MeetingId);
+            e.HasOne(i => i.Meeting).WithMany(m => m.Invitations).HasForeignKey(i => i.MeetingId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        builder.Entity<MeetingSession>(e =>
+        {
+            e.HasOne(s => s.Meeting).WithMany(m => m.Sessions).HasForeignKey(s => s.MeetingId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        builder.Entity<MeetingAttendance>(e =>
+        {
+            e.HasOne(a => a.Session).WithMany(s => s.Attendances).HasForeignKey(a => a.SessionId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(a => a.Participant).WithMany().HasForeignKey(a => a.ParticipantId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<MeetingMessage>(e =>
+        {
+            e.Property(m => m.SenderUserId).HasMaxLength(450);
+            e.Property(m => m.SenderName).HasMaxLength(200);
+            e.Property(m => m.Body).HasMaxLength(4000);
+            e.HasOne(m => m.Session).WithMany(s => s.Messages).HasForeignKey(m => m.SessionId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        builder.Entity<MeetingFile>(e =>
+        {
+            e.Property(f => f.FileName).HasMaxLength(260);
+            e.Property(f => f.ContentType).HasMaxLength(120);
+            e.Property(f => f.StoragePath).HasMaxLength(500);
+            e.Property(f => f.UploadedByUserId).HasMaxLength(450);
+            e.HasOne(f => f.Meeting).WithMany(m => m.Files).HasForeignKey(f => f.MeetingId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        builder.Entity<MeetingRecording>(e =>
+        {
+            e.Property(r => r.StoragePath).HasMaxLength(500);
+            e.HasOne(r => r.Meeting).WithMany(m => m.Recordings).HasForeignKey(r => r.MeetingId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        builder.Entity<MeetingTranscript>(e =>
+        {
+            e.Property(t => t.Language).HasMaxLength(16);
+            e.HasOne(t => t.Meeting).WithMany(m => m.Transcripts).HasForeignKey(t => t.MeetingId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        builder.Entity<MeetingAIConsent>(e =>
+        {
+            e.Property(c => c.SubjectKey).HasMaxLength(450);
+            e.HasIndex(c => new { c.MeetingId, c.SubjectKey }).IsUnique();
+            e.HasOne(c => c.Meeting).WithMany(m => m.AiConsents).HasForeignKey(c => c.MeetingId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        builder.Entity<MeetingAISummary>(e =>
+        {
+            e.HasOne(s => s.Meeting).WithMany(m => m.AiSummaries).HasForeignKey(s => s.MeetingId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        builder.Entity<MeetingDecision>(e =>
+        {
+            e.Property(d => d.Text).HasMaxLength(1000);
+            e.HasOne(d => d.Meeting).WithMany(m => m.Decisions).HasForeignKey(d => d.MeetingId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        builder.Entity<MeetingActionItem>(e =>
+        {
+            e.Property(a => a.Title).HasMaxLength(400);
+            e.Property(a => a.AssigneeUserId).HasMaxLength(450);
+            e.Property(a => a.AssigneeName).HasMaxLength(200);
+            e.HasOne(a => a.Meeting).WithMany(m => m.ActionItems).HasForeignKey(a => a.MeetingId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        builder.Entity<MeetingNotification>(e =>
+        {
+            e.Property(n => n.RecipientUserId).HasMaxLength(450);
+            e.Property(n => n.RecipientEmail).HasMaxLength(256);
+            e.Property(n => n.Error).HasMaxLength(500);
+            e.HasOne(n => n.Meeting).WithMany(m => m.Notifications).HasForeignKey(n => n.MeetingId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+        builder.Entity<MeetingAuditLog>(e =>
+        {
+            e.Property(a => a.ActorUserId).HasMaxLength(450);
+            e.Property(a => a.Action).HasMaxLength(80);
+            e.Property(a => a.Detail).HasMaxLength(1000);
+            e.HasIndex(a => a.MeetingId);
+            e.HasOne(a => a.Meeting).WithMany(m => m.AuditLogs).HasForeignKey(a => a.MeetingId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         foreach (var entityType in builder.Model.GetEntityTypes())

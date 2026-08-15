@@ -48,5 +48,10 @@ public enum ExpertGovernanceEventType
     MemberReactivated = 22,
     MemberRemovedFromGroup = 23,
     MemberPermissionsUpdated = 24,
-    GroupDefinedRoleCreated = 25
+    GroupDefinedRoleCreated = 25,
+    MeetingCreated = 26,
+    MeetingUpdated = 27,
+    MeetingCancelled = 28,
+    MeetingStarted = 29,
+    MeetingEnded = 30
 }

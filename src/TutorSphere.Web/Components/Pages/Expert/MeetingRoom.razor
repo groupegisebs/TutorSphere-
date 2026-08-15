@@ -1,0 +1,367 @@
+@page "/expert/meetings/{Id:guid}/room"
+@page "/admin/meetings/{Id:guid}/room"
+@layout MeetingRoomLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@implements IAsyncDisposable
+@inject AuthService Auth
+@inject ApiClient Api
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject RealtimeMeetingClient Rt
+
+<PageTitle>@(_detail?.Title ?? "Réunion") — TutorSphere</PageTitle>
+
+@if (_waiting)
+{
+    <div class="mtg-wait">
+        <h1>Salle d’attente</h1>
+        <p>L’organisateur va bientôt vous faire entrer.</p>
+    </div>
+}
+else if (_detail is null && !string.IsNullOrEmpty(_error))
+{
+    <div class="mtg-wait"><p>@_error</p></div>
+}
+else if (_detail is not null)
+{
+    <div class="mtg-room">
+        <header class="mtg-room-head">
+            <strong>TutorSphere</strong>
+            <span class="mtg-room-title">@_detail.Title <i class="bi bi-lock-fill"></i></span>
+            <span class="mtg-room-meta">@FormatElapsed(_elapsed)
+                @if (_recording) { <span class="mtg-rec">Enregistrement</span> }
+                @if (_detail.AiActivatedByOrganizer) { <span class="mtg-ai-badge">IA active</span> }
+                <span class="mtg-net">Connexion stable</span>
+            </span>
+        </header>
+        @if (_detail.AiActivatedByOrganizer && _allConsented)
+        {
+            <div class="mtg-consent-bar">Tous les participants ont consenti à l’utilisation de l’IA <button type="button" @onclick="() => _allConsented = false">×</button></div>
+        }
+        @if (_aiPrompt)
+        {
+            <div class="mtg-consent-modal">
+                <h3>Activer l’assistant IA ?</h3>
+                <p>Transcription structurée, résumé, décisions et actions proposées. Aucune action n’est créée sans validation.</p>
+                <p>En continuant, vous acceptez le traitement des données de cette réunion.</p>
+                <button class="cc-btn" type="button" @onclick="() => _aiPrompt = false">Annuler</button>
+                <button class="cc-btn cc-btn-primary" type="button" @onclick="ConfirmAiAsync">Activer et demander le consentement</button>
+            </div>
+        }
+        @if (_consentAsk)
+        {
+            <div class="mtg-consent-modal">
+                <h3>Consentement IA</h3>
+                <p>L’organisateur a activé l’assistant IA. Acceptez-vous l’analyse de cette discussion ?</p>
+                <button class="cc-btn cc-btn-primary" type="button" @onclick="() => ConsentAsync(true)">J’accepte</button>
+                <button class="cc-btn" type="button" @onclick="() => ConsentAsync(false)">Je refuse</button>
+            </div>
+        }
+
+        <div class="mtg-room-body">
+            <div class="mtg-stage">
+                <div class="mtg-grid">
+                    <div class="mtg-tile">
+                        <video data-rtc-local autoplay playsinline muted></video>
+                        <span class="mtg-tile-name">@_selfName (vous)</span>
+                    </div>
+                    @foreach (var p in _peers)
+                    {
+                        <div class="mtg-tile">
+                            <video data-rtc-peer="@p.ConnectionId" autoplay playsinline></video>
+                            <span class="mtg-tile-name">@p.DisplayName · @p.Role @if (!p.MicOn) { <i class="bi bi-mic-mute-fill text-danger"></i> }</span>
+                        </div>
+                    }
+                </div>
+                @if (!string.IsNullOrEmpty(_caption))
+                {
+                    <div class="mtg-cc">[CC] @_caption</div>
+                }
+            </div>
+            <aside class="mtg-side">
+                <div class="mtg-side-tabs">
+                    <button type="button" class="@TabCls("chat")" @onclick='() => _tab = "chat"'>Discussion</button>
+                    <button type="button" class="@TabCls("people")" @onclick='() => _tab = "people"'>Participants (@(1 + _peers.Count))</button>
+                    <button type="button" class="@TabCls("notes")" @onclick='() => _tab = "notes"'>Notes</button>
+                    <button type="button" class="@TabCls("ai")" @onclick='() => _tab = "ai"'>Assistant IA</button>
+                </div>
+                @if (_tab == "chat")
+                {
+                    <div class="mtg-chat">
+                        @foreach (var m in _chat) { <p><strong>@m.SenderName</strong> @m.Text</p> }
+                    </div>
+                    <div class="mtg-chat-in">
+                        <input @bind="_chatIn" @onkeydown="ChatKey" placeholder="Écrire un message…" />
+                        <button type="button" @onclick="SendChat">➤</button>
+                    </div>
+                }
+                else if (_tab == "people")
+                {
+                    @if (_waitingList.Count > 0 && _isOrganizer)
+                    {
+                        <h4>Salle d’attente</h4>
+                        @foreach (var w in _waitingList)
+                        {
+                            <div class="mtg-person-row">
+                                @w.DisplayName
+                                <button type="button" @onclick="() => Rt.AdmitAsync(Id, w.ConnectionId)">Admettre</button>
+                                <button type="button" @onclick="() => Rt.DenyAsync(Id, w.ConnectionId)">Refuser</button>
+                            </div>
+                        }
+                    }
+                    @foreach (var p in _peers)
+                    {
+                        <div class="mtg-person-row">
+                            @p.DisplayName <small>@p.Role</small>
+                            @if (_isOrganizer)
+                            {
+                                <button type="button" @onclick="() => Rt.ForceMuteAsync(Id, p.ConnectionId)">Couper micro</button>
+                                <button type="button" @onclick="() => Rt.KickAsync(Id, p.ConnectionId)">Exclure</button>
+                            }
+                        </div>
+                    }
+                }
+                else if (_tab == "notes")
+                {
+                    <textarea class="form-control" rows="16" @bind="_notes" @bind:event="oninput" @onblur="PushNotes"></textarea>
+                    <h4 class="mt-3">Tableau blanc</h4>
+                    <canvas class="mtg-board" @ref="_board" width="480" height="280"></canvas>
+                    <h4 class="mt-3">Sondage</h4>
+                    @if (_isOrganizer)
+                    {
+                        <input class="form-control mb-1" placeholder="Question" @bind="_pollQ" />
+                        <button class="cc-btn cc-btn-sm" type="button" @onclick="StartPoll">Lancer</button>
+                    }
+                    @if (!string.IsNullOrEmpty(_pollQLive))
+                    {
+                        <p>@_pollQLive</p>
+                        <button type="button" @onclick="() => Rt.VotePollAsync(Id, 0)">Oui</button>
+                        <button type="button" @onclick="() => Rt.VotePollAsync(Id, 1)">Non</button>
+                    }
+                }
+                else
+                {
+                    <div class="mtg-ai-panel">
+                        <h3><i class="bi bi-stars"></i> Assistant IA de réunion @if (_detail.AiActivatedByOrganizer) { <span class="mtg-ai-badge">Analyse en cours</span> }</h3>
+                        @if (!_detail.AiActivatedByOrganizer)
+                        {
+                            <p>Désactivé par défaut. L’organisateur peut l’activer explicitement.</p>
+                            @if (_isOrganizer)
+                            {
+                                <button class="cc-btn cc-btn-primary" type="button" @onclick="() => _aiPrompt = true">Activer l’IA</button>
+                            }
+                        }
+                        else
+                        {
+                            <p class="mtg-hint">Les réponses de l’IA peuvent contenir des erreurs. Les actions doivent être validées après la réunion.</p>
+                            <input class="form-control" placeholder="Poser une question sur la réunion…" @bind="_aiQ" />
+                        }
+                    </div>
+                }
+                <div class="mtg-react">
+                    <button type="button" @onclick='() => Rt.ReactAsync(Id, "👍")'>👍</button>
+                    <button type="button" @onclick='() => Rt.ReactAsync(Id, "👏")'>👏</button>
+                    <button type="button" @onclick='() => Rt.ReactAsync(Id, "❤️")'>❤️</button>
+                </div>
+            </aside>
+        </div>
+
+        <div class="mtg-dock">
+            <button type="button" class="@(_mic ? "" : "is-off")" @onclick="ToggleMic"><i class="bi @(_mic ? "bi-mic" : "bi-mic-mute")"></i> Micro</button>
+            <button type="button" class="@(_cam ? "" : "is-off")" @onclick="ToggleCam"><i class="bi @(_cam ? "bi-camera-video" : "bi-camera-video-off")"></i> Caméra</button>
+            <button type="button" @onclick="ShareAsync"><i class="bi bi-display"></i> Partager</button>
+            <button type="button" @onclick='() => _tab = "chat"'><i class="bi bi-chat"></i> Discussion</button>
+            <button type="button" @onclick='() => _tab = "people"'><i class="bi bi-people"></i> Participants</button>
+            <button type="button" class="@(_hand ? "is-on" : "")" @onclick="ToggleHand"><i class="bi bi-hand-index"></i> Lever la main</button>
+            @if (_isOrganizer)
+            {
+                <button type="button" @onclick="ToggleRecAsync"><i class="bi bi-record-circle"></i> Enregistrer</button>
+                <button type="button" @onclick="LockAsync">Verrouiller</button>
+            }
+            <button type="button" class="mtg-leave" @onclick="LeaveAsync">@(_isOrganizer ? "Terminer pour tous" : "Quitter")</button>
+        </div>
+        @if (_toasts.Count > 0)
+        {
+            <div class="mtg-toasts">@foreach (var t in _toasts) { <div>@t</div> }</div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    [Parameter] public string? GuestToken { get; set; }
+    [Parameter] public string? GuestName { get; set; }
+
+    private Detail? _detail;
+    private string? _error;
+    private string _selfName = "";
+    private string _tab = "ai";
+    private bool _mic = true, _cam, _hand, _recording, _waiting, _aiPrompt, _consentAsk, _allConsented, _isOrganizer;
+    private string _chatIn = "", _notes = "", _caption = "", _aiQ = "", _pollQ = "", _pollQLive = "";
+    private readonly List<MeetingLivePeerDto> _peers = [];
+    private readonly List<MeetingLivePeerDto> _waitingList = [];
+    private readonly List<MeetingLiveChatDto> _chat = [];
+    private readonly List<string> _toasts = [];
+    private DotNetObjectReference<MeetingRoom>? _jsRef;
+    private ElementReference _board;
+    private int _elapsed;
+    private System.Timers.Timer? _timer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.EnsureSessionRestoredAsync(forceJs: true);
+        var r = await Api.GetWithErrorAsync<Detail>($"api/expert/meetings/{Id}");
+        if (r.Value is null && string.IsNullOrEmpty(GuestToken))
+        {
+            _error = r.Error ?? "Réunion introuvable.";
+            return;
+        }
+        _detail = r.Value;
+        _selfName = GuestName ?? Auth.DisplayName ?? "Participant";
+        _isOrganizer = _detail?.OrganizerUserId == Auth.UserId;
+        _recording = _detail?.RecordingEnabled == true;
+        BindRt();
+        await Rt.EnsureHubReadyAsync(GuestToken);
+        _jsRef = DotNetObjectReference.Create(this);
+        try { await JS.InvokeVoidAsync("classroomRtc.init", _jsRef, new { selfConnectionId = Rt.ConnectionId }); } catch { }
+        if (!string.IsNullOrEmpty(Rt.ConnectionId))
+            try { await JS.InvokeVoidAsync("classroomRtc.setSelfId", Rt.ConnectionId); } catch { }
+        var role = _isOrganizer ? "Organizer" : string.IsNullOrEmpty(GuestToken) ? "Participant" : "ExternalGuest";
+        if (_detail?.WaitingRoomEnabled == true && !_isOrganizer)
+            role = "Waiting";
+        await Rt.JoinAsync(Id, _selfName, role, _mic, _cam, GuestToken);
+        try { await JS.InvokeVoidAsync("classroomMedia.start", null, new { video = _cam, audio = _mic }); } catch { }
+        _timer = new System.Timers.Timer(1000);
+        _timer.Elapsed += (_, _) => { _elapsed++; _ = InvokeAsync(StateHasChanged); };
+        _timer.Start();
+        if (_detail is { Status: 0 or 1 } && _isOrganizer)
+            await Api.PostWithErrorAsync<object>($"api/expert/meetings/{Id}/start", new { });
+    }
+
+    private void BindRt()
+    {
+        Rt.PeerListReceived += (id, list) => _ = InvokeAsync(() => { ReplacePeers(list); ConnectAll(); });
+        Rt.PeerJoined += (id, p) => _ = InvokeAsync(() => { Upsert(p); ConnectOne(p); StateHasChanged(); });
+        Rt.PeerLeft += (id, cid) => _ = InvokeAsync(() => { _peers.RemoveAll(x => x.ConnectionId == cid); JS.InvokeVoidAsync("classroomRtc.closePeer", cid); StateHasChanged(); });
+        Rt.PeerMediaStateChanged += (id, cid, mic, cam) => _ = InvokeAsync(() => { });
+        Rt.RtcSignalReceived += (id, from, type, payload) => _ = JS.InvokeVoidAsync("classroomRtc.handleSignal", from, type, payload);
+        Rt.ChatMessageReceived += m => _ = InvokeAsync(() => { _chat.Add(m); StateHasChanged(); });
+        Rt.ChatHistoryReceived += (id, list) => _ = InvokeAsync(() => { _chat.Clear(); _chat.AddRange(list); });
+        Rt.WaitingUpdated += (id, list) => _ = InvokeAsync(() => { _waitingList.Clear(); _waitingList.AddRange(list); StateHasChanged(); });
+        Rt.WaitingRoom += _ => _ = InvokeAsync(() => { _waiting = true; StateHasChanged(); });
+        Rt.Admitted += _ => _ = InvokeAsync(() => { _waiting = false; StateHasChanged(); });
+        Rt.Denied += _ => _ = InvokeAsync(() => Nav.NavigateTo("/expert/meetings"));
+        Rt.Kicked += _ => _ = InvokeAsync(() => Nav.NavigateTo("/expert/meetings"));
+        Rt.Caption += (id, name, text) => _ = InvokeAsync(() => { _caption = $"{name} : {text}"; StateHasChanged(); });
+        Rt.ForceMute += _ => _ = InvokeAsync(async () => { _mic = false; await JS.InvokeVoidAsync("classroomMedia.setMic", false); });
+        Rt.AiEnabled += _ => _ = InvokeAsync(() => { if (_detail is not null) _detail = _detail with { AiActivatedByOrganizer = true }; _consentAsk = !_isOrganizer; StateHasChanged(); });
+        Rt.MeetingEnded += _ => _ = InvokeAsync(() => Nav.NavigateTo($"/expert/meetings/{Id}/minutes"));
+        Rt.RecordingState += (id, on) => _ = InvokeAsync(() => { _recording = on; StateHasChanged(); });
+        Rt.Reaction += (id, cid, name, emoji) => Toast($"{name} {emoji}");
+        Rt.HandRaised += (id, cid, name, raised) => Toast(raised ? $"{name} lève la main" : $"{name} baisse la main");
+        Rt.SharedNotes += (id, notes) => _ = InvokeAsync(() => { _notes = notes; StateHasChanged(); });
+        Rt.Poll += (id, q, _) => _ = InvokeAsync(() => { _pollQLive = q; StateHasChanged(); });
+        Rt.MediaSyncRequested += _ => _ = Rt.BroadcastMediaAsync(Id, _mic, _cam);
+    }
+
+    [JSInvokable] public Task OnRtcOutgoingSignal(string target, string type, string payload) => Rt.SendRtcAsync(Id, target, type, payload);
+    [JSInvokable] public Task OnRtcRemoteMedia(string remoteId, bool hasVideo, bool hasAudio) => Task.CompletedTask;
+    [JSInvokable] public Task OnRtcConnectionState(string remoteId, string state) => Task.CompletedTask;
+    [JSInvokable] public Task OnScreenShareEnded(string kind) { Toast("Partage terminé"); return Task.CompletedTask; }
+
+    private void ReplacePeers(IReadOnlyList<MeetingLivePeerDto> list)
+    {
+        _peers.Clear();
+        _peers.AddRange(list.Where(p => p.ConnectionId != Rt.ConnectionId && !p.Waiting));
+        StateHasChanged();
+    }
+    private void Upsert(MeetingLivePeerDto p)
+    {
+        if (p.Waiting || p.ConnectionId == Rt.ConnectionId) return;
+        _peers.RemoveAll(x => x.ConnectionId == p.ConnectionId);
+        _peers.Add(p);
+    }
+    private void ConnectAll() { foreach (var p in _peers) ConnectOne(p); }
+    private void ConnectOne(MeetingLivePeerDto p)
+    {
+        var self = Rt.ConnectionId ?? "";
+        var offer = string.CompareOrdinal(self, p.ConnectionId) < 0;
+        _ = JS.InvokeVoidAsync("classroomRtc.connect", p.ConnectionId, offer);
+    }
+
+    private async Task ToggleMic() { _mic = !_mic; try { await JS.InvokeVoidAsync("classroomMedia.setMic", _mic); } catch { } await Rt.BroadcastMediaAsync(Id, _mic, _cam); }
+    private async Task ToggleCam() { _cam = !_cam; try { await JS.InvokeVoidAsync("classroomMedia.setCam", _cam); } catch { } await Rt.BroadcastMediaAsync(Id, _mic, _cam); }
+    private async Task ToggleHand() { _hand = !_hand; await Rt.RaiseHandAsync(Id, _hand); }
+    private async Task ShareAsync()
+    {
+        try { await JS.InvokeVoidAsync("classroomMedia.startScreenShare"); Toast("Partage d’écran"); }
+        catch { Toast("Partage indisponible"); }
+    }
+    private async Task SendChat()
+    {
+        if (string.IsNullOrWhiteSpace(_chatIn)) return;
+        await Rt.SendChatAsync(Id, _chatIn);
+        _chatIn = "";
+    }
+    private async Task ChatKey(KeyboardEventArgs e) { if (e.Key == "Enter") await SendChat(); }
+    private Task PushNotes() => Rt.BroadcastNotesAsync(Id, _notes);
+    private async Task StartPoll() { _pollQLive = _pollQ; await Rt.BroadcastPollAsync(Id, _pollQ, ["Oui", "Non"]); }
+    private async Task ConfirmAiAsync()
+    {
+        _aiPrompt = false;
+        var r = await Api.PostWithErrorAsync<object>($"api/expert/meetings/{Id}/ai/enable", new { });
+        if (r.Error is not null) { _error = r.Error; return; }
+        if (_detail is not null) _detail = _detail with { AiActivatedByOrganizer = true, AiEnabled = true };
+        await Rt.NotifyAiAsync(Id);
+        _consentAsk = true;
+    }
+    private async Task ConsentAsync(bool ok)
+    {
+        _consentAsk = false;
+        await Api.PostWithErrorAsync<object>($"api/expert/meetings/{Id}/ai/consent", new { consented = ok });
+        await Rt.NotifyConsentAsync(Id, ok);
+        if (ok) _allConsented = true;
+    }
+    private async Task ToggleRecAsync()
+    {
+        _recording = !_recording;
+        await Api.PostWithErrorAsync<object>($"api/expert/meetings/{Id}/recording", new { recording = _recording });
+        await Rt.NotifyRecordingAsync(Id, _recording);
+    }
+    private async Task LockAsync()
+    {
+        await Api.PostWithErrorAsync<object>($"api/expert/meetings/{Id}/lock", new { locked = true });
+        await Rt.NotifyLockedAsync(Id, true);
+        Toast("Réunion verrouillée");
+    }
+    private async Task LeaveAsync()
+    {
+        if (_isOrganizer)
+        {
+            await Api.PostWithErrorAsync<object>($"api/expert/meetings/{Id}/end", new { });
+            await Rt.NotifyEndedAsync(Id);
+            Nav.NavigateTo($"/expert/meetings/{Id}/minutes");
+            return;
+        }
+        await Rt.LeaveAsync();
+        Nav.NavigateTo("/expert/meetings");
+    }
+    private void Toast(string t) { _toasts.Add(t); _ = Task.Delay(2500).ContinueWith(_ => InvokeAsync(() => { _toasts.Remove(t); StateHasChanged(); })); }
+    private string TabCls(string t) => _tab == t ? "is-on" : "";
+    private static string FormatElapsed(int s) => TimeSpan.FromSeconds(s).ToString(@"hh\:mm\:ss");
+
+    public async ValueTask DisposeAsync()
+    {
+        _timer?.Dispose();
+        try { await JS.InvokeVoidAsync("classroomRtc.stop"); } catch { }
+        try { await JS.InvokeVoidAsync("classroomMedia.stop"); } catch { }
+        await Rt.LeaveAsync();
+        _jsRef?.Dispose();
+    }
+
+    private sealed record Detail(
+        Guid Id, string Title, string? Agenda, int Status, DateTime? StartAtUtc, DateTime? EndAtUtc,
+        string OrganizerUserId, string OrganizerName, bool WaitingRoomEnabled, bool AllowMic, bool AllowCamera,
+        bool AllowScreenShare, bool RecordingEnabled, bool TranscriptionEnabled, bool AiEnabled,
+        bool AiActivatedByOrganizer, bool Locked, string Language);
+}

@@ -157,8 +157,6 @@ public class ExpertGroupMemberAdminService(
         {
             target = db.ExpertGroupDefinedRoles.FirstOrDefault(r => r.Id == rid && r.ExpertGroupId == groupId)
                 ?? throw new InvalidOperationException("Rôle introuvable dans ce groupe.");
-            if (target.SuperAdminOnly && !asPlatformAdmin)
-                throw new InvalidOperationException("Ce rôle ne peut être attribué que par un Super Admin.");
         }
         else if (!string.IsNullOrWhiteSpace(request.SystemKey))
         {

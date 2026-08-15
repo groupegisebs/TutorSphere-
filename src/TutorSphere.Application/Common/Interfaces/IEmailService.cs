@@ -189,4 +189,26 @@ public interface IEmailService
         string messageBody,
         string inboxUrl,
         CancellationToken ct = default);
+
+    Task SendMeetingInvitationAsync(
+        string to,
+        string recipientName,
+        string title,
+        DateTime startAtUtc,
+        string timeZoneId,
+        string organizerName,
+        string? agenda,
+        string joinUrl,
+        bool recordingEnabled,
+        bool aiEnabled,
+        bool isExternal,
+        CancellationToken ct = default);
+
+    Task SendMeetingCancelledAsync(string to, string title, DateTime startAtUtc, CancellationToken ct = default);
+
+    Task SendMeetingGuestCodeAsync(string to, string recipientName, string title, string code, CancellationToken ct = default);
+
+    Task SendMeetingReminderAsync(string to, string recipientName, string title, DateTime startAtUtc, string joinUrl, CancellationToken ct = default);
+
+    Task SendMeetingMinutesAsync(string to, string recipientName, string title, string minutesUrl, CancellationToken ct = default);
 }

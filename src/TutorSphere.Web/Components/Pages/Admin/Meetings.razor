@@ -1,0 +1,69 @@
+@page "/admin/meetings"
+@layout AdminLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService Auth
+@inject ApiClient Api
+
+<PageTitle>Réunions — Admin</PageTitle>
+
+<AuthorizeView Roles="SuperAdmin,PlatformAdmin">
+    <Authorized>
+        <div class="cc-toolbar">
+            <div>
+                <h1 class="cc-page-title">Réunions</h1>
+                <p class="cc-page-sub">Créez des réunions pour un, plusieurs ou tous les groupes d’experts.</p>
+            </div>
+            <a class="cc-btn cc-btn-primary" href="/admin/meetings/create"><i class="bi bi-plus-lg"></i> Créer une réunion</a>
+        </div>
+        @if (!string.IsNullOrEmpty(_error)) { <div class="alert alert-danger">@_error</div> }
+        <div class="cc-card">
+            @if (_loading) { <span class="spinner-border"></span> }
+            else if (_items.Count == 0) { <p class="text-muted mb-0">Aucune réunion.</p> }
+            else
+            {
+                <table class="cc-table">
+                    <thead><tr><th>Titre</th><th>Statut</th><th>Début</th><th>Organisateur</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var m in _items)
+                        {
+                            <tr>
+                                <td>@m.Title</td>
+                                <td>@m.Status</td>
+                                <td>@(m.StartAtUtc?.ToLocalTime().ToString("g") ?? "—")</td>
+                                <td>@m.OrganizerName</td>
+                                <td>
+                                    <a href="/admin/meetings/@m.Id/room">Rejoindre</a>
+                                    <a href="/admin/meetings/@m.Id/minutes">Compte rendu</a>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </Authorized>
+    <NotAuthorized><p>Accès réservé au Super Admin.</p></NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private readonly List<Item> _items = [];
+    private bool _loading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.EnsureSessionRestoredAsync();
+        try { _items.AddRange(await Api.GetAsync<List<Item>>("api/expert/meetings") ?? []); }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private sealed class Item
+    {
+        public Guid Id { get; set; }
+        public string Title { get; set; } = "";
+        public int Status { get; set; }
+        public DateTime? StartAtUtc { get; set; }
+        public string OrganizerName { get; set; } = "";
+    }
+}

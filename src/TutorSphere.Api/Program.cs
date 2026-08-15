@@ -41,6 +41,7 @@ builder.Services.AddHostedService<LessonReminderService>();
 builder.Services.AddHostedService<OverduePaymentReminderService>();
 builder.Services.AddHostedService<SubscriptionRenewalReminderService>();
 builder.Services.AddHostedService<PlatformLicenseExpiryService>();
+builder.Services.AddHostedService<MeetingReminderService>();
 
 var jwtSection = builder.Configuration.GetSection("Jwt");
 var jwtKey = jwtSection["Key"] ?? "";
@@ -196,6 +197,7 @@ app.UseAuthorization();
 app.MapControllers();
 app.MapHub<MessagesHub>("/hubs/messages");
 app.MapHub<ClassroomHub>("/hubs/classroom");
+app.MapHub<MeetingHub>("/hubs/meeting");
 app.MapHealthChecks("/health");
 
 try

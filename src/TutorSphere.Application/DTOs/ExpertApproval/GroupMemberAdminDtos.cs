@@ -18,6 +18,18 @@ public static class GroupMemberPermissionCatalog
     public const string GroupMembersView = "group.members.view";
     public const string GroupTasksAssign = "group.tasks.assign";
     public const string GroupDocuments = "group.documents.manage";
+    public const string MeetingsView = "meetings.view";
+    public const string MeetingsCreate = "meetings.create";
+    public const string MeetingsUpdateOwn = "meetings.updateOwn";
+    public const string MeetingsUpdateGroup = "meetings.updateGroup";
+    public const string MeetingsCancel = "meetings.cancel";
+    public const string MeetingsInviteInternal = "meetings.inviteInternal";
+    public const string MeetingsInviteExternal = "meetings.inviteExternal";
+    public const string MeetingsModerate = "meetings.moderate";
+    public const string MeetingsRecord = "meetings.record";
+    public const string MeetingsEnableAi = "meetings.enableAi";
+    public const string MeetingsViewTranscript = "meetings.viewTranscript";
+    public const string MeetingsManageMinutes = "meetings.manageMinutes";
 
     public static readonly IReadOnlyList<(string Category, string Key, string Label)> All =
     [
@@ -34,12 +46,25 @@ public static class GroupMemberPermissionCatalog
         ("Démonstrations", DemosView, "Consulter"),
         ("Groupe", GroupMembersView, "Voir les membres"),
         ("Groupe", GroupTasksAssign, "Attribuer des tâches"),
-        ("Groupe", GroupDocuments, "Gérer les documents")
+        ("Groupe", GroupDocuments, "Gérer les documents"),
+        ("Réunions", MeetingsView, "Voir les réunions"),
+        ("Réunions", MeetingsCreate, "Créer une réunion"),
+        ("Réunions", MeetingsUpdateOwn, "Modifier ses réunions"),
+        ("Réunions", MeetingsUpdateGroup, "Modifier les réunions du groupe"),
+        ("Réunions", MeetingsCancel, "Annuler une réunion"),
+        ("Réunions", MeetingsInviteInternal, "Inviter des membres"),
+        ("Réunions", MeetingsInviteExternal, "Inviter des personnes externes"),
+        ("Réunions", MeetingsModerate, "Modérer la salle"),
+        ("Réunions", MeetingsRecord, "Enregistrer"),
+        ("Réunions", MeetingsEnableAi, "Activer l’assistant IA"),
+        ("Réunions", MeetingsViewTranscript, "Voir la transcription"),
+        ("Réunions", MeetingsManageMinutes, "Gérer le compte rendu")
     ];
 
     private static readonly HashSet<string> Elevated = new(StringComparer.Ordinal)
     {
-        TeachersApprove, TeachersSuspend, AdmissionsReview, GroupTasksAssign, GroupDocuments
+        TeachersApprove, TeachersSuspend, AdmissionsReview, GroupTasksAssign, GroupDocuments,
+        MeetingsModerate, MeetingsRecord, MeetingsEnableAi, MeetingsManageMinutes
     };
 
     public static bool IsElevated(string key) => Elevated.Contains(key);
@@ -58,18 +83,22 @@ public static class GroupMemberPermissionCatalog
             TeachersView, TeachersAdd, TeachersEvaluate, TeachersApprove,
             AdmissionsView, AdmissionsVote, AdmissionsReview,
             DemosPlan, DemosEvaluate, DemosView,
-            GroupMembersView, GroupTasksAssign, GroupDocuments
+            GroupMembersView, GroupTasksAssign, GroupDocuments,
+            MeetingsView, MeetingsCreate, MeetingsUpdateOwn, MeetingsUpdateGroup, MeetingsCancel,
+            MeetingsInviteInternal, MeetingsInviteExternal, MeetingsModerate, MeetingsRecord,
+            MeetingsEnableAi, MeetingsViewTranscript, MeetingsManageMinutes
         ],
         ExpertGroupMemberRole.Observer =>
         [
-            TeachersView, AdmissionsView, DemosView, GroupMembersView
+            TeachersView, AdmissionsView, DemosView, GroupMembersView, MeetingsView
         ],
         _ =>
         [
             TeachersView, TeachersAdd, TeachersEvaluate, TeachersApprove,
             AdmissionsView, AdmissionsVote,
             DemosPlan, DemosEvaluate, DemosView,
-            GroupMembersView
+            GroupMembersView,
+            MeetingsView, MeetingsCreate, MeetingsUpdateOwn, MeetingsInviteInternal, MeetingsViewTranscript
         ]
     };
 
