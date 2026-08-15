@@ -118,6 +118,18 @@ public class ExpertApprovalsController : ControllerBase
         return Ok(enriched);
     }
 
+    [HttpGet("teacher-decisions")]
+    public async Task<ActionResult<IReadOnlyList<TeacherDecisionItemDto>>> TeacherDecisions(
+        [FromQuery] DateTime? sinceUtc, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        var since = sinceUtc?.ToUniversalTime()
+                    ?? new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        Guid? overrideGroup = _groupAccess.IsPlatformAdmin(User) ? ActAsGroupId : null;
+        var list = await _approvals.ListRecentDecisionsAsync(UserId, since, ct, overrideGroup);
+        return Ok(list);
+    }
+
     [HttpGet("queue")]
     public async Task<ActionResult<IReadOnlyList<PendingTeacherDto>>> Queue(CancellationToken ct)
     {
@@ -415,6 +427,15 @@ public class ExpertApprovalsController : ControllerBase
         }
 
         return Ok(enriched);
+    }
+
+    [HttpGet("teacher-directory")]
+    public async Task<ActionResult<IReadOnlyList<TeacherDirectoryItemDto>>> TeacherDirectory(CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        var list = await _monitoring.ListTeacherDirectoryAsync(
+            UserId, ct, _groupAccess.IsPlatformAdmin(User) ? ActAsGroupId : null);
+        return Ok(list);
     }
 
     [HttpGet("teachers/{tenantId:guid}/materials")]

@@ -15,6 +15,11 @@ public interface IExpertApprovalService
         ExpertApprovalQueueFilter? filter = null,
         CancellationToken ct = default,
         Guid? overrideGroupId = null);
+    Task<IReadOnlyList<TeacherDecisionItemDto>> ListRecentDecisionsAsync(
+        string expertUserId,
+        DateTime sinceUtc,
+        CancellationToken ct = default,
+        Guid? overrideGroupId = null);
     Task<TeacherReviewDetailDto?> GetReviewDetailAsync(Guid tenantId, CancellationToken ct = default);
     Task EnsureCanViewTeacherAsync(
         Guid tenantId,
@@ -505,6 +510,58 @@ public class ExpertApprovalService(
         }
 
         return Task.FromResult<IReadOnlyList<ExpertApprovalQueueItemDto>>(result);
+    }
+
+    public async Task<IReadOnlyList<TeacherDecisionItemDto>> ListRecentDecisionsAsync(
+        string expertUserId,
+        DateTime sinceUtc,
+        CancellationToken ct = default,
+        Guid? overrideGroupId = null)
+    {
+        HashSet<Guid> groupIds;
+        if (overrideGroupId is Guid og)
+            groupIds = [og];
+        else
+        {
+            groupIds = db.ExpertGroupMembers
+                .Where(m => m.UserId == expertUserId && m.Status == ExpertMembershipStatus.Active)
+                .Select(m => m.ExpertGroupId)
+                .Distinct()
+                .ToHashSet();
+        }
+        if (groupIds.Count == 0)
+            return [];
+
+        var decided = db.Tenants
+            .Where(t => t.ApprovedByExpertGroupId.HasValue
+                        && groupIds.Contains(t.ApprovedByExpertGroupId.Value)
+                        && (t.ExpertApprovalStatus == ExpertApprovalStatus.Approved
+                            || t.ExpertApprovalStatus == ExpertApprovalStatus.Rejected)
+                        && t.ExpertApprovedAt != null
+                        && t.ExpertApprovedAt >= sinceUtc)
+            .OrderByDescending(t => t.ExpertApprovedAt)
+            .ToList();
+
+        var list = new List<TeacherDecisionItemDto>(decided.Count);
+        foreach (var t in decided)
+        {
+            string? email = null;
+            string? name = null;
+            if (!string.IsNullOrWhiteSpace(t.OwnerUserId))
+            {
+                var contact = await contacts.GetAsync(t.OwnerUserId, ct);
+                email = contact?.Email;
+                name = contact?.DisplayName;
+            }
+            list.Add(new TeacherDecisionItemDto(
+                t.Id,
+                string.IsNullOrWhiteSpace(name) ? t.Name : name!,
+                email,
+                t.ExpertApprovalStatus,
+                t.ExpertApprovedAt,
+                t.ExpertApprovalNotes));
+        }
+        return list;
     }
 
     public async Task InviteTeacherApplicationAsync(

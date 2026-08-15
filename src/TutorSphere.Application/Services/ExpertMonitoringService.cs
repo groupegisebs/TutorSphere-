@@ -10,6 +10,7 @@ namespace TutorSphere.Application.Services;
 public interface IExpertMonitoringService
 {
     Task<IReadOnlyList<MonitoredTeacherDto>> ListMonitoredTeachersAsync(string expertUserId, CancellationToken ct = default, Guid? overrideGroupId = null);
+    Task<IReadOnlyList<TeacherDirectoryItemDto>> ListTeacherDirectoryAsync(string expertUserId, CancellationToken ct = default, Guid? overrideGroupId = null);
     Task<IReadOnlyList<TeacherMaterialItemDto>> GetTeacherMaterialsAsync(Guid tenantId, string expertUserId, CancellationToken ct = default);
     Task<IReadOnlyList<ExpertRemarkDto>> ListRemarksAsync(Guid tenantId, string expertUserId, CancellationToken ct = default);
     Task<ExpertRemarkDto> AddRemarkAsync(string expertUserId, Guid tenantId, CreateExpertRemarkRequest request, CancellationToken ct = default);
@@ -24,8 +25,16 @@ public class ExpertMonitoringService(
     IUserContactLookup contacts,
     IEmailService email,
     IAppUrlProvider urls,
+    IExpertGroupService expertGroups,
     ILogger<ExpertMonitoringService> logger) : IExpertMonitoringService
 {
+    private static readonly ExpertApprovalStatus[] PipelineStatuses =
+    [
+        ExpertApprovalStatus.Pending,
+        ExpertApprovalStatus.Assigned,
+        ExpertApprovalStatus.UnderReview,
+        ExpertApprovalStatus.ChangesRequested
+    ];
     public Task<IReadOnlyList<MonitoredTeacherDto>> ListMonitoredTeachersAsync(
         string expertUserId, CancellationToken ct = default, Guid? overrideGroupId = null)
     {
@@ -81,6 +90,126 @@ public class ExpertMonitoringService(
         }
 
         return Task.FromResult<IReadOnlyList<MonitoredTeacherDto>>(result);
+    }
+
+    public async Task<IReadOnlyList<TeacherDirectoryItemDto>> ListTeacherDirectoryAsync(
+        string expertUserId, CancellationToken ct = default, Guid? overrideGroupId = null)
+    {
+        Guid groupId;
+        if (overrideGroupId is Guid og)
+        {
+            if (!db.ExpertGroups.Any(g => g.Id == og && g.IsActive))
+                return [];
+            groupId = og;
+        }
+        else
+        {
+            var membership = db.ExpertGroupMembers
+                .FirstOrDefault(m => m.UserId == expertUserId && m.Status == ExpertMembershipStatus.Active);
+            if (membership is null)
+                return [];
+            var group = db.ExpertGroups.FirstOrDefault(g => g.Id == membership.ExpertGroupId && g.IsActive);
+            if (group is null)
+                return [];
+            groupId = group.Id;
+        }
+
+        var roster = db.Tenants
+            .Where(t =>
+                (t.ApprovedByExpertGroupId == groupId
+                 && (t.ExpertApprovalStatus == ExpertApprovalStatus.Approved
+                     || t.ExpertApprovalStatus == ExpertApprovalStatus.Suspended))
+                || PipelineStatuses.Contains(t.ExpertApprovalStatus))
+            .ToList();
+
+        var tenants = new List<Tenant>(roster.Count);
+        var seen = new HashSet<Guid>();
+        foreach (var t in roster)
+        {
+            if (t.ExpertApprovalStatus is ExpertApprovalStatus.Approved or ExpertApprovalStatus.Suspended)
+            {
+                if (t.ApprovedByExpertGroupId == groupId && seen.Add(t.Id))
+                    tenants.Add(t);
+                continue;
+            }
+
+            var suggested = expertGroups.ResolveReviewerGroup(t.Country);
+            if (suggested is not null && suggested.Id == groupId && seen.Add(t.Id))
+                tenants.Add(t);
+        }
+
+        if (tenants.Count == 0)
+            return [];
+
+        var tenantIds = tenants.Select(t => t.Id).ToList();
+        var brandings = db.TenantBrandings.Where(b => tenantIds.Contains(b.TenantId)).ToList()
+            .ToDictionary(b => b.TenantId);
+        var offerings = db.SubscriptionOfferingsForAnyTenant.Where(o => tenantIds.Contains(o.TenantId)).ToList();
+        var assignments = db.TeacherDisciplineAssignments.Where(a => tenantIds.Contains(a.TenantId)).ToList();
+        var disciplineIds = assignments.Select(a => a.DisciplineId).Distinct().ToList();
+        var disciplines = disciplineIds.Count == 0
+            ? new Dictionary<Guid, Discipline>()
+            : db.Disciplines.Where(d => disciplineIds.Contains(d.Id)).ToList().ToDictionary(d => d.Id);
+
+        var result = new List<TeacherDirectoryItemDto>(tenants.Count);
+        foreach (var t in tenants.OrderBy(x => x.Name))
+        {
+            brandings.TryGetValue(t.Id, out var branding);
+            var portfolio = ParseDirectoryPortfolio(branding?.Portfolio);
+            var subjects = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var levels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var s in portfolio.Subjects)
+                if (!string.IsNullOrWhiteSpace(s)) subjects.Add(s.Trim());
+            foreach (var lv in portfolio.Levels)
+                if (!string.IsNullOrWhiteSpace(lv)) levels.Add(lv.Trim());
+
+            foreach (var o in offerings.Where(o => o.TenantId == t.Id))
+            {
+                if (!string.IsNullOrWhiteSpace(o.Subject))
+                    subjects.Add(o.Subject.Trim());
+                var level = ExtractLevel(o.Conditions);
+                if (!string.IsNullOrWhiteSpace(level) && !IsAllLevels(level))
+                    levels.Add(level.Trim());
+            }
+
+            foreach (var a in assignments.Where(a => a.TenantId == t.Id))
+            {
+                if (!disciplines.TryGetValue(a.DisciplineId, out var d) || !d.IsActive)
+                    continue;
+                subjects.Add(d.Name.Trim());
+                var cycle = CycleLabel(d.Cycle);
+                if (cycle is not null)
+                    levels.Add(cycle);
+            }
+
+            string? email = null;
+            string? name = null;
+            if (!string.IsNullOrWhiteSpace(t.OwnerUserId))
+            {
+                var contact = await contacts.GetAsync(t.OwnerUserId, ct);
+                email = contact?.Email;
+                name = contact?.DisplayName;
+            }
+
+            var display = string.IsNullOrWhiteSpace(name) ? t.Name : name!;
+            result.Add(new TeacherDirectoryItemDto(
+                t.Id,
+                display,
+                email,
+                branding?.LogoUrl,
+                subjects.OrderBy(s => s).ToList(),
+                levels.OrderBy(s => s).ToList(),
+                portfolio.YearsExperience,
+                t.ExpertApprovalStatus,
+                t.CreatedAt,
+                t.Slug,
+                t.IsPublicProfile,
+                t.City,
+                t.Country));
+        }
+
+        return result;
     }
 
     public Task<IReadOnlyList<TeacherMaterialItemDto>> GetTeacherMaterialsAsync(
@@ -256,4 +385,86 @@ public class ExpertMonitoringService(
         ExpertRemarkCategory.CourseMaterial => "Matériel pédagogique",
         _ => "Général"
     };
+
+    private static string? CycleLabel(SchoolCycle cycle) => cycle switch
+    {
+        SchoolCycle.Primary => "Primaire",
+        SchoolCycle.Secondary => "Secondaire",
+        SchoolCycle.University => "Université",
+        SchoolCycle.AdultEducation => "Adultes",
+        _ => null
+    };
+
+    private static bool IsAllLevels(string? level) =>
+        string.Equals(level?.Trim(), "Tous niveaux", StringComparison.OrdinalIgnoreCase);
+
+    private static string? ExtractLevel(string? conditions)
+    {
+        if (string.IsNullOrWhiteSpace(conditions))
+            return null;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(conditions);
+            var root = doc.RootElement;
+            if (root.ValueKind != System.Text.Json.JsonValueKind.Object)
+                return null;
+            foreach (var name in new[] { "level", "Level" })
+            {
+                if (root.TryGetProperty(name, out var el) && el.ValueKind == System.Text.Json.JsonValueKind.String)
+                {
+                    var v = el.GetString();
+                    return string.IsNullOrWhiteSpace(v) ? null : v.Trim();
+                }
+            }
+        }
+        catch (System.Text.Json.JsonException) { }
+        return null;
+    }
+
+    private static (int? YearsExperience, IReadOnlyList<string> Subjects, IReadOnlyList<string> Levels)
+        ParseDirectoryPortfolio(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return (null, [], []);
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            int? years = null;
+            foreach (var name in new[] { "yearsExperience", "YearsExperience" })
+            {
+                if (!root.TryGetProperty(name, out var el))
+                    continue;
+                if (el.ValueKind == System.Text.Json.JsonValueKind.Number && el.TryGetInt32(out var n))
+                    years = n;
+                break;
+            }
+
+            return (years, ReadStringList(root, "subjects", "Subjects"), ReadStringList(root, "levels", "Levels"));
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return (null, [], []);
+        }
+    }
+
+    private static IReadOnlyList<string> ReadStringList(System.Text.Json.JsonElement root, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (!root.TryGetProperty(name, out var el) || el.ValueKind != System.Text.Json.JsonValueKind.Array)
+                continue;
+            var list = new List<string>();
+            foreach (var item in el.EnumerateArray())
+            {
+                if (item.ValueKind != System.Text.Json.JsonValueKind.String)
+                    continue;
+                var v = item.GetString();
+                if (!string.IsNullOrWhiteSpace(v))
+                    list.Add(v.Trim());
+            }
+            return list;
+        }
+        return [];
+    }
 }

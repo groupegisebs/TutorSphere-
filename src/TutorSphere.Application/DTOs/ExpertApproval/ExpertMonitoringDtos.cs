@@ -16,6 +16,22 @@ public record MonitoredTeacherDto(
     int RemarkCount,
     DateTime? LastRemarkAt);
 
+/// <summary>Ligne du répertoire enseignants du groupe (tous statuts pertinents).</summary>
+public record TeacherDirectoryItemDto(
+    Guid TenantId,
+    string DisplayName,
+    string? OwnerEmail,
+    string? LogoUrl,
+    IReadOnlyList<string> Subjects,
+    IReadOnlyList<string> Levels,
+    int? YearsExperience,
+    ExpertApprovalStatus ApprovalStatus,
+    DateTime CreatedAt,
+    string Slug,
+    bool IsPublicProfile,
+    string? City,
+    string? Country);
+
 /// <summary>Support de cours unifié (devoir ou document) pour la revue qualité par un expert.</summary>
 public record TeacherMaterialItemDto(
     Guid Id,

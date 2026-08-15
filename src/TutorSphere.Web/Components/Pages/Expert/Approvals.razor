@@ -1,620 +1,411 @@
 @page "/expert/approvals"
 @layout ExpertLayout
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
-@using TutorSphere.Domain.Policies
-@using TutorSphere.Web.Common
+@using System.Globalization
+@using System.Text.Json
+@using System.Text.Json.Serialization
 @inject AuthService Auth
 @inject ApiClient Api
 @inject IStringLocalizer<SharedResources> L
 @inject NavigationManager Nav
+@inject IConfiguration Config
 
 <ApplyRequestCulture />
 
-<PageTitle>@L["Expert_TeachersHubTitle"]</PageTitle>
+<PageTitle>Approbations — TutorSphere</PageTitle>
 
 <AuthorizeView Roles="Expert,GroupManager,SuperAdmin,PlatformAdmin">
     <Authorized>
-        <div class="cc-toolbar">
+        <div class="cc-toolbar ex-toolbar">
             <div>
-                <h1 class="cc-page-title">@L["Expert_TeachersHubTitle"]</h1>
-                <p class="cc-page-sub">@L["Expert_TeachersHubSubtitle"]</p>
+                <p class="ex-crumb">Enseignants <span>/</span> <strong>Approbations</strong></p>
+                <h1 class="cc-page-title">Approbations</h1>
+                <p class="cc-page-sub">Examinez et approuvez les enseignants invités à rejoindre votre groupe.</p>
             </div>
-        </div>
-
-        <div class="cc-path-grid mb-3" role="navigation" aria-label="@L["Expert_TeachersNav"]">
-            <button type="button" class="cc-path-card @(_activeTab == "register" ? "active" : null)"
-                    @onclick='() => SetTab("register")'>
-                <span class="cc-path-num">1</span>
-                <div>
-                    <strong>@L["Expert_PathCreateTitle"]</strong>
-                    <p>@L["Expert_PathCreateDesc"]</p>
-                </div>
-            </button>
-            <button type="button" class="cc-path-card @(_activeTab == "invite" ? "active" : null)"
-                    @onclick='() => SetTab("invite")'>
-                <span class="cc-path-num">2</span>
-                <div>
-                    <strong>@L["Expert_PathInviteTitle"]</strong>
-                    <p>@L["Expert_PathInviteDesc"]</p>
-                </div>
-            </button>
-            <button type="button" class="cc-path-card @(_activeTab == "queue" ? "active" : null)"
-                    @onclick='() => SetTab("queue")'>
-                <span class="cc-path-num">3</span>
-                <div>
-                    <strong>@L["Expert_PathQueueTitle"]</strong>
-                    <p>@L["Expert_PathQueueDesc"]</p>
-                </div>
-            </button>
-        </div>
-
-        <div class="alert alert-secondary small mb-3">
-            @((MarkupString)L["Expert_TeachersNotConfuse"].Value)
-        </div>
-
-        <div class="cc-tabs" role="tablist">
-            <button type="button" role="tab" class="cc-tab @(_activeTab == "register" ? "active" : null)"
-                    aria-selected="@(_activeTab == "register")" @onclick='() => SetTab("register")'>
-                <i class="bi bi-person-plus me-1" aria-hidden="true"></i>@L["Expert_PathCreateTitle"]
-            </button>
-            <button type="button" role="tab" class="cc-tab @(_activeTab == "invite" ? "active" : null)"
-                    aria-selected="@(_activeTab == "invite")" @onclick='() => SetTab("invite")'>
-                <i class="bi bi-envelope me-1" aria-hidden="true"></i>@L["Expert_PathInviteTitle"]
-                @if (!_invitesLoading && _invites.Count > 0)
-                {
-                    <span class="cc-pill cc-pill-type ms-1">@_invites.Count</span>
-                }
-            </button>
-            <button type="button" role="tab" class="cc-tab @(_activeTab == "queue" ? "active" : null)"
-                    aria-selected="@(_activeTab == "queue")" @onclick='() => SetTab("queue")'>
-                <i class="bi bi-inbox me-1" aria-hidden="true"></i>@L["Expert_PathQueueTitle"]
-                @if (!_loading && _queue.Count > 0)
-                {
-                    <span class="cc-pill cc-pill-type ms-1">@_queue.Count</span>
-                }
-            </button>
-        </div>
-
-        @if (_activeTab == "register")
-        {
-        <div class="cc-card mb-3">
-            <h2 class="cc-card-title">@L["Expert_RegisterTeacherTitle"]</h2>
-            <p class="small text-muted mb-2">
-                @L["Expert_RegisterTeacherSubtitle"]
-                <button type="button" class="btn btn-link p-0 align-baseline" @onclick='() => SetTab("invite")'>
-                    @L["Expert_RegisterOrInviteLink"]
+            <div class="d-flex gap-2 flex-wrap">
+                <button type="button" class="cc-btn" @onclick="() => _showInvite = !_showInvite">
+                    <i class="bi bi-envelope"></i> Inviter par e-mail
                 </button>
-            </p>
-
-            @if (!string.IsNullOrEmpty(_regError))
-            {
-                <div class="alert alert-danger py-2">@_regError</div>
-            }
-            @if (!string.IsNullOrEmpty(_regSuccess))
-            {
-                <div class="alert alert-success py-2">@_regSuccess</div>
-            }
-
-            <section class="ex-form-section">
-                <h3 class="ex-form-section-title">@L["Expert_FormSection_Identity"]</h3>
-
-                <div class="mb-3">
-                    <label class="form-label">@L["Label_ExpertGroupName"] <span class="text-danger">*</span></label>
-                    <div class="form-field-icon">
-                        <i class="bi bi-people field-icon" aria-hidden="true"></i>
-                        <input class="form-control" value="@_regSchoolName" disabled readonly
-                               placeholder="@(_regGroupLoading ? L["Label_Loading"] : L["Placeholder_ExpertGroupName"])" />
-                    </div>
-                </div>
-
-                <div class="row g-2">
-                    <div class="col-12 col-sm-6 mb-3">
-                        <label class="form-label">@L["Label_FirstName"] <span class="text-danger">*</span></label>
-                        <div class="form-field-icon">
-                            <i class="bi bi-person field-icon" aria-hidden="true"></i>
-                            <input class="form-control" @bind="_regFirstName" @bind:event="oninput" @bind:after="OnRegNameChanged"
-                                   placeholder="@L["Label_FirstName"]" autocomplete="given-name" />
-                        </div>
-                    </div>
-                    <div class="col-12 col-sm-6 mb-3">
-                        <label class="form-label">@L["Label_LastName"] <span class="text-danger">*</span></label>
-                        <div class="form-field-icon">
-                            <i class="bi bi-person field-icon" aria-hidden="true"></i>
-                            <input class="form-control" @bind="_regLastName" @bind:event="oninput" @bind:after="OnRegNameChanged"
-                                   placeholder="@L["Label_LastName"]" autocomplete="family-name" />
-                        </div>
-                    </div>
-                </div>
-
-                <div class="mb-3">
-                    <label class="form-label">
-                        @L["Expert_RegisterRealEmail"]
-                        <span class="text-muted">@L["Expert_RegisterRealEmailOptional"]</span>
-                    </label>
-                    <div class="form-field-icon">
-                        <i class="bi bi-envelope field-icon" aria-hidden="true"></i>
-                        <input type="email" class="form-control" @bind="_regEmail" placeholder="exemple@courriel.com" />
-                    </div>
-                    <div class="form-text">@L["Expert_RegisterRealEmailHint"]</div>
-                </div>
-
-                <div class="alert alert-info small mb-0">
-                    <i class="bi bi-shield-lock me-1"></i>
-                    @L["Expert_RegisterPasswordHint"]
-                </div>
-            </section>
-
-            <section class="ex-form-section">
-                <h3 class="ex-form-section-title">@L["Expert_FormSection_Conduct"]</h3>
-                <div class="teacher-conduct-box mb-0">
-                    <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
-                        <strong>@L["TeacherConduct_Title"]</strong>
-                        <span class="badge ex-badge-version">v@(TeacherConductPolicy.CurrentVersion)</span>
-                    </div>
-                    <div class="teacher-conduct-scroll" tabindex="0">
-                        <p class="small mb-2">@L["TeacherConduct_Intro"]</p>
-                        <ul class="small mb-2">
-                            <li>@L["TeacherConduct_Bullet_Trust"]</li>
-                            <li>@L["TeacherConduct_Bullet_Respect"]</li>
-                            <li>@L["TeacherConduct_Bullet_Safety"]</li>
-                            <li>@L["TeacherConduct_Bullet_Report"]</li>
-                            <li>@L["TeacherConduct_Bullet_Privacy"]</li>
-                            <li>@L["TeacherConduct_Bullet_Ethics"]</li>
-                        </ul>
-                        <p class="small text-muted mb-0">@L["TeacherConduct_LegalNote"]</p>
-                    </div>
-                    <a class="small d-inline-block mt-2" href="@TeacherConductPolicy.PublicPath" target="_blank" rel="noopener">
-                        @L["TeacherConduct_ReadFull"] <i class="bi bi-box-arrow-up-right" aria-hidden="true"></i>
-                    </a>
-                    <div class="form-check mt-3">
-                        <input class="form-check-input" type="checkbox" id="expert-accept-conduct"
-                               @bind="_regAcceptedConduct" />
-                        <label class="form-check-label" for="expert-accept-conduct">
-                            @L["TeacherConduct_AcceptCheckbox"]
-                        </label>
-                    </div>
-                </div>
-            </section>
-
-            <section class="ex-form-section">
-                <h3 class="ex-form-section-title">@L["Expert_FormSection_Profile"]</h3>
-
-                <div class="mb-3">
-                    <label class="form-label">@L["Label_SubdomainFull"] <span class="text-danger">*</span></label>
-                    <div class="subdomain-field">
-                        <span class="subdomain-prefix">https://</span>
-                        <input @bind="_regSlug" @bind:event="oninput" @bind:after="AfterRegSlugChanged" placeholder="jean" aria-label="@L["Label_Subdomain"]" />
-                        <span class="subdomain-suffix">.tutorsphere.com</span>
-                        @if (_regCheckingSlug)
-                        {
-                            <span class="subdomain-status"><span class="spinner-border spinner-border-sm" role="status"></span></span>
-                        }
-                        else if (!string.IsNullOrWhiteSpace(_regSlug) && IsRegSlugFormatValid)
-                        {
-                            <span class="subdomain-status @(_regSlugAvailable == true ? "" : "unavailable")">
-                                <i class="bi @(_regSlugAvailable == true ? "bi-check-circle-fill" : "bi-x-circle-fill")" aria-hidden="true"></i>
-                            </span>
-                        }
-                    </div>
-                    <small class="text-muted">@L["Hint_SubdomainAutoFilled"]</small>
-                    @if (_regSlugAvailable == false && !string.IsNullOrWhiteSpace(_regSlug))
-                    {
-                        <small class="text-danger d-block">@L["Error_SlugTaken"]</small>
-                    }
-                </div>
-
-                <div class="row g-2 mb-3">
-                    <div class="col-md-6">
-                        <label class="form-label">@L["Expert_RegisterCity"]</label>
-                        <div class="form-field-icon">
-                            <i class="bi bi-geo-alt field-icon" aria-hidden="true"></i>
-                            <input class="form-control" @bind="_regCity" />
-                        </div>
-                    </div>
-                    <div class="col-md-6">
-                        <label class="form-label">@L["Expert_RegisterCountry"]</label>
-                        <div class="form-field-icon">
-                            <i class="bi bi-flag field-icon" aria-hidden="true"></i>
-                            <input class="form-control" value="@RegCountryDisplay" disabled readonly />
-                        </div>
-                        <small class="text-muted">@L["Expert_RegisterCountryFromGroup"]</small>
-                    </div>
-                </div>
-
-                <div class="mb-0">
-                    <label class="form-label">@L["School_VisibleCountries"]</label>
-                    <p class="small text-muted mb-2">@L["School_VisibleCountriesHint"]</p>
-                    <div class="d-flex flex-wrap gap-2 mb-2">
-                        @foreach (var code in _regVisibleCountries)
-                        {
-                            var info = CountryCatalog.Find(code);
-                            <span class="badge text-bg-light border d-inline-flex align-items-center gap-1 py-2 px-2">
-                                <span aria-hidden="true">@(info?.Flag ?? "")</span>
-                                @(info?.Name ?? code)
-                                @if (!string.Equals(code, _regCountry, StringComparison.OrdinalIgnoreCase))
-                                {
-                                    <button type="button" class="btn-close btn-close-sm ms-1" @onclick="() => RemoveRegVisible(code)"></button>
-                                }
-                            </span>
-                        }
-                    </div>
-                    <div class="col-md-6 px-0">
-                        <CountrySelect Value="@_regAddVisible" ValueChanged="OnRegAddVisibleChanged" Placeholder="@L["School_AddVisibleCountry"]" />
-                    </div>
-                </div>
-            </section>
-
-            <section class="ex-form-section">
-                <h3 class="ex-form-section-title">@L["Expert_FormSection_Publish"]</h3>
-
-                <div class="form-check mb-3">
-                    <input class="form-check-input" type="checkbox" id="reg-publish-public" @bind="_regPublishPublic" />
-                    <label class="form-check-label" for="reg-publish-public">
-                        @L["Expert_PublishPublicProfile"]
-                    </label>
-                    <div class="form-text">@L["Expert_PublishPublicProfileHint"]</div>
-                </div>
-
-                <div class="form-check mb-2">
-                    <input class="form-check-input" type="checkbox" id="reg-create-offer" @bind="_regCreateOffer" />
-                    <label class="form-check-label" for="reg-create-offer">
-                        @L["Expert_CreateOfferLabel"]
-                    </label>
-                </div>
-
-                @if (_regCreateOffer)
-                {
-                    <div class="ex-offer-panel mt-3">
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <label class="form-label">@L["Expert_OfferTitle"] <span class="text-danger">*</span></label>
-                                <input class="form-control" @bind="_regOfferTitle" placeholder="Ex. Français — soutien scolaire" />
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label">@L["Common_Subject"]</label>
-                                <input class="form-control" @bind="_regOfferSubject" />
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label">@L["Offers_Mode"]</label>
-                                <select class="form-select" @bind="_regOfferMode">
-                                    <option value="En ligne">@L["Offers_Online"]</option>
-                                    <option value="Présentiel">@L["Offers_InPerson"]</option>
-                                    <option value="Hybride">@L["Offers_Hybrid"]</option>
-                                </select>
-                            </div>
-
-                            <div class="col-12">
-                                <label class="form-label">@L["Expert_OfferBillingMode"] <span class="text-danger">*</span></label>
-                                <div class="form-text mb-2">@L["Expert_OfferBillingHint"]</div>
-                                <div class="ex-billing-toggle" role="group" aria-label="@L["Expert_OfferBillingMode"]">
-                                    <button type="button"
-                                            class="ex-billing-option @(_regOfferBillingMode == "hourly" ? "active" : null)"
-                                            @onclick='() => SetOfferBillingMode("hourly")'>
-                                        <i class="bi bi-clock-history" aria-hidden="true"></i>
-                                        <strong>@L["Billing_Hourly"]</strong>
-                                        <span>/ @L["CreateOffer_PerHour"]</span>
-                                    </button>
-                                    <button type="button"
-                                            class="ex-billing-option @(_regOfferBillingMode == "monthly" ? "active" : null)"
-                                            @onclick='() => SetOfferBillingMode("monthly")'>
-                                        <i class="bi bi-calendar-month" aria-hidden="true"></i>
-                                        <strong>@L["Billing_Monthly"]</strong>
-                                        <span>/ @L["CreateOffer_PerMonth"]</span>
-                                    </button>
-                                </div>
-                            </div>
-
-                            @if (_regOfferBillingMode == "hourly")
-                            {
-                                <div class="col-md-4">
-                                    <label class="form-label">@L["Expert_OfferHourlyRate"] <span class="text-danger">*</span></label>
-                                    <div class="input-group">
-                                        <input type="number" min="0" step="0.01" class="form-control" @bind="_regOfferPrice" />
-                                        <span class="input-group-text">@_regOfferCurrency / h</span>
-                                    </div>
-                                </div>
-                            }
-                            else
-                            {
-                                <div class="col-md-4">
-                                    <label class="form-label">@L["Expert_OfferMonthlyRate"] <span class="text-danger">*</span></label>
-                                    <div class="input-group">
-                                        <input type="number" min="0" step="0.01" class="form-control" @bind="_regOfferPrice" />
-                                        <span class="input-group-text">@_regOfferCurrency / mois</span>
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <label class="form-label">@L["Expert_OfferHoursPerWeek"] <span class="text-danger">*</span></label>
-                                    <input type="number" min="0.5" step="0.5" class="form-control" @bind="_regOfferHoursPerWeek" />
-                                    <div class="form-text">@L["Expert_OfferHoursPerWeekHint"]</div>
-                                </div>
-                            }
-
-                            <div class="col-md-4">
-                                <label class="form-label">@L["Expert_OfferSessionDuration"]</label>
-                                <select class="form-select" @bind="_regOfferSessionDuration">
-                                    <option value="30">30</option>
-                                    <option value="45">45</option>
-                                    <option value="60">60</option>
-                                    <option value="90">90</option>
-                                    <option value="120">120</option>
-                                </select>
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label">@L["Common_Currency"]</label>
-                                <select class="form-select" @bind="_regOfferCurrency">
-                                    <option>CAD</option><option>USD</option><option>EUR</option><option>XAF</option><option>XOF</option>
-                                </select>
-                            </div>
-
-                            <div class="col-12">
-                                <label class="form-label">@L["Expert_OfferSlotsTitle"] <span class="text-danger">*</span></label>
-                                <p class="small text-muted mb-2">@L["Expert_OfferSlotsHint"]</p>
-                                <div class="offer-day-grid">
-                                    @foreach (var day in OfferDays)
-                                    {
-                                        var slot = _regOfferDaySlots[day];
-                                        <div class="offer-day-row @(slot.Enabled ? "is-on" : null)">
-                                            <label class="offer-day-check">
-                                                <input type="checkbox" checked="@slot.Enabled"
-                                                       @onchange="e => OnRegOfferDayToggle(day, e)" />
-                                                <span>@DayFullLabel(day)</span>
-                                            </label>
-                                            <input type="time" class="form-control form-control-sm offer-day-time"
-                                                   disabled="@(!slot.Enabled)"
-                                                   value="@slot.Time"
-                                                   @onchange="e => SetRegOfferDayTime(day, e.Value?.ToString())" />
-                                        </div>
-                                    }
-                                </div>
-                            </div>
-
-                            <div class="col-12">
-                                <label class="form-label">@L["Common_Description"]</label>
-                                <textarea class="form-control" rows="2" @bind="_regOfferDescription"></textarea>
-                            </div>
-                        </div>
-                    </div>
-                }
-            </section>
-
-            <button type="button" class="cc-btn cc-btn-primary"
-                    disabled="@(_regBusy || !_regAcceptedConduct)" @onclick="RegisterTeacherAsync">
-                @if (_regBusy)
-                {
-                    <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                    <span>@L["Button_Loading"]</span>
-                }
-                else
-                {
-                    <i class="bi bi-person-plus"></i> @L["Expert_RegisterTeacherSend"]
-                }
-            </button>
-        </div>
-        }
-        else if (_activeTab == "invite")
-        {
-        <div class="cc-card mb-3">
-            <h2 class="cc-card-title">@L["Expert_InviteTitle"]</h2>
-            <p class="small text-muted mb-3">@L["Expert_InviteSubtitle"]</p>
-
-            @if (!string.IsNullOrEmpty(_inviteError))
-            {
-                <div class="alert alert-danger py-2">@_inviteError</div>
-            }
-            @if (!string.IsNullOrEmpty(_inviteSuccess))
-            {
-                <div class="alert alert-success py-2">@_inviteSuccess</div>
-            }
-
-            <div class="row g-2 align-items-end">
-                <div class="col-md-4">
-                    <label class="form-label">@L["Expert_InviteEmail"]</label>
-                    <input class="form-control" type="email" @bind="_inviteEmail" placeholder="enseignant@exemple.com" />
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label">@L["Expert_InviteFirstName"]</label>
-                    <input class="form-control" @bind="_inviteFirstName" />
-                </div>
-                <div class="col-md-5">
-                    <label class="form-label">@L["Expert_InviteMessage"]</label>
-                    <input class="form-control" @bind="_inviteMessage" placeholder="@L["Expert_InviteMessagePlaceholder"]" />
-                </div>
-                <div class="col-12">
-                    <button type="button" class="cc-btn cc-btn-primary" disabled="@_inviteBusy" @onclick="InviteAsync">
-                        <i class="bi bi-envelope"></i> @L["Expert_InviteSend"]
-                    </button>
-                </div>
+                <a class="cc-btn cc-btn-primary" href="expert/teachers/add">
+                    <i class="bi bi-plus-lg"></i> Ajouter un enseignant
+                </a>
             </div>
         </div>
 
-        <div class="cc-card mb-3">
-            <h2 class="cc-card-title">@L["Expert_InvitesListTitle"]</h2>
-            <p class="small text-muted mb-3">@L["Expert_InvitesListSubtitle"]</p>
-
-            @if (_invitesLoading)
-            {
-                <div class="cc-empty py-3"><span class="spinner-border spinner-border-sm"></span></div>
-            }
-            else if (_invites.Count == 0)
-            {
-                <div class="cc-empty py-3">
-                    <i class="bi bi-envelope-open"></i>
-                    <p>@L["Expert_InvitesEmpty"]</p>
-                </div>
-            }
-            else
-            {
-                <table class="cc-table">
-                    <thead>
-                        <tr>
-                            <th>@L["Expert_InviteEmail"]</th>
-                            <th>@L["Expert_InviteColInvitedBy"]</th>
-                            <th>@L["Expert_ColDate"]</th>
-                            <th>@L["Expert_InviteColStatus"]</th>
-                            <th>@L["Expert_ColSchool"]</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var inv in _invites)
-                        {
-                            <tr>
-                                <td>
-                                    <strong>@inv.Email</strong>
-                                    @if (!string.IsNullOrWhiteSpace(inv.FirstName))
-                                    {
-                                        <div class="small text-muted">@inv.FirstName</div>
-                                    }
-                                </td>
-                                <td>@(inv.InvitedByName ?? "—")</td>
-                                <td>@inv.SentAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")</td>
-                                <td>
-                                    <span class="cc-pill @InviteStatusPill(inv.Status)">@InviteStatusLabel(inv.Status)</span>
-                                </td>
-                                <td>
-                                    @if (inv.AcceptedTenantId is Guid tid && !string.IsNullOrWhiteSpace(inv.SchoolName))
-                                    {
-                                        <a href="@($"expert/teachers/{tid}")">@inv.SchoolName</a>
-                                    }
-                                    else
-                                    {
-                                        <span class="text-muted">—</span>
-                                    }
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            }
-        </div>
-        }
-        else
+        @if (!string.IsNullOrEmpty(_error))
         {
-        <div class="cc-card mb-3">
-            <h2 class="cc-card-title">@L["Expert_Queue"]</h2>
-            <p class="small text-muted mb-3">@L["Expert_QueueSubtitle"]</p>
+            <div class="alert alert-danger py-2">@_error</div>
+        }
+        @if (!string.IsNullOrEmpty(_success))
+        {
+            <div class="alert alert-success py-2">@_success</div>
+        }
 
-            <div class="row g-2 mb-3">
-                <div class="col-md-2">
-                    <label class="form-label">Pays</label>
-                    <input class="form-control" @bind="_filterCountry" placeholder="CM" />
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label">Ville</label>
-                    <input class="form-control" @bind="_filterCity" />
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label">Statut</label>
-                    <select class="form-select" @bind="_filterStatus">
-                        <option value="">Tous (pipeline)</option>
-                        <option value="0">Pending</option>
-                        <option value="5">Assigned</option>
-                        <option value="4">UnderReview</option>
-                        <option value="3">ChangesRequested</option>
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label">Ancienneté ≥ j</label>
-                    <input class="form-control" type="number" @bind="_filterOlderDays" />
-                </div>
-                <div class="col-md-3 d-flex align-items-end gap-2">
-                    <label class="form-check mb-2">
-                        <input class="form-check-input" type="checkbox" @bind="_filterUrgent" />
-                        <span class="form-check-label">Urgent</span>
-                    </label>
-                    <label class="form-check mb-2">
-                        <input class="form-check-input" type="checkbox" @bind="_filterIncomplete" />
-                        <span class="form-check-label">Incomplet</span>
-                    </label>
-                    <button type="button" class="cc-btn cc-btn-primary btn-sm mb-2" @onclick="LoadQueueFilteredAsync">Filtrer</button>
+        @if (_showInvite)
+        {
+            <div class="cc-card mb-3">
+                <h2 class="cc-card-title">Invitation par e-mail</h2>
+                <p class="small text-muted">L’enseignant rejoint la file d’approbation après inscription.</p>
+                @if (!string.IsNullOrEmpty(_inviteError))
+                {
+                    <div class="alert alert-danger py-2">@_inviteError</div>
+                }
+                @if (!string.IsNullOrEmpty(_inviteSuccess))
+                {
+                    <div class="alert alert-success py-2">@_inviteSuccess</div>
+                }
+                <div class="row g-2 align-items-end">
+                    <div class="col-md-4">
+                        <label class="form-label">E-mail</label>
+                        <input class="form-control" type="email" @bind="_inviteEmail" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Prénom</label>
+                        <input class="form-control" @bind="_inviteFirstName" />
+                    </div>
+                    <div class="col-md-5">
+                        <label class="form-label">Message</label>
+                        <input class="form-control" @bind="_inviteMessage" />
+                    </div>
+                    <div class="col-12">
+                        <button type="button" class="cc-btn cc-btn-primary" disabled="@_inviteBusy" @onclick="InviteAsync">
+                            Envoyer l’invitation
+                        </button>
+                    </div>
                 </div>
             </div>
+        }
 
         @if (_loading)
         {
             <div class="cc-empty"><span class="spinner-border"></span></div>
         }
-        else if (!string.IsNullOrEmpty(_error))
-        {
-            <div class="alert alert-danger">@_error</div>
-        }
-        else if (_queue.Count == 0)
-        {
-            <div class="cc-empty py-3">
-                <i class="bi bi-inbox"></i>
-                <p>@L["Expert_QueueEmpty"]</p>
-            </div>
-        }
         else
         {
-                <table class="cc-table">
-                    <thead>
-                        <tr>
-                            <th>@L["Expert_ColSchool"]</th>
-                            <th>@L["Expert_ColCountry"]</th>
-                            <th>Statut</th>
-                            <th>Âge</th>
-                            <th>@L["Expert_ColDocs"]</th>
-                            <th>Priorité</th>
-                            <th>Assigné</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var item in _queue)
+            <div class="ex-teachers-kpi">
+                <button type="button" class="ex-kpi @(_boardTab == "exam" ? "is-on" : null)" data-tone="amber" @onclick='() => SetBoard("exam")'>
+                    <i class="bi bi-hourglass-split ex-kpi-icon"></i>
+                    <div>
+                        <div class="ex-kpi-label">En attente d’examen</div>
+                        <div class="ex-kpi-value">@PendingCount</div>
+                        <div class="ex-kpi-hint">dossiers</div>
+                    </div>
+                </button>
+                <button type="button" class="ex-kpi @(_boardTab == "talk" ? "is-on" : null)" data-tone="sky" @onclick='() => SetBoard("talk")'>
+                    <i class="bi bi-camera-video ex-kpi-icon"></i>
+                    <div>
+                        <div class="ex-kpi-label">Entretiens programmés</div>
+                        <div class="ex-kpi-value">@InterviewCount</div>
+                        <div class="ex-kpi-hint">à venir</div>
+                    </div>
+                </button>
+                <button type="button" class="ex-kpi @(_boardTab == "eval" ? "is-on" : null)" data-tone="violet" @onclick='() => SetBoard("eval")'>
+                    <i class="bi bi-mortarboard ex-kpi-icon"></i>
+                    <div>
+                        <div class="ex-kpi-label">En évaluation</div>
+                        <div class="ex-kpi-value">@ReviewCount</div>
+                        <div class="ex-kpi-hint">en cours</div>
+                    </div>
+                </button>
+                <button type="button" class="ex-kpi" data-tone="emerald" @onclick='() => SetBoard("done")'>
+                    <i class="bi bi-check-circle ex-kpi-icon"></i>
+                    <div>
+                        <div class="ex-kpi-label">Approuvés ce mois</div>
+                        <div class="ex-kpi-value">@ApprovedMonth</div>
+                    </div>
+                </button>
+                <button type="button" class="ex-kpi" data-tone="rose" @onclick='() => SetBoard("done")'>
+                    <i class="bi bi-x-circle ex-kpi-icon"></i>
+                    <div>
+                        <div class="ex-kpi-label">Refusés ce mois</div>
+                        <div class="ex-kpi-value">@RejectedMonth</div>
+                    </div>
+                </button>
+            </div>
+
+            <div class="ex-approve-layout @(_selected is not null ? "has-drawer" : null)">
+                <div>
+                    <div class="cc-tabs mb-3" role="tablist">
+                        <button type="button" class="cc-tab @(_boardTab == "exam" ? "active" : null)" @onclick='() => SetBoard("exam")'>
+                            À examiner (@PendingCount)
+                        </button>
+                        <button type="button" class="cc-tab @(_boardTab == "talk" ? "active" : null)" @onclick='() => SetBoard("talk")'>
+                            Entretiens programmés (@InterviewCount)
+                        </button>
+                        <button type="button" class="cc-tab @(_boardTab == "eval" ? "active" : null)" @onclick='() => SetBoard("eval")'>
+                            En évaluation (@ReviewCount)
+                        </button>
+                        <button type="button" class="cc-tab @(_boardTab == "done" ? "active" : null)" @onclick='() => SetBoard("done")'>
+                            Décisions récentes
+                        </button>
+                    </div>
+
+                    <div class="cc-card ex-filter-bar mb-3">
+                        <div class="ex-filter-search">
+                            <i class="bi bi-search"></i>
+                            <input class="form-control" placeholder="Rechercher un enseignant..."
+                                   @bind="_search" @bind:event="oninput" @bind:after="OnFilterChanged" />
+                        </div>
+                        <select class="form-select" @bind="_subjectFilter" @bind:after="OnFilterChanged">
+                            <option value="">Matière</option>
+                            @foreach (var s in SubjectOptions)
+                            {
+                                <option value="@s">@s</option>
+                            }
+                        </select>
+                        <select class="form-select" @bind="_levelFilter" @bind:after="OnFilterChanged">
+                            <option value="">Niveau</option>
+                            @foreach (var lv in LevelOptions)
+                            {
+                                <option value="@lv">@lv</option>
+                            }
+                        </select>
+                        <select class="form-select" @bind="_statusFilter" @bind:after="OnFilterChanged">
+                            <option value="">Statut</option>
+                            <option value="0">En attente d’examen</option>
+                            <option value="5">Attribué</option>
+                            <option value="4">En évaluation</option>
+                            <option value="3">Modifications</option>
+                            <option value="1">Approuvé</option>
+                            <option value="2">Refusé</option>
+                        </select>
+                        <button type="button" class="cc-btn" @onclick="ResetFilters">
+                            <i class="bi bi-funnel"></i> Filtres
+                        </button>
+                    </div>
+
+                    <div class="cc-card ex-teachers-table-wrap mb-3">
+                        @if (_filtered.Count == 0)
                         {
-                            <tr>
-                                <td>
-                                    <strong>@item.SchoolName</strong>
-                                    <div class="small text-muted">@(item.OwnerName ?? item.OwnerEmail)</div>
-                                </td>
-                                <td>@(item.Country ?? "—") @(string.IsNullOrWhiteSpace(item.City) ? "" : $"· {item.City}")</td>
-                                <td><span class="cc-pill cc-pill-type">@StatusName(item.ApprovalStatus)</span></td>
-                                <td>@item.AgeDays j</td>
-                                <td>@item.DocumentCount @(item.IsComplete ? "" : "(incomplet)")</td>
-                                <td>@(item.ReviewPriority > 0 ? "Urgent" : "Normal")</td>
-                                <td class="small">@(item.ReviewAssignedToName ?? "—")</td>
-                                <td class="text-end">
-                                    @if (_isManager)
-                                    {
-                                        <button type="button" class="cc-btn btn-sm me-1" @onclick="() => OpenAssignAsync(item)">Attribuer</button>
-                                    }
-                                    else
-                                    {
-                                        <button type="button" class="cc-btn btn-sm me-1" @onclick="() => AssignToMeAsync(item.TenantId)">M'attribuer</button>
-                                    }
-                                    <button type="button" class="cc-btn btn-sm me-1" @onclick="() => StartReviewAsync(item.TenantId)">Revoir</button>
-                                    <a class="cc-btn cc-btn-primary btn-sm" href="@($"expert/teachers/{item.TenantId}")">
-                                        @L["Expert_Review"]
-                                    </a>
-                                </td>
-                            </tr>
+                            <div class="cc-empty py-4">
+                                <i class="bi bi-inbox"></i>
+                                <p>Aucun dossier dans cet onglet.</p>
+                            </div>
                         }
-                    </tbody>
-                </table>
+                        else
+                        {
+                            <table class="cc-table ex-teachers-table">
+                                <thead>
+                                    <tr>
+                                        <th>Candidat</th>
+                                        <th>Matières</th>
+                                        <th>Niveaux</th>
+                                        <th>Expérience</th>
+                                        <th>Statut</th>
+                                        <th>Date</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var row in Paged)
+                                    {
+                                        <tr class="@(_selected?.TenantId == row.TenantId ? "table-active" : "")"
+                                            @onclick="() => SelectRowAsync(row)" style="cursor:pointer">
+                                            <td>
+                                                <div class="ex-teacher-id">
+                                                    @if (!string.IsNullOrWhiteSpace(row.LogoUrl))
+                                                    {
+                                                        <img src="@MediaUrlHelper.Resolve(row.LogoUrl, Config, Nav)" alt="" />
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="ex-teacher-avatar">@Initials(row.Name)</span>
+                                                    }
+                                                    <div>
+                                                        <strong>@row.Name</strong>
+                                                        <span>@(row.Email ?? "—")</span>
+                                                        @if (!string.IsNullOrWhiteSpace(row.InvitedBy))
+                                                        {
+                                                            <span>Invité par @row.InvitedBy</span>
+                                                        }
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <div class="ex-subj-wrap">
+                                                    @if (row.Subjects.Count == 0)
+                                                    {
+                                                        <span class="text-muted">—</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        @foreach (var s in row.Subjects.Take(3))
+                                                        {
+                                                            <span class="ex-subj" data-tone="@SubjectTone(s)">@s</span>
+                                                        }
+                                                    }
+                                                </div>
+                                            </td>
+                                            <td>@(row.Levels.Count == 0 ? "—" : string.Join(", ", row.Levels))</td>
+                                            <td>@(row.Years is int y ? $"{y} ans" : "—")</td>
+                                            <td>
+                                                <span class="ex-status @StatusClass(row.Status)">
+                                                    <i></i> @StatusLabel(row.Status)
+                                                </span>
+                                            </td>
+                                            <td>@row.Date.ToLocalTime().ToString("d MMM yyyy", Fr)</td>
+                                            <td class="text-end" @onclick:stopPropagation="true">
+                                                <button type="button" class="cc-btn btn-sm" @onclick="() => SelectRowAsync(row)">Voir</button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                            <div class="ex-table-foot">
+                                <span>Affichage @FromRow à @ToRow sur @_filtered.Count dossier@(_filtered.Count > 1 ? "s" : "")</span>
+                                <div class="ex-table-pager">
+                                    <select class="form-select form-select-sm" @bind="_pageSize" @bind:after="() => { _page = 1; }">
+                                        <option value="10">10 par page</option>
+                                        <option value="20">20 par page</option>
+                                    </select>
+                                    <button type="button" class="cc-btn btn-sm" disabled="@(_page <= 1)" @onclick="() => _page--">‹</button>
+                                    <span>@_page / @PageCount</span>
+                                    <button type="button" class="cc-btn btn-sm" disabled="@(_page >= PageCount)" @onclick="() => _page++">›</button>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                @if (_selected is RowVm sel)
+                {
+                    <aside class="cc-card ex-approve-drawer">
+                        <div class="ex-drawer-head">
+                            <span class="ex-teacher-avatar">@Initials(sel.Name)</span>
+                            <div>
+                                <strong>@sel.Name</strong>
+                                <span>@(sel.Email ?? "—")</span>
+                            </div>
+                            <button type="button" class="ex-more-btn" @onclick="CloseDrawer" aria-label="Fermer">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        </div>
+                        <div class="ex-drawer-meta">
+                            <span><i class="bi bi-book"></i> @(sel.Subjects.Count == 0 ? "—" : string.Join(", ", sel.Subjects.Take(2)))</span>
+                            <span><i class="bi bi-layers"></i> @(sel.Levels.Count == 0 ? "—" : string.Join(", ", sel.Levels.Take(2)))</span>
+                            <span><i class="bi bi-briefcase"></i> @(sel.Years is int y ? $"{y} ans" : "—")</span>
+                        </div>
+
+                        <div class="cc-tabs mb-2">
+                            <button type="button" class="cc-tab @(_drawerTab == "sum" ? "active" : null)" @onclick='() => _drawerTab = "sum"'>Résumé</button>
+                            <button type="button" class="cc-tab @(_drawerTab == "docs" ? "active" : null)" @onclick='() => _drawerTab = "docs"'>
+                                Documents@(_detail?.Documents?.Count is int dc && dc > 0 ? $" ({dc})" : "")
+                            </button>
+                            <button type="button" class="cc-tab @(_drawerTab == "eval" ? "active" : null)" @onclick='() => _drawerTab = "eval"'>Évaluations</button>
+                            <button type="button" class="cc-tab @(_drawerTab == "hist" ? "active" : null)" @onclick='() => _drawerTab = "hist"'>Historique</button>
+                        </div>
+
+                        @if (_detailLoading)
+                        {
+                            <div class="cc-empty py-3"><span class="spinner-border spinner-border-sm"></span></div>
+                        }
+                        else if (_drawerTab == "docs")
+                        {
+                            @if (_detail?.Documents is { Count: > 0 } docs)
+                            {
+                                <ul class="ex-doc-list">
+                                    @foreach (var d in docs)
+                                    {
+                                        <li>
+                                            <i class="bi bi-file-earmark-pdf"></i>
+                                            <div>
+                                                <a href="@MediaUrlHelper.Resolve(d.FileUrl, Config, Nav)" target="_blank" rel="noopener">@d.FileName</a>
+                                                <span>@DocLabel(d.DocumentType) · @FormatSize(d.FileSizeBytes)</span>
+                                            </div>
+                                        </li>
+                                    }
+                                </ul>
+                            }
+                            else
+                            {
+                                <p class="small text-muted mb-0">Aucune pièce jointe.</p>
+                            }
+                        }
+                        else if (_drawerTab == "eval")
+                        {
+                            <p class="small mb-0">@(string.IsNullOrWhiteSpace(_detail?.ExpertApprovalNotes) && string.IsNullOrWhiteSpace(sel.Notes) ? "Pas encore d’évaluation écrite." : (_detail?.ExpertApprovalNotes ?? sel.Notes))</p>
+                        }
+                        else if (_drawerTab == "hist")
+                        {
+                            <ul class="small text-muted mb-0">
+                                <li>Créé le @sel.Date.ToLocalTime().ToString("d MMM yyyy HH:mm", Fr)</li>
+                                @if (!string.IsNullOrWhiteSpace(sel.AssignedTo))
+                                {
+                                    <li>Attribué à @sel.AssignedTo</li>
+                                }
+                                @if (_detail?.ExpertApprovedAt is DateTime at)
+                                {
+                                    <li>Décision le @at.ToLocalTime().ToString("d MMM yyyy HH:mm", Fr)</li>
+                                }
+                            </ul>
+                        }
+                        else
+                        {
+                            <h3 class="h6">Résumé du profil</h3>
+                            <p class="small">@(FirstText(_detail?.Presentation, _detail?.Description) ?? "Aucune présentation.")</p>
+                            @if (_portfolio?.Diplomas is { Count: > 0 })
+                            {
+                                <h3 class="h6">Formation</h3>
+                                <ul class="small">
+                                    @foreach (var d in _portfolio.Diplomas)
+                                    {
+                                        <li>@(d.Title ?? "—")@(string.IsNullOrWhiteSpace(d.Institution) ? "" : $" — {d.Institution}")</li>
+                                    }
+                                </ul>
+                            }
+                            @if (_portfolio?.Certifications is { Count: > 0 })
+                            {
+                                <h3 class="h6">Expérience professionnelle</h3>
+                                <ul class="small">
+                                    @foreach (var c in _portfolio.Certifications)
+                                    {
+                                        <li>@(c.Title ?? "—")</li>
+                                    }
+                                </ul>
+                            }
+                        }
+
+                        @if (_showReject)
+                        {
+                            <div class="mt-3">
+                                <label class="form-label">Motif du refus</label>
+                                <textarea class="form-control" rows="3" @bind="_notes"></textarea>
+                            </div>
+                        }
+                        @if (_showInterview)
+                        {
+                            <div class="mt-3">
+                                <label class="form-label">Date de l’entretien</label>
+                                <input type="datetime-local" class="form-control" @bind="_interviewAt" />
+                            </div>
+                        }
+
+                        @if (CanDecide(sel.Status))
+                        {
+                            <div class="ex-drawer-actions">
+                                <button type="button" class="ex-btn-danger" disabled="@_busy" @onclick="RejectAsync">Refuser le dossier</button>
+                                <button type="button" class="cc-btn" disabled="@_busy" @onclick="ScheduleInterviewAsync">Programmer un entretien</button>
+                                <button type="button" class="ex-btn-ok" disabled="@_busy" @onclick="ApproveAsync">Approuver</button>
+                            </div>
+                        }
+                    </aside>
+                }
+            </div>
         }
-        </div>
 
         @if (_assignTarget is not null)
         {
             <div class="cc-card mt-3">
-                <h2 class="cc-card-title">Attribuer le dossier — @_assignTarget.SchoolName</h2>
+                <h2 class="cc-card-title">Attribuer le dossier</h2>
                 <div class="row g-2 align-items-end">
                     <div class="col-md-6">
-                        <label class="form-label">Expert</label>
                         <select class="form-select" @bind="_assignUserId">
-                            <option value="">— Choisir —</option>
+                            <option value="">— Expert —</option>
                             @foreach (var m in _members)
                             {
                                 <option value="@m.UserId">@(string.IsNullOrWhiteSpace(m.FullName) ? m.Email : m.FullName)</option>
                             }
                         </select>
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-check mt-4">
-                            <input class="form-check-input" type="checkbox" @bind="_assignUrgent" />
-                            <span class="form-check-label">Urgent</span>
-                        </label>
                     </div>
                     <div class="col-md-3 d-flex gap-2">
                         <button type="button" class="cc-btn cc-btn-primary" disabled="@_assignBusy" @onclick="ConfirmAssignAsync">Confirmer</button>
@@ -622,7 +413,6 @@
                     </div>
                 </div>
             </div>
-        }
         }
     </Authorized>
     <NotAuthorized>
@@ -634,150 +424,306 @@
 </AuthorizeView>
 
 @code {
-    private string _activeTab = "queue";
-    private List<QueueItem> _queue = [];
-    private List<TeacherInviteItem> _invites = [];
+    private static readonly CultureInfo Fr = new("fr-FR");
+    private static readonly JsonSerializerOptions PortfolioJson = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+    };
+
     private bool _loading = true;
-    private bool _invitesLoading = true;
+    private bool _busy;
+    private bool _showInvite;
+    private bool _showReject;
+    private bool _showInterview;
+    private bool _detailLoading;
+    private bool _inviteBusy;
+    private bool _assignBusy;
+    private bool _isManager;
     private string? _error;
-
-    private string _filterCountry = "";
-    private string _filterCity = "";
-    private string _filterStatus = "";
-    private int? _filterOlderDays;
-    private bool _filterUrgent;
-    private bool _filterIncomplete;
-
+    private string? _success;
+    private string? _inviteError;
+    private string? _inviteSuccess;
+    private string _boardTab = "exam";
+    private string _drawerTab = "sum";
+    private string _search = "";
+    private string _subjectFilter = "";
+    private string _levelFilter = "";
+    private string _statusFilter = "";
     private string _inviteEmail = "";
     private string _inviteFirstName = "";
     private string _inviteMessage = "";
-    private bool _inviteBusy;
-    private string? _inviteError;
-    private string? _inviteSuccess;
-
-    private string _regEmail = "";
-    private string _regFirstName = "";
-    private string _regLastName = "";
-    private string _regSchoolName = "";
-    private string _regSlug = "";
-    private string? _regAutoSlugValue;
-    private string _regCity = "";
-    private string? _regCountry = "CM";
-    private List<string> _regVisibleCountries = ["CM"];
-    private string? _regAddVisible;
-    private bool _regAcceptedConduct;
-    private bool? _regSlugAvailable;
-    private bool _regCheckingSlug;
-    private CancellationTokenSource? _regSlugCts;
-    private bool _regGroupLoading = true;
-    private bool _regBusy;
-    private string? _regError;
-    private string? _regSuccess;
-    private bool _regCreateOffer;
-    private bool _regPublishPublic = true;
-    private string _regOfferTitle = "";
-    private string? _regOfferDescription;
-    private string? _regOfferSubject;
-    private decimal _regOfferPrice;
-    private string _regOfferCurrency = "CAD";
-    private string _regOfferBillingMode = "hourly";
-    private decimal _regOfferHoursPerWeek = 2;
-    private int _regOfferSessionDuration = 60;
-    private string _regOfferMode = "En ligne";
-    private static readonly string[] OfferDays =
-        ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
-    private readonly Dictionary<string, OfferDaySlot> _regOfferDaySlots = OfferDays.ToDictionary(
-        d => d, _ => new OfferDaySlot());
-
-    private bool _isManager;
-    private List<MemberItem> _members = [];
-    private QueueItem? _assignTarget;
+    private string _notes = "";
     private string _assignUserId = "";
-    private bool _assignUrgent;
-    private bool _assignBusy;
+    private DateTime? _interviewAt;
+    private int _page = 1;
+    private int _pageSize = 10;
 
-    private bool IsRegSlugFormatValid => !string.IsNullOrWhiteSpace(_regSlug)
-        && System.Text.RegularExpressions.Regex.IsMatch(_regSlug, @"^[a-z0-9]([a-z0-9-]{1,48}[a-z0-9])?$");
+    private List<QueueItem> _queue = [];
+    private List<DirItem> _directory = [];
+    private List<DecisionItem> _decisions = [];
+    private List<TalkItem> _talks = [];
+    private List<InviteItem> _invites = [];
+    private List<MemberItem> _members = [];
+    private List<RowVm> _filtered = [];
+    private RowVm? _selected;
+    private QueueItem? _assignTarget;
+    private ReviewDetail? _detail;
+    private Showcase? _portfolio;
 
-    private string RegCountryDisplay
+    private int PendingCount => _queue.Count(q => q.ApprovalStatus == 0);
+    private int ReviewCount => _queue.Count(q => q.ApprovalStatus is 3 or 4 or 5);
+    private int InterviewCount => _talks.Count(t => t.Status is 0 or 1);
+    private int ApprovedMonth => _decisions.Count(d => d.ApprovalStatus == 1);
+    private int RejectedMonth => _decisions.Count(d => d.ApprovalStatus == 2);
+    private int PageCount => Math.Max(1, (int)Math.Ceiling(_filtered.Count / (double)_pageSize));
+    private int FromRow => _filtered.Count == 0 ? 0 : ((_page - 1) * _pageSize) + 1;
+    private int ToRow => Math.Min(_filtered.Count, _page * _pageSize);
+    private IEnumerable<RowVm> Paged => _filtered.Skip((_page - 1) * _pageSize).Take(_pageSize);
+
+    private IEnumerable<string> SubjectOptions => _directory.SelectMany(d => d.Subjects ?? []).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(s => s);
+    private IEnumerable<string> LevelOptions => _directory.SelectMany(d => d.Levels ?? []).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(s => s);
+
+    private List<RowVm> AllRows
     {
         get
         {
-            if (string.IsNullOrWhiteSpace(_regCountry))
-                return "—";
-            var info = CountryCatalog.Find(_regCountry);
-            return info is null ? _regCountry : $"{info.Flag} {info.Name}";
+            IEnumerable<RowVm> FromQueue(IEnumerable<QueueItem> src) => src.Select(q =>
+            {
+                var dir = _directory.FirstOrDefault(d => d.TenantId == q.TenantId);
+                var inv = _invites.FirstOrDefault(i => i.AcceptedTenantId == q.TenantId
+                    || string.Equals(i.Email, q.OwnerEmail, StringComparison.OrdinalIgnoreCase));
+                return new RowVm(
+                    q.TenantId,
+                    dir?.DisplayName ?? q.OwnerName ?? q.SchoolName,
+                    q.OwnerEmail,
+                    inv?.InvitedByName,
+                    dir?.Subjects ?? [],
+                    dir?.Levels ?? [],
+                    dir?.YearsExperience,
+                    q.ApprovalStatus,
+                    q.CreatedAt,
+                    dir?.LogoUrl,
+                    q.ReviewAssignedToName,
+                    q.ReviewRequestNotes);
+            });
+
+            return _boardTab switch
+            {
+                "talk" => _talks
+                    .Where(t => t.Status is 0 or 1 && t.RelatedTeacherTenantId is Guid)
+                    .Select(t =>
+                    {
+                        var id = t.RelatedTeacherTenantId!.Value;
+                        var q = _queue.FirstOrDefault(x => x.TenantId == id);
+                        var dir = _directory.FirstOrDefault(d => d.TenantId == id);
+                        var inv = _invites.FirstOrDefault(i => i.AcceptedTenantId == id);
+                        return new RowVm(
+                            id,
+                            dir?.DisplayName ?? q?.OwnerName ?? q?.SchoolName ?? t.Title,
+                            q?.OwnerEmail ?? dir?.OwnerEmail,
+                            inv?.InvitedByName,
+                            dir?.Subjects ?? [],
+                            dir?.Levels ?? [],
+                            dir?.YearsExperience,
+                            q?.ApprovalStatus ?? 0,
+                            t.ScheduledAtUtc ?? t.CreatedAt,
+                            dir?.LogoUrl,
+                            q?.ReviewAssignedToName,
+                            q?.ReviewRequestNotes);
+                    }).ToList(),
+                "eval" => FromQueue(_queue.Where(q => q.ApprovalStatus is 3 or 4 or 5)).ToList(),
+                "done" => _decisions.Select(d =>
+                {
+                    var dir = _directory.FirstOrDefault(x => x.TenantId == d.TenantId);
+                    return new RowVm(d.TenantId, d.DisplayName, d.OwnerEmail, null, dir?.Subjects ?? [], dir?.Levels ?? [], dir?.YearsExperience, d.ApprovalStatus, d.DecisionAt ?? DateTime.UtcNow, dir?.LogoUrl, null, d.Notes);
+                }).ToList(),
+                _ => FromQueue(_queue.Where(q => q.ApprovalStatus == 0)).ToList()
+            };
         }
     }
 
     protected override async Task OnInitializedAsync()
     {
         try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
-        ApplyTabFromQuery();
-        await Task.WhenAll(LoadQueueAsync(), LoadInvitesAsync(), LoadMyGroupAsync(), LoadAssignContextAsync());
+        ApplyInviteQuery();
+        await LoadAllAsync();
     }
 
-    private void ApplyTabFromQuery()
+    private void ApplyInviteQuery()
     {
         try
         {
-            var uri = Nav.ToAbsoluteUri(Nav.Uri);
-            var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
-            if (query.TryGetValue("tab", out var tab))
-                SetTab(tab.ToString());
-        }
-        catch { }
-    }
-
-    private void SetTab(string tab)
-    {
-        if (string.Equals(tab, "register", StringComparison.OrdinalIgnoreCase))
-        {
-            Nav.NavigateTo("expert/teachers/add");
-            return;
-        }
-
-        _activeTab = tab switch
-        {
-            "invite" => "invite",
-            "queue" => "queue",
-            _ => "queue"
-        };
-    }
-
-    private async Task LoadAssignContextAsync()
-    {
-        try
-        {
-            var ctx = await Api.GetAsync<MeCtx>("api/expert/me-context");
-            _isManager = ctx?.IsGroupManager == true;
-            _members = await Api.GetAsync<List<MemberItem>>("api/expert/membership/members") ?? [];
-        }
-        catch { }
-    }
-
-    private async Task OpenAssignAsync(QueueItem item)
-    {
-        _assignTarget = item;
-        _assignUserId = item.ReviewAssignedToUserId ?? "";
-        _assignUrgent = item.ReviewPriority > 0;
-        if (_members.Count == 0)
-            _members = await Api.GetAsync<List<MemberItem>>("api/expert/membership/members") ?? [];
-    }
-
-    private async Task AssignToMeAsync(Guid tenantId)
-    {
-        try
-        {
-            var result = await Api.PostWithErrorAsync<object>($"api/expert/teachers/{tenantId}/assign", new
+            var q = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(Nav.ToAbsoluteUri(Nav.Uri).Query);
+            if (q.TryGetValue("tab", out var tab) && string.Equals(tab.ToString(), "register", StringComparison.OrdinalIgnoreCase))
             {
-                assigneeUserId = (string?)null,
-                urgent = false
-            });
-            if (result.Error is not null) { _error = result.Error; return; }
-            await LoadQueueFilteredAsync();
+                Nav.NavigateTo("expert/teachers/add");
+                return;
+            }
+            if (q.TryGetValue("tab", out tab) && string.Equals(tab.ToString(), "invite", StringComparison.OrdinalIgnoreCase))
+                _showInvite = true;
+        }
+        catch { }
+    }
+
+    private async Task LoadAllAsync()
+    {
+        _loading = true;
+        try
+        {
+            var monthStart = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+            var queueT = Api.GetAsync<List<QueueItem>>("api/expert/approvals-queue");
+            var dirT = Api.GetAsync<List<DirItem>>("api/expert/teacher-directory");
+            var talkT = Api.GetAsync<List<TalkItem>>("api/expert/workspace?type=0");
+            var decT = Api.GetAsync<List<DecisionItem>>($"api/expert/teacher-decisions?sinceUtc={monthStart:O}");
+            var invT = Api.GetAsync<List<InviteItem>>("api/expert/invitations");
+            var ctxT = Api.GetAsync<MeCtx>("api/expert/me-context");
+            await Task.WhenAll(queueT, dirT, talkT, decT, invT, ctxT);
+            _queue = await queueT ?? [];
+            _directory = await dirT ?? [];
+            _talks = await talkT ?? [];
+            _decisions = await decT ?? [];
+            _invites = await invT ?? [];
+            _isManager = (await ctxT)?.IsGroupManager == true;
+            OnFilterChanged();
         }
         catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private void SetBoard(string tab)
+    {
+        _boardTab = tab;
+        _page = 1;
+        OnFilterChanged();
+    }
+
+    private void ResetFilters()
+    {
+        _search = _subjectFilter = _levelFilter = _statusFilter = "";
+        OnFilterChanged();
+    }
+
+    private void OnFilterChanged()
+    {
+        IEnumerable<RowVm> q = AllRows;
+        if (!string.IsNullOrWhiteSpace(_search))
+        {
+            var s = _search.Trim();
+            q = q.Where(r => r.Name.Contains(s, StringComparison.OrdinalIgnoreCase)
+                || (r.Email?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false));
+        }
+        if (!string.IsNullOrWhiteSpace(_subjectFilter))
+            q = q.Where(r => r.Subjects.Any(x => string.Equals(x, _subjectFilter, StringComparison.OrdinalIgnoreCase)));
+        if (!string.IsNullOrWhiteSpace(_levelFilter))
+            q = q.Where(r => r.Levels.Any(x => string.Equals(x, _levelFilter, StringComparison.OrdinalIgnoreCase)));
+        if (int.TryParse(_statusFilter, out var st))
+            q = q.Where(r => r.Status == st);
+        _filtered = q.ToList();
+        if (_page > PageCount) _page = PageCount;
+    }
+
+    private async Task SelectRowAsync(RowVm row)
+    {
+        _selected = row;
+        _drawerTab = "sum";
+        _showReject = _showInterview = false;
+        _notes = "";
+        _detailLoading = true;
+        try
+        {
+            _detail = await Api.GetAsync<ReviewDetail>($"api/expert/teachers/{row.TenantId}");
+            _portfolio = ParsePortfolio(_detail?.Portfolio);
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _detailLoading = false; }
+    }
+
+    private void CloseDrawer()
+    {
+        _selected = null;
+        _detail = null;
+        _portfolio = null;
+        _showReject = _showInterview = false;
+    }
+
+    private async Task ApproveAsync()
+    {
+        if (_selected is null) return;
+        _busy = true;
+        _error = _success = null;
+        try
+        {
+            var r = await Api.PostWithErrorAsync<object>($"api/expert/teachers/{_selected.TenantId}/approve", new { notes = _notes });
+            if (r.Error is not null) { _error = r.Error; return; }
+            _success = "Dossier approuvé.";
+            CloseDrawer();
+            await LoadAllAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task RejectAsync()
+    {
+        if (_selected is null) return;
+        if (!_showReject)
+        {
+            _showReject = true;
+            _showInterview = false;
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_notes))
+        {
+            _error = L["Expert_RejectNotesRequired"];
+            return;
+        }
+        _busy = true;
+        _error = _success = null;
+        try
+        {
+            var r = await Api.PostWithErrorAsync<object>($"api/expert/teachers/{_selected.TenantId}/reject", new { notes = _notes });
+            if (r.Error is not null) { _error = r.Error; return; }
+            _success = "Dossier refusé.";
+            CloseDrawer();
+            await LoadAllAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task ScheduleInterviewAsync()
+    {
+        if (_selected is null) return;
+        if (!_showInterview)
+        {
+            _showInterview = true;
+            _showReject = false;
+            _interviewAt = DateTime.Now.AddDays(2).Date.AddHours(10);
+            return;
+        }
+        _busy = true;
+        _error = _success = null;
+        try
+        {
+            DateTime? utc = _interviewAt.HasValue
+                ? DateTime.SpecifyKind(_interviewAt.Value, DateTimeKind.Local).ToUniversalTime()
+                : null;
+            var r = await Api.PostWithErrorAsync<TalkItem>("api/expert/workspace", new
+            {
+                itemType = 0,
+                title = $"Entretien — {_selected.Name}",
+                relatedTeacherTenantId = _selected.TenantId,
+                scheduledAtUtc = utc
+            });
+            if (r.Error is not null) { _error = r.Error; return; }
+            _success = "Entretien programmé.";
+            _showInterview = false;
+            await LoadAllAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
     }
 
     private async Task ConfirmAssignAsync()
@@ -790,123 +736,23 @@
         _assignBusy = true;
         try
         {
-            var result = await Api.PostWithErrorAsync<object>(
-                $"api/expert/teachers/{_assignTarget.TenantId}/assign",
-                new { assigneeUserId = _assignUserId, urgent = _assignUrgent });
-            if (result.Error is not null) { _error = result.Error; return; }
+            var r = await Api.PostWithErrorAsync<object>($"api/expert/teachers/{_assignTarget.TenantId}/assign", new
+            {
+                assigneeUserId = _assignUserId,
+                urgent = false
+            });
+            if (r.Error is not null) { _error = r.Error; return; }
             _assignTarget = null;
-            await LoadQueueFilteredAsync();
+            await LoadAllAsync();
         }
         catch (Exception ex) { _error = ex.Message; }
         finally { _assignBusy = false; }
     }
 
-    private async Task LoadMyGroupAsync()
-    {
-        try
-        {
-            var group = await Api.GetAsync<ExpertMyGroup>("api/expert/my-group");
-            if (group is not null)
-            {
-                _regSchoolName = group.Name;
-                if (!string.IsNullOrWhiteSpace(group.CountryCode))
-                {
-                    _regCountry = group.CountryCode.Trim().ToUpperInvariant();
-                    _regVisibleCountries = [_regCountry];
-                }
-            }
-        }
-        catch { }
-        finally { _regGroupLoading = false; }
-    }
-
-    private async Task LoadQueueAsync() => await LoadQueueFilteredAsync();
-
-    private async Task LoadQueueFilteredAsync()
-    {
-        try
-        {
-            var parts = new List<string>();
-            if (!string.IsNullOrWhiteSpace(_filterCountry)) parts.Add($"country={Uri.EscapeDataString(_filterCountry.Trim())}");
-            if (!string.IsNullOrWhiteSpace(_filterCity)) parts.Add($"city={Uri.EscapeDataString(_filterCity.Trim())}");
-            if (!string.IsNullOrWhiteSpace(_filterStatus) && int.TryParse(_filterStatus, out var st))
-                parts.Add($"status={st}");
-            if (_filterOlderDays is int d && d > 0) parts.Add($"olderThanDays={d}");
-            if (_filterUrgent) parts.Add("urgentOnly=true");
-            if (_filterIncomplete) parts.Add("incompleteOnly=true");
-            var qs = parts.Count == 0 ? "" : "?" + string.Join("&", parts);
-            _queue = await Api.GetAsync<List<QueueItem>>($"api/expert/approvals-queue{qs}") ?? [];
-            _error = null;
-        }
-        catch (Exception ex)
-        {
-            _error = ex.Message;
-        }
-        finally { _loading = false; }
-    }
-
-    private async Task StartReviewAsync(Guid tenantId)
-    {
-        try
-        {
-            var result = await Api.PostWithErrorAsync<object>($"api/expert/teachers/{tenantId}/start-review", new { });
-            if (result.Error is not null) { _error = result.Error; return; }
-            await LoadQueueFilteredAsync();
-        }
-        catch (Exception ex) { _error = ex.Message; }
-    }
-
-    private static string StatusName(int status) => status switch
-    {
-        0 => "Pending",
-        3 => "ChangesRequested",
-        4 => "UnderReview",
-        5 => "Assigned",
-        6 => "Suspended",
-        1 => "Approved",
-        2 => "Rejected",
-        _ => status.ToString()
-    };
-
-    private sealed record QueueItem(
-        Guid TenantId,
-        string SchoolName,
-        string Slug,
-        string? Country,
-        string? City,
-        int ApprovalStatus,
-        DateTime CreatedAt,
-        int AgeDays,
-        string? OwnerEmail,
-        string? OwnerName,
-        int DocumentCount,
-        bool IsComplete,
-        int ReviewPriority,
-        string? ReviewAssignedToUserId,
-        string? ReviewAssignedToName,
-        string? ReviewRequestNotes);
-
-    private sealed record MemberItem(Guid Id, Guid ExpertGroupId, string UserId, string Email, string FullName);
-    private sealed record MeCtx(bool IsGroupManager, Guid? GroupId, string? GroupName);
-
-    private async Task LoadInvitesAsync()
-    {
-        try
-        {
-            _invites = await Api.GetAsync<List<TeacherInviteItem>>("api/expert/invitations") ?? [];
-        }
-        catch
-        {
-            _invites = [];
-        }
-        finally { _invitesLoading = false; }
-    }
-
     private async Task InviteAsync()
     {
         _inviteBusy = true;
-        _inviteError = null;
-        _inviteSuccess = null;
+        _inviteError = _inviteSuccess = null;
         try
         {
             var result = await Api.PostWithErrorAsync<object>("api/expert/invite-application", new
@@ -915,385 +761,82 @@
                 firstName = string.IsNullOrWhiteSpace(_inviteFirstName) ? null : _inviteFirstName,
                 personalMessage = string.IsNullOrWhiteSpace(_inviteMessage) ? null : _inviteMessage
             });
-            if (result.Error is not null)
-            {
-                _inviteError = result.Error;
-                return;
-            }
-
+            if (result.Error is not null) { _inviteError = result.Error; return; }
             _inviteSuccess = L["Expert_InviteSuccess"];
-            _inviteEmail = "";
-            _inviteFirstName = "";
-            _inviteMessage = "";
-            await LoadInvitesAsync();
+            _inviteEmail = _inviteFirstName = _inviteMessage = "";
+            _invites = await Api.GetAsync<List<InviteItem>>("api/expert/invitations") ?? _invites;
         }
-        catch (Exception ex)
-        {
-            _inviteError = ex.Message;
-        }
+        catch (Exception ex) { _inviteError = ex.Message; }
         finally { _inviteBusy = false; }
     }
 
-    private Task OnRegAddVisibleChanged(string? code)
+    private static bool CanDecide(int status) => status is 0 or 3 or 4 or 5;
+    private static string StatusLabel(int status) => status switch
     {
-        _regAddVisible = null;
-        if (string.IsNullOrWhiteSpace(code))
-            return Task.CompletedTask;
-        var n = code.Trim().ToUpperInvariant();
-        if (!_regVisibleCountries.Contains(n, StringComparer.OrdinalIgnoreCase))
-            _regVisibleCountries.Add(n);
-        return Task.CompletedTask;
-    }
-
-    private void RemoveRegVisible(string code)
-    {
-        _regVisibleCountries.RemoveAll(c => string.Equals(c, code, StringComparison.OrdinalIgnoreCase));
-        if (!string.IsNullOrWhiteSpace(_regCountry)
-            && !_regVisibleCountries.Contains(_regCountry, StringComparer.OrdinalIgnoreCase))
-            _regVisibleCountries.Insert(0, _regCountry.Trim().ToUpperInvariant());
-    }
-
-    private async Task OnRegNameChanged()
-    {
-        if (!string.IsNullOrWhiteSpace(_regSlug) && _regSlug != _regAutoSlugValue)
-            return;
-
-        var generated = SlugifyName(_regFirstName, _regLastName);
-        if (generated == _regAutoSlugValue)
-            return;
-
-        _regAutoSlugValue = generated;
-        _regSlug = generated;
-        await AfterRegSlugChanged();
-    }
-
-    private static string SlugifyName(string firstName, string lastName)
-    {
-        var combined = $"{firstName} {lastName}".Trim();
-        if (string.IsNullOrWhiteSpace(combined))
-            return "";
-
-        var normalized = combined.Normalize(System.Text.NormalizationForm.FormD);
-        var sb = new System.Text.StringBuilder();
-        foreach (var c in normalized)
-        {
-            if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c)
-                != System.Globalization.UnicodeCategory.NonSpacingMark)
-            {
-                sb.Append(c);
-            }
-        }
-
-        var ascii = sb.ToString().Normalize(System.Text.NormalizationForm.FormC);
-        var slug = System.Text.RegularExpressions.Regex.Replace(ascii.ToLowerInvariant(), @"[^a-z0-9]+", "-").Trim('-');
-        return slug.Length > 40 ? slug[..40].Trim('-') : slug;
-    }
-
-    private async Task AfterRegSlugChanged()
-    {
-        _regSlug = _regSlug.Trim().ToLowerInvariant();
-        _regSlugAvailable = null;
-
-        if (!IsRegSlugFormatValid) return;
-
-        _regSlugCts?.Cancel();
-        _regSlugCts = new CancellationTokenSource();
-        var token = _regSlugCts.Token;
-
-        _regCheckingSlug = true;
-        StateHasChanged();
-
-        try
-        {
-            await Task.Delay(500, token);
-            if (token.IsCancellationRequested) return;
-
-            var result = await Api.GetAsync<SlugCheckResult>($"api/tenants/check-slug/{Uri.EscapeDataString(_regSlug)}");
-            if (result is not null)
-                _regSlugAvailable = result.Available;
-        }
-        catch (OperationCanceledException) { }
-        catch { }
-        finally
-        {
-            _regCheckingSlug = false;
-            StateHasChanged();
-        }
-    }
-
-    private async Task RegisterTeacherAsync()
-    {
-        _regBusy = true;
-        _regError = null;
-        _regSuccess = null;
-        try
-        {
-            if (string.IsNullOrWhiteSpace(_regSchoolName)
-                || string.IsNullOrWhiteSpace(_regSlug)
-                || string.IsNullOrWhiteSpace(_regFirstName) || string.IsNullOrWhiteSpace(_regLastName))
-            {
-                _regError = L["Error_FillAllFields"];
-                return;
-            }
-
-            if (!IsRegSlugFormatValid)
-            {
-                _regError = L["Error_InvalidSubdomain"];
-                return;
-            }
-
-            if (_regSlugAvailable == false)
-            {
-                _regError = L["Error_SlugTaken"];
-                return;
-            }
-
-            if (!_regAcceptedConduct)
-            {
-                _regError = L["TeacherConduct_MustAccept"];
-                return;
-            }
-
-            if (string.IsNullOrWhiteSpace(_regCountry))
-            {
-                _regError = L["Expert_RegisterCountryRequired"];
-                return;
-            }
-
-            object? initialOffering = null;
-            if (_regCreateOffer)
-            {
-                if (string.IsNullOrWhiteSpace(_regOfferTitle))
-                {
-                    _regError = L["Expert_OfferTitleRequired"];
-                    return;
-                }
-
-                if (_regOfferPrice <= 0)
-                {
-                    _regError = _regOfferBillingMode == "monthly"
-                        ? L["Expert_OfferMonthlyRate"] + " — " + L["Error_FillAllFields"]
-                        : L["Expert_OfferHourlyRate"] + " — " + L["Error_FillAllFields"];
-                    return;
-                }
-
-                if (_regOfferBillingMode == "monthly" && _regOfferHoursPerWeek <= 0)
-                {
-                    _regError = L["Expert_OfferHoursPerWeekRequired"];
-                    return;
-                }
-
-                var slots = _regOfferDaySlots
-                    .Where(kv => kv.Value.Enabled && !string.IsNullOrWhiteSpace(kv.Value.Time))
-                    .Select(kv => new { day = kv.Key, time = kv.Value.Time })
-                    .ToList();
-                if (slots.Count == 0)
-                {
-                    _regError = L["Expert_OfferSlotsRequired"];
-                    return;
-                }
-
-                var isMonthly = _regOfferBillingMode == "monthly";
-                var sessionMinutes = _regOfferSessionDuration > 0 ? _regOfferSessionDuration : 60;
-                var sessionsPerWeek = isMonthly
-                    ? Math.Max(1, (int)Math.Ceiling((double)_regOfferHoursPerWeek * 60 / sessionMinutes))
-                    : slots.Count;
-                var sessionCount = Math.Max(1, sessionsPerWeek * 4);
-
-                initialOffering = new
-                {
-                    title = _regOfferTitle.Trim(),
-                    description = string.IsNullOrWhiteSpace(_regOfferDescription) ? null : _regOfferDescription,
-                    subject = string.IsNullOrWhiteSpace(_regOfferSubject) ? null : _regOfferSubject,
-                    price = _regOfferPrice,
-                    currency = string.IsNullOrWhiteSpace(_regOfferCurrency) ? "CAD" : _regOfferCurrency,
-                    durationDays = isMonthly ? 30 : 7,
-                    sessionCount,
-                    frequency = isMonthly
-                        ? $"{_regOfferHoursPerWeek:0.##} h/semaine · forfait mensuel"
-                        : $"Taux horaire · {sessionMinutes} min",
-                    mode = _regOfferMode,
-                    maxCapacity = 20,
-                    schedule = new
-                    {
-                        billingPeriod = isMonthly ? "mois" : "semaine",
-                        cadence = "weekly",
-                        sessionDurationMin = sessionMinutes,
-                        level = (string?)null,
-                        cancellationPolicy = (string?)null,
-                        slots,
-                        billingMode = isMonthly ? "monthly" : "hourly",
-                        hourlyRate = isMonthly ? (decimal?)null : _regOfferPrice,
-                        sessionRate = (decimal?)null,
-                        hoursPerWeek = isMonthly ? _regOfferHoursPerWeek : (decimal?)null
-                    }
-                };
-            }
-
-            var result = await Api.PostWithErrorAsync<RegisterTeacherResult>("api/expert/register-teacher", new
-            {
-                email = string.IsNullOrWhiteSpace(_regEmail) ? null : _regEmail.Trim(),
-                firstName = _regFirstName,
-                lastName = _regLastName,
-                schoolName = _regSchoolName,
-                slug = _regSlug.Trim().ToLowerInvariant(),
-                city = string.IsNullOrWhiteSpace(_regCity) ? null : _regCity,
-                visibleCountryCodes = _regVisibleCountries,
-                acceptedTeacherConductPolicy = true,
-                publishPublicProfile = _regPublishPublic,
-                initialOffering
-            });
-            if (result.Error is not null)
-            {
-                _regError = result.Error;
-                return;
-            }
-
-            var created = result.Value;
-            _regSuccess = created is null
-                ? L["Expert_RegisterTeacherSuccess"]
-                : $"Compte créé. Login : {created.Email}"
-                  + (string.IsNullOrWhiteSpace(created.TemporaryPassword) ? "" : $" · MDP temporaire : {created.TemporaryPassword}")
-                  + (created.CredentialsSent ? " · identifiants envoyés par e-mail." : " · e-mail non envoyé (vérifier Mail Sender).")
-                  + (created.OfferingId is not null ? " Offre créée." : "");
-
-            if (created is { IsPublicProfile: true })
-            {
-                _regSuccess = $"{_regSuccess} {L["Expert_RegisterPublicPublished"]}"
-                    + (string.IsNullOrWhiteSpace(created.PublicPath) ? "" : $" ({created.PublicPath})");
-            }
-            else if (_regPublishPublic && created is not null)
-            {
-                // Secours si l'API n'a pas encore le flag côté déploiement.
-                var pub = await Api.PostWithErrorAsync<object>(
-                    $"api/expert/teachers/{created.TenantId}/publish-profile", new { });
-                if (pub.IsSuccess)
-                    _regSuccess = $"{_regSuccess} {L["Expert_RegisterPublicPublished"]}";
-                else if (!string.IsNullOrWhiteSpace(pub.Error))
-                    _regSuccess = string.Format(L["Expert_RegisterPublicPublishFailed"], pub.Error);
-            }
-
-            var keptGroupName = _regSchoolName;
-            var keptCountry = _regCountry;
-            _regEmail = _regFirstName = _regLastName = _regCity = "";
-            _regSlug = _regAutoSlugValue = "";
-            _regSlugAvailable = null;
-            _regAcceptedConduct = false;
-            _regCreateOffer = false;
-            _regPublishPublic = true;
-            _regOfferTitle = "";
-            _regOfferDescription = _regOfferSubject = null;
-            _regOfferPrice = 0;
-            _regOfferCurrency = "CAD";
-            _regOfferBillingMode = "hourly";
-            _regOfferHoursPerWeek = 2;
-            _regOfferSessionDuration = 60;
-            _regOfferMode = "En ligne";
-            ResetRegOfferDaySlots();
-            _regSchoolName = keptGroupName;
-            _regCountry = keptCountry;
-            _regVisibleCountries = string.IsNullOrWhiteSpace(keptCountry) ? ["CM"] : [keptCountry];
-            await LoadInvitesAsync();
-        }
-        catch (Exception ex)
-        {
-            _regError = ex.Message;
-        }
-        finally { _regBusy = false; }
-    }
-
-    private void SetOfferBillingMode(string mode)
-    {
-        _regOfferBillingMode = mode is "monthly" ? "monthly" : "hourly";
-    }
-
-    private string DayFullLabel(string day) => day switch
-    {
-        "Lundi" => L["Day_Monday"],
-        "Mardi" => L["Day_Tuesday"],
-        "Mercredi" => L["Day_Wednesday"],
-        "Jeudi" => L["Day_Thursday"],
-        "Vendredi" => L["Day_Friday"],
-        "Samedi" => L["Day_Saturday"],
-        "Dimanche" => L["Day_Sunday"],
-        _ => day
+        1 => "Approuvé",
+        2 => "Refusé",
+        3 => "Modifications",
+        4 => "En évaluation",
+        5 => "Attribué",
+        _ => "En attente d’examen"
     };
-
-    private void OnRegOfferDayToggle(string day, ChangeEventArgs e)
+    private static string StatusClass(int status) => status switch
     {
-        if (!_regOfferDaySlots.TryGetValue(day, out var slot)) return;
-        var enabled = e.Value is bool b ? b : bool.TryParse(e.Value?.ToString(), out var p) && p;
-        slot.Enabled = enabled;
-        if (enabled && string.IsNullOrWhiteSpace(slot.Time))
-            slot.Time = "16:00";
-    }
-
-    private void SetRegOfferDayTime(string day, string? time)
-    {
-        if (_regOfferDaySlots.TryGetValue(day, out var slot))
-            slot.Time = string.IsNullOrWhiteSpace(time) ? "16:00" : time;
-    }
-
-    private void ResetRegOfferDaySlots()
-    {
-        foreach (var day in OfferDays)
-            _regOfferDaySlots[day] = new OfferDaySlot();
-    }
-
-    private sealed class OfferDaySlot
-    {
-        public bool Enabled { get; set; }
-        public string Time { get; set; } = "16:00";
-    }
-
-    private sealed record ExpertMyGroup(Guid Id, string Name, string? CountryCode);
-
-    private sealed class SlugCheckResult
-    {
-        public bool Available { get; set; }
-    }
-
-    private sealed record RegisterTeacherResult(
-        Guid TenantId,
-        string TenantSlug,
-        string Email,
-        bool CredentialsSent,
-        Guid? OfferingId = null,
-        string? TemporaryPassword = null,
-        string? RealEmail = null,
-        bool IsPublicProfile = false,
-        string? PublicPath = null);
-
-    private string InviteStatusLabel(int status) => status switch
-    {
-        1 => L["Expert_InviteStatus_Registered"],
-        2 => L["Expert_InviteStatus_Approved"],
-        3 => L["Expert_InviteStatus_Rejected"],
-        4 => L["Expert_InviteStatus_Expired"],
-        _ => L["Expert_InviteStatus_Sent"]
+        1 => "is-ok",
+        2 => "is-bad",
+        3 or 4 or 5 => "is-eval",
+        _ => "is-wait"
     };
-
-    private static string InviteStatusPill(int status) => status switch
+    private static string Initials(string name)
     {
-        1 => "cc-pill-type teacher",
-        2 => "cc-pill-ok",
-        3 => "cc-pill-bad",
-        4 => "cc-pill-type",
-        _ => "cc-pill-type"
+        var parts = name.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length >= 2)
+            return $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[^1][0])}";
+        return string.IsNullOrEmpty(name) ? "?" : name[..Math.Min(2, name.Length)].ToUpperInvariant();
+    }
+    private static int SubjectTone(string s) => Math.Abs(s.GetHashCode(StringComparison.OrdinalIgnoreCase)) % 5;
+    private static string? FirstText(params string?[] values) =>
+        values.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v));
+    private string DocLabel(int type) => type switch
+    {
+        0 => L["TeacherDoc_Identification"],
+        1 => L["TeacherDoc_Diploma"],
+        2 => L["TeacherDoc_Cv"],
+        3 => L["TeacherDoc_CoverLetter"],
+        _ => L["TeacherDoc_Other"]
     };
+    private static string FormatSize(long bytes) =>
+        bytes < 1024 ? $"{bytes} o" : bytes < 1024 * 1024 ? $"{bytes / 1024.0:0} Ko" : $"{bytes / (1024.0 * 1024):0.0} Mo";
+    private static Showcase? ParsePortfolio(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        try { return JsonSerializer.Deserialize<Showcase>(json, PortfolioJson); }
+        catch { return null; }
+    }
 
-    private sealed record TeacherInviteItem(
-        Guid Id,
-        string Email,
-        string? FirstName,
-        int Status,
-        DateTime SentAt,
-        DateTime? ExpiresAt,
-        DateTime? AcceptedAt,
-        Guid? AcceptedTenantId,
-        string? InvitedByUserId,
-        string? InvitedByName,
-        Guid ExpertGroupId,
-        string? ExpertGroupName,
-        string? SchoolName);
+    private sealed record RowVm(
+        Guid TenantId, string Name, string? Email, string? InvitedBy,
+        List<string> Subjects, List<string> Levels, int? Years, int Status, DateTime Date,
+        string? LogoUrl, string? AssignedTo, string? Notes);
+    private sealed record QueueItem(
+        Guid TenantId, string SchoolName, string Slug, string? Country, string? City,
+        int ApprovalStatus, DateTime CreatedAt, int AgeDays, string? OwnerEmail, string? OwnerName,
+        int DocumentCount, bool IsComplete, int ReviewPriority, string? ReviewAssignedToUserId,
+        string? ReviewAssignedToName, string? ReviewRequestNotes);
+    private sealed record DirItem(
+        Guid TenantId, string DisplayName, string? OwnerEmail, string? LogoUrl,
+        List<string>? Subjects, List<string>? Levels, int? YearsExperience, int ApprovalStatus,
+        DateTime CreatedAt, string Slug, bool IsPublicProfile);
+    private sealed record DecisionItem(Guid TenantId, string DisplayName, string? OwnerEmail, int ApprovalStatus, DateTime? DecisionAt, string? Notes);
+    private sealed record TalkItem(Guid Id, int ItemType, int Status, string Title, Guid? RelatedTeacherTenantId, DateTime? ScheduledAtUtc, DateTime CreatedAt);
+    private sealed record InviteItem(Guid Id, string Email, string? FirstName, int Status, DateTime SentAt, Guid? AcceptedTenantId, string? InvitedByName);
+    private sealed record MemberItem(Guid Id, Guid ExpertGroupId, string UserId, string Email, string FullName);
+    private sealed record MeCtx(bool IsGroupManager, Guid? GroupId, string? GroupName);
+    private sealed record ReviewDoc(Guid Id, int DocumentType, string FileName, string FileUrl, long FileSizeBytes);
+    private sealed record ReviewDetail(
+        Guid TenantId, string SchoolName, string? Description, int ApprovalStatus,
+        string? ExpertApprovalNotes, DateTime? ExpertApprovedAt, string? OwnerEmail, string? OwnerName,
+        string? Presentation, string? Portfolio, string? LogoUrl, List<ReviewDoc>? Documents);
+    private sealed record Cred(string? Title, string? Institution, string? Year);
+    private sealed record Showcase(int YearsExperience, List<Cred>? Diplomas, List<Cred>? Certifications, List<string>? Subjects, List<string>? Levels);
 }

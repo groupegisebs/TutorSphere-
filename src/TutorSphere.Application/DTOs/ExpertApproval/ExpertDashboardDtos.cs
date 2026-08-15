@@ -56,6 +56,14 @@ public record ExpertApprovalQueueItemDto(
     string? ReviewAssignedToName,
     string? ReviewRequestNotes);
 
+public record TeacherDecisionItemDto(
+    Guid TenantId,
+    string DisplayName,
+    string? OwnerEmail,
+    ExpertApprovalStatus ApprovalStatus,
+    DateTime? DecisionAt,
+    string? Notes);
+
 public record AssignReviewRequest(string? AssigneeUserId, bool Urgent = false);
 
 public record RequestChangesRequest(string Notes);
