@@ -1,4 +1,3 @@
-@implements IDisposable
 @using TutorSphere.Application.Options
 @inject AuthService Auth
 @inject ApiClient Api
@@ -22,13 +21,20 @@
                 <i class="bi bi-speedometer2" aria-hidden="true"></i>
                 <span>Tableau de bord</span>
             </NavLink>
-            <NavLink class="cc-nav-link" href="expert/activity" Match="NavLinkMatch.Prefix">
-                <i class="bi bi-activity" aria-hidden="true"></i>
-                <span>Journal d'activité</span>
-            </NavLink>
+            @if (_isManager)
+            {
+                <NavLink class="@SpaceNavClass" href="group-admin/dashboard" Match="NavLinkMatch.Prefix">
+                    <i class="bi bi-building-gear" aria-hidden="true"></i>
+                    <span>Espace Responsable</span>
+                </NavLink>
+            }
             <NavLink class="cc-nav-link" href="expert/reports" Match="NavLinkMatch.Prefix">
                 <i class="bi bi-file-earmark-bar-graph" aria-hidden="true"></i>
                 <span>Rapports</span>
+            </NavLink>
+            <NavLink class="cc-nav-link" href="expert/activity" Match="NavLinkMatch.Prefix">
+                <i class="bi bi-activity" aria-hidden="true"></i>
+                <span>Journal d'activité</span>
             </NavLink>
         </CollapsibleNavSection>
 
@@ -49,10 +55,13 @@
                     <span class="ex-nav-badge">@_approvalCount</span>
                 }
             </NavLink>
-            <NavLink class="cc-nav-link" href="expert/my-tasks" Match="NavLinkMatch.Prefix">
-                <i class="bi bi-clipboard-check" aria-hidden="true"></i>
-                <span>Mes tâches</span>
-            </NavLink>
+            @if (!_isManager)
+            {
+                <NavLink class="cc-nav-link" href="expert/my-tasks" Match="NavLinkMatch.Prefix">
+                    <i class="bi bi-clipboard-check" aria-hidden="true"></i>
+                    <span>Mes tâches</span>
+                </NavLink>
+            }
             <NavLink class="cc-nav-link" href="expert/interviews" Match="NavLinkMatch.Prefix">
                 <i class="bi bi-camera-video" aria-hidden="true"></i>
                 <span>Entretiens</span>
@@ -65,7 +74,7 @@
                 <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
                 <span>Réévaluations</span>
             </NavLink>
-            @if (Modules.Disciplines)
+            @if (!_isManager && Modules.Disciplines)
             {
                 <NavLink class="cc-nav-link" href="expert/disciplines" Match="NavLinkMatch.Prefix">
                     <i class="bi bi-book" aria-hidden="true"></i>
@@ -77,10 +86,6 @@
         @if (_isManager)
         {
             <CollapsibleNavSection Title="Gestion du groupe" SectionKey="gestion" DefaultOpen="true">
-                <NavLink class="@SpaceNavClass" href="group-admin/dashboard" Match="NavLinkMatch.Prefix">
-                    <i class="bi bi-building-gear" aria-hidden="true"></i>
-                    <span>Espace Responsable</span>
-                </NavLink>
                 <NavLink class="cc-nav-link" href="group-admin/members" Match="NavLinkMatch.Prefix">
                     <i class="bi bi-people" aria-hidden="true"></i>
                     <span>Membres</span>
@@ -150,8 +155,7 @@
 @code {
     private bool _isManager;
     private int _approvalCount;
-    private bool _inGroupSpace;
-    private string SpaceNavClass => _inGroupSpace ? "cc-nav-link is-space" : "cc-nav-link";
+    private string SpaceNavClass => _isManager ? "cc-nav-link is-space" : "cc-nav-link";
 
     protected override async Task OnInitializedAsync()
     {
@@ -163,8 +167,6 @@
         }
         catch { }
 
-        RefreshSpace();
-        Nav.LocationChanged += OnLocationChanged;
         try
         {
             var queue = await Api.GetAsync<List<QueuePeek>>("api/expert/approvals-queue");
@@ -172,20 +174,6 @@
         }
         catch { }
     }
-
-    private void RefreshSpace()
-    {
-        var path = Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0].Trim('/').ToLowerInvariant();
-        _inGroupSpace = path.StartsWith("group-admin");
-    }
-
-    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
-    {
-        RefreshSpace();
-        InvokeAsync(StateHasChanged);
-    }
-
-    public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
 
     private Task LogoutAsync()
     {

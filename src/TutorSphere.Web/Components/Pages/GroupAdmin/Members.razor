@@ -14,9 +14,12 @@
     <Authorized>
         <div class="ex-gm">
             <div class="cc-toolbar ex-toolbar">
-                <div>
-                    <h1 class="cc-page-title"><i class="bi bi-people"></i> Membres du groupe</h1>
-                    <p class="cc-page-sub">Gérez les membres de votre groupe, leurs rôles, permissions et responsabilités.</p>
+                <div class="ex-page-head">
+                    <span class="ex-page-icon"><i class="bi bi-people" aria-hidden="true"></i></span>
+                    <div>
+                        <h1 class="cc-page-title">Membres du groupe</h1>
+                        <p class="cc-page-sub">Gérez les membres de votre groupe, leurs rôles, permissions et responsabilités.</p>
+                    </div>
                 </div>
                 <div class="d-flex gap-2 flex-wrap">
                     <button type="button" class="cc-btn ex-btn-export" @onclick="ExportCsvAsync"><i class="bi bi-download"></i> Exporter</button>
@@ -101,27 +104,36 @@
                                 <input class="form-control" placeholder="Rechercher un membre..."
                                        @bind="_search" @bind:event="oninput" @bind:after="OnFilterChanged" />
                             </div>
-                            <select class="form-select" @bind="_roleFilter" @bind:after="OnFilterChanged">
-                                <option value="">Tous les rôles</option>
-                                <option value="1">Responsable</option>
-                                <option value="4">Expert senior</option>
-                                <option value="0">Expert</option>
-                                <option value="5">Observateur</option>
-                            </select>
-                            <select class="form-select" @bind="_statusFilter" @bind:after="OnFilterChanged">
-                                <option value="">Tous les statuts</option>
-                                <option value="0">Actif</option>
-                                <option value="1">Suspendu</option>
-                                <option value="invite">Invitation envoyée</option>
-                                <option value="2">Désactivé</option>
-                            </select>
-                            <select class="form-select" @bind="_specFilter" @bind:after="OnFilterChanged">
-                                <option value="">Toutes les spécialités</option>
-                                @foreach (var s in SpecialtyOptions)
-                                {
-                                    <option value="@s">@s</option>
-                                }
-                            </select>
+                            <div class="ex-filter-field">
+                                <label>Rôle</label>
+                                <select class="form-select" @bind="_roleFilter" @bind:after="OnFilterChanged">
+                                    <option value="">Tous les rôles</option>
+                                    <option value="1">Responsable</option>
+                                    <option value="4">Expert senior</option>
+                                    <option value="0">Expert</option>
+                                    <option value="5">Observateur</option>
+                                </select>
+                            </div>
+                            <div class="ex-filter-field">
+                                <label>Statut</label>
+                                <select class="form-select" @bind="_statusFilter" @bind:after="OnFilterChanged">
+                                    <option value="">Tous les statuts</option>
+                                    <option value="0">Actif</option>
+                                    <option value="1">Suspendu</option>
+                                    <option value="invite">Invitation envoyée</option>
+                                    <option value="2">Désactivé</option>
+                                </select>
+                            </div>
+                            <div class="ex-filter-field">
+                                <label>Spécialité</label>
+                                <select class="form-select" @bind="_specFilter" @bind:after="OnFilterChanged">
+                                    <option value="">Toutes les spécialités</option>
+                                    @foreach (var s in SpecialtyOptions)
+                                    {
+                                        <option value="@s">@s</option>
+                                    }
+                                </select>
+                            </div>
                             <button type="button" class="cc-btn" @onclick="() => _showAdvanced = !_showAdvanced">
                                 <i class="bi bi-funnel"></i> Filtres
                             </button>
@@ -267,6 +279,7 @@
                                             <option value="10">10 par page</option>
                                             <option value="20">20 par page</option>
                                         </select>
+                                        <button type="button" class="cc-btn btn-sm" disabled="@(_page <= 1)" @onclick="FirstPage">«</button>
                                         <button type="button" class="cc-btn btn-sm" disabled="@(_page <= 1)" @onclick="PrevPage">‹</button>
                                         @for (var i = 1; i <= PageCount; i++)
                                         {
@@ -274,6 +287,7 @@
                                             <button type="button" class="ex-page-n @(_page == p ? "is-on" : null)" @onclick="() => GoPage(p)">@p</button>
                                         }
                                         <button type="button" class="cc-btn btn-sm" disabled="@(_page >= PageCount)" @onclick="NextPage">›</button>
+                                        <button type="button" class="cc-btn btn-sm" disabled="@(_page >= PageCount)" @onclick="LastPage">»</button>
                                     </div>
                                 </div>
                             }
@@ -674,8 +688,10 @@
     }
 
     private void OnPageSizeChanged() => _page = 1;
+    private void FirstPage() => _page = 1;
     private void PrevPage() { if (_page > 1) _page--; }
     private void NextPage() { if (_page < PageCount) _page++; }
+    private void LastPage() => _page = PageCount;
     private void GoPage(int p) => _page = p;
 
     private void ResetFilters()

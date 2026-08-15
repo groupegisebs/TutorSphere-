@@ -11,12 +11,15 @@
 
 <AuthorizeView Roles="Expert,GroupManager,SuperAdmin,PlatformAdmin">
     <Authorized>
-        <div class="cc-toolbar">
-            <div>
-                <h1 class="cc-page-title"><i class="bi bi-people"></i> Admissions des Experts</h1>
-                <p class="cc-page-sub">
-                    Invitez et gérez les candidatures des experts souhaitant rejoindre votre groupe.
-                </p>
+        <div class="cc-toolbar ex-toolbar">
+            <div class="ex-page-head">
+                <span class="ex-page-icon"><i class="bi bi-people" aria-hidden="true"></i></span>
+                <div>
+                    <h1 class="cc-page-title">Admissions des Experts</h1>
+                    <p class="cc-page-sub">
+                        Invitez et gérez les candidatures des experts souhaitant rejoindre votre groupe.
+                    </p>
+                </div>
             </div>
             @if (_canInvite)
             {
@@ -49,12 +52,12 @@
         else
         {
             <div class="ex-kpi-grid">
-                <div class="ex-kpi">
+                <div class="ex-kpi" data-tone="sky">
                     <span class="ex-kpi-icon"><i class="bi bi-inbox" aria-hidden="true"></i></span>
                     <div>
                         <div class="ex-kpi-label">Candidatures reçues</div>
                         <div class="ex-kpi-value">@_receivedThisMonth</div>
-                        <div class="small text-muted">ce mois-ci</div>
+                        <div class="ex-kpi-hint">ce mois-ci</div>
                     </div>
                 </div>
                 <div class="ex-kpi" data-tone="amber">
@@ -62,7 +65,7 @@
                     <div>
                         <div class="ex-kpi-label">En attente</div>
                         <div class="ex-kpi-value">@_pending.Count</div>
-                        <div class="small text-muted">à examiner</div>
+                        <div class="ex-kpi-hint">à examiner</div>
                     </div>
                 </div>
                 <div class="ex-kpi" data-tone="emerald">
@@ -70,7 +73,7 @@
                     <div>
                         <div class="ex-kpi-label">Approuvés</div>
                         <div class="ex-kpi-value">@_invites.Count(i => i.Status == 3)</div>
-                        <div class="small text-muted">membres actifs</div>
+                        <div class="ex-kpi-hint">membres actifs</div>
                     </div>
                 </div>
                 <div class="ex-kpi" data-tone="rose">
@@ -78,7 +81,7 @@
                     <div>
                         <div class="ex-kpi-label">Refusés</div>
                         <div class="ex-kpi-value">@_invites.Count(i => i.Status == 4)</div>
-                        <div class="small text-muted">ce cycle</div>
+                        <div class="ex-kpi-hint">ce cycle</div>
                     </div>
                 </div>
             </div>
@@ -153,7 +156,13 @@
                 }
 
                 <div class="cc-card">
-                    <h2 class="cc-card-title">Candidatures en attente (@_pending.Count)</h2>
+                    <div class="ex-pending-title">
+                        <h2 class="cc-card-title">Candidatures en attente (@_pending.Count)</h2>
+                        @if (_pending.Count > 0)
+                        {
+                            <button type="button" class="cc-btn btn-sm" @onclick='() => { _statusFilter = "pending"; _page = 1; }'>Voir toutes</button>
+                        }
+                    </div>
                     @if (_pending.Count == 0)
                     {
                         <div class="cc-empty py-4">
@@ -172,25 +181,34 @@
                                 <div class="ex-pending-head">
                                     <span class="ex-avatar">@Initials(inv.FirstName, inv.LastName)</span>
                                     <div class="flex-grow-1">
-                                        <strong>@inv.FirstName @inv.LastName</strong>
+                                        <div class="d-flex justify-content-between align-items-start gap-2">
+                                            <strong>@inv.FirstName @inv.LastName</strong>
+                                            <button type="button" class="cc-btn btn-sm" @onclick="() => ToggleProfile(inv.Id)">Voir le profil</button>
+                                        </div>
                                         <div class="small text-muted">@inv.Email</div>
                                         <div class="small">@(inv.Specialty ?? "—") · @(inv.IntendedRole ?? "—")</div>
                                         <div class="small text-muted">Reçu le @inv.SentAtUtc.ToLocalTime().ToString("dd MMM yyyy")</div>
                                         <span class="cc-pill @StatusPill(inv.Status)">@StatusLabel(inv.Status)</span>
                                     </div>
                                 </div>
+                                @if (_openProfileId == inv.Id)
+                                {
+                                    <p class="small mt-2 mb-1">@(string.IsNullOrWhiteSpace(inv.Presentation) ? "Aucun résumé de profil." : inv.Presentation)</p>
+                                    @if (!string.IsNullOrWhiteSpace(inv.Justification))
+                                    {
+                                        <p class="small text-muted mb-1">@inv.Justification</p>
+                                    }
+                                }
                                 <VoteProgress Approve="inv.ApprovalCount" Reject="inv.RejectCount"
                                               Abstain="inv.AbstainCount" Eligible="inv.EligibleVoterCount"
                                               Required="inv.RequiredApprovalCount" />
                                 @if (inv.Status is 2 or 7)
                                 {
-                                    <div class="d-flex gap-2 mt-2 flex-wrap">
+                                    <div class="ex-pending-actions">
                                         <button type="button" class="cc-btn cc-btn-success btn-sm" disabled="@_busy"
                                                 @onclick="() => VoteAsync(inv.Id, 0)">Approuver</button>
                                         <button type="button" class="cc-btn cc-btn-danger-text btn-sm" disabled="@_busy"
                                                 @onclick="() => AskReject(inv)">Refuser</button>
-                                        <button type="button" class="cc-btn btn-sm" disabled="@_busy"
-                                                @onclick="() => VoteAsync(inv.Id, 2)">S'abstenir</button>
                                     </div>
                                 }
                             </div>
@@ -227,15 +245,14 @@
                                 <tr>
                                     <th>Candidat</th>
                                     <th>Spécialité</th>
-                                    <th>Fonction</th>
-                                    <th>Invité par</th>
-                                    <th>Date</th>
-                                    <th>Votes</th>
+                                    <th>Fonction envisagée</th>
+                                    <th>Date de réception</th>
                                     <th>Statut</th>
+                                    <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach (var inv in _filtered)
+                                @foreach (var inv in Paged)
                                 {
                                     <tr>
                                         <td>
@@ -249,14 +266,53 @@
                                         </td>
                                         <td>@(inv.Specialty ?? "—")</td>
                                         <td>@(inv.IntendedRole ?? "—")</td>
-                                        <td>@(inv.InvitedByName ?? "—")</td>
                                         <td class="text-nowrap">@inv.SentAtUtc.ToLocalTime().ToString("dd MMM yyyy")</td>
-                                        <td>@inv.ApprovalCount / @Math.Max(inv.RequiredApprovalCount, inv.EligibleVoterCount)</td>
                                         <td><span class="cc-pill @StatusPill(inv.Status)">@StatusLabel(inv.Status)</span></td>
+                                        <td class="text-end">
+                                            <div class="ex-row-actions">
+                                                <button type="button" class="cc-btn btn-sm" @onclick="() => ToggleProfile(inv.Id)">Voir le profil</button>
+                                                <div class="ex-more">
+                                                    <button type="button" class="ex-more-btn" aria-label="Plus d'actions"
+                                                            @onclick="() => ToggleMenu(inv.Id)" @onclick:stopPropagation="true">
+                                                        <i class="bi bi-three-dots-vertical"></i>
+                                                    </button>
+                                                    @if (_menuId == inv.Id)
+                                                    {
+                                                        <div class="ex-more-menu">
+                                                            <button type="button" @onclick="() => ToggleProfile(inv.Id)">Voir le profil</button>
+                                                            @if (inv.Status is 2 or 7)
+                                                            {
+                                                                <button type="button" @onclick="() => VoteAsync(inv.Id, 0)">Approuver</button>
+                                                                <button type="button" class="text-danger" @onclick="() => AskReject(inv)">Refuser</button>
+                                                            }
+                                                        </div>
+                                                    }
+                                                </div>
+                                            </div>
+                                        </td>
                                     </tr>
                                 }
                             </tbody>
                         </table>
+                        <div class="ex-table-foot">
+                            <span>Affichage de @FromRow à @ToRow sur @_filtered.Count candidature@(_filtered.Count > 1 ? "s" : "")</span>
+                            <div class="ex-table-pager">
+                                <select class="form-select form-select-sm" @bind="_pageSize" @bind:after="OnPageSizeChanged">
+                                    <option value="10">10 par page</option>
+                                    <option value="20">20 par page</option>
+                                </select>
+                                <button type="button" class="cc-btn btn-sm" disabled="@(_page <= 1)" @onclick="FirstPage">«</button>
+                                <button type="button" class="cc-btn btn-sm" disabled="@(_page <= 1)" @onclick="PrevPage">‹</button>
+                                @for (var i = 1; i <= PageCount; i++)
+                                {
+                                    var p = i;
+                                    <button type="button" class="ex-page-n @(_page == p ? "is-on" : null)" @onclick="() => GoPage(p)">@p</button>
+                                }
+                                <button type="button" class="cc-btn btn-sm" disabled="@(_page >= PageCount)" @onclick="NextPage">›</button>
+                                <button type="button" class="cc-btn btn-sm" disabled="@(_page >= PageCount)" @onclick="LastPage">»</button>
+                            </div>
+                        </div>
+                        <button type="button" class="ex-see-all" @onclick="ShowAllApplications">Voir toutes les candidatures ›</button>
                     </div>
                 }
             </div>
@@ -303,6 +359,10 @@
     private string _statusFilter = "";
     private InviteItem? _rejectTarget;
     private bool _showGuide;
+    private int _page = 1;
+    private int _pageSize = 10;
+    private Guid? _menuId;
+    private Guid? _openProfileId;
 
     private List<InviteItem> _pending =>
         _invites.Where(i => i.Status is 0 or 1 or 2 or 7).ToList();
@@ -337,6 +397,34 @@
 
             return q.OrderByDescending(i => i.SentAtUtc).ToList();
         }
+    }
+
+    private int PageCount => Math.Max(1, (int)Math.Ceiling(_filtered.Count / (double)_pageSize));
+    private int FromRow => _filtered.Count == 0 ? 0 : ((_page - 1) * _pageSize) + 1;
+    private int ToRow => Math.Min(_filtered.Count, _page * _pageSize);
+    private IEnumerable<InviteItem> Paged
+    {
+        get
+        {
+            if (_page > PageCount) _page = PageCount;
+            return _filtered.Skip((_page - 1) * _pageSize).Take(_pageSize);
+        }
+    }
+
+    private void OnPageSizeChanged() => _page = 1;
+    private void FirstPage() => _page = 1;
+    private void PrevPage() { if (_page > 1) _page--; }
+    private void NextPage() { if (_page < PageCount) _page++; }
+    private void LastPage() => _page = PageCount;
+    private void GoPage(int p) => _page = p;
+    private void ToggleMenu(Guid id) => _menuId = _menuId == id ? null : id;
+    private void ToggleProfile(Guid id) => _openProfileId = _openProfileId == id ? null : id;
+    private void ShowAllApplications()
+    {
+        _search = "";
+        _statusFilter = "";
+        _page = 1;
+        _pageSize = Math.Max(_pageSize, _invites.Count == 0 ? 10 : _invites.Count);
     }
 
     protected override async Task OnInitializedAsync()

@@ -17,9 +17,12 @@
 <AuthorizeView Roles="Expert,GroupManager,SuperAdmin,PlatformAdmin">
     <Authorized>
         <div class="cc-toolbar ex-toolbar">
-            <div>
-                <h1 class="cc-page-title"><i class="bi bi-people"></i> Enseignants</h1>
-                <p class="cc-page-sub">Gérez les enseignants de votre groupe et suivez leur statut d'approbation et leurs performances.</p>
+            <div class="ex-page-head">
+                <span class="ex-page-icon"><i class="bi bi-people" aria-hidden="true"></i></span>
+                <div>
+                    <h1 class="cc-page-title">Enseignants</h1>
+                    <p class="cc-page-sub">Gérez les enseignants de votre groupe et suivez leur statut d'approbation et leurs performances.</p>
+                </div>
             </div>
             <div class="d-flex gap-2 flex-wrap">
                 <a class="cc-btn cc-btn-primary" href="expert/teachers/add">
@@ -90,27 +93,36 @@
                     <input class="form-control" placeholder="Rechercher un enseignant..."
                            @bind="_search" @bind:event="oninput" @bind:after="OnFilterChanged" />
                 </div>
-                <select class="form-select" @bind="_statusFilter" @bind:after="OnFilterChanged">
-                    <option value="">Statut</option>
-                    <option value="approved">Approuvé</option>
-                    <option value="pending">En attente</option>
-                    <option value="review">En évaluation</option>
-                    <option value="suspended">Suspendu</option>
-                </select>
-                <select class="form-select" @bind="_subjectFilter" @bind:after="OnFilterChanged">
-                    <option value="">Matière</option>
-                    @foreach (var s in SubjectOptions)
-                    {
-                        <option value="@s">@s</option>
-                    }
-                </select>
-                <select class="form-select" @bind="_levelFilter" @bind:after="OnFilterChanged">
-                    <option value="">Niveau enseigné</option>
-                    @foreach (var lv in LevelOptions)
-                    {
-                        <option value="@lv">@lv</option>
-                    }
-                </select>
+                <div class="ex-filter-field">
+                    <label>Statut</label>
+                    <select class="form-select" @bind="_statusFilter" @bind:after="OnFilterChanged">
+                        <option value="">Tous les statuts</option>
+                        <option value="approved">Approuvé</option>
+                        <option value="pending">En attente</option>
+                        <option value="review">En évaluation</option>
+                        <option value="suspended">Suspendu</option>
+                    </select>
+                </div>
+                <div class="ex-filter-field">
+                    <label>Matière</label>
+                    <select class="form-select" @bind="_subjectFilter" @bind:after="OnFilterChanged">
+                        <option value="">Toutes les matières</option>
+                        @foreach (var s in SubjectOptions)
+                        {
+                            <option value="@s">@s</option>
+                        }
+                    </select>
+                </div>
+                <div class="ex-filter-field">
+                    <label>Niveau enseigné</label>
+                    <select class="form-select" @bind="_levelFilter" @bind:after="OnFilterChanged">
+                        <option value="">Tous les niveaux</option>
+                        @foreach (var lv in LevelOptions)
+                        {
+                            <option value="@lv">@lv</option>
+                        }
+                    </select>
+                </div>
                 <button type="button" class="cc-btn" @onclick="ResetFilters">
                     <i class="bi bi-funnel" aria-hidden="true"></i> Filtres
                 </button>
@@ -139,7 +151,7 @@
                                 <th>Expérience</th>
                                 <th>Statut</th>
                                 <th>Date d'ajout</th>
-                                <th></th>
+                                <th>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -222,20 +234,22 @@
                         </tbody>
                     </table>
                     <div class="ex-table-foot">
-                        <span>Affichage @FromRow à @ToRow sur @_filtered.Count enseignant@(_filtered.Count > 1 ? "s" : "")</span>
+                        <span>Affichage de @FromRow à @ToRow sur @_filtered.Count enseignant@(_filtered.Count > 1 ? "s" : "")</span>
                         <div class="ex-table-pager">
                             <select class="form-select form-select-sm" @bind="_pageSize" @bind:after="OnPageSizeChanged">
                                 <option value="10">10 par page</option>
                                 <option value="20">20 par page</option>
                                 <option value="50">50 par page</option>
                             </select>
+                            <button type="button" class="cc-btn btn-sm" disabled="@(_page <= 1)" @onclick="FirstPage">«</button>
                             <button type="button" class="cc-btn btn-sm" disabled="@(_page <= 1)" @onclick="PrevPage">‹</button>
                             @for (var i = 1; i <= PageCount; i++)
                             {
                                 var p = i;
-                                <button type="button" class="cc-btn btn-sm @(_page == p ? "cc-btn-primary" : null)" @onclick="() => GoPage(p)">@p</button>
+                                <button type="button" class="ex-page-n @(_page == p ? "is-on" : null)" @onclick="() => GoPage(p)">@p</button>
                             }
                             <button type="button" class="cc-btn btn-sm" disabled="@(_page >= PageCount)" @onclick="NextPage">›</button>
+                            <button type="button" class="cc-btn btn-sm" disabled="@(_page >= PageCount)" @onclick="LastPage">»</button>
                         </div>
                     </div>
                 }
@@ -1279,8 +1293,10 @@
         OnFilterChanged();
     }
 
+    private void FirstPage() => _page = 1;
     private void PrevPage() { if (_page > 1) _page--; }
     private void NextPage() { if (_page < PageCount) _page++; }
+    private void LastPage() => _page = PageCount;
     private void GoPage(int p) => _page = p;
 
     private void ToggleMenu(Guid id) => _menuId = _menuId == id ? null : id;

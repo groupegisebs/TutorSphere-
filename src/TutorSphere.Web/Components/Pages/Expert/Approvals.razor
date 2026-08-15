@@ -17,9 +17,12 @@
 <AuthorizeView Roles="Expert,GroupManager,SuperAdmin,PlatformAdmin">
     <Authorized>
         <div class="cc-toolbar ex-toolbar">
-            <div>
-                <h1 class="cc-page-title"><i class="bi bi-person-check"></i> Approbations</h1>
-                <p class="cc-page-sub">Examinez et approuvez les enseignants invités à rejoindre votre groupe.</p>
+            <div class="ex-page-head">
+                <span class="ex-page-icon"><i class="bi bi-person-check" aria-hidden="true"></i></span>
+                <div>
+                    <h1 class="cc-page-title">Approbations</h1>
+                    <p class="cc-page-sub">Examinez et approuvez les enseignants invités à rejoindre votre groupe.</p>
+                </div>
             </div>
             <div class="d-flex gap-2 flex-wrap">
                 <button type="button" class="cc-btn" @onclick="() => _showGuide = !_showGuide">
@@ -128,6 +131,7 @@
                     <div>
                         <div class="ex-kpi-label">Approuvés ce mois</div>
                         <div class="ex-kpi-value">@ApprovedMonth</div>
+                        <div class="ex-kpi-hint">Enseignants approuvés</div>
                     </div>
                 </button>
                 <button type="button" class="ex-kpi" data-tone="rose" @onclick='() => SetBoard("done")'>
@@ -135,6 +139,7 @@
                     <div>
                         <div class="ex-kpi-label">Refusés ce mois</div>
                         <div class="ex-kpi-value">@RejectedMonth</div>
+                        <div class="ex-kpi-hint">Dossiers refusés</div>
                     </div>
                 </button>
             </div>
@@ -162,29 +167,38 @@
                             <input class="form-control" placeholder="Rechercher un enseignant..."
                                    @bind="_search" @bind:event="oninput" @bind:after="OnFilterChanged" />
                         </div>
-                        <select class="form-select" @bind="_subjectFilter" @bind:after="OnFilterChanged">
-                            <option value="">Matière</option>
-                            @foreach (var s in SubjectOptions)
-                            {
-                                <option value="@s">@s</option>
-                            }
-                        </select>
-                        <select class="form-select" @bind="_levelFilter" @bind:after="OnFilterChanged">
-                            <option value="">Niveau</option>
-                            @foreach (var lv in LevelOptions)
-                            {
-                                <option value="@lv">@lv</option>
-                            }
-                        </select>
-                        <select class="form-select" @bind="_statusFilter" @bind:after="OnFilterChanged">
-                            <option value="">Statut</option>
-                            <option value="0">En attente d’examen</option>
-                            <option value="5">Attribué</option>
-                            <option value="4">En évaluation</option>
-                            <option value="3">Modifications</option>
-                            <option value="1">Approuvé</option>
-                            <option value="2">Refusé</option>
-                        </select>
+                        <div class="ex-filter-field">
+                            <label>Matière</label>
+                            <select class="form-select" @bind="_subjectFilter" @bind:after="OnFilterChanged">
+                                <option value="">Toutes les matières</option>
+                                @foreach (var s in SubjectOptions)
+                                {
+                                    <option value="@s">@s</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="ex-filter-field">
+                            <label>Niveau</label>
+                            <select class="form-select" @bind="_levelFilter" @bind:after="OnFilterChanged">
+                                <option value="">Tous les niveaux</option>
+                                @foreach (var lv in LevelOptions)
+                                {
+                                    <option value="@lv">@lv</option>
+                                }
+                            </select>
+                        </div>
+                        <div class="ex-filter-field">
+                            <label>Statut</label>
+                            <select class="form-select" @bind="_statusFilter" @bind:after="OnFilterChanged">
+                                <option value="">Tous les statuts</option>
+                                <option value="0">En attente d’examen</option>
+                                <option value="5">Attribué</option>
+                                <option value="4">En évaluation</option>
+                                <option value="3">Modifications</option>
+                                <option value="1">Approuvé</option>
+                                <option value="2">Refusé</option>
+                            </select>
+                        </div>
                         <button type="button" class="cc-btn" @onclick="ResetFilters">
                             <i class="bi bi-funnel"></i> Filtres
                         </button>
@@ -208,8 +222,8 @@
                                         <th>Niveaux</th>
                                         <th>Expérience</th>
                                         <th>Statut</th>
-                                        <th>Date</th>
-                                        <th></th>
+                                        <th>Date d'invitation</th>
+                                        <th>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -232,7 +246,7 @@
                                                         <span>@(row.Email ?? "—")</span>
                                                         @if (!string.IsNullOrWhiteSpace(row.InvitedBy))
                                                         {
-                                                            <span>Invité par @row.InvitedBy</span>
+                                                            <span>Invité par : @row.InvitedBy</span>
                                                         }
                                                     </div>
                                                 </div>
@@ -261,22 +275,53 @@
                                             </td>
                                             <td>@row.Date.ToLocalTime().ToString("d MMM yyyy", Fr)</td>
                                             <td class="text-end" @onclick:stopPropagation="true">
-                                                <button type="button" class="cc-btn btn-sm" @onclick="() => SelectRowAsync(row)">Voir</button>
+                                                <div class="ex-row-actions">
+                                                    <button type="button" class="cc-btn btn-sm" @onclick="() => SelectRowAsync(row)">Voir le dossier</button>
+                                                    <div class="ex-more">
+                                                        <button type="button" class="ex-more-btn" aria-label="Plus d'actions"
+                                                                @onclick="() => ToggleMenu(row.TenantId)" @onclick:stopPropagation="true">
+                                                            <i class="bi bi-three-dots-vertical"></i>
+                                                        </button>
+                                                        @if (_menuId == row.TenantId)
+                                                        {
+                                                            <div class="ex-more-menu">
+                                                                <button type="button" @onclick="() => SelectRowAsync(row)">
+                                                                    <i class="bi bi-folder2-open"></i> Voir le dossier
+                                                                </button>
+                                                                @if (CanDecide(row.Status))
+                                                                {
+                                                                    <button type="button" @onclick="() => OpenInterviewFromRow(row)">
+                                                                        <i class="bi bi-camera-video"></i> Programmer un entretien
+                                                                    </button>
+                                                                    <button type="button" class="text-danger" @onclick="() => OpenRejectFromRow(row)">
+                                                                        <i class="bi bi-x-circle"></i> Refuser
+                                                                    </button>
+                                                                }
+                                                            </div>
+                                                        }
+                                                    </div>
+                                                </div>
                                             </td>
                                         </tr>
                                     }
                                 </tbody>
                             </table>
                             <div class="ex-table-foot">
-                                <span>Affichage @FromRow à @ToRow sur @_filtered.Count dossier@(_filtered.Count > 1 ? "s" : "")</span>
+                                <span>Affichage de @FromRow à @ToRow sur @_filtered.Count dossier@(_filtered.Count > 1 ? "s" : "")</span>
                                 <div class="ex-table-pager">
                                     <select class="form-select form-select-sm" @bind="_pageSize" @bind:after="() => { _page = 1; }">
                                         <option value="10">10 par page</option>
                                         <option value="20">20 par page</option>
                                     </select>
-                                    <button type="button" class="cc-btn btn-sm" disabled="@(_page <= 1)" @onclick="() => _page--">‹</button>
-                                    <span>@_page / @PageCount</span>
-                                    <button type="button" class="cc-btn btn-sm" disabled="@(_page >= PageCount)" @onclick="() => _page++">›</button>
+                                    <button type="button" class="cc-btn btn-sm" disabled="@(_page <= 1)" @onclick="FirstPage">«</button>
+                                    <button type="button" class="cc-btn btn-sm" disabled="@(_page <= 1)" @onclick="PrevPage">‹</button>
+                                    @for (var i = 1; i <= PageCount; i++)
+                                    {
+                                        var p = i;
+                                        <button type="button" class="ex-page-n @(_page == p ? "is-on" : null)" @onclick="() => GoPage(p)">@p</button>
+                                    }
+                                    <button type="button" class="cc-btn btn-sm" disabled="@(_page >= PageCount)" @onclick="NextPage">›</button>
+                                    <button type="button" class="cc-btn btn-sm" disabled="@(_page >= PageCount)" @onclick="LastPage">»</button>
                                 </div>
                             </div>
                         }
@@ -286,15 +331,18 @@
                 @if (_selected is RowVm sel)
                 {
                     <aside class="cc-card ex-approve-drawer">
+                        <div class="ex-drawer-titlebar">
+                            <strong>Dossier du candidat</strong>
+                            <button type="button" class="ex-more-btn" @onclick="CloseDrawer" aria-label="Fermer">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        </div>
                         <div class="ex-drawer-head">
                             <span class="ex-teacher-avatar">@Initials(sel.Name)</span>
                             <div>
                                 <strong>@sel.Name</strong>
                                 <span>@(sel.Email ?? "—")</span>
                             </div>
-                            <button type="button" class="ex-more-btn" @onclick="CloseDrawer" aria-label="Fermer">
-                                <i class="bi bi-x-lg"></i>
-                            </button>
                         </div>
                         <div class="ex-drawer-meta">
                             <span><i class="bi bi-book"></i> @(sel.Subjects.Count == 0 ? "—" : string.Join(", ", sel.Subjects.Take(2)))</span>
@@ -405,7 +453,6 @@
                             <div class="ex-drawer-actions">
                                 <button type="button" class="ex-btn-danger" disabled="@_busy" @onclick="RejectAsync">Refuser le dossier</button>
                                 <button type="button" class="cc-btn" disabled="@_busy" @onclick="ScheduleInterviewAsync">Programmer un entretien</button>
-                                <a class="cc-btn" href="@($"expert/demonstrations?teacher={sel.TenantId}")">Planifier une démonstration</a>
                                 <button type="button" class="ex-btn-ok" disabled="@_busy" @onclick="ApproveAsync">Approuver</button>
                             </div>
                         }
@@ -482,6 +529,7 @@
     private DateTime? _interviewAt;
     private int _page = 1;
     private int _pageSize = 10;
+    private Guid? _menuId;
 
     private List<QueueItem> _queue = [];
     private List<DirItem> _directory = [];
@@ -512,6 +560,11 @@
     private int FromRow => _filtered.Count == 0 ? 0 : ((_page - 1) * _pageSize) + 1;
     private int ToRow => Math.Min(_filtered.Count, _page * _pageSize);
     private IEnumerable<RowVm> Paged => _filtered.Skip((_page - 1) * _pageSize).Take(_pageSize);
+    private void FirstPage() { if (_page > 1) _page = 1; }
+    private void PrevPage() { if (_page > 1) _page--; }
+    private void NextPage() { if (_page < PageCount) _page++; }
+    private void LastPage() => _page = PageCount;
+    private void GoPage(int p) => _page = p;
 
     private IEnumerable<string> SubjectOptions => _directory.SelectMany(d => d.Subjects ?? []).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(s => s);
     private IEnumerable<string> LevelOptions => _directory.SelectMany(d => d.Levels ?? []).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(s => s);
@@ -661,6 +714,7 @@
 
     private async Task SelectRowAsync(RowVm row)
     {
+        _menuId = null;
         _selected = row;
         _drawerTab = "sum";
         _showReject = _showInterview = false;
@@ -673,6 +727,20 @@
         }
         catch (Exception ex) { _error = ex.Message; }
         finally { _detailLoading = false; }
+    }
+
+    private void ToggleMenu(Guid id) => _menuId = _menuId == id ? null : id;
+
+    private async Task OpenInterviewFromRow(RowVm row)
+    {
+        await SelectRowAsync(row);
+        await ScheduleInterviewAsync();
+    }
+
+    private async Task OpenRejectFromRow(RowVm row)
+    {
+        await SelectRowAsync(row);
+        await RejectAsync();
     }
 
     private void CloseDrawer()

@@ -3,8 +3,12 @@
 @inject AuthService Auth
 @inject ApiClient Api
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <div class="ex-topbar-left">
+    <button type="button" class="ex-hamburger" aria-label="Menu" @onclick="ToggleSidebarAsync">
+        <i class="bi bi-list" aria-hidden="true"></i>
+    </button>
     <nav class="ex-crumbtrail" aria-label="Fil d'Ariane">
         @foreach (var crumb in Breadcrumbs)
         {
@@ -117,7 +121,7 @@
                 "expert/documents" => new[] { "Gestion du groupe", "Documents" },
                 "expert/disciplines" => new[] { "Enseignants", "Disciplines" },
                 "group-admin/members" or "expert/members" => new[] { "Gestion du groupe", "Membres" },
-                "expert/admissions" => new[] { "Gestion du groupe", "Admissions" },
+                "expert/admissions" => new[] { "Admissions des Experts" },
                 "expert/offers" => new[] { "Gestion du groupe", "Offres du groupe" },
                 "group-admin/tasks" => new[] { "Gestion du groupe", "Tâches & délégations" },
                 "expert/messages" => new[] { "Communication", "Messagerie du groupe" },
@@ -166,6 +170,16 @@
 
     private void ToggleMenu() => _menuOpen = !_menuOpen;
     private void CloseMenu() => _menuOpen = false;
+
+    private async Task ToggleSidebarAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("eval",
+                "document.getElementById('cc-shell')?.classList.toggle('is-collapsed')");
+        }
+        catch { }
+    }
 
     private Task LogoutAsync()
     {
