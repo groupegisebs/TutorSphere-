@@ -334,6 +334,7 @@ public class ExpertApprovalsController : ControllerBase
                 isGroupManager = true,
                 groupId = acting.Id,
                 groupName = acting.Name,
+                userId = UserId,
                 isPlatformActAs = _groupAccess.IsPlatformAdmin(User) && ActAsGroupId.HasValue
             });
         }
@@ -350,7 +351,7 @@ public class ExpertApprovalsController : ControllerBase
                 groupName = my.Name;
             }
         }
-        return Ok(new { isGroupManager = isManager, groupId, groupName, isPlatformActAs = false });
+        return Ok(new { isGroupManager = isManager, groupId, groupName, userId = UserId, isPlatformActAs = false });
     }
 
     [HttpGet("my-group/settings")]
@@ -386,9 +387,11 @@ public class ExpertApprovalsController : ControllerBase
             {
                 // Platform act-as: update via approvals using group resolution
                 var group = await _groupAccess.RequireManagedGroupIdAsync(User, gid, ct);
-                return Ok(await _approvals.UpdateGroupSettingsAsAdminAsync(group, request?.Description, ct));
+                return Ok(await _approvals.UpdateGroupSettingsAsAdminAsync(
+                    group, request?.Description, request?.TeacherApprovalTrack, ct));
             }
-            return Ok(await _approvals.UpdateMyGroupSettingsAsync(UserId, request?.Description, ct));
+            return Ok(await _approvals.UpdateMyGroupSettingsAsync(
+                UserId, request?.Description, request?.TeacherApprovalTrack, ct));
         }
         catch (InvalidOperationException ex)
         {

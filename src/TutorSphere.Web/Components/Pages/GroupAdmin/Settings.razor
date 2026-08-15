@@ -11,7 +11,7 @@
         <div class="cc-toolbar">
             <div>
                 <h1 class="cc-page-title">Paramètres du groupe</h1>
-                <p class="cc-page-sub">Description publique modifiable. Pays, type et Responsable : Super Admin uniquement.</p>
+                <p class="cc-page-sub">Description publique et processus d’approbation des enseignants. Pays, type et Responsable : Super Admin uniquement.</p>
             </div>
         </div>
 
@@ -42,6 +42,28 @@
                     <label class="form-label">Description publique</label>
                     <textarea class="form-control" rows="4" @bind="_description"></textarea>
                 </div>
+                <fieldset class="mb-3">
+                    <legend class="form-label">Processus d’approbation des enseignants</legend>
+                    <p class="small text-muted">Les diplômes et l’entretien disent qui est l’enseignant. La démonstration vérifie comment il enseigne. Elle n’est pas obligatoire pour tous les groupes.</p>
+                    <div class="ex-track-list">
+                        <label class="ex-track @( _track == 0 ? "is-on" : null)">
+                            <input type="radio" name="track" checked="@(_track == 0)" @onchange="() => _track = 0" />
+                            <span><strong>Dossier → Approbation</strong><small>Vérification du dossier, puis décision.</small></span>
+                        </label>
+                        <label class="ex-track @( _track == 1 ? "is-on" : null)">
+                            <input type="radio" name="track" checked="@(_track == 1)" @onchange="() => _track = 1" />
+                            <span><strong>Dossier → Entretien → Approbation</strong><small>Un entretien est exigé avant l’approbation définitive.</small></span>
+                        </label>
+                        <label class="ex-track @( _track == 3 ? "is-on" : null)">
+                            <input type="radio" name="track" checked="@(_track == 3)" @onchange="() => _track = 3" />
+                            <span><strong>Dossier → Démonstration → Approbation</strong><small>Une démonstration pédagogique réussie est exigée, sans entretien obligatoire.</small></span>
+                        </label>
+                        <label class="ex-track @( _track == 2 ? "is-on" : null)">
+                            <input type="radio" name="track" checked="@(_track == 2)" @onchange="() => _track = 2" />
+                            <span><strong>Dossier → Entretien → Démonstration → Approbation</strong><small>Parcours complet : entretien puis cours simulé évalué par les experts.</small></span>
+                        </label>
+                    </div>
+                </fieldset>
                 <button type="button" class="cc-btn cc-btn-primary" disabled="@_busy" @onclick="SaveAsync">Enregistrer</button>
             </div>
         }
@@ -59,6 +81,7 @@
     private string _name = "";
     private string? _country;
     private string? _description;
+    private int _track;
 
     protected override async Task OnInitializedAsync()
     {
@@ -70,6 +93,7 @@
             _name = settings.Name;
             _country = settings.CountryCode;
             _description = settings.Description;
+            _track = settings.TeacherApprovalTrack;
         }
         catch (Exception ex) { _error = ex.Message; }
         finally { _loading = false; }
@@ -82,14 +106,23 @@
         _error = null;
         try
         {
-            var result = await Api.PutWithErrorAsync<GroupSettings>("api/expert/my-group/settings", new { description = _description });
+            var result = await Api.PutWithErrorAsync<GroupSettings>("api/expert/my-group/settings", new
+            {
+                description = _description,
+                teacherApprovalTrack = _track
+            });
             if (result.Error is not null) { _error = result.Error; return; }
-            if (result.Value is not null) _description = result.Value.Description;
-            _flash = "Description enregistrée.";
+            if (result.Value is not null)
+            {
+                _description = result.Value.Description;
+                _track = result.Value.TeacherApprovalTrack;
+            }
+            _flash = "Paramètres enregistrés.";
         }
         catch (Exception ex) { _error = ex.Message; }
         finally { _busy = false; }
     }
 
-    private sealed record GroupSettings(Guid Id, string Name, string? CountryCode, string? Description, bool IsInternational);
+    private sealed record GroupSettings(
+        Guid Id, string Name, string? CountryCode, string? Description, bool IsInternational, int TeacherApprovalTrack = 0);
 }

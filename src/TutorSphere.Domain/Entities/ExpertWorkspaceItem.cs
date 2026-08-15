@@ -17,6 +17,9 @@ public class ExpertWorkspaceItem : BaseEntity
     public DateTime? CompletedAtUtc { get; set; }
     public string? OutcomeNotes { get; set; }
 
+    /// <summary>JSON métier (ex. démonstration pédagogique : matière, grille, recommandation).</summary>
+    public string? PayloadJson { get; set; }
+
     public ExpertGroup ExpertGroup { get; set; } = null!;
     public Tenant? RelatedTeacherTenant { get; set; }
 }

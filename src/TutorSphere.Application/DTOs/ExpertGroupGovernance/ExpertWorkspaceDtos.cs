@@ -30,7 +30,8 @@ public record ExpertWorkspaceItemDto(
     DateTime? ScheduledAtUtc,
     DateTime? CompletedAtUtc,
     string? OutcomeNotes,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    string? PayloadJson = null);
 
 public record CreateExpertWorkspaceItemRequest(
     ExpertWorkspaceItemType ItemType,
@@ -38,6 +39,7 @@ public record CreateExpertWorkspaceItemRequest(
     string? Description = null,
     Guid? RelatedTeacherTenantId = null,
     string? AssignedToUserId = null,
-    DateTime? ScheduledAtUtc = null);
+    DateTime? ScheduledAtUtc = null,
+    string? PayloadJson = null);
 
 public record CompleteExpertWorkspaceItemRequest(string? OutcomeNotes = null);

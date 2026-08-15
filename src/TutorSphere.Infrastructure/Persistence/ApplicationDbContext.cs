@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Domain.Common;
 using TutorSphere.Domain.Entities;
+using TutorSphere.Domain.Enums;
 using TutorSphere.Infrastructure.Identity;
 using TutorSphere.Infrastructure.MultiTenancy;
 
@@ -228,6 +229,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             e.Property(g => g.ContactPhone).HasMaxLength(50);
             e.Property(g => g.CountryCode).HasMaxLength(8);
             e.Property(g => g.ManagerAssignedByAdminId).HasMaxLength(450);
+            e.Property(g => g.TeacherApprovalTrack).HasDefaultValue(TeacherApprovalTrack.FileOnly);
             e.HasIndex(g => g.IsInternational);
             e.HasIndex(g => g.CountryCode);
             e.HasIndex(g => g.ActiveManagerMandateId);
@@ -371,6 +373,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             e.Property(i => i.CreatedByUserId).HasMaxLength(450).IsRequired();
             e.Property(i => i.AssignedToUserId).HasMaxLength(450);
             e.Property(i => i.OutcomeNotes).HasMaxLength(2000);
+            e.Property(i => i.PayloadJson).HasMaxLength(8000);
             e.HasIndex(i => new { i.ExpertGroupId, i.ItemType, i.Status });
             e.HasOne(i => i.ExpertGroup).WithMany().HasForeignKey(i => i.ExpertGroupId)
                 .OnDelete(DeleteBehavior.Cascade);

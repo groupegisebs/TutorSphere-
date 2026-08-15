@@ -40,6 +40,11 @@ public class ExpertGroup : BaseEntity
     public DateTime? ManagerAssignedAtUtc { get; set; }
     public string? ManagerAssignedByAdminId { get; set; }
 
+    /// <summary>
+    /// Processus d'approbation des enseignants. Par défaut dossier seul (la démonstration n'est pas imposée).
+    /// </summary>
+    public TeacherApprovalTrack TeacherApprovalTrack { get; set; } = TeacherApprovalTrack.FileOnly;
+
     public ICollection<ExpertGroupMember> Members { get; set; } = [];
     public ICollection<ExpertGroupManagerMandate> ManagerMandates { get; set; } = [];
     public ICollection<GroupOffer> Offers { get; set; } = [];

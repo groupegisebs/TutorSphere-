@@ -1,0 +1,929 @@
+@page "/expert/demonstrations"
+@layout ExpertLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using System.Globalization
+@using System.Text
+@using System.Text.Json
+@using TutorSphere.Application.DTOs.ExpertGroupGovernance
+@using TutorSphere.Domain.Enums
+@inject AuthService Auth
+@inject ApiClient Api
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject IConfiguration Config
+
+<PageTitle>Démonstrations pédagogiques — TutorSphere</PageTitle>
+
+<AuthorizeView Roles="Expert,GroupManager,SuperAdmin,PlatformAdmin">
+    <Authorized>
+        <div class="cc-toolbar ex-toolbar">
+            <div>
+                <p class="ex-crumb">Enseignants <span>/</span> <strong>Démonstrations</strong></p>
+                <h1 class="cc-page-title">Démonstrations pédagogiques</h1>
+                <p class="cc-page-sub">Vérifiez comment l’enseignant donne réellement un cours, avant une approbation définitive ou lors d’une réévaluation.</p>
+            </div>
+            <div class="d-flex gap-2 flex-wrap">
+                <button type="button" class="cc-btn" @onclick="ExportCsvAsync">
+                    <i class="bi bi-download"></i> Exporter
+                </button>
+                <button type="button" class="cc-btn cc-btn-primary" @onclick="OpenPlan">
+                    <i class="bi bi-plus-lg"></i> Planifier une démonstration
+                </button>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger py-2">@_error</div>
+        }
+        @if (!string.IsNullOrEmpty(_success))
+        {
+            <div class="alert alert-success py-2">@_success</div>
+        }
+
+        <div class="alert alert-light border ex-demo-process mb-3">
+            <strong>Processus du groupe :</strong> @_trackLabel
+            <span class="text-muted"> — la démonstration n’est obligatoire que si le Responsable l’a activée dans les paramètres.</span>
+            @if (_isManager)
+            {
+                <a class="ms-2" href="group-admin/settings">Configurer</a>
+            }
+        </div>
+
+        @if (_showPlan)
+        {
+            <div class="cc-card mb-3">
+                <h2 class="cc-card-title">Planifier une démonstration</h2>
+                <p class="small text-muted">Cours simulé de 30 à 45 minutes devant un ou plusieurs experts du groupe.</p>
+                <div class="row g-2">
+                    <div class="col-md-6">
+                        <label class="form-label">Enseignant</label>
+                        <select class="form-select" @bind="_planTeacherId">
+                            <option value="">— Choisir —</option>
+                            @foreach (var t in _directory)
+                            {
+                                <option value="@t.TenantId">@t.DisplayName</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Matière</label>
+                        <input class="form-control" @bind="_planSubject" placeholder="Physique" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label">Niveau</label>
+                        <input class="form-control" @bind="_planLevel" placeholder="Secondaire" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Sujet du cours</label>
+                        <input class="form-control" @bind="_planTopic" placeholder="Les lois de Newton" />
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label">Durée</label>
+                        <select class="form-select" @bind="_planDuration">
+                            <option value="30">30 min</option>
+                            <option value="45">45 min</option>
+                            <option value="60">60 min</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Date et heure</label>
+                        <input type="datetime-local" class="form-control" @bind="_planAt" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Lieu / salle</label>
+                        <input class="form-control" @bind="_planLocation" placeholder="Salle 3 ou lien de session" />
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Évaluateurs</label>
+                        <div class="ex-eval-pick">
+                            @foreach (var m in _members)
+                            {
+                                var on = _planEvaluators.Contains(m.UserId);
+                                <label>
+                                    <input type="checkbox" checked="@on" @onchange="e => ToggleEvaluator(m.UserId, e.Value is bool b && b)" />
+                                    @(string.IsNullOrWhiteSpace(m.FullName) ? m.Email : m.FullName)
+                                </label>
+                            }
+                            @if (_members.Count == 0)
+                            {
+                                <span class="text-muted">Aucun expert dans le groupe.</span>
+                            }
+                        </div>
+                    </div>
+                    <div class="col-12 d-flex gap-2">
+                        <button type="button" class="cc-btn cc-btn-primary" disabled="@_busy" @onclick="CreateAsync">Enregistrer</button>
+                        <button type="button" class="cc-btn" @onclick="() => _showPlan = false">Annuler</button>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @if (_loading)
+        {
+            <div class="cc-empty"><span class="spinner-border"></span></div>
+        }
+        else
+        {
+            <div class="ex-teachers-kpi">
+                <button type="button" class="ex-kpi @(_tab == "all" ? "is-on" : null)" data-tone="sky" @onclick='() => SetTab("all")'>
+                    <i class="bi bi-easel ex-kpi-icon"></i>
+                    <div>
+                        <div class="ex-kpi-label">Total</div>
+                        <div class="ex-kpi-value">@TotalMonth</div>
+                        <div class="ex-kpi-hint">ce mois</div>
+                    </div>
+                </button>
+                <button type="button" class="ex-kpi @(_tab == "plan" ? "is-on" : null)" data-tone="amber" @onclick='() => SetTab("plan")'>
+                    <i class="bi bi-calendar-plus ex-kpi-icon"></i>
+                    <div>
+                        <div class="ex-kpi-label">À planifier</div>
+                        <div class="ex-kpi-value">@ToScheduleCount</div>
+                    </div>
+                </button>
+                <button type="button" class="ex-kpi @(_tab == "run" ? "is-on" : null)" data-tone="violet" @onclick='() => SetTab("run")'>
+                    <i class="bi bi-play-circle ex-kpi-icon"></i>
+                    <div>
+                        <div class="ex-kpi-label">En cours</div>
+                        <div class="ex-kpi-value">@InProgressCount</div>
+                    </div>
+                </button>
+                <button type="button" class="ex-kpi @(_tab == "done" ? "is-on" : null)" data-tone="emerald" @onclick='() => SetTab("done")'>
+                    <i class="bi bi-clipboard-check ex-kpi-icon"></i>
+                    <div>
+                        <div class="ex-kpi-label">Évaluées</div>
+                        <div class="ex-kpi-value">@EvaluatedMonth</div>
+                        <div class="ex-kpi-hint">ce mois</div>
+                    </div>
+                </button>
+                <button type="button" class="ex-kpi @(_tab == "redo" ? "is-on" : null)" data-tone="rose" @onclick='() => SetTab("redo")'>
+                    <i class="bi bi-x-circle ex-kpi-icon"></i>
+                    <div>
+                        <div class="ex-kpi-label">À reprendre</div>
+                        <div class="ex-kpi-value">@RedoCount</div>
+                    </div>
+                </button>
+            </div>
+
+            <div class="ex-approve-layout @(_selected is not null ? "has-drawer" : null)">
+                <div>
+                    <div class="cc-tabs mb-3" role="tablist">
+                        <button type="button" class="cc-tab @(_tab == "all" ? "active" : null)" @onclick='() => SetTab("all")'>Toutes (@_items.Count)</button>
+                        <button type="button" class="cc-tab @(_tab == "plan" ? "active" : null)" @onclick='() => SetTab("plan")'>À planifier (@ToScheduleCount)</button>
+                        <button type="button" class="cc-tab @(_tab == "run" ? "active" : null)" @onclick='() => SetTab("run")'>En cours (@InProgressCount)</button>
+                        <button type="button" class="cc-tab @(_tab == "done" ? "active" : null)" @onclick='() => SetTab("done")'>Évaluées (@EvaluatedCount)</button>
+                        <button type="button" class="cc-tab @(_tab == "redo" ? "active" : null)" @onclick='() => SetTab("redo")'>À reprendre (@RedoCount)</button>
+                    </div>
+
+                    <div class="cc-card ex-filter-bar ex-demo-filters mb-3">
+                        <div class="ex-filter-search">
+                            <i class="bi bi-search"></i>
+                            <input class="form-control" placeholder="Rechercher un enseignant, une matière…"
+                                   @bind="_search" @bind:event="oninput" @bind:after="OnFilterChanged" />
+                        </div>
+                        <select class="form-select" @bind="_statusFilter" @bind:after="OnFilterChanged">
+                            <option value="">Statut</option>
+                            <option value="wait">À planifier</option>
+                            <option value="booked">Planifiée</option>
+                            <option value="run">En cours</option>
+                            <option value="done">Évaluée</option>
+                            <option value="redo">À reprendre</option>
+                        </select>
+                        <select class="form-select" @bind="_subjectFilter" @bind:after="OnFilterChanged">
+                            <option value="">Matière</option>
+                            @foreach (var s in SubjectOptions)
+                            {
+                                <option value="@s">@s</option>
+                            }
+                        </select>
+                        <select class="form-select" @bind="_levelFilter" @bind:after="OnFilterChanged">
+                            <option value="">Niveau</option>
+                            @foreach (var lv in LevelOptions)
+                            {
+                                <option value="@lv">@lv</option>
+                            }
+                        </select>
+                        <input type="date" class="form-control" @bind="_from" @bind:after="OnFilterChanged" title="Début" />
+                        <input type="date" class="form-control" @bind="_to" @bind:after="OnFilterChanged" title="Fin" />
+                        <button type="button" class="cc-btn" @onclick="ResetFilters">
+                            <i class="bi bi-funnel"></i> Filtres
+                        </button>
+                    </div>
+
+                    <div class="cc-card ex-teachers-table-wrap mb-3">
+                        @if (_filtered.Count == 0)
+                        {
+                            <div class="cc-empty py-4">
+                                <i class="bi bi-easel"></i>
+                                <p>Aucune démonstration dans cet onglet.</p>
+                            </div>
+                        }
+                        else
+                        {
+                            <table class="cc-table ex-teachers-table">
+                                <thead>
+                                    <tr>
+                                        <th>Enseignant</th>
+                                        <th>Matière</th>
+                                        <th>Niveau</th>
+                                        <th>Date et heure</th>
+                                        <th>Évaluateurs</th>
+                                        <th>Statut</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var row in Paged)
+                                    {
+                                        var p = PayloadOf(row);
+                                        <tr class="@(_selected?.Id == row.Id ? "table-active" : "")"
+                                            @onclick="() => Select(row)" style="cursor:pointer">
+                                            <td>
+                                                <div class="ex-teacher-id">
+                                                    @{ var dir = DirOf(row); }
+                                                    @if (!string.IsNullOrWhiteSpace(dir?.LogoUrl))
+                                                    {
+                                                        <img src="@MediaUrlHelper.Resolve(dir.LogoUrl, Config, Nav)" alt="" />
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="ex-teacher-avatar">@Initials(TeacherName(row))</span>
+                                                    }
+                                                    <div>
+                                                        <strong>@TeacherName(row)</strong>
+                                                        <span>@(dir?.OwnerEmail ?? "—")</span>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td>
+                                                @if (string.IsNullOrWhiteSpace(p.Subject))
+                                                {
+                                                    <span class="text-muted">—</span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="ex-subj" data-tone="@SubjectTone(p.Subject)">@p.Subject</span>
+                                                }
+                                            </td>
+                                            <td>@(string.IsNullOrWhiteSpace(p.Level) ? "—" : p.Level)</td>
+                                            <td>@(row.ScheduledAtUtc is { } at ? at.ToLocalTime().ToString("d MMM yyyy · HH:mm", Fr) : "—")</td>
+                                            <td>
+                                                <div class="ex-eval-stack">
+                                                    @foreach (var ev in EvaluatorsOf(p).Take(4))
+                                                    {
+                                                        <span title="@ev.Name">@Initials(ev.Name)</span>
+                                                    }
+                                                    @if (EvaluatorsOf(p).Count == 0)
+                                                    {
+                                                        <span class="text-muted">—</span>
+                                                    }
+                                                </div>
+                                            </td>
+                                            <td>
+                                                <span class="ex-status @StatusClass(row)">
+                                                    <i></i> @StatusLabel(row)
+                                                </span>
+                                            </td>
+                                            <td class="text-end" @onclick:stopPropagation="true">
+                                                <button type="button" class="cc-btn btn-sm" @onclick="() => Select(row)">Voir détails</button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                            <div class="ex-table-foot">
+                                <span>Affichage @FromRow à @ToRow sur @_filtered.Count</span>
+                                <div class="ex-table-pager">
+                                    <button type="button" class="cc-btn btn-sm" disabled="@(_page <= 1)" @onclick="() => _page--">‹</button>
+                                    <span>@_page / @PageCount</span>
+                                    <button type="button" class="cc-btn btn-sm" disabled="@(_page >= PageCount)" @onclick="() => _page++">›</button>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                @if (_selected is WorkItem sel)
+                {
+                    var p = PayloadOf(sel);
+                    var dir = DirOf(sel);
+                    var pct = DemonstrationPayloadJson.OverallPercent(p);
+                    <aside class="cc-card ex-approve-drawer ex-demo-drawer">
+                        <div class="ex-demo-status @StatusClass(sel)">@StatusLabel(sel)</div>
+                        <div class="ex-drawer-head">
+                            <span class="ex-teacher-avatar">@Initials(TeacherName(sel))</span>
+                            <div>
+                                <strong>@TeacherName(sel)</strong>
+                                <span>@(dir?.OwnerEmail ?? "—")</span>
+                                <span>@(string.IsNullOrWhiteSpace(p.Subject) ? "—" : p.Subject)</span>
+                            </div>
+                            <button type="button" class="ex-more-btn" @onclick="() => _selected = null" aria-label="Fermer">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
+                        </div>
+                        @if (sel.Status is 0 or 1)
+                        {
+                            <button type="button" class="cc-btn cc-btn-primary w-100 mb-3" disabled="@_busy" @onclick="OpenSessionAsync">
+                                <i class="bi bi-play-fill"></i> Ouvrir la session
+                            </button>
+                        }
+                        <dl class="ex-demo-meta">
+                            <div><dt>Date</dt><dd>@(sel.ScheduledAtUtc is { } s ? s.ToLocalTime().ToString("d MMMM yyyy, HH:mm", Fr) : "—")</dd></div>
+                            <div><dt>Durée</dt><dd>@(p.DurationMinutes > 0 ? $"{p.DurationMinutes} min" : "—")</dd></div>
+                            <div><dt>Niveau</dt><dd>@(string.IsNullOrWhiteSpace(p.Level) ? "—" : p.Level)</dd></div>
+                            <div><dt>Sujet</dt><dd>@(string.IsNullOrWhiteSpace(p.Topic) ? "—" : p.Topic)</dd></div>
+                            <div><dt>Lieu</dt><dd>@(string.IsNullOrWhiteSpace(p.Location) ? "—" : p.Location)</dd></div>
+                            <div>
+                                <dt>Experts</dt>
+                                <dd>
+                                    @if (EvaluatorsOf(p).Count == 0) { <text>—</text> }
+                                    else { @string.Join(", ", EvaluatorsOf(p).Select(e => e.Name)) }
+                                </dd>
+                            </div>
+                            <div><dt>Score</dt><dd>@(pct is int sc ? $"{sc} %" : "—")</dd></div>
+                        </dl>
+
+                        <ol class="ex-demo-steps">
+                            @for (var i = 1; i <= 5; i++)
+                            {
+                                var iCopy = i;
+                                <li class="@(p.Step >= iCopy ? "is-done" : null) @(p.Step == iCopy ? "is-current" : null)">
+                                    <strong>@StepTitle(iCopy)</strong>
+                                    <span>@StepHint(iCopy, p, sel)</span>
+                                </li>
+                            }
+                        </ol>
+
+                        @if (_showGrid)
+                        {
+                            <div class="ex-demo-grid">
+                                <h3>Grille d’évaluation</h3>
+                                <p class="small text-muted">Notes sur 10 — les diplômes disent qui est l’enseignant ; ici on note comment il enseigne.</p>
+                                @foreach (var c in DemonstrationCriteria.All)
+                                {
+                                    <label class="ex-score-row">
+                                        <span>@c.Label</span>
+                                        <input type="number" min="0" max="10" class="form-control form-control-sm"
+                                               value="@ScoreOf(c.Key)"
+                                               disabled="@(sel.Status == 2)"
+                                               @onchange="e => SetScore(c.Key, e.Value?.ToString())" />
+                                    </label>
+                                }
+                                <p class="small mb-2">Votre moyenne : @(MyPercent() is int mp ? $"{mp} %" : "—")</p>
+                                @if (sel.Status != 2)
+                                {
+                                    <button type="button" class="cc-btn cc-btn-primary w-100 mb-2" disabled="@_busy" @onclick="SaveGridAsync">Enregistrer la grille</button>
+                                }
+                                <button type="button" class="cc-btn w-100" @onclick="() => _showGrid = false">Fermer</button>
+                            </div>
+                        }
+                        else if (_showReport)
+                        {
+                            <div class="ex-demo-grid">
+                                <h3>Compte rendu</h3>
+                                <textarea class="form-control mb-2" rows="4" @bind="_reportText" placeholder="Observations, points forts, axes d’amélioration…"></textarea>
+                                <label class="form-label">Recommandation</label>
+                                <select class="form-select mb-2" @bind="_recommendation">
+                                    <option value="0">— Choisir —</option>
+                                    <option value="1">Approuver</option>
+                                    <option value="2">À améliorer</option>
+                                    <option value="3">Nouvelle démonstration</option>
+                                    <option value="4">Refuser</option>
+                                </select>
+                                <button type="button" class="cc-btn cc-btn-primary w-100 mb-2" disabled="@_busy" @onclick="SaveReportAsync">Enregistrer le compte rendu</button>
+                                <button type="button" class="cc-btn w-100" @onclick="() => _showReport = false">Fermer</button>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="ex-drawer-actions">
+                                <button type="button" class="cc-btn" @onclick="OpenGrid">Voir la grille d’évaluation</button>
+                                @if (sel.Status != 2)
+                                {
+                                    <button type="button" class="cc-btn" @onclick="OpenReport">Saisir le compte rendu</button>
+                                    <button type="button" class="ex-btn-danger w-100" disabled="@_busy" @onclick="CompleteAsync">Terminer la démonstration</button>
+                                }
+                                else if (IsRedo(sel))
+                                {
+                                    <button type="button" class="cc-btn cc-btn-primary" @onclick="() => PrefillFrom(sel)">Planifier une nouvelle démonstration</button>
+                                }
+                            </div>
+                        }
+                    </aside>
+                }
+            </div>
+        }
+    </Authorized>
+    <NotAuthorized>
+        <div class="cc-card cc-empty">
+            <p>Connectez-vous pour accéder à l’espace Expert.</p>
+            <a class="cc-btn cc-btn-primary" href="/login/expert">Connexion</a>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private static readonly CultureInfo Fr = new("fr-FR");
+
+    [SupplyParameterFromQuery] public Guid? Teacher { get; set; }
+
+    private bool _loading = true;
+    private bool _busy;
+    private bool _showPlan;
+    private bool _showGrid;
+    private bool _showReport;
+    private bool _isManager;
+    private string? _error;
+    private string? _success;
+    private string _tab = "all";
+    private string _search = "";
+    private string _statusFilter = "";
+    private string _subjectFilter = "";
+    private string _levelFilter = "";
+    private DateTime? _from;
+    private DateTime? _to;
+    private int _page = 1;
+    private const int PageSize = 10;
+    private int _track;
+    private string _meUserId = "";
+    private List<WorkItem> _items = [];
+    private List<WorkItem> _filtered = [];
+    private List<DirItem> _directory = [];
+    private List<MemberItem> _members = [];
+    private WorkItem? _selected;
+
+    private string _planTeacherId = "";
+    private string _planSubject = "";
+    private string _planLevel = "";
+    private string _planTopic = "";
+    private string _planLocation = "";
+    private int _planDuration = 45;
+    private DateTime? _planAt;
+    private readonly HashSet<string> _planEvaluators = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, int> _scores = new(StringComparer.OrdinalIgnoreCase);
+    private string _reportText = "";
+    private int _recommendation;
+
+    private string _trackLabel => ((TeacherApprovalTrack)_track).Describe();
+    private int ToScheduleCount => _items.Count(i => i.Status == 0);
+    private int InProgressCount => _items.Count(i => i.Status == 1);
+    private int EvaluatedCount => _items.Count(i => i.Status == 2 && !IsRedo(i));
+    private int RedoCount => _items.Count(IsRedo);
+    private int TotalMonth => _items.Count(i => InThisMonth(i.CreatedAt));
+    private int EvaluatedMonth => _items.Count(i => i.Status == 2 && !IsRedo(i) && i.CompletedAtUtc is { } c && InThisMonth(c));
+    private int PageCount => Math.Max(1, (int)Math.Ceiling(_filtered.Count / (double)PageSize));
+    private int FromRow => _filtered.Count == 0 ? 0 : ((_page - 1) * PageSize) + 1;
+    private int ToRow => Math.Min(_filtered.Count, _page * PageSize);
+    private IEnumerable<WorkItem> Paged => _filtered.Skip((_page - 1) * PageSize).Take(PageSize);
+    private IEnumerable<string> SubjectOptions =>
+        _items.Select(i => PayloadOf(i).Subject).Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s!).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(s => s);
+    private IEnumerable<string> LevelOptions =>
+        _items.Select(i => PayloadOf(i).Level).Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s!).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(s => s);
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        await LoadAllAsync();
+        if (Teacher is Guid tid)
+        {
+            _planTeacherId = tid.ToString();
+            PrefillTeacherFields(tid);
+            _showPlan = true;
+        }
+    }
+
+    private async Task LoadAllAsync()
+    {
+        _loading = true;
+        try
+        {
+            var itemsT = Api.GetAsync<List<WorkItem>>("api/expert/workspace?type=1");
+            var dirT = Api.GetAsync<List<DirItem>>("api/expert/teacher-directory");
+            var memT = Api.GetAsync<List<MemberItem>>("api/expert/membership/members");
+            var grpT = Api.GetAsync<GroupDto>("api/expert/my-group");
+            var ctxT = Api.GetAsync<MeCtx>("api/expert/me-context");
+            await Task.WhenAll(itemsT, dirT, memT, grpT, ctxT);
+            _items = await itemsT ?? [];
+            _directory = await dirT ?? [];
+            _members = await memT ?? [];
+            var grp = await grpT;
+            _track = grp?.TeacherApprovalTrack ?? 0;
+            var ctx = await ctxT;
+            _isManager = ctx?.IsGroupManager == true;
+            _meUserId = ctx?.UserId ?? Auth.UserId ?? "";
+            if (_selected is not null)
+                _selected = _items.FirstOrDefault(i => i.Id == _selected.Id) ?? _selected;
+            OnFilterChanged();
+            _error = null;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private void SetTab(string tab)
+    {
+        _tab = tab;
+        _page = 1;
+        OnFilterChanged();
+    }
+
+    private void ResetFilters()
+    {
+        _search = _statusFilter = _subjectFilter = _levelFilter = "";
+        _from = _to = null;
+        OnFilterChanged();
+    }
+
+    private void OnFilterChanged()
+    {
+        IEnumerable<WorkItem> q = _items;
+        q = _tab switch
+        {
+            "plan" => q.Where(i => i.Status == 0),
+            "run" => q.Where(i => i.Status == 1),
+            "done" => q.Where(i => i.Status == 2 && !IsRedo(i)),
+            "redo" => q.Where(IsRedo),
+            _ => q
+        };
+        if (!string.IsNullOrWhiteSpace(_search))
+        {
+            var s = _search.Trim();
+            q = q.Where(i =>
+            {
+                var p = PayloadOf(i);
+                return TeacherName(i).Contains(s, StringComparison.OrdinalIgnoreCase)
+                    || (p.Subject?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false)
+                    || (p.Topic?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false);
+            });
+        }
+        if (!string.IsNullOrWhiteSpace(_statusFilter))
+            q = q.Where(i => StatusKey(i) == _statusFilter);
+        if (!string.IsNullOrWhiteSpace(_subjectFilter))
+            q = q.Where(i => string.Equals(PayloadOf(i).Subject, _subjectFilter, StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrWhiteSpace(_levelFilter))
+            q = q.Where(i => string.Equals(PayloadOf(i).Level, _levelFilter, StringComparison.OrdinalIgnoreCase));
+        if (_from is DateTime f)
+            q = q.Where(i => (i.ScheduledAtUtc ?? i.CreatedAt).ToLocalTime().Date >= f.Date);
+        if (_to is DateTime t)
+            q = q.Where(i => (i.ScheduledAtUtc ?? i.CreatedAt).ToLocalTime().Date <= t.Date);
+        _filtered = q.ToList();
+        if (_page > PageCount) _page = PageCount;
+    }
+
+    private void Select(WorkItem row)
+    {
+        _selected = row;
+        _showGrid = _showReport = false;
+        SyncEditorFrom(row);
+    }
+
+    private void OpenPlan()
+    {
+        _showPlan = true;
+        _success = null;
+    }
+
+    private void PrefillTeacherFields(Guid tenantId)
+    {
+        var dir = _directory.FirstOrDefault(d => d.TenantId == tenantId);
+        if (dir is null) return;
+        if (string.IsNullOrWhiteSpace(_planSubject))
+            _planSubject = dir.Subjects?.FirstOrDefault() ?? "";
+        if (string.IsNullOrWhiteSpace(_planLevel))
+            _planLevel = dir.Levels?.FirstOrDefault() ?? "";
+    }
+
+    private void PrefillFrom(WorkItem item)
+    {
+        var p = PayloadOf(item);
+        _planTeacherId = item.RelatedTeacherTenantId?.ToString() ?? "";
+        _planSubject = p.Subject ?? "";
+        _planLevel = p.Level ?? "";
+        _planTopic = p.Topic ?? "";
+        _planDuration = p.DurationMinutes <= 0 ? 45 : p.DurationMinutes;
+        _planLocation = p.Location ?? "";
+        _planEvaluators.Clear();
+        foreach (var id in p.EvaluatorUserIds)
+            _planEvaluators.Add(id);
+        _showPlan = true;
+    }
+
+    private void ToggleEvaluator(string userId, bool on)
+    {
+        if (on) _planEvaluators.Add(userId);
+        else _planEvaluators.Remove(userId);
+    }
+
+    private async Task CreateAsync()
+    {
+        if (!Guid.TryParse(_planTeacherId, out var tenantId))
+        {
+            _error = "Choisissez un enseignant.";
+            return;
+        }
+        var dir = _directory.FirstOrDefault(d => d.TenantId == tenantId);
+        var name = dir?.DisplayName ?? "Enseignant";
+        var payload = new DemonstrationPayload
+        {
+            Subject = NullIfBlank(_planSubject),
+            Level = NullIfBlank(_planLevel),
+            Topic = NullIfBlank(_planTopic),
+            DurationMinutes = _planDuration,
+            Location = NullIfBlank(_planLocation),
+            EvaluatorUserIds = _planEvaluators.ToList(),
+            Step = 1
+        };
+        _busy = true;
+        try
+        {
+            DateTime? scheduled = _planAt.HasValue
+                ? DateTime.SpecifyKind(_planAt.Value, DateTimeKind.Local).ToUniversalTime()
+                : null;
+            var result = await Api.PostWithErrorAsync<WorkItem>("api/expert/workspace", new
+            {
+                itemType = 1,
+                title = $"Démonstration — {name}",
+                description = payload.Topic,
+                relatedTeacherTenantId = tenantId,
+                assignedToUserId = _planEvaluators.FirstOrDefault(),
+                scheduledAtUtc = scheduled,
+                payloadJson = DemonstrationPayloadJson.Serialize(payload)
+            });
+            if (result.Error is not null) { _error = result.Error; return; }
+            _showPlan = false;
+            _success = "Démonstration planifiée.";
+            _error = null;
+            await LoadAllAsync();
+            if (result.Value is not null)
+                Select(result.Value);
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task OpenSessionAsync()
+    {
+        if (_selected is null) return;
+        _busy = true;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<WorkItem>($"api/expert/workspace/{_selected.Id}/start", new { });
+            if (result.Error is not null) { _error = result.Error; return; }
+            _success = "Session ouverte.";
+            await LoadAllAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private void OpenGrid()
+    {
+        if (_selected is null) return;
+        SyncEditorFrom(_selected);
+        _showGrid = true;
+        _showReport = false;
+    }
+
+    private void OpenReport()
+    {
+        if (_selected is null) return;
+        SyncEditorFrom(_selected);
+        _showReport = true;
+        _showGrid = false;
+    }
+
+    private async Task SaveGridAsync()
+    {
+        if (_selected is null) return;
+        var payload = PayloadOf(_selected);
+        if (payload.Step < 3) payload.Step = 3;
+        UpsertMySheet(payload);
+        await SavePayloadAsync(payload);
+        _success = "Grille enregistrée.";
+        _showGrid = false;
+    }
+
+    private async Task SaveReportAsync()
+    {
+        if (_selected is null) return;
+        var payload = PayloadOf(_selected);
+        payload.ReportText = NullIfBlank(_reportText);
+        payload.Recommendation = _recommendation;
+        if (payload.Step < 4) payload.Step = 4;
+        UpsertMySheet(payload);
+        await SavePayloadAsync(payload);
+        _success = "Compte rendu enregistré.";
+        _showReport = false;
+    }
+
+    private async Task CompleteAsync()
+    {
+        if (_selected is null) return;
+        var payload = PayloadOf(_selected);
+        if (payload.Recommendation == 0 && _recommendation == 0)
+        {
+            OpenReport();
+            _error = "Saisissez le compte rendu et une recommandation avant de terminer.";
+            return;
+        }
+        if (_recommendation != 0) payload.Recommendation = _recommendation;
+        if (!string.IsNullOrWhiteSpace(_reportText)) payload.ReportText = _reportText.Trim();
+        payload.Step = 5;
+        UpsertMySheet(payload);
+        _busy = true;
+        try
+        {
+            var saved = await SavePayloadAsync(payload, reload: false, manageBusy: false);
+            if (!saved) return;
+            var result = await Api.PostWithErrorAsync<WorkItem>($"api/expert/workspace/{_selected.Id}/complete",
+                new { outcomeNotes = payload.ReportText });
+            if (result.Error is not null) { _error = result.Error; return; }
+            _success = "Démonstration terminée.";
+            _error = null;
+            await LoadAllAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private async Task<bool> SavePayloadAsync(DemonstrationPayload payload, bool reload = true, bool manageBusy = true)
+    {
+        if (_selected is null) return false;
+        if (manageBusy) _busy = true;
+        try
+        {
+            var result = await Api.PutWithErrorAsync<WorkItem>($"api/expert/workspace/{_selected.Id}/payload",
+                new { payloadJson = DemonstrationPayloadJson.Serialize(payload) });
+            if (result.Error is not null) { _error = result.Error; return false; }
+            if (reload) await LoadAllAsync();
+            return true;
+        }
+        catch (Exception ex) { _error = ex.Message; return false; }
+        finally { if (manageBusy) _busy = false; }
+    }
+
+    private void UpsertMySheet(DemonstrationPayload payload)
+    {
+        if (string.IsNullOrWhiteSpace(_meUserId) || _scores.Count == 0) return;
+        payload.Sheets ??= [];
+        var sheet = payload.Sheets.FirstOrDefault(s => string.Equals(s.ExpertUserId, _meUserId, StringComparison.Ordinal));
+        if (sheet is null)
+        {
+            sheet = new DemonstrationScoreSheet { ExpertUserId = _meUserId };
+            payload.Sheets.Add(sheet);
+        }
+        sheet.Scores = new Dictionary<string, int>(_scores, StringComparer.OrdinalIgnoreCase);
+        sheet.Recommendation = _recommendation == 0 ? null : _recommendation;
+        sheet.Notes = NullIfBlank(_reportText);
+        sheet.SubmittedAtUtc = DateTime.UtcNow;
+    }
+
+    private void SyncEditorFrom(WorkItem item)
+    {
+        var p = PayloadOf(item);
+        _reportText = p.ReportText ?? "";
+        _recommendation = p.Recommendation;
+        _scores.Clear();
+        var mine = p.Sheets.FirstOrDefault(s => string.Equals(s.ExpertUserId, _meUserId, StringComparison.Ordinal));
+        if (mine?.Scores is not null)
+        {
+            foreach (var kv in mine.Scores)
+                _scores[kv.Key] = kv.Value;
+        }
+    }
+
+    private int ScoreOf(string key) => _scores.GetValueOrDefault(key);
+    private void SetScore(string key, string? raw)
+    {
+        if (int.TryParse(raw, out var n))
+            _scores[key] = Math.Clamp(n, 0, 10);
+    }
+    private int? MyPercent()
+    {
+        if (_scores.Count == 0) return null;
+        return (int)Math.Round(_scores.Values.Average() * 10);
+    }
+
+    private async Task ExportCsvAsync()
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("Enseignant;Matière;Niveau;Sujet;Date;Statut;Score");
+        foreach (var row in _filtered)
+        {
+            var p = PayloadOf(row);
+            var pct = DemonstrationPayloadJson.OverallPercent(p);
+            sb.AppendLine(string.Join(';',
+                Csv(TeacherName(row)),
+                Csv(p.Subject),
+                Csv(p.Level),
+                Csv(p.Topic),
+                row.ScheduledAtUtc?.ToLocalTime().ToString("yyyy-MM-dd HH:mm") ?? "",
+                Csv(StatusLabel(row)),
+                pct?.ToString() ?? ""));
+        }
+        var bytes = Encoding.UTF8.GetPreamble().Concat(Encoding.UTF8.GetBytes(sb.ToString())).ToArray();
+        await JS.InvokeVoidAsync("downloadFileFromBase64", "demonstrations.csv", "text/csv;charset=utf-8", Convert.ToBase64String(bytes));
+    }
+
+    private DemonstrationPayload PayloadOf(WorkItem item) => DemonstrationPayloadJson.Parse(item.PayloadJson);
+    private DirItem? DirOf(WorkItem item) =>
+        item.RelatedTeacherTenantId is Guid id ? _directory.FirstOrDefault(d => d.TenantId == id) : null;
+    private string TeacherName(WorkItem item) =>
+        item.RelatedTeacherName ?? DirOf(item)?.DisplayName ?? item.Title;
+    private List<(string Id, string Name)> EvaluatorsOf(DemonstrationPayload p)
+    {
+        var ids = p.EvaluatorUserIds ?? [];
+        return ids.Select(id =>
+        {
+            var m = _members.FirstOrDefault(x => x.UserId == id);
+            return (id, m is null ? "Expert" : (string.IsNullOrWhiteSpace(m.FullName) ? m.Email : m.FullName));
+        }).ToList();
+    }
+
+    private static bool IsRedo(WorkItem item) =>
+        item.Status == 2 && DemonstrationPayloadJson.RecommendationOf(item.PayloadJson) == DemonstrationRecommendation.Redo;
+    private static bool InThisMonth(DateTime utc)
+    {
+        var local = utc.ToLocalTime();
+        var now = DateTime.Now;
+        return local.Year == now.Year && local.Month == now.Month;
+    }
+    private static string StatusKey(WorkItem i)
+    {
+        if (IsRedo(i)) return "redo";
+        return i.Status switch
+        {
+            1 => "run",
+            2 => "done",
+            _ when i.ScheduledAtUtc.HasValue => "booked",
+            _ => "wait"
+        };
+    }
+    private static string StatusLabel(WorkItem i) => StatusKey(i) switch
+    {
+        "wait" => "À planifier",
+        "booked" => "Planifiée",
+        "run" => "En cours",
+        "redo" => "À reprendre",
+        _ => "Évaluée"
+    };
+    private static string StatusClass(WorkItem i) => StatusKey(i) switch
+    {
+        "wait" => "is-wait",
+        "booked" => "is-eval",
+        "run" => "is-eval",
+        "redo" => "is-bad",
+        _ => "is-ok"
+    };
+    private static string StepTitle(int step) => step switch
+    {
+        1 => "Démarrage",
+        2 => "Présentation",
+        3 => "Évaluation",
+        4 => "Compte rendu",
+        _ => "Décision finale"
+    };
+    private static string StepHint(int step, DemonstrationPayload p, WorkItem item)
+    {
+        if (p.Step > step) return "Terminé";
+        if (p.Step < step) return "En attente";
+        return step switch
+        {
+            1 => item.ScheduledAtUtc.HasValue ? "Planifiée" : "À planifier",
+            2 => p.SessionOpenedAtUtc is { } o ? $"Session ouverte {o.ToLocalTime():HH:mm}" : "En cours",
+            3 => "En cours",
+            4 => string.IsNullOrWhiteSpace(p.ReportText) ? "En attente" : "Rédigé",
+            _ => RecLabel(p.Recommendation)
+        };
+    }
+    private static string RecLabel(int r) => r switch
+    {
+        1 => "Approuver",
+        2 => "À améliorer",
+        3 => "Nouvelle démonstration",
+        4 => "Refuser",
+        _ => "En attente"
+    };
+    private static string Initials(string name)
+    {
+        var parts = (name ?? "").Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length >= 2)
+            return $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[^1][0])}";
+        return string.IsNullOrEmpty(name) ? "?" : name[..Math.Min(2, name.Length)].ToUpperInvariant();
+    }
+    private static int SubjectTone(string s) => Math.Abs(s.GetHashCode(StringComparison.OrdinalIgnoreCase)) % 5;
+    private static string? NullIfBlank(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+    private static string Csv(string? s) => $"\"{(s ?? "").Replace("\"", "\"\"")}\"";
+
+    private sealed record WorkItem(
+        Guid Id, Guid ExpertGroupId, int ItemType, int Status, string Title, string? Description,
+        Guid? RelatedTeacherTenantId, string? RelatedTeacherName, string CreatedByUserId,
+        string? AssignedToUserId, string? AssignedToName, DateTime? ScheduledAtUtc,
+        DateTime? CompletedAtUtc, string? OutcomeNotes, DateTime CreatedAt, string? PayloadJson);
+    private sealed record DirItem(
+        Guid TenantId, string DisplayName, string? OwnerEmail, string? LogoUrl,
+        List<string>? Subjects, List<string>? Levels);
+    private sealed record MemberItem(Guid Id, Guid ExpertGroupId, string UserId, string Email, string FullName);
+    private sealed record GroupDto(Guid Id, string Name, string? CountryCode, string? Description, bool IsInternational, int TeacherApprovalTrack);
+    private sealed record MeCtx(bool IsGroupManager, Guid? GroupId, string? GroupName, string? UserId);
+}

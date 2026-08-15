@@ -49,6 +49,7 @@ public sealed class AuthService
 
     public string? UserEmail => _authProvider.UserEmail;
     public string? UserName => _authProvider.UserName;
+    public string? UserId => _authProvider.UserId;
     public string? PrimaryRole => _authProvider.PrimaryRole;
     public string? Token => _authProvider.Token;
     public Guid? TenantId => _authProvider.TenantId;
@@ -729,6 +730,9 @@ public sealed class CustomAuthenticationStateProvider : AuthenticationStateProvi
     public bool IsAuthenticated => _user.Identity?.IsAuthenticated == true;
     public string? UserEmail => _user.FindFirst(ClaimTypes.Email)?.Value;
     public string? UserName => _user.FindFirst(ClaimTypes.Name)?.Value;
+    public string? UserId =>
+        _user.FindFirst(ClaimTypes.NameIdentifier)?.Value
+        ?? _user.FindFirst("sub")?.Value;
     public string? PrimaryRole => _user.FindFirst(ClaimTypes.Role)?.Value;
     public string? SchoolName => _user.FindFirst("tenant_name")?.Value;
     public bool MustChangePassword =>
@@ -782,6 +786,12 @@ public sealed class CustomAuthenticationStateProvider : AuthenticationStateProvi
 
         foreach (var (key, value) in ParseJwtPayloadClaims(auth.Token))
         {
+            if (key is "sub" or "nameid" or "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier")
+            {
+                if (claims.All(c => c.Type != ClaimTypes.NameIdentifier))
+                    claims.Add(new Claim(ClaimTypes.NameIdentifier, value));
+            }
+
             if (key is "tenant_id" && claims.All(c => c.Type != "tenant_id"))
                 claims.Add(new Claim("tenant_id", value));
             if (key is "tenant_name" && claims.All(c => c.Type != "tenant_name"))

@@ -50,6 +50,15 @@ public class ExpertWorkspaceController : ControllerBase
         catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
     }
 
+    [HttpPut("workspace/{id:guid}/payload")]
+    public async Task<ActionResult<ExpertWorkspaceItemDto>> UpdatePayload(
+        Guid id, [FromBody] UpdateWorkspacePayloadRequest? request, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        try { return Ok(await _workspace.UpdatePayloadAsync(id, UserId, request?.PayloadJson, ct)); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
     [HttpPost("workspace/{id:guid}/complete")]
     public async Task<ActionResult<ExpertWorkspaceItemDto>> Complete(
         Guid id, [FromBody] CompleteExpertWorkspaceItemRequest? request, CancellationToken ct)

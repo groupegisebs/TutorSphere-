@@ -112,6 +112,8 @@ public interface IExpertWorkspaceService
     Task<ExpertWorkspaceItemDto> CreateAsync(
         string expertUserId, CreateExpertWorkspaceItemRequest request, CancellationToken ct = default);
     Task<ExpertWorkspaceItemDto> StartAsync(Guid id, string expertUserId, CancellationToken ct = default);
+    Task<ExpertWorkspaceItemDto> UpdatePayloadAsync(
+        Guid id, string expertUserId, string? payloadJson, CancellationToken ct = default);
     Task<ExpertWorkspaceItemDto> CompleteAsync(
         Guid id, string expertUserId, CompleteExpertWorkspaceItemRequest request, CancellationToken ct = default);
 }
@@ -156,7 +158,8 @@ public class ExpertWorkspaceService(
             RelatedTeacherTenantId = request.RelatedTeacherTenantId,
             CreatedByUserId = expertUserId,
             AssignedToUserId = string.IsNullOrWhiteSpace(request.AssignedToUserId) ? null : request.AssignedToUserId.Trim(),
-            ScheduledAtUtc = request.ScheduledAtUtc?.ToUniversalTime()
+            ScheduledAtUtc = request.ScheduledAtUtc?.ToUniversalTime(),
+            PayloadJson = NormalizePayload(groupId, request.ItemType, request.PayloadJson)
         };
         db.Add(item);
         await db.SaveChangesAsync(ct);
@@ -180,6 +183,26 @@ public class ExpertWorkspaceService(
             throw new InvalidOperationException("Élément déjà clôturé.");
         item.Status = ExpertWorkspaceItemStatus.InProgress;
         item.AssignedToUserId ??= expertUserId;
+        if (item.ItemType == ExpertWorkspaceItemType.Demonstration)
+        {
+            var payload = DemonstrationPayloadJson.Parse(item.PayloadJson);
+            payload.SessionOpenedAtUtc ??= DateTime.UtcNow;
+            if (payload.Step < 2)
+                payload.Step = 2;
+            item.PayloadJson = PersistPayload(payload);
+        }
+        item.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return Map([item]).First();
+    }
+
+    public async Task<ExpertWorkspaceItemDto> UpdatePayloadAsync(
+        Guid id, string expertUserId, string? payloadJson, CancellationToken ct = default)
+    {
+        var item = RequireItem(id, expertUserId);
+        if (item.Status == ExpertWorkspaceItemStatus.Cancelled)
+            throw new InvalidOperationException("Élément annulé.");
+        item.PayloadJson = NormalizePayload(item.ExpertGroupId, item.ItemType, payloadJson);
         item.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
         return Map([item]).First();
@@ -191,9 +214,26 @@ public class ExpertWorkspaceService(
         var item = RequireItem(id, expertUserId);
         if (item.Status == ExpertWorkspaceItemStatus.Cancelled)
             throw new InvalidOperationException("Élément annulé.");
+
+        if (item.ItemType == ExpertWorkspaceItemType.Demonstration)
+        {
+            var payload = DemonstrationPayloadJson.Parse(item.PayloadJson);
+            if (payload.Recommendation is 0)
+                throw new InvalidOperationException(
+                    "Choisissez une recommandation : Approuver, À améliorer, Nouvelle démonstration ou Refuser.");
+            payload.Step = 5;
+            if (string.IsNullOrWhiteSpace(payload.ReportText) && !string.IsNullOrWhiteSpace(request.OutcomeNotes))
+                payload.ReportText = request.OutcomeNotes.Trim();
+            item.PayloadJson = PersistPayload(payload);
+            if (string.IsNullOrWhiteSpace(request.OutcomeNotes) && !string.IsNullOrWhiteSpace(payload.ReportText))
+                request = request with { OutcomeNotes = payload.ReportText };
+        }
+
         item.Status = ExpertWorkspaceItemStatus.Done;
         item.CompletedAtUtc = DateTime.UtcNow;
-        item.OutcomeNotes = string.IsNullOrWhiteSpace(request.OutcomeNotes) ? null : request.OutcomeNotes.Trim();
+        item.OutcomeNotes = string.IsNullOrWhiteSpace(request.OutcomeNotes)
+            ? item.OutcomeNotes
+            : Truncate(request.OutcomeNotes.Trim(), 2000);
         item.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
 
@@ -246,6 +286,39 @@ public class ExpertWorkspaceService(
             i.RelatedTeacherTenantId,
             i.RelatedTeacherTenantId is Guid tid && tenants.TryGetValue(tid, out var n) ? n : null,
             i.CreatedByUserId, i.AssignedToUserId, null,
-            i.ScheduledAtUtc, i.CompletedAtUtc, i.OutcomeNotes, i.CreatedAt)).ToList();
+            i.ScheduledAtUtc, i.CompletedAtUtc, i.OutcomeNotes, i.CreatedAt, i.PayloadJson)).ToList();
     }
+
+    private string? NormalizePayload(Guid groupId, ExpertWorkspaceItemType type, string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+            return null;
+        if (type != ExpertWorkspaceItemType.Demonstration)
+            return Truncate(json.Trim(), 8000);
+
+        var payload = DemonstrationPayloadJson.Parse(json);
+        if (payload.DurationMinutes is < 15 or > 180)
+            payload.DurationMinutes = 45;
+        payload.EvaluatorUserIds = payload.EvaluatorUserIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Select(id => id.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        foreach (var evaluatorId in payload.EvaluatorUserIds)
+            EnsureMember(groupId, evaluatorId);
+        if (payload.Step is < 1 or > 5)
+            payload.Step = 1;
+        return PersistPayload(payload);
+    }
+
+    private static string PersistPayload(DemonstrationPayload payload)
+    {
+        var json = DemonstrationPayloadJson.Serialize(payload);
+        if (json.Length > 8000)
+            throw new InvalidOperationException("Le compte rendu ou la grille dépasse la taille autorisée.");
+        return json;
+    }
+
+    private static string Truncate(string value, int max) =>
+        value.Length <= max ? value : value[..max];
 }

@@ -169,9 +169,10 @@ public record ExpertMyGroupDto(
     string Name,
     string? CountryCode,
     string? Description = null,
-    bool IsInternational = false);
+    bool IsInternational = false,
+    int TeacherApprovalTrack = 0);
 
-public record UpdateManagerGroupSettingsRequest(string? Description);
+public record UpdateManagerGroupSettingsRequest(string? Description, int? TeacherApprovalTrack = null);
 
 public record TeacherApplicationInviteDto(
     Guid Id,

@@ -41,6 +41,15 @@
             <div class="alert alert-success py-2">@_success</div>
         }
 
+        <div class="alert alert-light border ex-demo-process mb-3">
+            <strong>Processus du groupe :</strong> @_trackLabel
+            <span class="text-muted"> La démonstration n’est exigée que si ce parcours l’inclut.</span>
+            @if (_isManager)
+            {
+                <a class="ms-2" href="group-admin/settings">Configurer</a>
+            }
+        </div>
+
         @if (_showInvite)
         {
             <div class="cc-card mb-3">
@@ -382,9 +391,14 @@
 
                         @if (CanDecide(sel.Status))
                         {
+                            @if (!string.IsNullOrEmpty(ProcessGap(sel)))
+                            {
+                                <p class="small text-warning mb-2">@ProcessGap(sel)</p>
+                            }
                             <div class="ex-drawer-actions">
                                 <button type="button" class="ex-btn-danger" disabled="@_busy" @onclick="RejectAsync">Refuser le dossier</button>
                                 <button type="button" class="cc-btn" disabled="@_busy" @onclick="ScheduleInterviewAsync">Programmer un entretien</button>
+                                <a class="cc-btn" href="@($"expert/demonstrations?teacher={sel.TenantId}")">Planifier une démonstration</a>
                                 <button type="button" class="ex-btn-ok" disabled="@_busy" @onclick="ApproveAsync">Approuver</button>
                             </div>
                         }
@@ -441,6 +455,7 @@
     private bool _inviteBusy;
     private bool _assignBusy;
     private bool _isManager;
+    private int _track;
     private string? _error;
     private string? _success;
     private string? _inviteError;
@@ -464,6 +479,7 @@
     private List<DirItem> _directory = [];
     private List<DecisionItem> _decisions = [];
     private List<TalkItem> _talks = [];
+    private List<TalkItem> _demos = [];
     private List<InviteItem> _invites = [];
     private List<MemberItem> _members = [];
     private List<RowVm> _filtered = [];
@@ -477,6 +493,13 @@
     private int InterviewCount => _talks.Count(t => t.Status is 0 or 1);
     private int ApprovedMonth => _decisions.Count(d => d.ApprovalStatus == 1);
     private int RejectedMonth => _decisions.Count(d => d.ApprovalStatus == 2);
+    private string _trackLabel => _track switch
+    {
+        1 => "Dossier → Entretien → Approbation",
+        2 => "Dossier → Entretien → Démonstration → Approbation",
+        3 => "Dossier → Démonstration → Approbation",
+        _ => "Dossier → Approbation"
+    };
     private int PageCount => Math.Max(1, (int)Math.Ceiling(_filtered.Count / (double)_pageSize));
     private int FromRow => _filtered.Count == 0 ? 0 : ((_page - 1) * _pageSize) + 1;
     private int ToRow => Math.Min(_filtered.Count, _page * _pageSize);
@@ -576,16 +599,20 @@
             var queueT = Api.GetAsync<List<QueueItem>>("api/expert/approvals-queue");
             var dirT = Api.GetAsync<List<DirItem>>("api/expert/teacher-directory");
             var talkT = Api.GetAsync<List<TalkItem>>("api/expert/workspace?type=0");
+            var demoT = Api.GetAsync<List<TalkItem>>("api/expert/workspace?type=1");
             var decT = Api.GetAsync<List<DecisionItem>>($"api/expert/teacher-decisions?sinceUtc={monthStart:O}");
             var invT = Api.GetAsync<List<InviteItem>>("api/expert/invitations");
             var ctxT = Api.GetAsync<MeCtx>("api/expert/me-context");
-            await Task.WhenAll(queueT, dirT, talkT, decT, invT, ctxT);
+            var grpT = Api.GetAsync<GroupDto>("api/expert/my-group");
+            await Task.WhenAll(queueT, dirT, talkT, demoT, decT, invT, ctxT, grpT);
             _queue = await queueT ?? [];
             _directory = await dirT ?? [];
             _talks = await talkT ?? [];
+            _demos = await demoT ?? [];
             _decisions = await decT ?? [];
             _invites = await invT ?? [];
             _isManager = (await ctxT)?.IsGroupManager == true;
+            _track = (await grpT)?.TeacherApprovalTrack ?? 0;
             OnFilterChanged();
         }
         catch (Exception ex) { _error = ex.Message; }
@@ -771,6 +798,37 @@
     }
 
     private static bool CanDecide(int status) => status is 0 or 3 or 4 or 5;
+
+    private string? ProcessGap(RowVm sel)
+    {
+        if (_track is 1 or 2)
+        {
+            var interviewDone = _talks.Any(t => t.RelatedTeacherTenantId == sel.TenantId && t.Status == 2);
+            if (!interviewDone)
+                return "Le processus du groupe exige un entretien clôturé avant l’approbation définitive.";
+        }
+        if (_track is 2 or 3)
+        {
+            var demoOk = _demos.Any(d =>
+                d.RelatedTeacherTenantId == sel.TenantId
+                && d.Status == 2
+                && DemoApproved(d.PayloadJson));
+            if (!demoOk)
+                return "Le processus du groupe exige une démonstration pédagogique avec recommandation « Approuver ».";
+        }
+        return null;
+    }
+
+    private static bool DemoApproved(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return false;
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            return doc.RootElement.TryGetProperty("recommendation", out var r) && r.GetInt32() == 1;
+        }
+        catch { return false; }
+    }
     private static string StatusLabel(int status) => status switch
     {
         1 => "Approuvé",
@@ -828,10 +886,11 @@
         List<string>? Subjects, List<string>? Levels, int? YearsExperience, int ApprovalStatus,
         DateTime CreatedAt, string Slug, bool IsPublicProfile);
     private sealed record DecisionItem(Guid TenantId, string DisplayName, string? OwnerEmail, int ApprovalStatus, DateTime? DecisionAt, string? Notes);
-    private sealed record TalkItem(Guid Id, int ItemType, int Status, string Title, Guid? RelatedTeacherTenantId, DateTime? ScheduledAtUtc, DateTime CreatedAt);
+    private sealed record TalkItem(Guid Id, int ItemType, int Status, string Title, Guid? RelatedTeacherTenantId, DateTime? ScheduledAtUtc, DateTime CreatedAt, string? PayloadJson = null);
     private sealed record InviteItem(Guid Id, string Email, string? FirstName, int Status, DateTime SentAt, Guid? AcceptedTenantId, string? InvitedByName);
     private sealed record MemberItem(Guid Id, Guid ExpertGroupId, string UserId, string Email, string FullName);
     private sealed record MeCtx(bool IsGroupManager, Guid? GroupId, string? GroupName);
+    private sealed record GroupDto(Guid Id, string Name, int TeacherApprovalTrack = 0);
     private sealed record ReviewDoc(Guid Id, int DocumentType, string FileName, string FileUrl, long FileSizeBytes);
     private sealed record ReviewDetail(
         Guid TenantId, string SchoolName, string? Description, int ApprovalStatus,

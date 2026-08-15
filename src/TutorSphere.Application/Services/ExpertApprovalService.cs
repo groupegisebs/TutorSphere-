@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.ExpertApproval;
+using TutorSphere.Application.DTOs.ExpertGroupGovernance;
 using TutorSphere.Domain.Entities;
 using TutorSphere.Domain.Enums;
 
@@ -69,8 +70,10 @@ public interface IExpertApprovalService
     Task<IReadOnlyList<Guid>> GetExpertGroupIdsAsync(string expertUserId, CancellationToken ct = default);
     Task<ExpertMyGroupDto?> GetMyGroupAsync(string expertUserId, CancellationToken ct = default);
     Task<ExpertMyGroupDto> GetMyGroupSettingsAsync(string managerUserId, CancellationToken ct = default);
-    Task<ExpertMyGroupDto> UpdateMyGroupSettingsAsync(string managerUserId, string? description, CancellationToken ct = default);
-    Task<ExpertMyGroupDto> UpdateGroupSettingsAsAdminAsync(Guid groupId, string? description, CancellationToken ct = default);
+    Task<ExpertMyGroupDto> UpdateMyGroupSettingsAsync(
+        string managerUserId, string? description, int? teacherApprovalTrack = null, CancellationToken ct = default);
+    Task<ExpertMyGroupDto> UpdateGroupSettingsAsAdminAsync(
+        Guid groupId, string? description, int? teacherApprovalTrack = null, CancellationToken ct = default);
 }
 
 public class ExpertApprovalService(
@@ -106,41 +109,48 @@ public class ExpertApprovalService(
         if (group is null)
             return Task.FromResult<ExpertMyGroupDto?>(null);
 
-        return Task.FromResult<ExpertMyGroupDto?>(
-            new ExpertMyGroupDto(group.Id, group.Name, group.CountryCode, group.Description, group.IsInternational));
+        return Task.FromResult<ExpertMyGroupDto?>(MapGroup(group));
     }
 
     public Task<ExpertMyGroupDto> GetMyGroupSettingsAsync(string managerUserId, CancellationToken ct = default)
     {
         var group = RequireManagedGroup(managerUserId);
-        return Task.FromResult(new ExpertMyGroupDto(
-            group.Id, group.Name, group.CountryCode, group.Description, group.IsInternational));
+        return Task.FromResult(MapGroup(group));
     }
 
     public async Task<ExpertMyGroupDto> UpdateMyGroupSettingsAsync(
-        string managerUserId, string? description, CancellationToken ct = default)
+        string managerUserId, string? description, int? teacherApprovalTrack = null, CancellationToken ct = default)
     {
         var group = RequireManagedGroup(managerUserId);
-        return await UpdateGroupSettingsCoreAsync(group, description, ct);
+        return await UpdateGroupSettingsCoreAsync(group, description, teacherApprovalTrack, ct);
     }
 
     public async Task<ExpertMyGroupDto> UpdateGroupSettingsAsAdminAsync(
-        Guid groupId, string? description, CancellationToken ct = default)
+        Guid groupId, string? description, int? teacherApprovalTrack = null, CancellationToken ct = default)
     {
         var group = db.ExpertGroups.FirstOrDefault(g => g.Id == groupId && g.IsActive)
             ?? throw new InvalidOperationException("Groupe introuvable ou inactif.");
-        return await UpdateGroupSettingsCoreAsync(group, description, ct);
+        return await UpdateGroupSettingsCoreAsync(group, description, teacherApprovalTrack, ct);
     }
 
     private async Task<ExpertMyGroupDto> UpdateGroupSettingsCoreAsync(
-        ExpertGroup group, string? description, CancellationToken ct)
+        ExpertGroup group, string? description, int? teacherApprovalTrack, CancellationToken ct)
     {
         group.Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim();
+        if (teacherApprovalTrack.HasValue)
+        {
+            if (!Enum.IsDefined(typeof(TeacherApprovalTrack), teacherApprovalTrack.Value))
+                throw new InvalidOperationException("Processus d'approbation inconnu.");
+            group.TeacherApprovalTrack = (TeacherApprovalTrack)teacherApprovalTrack.Value;
+        }
         group.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
-        return new ExpertMyGroupDto(
-            group.Id, group.Name, group.CountryCode, group.Description, group.IsInternational);
+        return MapGroup(group);
     }
+
+    private static ExpertMyGroupDto MapGroup(ExpertGroup group) =>
+        new(group.Id, group.Name, group.CountryCode, group.Description, group.IsInternational,
+            (int)group.TeacherApprovalTrack);
 
     private ExpertGroup RequireManagedGroup(string managerUserId)
     {
@@ -152,6 +162,40 @@ public class ExpertApprovalService(
 
         return db.ExpertGroups.FirstOrDefault(g => g.Id == membership.ExpertGroupId && g.IsActive)
             ?? throw new InvalidOperationException("Groupe introuvable ou inactif.");
+    }
+
+    private void EnsureApprovalTrackSatisfied(ExpertGroup group, Guid tenantId)
+    {
+        var track = group.TeacherApprovalTrack;
+        if (track.RequiresInterview())
+        {
+            var interviewDone = db.ExpertWorkspaceItems.Any(i =>
+                i.ExpertGroupId == group.Id
+                && i.RelatedTeacherTenantId == tenantId
+                && i.ItemType == ExpertWorkspaceItemType.Interview
+                && i.Status == ExpertWorkspaceItemStatus.Done);
+            if (!interviewDone)
+                throw new InvalidOperationException(
+                    "Le processus du groupe exige un entretien clôturé avant l'approbation définitive.");
+        }
+
+        if (!track.RequiresDemonstration())
+            return;
+
+        var demos = db.ExpertWorkspaceItems
+            .Where(i =>
+                i.ExpertGroupId == group.Id
+                && i.RelatedTeacherTenantId == tenantId
+                && i.ItemType == ExpertWorkspaceItemType.Demonstration
+                && i.Status == ExpertWorkspaceItemStatus.Done)
+            .Select(i => i.PayloadJson)
+            .ToList();
+
+        var approvedDemo = demos.Any(json =>
+            DemonstrationPayloadJson.RecommendationOf(json) == DemonstrationRecommendation.Approve);
+        if (!approvedDemo)
+            throw new InvalidOperationException(
+                "Le processus du groupe exige une démonstration pédagogique avec recommandation « Approuver » avant l'approbation définitive.");
     }
 
     public Task<IReadOnlyList<PendingTeacherDto>> ListPendingForExpertAsync(string expertUserId, CancellationToken ct = default)
@@ -307,6 +351,7 @@ public class ExpertApprovalService(
     {
         var (tenant, group) = await RequireReviewableContextAsync(
             tenantId, expertUserId, ct, asPlatformAdmin, actAsGroupId);
+        EnsureApprovalTrackSatisfied(group, tenant.Id);
 
         tenant.ExpertApprovalStatus = ExpertApprovalStatus.Approved;
         tenant.ApprovedByExpertGroupId = group.Id;
