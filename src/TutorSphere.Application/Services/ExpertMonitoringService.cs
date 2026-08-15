@@ -133,8 +133,10 @@ public class ExpertMonitoringService(
                 continue;
             }
 
-            var suggested = expertGroups.ResolveReviewerGroup(t.Country);
-            if (suggested is not null && suggested.Id == groupId && seen.Add(t.Id))
+            var suggested = t.ApprovedByExpertGroupId is Guid boundId && boundId == groupId
+                ? groupId
+                : expertGroups.ResolveReviewerGroup(t.Country)?.Id;
+            if (suggested == groupId && seen.Add(t.Id))
                 tenants.Add(t);
         }
 

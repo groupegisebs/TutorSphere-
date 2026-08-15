@@ -31,11 +31,27 @@ public record RegisterSchoolResponse(
     string Email);
 
 /// <summary>Infos publiques d'une invitation enseignant, utilisées pour préremplir le formulaire d'inscription.</summary>
+public record TeacherInvitePublicOfferDto(
+    string Name,
+    string? ShortDescription,
+    string Currency,
+    decimal? RecommendedPrice,
+    bool IsInternational);
+
 public record TeacherInviteInfoResponse(
     Guid ExpertGroupId,
     string ExpertGroupName,
     string? Email,
-    string? FirstName);
+    string? FirstName,
+    string? PersonalMessage = null,
+    string? InviterName = null,
+    string? GroupDescription = null,
+    string? GroupLogoUrl = null,
+    string? GroupCountryCode = null,
+    bool GroupIsInternational = false,
+    int GroupMemberCount = 0,
+    DateTime? ExpiresAt = null,
+    IReadOnlyList<TeacherInvitePublicOfferDto>? Offers = null);
 
 public record LoginRequest(string Email, string Password);
 

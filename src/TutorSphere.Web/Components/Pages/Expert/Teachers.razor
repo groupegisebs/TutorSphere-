@@ -25,6 +25,9 @@
                 </div>
             </div>
             <div class="d-flex gap-2 flex-wrap">
+                <button type="button" class="cc-btn" @onclick="OpenInvite">
+                    <i class="bi bi-envelope-plus" aria-hidden="true"></i> @L["Expert_InviteTitle"]
+                </button>
                 <a class="cc-btn cc-btn-primary" href="expert/teachers/add">
                     <i class="bi bi-plus-lg" aria-hidden="true"></i> Ajouter un enseignant
                 </a>
@@ -136,7 +139,10 @@
                         <p>@(_directory.Count == 0 ? L["ExpertTeachers_Empty"] : "Aucun enseignant ne correspond aux filtres.")</p>
                         @if (_directory.Count == 0)
                         {
-                            <a class="cc-btn cc-btn-primary" href="expert/teachers/add">Ajouter un enseignant</a>
+                            <div class="d-flex gap-2 justify-content-center flex-wrap">
+                                <button type="button" class="cc-btn" @onclick="OpenInvite">@L["Expert_InviteTitle"]</button>
+                                <a class="cc-btn cc-btn-primary" href="expert/teachers/add">Ajouter un enseignant</a>
+                            </div>
                         }
                     </div>
                 }
@@ -668,6 +674,41 @@
                     }
                 </div>
             }
+
+            @if (_showInvite)
+            {
+                <div class="ex-gm-modal-back" @onclick="CloseInvite"></div>
+                <div class="cc-card ex-gm-modal" @onclick:stopPropagation="true">
+                    <h2 class="cc-card-title">@L["Expert_InviteTitle"]</h2>
+                    <p class="small text-muted">@L["Expert_InviteSubtitle"]</p>
+                    @if (!string.IsNullOrEmpty(_inviteError))
+                    {
+                        <div class="alert alert-danger py-2">@_inviteError</div>
+                    }
+                    @if (!string.IsNullOrEmpty(_inviteSuccess))
+                    {
+                        <div class="alert alert-success py-2">@_inviteSuccess</div>
+                    }
+                    <div class="mb-3">
+                        <label class="form-label">@L["Expert_InviteEmail"] *</label>
+                        <input class="form-control" type="email" @bind="_inviteEmail" placeholder="enseignant@exemple.com" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">@L["Expert_InviteFirstName"]</label>
+                        <input class="form-control" @bind="_inviteFirstName" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">@L["Expert_InviteMessage"]</label>
+                        <textarea class="form-control" rows="3" @bind="_inviteMessage" placeholder="@L["Expert_InviteMessagePlaceholder"]"></textarea>
+                    </div>
+                    <div class="d-flex gap-2 justify-content-end">
+                        <button type="button" class="cc-btn" @onclick="CloseInvite">@L["Common_Cancel"]</button>
+                        <button type="button" class="cc-btn cc-btn-primary" disabled="@_inviteBusy" @onclick="InviteTeacherAsync">
+                            @(_inviteBusy ? L["ExpertJoin_Submitting"] : L["Expert_InviteSend"])
+                        </button>
+                    </div>
+                </div>
+            }
     </Authorized>
     <NotAuthorized>
         <div class="cc-card cc-empty">
@@ -690,6 +731,14 @@
     private static readonly System.Globalization.CultureInfo Fr = new("fr-FR");
     private bool _loading = true;
     private string? _error;
+
+    private bool _showInvite;
+    private bool _inviteBusy;
+    private string _inviteEmail = "";
+    private string _inviteFirstName = "";
+    private string _inviteMessage = "";
+    private string? _inviteError;
+    private string? _inviteSuccess;
 
     private Guid? _selectedTenantId;
     private bool _detailLoading;
@@ -754,6 +803,38 @@
     {
         try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
         await LoadTeachersAsync();
+    }
+
+    private void OpenInvite()
+    {
+        _inviteError = _inviteSuccess = null;
+        _showInvite = true;
+    }
+
+    private void CloseInvite()
+    {
+        if (_inviteBusy) return;
+        _showInvite = false;
+    }
+
+    private async Task InviteTeacherAsync()
+    {
+        _inviteBusy = true;
+        _inviteError = _inviteSuccess = null;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<object>("api/expert/invite-application", new
+            {
+                email = _inviteEmail,
+                firstName = string.IsNullOrWhiteSpace(_inviteFirstName) ? null : _inviteFirstName,
+                personalMessage = string.IsNullOrWhiteSpace(_inviteMessage) ? null : _inviteMessage
+            });
+            if (result.Error is not null) { _inviteError = result.Error; return; }
+            _inviteSuccess = L["Expert_InviteSuccess"];
+            _inviteEmail = _inviteFirstName = _inviteMessage = "";
+        }
+        catch (Exception ex) { _inviteError = ex.Message; }
+        finally { _inviteBusy = false; }
     }
 
     private async Task LoadTeachersAsync()

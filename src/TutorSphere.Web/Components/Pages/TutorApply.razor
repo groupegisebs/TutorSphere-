@@ -1,0 +1,371 @@
+@page "/tutor/apply"
+@layout LoginLayout
+@rendermode InteractiveServer
+@using System.Text.RegularExpressions
+@using Microsoft.AspNetCore.WebUtilities
+@using TutorSphere.Application.Common
+@using TutorSphere.Application.DTOs.Auth
+@using TutorSphere.Domain.Policies
+@inject NavigationManager Navigation
+@inject HttpClient Http
+@inject IConfiguration Config
+@inject IStringLocalizer<SharedResources> L
+
+<ApplyRequestCulture />
+
+<PageTitle>@L["TeacherApply_Title"] — TutorSphere</PageTitle>
+
+<div class="expert-join-page teacher-apply-page">
+    <div class="expert-join-shell">
+        <header class="expert-join-brand">
+            <img src="images/tutorsphere-logo-full.png" alt="TutorSphere" class="expert-join-logo" />
+            <span class="expert-join-badge">@L["TeacherApply_Badge"]</span>
+        </header>
+
+        @if (!string.IsNullOrEmpty(_error) && _invite is null && !_done)
+        {
+            <div class="alert alert-danger">@_error</div>
+            <a class="btn btn-outline-secondary" href="/">@L["ExpertJoin_Back"]</a>
+        }
+        else if (_done)
+        {
+            <div class="expert-join-done">
+                <i class="bi bi-check-circle-fill" aria-hidden="true"></i>
+                <h1>@L["TeacherApply_Success"]</h1>
+                <p>@L["TeacherApply_SuccessWait"]</p>
+                <a class="btn expert-join-submit" href="/login/tuteur">@L["TeacherApply_GoLogin"]</a>
+            </div>
+        }
+        else if (_loading)
+        {
+            <div class="text-center py-5"><span class="spinner-border"></span></div>
+        }
+        else if (_invite is not null)
+        {
+            <div class="expert-join-hero">
+                <h1>@L["TeacherApply_Title"]</h1>
+                <p class="expert-join-lead">
+                    @(_invite.InviterName ?? L["TeacherApply_AGroup"]) @L["TeacherApply_InvitesYou"]
+                    <strong>@GroupLabel</strong>.
+                </p>
+                <p class="expert-join-meta">
+                    <span><i class="bi bi-envelope"></i> @_invite.Email</span>
+                    @if (_invite.ExpiresAt is DateTime exp)
+                    {
+                        <span><i class="bi bi-hourglass-split"></i> @L["ExpertJoin_Expires", exp.ToLocalTime().ToString("d")]</span>
+                    }
+                </p>
+            </div>
+
+            <div class="expert-join-grid">
+                <div class="expert-join-main">
+                    @if (!string.IsNullOrWhiteSpace(_invite.PersonalMessage))
+                    {
+                        <blockquote class="expert-join-message">
+                            <p>@_invite.PersonalMessage</p>
+                            <footer>— @(_invite.InviterName ?? _invite.ExpertGroupName)</footer>
+                        </blockquote>
+                    }
+
+                    <section class="expert-join-card">
+                        <h2>@L["TeacherApply_PlatformTitle"]</h2>
+                        <p>@L["TeacherApply_PlatformLead"]</p>
+                        <ul class="expert-join-bullets">
+                            <li>@L["TeacherApply_PlatformBullet1"]</li>
+                            <li>@L["TeacherApply_PlatformBullet2"]</li>
+                            <li>@L["TeacherApply_PlatformBullet3"]</li>
+                        </ul>
+                    </section>
+
+                    <section class="expert-join-card">
+                        <h2>@L["ExpertJoin_GroupTitle"]</h2>
+                        <div class="expert-join-profile">
+                            @if (!string.IsNullOrWhiteSpace(LogoUrl))
+                            {
+                                <img src="@LogoUrl" alt="@_invite.ExpertGroupName" class="expert-join-group-logo" />
+                            }
+                            else
+                            {
+                                <div class="expert-join-group-fallback">@GroupInitial</div>
+                            }
+                            <div>
+                                <h3>@_invite.ExpertGroupName</h3>
+                                <p class="expert-join-chips">
+                                    @if (_invite.GroupIsInternational)
+                                    {
+                                        <span>@L["ExpertJoin_International"]</span>
+                                    }
+                                    else if (!string.IsNullOrWhiteSpace(_invite.GroupCountryCode))
+                                    {
+                                        <span>@_invite.GroupCountryCode</span>
+                                    }
+                                    <span>@L["ExpertJoin_Members", _invite.GroupMemberCount]</span>
+                                </p>
+                            </div>
+                        </div>
+                        <p>@(string.IsNullOrWhiteSpace(_invite.GroupDescription)
+                            ? L["TeacherApply_GroupDescriptionEmpty"].Value
+                            : _invite.GroupDescription)</p>
+                    </section>
+
+                    <section class="expert-join-card">
+                        <h2>@L["ExpertJoin_OffersTitle"]</h2>
+                        @if (_invite.Offers is null || _invite.Offers.Count == 0)
+                        {
+                            <p class="text-muted mb-0">@L["TeacherApply_OffersEmpty"]</p>
+                        }
+                        else
+                        {
+                            <div class="expert-join-offers">
+                                @foreach (var offer in _invite.Offers)
+                                {
+                                    <article class="expert-join-offer">
+                                        <h3>@offer.Name</h3>
+                                        @if (!string.IsNullOrWhiteSpace(offer.ShortDescription))
+                                        {
+                                            <p>@offer.ShortDescription</p>
+                                        }
+                                        <p class="expert-join-offer-meta">
+                                            @if (offer.RecommendedPrice is decimal price)
+                                            {
+                                                <strong>@price.ToString("N0") @GroupOfferCurrencyRules.FormatCurrencyLabel(offer.Currency)</strong>
+                                            }
+                                            @if (offer.IsInternational)
+                                            {
+                                                <span>@L["ExpertJoin_OfferInternational"]</span>
+                                            }
+                                        </p>
+                                    </article>
+                                }
+                            </div>
+                        }
+                    </section>
+
+                    <section class="expert-join-card expert-join-terms">
+                        <h2>@L["ExpertJoin_ConditionsTitle"]</h2>
+                        <p>@L["TeacherApply_ConditionsIntro"]</p>
+
+                        <h3>@L["TeacherApply_AdmissionTitle"]</h3>
+                        <ol>
+                            <li>@L["TeacherApply_Admission1"]</li>
+                            <li>@L["TeacherApply_Admission2"]</li>
+                            <li>@L["TeacherApply_Admission3"]</li>
+                            <li>@L["TeacherApply_Admission4"]</li>
+                        </ol>
+
+                        <h3>@L["TeacherConduct_Title"]</h3>
+                        <p>@L["TeacherConduct_Intro"]</p>
+                        <ul>
+                            <li>@L["TeacherConduct_Bullet_Respect"]</li>
+                            <li>@L["TeacherConduct_Bullet_Safety"]</li>
+                            <li>@L["TeacherConduct_Bullet_Privacy"]</li>
+                            <li>@L["TeacherConduct_Bullet_Ethics"]</li>
+                        </ul>
+                        <a href="@TeacherConductPolicy.PublicPath" target="_blank" rel="noopener">@L["TeacherConduct_ReadFull"]</a>
+
+                        <h3>@L["Privacy_Title"]</h3>
+                        <p>@L["Privacy_Intro"]</p>
+                        <a href="@TutorSphere.Domain.Policies.ExpertConductPolicy.PrivacyPath" target="_blank" rel="noopener">@L["ExpertJoin_ReadPrivacy"]</a>
+                    </section>
+                </div>
+
+                <aside class="expert-join-aside">
+                    <form class="expert-join-form" @onsubmit="SubmitAsync" @onsubmit:preventDefault="true">
+                        <h2>@L["TeacherApply_RegisterTitle"]</h2>
+                        <p>@L["TeacherApply_RegisterLead"]</p>
+
+                        @if (!string.IsNullOrEmpty(_error))
+                        {
+                            <div class="alert alert-danger">@_error</div>
+                        }
+
+                        <div class="mb-3">
+                            <label class="form-label" for="ta-email">@L["Label_Email"]</label>
+                            <input id="ta-email" class="form-control" value="@_invite.Email" disabled readonly />
+                            <small class="text-muted">@L["TeacherApply_EmailLocked"]</small>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="ta-fn">@L["Label_FirstName"] *</label>
+                            <input id="ta-fn" class="form-control" @bind="_firstName" autocomplete="given-name" />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="ta-ln">@L["Label_LastName"] *</label>
+                            <input id="ta-ln" class="form-control" @bind="_lastName" autocomplete="family-name" />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="ta-city">@L["Expert_RegisterCity"]</label>
+                            <input id="ta-city" class="form-control" @bind="_city" />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="ta-pwd">@L["Label_CreatePassword"] *</label>
+                            <input id="ta-pwd" class="form-control" type="password" @bind="_password" autocomplete="new-password" />
+                            <small class="text-muted">@L["ExpertJoin_PasswordHint"]</small>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="ta-pwd2">@L["Label_ConfirmPassword"] *</label>
+                            <input id="ta-pwd2" class="form-control" type="password" @bind="_confirm" autocomplete="new-password" />
+                        </div>
+
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" id="ta-adm" @bind="_admission" />
+                            <label class="form-check-label" for="ta-adm">@L["TeacherApply_AcceptAdmission"]</label>
+                        </div>
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="checkbox" id="ta-cond" @bind="_conduct" />
+                            <label class="form-check-label" for="ta-cond">@L["TeacherConduct_AcceptCheckbox"]</label>
+                        </div>
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" id="ta-priv" @bind="_privacy" />
+                            <label class="form-check-label" for="ta-priv">@L["Privacy_AcceptCheckbox"]</label>
+                        </div>
+
+                        <button type="submit" class="btn expert-join-submit w-100" disabled="@_busy">
+                            @(_busy ? L["ExpertJoin_Submitting"] : L["TeacherApply_Submit"])
+                        </button>
+                    </form>
+                </aside>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private string? _token;
+    private bool _loading = true;
+    private bool _busy;
+    private bool _done;
+    private string? _error;
+    private TeacherInviteInfoResponse? _invite;
+
+    private string _firstName = "";
+    private string _lastName = "";
+    private string _city = "";
+    private string _password = "";
+    private string _confirm = "";
+    private bool _conduct;
+    private bool _privacy;
+    private bool _admission;
+
+    private string GroupLabel => _invite is null
+        ? ""
+        : string.IsNullOrWhiteSpace(_invite.GroupCountryCode)
+            ? _invite.ExpertGroupName
+            : $"{_invite.ExpertGroupName} ({_invite.GroupCountryCode})";
+
+    private string GroupInitial => string.IsNullOrWhiteSpace(_invite?.ExpertGroupName)
+        ? "G"
+        : _invite.ExpertGroupName.Trim()[..1].ToUpperInvariant();
+
+    private string LogoUrl => _invite is null
+        ? ""
+        : MediaUrlHelper.Resolve(_invite.GroupLogoUrl, Config, Navigation);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        if (QueryHelpers.ParseQuery(uri.Query).TryGetValue("invite", out var invite))
+            _token = invite.ToString();
+
+        if (string.IsNullOrWhiteSpace(_token))
+        {
+            _error = L["Error_InviteRequired"];
+            _loading = false;
+            return;
+        }
+
+        try
+        {
+            var response = await Http.GetAsync($"api/auth/teacher-invite/{Uri.EscapeDataString(_token)}");
+            if (!response.IsSuccessStatusCode)
+            {
+                _error = L["ExpertJoin_NotFound"];
+                return;
+            }
+            _invite = await response.Content.ReadFromJsonAsync<TeacherInviteInfoResponse>();
+            if (_invite is not null)
+                _firstName = _invite.FirstName ?? "";
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally { _loading = false; }
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_firstName) || string.IsNullOrWhiteSpace(_lastName)
+            || string.IsNullOrWhiteSpace(_password))
+        {
+            _error = L["Error_FillAllFields"];
+            return;
+        }
+        if (_password != _confirm)
+        {
+            _error = L["Error_PasswordMismatch"];
+            return;
+        }
+        if (_password.Length < 8 || !_password.Any(char.IsDigit) || _password.All(char.IsLetterOrDigit))
+        {
+            _error = L["Error_PasswordWeak"];
+            return;
+        }
+        if (!_admission || !_conduct || !_privacy)
+        {
+            _error = L["TeacherApply_MustAccept"];
+            return;
+        }
+
+        _busy = true;
+        _error = null;
+        try
+        {
+            var schoolName = $"{_firstName.Trim()} {_lastName.Trim()}".Trim();
+            var request = new RegisterSchoolRequest(
+                SchoolName: schoolName,
+                Slug: BuildSlug(),
+                FirstName: _firstName.Trim(),
+                LastName: _lastName.Trim(),
+                Email: _invite!.Email!.Trim(),
+                Password: _password,
+                City: string.IsNullOrWhiteSpace(_city) ? null : _city.Trim(),
+                Country: _invite.GroupCountryCode,
+                PreferredLanguage: System.Globalization.CultureInfo.CurrentUICulture.Name,
+                AcceptedTeacherConductPolicy: true,
+                TeacherConductPolicyVersion: TeacherConductPolicy.CurrentVersion,
+                InviteToken: _token);
+
+            var response = await Http.PostAsJsonAsync("api/auth/register-school", request);
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync();
+                _error = TryError(body) ?? L["Error_CreateSchool"];
+                return;
+            }
+            _done = true;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private string BuildSlug()
+    {
+        var raw = $"{_firstName}-{_lastName}".ToLowerInvariant();
+        raw = Regex.Replace(raw, "[^a-z0-9]+", "-").Trim('-');
+        if (raw.Length < 3) raw = "enseignant";
+        if (raw.Length > 40) raw = raw[..40].Trim('-');
+        return $"{raw}-{Random.Shared.Next(1000, 9999)}";
+    }
+
+    private static string? TryError(string body)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
+            if (doc.RootElement.TryGetProperty("error", out var e))
+                return e.GetString();
+        }
+        catch { }
+        return null;
+    }
+}

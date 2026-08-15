@@ -381,6 +381,26 @@ public class AuthService : IAuthService
             throw new InvalidOperationException(
                 "L'inscription enseignant se fait uniquement sur invitation. Soumettez une demande d'intérêt ou utilisez le lien reçu.");
 
+        var inviteToken = request.InviteToken.Trim();
+        var invite = _db.TeacherApplicationInvites.FirstOrDefault(i => i.Token == inviteToken)
+            ?? throw new InvalidOperationException("Invitation invalide ou introuvable.");
+        if (invite.Status != TeacherApplicationInviteStatus.Sent)
+            throw new InvalidOperationException("Cette invitation n'est plus valide.");
+        if (invite.ExpiresAt is DateTime exp && exp < DateTime.UtcNow)
+        {
+            invite.Status = TeacherApplicationInviteStatus.Expired;
+            invite.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync(ct);
+            throw new InvalidOperationException("Cette invitation a expiré.");
+        }
+
+        var inviteEmail = (invite.Email ?? "").Trim();
+        if (!string.IsNullOrWhiteSpace(inviteEmail)
+            && !string.Equals(inviteEmail, request.Email.Trim(), StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Utilisez l'adresse e-mail à laquelle l'invitation a été envoyée.");
+
+        var inviteGroup = _db.ExpertGroups.FirstOrDefault(g => g.Id == invite.ExpertGroupId);
+
         var slug = request.Slug.Trim().ToLowerInvariant();
 
         if (_db.Tenants.Any(t => t.Slug == slug))
@@ -410,6 +430,8 @@ public class AuthService : IAuthService
 
         var country = ProfileVisibility.NormalizeCode(request.Country);
         if (country.Length != 2)
+            country = ProfileVisibility.NormalizeCode(inviteGroup?.CountryCode);
+        if (country.Length != 2)
             country = "CA";
 
         var tenant = new Tenant
@@ -425,7 +447,9 @@ public class AuthService : IAuthService
             OwnerUserId = user.Id,
             Branding = new TenantBranding(),
             TeacherConductPolicyVersion = TeacherConductPolicy.CurrentVersion,
-            TeacherConductAcceptedAt = DateTime.UtcNow
+            TeacherConductAcceptedAt = DateTime.UtcNow,
+            ExpertApprovalStatus = ExpertApprovalStatus.Pending,
+            ApprovedByExpertGroupId = invite.ExpertGroupId
         };
 
         _db.Add(tenant);
@@ -736,25 +760,61 @@ public class AuthService : IAuthService
         return new string(code);
     }
 
-    public Task<TeacherInviteInfoResponse?> GetTeacherInviteInfoAsync(string token, CancellationToken ct = default)
+    public async Task<TeacherInviteInfoResponse?> GetTeacherInviteInfoAsync(string token, CancellationToken ct = default)
     {
         var trimmed = (token ?? "").Trim();
         if (string.IsNullOrWhiteSpace(trimmed))
-            return Task.FromResult<TeacherInviteInfoResponse?>(null);
+            return null;
 
         var invite = _db.TeacherApplicationInvites.FirstOrDefault(i => i.Token == trimmed);
         if (invite is null)
-            return Task.FromResult<TeacherInviteInfoResponse?>(null);
+            return null;
+
+        if (invite.Status is TeacherApplicationInviteStatus.Expired
+            or TeacherApplicationInviteStatus.Rejected
+            or TeacherApplicationInviteStatus.Approved
+            or TeacherApplicationInviteStatus.Registered)
+            return null;
+
+        if (invite.ExpiresAt is DateTime exp && exp < DateTime.UtcNow)
+        {
+            invite.Status = TeacherApplicationInviteStatus.Expired;
+            invite.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync(ct);
+            return null;
+        }
 
         var group = _db.ExpertGroups.FirstOrDefault(g => g.Id == invite.ExpertGroupId);
         if (group is null)
-            return Task.FromResult<TeacherInviteInfoResponse?>(null);
+            return null;
 
-        return Task.FromResult<TeacherInviteInfoResponse?>(new TeacherInviteInfoResponse(
+        var memberCount = _db.ExpertGroupMembers.Count(m =>
+            m.ExpertGroupId == group.Id && m.Status == ExpertMembershipStatus.Active);
+        var offers = _db.GroupOffers
+            .Where(o => o.ExpertGroupId == group.Id && o.Status == GroupOfferStatus.Published)
+            .OrderBy(o => o.Name)
+            .Select(o => new TeacherInvitePublicOfferDto(
+                o.Name,
+                o.ShortDescription,
+                o.Currency,
+                o.RecommendedPrice ?? o.FixedPrice,
+                o.IsInternational))
+            .ToList();
+
+        return new TeacherInviteInfoResponse(
             group.Id,
             group.Name,
             invite.Email,
-            invite.FirstName));
+            invite.FirstName,
+            invite.PersonalMessage,
+            group.ContactName,
+            group.Description,
+            group.LogoUrl,
+            group.CountryCode,
+            group.IsInternational,
+            memberCount,
+            invite.ExpiresAt,
+            offers);
     }
 
     private async Task MarkInviteAcceptedIfAnyAsync(

@@ -62,7 +62,12 @@ public interface IExpertApprovalService
         CancellationToken ct = default,
         bool asPlatformAdmin = false,
         Guid? actAsGroupId = null);
-    Task InviteTeacherApplicationAsync(string expertUserId, InviteTeacherApplicationRequest request, CancellationToken ct = default);
+    Task InviteTeacherApplicationAsync(
+        string expertUserId,
+        InviteTeacherApplicationRequest request,
+        CancellationToken ct = default,
+        bool asPlatformAdmin = false,
+        Guid? actAsGroupId = null);
     Task<IReadOnlyList<TeacherApplicationInviteDto>> ListInvitesForExpertAsync(string expertUserId, CancellationToken ct = default);
     Task MarkInviteAcceptedAsync(string email, Guid tenantId, string? inviteToken = null, CancellationToken ct = default);
     Task SyncInviteStatusForTenantAsync(Guid tenantId, CancellationToken ct = default);
@@ -521,7 +526,9 @@ public class ExpertApprovalService(
         var result = new List<ExpertApprovalQueueItemDto>();
         foreach (var t in tenants)
         {
-            var suggested = expertGroups.ResolveReviewerGroup(t.Country);
+            var suggested = t.ApprovedByExpertGroupId is Guid bound && groupIds.Contains(bound)
+                ? db.ExpertGroups.FirstOrDefault(g => g.Id == bound)
+                : expertGroups.ResolveReviewerGroup(t.Country);
             if (suggested is null || !groupIds.Contains(suggested.Id))
                 continue;
 
@@ -612,16 +619,26 @@ public class ExpertApprovalService(
     public async Task InviteTeacherApplicationAsync(
         string expertUserId,
         InviteTeacherApplicationRequest request,
-        CancellationToken ct = default)
+        CancellationToken ct = default,
+        bool asPlatformAdmin = false,
+        Guid? actAsGroupId = null)
     {
         var toEmail = (request.Email ?? "").Trim().ToLowerInvariant();
         if (string.IsNullOrWhiteSpace(toEmail) || !toEmail.Contains('@', StringComparison.Ordinal))
             throw new InvalidOperationException("Adresse e-mail invalide.");
 
-        var membership = db.ExpertGroupMembers
-            .Where(m => m.UserId == expertUserId)
-            .Select(m => m.ExpertGroupId)
-            .FirstOrDefault();
+        Guid membership;
+        if (asPlatformAdmin && actAsGroupId is Guid actGid)
+        {
+            membership = actGid;
+        }
+        else
+        {
+            membership = db.ExpertGroupMembers
+                .Where(m => m.UserId == expertUserId && m.Status == ExpertMembershipStatus.Active)
+                .Select(m => m.ExpertGroupId)
+                .FirstOrDefault();
+        }
         if (membership == Guid.Empty)
             throw new InvalidOperationException("Vous n'êtes membre d'aucun groupe d'experts.");
 
@@ -656,7 +673,7 @@ public class ExpertApprovalService(
         db.Add(invite);
         await db.SaveChangesAsync(ct);
 
-        var applyUrl = $"{urls.WebBaseUrl.TrimEnd('/')}/tutor/register?invite={Uri.EscapeDataString(token)}";
+        var applyUrl = $"{urls.WebBaseUrl.TrimEnd('/')}/tutor/apply?invite={Uri.EscapeDataString(token)}";
 
         await email.SendExpertTeacherApplyInviteAsync(
             toEmail,

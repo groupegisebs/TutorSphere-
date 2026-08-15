@@ -280,7 +280,9 @@ public class ExpertApprovalsController : ControllerBase
 
         try
         {
-            await _approvals.InviteTeacherApplicationAsync(UserId, request, ct);
+            var asPlatform = _groupAccess.IsPlatformAdmin(User) && ActAsGroupId.HasValue;
+            await _approvals.InviteTeacherApplicationAsync(
+                UserId, request, ct, asPlatformAdmin: asPlatform, actAsGroupId: ActAsGroupId);
             return Ok(new { message = "Invitation envoyée." });
         }
         catch (InvalidOperationException ex)

@@ -36,7 +36,9 @@ public sealed class ExpertReviewNotificationService(
             if (tenant.ExpertReviewNotifiedAt is not null)
                 return;
 
-            var group = expertGroups.ResolveReviewerGroup(tenant.Country);
+            var group = tenant.ApprovedByExpertGroupId is Guid gid
+                ? db.ExpertGroups.FirstOrDefault(g => g.Id == gid)
+                : expertGroups.ResolveReviewerGroup(tenant.Country);
             if (group is null || !group.IsActive)
             {
                 logger.LogInformation(

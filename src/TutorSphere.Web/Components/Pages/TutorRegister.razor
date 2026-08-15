@@ -364,7 +364,8 @@
         if (QueryHelpers.ParseQuery(uri.Query).TryGetValue("invite", out var invite)
             && !string.IsNullOrWhiteSpace(invite))
         {
-            _inviteToken = invite.ToString();
+            Navigation.NavigateTo($"/tutor/apply?invite={Uri.EscapeDataString(invite.ToString())}", replace: true);
+            return;
         }
 
         RefreshSteps();
