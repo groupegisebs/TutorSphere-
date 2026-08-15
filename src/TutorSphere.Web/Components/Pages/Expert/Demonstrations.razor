@@ -60,7 +60,7 @@
                 <div class="row g-2">
                     <div class="col-md-6">
                         <label class="form-label">Enseignant</label>
-                        <select class="form-select" @bind="_planTeacherId">
+                        <select class="form-select" @bind="_planTeacherId" @bind:after="OnPlanTeacherChanged">
                             <option value="">— Choisir —</option>
                             @foreach (var t in _directory)
                             {
@@ -70,11 +70,48 @@
                     </div>
                     <div class="col-md-3">
                         <label class="form-label">Matière</label>
-                        <input class="form-control" @bind="_planSubject" placeholder="Physique" />
+                        <select class="form-select" @bind="_planSubject" @bind:after="OnPlanSubjectChanged" disabled="@(!GroupSubjectNames.Any())">
+                            <option value="">— Choisir —</option>
+                            @if (AssignedSubjectNames.Count > 0)
+                            {
+                                <optgroup label="Affectées à l’enseignant">
+                                    @foreach (var s in AssignedSubjectNames)
+                                    {
+                                        <option value="@s">@s</option>
+                                    }
+                                </optgroup>
+                                <optgroup label="Autres matières du groupe">
+                                    @foreach (var s in GroupSubjectNames.Where(n => !AssignedSubjectNames.Contains(n, StringComparer.OrdinalIgnoreCase)))
+                                    {
+                                        <option value="@s">@s</option>
+                                    }
+                                </optgroup>
+                            }
+                            else
+                            {
+                                @foreach (var s in GroupSubjectNames)
+                                {
+                                    <option value="@s">@s</option>
+                                }
+                            }
+                        </select>
+                        @if (!GroupSubjectNames.Any())
+                        {
+                            <div class="form-text">
+                                Aucune matière dans le groupe.
+                                <a href="expert/disciplines">Définir les disciplines</a>
+                            </div>
+                        }
                     </div>
                     <div class="col-md-3">
                         <label class="form-label">Niveau</label>
-                        <input class="form-control" @bind="_planLevel" placeholder="Secondaire" />
+                        <select class="form-select" @bind="_planLevel" disabled="@(string.IsNullOrWhiteSpace(_planSubject) || !PlanLevelOptions.Any())">
+                            <option value="">— Choisir —</option>
+                            @foreach (var lv in PlanLevelOptions)
+                            {
+                                <option value="@lv">@lv</option>
+                            }
+                        </select>
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">Sujet du cours</label>
@@ -505,6 +542,8 @@
     private List<WorkItem> _filtered = [];
     private List<DirItem> _directory = [];
     private List<MemberItem> _members = [];
+    private List<DiscItem> _disciplines = [];
+    private List<TeacherDisc> _teacherDisciplines = [];
     private WorkItem? _selected;
 
     private string _planTeacherId = "";
@@ -535,10 +574,37 @@
     private void NextPage() { if (_page < PageCount) _page++; }
     private void LastPage() => _page = PageCount;
     private void GoPage(int p) => _page = p;
+    private IReadOnlyList<string> GroupSubjectNames =>
+        _disciplines.Where(d => d.IsActive)
+            .Select(d => d.Name)
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    private IReadOnlyList<string> AssignedSubjectNames =>
+        _teacherDisciplines.Where(d => d.IsAssigned && d.IsActive)
+            .Select(d => d.Name)
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    private IEnumerable<string> PlanLevelOptions =>
+        ActiveForSubject(_planSubject)
+            .Select(d => CycleLabel(d.Cycle))
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+
     private IEnumerable<string> SubjectOptions =>
-        _items.Select(i => PayloadOf(i).Subject).Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s!).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(s => s);
+        GroupSubjectNames
+            .Concat(_items.Select(i => PayloadOf(i).Subject).Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s!))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(s => s, StringComparer.OrdinalIgnoreCase);
+
     private IEnumerable<string> LevelOptions =>
-        _items.Select(i => PayloadOf(i).Level).Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s!).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(s => s);
+        _disciplines.Where(d => d.IsActive).Select(d => CycleLabel(d.Cycle))
+            .Concat(_items.Select(i => PayloadOf(i).Level).Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s!))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(s => s, StringComparer.OrdinalIgnoreCase);
 
     protected override async Task OnInitializedAsync()
     {
@@ -547,7 +613,7 @@
         if (Teacher is Guid tid)
         {
             _planTeacherId = tid.ToString();
-            PrefillTeacherFields(tid);
+            await OnPlanTeacherChanged();
             _showPlan = true;
         }
     }
@@ -566,6 +632,8 @@
             _items = await itemsT ?? [];
             _directory = await dirT ?? [];
             _members = await memT ?? [];
+            try { _disciplines = await Api.GetAsync<List<DiscItem>>("api/expert/disciplines") ?? []; }
+            catch { _disciplines = []; }
             var grp = await grpT;
             _track = grp?.TeacherApprovalTrack ?? 0;
             var ctx = await ctxT;
@@ -652,14 +720,56 @@
         _success = null;
     }
 
-    private void PrefillTeacherFields(Guid tenantId)
+    private async Task OnPlanTeacherChanged()
     {
-        var dir = _directory.FirstOrDefault(d => d.TenantId == tenantId);
-        if (dir is null) return;
-        if (string.IsNullOrWhiteSpace(_planSubject))
-            _planSubject = dir.Subjects?.FirstOrDefault() ?? "";
-        if (string.IsNullOrWhiteSpace(_planLevel))
-            _planLevel = dir.Levels?.FirstOrDefault() ?? "";
+        _teacherDisciplines = [];
+        if (!Guid.TryParse(_planTeacherId, out var tenantId))
+        {
+            OnPlanSubjectChanged();
+            return;
+        }
+
+        try
+        {
+            _teacherDisciplines = await Api.GetAsync<List<TeacherDisc>>(
+                $"api/expert/teachers/{tenantId}/disciplines") ?? [];
+        }
+        catch
+        {
+            _teacherDisciplines = [];
+        }
+
+        var assigned = _teacherDisciplines.Where(d => d.IsAssigned && d.IsActive).ToList();
+        if (assigned.Count > 0)
+        {
+            var pick = assigned.FirstOrDefault(d =>
+                           string.Equals(d.Name, _planSubject, StringComparison.OrdinalIgnoreCase))
+                       ?? assigned[0];
+            _planSubject = pick.Name;
+            _planLevel = CycleLabel(pick.Cycle);
+        }
+        else
+            OnPlanSubjectChanged();
+    }
+
+    private void OnPlanSubjectChanged()
+    {
+        var levels = PlanLevelOptions.ToList();
+        if (levels.Count == 0)
+        {
+            _planLevel = "";
+            return;
+        }
+        if (!levels.Contains(_planLevel, StringComparer.OrdinalIgnoreCase))
+            _planLevel = levels[0];
+    }
+
+    private IEnumerable<DiscItem> ActiveForSubject(string? subject)
+    {
+        if (string.IsNullOrWhiteSpace(subject))
+            return [];
+        return _disciplines.Where(d =>
+            d.IsActive && string.Equals(d.Name, subject, StringComparison.OrdinalIgnoreCase));
     }
 
     private void PrefillFrom(WorkItem item)
@@ -674,6 +784,7 @@
         _planEvaluators.Clear();
         foreach (var id in p.EvaluatorUserIds)
             _planEvaluators.Add(id);
+        OnPlanSubjectChanged();
         _showPlan = true;
     }
 
@@ -688,6 +799,16 @@
         if (!Guid.TryParse(_planTeacherId, out var tenantId))
         {
             _error = "Choisissez un enseignant.";
+            return;
+        }
+        if (GroupSubjectNames.Count > 0 && string.IsNullOrWhiteSpace(_planSubject))
+        {
+            _error = "Choisissez une matière du groupe.";
+            return;
+        }
+        if (GroupSubjectNames.Count > 0 && string.IsNullOrWhiteSpace(_planLevel))
+        {
+            _error = "Choisissez le niveau correspondant à la matière.";
             return;
         }
         var dir = _directory.FirstOrDefault(d => d.TenantId == tenantId);
@@ -992,7 +1113,19 @@
     private sealed record DirItem(
         Guid TenantId, string DisplayName, string? OwnerEmail, string? LogoUrl,
         List<string>? Subjects, List<string>? Levels);
+    private static string CycleLabel(int cycle) => cycle switch
+    {
+        0 => "Primaire",
+        1 => "Secondaire",
+        2 => "Universitaire",
+        3 => "Formation pour adultes",
+        _ => "—"
+    };
+
     private sealed record MemberItem(Guid Id, Guid ExpertGroupId, string UserId, string Email, string FullName);
+    private sealed record DiscItem(
+        Guid Id, Guid ExpertGroupId, string Name, int Cycle, bool IsActive, int AssignedTeacherCount, DateTime CreatedAt);
+    private sealed record TeacherDisc(Guid DisciplineId, string Name, int Cycle, bool IsActive, bool IsAssigned);
     private sealed record GroupDto(Guid Id, string Name, string? CountryCode, string? Description, bool IsInternational, int TeacherApprovalTrack);
     private sealed record MeCtx(bool IsGroupManager, Guid? GroupId, string? GroupName, string? UserId);
 }

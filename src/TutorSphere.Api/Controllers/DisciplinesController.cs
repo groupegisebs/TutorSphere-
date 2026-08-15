@@ -13,7 +13,7 @@ namespace TutorSphere.Api.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/expert/disciplines")]
-[Authorize(Roles = UserRoles.Expert)]
+[Authorize(Roles = $"{UserRoles.Expert},{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
 public class DisciplinesController(IExpertDisciplineService disciplines) : ControllerBase
 {
     private string? UserId => User.FindFirstValue(ClaimTypes.NameIdentifier);
