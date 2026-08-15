@@ -68,7 +68,13 @@ public record TeacherInviteInfoResponse(
     bool GroupIsInternational = false,
     int GroupMemberCount = 0,
     DateTime? ExpiresAt = null,
-    IReadOnlyList<TeacherInvitePublicOfferDto>? Offers = null);
+    IReadOnlyList<TeacherInvitePublicOfferDto>? Offers = null,
+    bool IsProfileUpdate = false,
+    string? ExistingSlug = null,
+    string? LastName = null,
+    string? City = null,
+    string? Presentation = null,
+    string? TimeZone = null);
 
 public record LoginRequest(string Email, string Password);
 

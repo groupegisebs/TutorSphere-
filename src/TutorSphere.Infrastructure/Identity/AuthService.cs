@@ -411,14 +411,11 @@ public class AuthService : IAuthService, ITeacherLoginIssuer
             && !string.Equals(inviteEmail, request.Email.Trim(), StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("Utilisez l'adresse e-mail à laquelle l'invitation a été envoyée.");
 
-        var inviteGroup = _db.ExpertGroups.FirstOrDefault(g => g.Id == invite.ExpertGroupId);
-
         var slug = request.Slug.Trim().ToLowerInvariant();
         if (!Regex.IsMatch(slug, @"^[a-z0-9]([a-z0-9-]{1,48}[a-z0-9])?$"))
             throw new InvalidOperationException("Sous-domaine invalide.");
 
-        if (_db.Tenants.Any(t => t.Slug == slug))
-            throw new InvalidOperationException("Cette adresse est déjà utilisée par un autre profil.");
+        var inviteGroup = _db.ExpertGroups.FirstOrDefault(g => g.Id == invite.ExpertGroupId);
 
         if (!request.AcceptedTeacherConductPolicy
             || !TutorSphere.Domain.Policies.TeacherConductPolicy.IsCurrent(request.TeacherConductPolicyVersion))
@@ -427,25 +424,61 @@ public class AuthService : IAuthService, ITeacherLoginIssuer
                 "Vous devez accepter le Code de conduite et d'éthique enseignant (version en vigueur) pour créer un compte.");
         }
 
-        var language = SupportedLanguageCodes.Normalize(request.PreferredLanguage);
-        var user = new ApplicationUser
+        var existingUser = await _userManager.FindByEmailAsync(request.Email.Trim());
+        ApplicationUser user;
+        if (existingUser is not null)
         {
-            UserName = request.Email,
-            Email = request.Email,
-            FirstName = request.FirstName.Trim(),
-            LastName = request.LastName.Trim(),
-            PhoneNumber = NormalizeOptionalPhone(request.Phone),
-            PreferredLanguage = language,
-            EmailConfirmed = true,
-            MustChangePassword = true
-        };
+            var existingRoles = await _userManager.GetRolesAsync(existingUser);
+            var isTeacher = existingRoles.Contains(UserRoles.Tutor)
+                || existingRoles.Contains(UserRoles.TeachingAssistant);
+            if (!isTeacher)
+                throw new InvalidOperationException(
+                    "Cette adresse e-mail est déjà utilisée par un autre type de compte.");
 
-        var holdPassword = TeacherLoginProvisioning.GenerateTemporaryPassword();
-        var result = await _userManager.CreateAsync(user, holdPassword);
-        if (!result.Succeeded)
-            throw new InvalidOperationException(string.Join("; ", result.Errors.Select(e => e.Description)));
+            var existingTenant = _db.Tenants.FirstOrDefault(t => t.OwnerUserId == existingUser.Id)
+                ?? (existingUser.TenantId is Guid tid
+                    ? _db.Tenants.FirstOrDefault(t => t.Id == tid)
+                    : null);
+            if (existingTenant is not null)
+                return await UpdateExistingTeacherFromInviteAsync(
+                    existingUser, existingTenant, invite, request, inviteGroup, ct);
 
-        await _userManager.AddToRoleAsync(user, UserRoles.Tutor);
+            user = existingUser;
+            user.FirstName = request.FirstName.Trim();
+            user.LastName = request.LastName.Trim();
+            user.PhoneNumber = NormalizeOptionalPhone(request.Phone);
+            user.PreferredLanguage = SupportedLanguageCodes.Normalize(request.PreferredLanguage);
+            user.EmailConfirmed = true;
+            await _userManager.UpdateAsync(user);
+            if (!existingRoles.Contains(UserRoles.Tutor))
+                await _userManager.AddToRoleAsync(user, UserRoles.Tutor);
+        }
+        else
+        {
+            user = new ApplicationUser
+            {
+                UserName = request.Email,
+                Email = request.Email,
+                FirstName = request.FirstName.Trim(),
+                LastName = request.LastName.Trim(),
+                PhoneNumber = NormalizeOptionalPhone(request.Phone),
+                PreferredLanguage = SupportedLanguageCodes.Normalize(request.PreferredLanguage),
+                EmailConfirmed = true,
+                MustChangePassword = true
+            };
+
+            var holdPassword = TeacherLoginProvisioning.GenerateTemporaryPassword();
+            var result = await _userManager.CreateAsync(user, holdPassword);
+            if (!result.Succeeded)
+                throw new InvalidOperationException(string.Join("; ", result.Errors.Select(e => e.Description)));
+
+            await _userManager.AddToRoleAsync(user, UserRoles.Tutor);
+        }
+
+        if (_db.Tenants.Any(t => t.Slug == slug))
+            throw new InvalidOperationException("Cette adresse est déjà utilisée par un autre profil.");
+
+        var language = SupportedLanguageCodes.Normalize(request.PreferredLanguage);
 
         var country = ProfileVisibility.NormalizeCode(request.Country);
         if (country.Length != 2)
@@ -536,6 +569,129 @@ public class AuthService : IAuthService, ITeacherLoginIssuer
 
         await _expertNotify.NotifyExpertsIfNeededAsync(tenant.Id, ct);
 
+        return new RegisterSchoolResponse(tenant.Id, tenant.Slug, user.Email!);
+    }
+
+    private async Task<RegisterSchoolResponse> UpdateExistingTeacherFromInviteAsync(
+        ApplicationUser user,
+        Tenant tenant,
+        TeacherApplicationInvite invite,
+        RegisterSchoolRequest request,
+        ExpertGroup? inviteGroup,
+        CancellationToken ct)
+    {
+        var slug = request.Slug.Trim().ToLowerInvariant();
+        if (!string.Equals(tenant.Slug, slug, StringComparison.OrdinalIgnoreCase)
+            && _db.Tenants.Any(t => t.Slug == slug && t.Id != tenant.Id))
+            throw new InvalidOperationException("Cette adresse est déjà utilisée par un autre profil.");
+
+        var country = ProfileVisibility.NormalizeCode(request.Country);
+        if (country.Length != 2)
+            country = ProfileVisibility.NormalizeCode(inviteGroup?.CountryCode);
+        if (country.Length != 2 && !string.IsNullOrWhiteSpace(tenant.Country))
+            country = ProfileVisibility.NormalizeCode(tenant.Country);
+        if (country.Length != 2 && inviteGroup?.IsInternational != true)
+            country = "CA";
+
+        var timeZone = TimeZoneCatalog.Normalize(
+            string.IsNullOrWhiteSpace(request.TimeZone)
+                ? tenant.TimeZone
+                : request.TimeZone);
+        var language = SupportedLanguageCodes.Normalize(
+            string.IsNullOrWhiteSpace(request.PreferredLanguage) ? tenant.Language : request.PreferredLanguage);
+
+        GroupOffer? catalogOffer = null;
+        if (request.GroupOfferId is Guid offerId && offerId != Guid.Empty)
+        {
+            catalogOffer = _db.GroupOffers.FirstOrDefault(o =>
+                o.Id == offerId
+                && o.ExpertGroupId == invite.ExpertGroupId
+                && o.Status == GroupOfferStatus.Published)
+                ?? throw new InvalidOperationException("Offre du groupe introuvable ou non publiée.");
+        }
+
+        var currency = catalogOffer is not null
+            ? catalogOffer.Currency
+            : string.IsNullOrWhiteSpace(request.InitialOffering?.Currency)
+                ? tenant.Currency
+                : request.InitialOffering!.Currency;
+
+        var presentation = TeacherContactPrivacy.RedactFromPublicText(request.Presentation?.Trim());
+        var privateNotes = BuildPrivateProfileNotes(request.Address, request.PostalCode, request.DateOfBirth);
+
+        user.FirstName = request.FirstName.Trim();
+        user.LastName = request.LastName.Trim();
+        user.PhoneNumber = NormalizeOptionalPhone(request.Phone) ?? user.PhoneNumber;
+        user.PreferredLanguage = language;
+        user.TimeZone = timeZone;
+        user.TenantId = tenant.Id;
+        user.EmailConfirmed = true;
+        await _userManager.UpdateAsync(user);
+
+        tenant.Name = string.IsNullOrWhiteSpace(request.SchoolName) ? tenant.Name : request.SchoolName.Trim();
+        tenant.Slug = slug;
+        tenant.Subdomain = slug;
+        tenant.Description = privateNotes ?? tenant.Description;
+        tenant.City = string.IsNullOrWhiteSpace(request.City) ? tenant.City : request.City.Trim();
+        tenant.Country = country;
+        tenant.TimeZone = timeZone;
+        tenant.Currency = currency;
+        tenant.Language = language;
+        tenant.TeacherConductPolicyVersion = TeacherConductPolicy.CurrentVersion;
+        tenant.TeacherConductAcceptedAt = DateTime.UtcNow;
+        tenant.ExpertApprovalStatus = ExpertApprovalStatus.Pending;
+        tenant.ApprovedByExpertGroupId = invite.ExpertGroupId;
+        tenant.ApprovedByUserId = null;
+        tenant.ExpertApprovedAt = null;
+        tenant.ExpertApprovalNotes = null;
+        tenant.ReviewAssignedToUserId = null;
+        tenant.ReviewRequestNotes = null;
+        tenant.IsPublicProfile = false;
+        tenant.ExpertReviewNotifiedAt = null;
+        if (tenant.Status is TenantStatus.Suspended or TenantStatus.Rejected)
+            tenant.Status = TenantStatus.PendingValidation;
+        tenant.UpdatedAt = DateTime.UtcNow;
+
+        var branding = _db.TenantBrandings.FirstOrDefault(b => b.TenantId == tenant.Id);
+        if (branding is null)
+            tenant.Branding = new TenantBranding { Presentation = presentation };
+        else if (!string.IsNullOrWhiteSpace(presentation))
+        {
+            branding.Presentation = presentation;
+            branding.UpdatedAt = DateTime.UtcNow;
+        }
+
+        ReplaceTeacherAvailabilities(tenant.Id, request.Availabilities, request.InitialOffering?.Schedule);
+        await MarkInviteAcceptedIfAnyAsync(request.Email, tenant.Id, request.InviteToken, ct);
+        await _db.SaveChangesAsync(ct);
+
+        var offering = await TryCreateInitialOfferingAsync(
+            tenant.Id,
+            catalogOffer,
+            request.InitialOffering,
+            currency,
+            timeZone,
+            ct);
+
+        if (catalogOffer is not null)
+        {
+            var alreadyLinked = _db.GroupOfferTeachers.Any(x =>
+                x.GroupOfferId == catalogOffer.Id && x.TeacherTenantId == tenant.Id);
+            if (!alreadyLinked && offering is not null)
+            {
+                _db.Add(new GroupOfferTeacher
+                {
+                    GroupOfferId = catalogOffer.Id,
+                    TeacherTenantId = tenant.Id,
+                    AssignmentStatus = GroupOfferTeacherAssignmentStatus.Applied,
+                    TeacherPrice = offering.Price,
+                    SubscriptionOfferingId = offering.Id
+                });
+                await _db.SaveChangesAsync(ct);
+            }
+        }
+
+        await _expertNotify.NotifyExpertsIfNeededAsync(tenant.Id, ct);
         return new RegisterSchoolResponse(tenant.Id, tenant.Slug, user.Email!);
     }
 
@@ -832,11 +988,20 @@ public class AuthService : IAuthService, ITeacherLoginIssuer
         return string.IsNullOrWhiteSpace(notes) ? null : notes;
     }
 
+    private void ReplaceTeacherAvailabilities(
+        Guid tenantId,
+        IReadOnlyList<TeacherAvailabilityRangeDto>? availabilities,
+        OfferingScheduleDto? schedule = null) =>
+        SaveTeacherAvailabilities(tenantId, availabilities, schedule);
+
     private void SaveTeacherAvailabilities(
         Guid tenantId,
         IReadOnlyList<TeacherAvailabilityRangeDto>? availabilities,
         OfferingScheduleDto? schedule = null)
     {
+        var previous = _db.TeacherAvailabilitiesForAnyTenant.Where(a => a.TenantId == tenantId).ToList();
+        if (previous.Count > 0)
+            _db.RemoveRange(previous);
         var ranges = availabilities?
             .Where(a => !string.IsNullOrWhiteSpace(a.Day)
                         && !string.IsNullOrWhiteSpace(a.StartTime)
@@ -963,11 +1128,47 @@ public class AuthService : IAuthService, ITeacherLoginIssuer
                 o.MarketCountryCode))
             .ToList();
 
+        var isProfileUpdate = false;
+        string? existingSlug = null;
+        var firstName = invite.FirstName;
+        string? lastName = null;
+        string? city = null;
+        string? presentation = null;
+        string? timeZone = null;
+
+        if (!string.IsNullOrWhiteSpace(invite.Email))
+        {
+            var existingUser = await _userManager.FindByEmailAsync(invite.Email.Trim());
+            if (existingUser is not null)
+            {
+                var roles = await _userManager.GetRolesAsync(existingUser);
+                if (roles.Contains(UserRoles.Tutor) || roles.Contains(UserRoles.TeachingAssistant))
+                {
+                    var existingTenant = _db.Tenants.FirstOrDefault(t => t.OwnerUserId == existingUser.Id)
+                        ?? (existingUser.TenantId is Guid tid
+                            ? _db.Tenants.FirstOrDefault(t => t.Id == tid)
+                            : null);
+                    if (existingTenant is not null)
+                    {
+                        isProfileUpdate = true;
+                        existingSlug = existingTenant.Slug;
+                        firstName = string.IsNullOrWhiteSpace(existingUser.FirstName)
+                            ? invite.FirstName
+                            : existingUser.FirstName;
+                        lastName = existingUser.LastName;
+                        city = existingTenant.City;
+                        timeZone = existingTenant.TimeZone;
+                        presentation = _db.TenantBrandings.FirstOrDefault(b => b.TenantId == existingTenant.Id)?.Presentation;
+                    }
+                }
+            }
+        }
+
         return new TeacherInviteInfoResponse(
             group.Id,
             group.Name,
             invite.Email,
-            invite.FirstName,
+            firstName,
             invite.PersonalMessage,
             group.ContactName,
             group.Description,
@@ -976,7 +1177,13 @@ public class AuthService : IAuthService, ITeacherLoginIssuer
             group.IsInternational,
             memberCount,
             invite.ExpiresAt,
-            offers);
+            offers,
+            IsProfileUpdate: isProfileUpdate,
+            ExistingSlug: existingSlug,
+            LastName: lastName,
+            City: city,
+            Presentation: presentation,
+            TimeZone: timeZone);
     }
 
     private async Task MarkInviteAcceptedIfAnyAsync(

@@ -214,6 +214,9 @@ public class AdminUserAccountService(
         var unavail = db.Unavailabilities.Where(u => u.TenantId == tenantId).ToList();
         if (unavail.Count > 0) db.RemoveRange(unavail);
 
+        var availabilities = db.TeacherAvailabilitiesForAnyTenant.Where(a => a.TenantId == tenantId).ToList();
+        if (availabilities.Count > 0) db.RemoveRange(availabilities);
+
         var holidays = db.Holidays.Where(h => h.TenantId == tenantId).ToList();
         if (holidays.Count > 0) db.RemoveRange(holidays);
 

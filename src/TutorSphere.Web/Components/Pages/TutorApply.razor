@@ -35,8 +35,8 @@
         {
             <div class="expert-join-done">
                 <i class="bi bi-check-circle-fill" aria-hidden="true"></i>
-                <h1>@L["TeacherApply_Success"]</h1>
-                <p>@L["TeacherApply_SuccessWait"]</p>
+                <h1>@((_invite?.IsProfileUpdate ?? false) ? L["TeacherApply_SuccessUpdate"] : L["TeacherApply_Success"])</h1>
+                <p>@((_invite?.IsProfileUpdate ?? false) ? L["TeacherApply_SuccessWaitUpdate"] : L["TeacherApply_SuccessWait"])</p>
                 <a class="btn expert-join-submit" href="/login/tuteur">@L["TeacherApply_GoLogin"]</a>
             </div>
         }
@@ -60,6 +60,14 @@
                     }
                 </p>
             </div>
+
+            @if (_invite.IsProfileUpdate)
+            {
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle me-1"></i>
+                    @L["TeacherApply_ExistingAccountBanner"]
+                </div>
+            }
 
             @if (!string.IsNullOrWhiteSpace(_invite.PersonalMessage))
             {
@@ -407,7 +415,7 @@
                     {
                         <button type="button" class="btn expert-join-submit" disabled="@_busy" @onclick="SubmitAsync">
                             @if (_busy) { <span class="spinner-border spinner-border-sm me-1"></span> }
-                            @L["TeacherApply_Submit"]
+                            @(_invite.IsProfileUpdate ? L["TeacherApply_SubmitUpdate"] : L["TeacherApply_Submit"])
                         </button>
                     }
                 </div>
@@ -564,11 +572,22 @@
             if (_invite is not null)
             {
                 _firstName = _invite.FirstName ?? "";
+                _lastName = _invite.LastName ?? "";
+                _city = _invite.City ?? "";
+                _presentation = _invite.Presentation;
                 _language = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName;
                 if (_language == "zh") _language = "zh-Hans";
-                _timeZone = TimeZoneCatalog.DefaultForCountry(_invite.GroupCountryCode);
+                _timeZone = string.IsNullOrWhiteSpace(_invite.TimeZone)
+                    ? TimeZoneCatalog.DefaultForCountry(_invite.GroupCountryCode)
+                    : _invite.TimeZone;
                 _currency = GroupOfferCurrencyRules.ResolveCurrency(_invite.GroupCountryCode);
-                if (!string.IsNullOrWhiteSpace(_firstName))
+                if (_invite.IsProfileUpdate && !string.IsNullOrWhiteSpace(_invite.ExistingSlug))
+                {
+                    _slug = _invite.ExistingSlug;
+                    _autoSlug = _slug;
+                    _slugAvailable = true;
+                }
+                else if (!string.IsNullOrWhiteSpace(_firstName))
                     await OnNameChanged();
             }
         }
@@ -605,7 +624,13 @@
         else if (_step == 2)
         {
             if (!SlugOk) { _error = L["Error_InvalidSubdomain"]; return; }
-            if (_slugAvailable == false) { _error = L["Error_SlugTaken"]; return; }
+            if (_slugAvailable == false
+                && !(_invite.IsProfileUpdate
+                     && string.Equals(_slug, _invite.ExistingSlug, StringComparison.OrdinalIgnoreCase)))
+            {
+                _error = L["Error_SlugTaken"];
+                return;
+            }
         }
         else if (_step == 3)
         {
@@ -749,6 +774,9 @@
     private async Task OnNameChanged()
     {
         if (!string.IsNullOrWhiteSpace(_slug) && _slug != _autoSlug) return;
+        if (_invite is { IsProfileUpdate: true } && !string.IsNullOrWhiteSpace(_invite.ExistingSlug)
+            && _slug == _invite.ExistingSlug)
+            return;
         var generated = Slugify(_firstName, _lastName);
         _autoSlug = generated;
         _slug = generated;
@@ -768,7 +796,11 @@
             await Task.Delay(400, token);
             var r = await Http.GetFromJsonAsync<SlugOkDto>($"api/tenants/check-slug/{Uri.EscapeDataString(_slug)}", token);
             if (!token.IsCancellationRequested && r is not null)
-                _slugAvailable = r.Available;
+            {
+                _slugAvailable = r.Available
+                    || (_invite is { IsProfileUpdate: true }
+                        && string.Equals(_slug, _invite.ExistingSlug, StringComparison.OrdinalIgnoreCase));
+            }
         }
         catch (OperationCanceledException) { }
         catch { }

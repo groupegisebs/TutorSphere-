@@ -31,6 +31,7 @@ public class AdminController : ControllerBase
     private readonly IAdminUserProvisioningService _provisioning;
     private readonly ISubscriptionOfferingService _offerings;
     private readonly ITeacherSchoolAdminService _teacherSchools;
+    private readonly IExpertApprovalService _approvals;
 
     public AdminController(
         UserManager<ApplicationUser> userManager,
@@ -43,7 +44,8 @@ public class AdminController : ControllerBase
         IAdminUserAccountService accountDeletion,
         IAdminUserProvisioningService provisioning,
         ISubscriptionOfferingService offerings,
-        ITeacherSchoolAdminService teacherSchools)
+        ITeacherSchoolAdminService teacherSchools,
+        IExpertApprovalService approvals)
     {
         _userManager = userManager;
         _email = email;
@@ -56,6 +58,7 @@ public class AdminController : ControllerBase
         _provisioning = provisioning;
         _offerings = offerings;
         _teacherSchools = teacherSchools;
+        _approvals = approvals;
     }
 
     /// <summary>Returns users belonging to a given role.</summary>
@@ -693,6 +696,58 @@ public class AdminController : ControllerBase
         {
             await _accountDeletion.DeleteTenantAsync(tenantId, ct);
             return Ok(new { message = "Profil supprimé. Cours programmés annulés et paiements parents remboursés." });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { error = ex.InnerException?.Message ?? ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Envoie (sans consentement parent/enseignant) un lien pour mettre à jour le profil existant.
+    /// </summary>
+    [HttpPost("schools/{tenantId:guid}/request-profile-update")]
+    [Authorize(Roles = "SuperAdmin")]
+    public async Task<IActionResult> RequestTeacherProfileUpdate(Guid tenantId, CancellationToken ct)
+    {
+        var tenant = await _db.Tenants.FirstOrDefaultAsync(t => t.Id == tenantId, ct);
+        if (tenant is null)
+            return NotFound(new { error = "Profil introuvable." });
+
+        var owner = await _userManager.FindByIdAsync(tenant.OwnerUserId);
+        if (owner is null || string.IsNullOrWhiteSpace(owner.Email))
+            return BadRequest(new { error = "Aucun compte enseignant lié à ce profil." });
+
+        var groupId = tenant.ApprovedByExpertGroupId
+            ?? await _db.TeacherApplicationInvites
+                .Where(i => i.AcceptedTenantId == tenantId || i.Email == owner.Email.ToLower())
+                .OrderByDescending(i => i.SentAt)
+                .Select(i => (Guid?)i.ExpertGroupId)
+                .FirstOrDefaultAsync(ct);
+
+        if (groupId is null || groupId == Guid.Empty)
+            return BadRequest(new { error = "Ce profil n'est rattaché à aucun groupe d'experts. Invitez-le depuis l'espace expert." });
+
+        var adminId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(adminId))
+            return Unauthorized();
+
+        try
+        {
+            await _approvals.InviteTeacherApplicationAsync(
+                adminId,
+                new TutorSphere.Application.DTOs.ExpertApproval.InviteTeacherApplicationRequest(
+                    owner.Email,
+                    string.IsNullOrWhiteSpace(owner.FirstName) ? null : owner.FirstName,
+                    "Merci de mettre à jour votre fiche enseignant avec des informations à jour (identité, matières, disponibilités, tarifs). Votre compte existant sera mis à jour — vous n'avez pas à créer un second compte."),
+                ct,
+                asPlatformAdmin: true,
+                actAsGroupId: groupId);
+            return Ok(new { message = $"Invitation de mise à jour envoyée à {owner.Email}." });
         }
         catch (InvalidOperationException ex)
         {
