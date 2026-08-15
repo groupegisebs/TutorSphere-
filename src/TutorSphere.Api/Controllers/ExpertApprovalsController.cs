@@ -365,7 +365,9 @@ public class ExpertApprovalsController : ControllerBase
             {
                 var g = await _groupAccess.ResolveManagedGroupAsync(User, gid, ct)
                     ?? throw new InvalidOperationException("Groupe introuvable.");
-                return Ok(g);
+                return Ok(new ExpertMyGroupDto(
+                    g.Id, g.Name, g.CountryCode, g.Description, g.IsInternational,
+                    (int)g.TeacherApprovalTrack));
             }
             return Ok(await _approvals.GetMyGroupSettingsAsync(UserId, ct));
         }
