@@ -48,6 +48,7 @@ public static class DependencyInjection
         services.AddScoped<IExpertDisciplineService, ExpertDisciplineService>();
         services.AddScoped<IExpertReviewNotificationService, ExpertReviewNotificationService>();
         services.AddScoped<IExpertMembershipGovernanceService, ExpertMembershipGovernanceService>();
+        services.AddScoped<IExpertGroupMemberAdminService, ExpertGroupMemberAdminService>();
         services.AddScoped<IExpertDashboardService, ExpertDashboardService>();
         services.AddScoped<IExpertGovernanceAuditService, ExpertGovernanceAuditService>();
         services.AddScoped<IExpertWorkspaceService, ExpertWorkspaceService>();

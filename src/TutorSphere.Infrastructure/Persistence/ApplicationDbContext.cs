@@ -248,6 +248,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             e.Property(m => m.UserId).HasMaxLength(450).IsRequired();
             e.Property(m => m.Specialty).HasMaxLength(200);
             e.Property(m => m.ApprovedByAdminId).HasMaxLength(450);
+            e.Property(m => m.InvitedByUserId).HasMaxLength(450);
+            e.Property(m => m.SuspensionReason).HasMaxLength(500);
+            e.Property(m => m.PermissionsJson).HasMaxLength(2000);
             e.HasIndex(m => new { m.ExpertGroupId, m.UserId }).IsUnique();
             e.HasIndex(m => new { m.ExpertGroupId, m.MemberRole });
             e.HasOne(m => m.ExpertGroup).WithMany(g => g.Members).HasForeignKey(m => m.ExpertGroupId)

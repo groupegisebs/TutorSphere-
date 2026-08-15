@@ -477,6 +477,8 @@ public class ExpertMembershipGovernanceService(
                 Specialty = invite.Specialty,
                 AdmittedAtUtc = DateTime.UtcNow,
                 ApprovedByAdminId = approvedByAdminId,
+                InvitedByUserId = invite.InvitedByUserId,
+                MemberRole = ParseIntendedRole(invite.IntendedRole),
                 ApprovalCount = approvals,
                 RequiredApprovalCount = invite.RequiredApprovalCount
             });
@@ -488,6 +490,9 @@ public class ExpertMembershipGovernanceService(
             existing.Specialty = invite.Specialty;
             existing.AdmittedAtUtc = DateTime.UtcNow;
             existing.ApprovedByAdminId = approvedByAdminId;
+            existing.InvitedByUserId ??= invite.InvitedByUserId;
+            if (existing.MemberRole == ExpertGroupMemberRole.Expert)
+                existing.MemberRole = ParseIntendedRole(invite.IntendedRole);
             existing.ApprovalCount = approvals;
             existing.RequiredApprovalCount = invite.RequiredApprovalCount;
             existing.UpdatedAt = DateTime.UtcNow;
@@ -581,6 +586,16 @@ public class ExpertMembershipGovernanceService(
     private ExpertMembershipInvite RequireInvite(Guid id) =>
         db.ExpertMembershipInvites.FirstOrDefault(i => i.Id == id)
         ?? throw new InvalidOperationException("Candidature introuvable.");
+
+    internal static ExpertGroupMemberRole ParseIntendedRole(string? raw)
+    {
+        var s = (raw ?? "").Trim().ToLowerInvariant();
+        if (s.Contains("senior") || s == "4")
+            return ExpertGroupMemberRole.Senior;
+        if (s.Contains("observ") || s == "5")
+            return ExpertGroupMemberRole.Observer;
+        return ExpertGroupMemberRole.Expert;
+    }
 
     private ExpertMembershipInvite GetByToken(string token)
     {

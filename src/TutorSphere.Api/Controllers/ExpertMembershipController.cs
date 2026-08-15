@@ -1,10 +1,12 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.ExpertApproval;
 using TutorSphere.Application.Services;
 using TutorSphere.Domain.Enums;
+using TutorSphere.Infrastructure.Identity;
 
 namespace TutorSphere.Api.Controllers;
 
@@ -12,12 +14,17 @@ namespace TutorSphere.Api.Controllers;
 [Route("api/expert/membership")]
 public class ExpertMembershipController(
     IExpertMembershipGovernanceService membership,
+    IExpertGroupMemberAdminService memberAdmin,
     IUserContactLookup contacts,
-    IGroupAdminAccessService groupAccess) : ControllerBase
+    IGroupAdminAccessService groupAccess,
+    UserManager<ApplicationUser> users) : ControllerBase
 {
     private string? UserId => User.FindFirstValue(ClaimTypes.NameIdentifier);
     private Guid? ActAsGroupId => GroupAdminActAs.ReadGroupId(Request);
     private bool AsPlatformActAs => groupAccess.IsPlatformAdmin(User) && ActAsGroupId.HasValue;
+
+    private const string ManagerOrPlatform =
+        $"{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}";
 
     [HttpPost("invites")]
     [Authorize(Roles = $"{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
@@ -81,7 +88,128 @@ public class ExpertMembershipController(
         }
     }
 
-    [HttpPost("invites/{inviteId:guid}/vote")]
+    [HttpGet("directory")]
+    [Authorize(Roles = ManagerOrPlatform)]
+    public async Task<ActionResult<GroupMemberDirectoryDto>> Directory(CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        try
+        {
+            var dir = await memberAdmin.GetDirectoryAsync(UserId, ct, AsPlatformActAs, ActAsGroupId);
+            var items = new List<GroupMemberDirectoryItemDto>();
+            foreach (var m in dir.Items)
+            {
+                if (m.Kind != "member" || string.IsNullOrWhiteSpace(m.UserId))
+                {
+                    items.Add(m);
+                    continue;
+                }
+                var c = await contacts.GetAsync(m.UserId, ct);
+                var user = await users.FindByIdAsync(m.UserId);
+                items.Add(m with
+                {
+                    Email = c?.Email ?? m.Email,
+                    FullName = c?.DisplayName ?? m.FullName,
+                    Phone = string.IsNullOrWhiteSpace(user?.PhoneNumber) ? m.Phone : user!.PhoneNumber
+                });
+            }
+            return Ok(dir with { Items = items });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpGet("members/{userId}/activity")]
+    [Authorize(Roles = ManagerOrPlatform)]
+    public async Task<ActionResult<GroupMemberActivityDto>> Activity(string userId, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        try
+        {
+            return Ok(await memberAdmin.GetActivityAsync(UserId, userId, ct, AsPlatformActAs, ActAsGroupId));
+        }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    [HttpPut("members/{userId}/role")]
+    [Authorize(Roles = ManagerOrPlatform)]
+    public async Task<IActionResult> UpdateRole(string userId, [FromBody] UpdateGroupMemberRoleRequest? request, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        if (request is null) return BadRequest(new { error = "Requête invalide." });
+        try
+        {
+            await memberAdmin.UpdateRoleAsync(UserId, userId, (ExpertGroupMemberRole)request.Role, ct, AsPlatformActAs, ActAsGroupId);
+            return Ok(new { message = "Rôle mis à jour." });
+        }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    [HttpPut("members/{userId}/permissions")]
+    [Authorize(Roles = ManagerOrPlatform)]
+    public async Task<IActionResult> UpdatePermissions(string userId, [FromBody] UpdateGroupMemberPermissionsRequest? request, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        try
+        {
+            await memberAdmin.UpdatePermissionsAsync(UserId, userId, request?.Permissions ?? [], ct, AsPlatformActAs, ActAsGroupId);
+            return Ok(new { message = "Permissions enregistrées." });
+        }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    [HttpPost("members/{userId}/suspend")]
+    [Authorize(Roles = ManagerOrPlatform)]
+    public async Task<IActionResult> Suspend(string userId, [FromBody] SuspendGroupMemberRequest? request, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        try
+        {
+            await memberAdmin.SuspendAsync(UserId, userId, request?.Reason ?? "", ct, AsPlatformActAs, ActAsGroupId);
+            return Ok(new { message = "Membre suspendu." });
+        }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    [HttpPost("members/{userId}/reactivate")]
+    [Authorize(Roles = ManagerOrPlatform)]
+    public async Task<IActionResult> Reactivate(string userId, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        try
+        {
+            await memberAdmin.ReactivateAsync(UserId, userId, ct, AsPlatformActAs, ActAsGroupId);
+            return Ok(new { message = "Membre réactivé." });
+        }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    [HttpGet("members/{userId}/removal-check")]
+    [Authorize(Roles = ManagerOrPlatform)]
+    public async Task<ActionResult<GroupMemberRemovalCheckDto>> RemovalCheck(string userId, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        try
+        {
+            return Ok(await memberAdmin.PreviewRemoveAsync(UserId, userId, ct, AsPlatformActAs, ActAsGroupId));
+        }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    [HttpPost("members/{userId}/remove")]
+    [Authorize(Roles = ManagerOrPlatform)]
+    public async Task<IActionResult> Remove(string userId, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        try
+        {
+            await memberAdmin.RemoveAsync(UserId, userId, ct, AsPlatformActAs, ActAsGroupId);
+            return Ok(new { message = "Membre retiré du groupe." });
+        }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
     [Authorize(Roles = UserRoles.Expert)]
     public async Task<ActionResult<ExpertMembershipInviteDto>> Vote(
         Guid inviteId,

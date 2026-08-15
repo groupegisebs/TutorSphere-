@@ -6,5 +6,7 @@ public enum ExpertGroupMemberRole
     Expert = 0,
     Manager = 1,
     DisciplineLead = 2,
-    CommitteeLead = 3
+    CommitteeLead = 3,
+    Senior = 4,
+    Observer = 5
 }

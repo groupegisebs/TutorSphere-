@@ -20,5 +20,12 @@ public class ExpertGroupMember : BaseEntity
     public int? RequiredApprovalCount { get; set; }
     public DateTime? EndedAtUtc { get; set; }
 
+    public string? InvitedByUserId { get; set; }
+    public DateTime? SuspendedAtUtc { get; set; }
+    public string? SuspensionReason { get; set; }
+
+    /// <summary>Clés de permissions JSON (ex. ["teachers.view","admissions.vote"]).</summary>
+    public string? PermissionsJson { get; set; }
+
     public ExpertGroup ExpertGroup { get; set; } = null!;
 }

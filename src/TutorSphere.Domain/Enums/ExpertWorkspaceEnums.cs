@@ -42,5 +42,10 @@ public enum ExpertGovernanceEventType
     GroupOfferPublished = 16,
     GroupAdminChatOpened = 17,
     GroupAdminChatMessagePosted = 18,
-    ManagerMandateEnded = 19
+    ManagerMandateEnded = 19,
+    MemberRoleChanged = 20,
+    MemberSuspended = 21,
+    MemberReactivated = 22,
+    MemberRemovedFromGroup = 23,
+    MemberPermissionsUpdated = 24
 }
