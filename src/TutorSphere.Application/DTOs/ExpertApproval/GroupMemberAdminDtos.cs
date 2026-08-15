@@ -42,6 +42,14 @@ public static class GroupMemberPermissionCatalog
         TeachersApprove, TeachersSuspend, AdmissionsReview, GroupTasksAssign, GroupDocuments
     };
 
+    public static bool IsElevated(string key) => Elevated.Contains(key);
+
+    public static IReadOnlyList<string> LostElevated(IEnumerable<string> previous, IEnumerable<string> next)
+    {
+        var nextSet = next.ToHashSet(StringComparer.Ordinal);
+        return previous.Where(k => Elevated.Contains(k) && !nextSet.Contains(k)).Distinct(StringComparer.Ordinal).ToList();
+    }
+
     public static IReadOnlyList<string> DefaultsFor(ExpertGroupMemberRole role) => role switch
     {
         ExpertGroupMemberRole.Manager => All.Select(a => a.Key).ToArray(),
@@ -94,6 +102,99 @@ public static class GroupMemberPermissionCatalog
     }
 }
 
+/// <summary>Catalogue des rôles métier d'un groupe (hors mandat Responsable du groupe).</summary>
+public static class GroupDefinedRoleCatalog
+{
+    public const string Expert = "expert";
+    public const string Pedagogy = "pedagogy";
+    public const string Teachers = "teachers";
+    public const string Offers = "offers";
+    public const string Admissions = "admissions";
+    public const string Quality = "quality";
+    public const string Moderator = "moderator";
+    public const string Member = "member";
+
+    public sealed record BuiltIn(
+        string Key,
+        string Name,
+        string Description,
+        string BadgeColor,
+        IReadOnlyList<string> Permissions,
+        bool SuperAdminOnly,
+        ExpertGroupMemberRole MemberRole);
+
+    public static readonly IReadOnlyList<BuiltIn> All =
+    [
+        new(Expert, "Expert",
+            "Membre expert : évaluations, démonstrations et admissions courantes.",
+            "#2563EB", GroupMemberPermissionCatalog.DefaultsFor(ExpertGroupMemberRole.Expert), false,
+            ExpertGroupMemberRole.Expert),
+        new(Pedagogy, "Responsable pédagogique",
+            "Pilote les démonstrations et la qualité pédagogique du groupe.",
+            "#0f766e",
+            [
+                GroupMemberPermissionCatalog.TeachersView, GroupMemberPermissionCatalog.TeachersEvaluate,
+                GroupMemberPermissionCatalog.DemosPlan, GroupMemberPermissionCatalog.DemosEvaluate,
+                GroupMemberPermissionCatalog.DemosView, GroupMemberPermissionCatalog.GroupMembersView
+            ], false, ExpertGroupMemberRole.Senior),
+        new(Teachers, "Responsable des enseignants",
+            "Gère le cycle de vie des enseignants du groupe.",
+            "#1d4ed8",
+            [
+                GroupMemberPermissionCatalog.TeachersView, GroupMemberPermissionCatalog.TeachersAdd,
+                GroupMemberPermissionCatalog.TeachersEvaluate, GroupMemberPermissionCatalog.TeachersApprove,
+                GroupMemberPermissionCatalog.TeachersSuspend, GroupMemberPermissionCatalog.GroupMembersView
+            ], false, ExpertGroupMemberRole.DisciplineLead),
+        new(Offers, "Responsable des offres",
+            "Suit le catalogue d'offres et les documents associés.",
+            "#7c3aed",
+            [
+                GroupMemberPermissionCatalog.TeachersView, GroupMemberPermissionCatalog.GroupDocuments,
+                GroupMemberPermissionCatalog.GroupTasksAssign, GroupMemberPermissionCatalog.GroupMembersView
+            ], false, ExpertGroupMemberRole.Senior),
+        new(Admissions, "Responsable des admissions",
+            "Pilote les candidatures et les votes d'admission.",
+            "#b45309",
+            [
+                GroupMemberPermissionCatalog.AdmissionsView, GroupMemberPermissionCatalog.AdmissionsVote,
+                GroupMemberPermissionCatalog.AdmissionsReview, GroupMemberPermissionCatalog.GroupMembersView
+            ], false, ExpertGroupMemberRole.CommitteeLead),
+        new(Quality, "Responsable qualité",
+            "Contrôle évaluations, démonstrations et admissions sensibles.",
+            "#be123c",
+            [
+                GroupMemberPermissionCatalog.TeachersView, GroupMemberPermissionCatalog.TeachersEvaluate,
+                GroupMemberPermissionCatalog.AdmissionsReview, GroupMemberPermissionCatalog.DemosEvaluate,
+                GroupMemberPermissionCatalog.DemosView, GroupMemberPermissionCatalog.GroupMembersView
+            ], false, ExpertGroupMemberRole.Senior),
+        new(Moderator, "Modérateur/responsable du groupe",
+            "Rôle opérationnel étendu. Créé uniquement par un Super Admin TutorSphere.",
+            "#006D44", GroupMemberPermissionCatalog.DefaultsFor(ExpertGroupMemberRole.Manager), true,
+            ExpertGroupMemberRole.CommitteeLead),
+        new(Member, "Membre",
+            "Accès de consultation au groupe, sans droits d'approbation.",
+            "#64748b", GroupMemberPermissionCatalog.DefaultsFor(ExpertGroupMemberRole.Observer), false,
+            ExpertGroupMemberRole.Observer)
+    ];
+
+    public static BuiltIn? Find(string? key) =>
+        All.FirstOrDefault(x => string.Equals(x.Key, key, StringComparison.OrdinalIgnoreCase));
+
+    public static string NormalizeName(string? name) => (name ?? "").Trim().ToUpperInvariant();
+
+    public static bool IsManagerTitle(string? name)
+    {
+        var n = NormalizeName(name);
+        return n is "RESPONSABLE DU GROUPE" or "RESPONSABLE" or "GROUP MANAGER" or "GESTIONNAIRE DU GROUPE";
+    }
+
+    public static BuiltIn? FindByName(string? name)
+    {
+        var n = NormalizeName(name);
+        return All.FirstOrDefault(x => NormalizeName(x.Name) == n);
+    }
+}
+
 public record GroupMemberDirectoryItemDto(
     Guid Id,
     string Kind,
@@ -111,7 +212,11 @@ public record GroupMemberDirectoryItemDto(
     int OpenTaskCount,
     IReadOnlyList<string> Permissions,
     bool IsManager,
-    Guid? InviteId = null);
+    Guid? InviteId = null,
+    Guid? DefinedRoleId = null,
+    string? DefinedRoleName = null,
+    string? DefinedRoleColor = null,
+    string? DefinedRoleKey = null);
 
 public record GroupMemberActivityDto(
     int EvaluationsCompleted,
@@ -128,7 +233,26 @@ public record GroupMemberDirectoryDto(
     int SuspendedCount,
     int PendingInviteCount);
 
-public record UpdateGroupMemberRoleRequest(int Role);
+public record UpdateGroupMemberRoleRequest(
+    int? Role = null,
+    Guid? DefinedRoleId = null,
+    string? SystemKey = null);
+
+public record CreateGroupDefinedRoleRequest(
+    string Name,
+    string? Description = null,
+    string? BadgeColor = null,
+    IReadOnlyList<string>? Permissions = null);
+
+public record GroupDefinedRoleDto(
+    Guid? Id,
+    string Key,
+    string Name,
+    string? Description,
+    string BadgeColor,
+    IReadOnlyList<string> Permissions,
+    bool IsCustom,
+    bool SuperAdminOnly);
 public record UpdateGroupMemberPermissionsRequest(IReadOnlyList<string> Permissions);
 public record SuspendGroupMemberRequest(string Reason);
 

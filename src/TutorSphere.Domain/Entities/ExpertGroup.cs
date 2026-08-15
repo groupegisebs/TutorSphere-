@@ -48,4 +48,5 @@ public class ExpertGroup : BaseEntity
     public ICollection<ExpertGroupMember> Members { get; set; } = [];
     public ICollection<ExpertGroupManagerMandate> ManagerMandates { get; set; } = [];
     public ICollection<GroupOffer> Offers { get; set; } = [];
+    public ICollection<ExpertGroupDefinedRole> DefinedRoles { get; set; } = [];
 }

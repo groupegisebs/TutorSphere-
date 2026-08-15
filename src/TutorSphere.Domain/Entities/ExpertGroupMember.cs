@@ -13,6 +13,9 @@ public class ExpertGroupMember : BaseEntity
     public ExpertAdmissionMethod AdmissionMethod { get; set; } = ExpertAdmissionMethod.AdminDirect;
     public ExpertGroupMemberRole MemberRole { get; set; } = ExpertGroupMemberRole.Expert;
 
+    /// <summary>Rôle métier du groupe (hors mandat Responsable).</summary>
+    public Guid? DefinedRoleId { get; set; }
+
     public string? Specialty { get; set; }
     public DateTime? AdmittedAtUtc { get; set; }
     public string? ApprovedByAdminId { get; set; }
@@ -28,4 +31,5 @@ public class ExpertGroupMember : BaseEntity
     public string? PermissionsJson { get; set; }
 
     public ExpertGroup ExpertGroup { get; set; } = null!;
+    public ExpertGroupDefinedRole? DefinedRole { get; set; }
 }

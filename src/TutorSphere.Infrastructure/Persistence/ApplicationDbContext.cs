@@ -41,6 +41,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     public DbSet<PlatformPromoCode> PlatformPromoCodesSet => Set<PlatformPromoCode>();
     public DbSet<ExpertGroup> ExpertGroupsSet => Set<ExpertGroup>();
     public DbSet<ExpertGroupMember> ExpertGroupMembersSet => Set<ExpertGroupMember>();
+    public DbSet<ExpertGroupDefinedRole> ExpertGroupDefinedRolesSet => Set<ExpertGroupDefinedRole>();
     public DbSet<ExpertGroupManagerMandate> ExpertGroupManagerMandatesSet => Set<ExpertGroupManagerMandate>();
     public DbSet<GroupOffer> GroupOffersSet => Set<GroupOffer>();
     public DbSet<GroupOfferTeacher> GroupOfferTeachersSet => Set<GroupOfferTeacher>();
@@ -106,6 +107,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     IQueryable<PlatformPromoCode> IApplicationDbContext.PlatformPromoCodes => PlatformPromoCodesSet;
     IQueryable<ExpertGroup> IApplicationDbContext.ExpertGroups => ExpertGroupsSet;
     IQueryable<ExpertGroupMember> IApplicationDbContext.ExpertGroupMembers => ExpertGroupMembersSet;
+    IQueryable<ExpertGroupDefinedRole> IApplicationDbContext.ExpertGroupDefinedRoles => ExpertGroupDefinedRolesSet;
     IQueryable<ExpertGroupManagerMandate> IApplicationDbContext.ExpertGroupManagerMandates =>
         ExpertGroupManagerMandatesSet;
     IQueryable<GroupOffer> IApplicationDbContext.GroupOffers => GroupOffersSet;
@@ -258,6 +260,25 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             e.HasIndex(m => new { m.ExpertGroupId, m.UserId }).IsUnique();
             e.HasIndex(m => new { m.ExpertGroupId, m.MemberRole });
             e.HasOne(m => m.ExpertGroup).WithMany(g => g.Members).HasForeignKey(m => m.ExpertGroupId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(m => m.DefinedRole).WithMany().HasForeignKey(m => m.DefinedRoleId)
+                .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        builder.Entity<ExpertGroupDefinedRole>(e =>
+        {
+            e.Property(r => r.Name).HasMaxLength(120).IsRequired();
+            e.Property(r => r.NormalizedName).HasMaxLength(120).IsRequired();
+            e.Property(r => r.Description).HasMaxLength(500);
+            e.Property(r => r.BadgeColor).HasMaxLength(16).IsRequired();
+            e.Property(r => r.PermissionsJson).HasMaxLength(2000);
+            e.Property(r => r.SystemKey).HasMaxLength(40);
+            e.Property(r => r.CreatedByUserId).HasMaxLength(450).IsRequired();
+            e.HasIndex(r => new { r.ExpertGroupId, r.NormalizedName }).IsUnique();
+            e.HasIndex(r => new { r.ExpertGroupId, r.SystemKey })
+                .IsUnique()
+                .HasFilter("\"SystemKey\" IS NOT NULL");
+            e.HasOne(r => r.ExpertGroup).WithMany(g => g.DefinedRoles).HasForeignKey(r => r.ExpertGroupId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 

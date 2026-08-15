@@ -438,8 +438,9 @@ public class ExpertApprovalsController : ControllerBase
     public async Task<ActionResult<IReadOnlyList<TeacherDirectoryItemDto>>> TeacherDirectory(CancellationToken ct)
     {
         if (UserId is null) return Unauthorized();
-        var list = await _monitoring.ListTeacherDirectoryAsync(
-            UserId, ct, _groupAccess.IsPlatformAdmin(User) ? ActAsGroupId : null);
+        var managed = await _groupAccess.ResolveManagedGroupAsync(User, ActAsGroupId, ct);
+        Guid? overrideGroup = managed?.Id ?? (_groupAccess.IsPlatformAdmin(User) ? ActAsGroupId : null);
+        var list = await _monitoring.ListTeacherDirectoryAsync(UserId, ct, overrideGroup);
         return Ok(list);
     }
 
@@ -756,7 +757,8 @@ public class ExpertApprovalsController : ControllerBase
         try
         {
             _teacherSchools.EnsureExpertCanManageTeacher(tenantId, UserId);
-            return Ok(await _disciplines.ListAssignmentsForTeacherAsync(tenantId, UserId, ct));
+            var managed = await _groupAccess.ResolveManagedGroupAsync(User, ActAsGroupId, ct);
+            return Ok(await _disciplines.ListAssignmentsForTeacherAsync(tenantId, UserId, ct, managed?.Id));
         }
         catch (InvalidOperationException ex)
         {

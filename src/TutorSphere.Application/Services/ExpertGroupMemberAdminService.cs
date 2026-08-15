@@ -13,7 +13,11 @@ public interface IExpertGroupMemberAdminService
     Task<GroupMemberActivityDto> GetActivityAsync(
         string callerUserId, string memberUserId, CancellationToken ct = default, bool asPlatformAdmin = false, Guid? actAsGroupId = null);
     Task UpdateRoleAsync(
-        string callerUserId, string memberUserId, ExpertGroupMemberRole role, CancellationToken ct = default, bool asPlatformAdmin = false, Guid? actAsGroupId = null);
+        string callerUserId, string memberUserId, UpdateGroupMemberRoleRequest request, CancellationToken ct = default, bool asPlatformAdmin = false, Guid? actAsGroupId = null);
+    Task<IReadOnlyList<GroupDefinedRoleDto>> ListDefinedRolesAsync(
+        string callerUserId, CancellationToken ct = default, bool asPlatformAdmin = false, Guid? actAsGroupId = null);
+    Task<GroupDefinedRoleDto> CreateDefinedRoleAsync(
+        string callerUserId, CreateGroupDefinedRoleRequest request, CancellationToken ct = default, bool asPlatformAdmin = false, Guid? actAsGroupId = null);
     Task UpdatePermissionsAsync(
         string callerUserId, string memberUserId, IReadOnlyList<string> permissions, CancellationToken ct = default, bool asPlatformAdmin = false, Guid? actAsGroupId = null);
     Task SuspendAsync(
@@ -77,10 +81,13 @@ public class ExpertGroupMemberAdminService(
                 inviterNames[id!] = c.Value.DisplayName;
         }
 
+        var defined = db.ExpertGroupDefinedRoles.Where(r => r.ExpertGroupId == groupId).ToList()
+            .ToDictionary(r => r.Id);
         var items = new List<GroupMemberDirectoryItemDto>();
         foreach (var m in members)
         {
             var perms = ReadPermissions(m);
+            defined.TryGetValue(m.DefinedRoleId ?? Guid.Empty, out var def);
             items.Add(new GroupMemberDirectoryItemDto(
                 m.Id, "member", m.ExpertGroupId, m.UserId, "", "", null, m.Specialty,
                 (int)m.MemberRole, (int)m.Status,
@@ -89,7 +96,11 @@ public class ExpertGroupMemberAdminService(
                 m.InvitedByUserId is { } ib && inviterNames.TryGetValue(ib, out var n) ? n : null,
                 openTasks.GetValueOrDefault(m.UserId),
                 perms,
-                m.MemberRole == ExpertGroupMemberRole.Manager));
+                m.MemberRole == ExpertGroupMemberRole.Manager,
+                DefinedRoleId: m.DefinedRoleId,
+                DefinedRoleName: def?.Name,
+                DefinedRoleColor: def?.BadgeColor,
+                DefinedRoleKey: def?.SystemKey));
         }
 
         foreach (var i in invites)
@@ -129,32 +140,189 @@ public class ExpertGroupMemberAdminService(
     }
 
     public async Task UpdateRoleAsync(
-        string callerUserId, string memberUserId, ExpertGroupMemberRole role, CancellationToken ct = default, bool asPlatformAdmin = false, Guid? actAsGroupId = null)
+        string callerUserId, string memberUserId, UpdateGroupMemberRoleRequest request, CancellationToken ct = default, bool asPlatformAdmin = false, Guid? actAsGroupId = null)
     {
         var groupId = RequireManagedGroup(callerUserId, asPlatformAdmin, actAsGroupId);
         EnsureNotSelf(callerUserId, memberUserId);
         var member = RequireMember(groupId, memberUserId);
         if (member.MemberRole == ExpertGroupMemberRole.Manager)
             throw new InvalidOperationException("Le transfert de Responsable est un workflow distinct.");
-        if (role == ExpertGroupMemberRole.Manager)
-            throw new InvalidOperationException("Le rôle Responsable ne peut pas être attribué ici.");
-        if (role is not (ExpertGroupMemberRole.Expert or ExpertGroupMemberRole.Senior
-            or ExpertGroupMemberRole.Observer or ExpertGroupMemberRole.DisciplineLead
-            or ExpertGroupMemberRole.CommitteeLead))
-            throw new InvalidOperationException("Rôle inconnu.");
 
-        var previous = member.MemberRole;
-        member.MemberRole = role;
-        member.PermissionsJson = WritePermissions(GroupMemberPermissionCatalog.Sanitize(role, ReadPermissions(member)));
+        var previousLabel = CurrentRoleLabel(member);
+        var previousPerms = ReadPermissions(member).ToList();
+        var previousRoleId = member.DefinedRoleId;
+
+        ExpertGroupDefinedRole target;
+        if (request.DefinedRoleId is Guid rid && rid != Guid.Empty)
+        {
+            target = db.ExpertGroupDefinedRoles.FirstOrDefault(r => r.Id == rid && r.ExpertGroupId == groupId)
+                ?? throw new InvalidOperationException("Rôle introuvable dans ce groupe.");
+            if (target.SuperAdminOnly && !asPlatformAdmin)
+                throw new InvalidOperationException("Ce rôle ne peut être attribué que par un Super Admin.");
+        }
+        else if (!string.IsNullOrWhiteSpace(request.SystemKey))
+        {
+            var built = GroupDefinedRoleCatalog.Find(request.SystemKey)
+                ?? throw new InvalidOperationException("Rôle inconnu.");
+            if (built.SuperAdminOnly && !asPlatformAdmin
+                && !db.ExpertGroupDefinedRoles.Any(r => r.ExpertGroupId == groupId && r.SystemKey == built.Key))
+                throw new InvalidOperationException("Seul un Super Admin peut créer ce rôle.");
+            target = await EnsureSystemRoleAsync(groupId, built, callerUserId, ct);
+        }
+        else if (request.Role is int legacy)
+        {
+            var mapped = MapLegacyRole((ExpertGroupMemberRole)legacy);
+            var built = GroupDefinedRoleCatalog.Find(mapped)
+                ?? throw new InvalidOperationException("Rôle inconnu.");
+            target = await EnsureSystemRoleAsync(groupId, built, callerUserId, ct);
+        }
+        else
+            throw new InvalidOperationException("Indiquez un rôle.");
+
+        if (string.Equals(target.SystemKey, "manager", StringComparison.OrdinalIgnoreCase)
+            || GroupDefinedRoleCatalog.IsManagerTitle(target.Name))
+            throw new InvalidOperationException("Le rôle Responsable ne peut pas être attribué ici.");
+
+        var nextPerms = ReadRolePermissions(target);
+        var memberRole = ResolveMemberRole(target);
+
+        member.DefinedRoleId = target.Id;
+        member.MemberRole = memberRole;
+        member.PermissionsJson = WritePermissions(GroupMemberPermissionCatalog.Sanitize(memberRole, nextPerms));
         member.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
+
         var actor = await DisplayNameAsync(callerUserId, ct);
-        var target = await DisplayNameAsync(memberUserId, ct);
+        var person = await DisplayNameAsync(memberUserId, ct);
+        var newLabel = target.Name;
+        var payload = JsonSerializer.Serialize(new
+        {
+            authorUserId = callerUserId,
+            authorName = actor,
+            changedAtUtc = DateTime.UtcNow,
+            oldRole = previousLabel,
+            newRole = newLabel,
+            oldRoleId = previousRoleId,
+            newRoleId = target.Id,
+            lostElevated = GroupMemberPermissionCatalog.LostElevated(previousPerms, nextPerms)
+        });
         await audit.RecordAsync(
             ExpertGovernanceEventType.MemberRoleChanged,
             callerUserId,
-            $"{actor} a changé le rôle de {target} : {RoleFr(previous)} → {RoleFr(role)}.",
-            groupId, relatedEntityId: member.Id, isNotification: false, ct: ct);
+            $"{actor} a changé le rôle de {person} : {previousLabel} → {newLabel}.",
+            groupId, relatedEntityId: member.Id, payloadJson: payload, isNotification: false, ct: ct);
+    }
+
+    public Task<IReadOnlyList<GroupDefinedRoleDto>> ListDefinedRolesAsync(
+        string callerUserId, CancellationToken ct = default, bool asPlatformAdmin = false, Guid? actAsGroupId = null)
+    {
+        var groupId = RequireManagedGroup(callerUserId, asPlatformAdmin, actAsGroupId);
+        var stored = db.ExpertGroupDefinedRoles.Where(r => r.ExpertGroupId == groupId).OrderBy(r => r.Name).ToList();
+        var list = new List<GroupDefinedRoleDto>();
+        foreach (var built in GroupDefinedRoleCatalog.All)
+        {
+            var row = stored.FirstOrDefault(r => r.SystemKey == built.Key);
+            if (built.SuperAdminOnly && !asPlatformAdmin && row is null)
+                continue;
+            list.Add(row is null ? MapBuiltIn(built) : MapStored(row));
+        }
+
+        foreach (var custom in stored.Where(r => string.IsNullOrWhiteSpace(r.SystemKey)))
+            list.Add(MapStored(custom));
+
+        return Task.FromResult<IReadOnlyList<GroupDefinedRoleDto>>(list);
+    }
+
+    public async Task<GroupDefinedRoleDto> CreateDefinedRoleAsync(
+        string callerUserId, CreateGroupDefinedRoleRequest request, CancellationToken ct = default, bool asPlatformAdmin = false, Guid? actAsGroupId = null)
+    {
+        var groupId = RequireManagedGroup(callerUserId, asPlatformAdmin, actAsGroupId);
+        var name = (request.Name ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(name))
+            throw new InvalidOperationException("Le nom du rôle est obligatoire.");
+        if (name.Length > 120)
+            throw new InvalidOperationException("Le nom du rôle est trop long.");
+        if (GroupDefinedRoleCatalog.IsManagerTitle(name))
+            throw new InvalidOperationException("Le rôle Responsable du groupe ne peut pas être créé ici.");
+
+        var normalized = GroupDefinedRoleCatalog.NormalizeName(name);
+        var builtIn = GroupDefinedRoleCatalog.FindByName(name);
+        if (builtIn is { SuperAdminOnly: true } && !asPlatformAdmin)
+            throw new InvalidOperationException("Seul un Super Admin peut créer ce rôle.");
+        if (builtIn is not null && !builtIn.SuperAdminOnly)
+            throw new InvalidOperationException($"Un rôle « {builtIn.Name} » existe déjà dans ce groupe.");
+
+        if (db.ExpertGroupDefinedRoles.Any(r => r.ExpertGroupId == groupId && r.NormalizedName == normalized))
+            throw new InvalidOperationException($"Un rôle « {name} » existe déjà dans ce groupe.");
+
+        if (builtIn is { SuperAdminOnly: true })
+        {
+            var existingMod = db.ExpertGroupDefinedRoles.FirstOrDefault(r =>
+                r.ExpertGroupId == groupId && r.SystemKey == builtIn.Key);
+            if (existingMod is not null)
+                throw new InvalidOperationException($"Un rôle « {builtIn.Name} » existe déjà dans ce groupe.");
+            var seeded = await EnsureSystemRoleAsync(groupId, builtIn, callerUserId, ct);
+            return MapStored(seeded);
+        }
+
+        var perms = GroupMemberPermissionCatalog.Sanitize(
+            ExpertGroupMemberRole.Expert, request.Permissions ?? GroupMemberPermissionCatalog.DefaultsFor(ExpertGroupMemberRole.Expert));
+        var entity = new ExpertGroupDefinedRole
+        {
+            ExpertGroupId = groupId,
+            Name = name,
+            NormalizedName = normalized,
+            Description = TrimOrNull(request.Description),
+            BadgeColor = NormalizeColor(request.BadgeColor),
+            PermissionsJson = WritePermissions(perms),
+            SuperAdminOnly = false,
+            CreatedByUserId = callerUserId
+        };
+        db.Add(entity);
+        await db.SaveChangesAsync(ct);
+        var actor = await DisplayNameAsync(callerUserId, ct);
+        await audit.RecordAsync(
+            ExpertGovernanceEventType.GroupDefinedRoleCreated,
+            callerUserId,
+            $"{actor} a créé le rôle « {name} ».",
+            groupId, relatedEntityId: entity.Id, isNotification: false, ct: ct);
+        return MapStored(entity);
+    }
+
+    private async Task<ExpertGroupDefinedRole> EnsureSystemRoleAsync(
+        Guid groupId, GroupDefinedRoleCatalog.BuiltIn built, string createdByUserId, CancellationToken ct)
+    {
+        var existing = db.ExpertGroupDefinedRoles.FirstOrDefault(r =>
+            r.ExpertGroupId == groupId && r.SystemKey == built.Key);
+        if (existing is not null)
+            return existing;
+
+        existing = db.ExpertGroupDefinedRoles.FirstOrDefault(r =>
+            r.ExpertGroupId == groupId && r.NormalizedName == GroupDefinedRoleCatalog.NormalizeName(built.Name));
+        if (existing is not null)
+        {
+            existing.SystemKey = built.Key;
+            existing.SuperAdminOnly = built.SuperAdminOnly;
+            existing.UpdatedAt = DateTime.UtcNow;
+            await db.SaveChangesAsync(ct);
+            return existing;
+        }
+
+        var entity = new ExpertGroupDefinedRole
+        {
+            ExpertGroupId = groupId,
+            Name = built.Name,
+            NormalizedName = GroupDefinedRoleCatalog.NormalizeName(built.Name),
+            Description = built.Description,
+            BadgeColor = built.BadgeColor,
+            PermissionsJson = WritePermissions(built.Permissions),
+            SystemKey = built.Key,
+            SuperAdminOnly = built.SuperAdminOnly,
+            CreatedByUserId = createdByUserId
+        };
+        db.Add(entity);
+        await db.SaveChangesAsync(ct);
+        return entity;
     }
 
     public async Task UpdatePermissionsAsync(
@@ -356,6 +524,77 @@ public class ExpertGroupMemberAdminService(
         var c = await contacts.GetAsync(userId, ct);
         return string.IsNullOrWhiteSpace(c?.DisplayName) ? "un membre" : c.Value.DisplayName;
     }
+
+    private static string CurrentRoleLabel(ExpertGroupMember member)
+    {
+        if (!string.IsNullOrWhiteSpace(member.DefinedRole?.Name))
+            return member.DefinedRole!.Name;
+        var built = GroupDefinedRoleCatalog.Find(member.DefinedRole?.SystemKey);
+        if (built is not null)
+            return built.Name;
+        return RoleFr(member.MemberRole);
+    }
+
+    private static ExpertGroupMemberRole ResolveMemberRole(ExpertGroupDefinedRole role)
+    {
+        var built = GroupDefinedRoleCatalog.Find(role.SystemKey);
+        return built?.MemberRole ?? ExpertGroupMemberRole.Expert;
+    }
+
+    private static string MapLegacyRole(ExpertGroupMemberRole role) => role switch
+    {
+        ExpertGroupMemberRole.Observer => GroupDefinedRoleCatalog.Member,
+        ExpertGroupMemberRole.DisciplineLead => GroupDefinedRoleCatalog.Teachers,
+        ExpertGroupMemberRole.CommitteeLead => GroupDefinedRoleCatalog.Admissions,
+        ExpertGroupMemberRole.Senior => GroupDefinedRoleCatalog.Pedagogy,
+        _ => GroupDefinedRoleCatalog.Expert
+    };
+
+    private static IReadOnlyList<string> ReadRolePermissions(ExpertGroupDefinedRole role)
+    {
+        if (!string.IsNullOrWhiteSpace(role.PermissionsJson))
+        {
+            try
+            {
+                var stored = JsonSerializer.Deserialize<List<string>>(role.PermissionsJson, JsonOpts);
+                if (stored is { Count: > 0 })
+                    return stored;
+            }
+            catch { /* fallback catalogue */ }
+        }
+
+        var built = GroupDefinedRoleCatalog.Find(role.SystemKey);
+        return built?.Permissions ?? GroupMemberPermissionCatalog.DefaultsFor(ExpertGroupMemberRole.Expert);
+    }
+
+    private static GroupDefinedRoleDto MapBuiltIn(GroupDefinedRoleCatalog.BuiltIn built) =>
+        new(null, built.Key, built.Name, built.Description, built.BadgeColor, built.Permissions, false, built.SuperAdminOnly);
+
+    private static GroupDefinedRoleDto MapStored(ExpertGroupDefinedRole role)
+    {
+        var built = GroupDefinedRoleCatalog.Find(role.SystemKey);
+        var key = string.IsNullOrWhiteSpace(role.SystemKey) ? $"custom:{role.Id:N}" : role.SystemKey!;
+        return new GroupDefinedRoleDto(
+            role.Id,
+            key,
+            role.Name,
+            role.Description ?? built?.Description,
+            string.IsNullOrWhiteSpace(role.BadgeColor) ? built?.BadgeColor ?? "#2563EB" : role.BadgeColor,
+            ReadRolePermissions(role),
+            string.IsNullOrWhiteSpace(role.SystemKey),
+            role.SuperAdminOnly || (built?.SuperAdminOnly ?? false));
+    }
+
+    private static string NormalizeColor(string? color)
+    {
+        var c = (color ?? "").Trim();
+        if (c.Length == 7 && c[0] == '#' && c.Skip(1).All(Uri.IsHexDigit))
+            return c.ToUpperInvariant();
+        return "#006D44";
+    }
+
+    private static string? TrimOrNull(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static string RoleFr(ExpertGroupMemberRole role) => role switch
     {

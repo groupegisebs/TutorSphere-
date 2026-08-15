@@ -70,7 +70,7 @@
                     </div>
                     <div class="col-md-3">
                         <label class="form-label">Matière</label>
-                        <select class="form-select" @bind="_planSubject" @bind:after="OnPlanSubjectChanged" disabled="@(!GroupSubjectNames.Any())">
+                        <select class="form-select" @bind="_planSubject" @bind:after="OnPlanSubjectChanged" disabled="@(!HasSubjectChoices)">
                             <option value="">— Choisir —</option>
                             @if (AssignedSubjectNames.Count > 0)
                             {
@@ -95,13 +95,17 @@
                                 }
                             }
                         </select>
-                        @if (!GroupSubjectNames.Any())
+                        @if (!HasSubjectChoices)
                         {
                             <div class="form-text">
-                                Aucune matière chargée.
+                                Aucune matière dans le groupe.
                                 <a href="expert/disciplines">Disciplines</a>
                                 ·
                                 <a href="expert/offers">Offres du groupe</a>
+                                @if (!string.IsNullOrWhiteSpace(_subjectsLoadHint))
+                                {
+                                    <span class="text-danger"> — @_subjectsLoadHint</span>
+                                }
                             </div>
                         }
                     </div>
@@ -554,6 +558,7 @@
     private bool _isManager;
     private string? _error;
     private string? _success;
+    private string? _subjectsLoadHint;
     private string _tab = "all";
     private string _search = "";
     private string _statusFilter = "";
@@ -616,6 +621,8 @@
                 names.Add(d.Name.Trim());
             foreach (var s in _offerSubjects)
                 names.Add(s);
+            foreach (var d in _teacherDisciplines.Where(x => !string.IsNullOrWhiteSpace(x.Name)))
+                names.Add(d.Name.Trim());
             foreach (var dir in _directory)
             {
                 if (dir.Subjects is null) continue;
@@ -645,6 +652,8 @@
             return names.ToList();
         }
     }
+
+    private bool HasSubjectChoices => GroupSubjectNames.Count > 0 || AssignedSubjectNames.Count > 0;
 
     private IEnumerable<string> PlanLevelOptions =>
         DefaultLevels
@@ -693,22 +702,22 @@
                 .GroupBy(m => m.UserId, StringComparer.Ordinal)
                 .Select(g => g.First())
                 .ToList();
-            try
-            {
-                var disc = await Api.GetWithErrorAsync<List<DiscItem>>("api/expert/disciplines");
-                _disciplines = disc.Value ?? [];
-            }
-            catch { _disciplines = []; }
-            try
-            {
-                var catalog = await Api.GetAsync<OfferCatalog>("api/expert/group-offers");
-                _offerSubjects = catalog?.Offers?
-                    .Where(o => o.Status is not (4 or 5) && !string.IsNullOrWhiteSpace(o.Name))
-                    .Select(o => o.Name.Trim())
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToList() ?? [];
-            }
-            catch { _offerSubjects = []; }
+            _subjectsLoadHint = null;
+            var disc = await Api.GetWithErrorAsync<List<DiscItem>>("api/expert/disciplines");
+            _disciplines = disc.Value ?? [];
+            if (disc.Error is not null && _disciplines.Count == 0)
+                _subjectsLoadHint = disc.Error;
+
+            var catalogResult = await Api.GetWithErrorAsync<OfferCatalog>("api/expert/group-offers");
+            _offerSubjects = catalogResult.Value?.Offers?
+                .Where(o => o.Status is not (4 or 5) && !string.IsNullOrWhiteSpace(o.Name))
+                .Select(o => o.Name.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList() ?? [];
+            if (catalogResult.Error is not null && _offerSubjects.Count == 0)
+                _subjectsLoadHint = string.IsNullOrWhiteSpace(_subjectsLoadHint)
+                    ? catalogResult.Error
+                    : _subjectsLoadHint;
             var grp = await grpT;
             _track = grp?.TeacherApprovalTrack ?? 0;
             var ctx = await ctxT;
@@ -1265,12 +1274,32 @@
         int Cycle,
         string? WorkMethod,
         bool IsActive,
-        List<DiscService>? Services,
+        List<DiscService> Services,
         int AssignedTeacherCount,
         DateTime CreatedAt);
     private sealed record DiscService(Guid Id, string Title, string? Description, int SortOrder);
-    private sealed record OfferCatalog(List<OfferItem>? Offers);
-    private sealed record OfferItem(Guid Id, string Name, int Status);
+    private sealed record OfferCatalog(
+        Guid ExpertGroupId,
+        string GroupName,
+        string? GroupCountryCode,
+        string GroupCurrency,
+        bool GroupIsInternational,
+        List<OfferItem>? Offers);
+    private sealed record OfferItem(
+        Guid Id,
+        Guid ExpertGroupId,
+        string Name,
+        string? Code,
+        int Status,
+        int PricingModel,
+        string Currency,
+        decimal? RecommendedPrice,
+        DateTime CreatedAt,
+        DateTime? PublishedAtUtc,
+        string? ShortDescription = null,
+        bool IsInternational = false,
+        string? MarketCountryCode = null,
+        int AssignedTeacherCount = 0);
     private sealed record TeacherDisc(Guid DisciplineId, string Name, int Cycle, bool IsActive, bool IsAssigned);
     private sealed record GroupDto(Guid Id, string Name, string? CountryCode, string? Description, bool IsInternational, int TeacherApprovalTrack);
     private sealed record MeCtx(bool IsGroupManager, Guid? GroupId, string? GroupName, string? UserId);

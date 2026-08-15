@@ -53,6 +53,7 @@ public interface IApplicationDbContext
     IQueryable<PlatformPromoCode> PlatformPromoCodes { get; }
     IQueryable<ExpertGroup> ExpertGroups { get; }
     IQueryable<ExpertGroupMember> ExpertGroupMembers { get; }
+    IQueryable<ExpertGroupDefinedRole> ExpertGroupDefinedRoles { get; }
     IQueryable<ExpertGroupManagerMandate> ExpertGroupManagerMandates { get; }
     IQueryable<GroupOffer> GroupOffers { get; }
     IQueryable<GroupOfferTeacher> GroupOfferTeachers { get; }

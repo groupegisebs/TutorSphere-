@@ -141,8 +141,34 @@ public class ExpertMembershipController(
         if (request is null) return BadRequest(new { error = "Requête invalide." });
         try
         {
-            await memberAdmin.UpdateRoleAsync(UserId, userId, (ExpertGroupMemberRole)request.Role, ct, AsPlatformActAs, ActAsGroupId);
+            await memberAdmin.UpdateRoleAsync(UserId, userId, request, ct, AsPlatformActAs, ActAsGroupId);
             return Ok(new { message = "Rôle mis à jour." });
+        }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    [HttpGet("roles")]
+    [Authorize(Roles = ManagerOrPlatform)]
+    public async Task<ActionResult<IReadOnlyList<GroupDefinedRoleDto>>> ListRoles(CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        try
+        {
+            return Ok(await memberAdmin.ListDefinedRolesAsync(UserId, ct, AsPlatformActAs, ActAsGroupId));
+        }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    [HttpPost("roles")]
+    [Authorize(Roles = ManagerOrPlatform)]
+    public async Task<ActionResult<GroupDefinedRoleDto>> CreateRole(
+        [FromBody] CreateGroupDefinedRoleRequest? request, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        if (request is null) return BadRequest(new { error = "Requête invalite." });
+        try
+        {
+            return Ok(await memberAdmin.CreateDefinedRoleAsync(UserId, request, ct, AsPlatformActAs, ActAsGroupId));
         }
         catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
     }

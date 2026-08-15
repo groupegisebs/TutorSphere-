@@ -18,7 +18,8 @@ public interface IExpertDisciplineService
     Task<DisciplineDto> UpdateAsync(Guid disciplineId, string expertUserId, UpdateDisciplineRequest request, CancellationToken ct = default);
     Task DeleteAsync(Guid disciplineId, string expertUserId, CancellationToken ct = default);
     Task<IReadOnlyList<GroupTeacherAssignmentDto>> ListGroupTeachersAsync(Guid disciplineId, string expertUserId, CancellationToken ct = default);
-    Task<IReadOnlyList<TeacherDisciplineStatusDto>> ListAssignmentsForTeacherAsync(Guid tenantId, string expertUserId, CancellationToken ct = default);
+    Task<IReadOnlyList<TeacherDisciplineStatusDto>> ListAssignmentsForTeacherAsync(
+        Guid tenantId, string expertUserId, CancellationToken ct = default, Guid? overrideGroupId = null);
     Task AssignTeacherAsync(Guid disciplineId, string expertUserId, Guid tenantId, CancellationToken ct = default);
     Task UnassignTeacherAsync(Guid disciplineId, string expertUserId, Guid tenantId, CancellationToken ct = default);
 }
@@ -199,9 +200,11 @@ public class ExpertDisciplineService(IApplicationDbContext db, IUserContactLooku
     }
 
     public Task<IReadOnlyList<TeacherDisciplineStatusDto>> ListAssignmentsForTeacherAsync(
-        Guid tenantId, string expertUserId, CancellationToken ct = default)
+        Guid tenantId, string expertUserId, CancellationToken ct = default, Guid? overrideGroupId = null)
     {
-        var groupId = GetExpertGroupId(expertUserId);
+        var groupId = overrideGroupId is Guid og && og != Guid.Empty
+            ? og
+            : GetExpertGroupId(expertUserId);
         var tenant = db.Tenants.FirstOrDefault(t => t.Id == tenantId)
             ?? throw new InvalidOperationException("Enseignant introuvable.");
         if (tenant.ApprovedByExpertGroupId != groupId
