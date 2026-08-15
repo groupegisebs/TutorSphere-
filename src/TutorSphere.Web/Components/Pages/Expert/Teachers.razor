@@ -18,15 +18,14 @@
     <Authorized>
         <div class="cc-toolbar ex-toolbar">
             <div>
-                <p class="ex-crumb">Enseignants</p>
-                <h1 class="cc-page-title">Enseignants</h1>
+                <h1 class="cc-page-title"><i class="bi bi-people"></i> Enseignants</h1>
                 <p class="cc-page-sub">Gérez les enseignants de votre groupe et suivez leur statut d'approbation et leurs performances.</p>
             </div>
             <div class="d-flex gap-2 flex-wrap">
                 <a class="cc-btn cc-btn-primary" href="expert/teachers/add">
                     <i class="bi bi-plus-lg" aria-hidden="true"></i> Ajouter un enseignant
                 </a>
-                <button type="button" class="cc-btn" disabled="@(_filtered.Count == 0)" @onclick="ExportCsvAsync">
+                <button type="button" class="cc-btn ex-btn-export" disabled="@(_filtered.Count == 0)" @onclick="ExportCsvAsync">
                     <i class="bi bi-download" aria-hidden="true"></i> Exporter
                 </button>
             </div>
@@ -48,6 +47,7 @@
                     <div>
                         <div class="ex-kpi-label">Total enseignants</div>
                         <div class="ex-kpi-value">@_directory.Count</div>
+                        <div class="ex-kpi-hint">Tous statuts confondus</div>
                     </div>
                 </button>
                 <button type="button" class="ex-kpi @(_statusFilter == "approved" ? "is-on" : null)" data-tone="emerald" @onclick='() => SetStatusFilter("approved")'>
@@ -55,6 +55,7 @@
                     <div>
                         <div class="ex-kpi-label">Approuvés</div>
                         <div class="ex-kpi-value">@CountStatus("approved")</div>
+                        <div class="ex-kpi-hint">Enseignants actifs</div>
                     </div>
                 </button>
                 <button type="button" class="ex-kpi @(_statusFilter == "pending" ? "is-on" : null)" data-tone="amber" @onclick='() => SetStatusFilter("pending")'>
@@ -62,6 +63,7 @@
                     <div>
                         <div class="ex-kpi-label">En attente d'approbation</div>
                         <div class="ex-kpi-value">@CountStatus("pending")</div>
+                        <div class="ex-kpi-hint">En cours d'évaluation</div>
                     </div>
                 </button>
                 <button type="button" class="ex-kpi @(_statusFilter == "review" ? "is-on" : null)" data-tone="violet" @onclick='() => SetStatusFilter("review")'>
@@ -69,6 +71,7 @@
                     <div>
                         <div class="ex-kpi-label">En évaluation</div>
                         <div class="ex-kpi-value">@CountStatus("review")</div>
+                        <div class="ex-kpi-hint">Évaluations en cours</div>
                     </div>
                 </button>
                 <button type="button" class="ex-kpi @(_statusFilter == "suspended" ? "is-on" : null)" data-tone="rose" @onclick='() => SetStatusFilter("suspended")'>
@@ -76,6 +79,7 @@
                     <div>
                         <div class="ex-kpi-label">Suspendus</div>
                         <div class="ex-kpi-value">@CountStatus("suspended")</div>
+                        <div class="ex-kpi-hint">Accès restreint</div>
                     </div>
                 </button>
             </div>

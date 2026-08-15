@@ -1,3 +1,4 @@
+@implements IDisposable
 @using TutorSphere.Application.Options
 @inject AuthService Auth
 @inject ApiClient Api
@@ -23,7 +24,7 @@
             </NavLink>
             <NavLink class="cc-nav-link" href="expert/activity" Match="NavLinkMatch.Prefix">
                 <i class="bi bi-activity" aria-hidden="true"></i>
-                <span>Activité</span>
+                <span>Journal d'activité</span>
             </NavLink>
             <NavLink class="cc-nav-link" href="expert/reports" Match="NavLinkMatch.Prefix">
                 <i class="bi bi-file-earmark-bar-graph" aria-hidden="true"></i>
@@ -34,7 +35,7 @@
         <CollapsibleNavSection Title="Enseignants" SectionKey="enseignants" DefaultOpen="true">
             <NavLink class="cc-nav-link" href="expert/teachers/add" Match="NavLinkMatch.Prefix">
                 <i class="bi bi-person-plus" aria-hidden="true"></i>
-                <span>Ajouter un enseignant</span>
+                <span>Ajouter des enseignants</span>
             </NavLink>
             <NavLink class="cc-nav-link" href="expert/teachers" Match="NavLinkMatch.All">
                 <i class="bi bi-mortarboard" aria-hidden="true"></i>
@@ -43,6 +44,10 @@
             <NavLink class="cc-nav-link" href="expert/approvals" Match="NavLinkMatch.Prefix">
                 <i class="bi bi-inbox" aria-hidden="true"></i>
                 <span>Approbations</span>
+                @if (_approvalCount > 0)
+                {
+                    <span class="ex-nav-badge">@_approvalCount</span>
+                }
             </NavLink>
             <NavLink class="cc-nav-link" href="expert/my-tasks" Match="NavLinkMatch.Prefix">
                 <i class="bi bi-clipboard-check" aria-hidden="true"></i>
@@ -72,9 +77,9 @@
         @if (_isManager)
         {
             <CollapsibleNavSection Title="Gestion du groupe" SectionKey="gestion" DefaultOpen="true">
-                <NavLink class="cc-nav-link" href="group-admin/dashboard" Match="NavLinkMatch.Prefix">
+                <NavLink class="cc-nav-link @(_inGroupSpace ? "is-space" : null)" href="group-admin/dashboard" Match="NavLinkMatch.Prefix">
                     <i class="bi bi-building-gear" aria-hidden="true"></i>
-                    <span>Tableau de bord du groupe</span>
+                    <span>Espace Responsable</span>
                 </NavLink>
                 <NavLink class="cc-nav-link" href="group-admin/members" Match="NavLinkMatch.Prefix">
                     <i class="bi bi-people" aria-hidden="true"></i>
@@ -137,13 +142,15 @@
 </div>
 
 <div class="cc-sidebar-footer">
-    <button type="button" class="cc-btn w-100" @onclick="LogoutAsync">
+    <button type="button" class="ex-logout" @onclick="LogoutAsync">
         <i class="bi bi-box-arrow-right"></i> Déconnexion
     </button>
 </div>
 
 @code {
     private bool _isManager;
+    private int _approvalCount;
+    private bool _inGroupSpace;
 
     protected override async Task OnInitializedAsync()
     {
@@ -154,7 +161,30 @@
             _isManager = ctx?.IsGroupManager == true || Auth.IsActingAsGroupAdmin;
         }
         catch { }
+
+        RefreshSpace();
+        Nav.LocationChanged += OnLocationChanged;
+        try
+        {
+            var queue = await Api.GetAsync<List<QueuePeek>>("api/expert/approvals-queue");
+            _approvalCount = queue?.Count ?? 0;
+        }
+        catch { }
     }
+
+    private void RefreshSpace()
+    {
+        var path = Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0].Trim('/').ToLowerInvariant();
+        _inGroupSpace = path.StartsWith("group-admin");
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        RefreshSpace();
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
 
     private Task LogoutAsync()
     {
@@ -164,4 +194,5 @@
     }
 
     private sealed record MeContext(bool IsGroupManager, Guid? GroupId, string? GroupName);
+    private sealed record QueuePeek(Guid TenantId);
 }

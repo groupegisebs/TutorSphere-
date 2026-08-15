@@ -15,12 +15,11 @@
         <div class="ex-gm">
             <div class="cc-toolbar ex-toolbar">
                 <div>
-                    <p class="ex-crumb">Espace Responsable <span>/</span> Gestion du groupe <span>/</span> <strong>Membres</strong></p>
                     <h1 class="cc-page-title"><i class="bi bi-people"></i> Membres du groupe</h1>
-                    <p class="cc-page-sub">Gérez les membres de votre groupe, leurs rôles, permissions et responsabilités. Les enseignants ne sont pas des membres du groupe.</p>
+                    <p class="cc-page-sub">Gérez les membres de votre groupe, leurs rôles, permissions et responsabilités.</p>
                 </div>
                 <div class="d-flex gap-2 flex-wrap">
-                    <button type="button" class="cc-btn" @onclick="ExportCsvAsync"><i class="bi bi-download"></i> Exporter</button>
+                    <button type="button" class="cc-btn ex-btn-export" @onclick="ExportCsvAsync"><i class="bi bi-download"></i> Exporter</button>
                     <button type="button" class="cc-btn cc-btn-primary" @onclick="() => _showInvite = true">
                         <i class="bi bi-plus-lg"></i> Inviter un membre
                     </button>
@@ -223,30 +222,30 @@
                                                             @if (_menuId == row.Id)
                                                             {
                                                                 <div class="ex-more-menu">
-                                                                    <button type="button" @onclick="() => SelectAsync(row)">Voir le profil</button>
+                                                                    <button type="button" @onclick="() => SelectAsync(row)"><i class="bi bi-person"></i> Voir le profil</button>
                                                                     @if (!row.IsManager && !IsSelf(row))
                                                                     {
-                                                                        <button type="button" @onclick="() => OpenRole(row)">Modifier le rôle</button>
-                                                                        <button type="button" @onclick="() => OpenPerms(row)">Gérer les permissions</button>
-                                                                        <button type="button" @onclick="() => OpenTask(row)">Attribuer une tâche</button>
+                                                                        <button type="button" @onclick="() => OpenRole(row)"><i class="bi bi-person-gear"></i> Modifier le rôle</button>
+                                                                        <button type="button" @onclick="() => OpenPerms(row)"><i class="bi bi-shield-check"></i> Gérer les permissions</button>
+                                                                        <button type="button" @onclick="() => OpenTask(row)"><i class="bi bi-list-check"></i> Attribuer une tâche</button>
                                                                     }
                                                                     @if (!string.IsNullOrWhiteSpace(row.UserId))
                                                                     {
-                                                                        <button type="button" @onclick="() => GoMessage(row.UserId)">Envoyer un message</button>
+                                                                        <button type="button" @onclick="() => GoMessage(row.UserId)"><i class="bi bi-envelope"></i> Envoyer un message</button>
                                                                     }
-                                                                    <button type="button" @onclick="() => SelectAsync(row)">Voir l’activité</button>
+                                                                    <button type="button" @onclick="() => SelectAsync(row)"><i class="bi bi-activity"></i> Voir l’activité</button>
                                                                     @if (!row.IsManager && !IsSelf(row))
                                                                     {
                                                                         <hr class="my-1" />
                                                                         @if (row.Status == 1)
                                                                         {
-                                                                            <button type="button" @onclick="() => ReactivateAsync(row)">Réactiver</button>
+                                                                            <button type="button" @onclick="() => ReactivateAsync(row)"><i class="bi bi-arrow-counterclockwise"></i> Réactiver</button>
                                                                         }
                                                                         else
                                                                         {
-                                                                            <button type="button" @onclick="() => OpenSuspend(row)">Suspendre</button>
+                                                                            <button type="button" class="is-warn" @onclick="() => OpenSuspend(row)"><i class="bi bi-pause-circle"></i> Suspendre</button>
                                                                         }
-                                                                        <button type="button" class="text-danger" @onclick="() => OpenRemove(row)">Retirer du groupe</button>
+                                                                        <button type="button" class="text-danger" @onclick="() => OpenRemove(row)"><i class="bi bi-person-x"></i> Retirer du groupe</button>
                                                                     }
                                                                 </div>
                                                             }

@@ -1,4 +1,5 @@
 @inherits LayoutComponentBase
+@implements IDisposable
 @inject AuthService Auth
 @inject NavigationManager Nav
 
@@ -13,7 +14,7 @@
 <link rel="stylesheet" href="css/admin-control-center.css" />
 <link rel="stylesheet" href="css/expert-space.css" />
 
-<div class="cc-shell cc-shell--expert" id="cc-shell">
+<div class="cc-shell cc-shell--expert" id="cc-shell" data-module="@ModuleKey">
     <ApplyRequestCulture />
     <aside class="cc-sidebar">
         <ExpertSidebar />
@@ -30,6 +31,11 @@
 </div>
 
 @code {
+    protected override void OnInitialized()
+    {
+        Nav.LocationChanged += OnLocationChanged;
+    }
+
     protected override void OnParametersSet()
     {
         // Force password change before any expert page (except the change-password route itself).
@@ -40,4 +46,18 @@
                 Nav.NavigateTo("/change-password");
         }
     }
+
+    private string ModuleKey
+    {
+        get
+        {
+            var path = Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0].Trim('/').ToLowerInvariant();
+            return path.StartsWith("group-admin") ? "group" : "teachers";
+        }
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e) =>
+        InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
 }
