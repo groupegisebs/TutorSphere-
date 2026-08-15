@@ -100,6 +100,22 @@ public class ParentPortalController : ControllerBase
         return dashboard is null ? NotFound(new { error = "Profil parent introuvable." }) : Ok(dashboard);
     }
 
+    /// <summary>Suivi scolaire d'un enfant. Aucun code d'accès, courriel, téléphone ni date de naissance.</summary>
+    [HttpGet("children/{id:guid}/follow-up")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<ActionResult<ParentChildFollowUpDto>> ChildFollowUp(
+        Guid id,
+        [FromQuery] string? period,
+        CancellationToken ct)
+    {
+        var userId = await ResolveParentUserIdAsync(ct);
+        if (userId is null)
+            return Unauthorized();
+
+        var followUp = await _parentService.GetChildFollowUpForUserAsync(userId, id, period, ct);
+        return followUp is null ? NotFound(new { error = "Enfant introuvable." }) : Ok(followUp);
+    }
+
     [HttpPost("children")]
     public async Task<ActionResult<StudentDto>> AddChild([FromBody] ParentAddChildRequest request, CancellationToken ct)
     {
@@ -286,6 +302,31 @@ public class ParentPortalController : ControllerBase
         try
         {
             return Ok(await _parentService.GetLessonsForUserAsync(userId, start.Value, end.Value, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>Planning familial : cours, devoirs et évaluations par enfant.</summary>
+    [HttpGet("calendar")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<ActionResult<ParentCalendarDto>> Calendar(
+        [FromQuery] DateTime? start,
+        [FromQuery] DateTime? end,
+        CancellationToken ct)
+    {
+        var userId = await ResolveParentUserIdAsync(ct);
+        if (userId is null)
+            return Unauthorized();
+
+        if (!start.HasValue || !end.HasValue)
+            return BadRequest(new { error = "Spécifiez start et end." });
+
+        try
+        {
+            return Ok(await _parentService.GetCalendarForUserAsync(userId, start.Value, end.Value, ct));
         }
         catch (InvalidOperationException ex)
         {

@@ -88,3 +88,71 @@ public record ParentDashboardCalendarEventDto(
     string Subtitle,
     string Time,
     string Color);
+
+/// <summary>
+/// Suivi parental d'un enfant. Jamais de date de naissance, courriel, téléphone ni code d'accès.
+/// </summary>
+public record ParentChildFollowUpDto(
+    Guid StudentId,
+    int? ProgressPercent,
+    int? ProgressDeltaThisMonth,
+    int HomeworkDueCount,
+    ParentChildNextLessonDto? NextLesson,
+    int? AttendancePercentThisMonth,
+    IReadOnlyList<ParentChildSubjectProgressDto> SubjectProgress,
+    IReadOnlyList<ParentChildHomeworkItemDto> RecentHomework,
+    IReadOnlyList<ParentChildTeacherDto> Teachers,
+    IReadOnlyList<ParentDashboardDocumentDto> Documents,
+    bool HasLoginAccess);
+
+public record ParentChildNextLessonDto(
+    Guid LessonId,
+    string Subject,
+    string? Title,
+    DateTime StartTime,
+    DateTime EndTime,
+    string TeacherName);
+
+public record ParentChildSubjectProgressDto(
+    string Subject,
+    int? Percent);
+
+public record ParentChildHomeworkItemDto(
+    Guid Id,
+    string Title,
+    string? Subject,
+    DateTime? DueDate,
+    bool IsSubmitted,
+    bool IsGraded,
+    decimal? Grade,
+    DateTime CreatedAt);
+
+public record ParentChildTeacherDto(
+    string UserId,
+    string DisplayName,
+    string? Subject);
+
+/// <summary>Planning familial. Aucun courriel, téléphone, adresse ni code d'accès.</summary>
+public record ParentCalendarDto(
+    IReadOnlyList<ParentCalendarChildDto> Children,
+    IReadOnlyList<ParentCalendarEventDto> Events);
+
+public record ParentCalendarChildDto(
+    Guid Id,
+    string FirstName,
+    string LastName,
+    string? SchoolLevel);
+
+public record ParentCalendarEventDto(
+    Guid Id,
+    string Kind,
+    Guid StudentId,
+    string ChildFirstName,
+    string Subject,
+    DateTime StartTime,
+    DateTime EndTime,
+    string TeacherName,
+    string? TeacherUserId,
+    string? Status,
+    string? MeetingUrl,
+    string? Title);

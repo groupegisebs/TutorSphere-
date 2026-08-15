@@ -2,235 +2,458 @@
 @layout ParentLayout
 @rendermode InteractiveServer
 @using System.ComponentModel.DataAnnotations
+@using System.Globalization
+@using TutorSphere.Application.DTOs.Parents
 @using TutorSphere.Application.DTOs.Students
+@using TutorSphere.Web.Services
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
 @inject AuthService Auth
 @inject IJSRuntime JS
+@inject IConfiguration Config
+@inject NavigationManager Nav
 <PageTitle>@L["Children_Title"] – TutorSphere</PageTitle>
 
-<div class="ts-page-header">
-    <div>
-        <h1><i class="bi bi-people-fill me-2"></i>@L["Children_Title"]</h1>
-        <p class="ts-page-subtitle">@L["Children_Subtitle"]</p>
-    </div>
-    <button type="button" class="btn btn-primary" @onclick="OpenAddModal">
-        <i class="bi bi-plus-lg me-1"></i>@L["Children_Add"]
-    </button>
-</div>
+<div class="parent-dashboard pd-mock pc-page">
+    <header class="pc-header">
+        <div>
+            <h1>@L["Children_Title"]</h1>
+            <p class="ts-page-subtitle">@L["Children_Subtitle"]</p>
+        </div>
+        <button type="button" class="pc-add-btn" @onclick="OpenAddModal">
+            <i class="bi bi-plus-lg" aria-hidden="true"></i>@L["Children_Add"]
+        </button>
+    </header>
 
-@if (!string.IsNullOrEmpty(_loadError))
-{
-    <div class="alert alert-warning mb-3 d-flex flex-wrap align-items-center gap-2" role="alert">
-        <i class="bi bi-exclamation-triangle me-2"></i>
-        <span class="flex-grow-1">@_loadError</span>
-        @if (_sessionExpired)
-        {
-            <a class="btn btn-sm btn-outline-dark" href="/login/parent">@L["Common_ReLogin"]</a>
-        }
-    </div>
-}
-
-@if (_loading)
-{
-    <div class="d-flex align-items-center justify-content-center py-5">
-        <span class="spinner-border text-primary me-3" role="status"></span>
-        <span class="text-muted">@L["Common_Loading"]</span>
-    </div>
-}
-else
-{
-    @if (_children.Count > 0 && _children.Any(c => c.IsAutonomous))
+    @if (!string.IsNullOrEmpty(_loadError))
     {
-        <div class="autonomous-notice mb-3">
-            <i class="bi bi-info-circle-fill"></i>
-            <span>
-                Les enfants de 14 ans et plus peuvent se connecter à l'espace Élève
-                (<a href="/login/eleve">/login/eleve</a>) pour rechercher un cours et s'abonner eux-mêmes.
-                Un accès de connexion est créé automatiquement lorsqu'une date de naissance (≥ 14 ans) est enregistrée.
-            </span>
+        <div class="alert alert-warning mb-3 d-flex flex-wrap align-items-center gap-2" role="alert">
+            <i class="bi bi-exclamation-triangle me-2"></i>
+            <span class="flex-grow-1">@_loadError</span>
+            @if (_sessionExpired)
+            {
+                <a class="btn btn-sm btn-outline-dark" href="/login/parent">@L["Common_ReLogin"]</a>
+            }
         </div>
     }
 
-    <div class="children-grid">
-        @foreach (var child in _children)
-        {
-            <div class="child-card @(_active?.Id == child.Id ? "active" : "")" @onclick="() => SelectChild(child)">
-                <div class="child-card-header">
-                    <div class="ts-avatar ts-avatar-lg" style="background:@child.Color">@child.Initials</div>
-                    <div>
-                        <h3>
-                            @child.Name
-                            @if (child.Age.HasValue)
-                            {
-                                <span class="text-muted ms-2" style="font-size:0.85rem;font-weight:400">(@child.Age ans)</span>
-                            }
-                        </h3>
-                        <span class="text-muted">@(child.Level ?? "—") · @(child.School ?? "—")</span>
-                    </div>
-                    <span class="ts-badge @(child.IsActive ? "ts-badge-success" : "ts-badge-muted") ms-auto">
-                        @(child.IsActive ? L["Common_Active"] : L["Common_Inactive"])
-                    </span>
-                </div>
-                @if (child.IsAutonomous)
-                {
-                    <div class="autonomous-notice">
-                        <i class="bi bi-mortarboard-fill"></i>
-                        <span>
-                            @child.Age ans — autonome : peut s'abonner à un cours depuis l'espace Élève.
-                            @if (child.HasLoginAccess)
-                            {
-                                <text> Accès connexion actif.</text>
-                            }
-                            else
-                            {
-                                <text> Activez l'accès connexion ci-dessous.</text>
-                            }
-                        </span>
-                    </div>
-                }
-                <div class="child-subjects">
-                    @foreach (var s in child.Subjects)
-                    {
-                        <span class="ts-badge ts-badge-neutral">@s</span>
-                    }
-                </div>
-            </div>
-        }
-        @if (_children.Count == 0)
-        {
-            <div class="text-center py-5 text-muted col-span-full">
-                <i class="bi bi-people fs-1 d-block mb-3 opacity-50"></i>
-                <p class="mb-3">Aucun enfant enregistré.</p>
-                <button type="button" class="btn btn-outline-primary" @onclick="OpenAddModal">
-                    <i class="bi bi-plus-lg me-1"></i>Ajouter votre premier enfant
-                </button>
-            </div>
-        }
-    </div>
-
-    @if (_active != null)
+    @if (_loading)
     {
-        <div class="section-card mt-4">
-            <div class="section-card-header">
-                <h2>
-                    Détail — @_active.Name
-                    @if (_active.Age.HasValue)
-                    {
-                        <span class="text-muted ms-2" style="font-size:0.9rem;font-weight:400">(@_active.Age ans)</span>
-                    }
-                </h2>
+        <div class="pd-loading">
+            <span class="spinner-border spinner-border-sm" role="status"></span>
+            <span>@L["Common_Loading"]</span>
+        </div>
+    }
+    else if (_children.Count == 0)
+    {
+        <button type="button" class="pd-child-add pd-child-add--hero" @onclick="OpenAddModal">
+            <span class="pd-child-add-icon"><i class="bi bi-plus-lg" aria-hidden="true"></i></span>
+            <strong>@L["Children_EmptyFirst"]</strong>
+            <span>@L["Children_Empty"]</span>
+        </button>
+    }
+    else
+    {
+        @if (_children.Any(c => c.IsAutonomous))
+        {
+            <div class="autonomous-notice mb-3">
+                <i class="bi bi-info-circle-fill"></i>
+                <span>@L["Children_AutonomousHint"]</span>
             </div>
-            @if (_active.IsAutonomous)
+        }
+
+        <div class="pc-select-row" role="list">
+            @foreach (var child in _children)
             {
-                <div style="padding:1rem 1.5rem 0">
-                    <div class="autonomous-notice">
-                        <i class="bi bi-mortarboard-fill"></i>
-                        <span>
-                            @_active.Name (@_active.Age ans) peut rechercher et s'abonner à un cours seul via
-                            <a href="/login/eleve">l'espace Élève</a>
-                            (e-mail parent + code d'accès). Vous pouvez aussi l'inscrire depuis votre espace parent.
-                        </span>
-                    </div>
-                </div>
-            }
-            <div style="padding:1.5rem">
-                <div class="d-flex gap-2 mb-3 flex-wrap">
-                    <button type="button" class="btn btn-outline-primary btn-sm" @onclick="OpenEditModal">
-                        <i class="bi bi-pencil me-1"></i>@L["Common_Edit"]
-                    </button>
-                    <button type="button" class="btn btn-outline-danger btn-sm" disabled="@_deleting" @onclick="DeleteChildAsync">
-                        @if (_deleting)
+                var selected = _active?.Id == child.Id;
+                <button type="button" class="pc-select-card @(selected ? "is-active" : "")" role="listitem"
+                        aria-pressed="@selected" @onclick="() => SelectChildAsync(child)">
+                    <div class="pc-select-top">
+                        @if (!string.IsNullOrEmpty(child.PhotoUrl))
                         {
-                            <span class="spinner-border spinner-border-sm me-1"></span>
-                        }
-                        <i class="bi bi-trash me-1"></i>@L["Common_Delete"]
-                    </button>
-                </div>
-                @if (!string.IsNullOrEmpty(_detailError))
-                {
-                    <div class="alert alert-danger mb-3" role="alert">@_detailError</div>
-                }
-                <div class="ts-form-grid">
-                    <div class="ts-form-row"><label>@L["Children_FirstName"]</label><span>@_active.FirstName</span></div>
-                    <div class="ts-form-row"><label>@L["Children_LastName"]</label><span>@_active.LastName</span></div>
-                    <div class="ts-form-row"><label>@L["Children_Age"]</label><span>@(_active.Age.HasValue ? $"{_active.Age}" : "—")</span></div>
-                    <div class="ts-form-row"><label>@L["Children_Level"]</label><span>@(_active.Level ?? "—")</span></div>
-                    <div class="ts-form-row"><label>@L["Children_School"]</label><span>@(_active.School ?? "—")</span></div>
-                    <div class="ts-form-row"><label>@L["Children_Subjects"]</label><span>@(string.Join(", ", _active.Subjects))</span></div>
-                    @if (!string.IsNullOrWhiteSpace(_active.Email))
-                    {
-                        <div class="ts-form-row"><label>@L["Children_Email"]</label><span>@_active.Email</span></div>
-                    }
-                </div>
-
-                <div class="mt-4 pt-3 border-top">
-                    <h3 class="h6 mb-2"><i class="bi bi-shield-lock me-1"></i>@L["Children_LoginAccess_Title"]</h3>
-                    <p class="text-muted small mb-3">@L["Children_LoginAccess_Help"]</p>
-
-                    @if (!string.IsNullOrEmpty(_accessError))
-                    {
-                        <div class="alert alert-danger mb-3" role="alert">@_accessError</div>
-                    }
-
-                    <div class="d-flex gap-2 flex-wrap align-items-center">
-                        @if (!_active.HasLoginAccess)
-                        {
-                            <button type="button" class="btn btn-primary btn-sm" disabled="@_accessBusy" @onclick="EnableAccessAsync">
-                                @if (_accessBusy)
-                                {
-                                    <span class="spinner-border spinner-border-sm me-1"></span>
-                                }
-                                <i class="bi bi-person-lock me-1"></i>@L["Children_LoginAccess_Create"]
-                            </button>
+                            <img class="pd-child-photo" src="@MediaUrlHelper.Resolve(child.PhotoUrl, Config, Nav)" alt="" />
                         }
                         else
                         {
-                            <span class="ts-badge ts-badge-success align-self-center">@L["Children_LoginAccess_Active"]</span>
-                            <div class="child-access-code-box">
-                                <span class="child-access-code-label">@L["Children_LoginAccess_CurrentCode"]</span>
-                                @if (!string.IsNullOrEmpty(CurrentAccessCode))
+                            <div class="pd-child-avatar" style="background:@child.Color">@child.Initials</div>
+                        }
+                        <div class="min-w-0">
+                            <h3>@child.Name</h3>
+                            <span class="pc-select-meta">
+                                @(child.Age.HasValue ? $"{child.Age} {L["Children_Years"]}" : "")@(child.Age.HasValue && !string.IsNullOrEmpty(child.Level) ? " · " : "")@(child.Level ?? "—")
+                            </span>
+                        </div>
+                        <span class="pc-status @(child.IsActive ? "" : "is-off")">
+                            @(child.IsActive ? L["Common_Active"] : L["Common_Inactive"])
+                        </span>
+                    </div>
+                    <div class="pc-select-progress">
+                        <div class="pd-progress-track">
+                            <div class="pd-progress-fill" style="width:@(child.ProgressPercent ?? 0)%;background:@child.Color"></div>
+                        </div>
+                        <strong>@FormatPercent(child.ProgressPercent)</strong>
+                    </div>
+                </button>
+            }
+        </div>
+
+        @if (_active != null)
+        {
+            <section class="pc-profile">
+                <div class="pc-profile-id">
+                    @if (!string.IsNullOrEmpty(_active.PhotoUrl))
+                    {
+                        <img class="pd-child-photo" src="@MediaUrlHelper.Resolve(_active.PhotoUrl, Config, Nav)" alt="" />
+                    }
+                    else
+                    {
+                        <div class="pd-child-avatar" style="background:@_active.Color">@_active.Initials</div>
+                    }
+                    <div>
+                        <h2>@_active.Name</h2>
+                        <span class="pc-select-meta">
+                            @if (_active.Age.HasValue)
+                            {
+                                <text>@_active.Age @L["Children_Years"]</text>
+                            }
+                            @if (!string.IsNullOrEmpty(_active.Level))
+                            {
+                                <text> · @_active.Level</text>
+                            }
+                            · @(_active.IsActive ? L["Common_Active"] : L["Common_Inactive"])
+                        </span>
+                    </div>
+                </div>
+                <div class="pc-profile-actions">
+                    <button type="button" class="pd-btn pd-btn--ghost pd-btn--sm" @onclick="OpenEditModal">
+                        <i class="bi bi-pencil me-1"></i>@L["Children_EditProfile"]
+                    </button>
+                    <div class="pc-menu">
+                        <button type="button" class="pc-menu-btn" title="@L["Children_MenuMore"]" @onclick="() => _menuOpen = !_menuOpen">
+                            <i class="bi bi-three-dots"></i>
+                        </button>
+                        @if (_menuOpen)
+                        {
+                            <div class="pc-menu-list">
+                                <button type="button" @onclick="OpenAccessModal"><i class="bi bi-shield-lock me-2"></i>@L["Children_LoginAccess_Manage"]</button>
+                                <button type="button" class="is-danger" @onclick="OpenDeleteModal"><i class="bi bi-trash me-2"></i>@L["Children_MenuDelete"]</button>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </section>
+
+            @if (!string.IsNullOrEmpty(_detailError))
+            {
+                <div class="alert alert-danger mb-3" role="alert">@_detailError</div>
+            }
+
+            <div class="pd-kpi-row">
+                <article class="pd-kpi">
+                    <div class="pd-kpi-icon pd-kpi-icon--purple"><i class="bi bi-graph-up-arrow"></i></div>
+                    <div class="pd-kpi-text">
+                        <span class="pd-kpi-label">@L["Children_KpiProgress"]</span>
+                        <span class="pd-kpi-value">@FormatPercent(_followUp?.ProgressPercent)</span>
+                        @if (_followUp?.ProgressDeltaThisMonth is int delta)
+                        {
+                            <span class="pd-kpi-hint @(delta >= 0 ? "pc-trend-up" : "pc-trend-down")">
+                                @(delta >= 0 ? "+" : "")@delta % @L["Children_DeltaThisMonth"]
+                            </span>
+                        }
+                    </div>
+                </article>
+                <article class="pd-kpi">
+                    <div class="pd-kpi-icon pd-kpi-icon--amber"><i class="bi bi-journal-text"></i></div>
+                    <div class="pd-kpi-text">
+                        <span class="pd-kpi-label">@L["Children_KpiHomework"]</span>
+                        <span class="pd-kpi-value">@(_followUp?.HomeworkDueCount ?? 0)</span>
+                        <button type="button" class="pc-kpi-link" @onclick='() => _tab = "courses"'>@L["Children_HomeworkView"]</button>
+                    </div>
+                </article>
+                <article class="pd-kpi">
+                    <div class="pd-kpi-icon pd-kpi-icon--blue"><i class="bi bi-calendar2-week"></i></div>
+                    <div class="pd-kpi-text">
+                        <span class="pd-kpi-label">@L["Children_KpiNextLesson"]</span>
+                        <span class="pd-kpi-value">@FormatNextLesson(_followUp?.NextLesson)</span>
+                        @if (!string.IsNullOrEmpty(_followUp?.NextLesson?.Subject))
+                        {
+                            <span class="pd-kpi-hint">@_followUp.NextLesson.Subject</span>
+                        }
+                    </div>
+                </article>
+                <article class="pd-kpi">
+                    <div class="pd-kpi-icon pd-kpi-icon--green"><i class="bi bi-person-check"></i></div>
+                    <div class="pd-kpi-text">
+                        <span class="pd-kpi-label">@L["Children_KpiAttendance"]</span>
+                        <span class="pd-kpi-value">@FormatPercent(_followUp?.AttendancePercentThisMonth)</span>
+                        <span class="pd-kpi-hint">@L["Children_KpiThisMonth"]</span>
+                    </div>
+                </article>
+            </div>
+
+            <nav class="pc-tabs" aria-label="@L["Children_Title"]">
+                <button type="button" class="pc-tab @(_tab == "overview" ? "is-active" : "")" @onclick='() => _tab = "overview"'>@L["Children_TabOverview"]</button>
+                <button type="button" class="pc-tab @(_tab == "progress" ? "is-active" : "")" @onclick='() => _tab = "progress"'>@L["Children_TabProgress"]</button>
+                <button type="button" class="pc-tab @(_tab == "courses" ? "is-active" : "")" @onclick='() => _tab = "courses"'>@L["Children_TabCourses"]</button>
+                <button type="button" class="pc-tab @(_tab == "documents" ? "is-active" : "")" @onclick='() => _tab = "documents"'>@L["Children_TabDocuments"]</button>
+                <button type="button" class="pc-tab @(_tab == "info" ? "is-active" : "")" @onclick='() => _tab = "info"'>@L["Children_TabInfo"]</button>
+            </nav>
+
+            @if (_followLoading)
+            {
+                <div class="pd-loading"><span class="spinner-border spinner-border-sm" role="status"></span><span>@L["Common_Loading"]</span></div>
+            }
+            else if (_tab == "overview")
+            {
+                <div class="pc-grid">
+                    <div class="d-flex flex-column gap-3">
+                        <article class="pc-card">
+                            <div class="pc-card-head">
+                                <h3>@L["Children_SubjectProgress"]</h3>
+                                <select class="pc-period" @bind="_period" @bind:after="OnPeriodChanged">
+                                    <option value="term">@L["Children_PeriodTerm"]</option>
+                                    <option value="all">@L["Children_PeriodAll"]</option>
+                                </select>
+                            </div>
+                            <div class="pc-card-body">
+                                @if (_followUp?.SubjectProgress is { Count: > 0 })
                                 {
-                                    <code class="child-access-code-value user-select-all">@CurrentAccessCode</code>
-                                    <button type="button" class="btn btn-sm btn-outline-secondary" title='@L["Children_LoginAccess_Copy"]' @onclick="CopyAccessCodeAsync">
-                                        <i class="bi bi-clipboard"></i>
-                                    </button>
+                                    var i = 0;
+                                    @foreach (var row in _followUp.SubjectProgress)
+                                    {
+                                        var color = i++ == 0 ? "#5831e0" : "#0ea5e9";
+                                        <div class="pc-subject">
+                                            <div class="pc-subject-row">
+                                                <span>@row.Subject</span>
+                                                <span>@FormatPercent(row.Percent)</span>
+                                            </div>
+                                            <div class="pd-progress-track">
+                                                <div class="pd-progress-fill" style="width:@(row.Percent ?? 0)%;background:@color"></div>
+                                            </div>
+                                        </div>
+                                    }
                                 }
                                 else
                                 {
-                                    <button type="button" class="btn btn-sm btn-outline-primary" disabled="@_accessBusy" @onclick="RevealAccessAsync">
-                                        <i class="bi bi-eye me-1"></i>@L["Children_LoginAccess_ShowCode"]
-                                    </button>
+                                    <p class="text-muted mb-0">@L["Children_ProgressEmpty"]</p>
                                 }
                             </div>
-                            <button type="button" class="btn btn-outline-primary btn-sm" disabled="@_accessBusy" @onclick="RegenerateAccessAsync">
-                                @if (_accessBusy)
+                        </article>
+
+                        <article class="pc-card">
+                            <div class="pc-card-head"><h3>@L["Children_HomeworkRecent"]</h3></div>
+                            <div class="pc-card-body">
+                                @HomeworkList(_followUp?.RecentHomework)
+                            </div>
+                        </article>
+                    </div>
+
+                    <div class="d-flex flex-column gap-3">
+                        <article class="pc-card">
+                            <div class="pc-card-head"><h3>@L["Children_KpiNextLesson"]</h3></div>
+                            <div class="pc-card-body">
+                                @if (_followUp?.NextLesson is { } lesson)
                                 {
-                                    <span class="spinner-border spinner-border-sm me-1"></span>
+                                    <div class="pc-next">
+                                        <strong>@(lesson.Subject)</strong>
+                                        @if (!string.IsNullOrWhiteSpace(lesson.Title) && lesson.Title != lesson.Subject)
+                                        {
+                                            <p>@lesson.Title</p>
+                                        }
+                                        <p>
+                                            <i class="bi bi-clock me-1"></i>@FormatWhen(lesson.StartTime)
+                                            <br /><i class="bi bi-person me-1"></i>@lesson.TeacherName
+                                        </p>
+                                        <a href="/parent/calendar" class="pd-btn pd-btn--primary pd-btn--sm">@L["Children_NextLessonView"]</a>
+                                    </div>
                                 }
-                                <i class="bi bi-arrow-repeat me-1"></i>@L["Children_LoginAccess_Regenerate"]
-                            </button>
-                            <button type="button" class="btn btn-outline-danger btn-sm" disabled="@_accessBusy" @onclick="RevokeAccessAsync">
-                                <i class="bi bi-x-circle me-1"></i>@L["Children_LoginAccess_Revoke"]
-                            </button>
+                                else
+                                {
+                                    <p class="text-muted mb-0">@L["Children_NextLessonEmpty"]</p>
+                                }
+                            </div>
+                        </article>
+
+                        <article class="pc-card">
+                            <div class="pc-card-head"><h3>@L["Children_TeachersTitle"]</h3></div>
+                            <div class="pc-card-body">
+                                @if (_followUp?.Teachers is { Count: > 0 })
+                                {
+                                    @foreach (var teacher in _followUp.Teachers)
+                                    {
+                                        <div class="pc-teacher">
+                                            <div class="pd-child-avatar" style="width:40px;height:40px;background:#5831e0;font-size:.8rem">@GetInitials(teacher.DisplayName)</div>
+                                            <div class="pc-teacher-copy">
+                                                <strong>@teacher.DisplayName</strong>
+                                                <span>@(teacher.Subject ?? "—")</span>
+                                            </div>
+                                            <a class="pd-btn pd-btn--ghost pd-btn--sm" href="@($"/parent/messages?to={Uri.EscapeDataString(teacher.UserId)}")">
+                                                @L["Children_TeachersMessage"]
+                                            </a>
+                                        </div>
+                                    }
+                                }
+                                else
+                                {
+                                    <p class="text-muted mb-0">@L["Children_TeachersEmpty"]</p>
+                                }
+                            </div>
+                        </article>
+
+                        <article class="pc-card">
+                            <div class="pc-card-head"><h3>@L["Children_LoginAccess_Title"]</h3></div>
+                            <div class="pc-card-body">
+                                <div class="pc-secure">
+                                    <h4>@L["Children_AccessZone"]</h4>
+                                    @if (_active.HasLoginAccess)
+                                    {
+                                        <span class="pc-status">@L["Children_LoginAccess_Active"]</span>
+                                        <div class="pc-code">
+                                            @if (_overviewCodeVisible && !string.IsNullOrEmpty(CurrentAccessCode))
+                                            {
+                                                <span>@CurrentAccessCode</span>
+                                            }
+                                            else
+                                            {
+                                                <span aria-hidden="true">••••••••</span>
+                                            }
+                                            <button type="button" class="pc-icon-btn" title="@L["Children_LoginAccess_ShowCode"]" @onclick="ToggleOverviewCodeAsync">
+                                                <i class="bi @(_overviewCodeVisible ? "bi-eye-slash" : "bi-eye")"></i>
+                                            </button>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <p class="text-muted small mb-2">@L["Children_LoginAccess_Help"]</p>
+                                    }
+                                    <button type="button" class="pd-btn pd-btn--ghost pd-btn--sm" @onclick="OpenAccessModal">
+                                        @L["Children_LoginAccess_Manage"]
+                                    </button>
+                                </div>
+                            </div>
+                        </article>
+                    </div>
+                </div>
+            }
+            else if (_tab == "progress")
+            {
+                <article class="pc-card">
+                    <div class="pc-card-head">
+                        <h3>@L["Children_SubjectProgress"]</h3>
+                        <select class="pc-period" @bind="_period" @bind:after="OnPeriodChanged">
+                            <option value="term">@L["Children_PeriodTerm"]</option>
+                            <option value="all">@L["Children_PeriodAll"]</option>
+                        </select>
+                    </div>
+                    <div class="pc-card-body">
+                        @if (_followUp?.SubjectProgress is { Count: > 0 })
+                        {
+                            @foreach (var row in _followUp.SubjectProgress)
+                            {
+                                <div class="pc-subject">
+                                    <div class="pc-subject-row">
+                                        <span>@row.Subject</span>
+                                        <span>@FormatPercent(row.Percent)</span>
+                                    </div>
+                                    <div class="pd-progress-track" style="height:10px">
+                                        <div class="pd-progress-fill" style="width:@(row.Percent ?? 0)%"></div>
+                                    </div>
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            <p class="text-muted mb-0">@L["Children_ProgressEmpty"]</p>
                         }
                     </div>
-                    @if (!string.IsNullOrEmpty(_accessHint) && _active.HasLoginAccess)
-                    {
-                        <div class="small mt-2 text-muted">@_accessHint</div>
-                    }
+                </article>
+            }
+            else if (_tab == "courses")
+            {
+                <div class="pc-grid">
+                    <article class="pc-card">
+                        <div class="pc-card-head"><h3>@L["Children_HomeworkRecent"]</h3></div>
+                        <div class="pc-card-body">@HomeworkList(_followUp?.RecentHomework)</div>
+                    </article>
+                    <article class="pc-card">
+                        <div class="pc-card-head"><h3>@L["Children_KpiNextLesson"]</h3></div>
+                        <div class="pc-card-body">
+                            @if (_followUp?.NextLesson is { } lesson)
+                            {
+                                <div class="pc-next">
+                                    <strong>@lesson.Subject</strong>
+                                    <p>@FormatWhen(lesson.StartTime) · @lesson.TeacherName</p>
+                                    <a href="/parent/calendar" class="pd-btn pd-btn--primary pd-btn--sm">@L["Children_NextLessonView"]</a>
+                                </div>
+                            }
+                            else
+                            {
+                                <p class="text-muted mb-0">@L["Children_NextLessonEmpty"]</p>
+                            }
+                        </div>
+                    </article>
                 </div>
-            </div>
-        </div>
+            }
+            else if (_tab == "documents")
+            {
+                <article class="pc-card">
+                    <div class="pc-card-head"><h3>@L["Children_TabDocuments"]</h3></div>
+                    <div class="pc-card-body">
+                        @if (_followUp?.Documents is { Count: > 0 })
+                        {
+                            @foreach (var doc in _followUp.Documents)
+                            {
+                                var href = MediaUrlHelper.Resolve(doc.FileUrl, Config, Nav);
+                                <a class="pc-doc" href="@href" target="_blank" rel="noopener">
+                                    <span><i class="bi bi-file-earmark me-2"></i>@doc.Name</span>
+                                    <span class="text-muted small">@FormatSize(doc.FileSizeBytes)</span>
+                                </a>
+                            }
+                        }
+                        else
+                        {
+                            <p class="text-muted mb-0">@L["Children_DocumentsEmpty"]</p>
+                        }
+                    </div>
+                </article>
+            }
+            else if (_tab == "info")
+            {
+                <article class="pc-card">
+                    <div class="pc-card-head">
+                        <h3>@L["Children_TabInfo"]</h3>
+                        <button type="button" class="pd-btn pd-btn--ghost pd-btn--sm" @onclick="OpenEditModal">@L["Children_EditProfile"]</button>
+                    </div>
+                    <div class="pc-card-body">
+                        <p class="text-muted small">@L["Children_NoSensitive"]</p>
+                        <dl class="pc-info-grid">
+                            <div><dt>@L["Children_FirstName"]</dt><dd>@_active.FirstName</dd></div>
+                            <div><dt>@L["Children_LastName"]</dt><dd>@_active.LastName</dd></div>
+                            <div><dt>@L["Children_Age"]</dt><dd>@(_active.Age.HasValue ? $"{_active.Age} {L["Children_Years"]}" : "—")</dd></div>
+                            <div><dt>@L["Children_Level"]</dt><dd>@(_active.Level ?? "—")</dd></div>
+                            <div><dt>@L["Children_SchoolName"]</dt><dd>@(_active.School ?? "—")</dd></div>
+                            <div><dt>@L["Children_Subjects"]</dt><dd>@(_active.Subjects.Count == 0 ? "—" : string.Join(", ", _active.Subjects))</dd></div>
+                        </dl>
+                        @if (_active.IsAutonomous)
+                        {
+                            <div class="autonomous-notice mt-3">
+                                <i class="bi bi-mortarboard-fill"></i>
+                                <span>@L["Children_AutonomousDetail", _active.Name, _active.Age ?? 0]</span>
+                            </div>
+                        }
+                    </div>
+                </article>
+            }
+        }
     }
-}
+</div>
 
 @if (_showEditModal && _active != null)
 {
     <div class="ts-modal-backdrop" @onclick="CloseEditModal">
         <div class="ts-modal ts-modal-lg" @onclick:stopPropagation="true">
             <div class="ts-modal-header">
-                <h2><i class="bi bi-pencil me-2"></i>Modifier — @_active.Name</h2>
+                <h2><i class="bi bi-pencil me-2"></i>@L["Children_EditProfile"] — @_active.Name</h2>
                 <button type="button" class="ts-modal-close" @onclick="CloseEditModal"><i class="bi bi-x-lg"></i></button>
             </div>
             <div class="ts-modal-body">
@@ -241,13 +464,13 @@ else
                 @ChildFormFields(_form)
             </div>
             <div class="ts-modal-footer">
-                <button type="button" class="btn btn-outline-secondary" @onclick="CloseEditModal">Annuler</button>
+                <button type="button" class="btn btn-outline-secondary" @onclick="CloseEditModal">@L["Common_Cancel"]</button>
                 <button type="button" class="btn btn-primary" disabled="@_saving" @onclick="UpdateChildAsync">
                     @if (_saving)
                     {
                         <span class="spinner-border spinner-border-sm me-2"></span>
                     }
-                    Enregistrer
+                    @L["Common_Save"]
                 </button>
             </div>
         </div>
@@ -259,7 +482,7 @@ else
     <div class="ts-modal-backdrop" @onclick="CloseAddModal">
         <div class="ts-modal ts-modal-lg" @onclick:stopPropagation="true">
             <div class="ts-modal-header">
-                <h2><i class="bi bi-person-plus me-2"></i>Ajouter un enfant</h2>
+                <h2><i class="bi bi-person-plus me-2"></i>@L["Children_Add"]</h2>
                 <button type="button" class="ts-modal-close" @onclick="CloseAddModal"><i class="bi bi-x-lg"></i></button>
             </div>
             <div class="ts-modal-body">
@@ -272,21 +495,108 @@ else
                 {
                     <div class="autonomous-notice mt-3">
                         <i class="bi bi-mortarboard-fill"></i>
-                        <span>
-                            @_form.Age ans ou plus : un accès espace Élève sera créé pour qu'il puisse
-                            s'abonner à des cours lui-même. Conservez le code d'accès affiché après l'enregistrement.
-                        </span>
+                        <span>@L["Children_AutonomousCreateHint"]</span>
                     </div>
                 }
             </div>
             <div class="ts-modal-footer">
-                <button type="button" class="btn btn-outline-secondary" @onclick="CloseAddModal">Annuler</button>
+                <button type="button" class="btn btn-outline-secondary" @onclick="CloseAddModal">@L["Common_Cancel"]</button>
                 <button type="button" class="btn btn-primary" disabled="@_saving" @onclick="SaveChildAsync">
                     @if (_saving)
                     {
                         <span class="spinner-border spinner-border-sm me-2"></span>
                     }
-                    Enregistrer
+                    @L["Common_Save"]
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_showAccessModal && _active != null)
+{
+    <div class="ts-modal-backdrop" @onclick="CloseAccessModal">
+        <div class="ts-modal" @onclick:stopPropagation="true">
+            <div class="ts-modal-header">
+                <h2><i class="bi bi-shield-lock me-2"></i>@L["Children_LoginAccess_Manage"]</h2>
+                <button type="button" class="ts-modal-close" @onclick="CloseAccessModal"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <div class="ts-modal-body">
+                <p class="text-muted small">@L["Children_LoginAccess_Help"]</p>
+                @if (!string.IsNullOrEmpty(_accessError))
+                {
+                    <div class="alert alert-danger mb-3" role="alert">@_accessError</div>
+                }
+                @if (!_active.HasLoginAccess)
+                {
+                    <button type="button" class="btn btn-primary" disabled="@_accessBusy" @onclick="EnableAccessAsync">
+                        @if (_accessBusy)
+                        {
+                            <span class="spinner-border spinner-border-sm me-1"></span>
+                        }
+                        <i class="bi bi-person-lock me-1"></i>@L["Children_LoginAccess_Create"]
+                    </button>
+                }
+                else
+                {
+                    <span class="pc-status d-inline-block mb-3">@L["Children_LoginAccess_Active"]</span>
+                    <div class="child-access-code-box mb-3">
+                        <span class="child-access-code-label">@L["Children_LoginAccess_CurrentCode"]</span>
+                        @if (!string.IsNullOrEmpty(CurrentAccessCode))
+                        {
+                            <code class="child-access-code-value user-select-all">@CurrentAccessCode</code>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" title="@L["Children_LoginAccess_Copy"]" @onclick="CopyAccessCodeAsync">
+                                <i class="bi bi-clipboard"></i>
+                            </button>
+                        }
+                        else
+                        {
+                            <button type="button" class="btn btn-sm btn-outline-primary" disabled="@_accessBusy" @onclick="RevealAccessAsync">
+                                <i class="bi bi-eye me-1"></i>@L["Children_LoginAccess_ShowCode"]
+                            </button>
+                        }
+                    </div>
+                    <div class="d-flex gap-2 flex-wrap">
+                        <button type="button" class="btn btn-outline-primary btn-sm" disabled="@_accessBusy" @onclick="RegenerateAccessAsync">
+                            @if (_accessBusy)
+                            {
+                                <span class="spinner-border spinner-border-sm me-1"></span>
+                            }
+                            <i class="bi bi-arrow-repeat me-1"></i>@L["Children_LoginAccess_Regenerate"]
+                        </button>
+                        <button type="button" class="btn btn-outline-danger btn-sm" disabled="@_accessBusy" @onclick="RevokeAccessAsync">
+                            <i class="bi bi-x-circle me-1"></i>@L["Children_LoginAccess_Revoke"]
+                        </button>
+                    </div>
+                }
+                @if (!string.IsNullOrEmpty(_accessHint) && _active.HasLoginAccess)
+                {
+                    <div class="small mt-2 text-muted">@_accessHint</div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@if (_showDeleteModal && _active != null)
+{
+    <div class="ts-modal-backdrop" @onclick="() => _showDeleteModal = false">
+        <div class="ts-modal" @onclick:stopPropagation="true">
+            <div class="ts-modal-header">
+                <h2>@L["Children_ConfirmDelete"]</h2>
+                <button type="button" class="ts-modal-close" @onclick="() => _showDeleteModal = false"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <div class="ts-modal-body">
+                <p>@L["Children_ConfirmDeleteBody", _active.Name]</p>
+            </div>
+            <div class="ts-modal-footer">
+                <button type="button" class="btn btn-outline-secondary" @onclick="() => _showDeleteModal = false">@L["Common_Cancel"]</button>
+                <button type="button" class="btn btn-danger" disabled="@_deleting" @onclick="DeleteChildAsync">
+                    @if (_deleting)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                    }
+                    @L["Common_Delete"]
                 </button>
             </div>
         </div>
@@ -295,8 +605,13 @@ else
 
 @code {
     private bool _loading = true;
+    private bool _followLoading;
     private bool _showAddModal;
     private bool _showEditModal;
+    private bool _showAccessModal;
+    private bool _showDeleteModal;
+    private bool _menuOpen;
+    private bool _overviewCodeVisible;
     private bool _saving;
     private bool _deleting;
     private string? _formError;
@@ -310,6 +625,9 @@ else
     private string? _accessError;
     private string? _revealedCode;
     private string? _accessHint;
+    private ParentChildFollowUpDto? _followUp;
+    private string _tab = "overview";
+    private string _period = "term";
 
     private static readonly string[] Colors = ["#7c3aed", "#0ea5e9", "#10b981", "#ec4899", "#f59e0b"];
 
@@ -324,6 +642,42 @@ else
         await Auth.EnsureSessionRestoredAsync(forceJs: true);
         await LoadChildrenAsync();
         StateHasChanged();
+    }
+
+    private RenderFragment HomeworkList(IReadOnlyList<ParentChildHomeworkItemDto>? items) => __builder =>
+    {
+        if (items is null || items.Count == 0)
+        {
+            <p class="text-muted mb-0">@L["Children_HomeworkEmpty"]</p>
+            return;
+        }
+
+        @foreach (var hw in items)
+        {
+            var (label, css) = HomeworkStatus(hw);
+            <div class="pc-hw">
+                <div>
+                    <strong>@hw.Title</strong>
+                    <span>
+                        @(hw.Subject ?? "—")
+                        @if (hw.DueDate is DateTime due)
+                        {
+                            <text> · @ToLocal(due).ToString("d")</text>
+                        }
+                    </span>
+                </div>
+                <span class="pc-pill @css">@label</span>
+            </div>
+        }
+    };
+
+    private (string Label, string Css) HomeworkStatus(ParentChildHomeworkItemDto hw)
+    {
+        if (hw.IsGraded || hw.IsSubmitted)
+            return (L["Children_HomeworkDone"], "pc-pill-ok");
+        if (hw.DueDate is DateTime due && ToLocal(due).Date < DateTime.Today)
+            return (L["Children_HomeworkOverdue"], "pc-pill-danger");
+        return (L["Children_HomeworkDue"], "pc-pill-warn");
     }
 
     private async Task LoadChildrenAsync()
@@ -358,43 +712,113 @@ else
                     return;
                 }
 
-                _loadError = result.Error ?? "Impossible de charger la liste des enfants.";
+                _loadError = result.Error ?? L["Children_LoadError"];
                 _children = [];
                 return;
             }
 
             _children = (result.Value ?? []).Select((s, i) => MapToChild(s, i)).ToList();
-            _active = _children.FirstOrDefault(c => _active is null || c.Id == _active.Id) ?? _children.FirstOrDefault();
-            if (_active is { HasLoginAccess: true } && !string.IsNullOrEmpty(_active.LoginAccessCode))
-            {
-                _revealedCode = _active.LoginAccessCode;
-            }
+            await MergeDashboardProgressAsync();
+            var next = _children.FirstOrDefault(c => _active is not null && c.Id == _active.Id) ?? _children.FirstOrDefault();
+            if (next is not null)
+                await SelectChildAsync(next);
             else
             {
-                ClearAccessReveal(keepIfSameChild: true);
+                _active = null;
+                _followUp = null;
             }
         }
         catch (Exception ex)
         {
-            _loadError = $"Erreur lors du chargement : {ex.Message}";
+            _loadError = $"{L["Children_LoadError"]} {ex.Message}";
             _children = [];
         }
         finally { _loading = false; }
     }
 
-    private string? CurrentAccessCode =>
-        !string.IsNullOrEmpty(_revealedCode)
-            ? _revealedCode
-            : _active?.LoginAccessCode;
+    private async Task MergeDashboardProgressAsync()
+    {
+        try
+        {
+            var dash = await Api.GetWithErrorAsync<ParentDashboardDto>("api/parent/dashboard");
+            if (!dash.IsSuccess || dash.Value is null)
+                return;
 
-    private void SelectChild(ChildVM child)
+            foreach (var row in dash.Value.Children)
+            {
+                var child = _children.FirstOrDefault(c => c.Id == row.Id);
+                if (child is not null)
+                    child.ProgressPercent = row.ProgressPercent;
+            }
+        }
+        catch
+        {
+            /* cycle de suivi indépendant */
+        }
+    }
+
+    private string? CurrentAccessCode =>
+        string.IsNullOrEmpty(_revealedCode) ? null : _revealedCode;
+
+    private async Task SelectChildAsync(ChildVM child)
     {
         if (_active?.Id != child.Id)
+        {
             ClearAccessReveal();
+            _overviewCodeVisible = false;
+            _tab = "overview";
+        }
+
         _active = child;
         _detailError = null;
-        if (child.HasLoginAccess && !string.IsNullOrEmpty(child.LoginAccessCode))
-            _revealedCode = child.LoginAccessCode;
+        _menuOpen = false;
+        await LoadFollowUpAsync();
+    }
+
+    private async Task OnPeriodChanged() => await LoadFollowUpAsync();
+
+    private async Task LoadFollowUpAsync()
+    {
+        if (_active is null)
+            return;
+
+        _followLoading = true;
+        try
+        {
+            var result = await Api.GetWithErrorAsync<ParentChildFollowUpDto>(
+                $"api/parent/children/{_active.Id}/follow-up?period={Uri.EscapeDataString(_period)}");
+            if (result.Error == ApiClient.SessionExpiredMessage)
+            {
+                _sessionExpired = true;
+                _loadError = result.Error;
+                return;
+            }
+
+            if (result.Error is not null || result.Value is null)
+            {
+                _followUp = null;
+                return;
+            }
+
+            _followUp = result.Value;
+            _active.ProgressPercent = _followUp.ProgressPercent;
+            _active.HasLoginAccess = _followUp.HasLoginAccess;
+        }
+        finally { _followLoading = false; }
+    }
+
+    private async Task ToggleOverviewCodeAsync()
+    {
+        if (_overviewCodeVisible)
+        {
+            _overviewCodeVisible = false;
+            return;
+        }
+
+        if (string.IsNullOrEmpty(CurrentAccessCode))
+            await RevealAccessAsync();
+
+        _overviewCodeVisible = !string.IsNullOrEmpty(CurrentAccessCode);
     }
 
     private async Task CopyAccessCodeAsync()
@@ -435,8 +859,6 @@ else
 
             _revealedCode = result.Value.AccessCode;
             _accessHint = result.Value.LoginHint;
-            if (_active is not null)
-                _active.LoginAccessCode = result.Value.AccessCode;
         }
         finally { _accessBusy = false; }
     }
@@ -447,6 +869,7 @@ else
         _formError = null;
         _showAddModal = true;
         _showEditModal = false;
+        _menuOpen = false;
     }
 
     private void OpenEditModal()
@@ -467,6 +890,21 @@ else
         _detailError = null;
         _showEditModal = true;
         _showAddModal = false;
+        _menuOpen = false;
+    }
+
+    private void OpenAccessModal()
+    {
+        _menuOpen = false;
+        _showAccessModal = true;
+    }
+
+    private void CloseAccessModal() => _showAccessModal = false;
+
+    private void OpenDeleteModal()
+    {
+        _menuOpen = false;
+        _showDeleteModal = true;
     }
 
     private void CloseAddModal()
@@ -528,11 +966,12 @@ else
         if (child is null)
             return;
 
-        SelectChild(child);
+        _active = child;
         _revealedCode = saved.LoginAccessCode;
-        _accessHint = "Connexion espace Élève : e-mail du parent + ce code. L'enfant peut ensuite s'abonner à un cours.";
-        child.LoginAccessCode = saved.LoginAccessCode;
+        _accessHint = L["Children_LoginAccess_CodeOnce"];
         child.HasLoginAccess = true;
+        _showAccessModal = true;
+        _overviewCodeVisible = false;
     }
 
     private async Task DeleteChildAsync()
@@ -556,10 +995,13 @@ else
             if (result.Error is not null)
             {
                 _detailError = result.Error;
+                _showDeleteModal = false;
                 return;
             }
 
             _active = null;
+            _followUp = null;
+            _showDeleteModal = false;
             await LoadChildrenAsync();
         }
         finally { _deleting = false; }
@@ -572,26 +1014,26 @@ else
 
         if (string.IsNullOrWhiteSpace(_form.FirstName) || string.IsNullOrWhiteSpace(_form.LastName))
         {
-            _formError = "Le prénom et le nom sont obligatoires.";
+            _formError = L["Children_NameRequired"];
             return false;
         }
 
         if (_form.DateOfBirth is null)
         {
-            _formError = "La date de naissance est obligatoire.";
+            _formError = L["Children_DobRequired"];
             return false;
         }
 
         var dob = _form.DateOfBirth.Value.Date;
         if (dob > DateTime.Today)
         {
-            _formError = "La date de naissance ne peut pas être dans le futur.";
+            _formError = L["Children_DobFuture"];
             return false;
         }
 
         if (!string.IsNullOrWhiteSpace(_form.Email) && !new EmailAddressAttribute().IsValid(_form.Email.Trim()))
         {
-            _formError = "L'adresse courriel n'est pas valide.";
+            _formError = L["Children_EmailInvalid"];
             return false;
         }
 
@@ -629,32 +1071,32 @@ else
     {
         <div class="row g-3">
             <div class="col-md-6">
-                <label class="form-label">Prénom *</label>
+                <label class="form-label">@L["Children_FirstName"] *</label>
                 <input class="form-control" @bind="form.FirstName" />
             </div>
             <div class="col-md-6">
-                <label class="form-label">Nom *</label>
+                <label class="form-label">@L["Children_LastName"] *</label>
                 <input class="form-control" @bind="form.LastName" />
             </div>
             <div class="col-md-6">
-                <label class="form-label">Date de naissance *</label>
+                <label class="form-label">@L["Children_Dob"] *</label>
                 <input type="date" class="form-control" @bind="form.DateOfBirth" />
             </div>
             <div class="col-md-6">
-                <label class="form-label">Courriel (optionnel)</label>
-                <input type="email" class="form-control" @bind="form.Email" placeholder="enfant@exemple.com" />
+                <label class="form-label">@L["Children_Email"]</label>
+                <input type="email" class="form-control" @bind="form.Email" />
             </div>
             <div class="col-md-6">
-                <label class="form-label">Niveau scolaire</label>
-                <input class="form-control" @bind="form.SchoolLevel" placeholder="Ex. Secondaire 3" />
+                <label class="form-label">@L["Children_Level"]</label>
+                <input class="form-control" @bind="form.SchoolLevel" />
             </div>
             <div class="col-md-6">
-                <label class="form-label">Établissement</label>
-                <input class="form-control" @bind="form.SchoolName" placeholder="Nom de l'établissement" />
+                <label class="form-label">@L["Children_SchoolName"]</label>
+                <input class="form-control" @bind="form.SchoolName" />
             </div>
             <div class="col-12">
-                <label class="form-label">Matières suivies</label>
-                <input class="form-control" @bind="form.Subjects" placeholder="Mathématiques, Français, Sciences (séparées par des virgules)" />
+                <label class="form-label">@L["Children_Subjects"]</label>
+                <input class="form-control" @bind="form.Subjects" />
             </div>
         </div>
     };
@@ -666,6 +1108,7 @@ else
         _revealedCode = null;
         _accessHint = null;
         _accessError = null;
+        _overviewCodeVisible = false;
     }
 
     private async Task EnableAccessAsync()
@@ -735,8 +1178,6 @@ else
             _revealedCode = result.Value.AccessCode;
             _accessHint = result.Value.LoginHint;
             await LoadChildrenAsync();
-            if (_active is not null)
-                _active.LoginAccessCode = result.Value.AccessCode;
         }
         finally { _accessBusy = false; }
     }
@@ -749,10 +1190,6 @@ else
         if (index < 0)
             index = _children.Count;
         var name = $"{s.FirstName} {s.LastName}".Trim();
-        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        var initials = parts.Length >= 2
-            ? $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant()
-            : name.Length > 0 ? name[..1].ToUpperInvariant() : "?";
 
         return new ChildVM
         {
@@ -760,17 +1197,56 @@ else
             FirstName = s.FirstName,
             LastName = s.LastName,
             Name = name,
-            Initials = initials,
+            Initials = GetInitials(name),
             Color = Colors[index % Colors.Length],
-            IsActive = true,
+            IsActive = s.IsActive,
             Level = s.SchoolLevel,
             School = s.SchoolName,
+            PhotoUrl = s.PhotoUrl,
             Subjects = s.Subjects?.ToList() ?? [],
             DateOfBirth = s.DateOfBirth,
             Email = s.Email,
-            HasLoginAccess = s.HasLoginAccess,
-            LoginAccessCode = s.LoginAccessCode
+            Age = s.Age,
+            HasLoginAccess = s.HasLoginAccess
         };
+    }
+
+    private static string GetInitials(string name)
+    {
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length >= 2)
+            return $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant();
+        return name.Length > 0 ? name[..1].ToUpperInvariant() : "?";
+    }
+
+    private static string FormatPercent(int? value) => value.HasValue ? $"{value} %" : "—";
+
+    private string FormatNextLesson(ParentChildNextLessonDto? lesson)
+    {
+        if (lesson is null)
+            return "—";
+        return FormatWhen(lesson.StartTime);
+    }
+
+    private static DateTime ToLocal(DateTime value) =>
+        value.Kind == DateTimeKind.Utc ? value.ToLocalTime() : value;
+
+    private string FormatWhen(DateTime value)
+    {
+        var local = ToLocal(value);
+        var culture = CultureInfo.CurrentCulture;
+        if (local.Date == DateTime.Today)
+            return string.Format(culture, L["Children_TodayAt"], local.ToString("HH:mm"));
+        if (local.Date == DateTime.Today.AddDays(1))
+            return string.Format(culture, L["Children_TomorrowAt"], local.ToString("HH:mm"));
+        return local.ToString("dddd d MMMM, HH:mm", culture);
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} o";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:0.#} Ko";
+        return $"{bytes / (1024.0 * 1024.0):0.#} Mo";
     }
 
     private sealed record ChildLoginAccessDto(
@@ -801,17 +1277,16 @@ else
         public string Name { get; set; } = "";
         public string Initials { get; set; } = "";
         public string Color { get; set; } = "#7c3aed";
+        public string? PhotoUrl { get; set; }
         public bool IsActive { get; set; }
         public string? Level { get; set; }
         public string? School { get; set; }
         public string? Email { get; set; }
         public bool HasLoginAccess { get; set; }
-        public string? LoginAccessCode { get; set; }
         public List<string> Subjects { get; set; } = [];
         public DateTime? DateOfBirth { get; set; }
-        public int? Age => DateOfBirth.HasValue
-            ? (int)((DateTime.Today - DateOfBirth.Value.Date).TotalDays / 365.25)
-            : null;
+        public int? Age { get; set; }
+        public int? ProgressPercent { get; set; }
         public bool IsAutonomous => Age.HasValue && Age >= 14;
     }
 }

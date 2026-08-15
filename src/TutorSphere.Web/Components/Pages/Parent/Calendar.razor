@@ -1,80 +1,263 @@
 @page "/parent/calendar"
 @layout ParentLayout
 @rendermode InteractiveServer
-@using TutorSphere.Application.DTOs.Lessons
+@using System.Globalization
+@using TutorSphere.Application.DTOs.Parents
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
+@inject AuthService Auth
 
-<PageTitle>@L["PageTitle_Calendar"]</PageTitle>
+<PageTitle>@L["Nav_Calendar"] – TutorSphere</PageTitle>
 
-<div class="cal-page-header">
-    <div class="cal-page-title">
-        <i class="bi bi-calendar2-week cal-page-icon" aria-hidden="true"></i>
+<div class="parent-dashboard pd-mock pcal-page">
+    <header class="pc-header">
         <div>
             <h1>@L["Nav_Calendar"]</h1>
-            <p>Planning de vos enfants</p>
+            <p class="ts-page-subtitle">@L["ParentCal_Subtitle"]</p>
+        </div>
+    </header>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="alert alert-warning mb-3 d-flex flex-wrap align-items-center gap-2" role="alert">
+            <span>@_error</span>
+            @if (_sessionExpired)
+            {
+                <a class="btn btn-sm btn-outline-dark" href="/login/parent">@L["Common_ReLogin"]</a>
+            }
+        </div>
+    }
+
+    <div class="pcal-chips" role="tablist" aria-label="@L["ParentCal_FilterChildren"]">
+        <button type="button" class="pcal-chip @(_focusChildId is null ? "is-active" : "")" @onclick="() => FocusChild(null)">
+            @L["ParentCal_AllChildren"]
+        </button>
+        @foreach (var child in _children)
+        {
+            <button type="button" class="pcal-chip @(_focusChildId == child.Id ? "is-active" : "")"
+                    @onclick="() => FocusChild(child.Id)">
+                <span class="pcal-dot" style="background:@ChildColor(child.Id)"></span>
+                @Initials(child.FirstName) @child.FirstName
+            </button>
+        }
+    </div>
+
+    <div class="cal-layout pcal-layout">
+        <aside class="cal-side">
+            <div class="mini-cal">
+                <div class="mini-cal-header">
+                    <button type="button" class="mini-cal-nav" @onclick="PreviousMonth"><i class="bi bi-chevron-left"></i></button>
+                    <span class="mini-cal-month">@DisplayMonth.ToString("MMMM yyyy")</span>
+                    <button type="button" class="mini-cal-nav" @onclick="NextMonth"><i class="bi bi-chevron-right"></i></button>
+                </div>
+                <div class="mini-cal-grid">
+                    @foreach (var dow in new[] { "L", "M", "M", "J", "V", "S", "D" })
+                    {
+                        <span class="mini-cal-dow">@dow</span>
+                    }
+                    @foreach (var day in MiniCalDays)
+                    {
+                        var isToday = day.Date.Date == DateTime.Today;
+                        var inRange = IsInCurrentRange(day.Date);
+                        var hasEvt = VisibleEvents.Any(e => ToLocal(e.StartTime).Date == day.Date.Date);
+                        <button type="button"
+                                class="mini-cal-day @(day.InMonth ? "" : "other-month") @(isToday ? "today" : "") @(inRange ? "in-week" : "")"
+                                @onclick="() => GoToDateAsync(day.Date)">
+                            @day.Date.Day
+                            @if (hasEvt)
+                            {
+                                <span class="pcal-mini-dot"></span>
+                            }
+                        </button>
+                    }
+                </div>
+            </div>
+
+            <div class="pcal-side-card">
+                <h2 class="cal-legend-title">@L["Parent_MyChildren_Title"]</h2>
+                <ul class="cal-filter-list">
+                    @foreach (var child in _children)
+                    {
+                        var on = _visibleChildIds.Contains(child.Id);
+                        <li>
+                            <label class="cal-filter-item">
+                                <input type="checkbox" checked="@on" @onchange="e => ToggleChild(child.Id, (bool)(e.Value ?? false))" />
+                                <span class="pcal-dot" style="background:@ChildColor(child.Id)"></span>
+                                <span>
+                                    <strong>@child.FirstName @child.LastName</strong>
+                                    <small class="d-block text-muted">@(child.SchoolLevel ?? "—")</small>
+                                </span>
+                            </label>
+                        </li>
+                    }
+                </ul>
+            </div>
+
+            <div class="cal-legend pcal-side-card">
+                <h2 class="cal-legend-title">@L["ParentCal_Legend"]</h2>
+                <ul class="cal-legend-list">
+                    <li><i class="bi bi-camera-video" style="color:#5831e0"></i> @L["ParentCal_KindLesson"]</li>
+                    <li><i class="bi bi-journal-text" style="color:#c2410c"></i> @L["ParentCal_KindHomework"]</li>
+                    <li><i class="bi bi-clipboard-check" style="color:#006d44"></i> @L["ParentCal_KindEval"]</li>
+                </ul>
+            </div>
+        </aside>
+
+        <div class="cal-main">
+            <div class="cal-toolbar">
+                <div class="cal-toolbar-left">
+                    <div class="pcal-view-toggle" role="tablist">
+                        <button type="button" class="@(_view == "month" ? "is-active" : "")" @onclick='() => SetView("month")'>@L["Calendar_Month"]</button>
+                        <button type="button" class="@(_view == "week" ? "is-active" : "")" @onclick='() => SetView("week")'>@L["Calendar_Week"]</button>
+                        <button type="button" class="@(_view == "day" ? "is-active" : "")" @onclick='() => SetView("day")'>@L["Calendar_Day"]</button>
+                    </div>
+                    <button type="button" class="btn btn-primary btn-sm" @onclick="GoToTodayAndReload">@L["Calendar_Today"]</button>
+                    <div class="cal-toolbar-nav ms-2">
+                        <button type="button" class="cal-nav-btn" @onclick="PreviousRangeAsync"><i class="bi bi-chevron-left"></i></button>
+                        <button type="button" class="cal-nav-btn" @onclick="NextRangeAsync"><i class="bi bi-chevron-right"></i></button>
+                    </div>
+                    <span class="cal-range-btn ms-2">@RangeLabel</span>
+                </div>
+                <div class="cal-toolbar-right">
+                    @if (_loading)
+                    {
+                        <span class="spinner-border spinner-border-sm text-primary me-2" role="status"></span>
+                    }
+                    <button type="button" class="pcal-list-btn @(_view == "list" ? "is-active" : "")" @onclick='() => SetView("list")'>
+                        <i class="bi bi-list-ul me-1"></i>@L["ParentCal_List"]
+                    </button>
+                </div>
+            </div>
+
+            @if (_view == "week")
+            {
+                @WeekGrid(7, WeekStart)
+            }
+            else if (_view == "day")
+            {
+                @WeekGrid(1, _currentDay)
+            }
+            else if (_view == "month")
+            {
+                @MonthGrid()
+            }
+            else
+            {
+                @ListView()
+            }
+
+            <div class="pcal-footer">
+                <div>
+                    <strong>@L["ParentCal_NextLesson"]</strong>
+                    <span>@NextLessonLabel</span>
+                </div>
+                <div class="pcal-footer-stats">
+                    @foreach (var child in _children.Where(c => _visibleChildIds.Contains(c.Id)))
+                    {
+                        var n = CountThisWeek(child.Id);
+                        <span class="pcal-stat-badge" style="--pcal-accent:@ChildColor(child.Id)">
+                            @child.FirstName : @L["ParentCal_WeekCount", n]
+                        </span>
+                    }
+                </div>
+                <button type="button" class="pd-btn pd-btn--ghost pd-btn--sm" @onclick='() => SetView("list")'>
+                    <i class="bi bi-bar-chart me-1"></i>@L["ParentCal_Summary"]
+                </button>
+            </div>
         </div>
     </div>
 </div>
 
-@if (!string.IsNullOrEmpty(_error))
+@if (_selected is not null)
 {
-    <div class="alert alert-danger py-2 px-3 mb-3">@_error</div>
+    <div class="ts-modal-backdrop" @onclick="CloseEvent">
+        <div class="ts-modal" @onclick:stopPropagation="true">
+            <div class="ts-modal-header">
+                <h2>
+                    <span class="pcal-dot" style="background:@EventAccent(_selected)"></span>
+                    @_selected.ChildFirstName · @ActivityLabel(_selected)
+                </h2>
+                <button type="button" class="ts-modal-close" @onclick="CloseEvent"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <div class="ts-modal-body">
+                <p class="mb-2"><i class="bi bi-clock me-1"></i>@FormatWhen(_selected.StartTime) – @ToLocal(_selected.EndTime).ToString("HH:mm")</p>
+                <p class="mb-2"><i class="bi bi-person me-1"></i>@_selected.TeacherName</p>
+                @if (!string.IsNullOrEmpty(_selected.Status))
+                {
+                    <p class="mb-2"><span class="pc-pill @StatusCss(_selected.Status)">@StatusLabel(_selected.Status)</span></p>
+                }
+                @if (_showFullDetails)
+                {
+                    <div class="pcal-details mt-3">
+                        @if (!string.IsNullOrWhiteSpace(_selected.Title) && _selected.Title != _selected.Subject)
+                        {
+                            <p><strong>@_selected.Title</strong></p>
+                        }
+                        <p>@L["ParentCal_Child"]: @_selected.ChildFirstName</p>
+                        <p>@L["ParentCal_Type"]: @KindLabel(_selected.Kind)</p>
+                    </div>
+                }
+            </div>
+            <div class="ts-modal-footer flex-wrap gap-2">
+                <button type="button" class="btn btn-outline-secondary" @onclick="() => _showFullDetails = true">@L["ParentCal_ViewDetails"]</button>
+                @if (!string.IsNullOrEmpty(_selected.TeacherUserId))
+                {
+                    <a class="btn btn-outline-primary" href="@($"/parent/messages?to={Uri.EscapeDataString(_selected.TeacherUserId)}")">@L["ParentCal_Contact"]</a>
+                }
+                @if (CanJoin(_selected))
+                {
+                    <a class="btn btn-primary" href="@_selected.MeetingUrl" target="_blank" rel="noopener">@L["ParentCal_Join"]</a>
+                }
+            </div>
+        </div>
+    </div>
 }
 
-<div class="cal-layout">
-    <aside class="cal-side">
-        <div class="mini-cal">
-            <div class="mini-cal-header">
-                <button type="button" class="mini-cal-nav" @onclick="PreviousMonth"><i class="bi bi-chevron-left"></i></button>
-                <span class="mini-cal-month">@DisplayMonth.ToString("MMMM yyyy")</span>
-                <button type="button" class="mini-cal-nav" @onclick="NextMonth"><i class="bi bi-chevron-right"></i></button>
-            </div>
-            <div class="mini-cal-grid">
-                @foreach (var dow in new[] { "L","M","M","J","V","S","D" })
-                {
-                    <span class="mini-cal-dow">@dow</span>
-                }
-                @foreach (var day in MiniCalDays)
-                {
-                    var isToday       = day.Date.Date == DateTime.Today;
-                    var inCurrentWeek = day.Date >= WeekStart && day.Date < WeekStart.AddDays(7);
-                    <button type="button"
-                            class="mini-cal-day @(day.InMonth ? "" : "other-month") @(isToday ? "today" : "") @(inCurrentWeek ? "in-week" : "")"
-                            @onclick="() => GoToWeekAndReload(day.Date)">
-                        @day.Date.Day
-                    </button>
-                }
-            </div>
-        </div>
-    </aside>
+@code {
+    private const int CalStartH = 8;
+    private const int HourPx = 56;
+    private static readonly int[] Hours = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
+    private static readonly string[] ChildPalette = ["#5831E0", "#2563EB", "#7c3aed", "#0ea5e9", "#ec4899"];
 
-    <div class="cal-main">
-        <div class="cal-toolbar">
-            <div class="cal-toolbar-left">
-                <button type="button" class="btn btn-primary btn-sm" @onclick="GoToTodayAndReload">Aujourd'hui</button>
-                <div class="cal-toolbar-nav ms-2">
-                    <button type="button" class="cal-nav-btn" @onclick="PreviousWeekAsync"><i class="bi bi-chevron-left"></i></button>
-                    <button type="button" class="cal-nav-btn" @onclick="NextWeekAsync"><i class="bi bi-chevron-right"></i></button>
-                </div>
-                <button type="button" class="cal-range-btn ms-2">
-                    @WeekStart.ToString("d") – @WeekStart.AddDays(6).ToString("d MMM yyyy")
-                </button>
-            </div>
-            @if (_loading)
-            {
-                <div class="ms-auto">
-                    <span class="spinner-border spinner-border-sm text-primary" role="status"></span>
-                </div>
-            }
-        </div>
+    private bool _loading = true;
+    private bool _sessionExpired;
+    private string? _error;
+    private string _view = "week";
+    private DateTime WeekStart { get; set; }
+    private DateTime DisplayMonth { get; set; }
+    private DateTime _currentDay = DateTime.Today;
+    private List<ParentCalendarChildDto> _children = [];
+    private List<ParentCalendarEventDto> _events = [];
+    private HashSet<Guid> _visibleChildIds = [];
+    private Guid? _focusChildId;
+    private ParentCalendarEventDto? _selected;
+    private bool _showFullDetails;
+    private bool _initialLoadDone;
 
+    private IEnumerable<ParentCalendarEventDto> VisibleEvents =>
+        _events.Where(e =>
+            _visibleChildIds.Contains(e.StudentId)
+            && (_focusChildId is null || e.StudentId == _focusChildId));
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _initialLoadDone)
+            return;
+        _initialLoadDone = true;
+        GoToToday();
+        await Auth.EnsureSessionRestoredAsync(forceJs: true);
+        await LoadAsync();
+        StateHasChanged();
+    }
+
+    private RenderFragment WeekGrid(int days, DateTime start) => __builder =>
+    {
         <div class="cal-week-view">
             <div class="cal-grid-header">
                 <div class="cal-time-gutter"></div>
-                @for (var d = 0; d < 7; d++)
+                @for (var d = 0; d < days; d++)
                 {
-                    var date = WeekStart.AddDays(d);
+                    var date = start.AddDays(d);
                     var isToday = date.Date == DateTime.Today;
                     <div class="cal-day-header @(isToday ? "today" : "")">
                         <span class="cal-day-name">@date.ToString("ddd").ToUpper()</span>
@@ -82,36 +265,37 @@
                     </div>
                 }
             </div>
-
             <div class="cal-grid-body-scroll">
-                <div class="cal-grid-body">
+                <div class="cal-grid-body @(days == 1 ? "pcal-day-grid" : "")">
                     <div class="cal-time-col">
                         @foreach (var h in Hours)
                         {
-                            <div class="cal-time-slot"><span>@h:00</span></div>
+                            <div class="cal-time-slot" style="height:@(HourPx)px"><span>@h:00</span></div>
                         }
                     </div>
-
-                    @for (var d = 0; d < 7; d++)
+                    @for (var d = 0; d < days; d++)
                     {
-                        var date = WeekStart.AddDays(d);
+                        var date = start.AddDays(d);
                         var isToday = date.Date == DateTime.Today;
-                        <div class="cal-day-col @(isToday ? "today" : "")">
-                            @foreach (var h in Hours)
+                        <div class="cal-day-col @(isToday ? "today" : "")" style="min-height:@(Hours.Length * HourPx)px">
+                            @foreach (var _ in Hours)
                             {
-                                <div class="cal-hour-cell"></div>
+                                <div class="cal-hour-cell" style="height:@(HourPx)px"></div>
                             }
-                            @foreach (var evt in GetEventsForDay(date))
+                            @foreach (var evt in EventsForDay(date))
                             {
-                                <div class="cal-event cal-event--online"
-                                     style="top:@(evt.TopPx)px;height:@(Math.Max(evt.HeightPx, 26))px;left:4px;right:4px;">
-                                    <span class="cal-event-time">@evt.TimeLabel</span>
-                                    <strong class="cal-event-title">@evt.Title</strong>
-                                    @if (!string.IsNullOrEmpty(evt.Subject))
+                                var (top, height) = Layout(evt);
+                                <button type="button" class="cal-event pcal-event"
+                                        style="top:@(top)px;height:@(height)px;left:4px;right:4px;--pcal-accent:@EventAccent(evt)"
+                                        @onclick="() => OpenEvent(evt)">
+                                    <span class="cal-event-title">@evt.ChildFirstName · @ActivityLabel(evt)</span>
+                                    <span class="cal-event-time">@ToLocal(evt.StartTime).ToString("HH:mm") – @ToLocal(evt.EndTime).ToString("HH:mm")</span>
+                                    <span class="cal-event-sub">@evt.TeacherName</span>
+                                    @if (!string.IsNullOrEmpty(evt.Status) && height > 58)
                                     {
-                                        <span class="cal-event-sub">@evt.Subject</span>
+                                        <span class="pcal-status">@StatusLabel(evt.Status)</span>
                                     }
-                                </div>
+                                </button>
                             }
                             @if (isToday && NowTopPx is { } nowTop)
                             {
@@ -125,91 +309,131 @@
                 </div>
             </div>
         </div>
+    };
 
-        <div class="cal-stat-bar">
-            <div class="cal-stat">
-                <i class="bi bi-calendar3 cal-stat-icon"></i>
-                <span class="cal-stat-label">Séances cette semaine</span>
-                <strong class="cal-stat-value">@GetWeekEvents().Count()</strong>
-            </div>
-        </div>
-    </div>
-</div>
-
-@code {
-    private const int CalStartH = 8;
-    private const int HourPx   = 60;
-    private static readonly int[] Hours = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21];
-
-    private bool _loading = true;
-    private string? _error;
-    private DateTime WeekStart { get; set; }
-    private DateTime DisplayMonth { get; set; }
-    private List<LessonDto> _lessons = [];
-
-    private sealed class CalEvent
+    private RenderFragment MonthGrid() => __builder =>
     {
-        public string Title   = "";
-        public string Subject = "";
-        private readonly int _h, _m, _dur;
-        public CalEvent(string title, string subject, int h, int m, int dur)
-        { Title = title; Subject = subject; _h = h; _m = m; _dur = dur; }
-        public int TopPx    => (_h - CalStartH) * HourPx + (int)(_m / 60.0 * HourPx);
-        public int HeightPx => (int)(_dur / 60.0 * HourPx);
-        public string TimeLabel
-        {
-            get
+        <div class="pcal-month">
+            @foreach (var dow in new[] { "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim" })
             {
-                var end = _h * 60 + _m + _dur;
-                return $"{_h:D2}:{_m:D2} – {end / 60:D2}:{end % 60:D2}";
+                <div class="pcal-month-dow">@dow</div>
             }
-        }
-    }
-
-    private IEnumerable<CalEvent> GetEventsForDay(DateTime date)
-        => _lessons
-            .Where(l =>
+            @foreach (var day in MiniCalDays)
             {
-                var local = l.StartTime.Kind == DateTimeKind.Utc
-                    ? l.StartTime.ToLocalTime()
-                    : DateTime.SpecifyKind(l.StartTime, DateTimeKind.Local);
-                return local.Date == date.Date;
-            })
-            .Select(l =>
-            {
-                var local = l.StartTime.Kind == DateTimeKind.Utc
-                    ? l.StartTime.ToLocalTime()
-                    : DateTime.SpecifyKind(l.StartTime, DateTimeKind.Local);
-                var endLocal = l.EndTime.Kind == DateTimeKind.Utc
-                    ? l.EndTime.ToLocalTime()
-                    : DateTime.SpecifyKind(l.EndTime, DateTimeKind.Local);
-                var dur = Math.Max(15, (int)(endLocal - local).TotalMinutes);
-                return new CalEvent(l.Title, l.Subject ?? "", local.Hour, local.Minute, dur);
-            });
+                var isToday = day.Date.Date == DateTime.Today;
+                <button type="button" class="pcal-month-cell @(day.InMonth ? "" : "is-out") @(isToday ? "is-today" : "")"
+                        @onclick="() => GoToDateAsync(day.Date)">
+                    <span>@day.Date.Day</span>
+                    @foreach (var evt in EventsForDay(day.Date).Take(3))
+                    {
+                        <span class="pcal-month-pill" style="--pcal-accent:@EventAccent(evt)">@evt.ChildFirstName · @ActivityLabel(evt)</span>
+                    }
+                </button>
+            }
+        </div>
+    };
 
-    private IEnumerable<CalEvent> GetWeekEvents()
+    private RenderFragment ListView() => __builder =>
     {
-        for (var d = 0; d < 7; d++)
-            foreach (var e in GetEventsForDay(WeekStart.AddDays(d)))
-                yield return e;
+        var items = VisibleEvents
+            .Where(e => ToLocal(e.StartTime).Date >= RangeStart.Date && ToLocal(e.StartTime).Date <= RangeEnd.Date)
+            .OrderBy(e => e.StartTime)
+            .ToList();
+        <div class="pcal-list">
+            @if (items.Count == 0)
+            {
+                <p class="text-muted p-4 mb-0">@L["ParentCal_Empty"]</p>
+            }
+            else
+            {
+                @foreach (var evt in items)
+                {
+                    <button type="button" class="pcal-list-item" @onclick="() => OpenEvent(evt)">
+                        <span class="pcal-dot" style="background:@EventAccent(evt)"></span>
+                        <div class="flex-grow-1 text-start">
+                            <strong>@evt.ChildFirstName · @ActivityLabel(evt)</strong>
+                            <span>@FormatWhen(evt.StartTime) · @evt.TeacherName</span>
+                        </div>
+                        @if (!string.IsNullOrEmpty(evt.Status))
+                        {
+                            <span class="pc-pill @StatusCss(evt.Status)">@StatusLabel(evt.Status)</span>
+                        }
+                    </button>
+                }
+            }
+        </div>
+    };
+
+    private IEnumerable<ParentCalendarEventDto> EventsForDay(DateTime date) =>
+        VisibleEvents.Where(e => ToLocal(e.StartTime).Date == date.Date);
+
+    private (int Top, int Height) Layout(ParentCalendarEventDto evt)
+    {
+        var local = ToLocal(evt.StartTime);
+        var end = ToLocal(evt.EndTime);
+        var mins = (local.Hour - CalStartH) * 60 + local.Minute;
+        var dur = Math.Max(40, (int)(end - local).TotalMinutes);
+        var top = Math.Max(0, (int)(mins / 60.0 * HourPx));
+        var height = Math.Max(52, (int)(dur / 60.0 * HourPx));
+        return (top, height);
     }
 
     private int? NowTopPx
     {
         get
         {
-            var now  = DateTime.Now;
+            var now = DateTime.Now;
             var mins = (now.Hour - CalStartH) * 60 + now.Minute;
-            if (mins < 0 || now.Hour >= 22) return null;
+            if (mins < 0 || now.Hour > 18) return null;
             return (int)(mins / 60.0 * HourPx);
         }
     }
+
+    private DateTime RangeStart => _view == "day" ? _currentDay.Date : _view == "month" ? new DateTime(DisplayMonth.Year, DisplayMonth.Month, 1) : WeekStart;
+    private DateTime RangeEnd => _view == "day" ? _currentDay.Date : _view == "month" ? RangeStart.AddMonths(1).AddDays(-1) : WeekStart.AddDays(6);
+
+    private string RangeLabel
+    {
+        get
+        {
+            var culture = CultureInfo.CurrentCulture;
+            if (_view == "day")
+                return _currentDay.ToString("dddd d MMMM yyyy", culture);
+            if (_view == "month")
+                return DisplayMonth.ToString("MMMM yyyy", culture);
+            if (WeekStart.Month == WeekStart.AddDays(6).Month)
+                return $"{WeekStart.Day} – {WeekStart.AddDays(6).ToString("d MMMM yyyy", culture)}";
+            return $"{WeekStart.ToString("d MMM", culture)} – {WeekStart.AddDays(6).ToString("d MMM yyyy", culture)}";
+        }
+    }
+
+    private string NextLessonLabel
+    {
+        get
+        {
+            var next = VisibleEvents
+                .Where(e => e.Kind == "lesson" && e.StartTime >= DateTime.UtcNow)
+                .OrderBy(e => e.StartTime)
+                .FirstOrDefault();
+            if (next is null)
+                return L["ParentCal_NextNone"];
+            return $"{next.ChildFirstName} — {next.Subject}, {FormatWhen(next.StartTime)}";
+        }
+    }
+
+    private int CountThisWeek(Guid childId) =>
+        _events.Count(e => e.StudentId == childId
+                           && ToLocal(e.StartTime).Date >= WeekStart.Date
+                           && ToLocal(e.StartTime).Date < WeekStart.AddDays(7));
+
+    private bool IsInCurrentRange(DateTime date) =>
+        date.Date >= RangeStart.Date && date.Date <= RangeEnd.Date;
 
     private IEnumerable<(DateTime Date, bool InMonth)> MiniCalDays
     {
         get
         {
-            var first    = new DateTime(DisplayMonth.Year, DisplayMonth.Month, 1);
+            var first = new DateTime(DisplayMonth.Year, DisplayMonth.Month, 1);
             var startDow = (int)first.DayOfWeek;
             var gridStart = first.AddDays(startDow == 0 ? -6 : -(startDow - 1));
             for (var i = 0; i < 42; i++)
@@ -220,69 +444,228 @@
         }
     }
 
-    protected override async Task OnInitializedAsync()
-    {
-        GoToToday();
-        await LoadLessonsAsync();
-    }
-
-    private async Task LoadLessonsAsync()
+    private async Task LoadAsync()
     {
         _loading = true;
         _error = null;
         try
         {
-            var start = Uri.EscapeDataString(WeekStart.AddDays(-14).ToUniversalTime().ToString("O"));
-            var end = Uri.EscapeDataString(WeekStart.AddDays(60).ToUniversalTime().ToString("O"));
-            _lessons = await Api.GetAsync<List<LessonDto>>($"api/parent/lessons?start={start}&end={end}") ?? [];
+            await Auth.EnsureSessionRestoredAsync();
+            if (string.IsNullOrEmpty(Auth.Token))
+            {
+                if (Auth.IsSessionExpired)
+                {
+                    _sessionExpired = true;
+                    _error = ApiClient.SessionExpiredMessage;
+                }
+                return;
+            }
+
+            var start = Uri.EscapeDataString(DisplayMonth.AddDays(-14).ToUniversalTime().ToString("O"));
+            var end = Uri.EscapeDataString(DisplayMonth.AddMonths(2).ToUniversalTime().ToString("O"));
+            var result = await Api.GetWithErrorAsync<ParentCalendarDto>($"api/parent/calendar?start={start}&end={end}");
+            if (result.Error == ApiClient.SessionExpiredMessage)
+            {
+                _sessionExpired = true;
+                _error = result.Error;
+                return;
+            }
+            if (result.Error is not null || result.Value is null)
+            {
+                _error = result.Error ?? L["ParentCal_LoadError"];
+                return;
+            }
+
+            var keep = _visibleChildIds.ToHashSet();
+            _children = result.Value.Children.ToList();
+            _events = result.Value.Events.ToList();
+            if (keep.Count == 0)
+                _visibleChildIds = _children.Select(c => c.Id).ToHashSet();
+            else
+                _visibleChildIds = _children.Select(c => c.Id).Where(keep.Contains).ToHashSet();
+            if (_visibleChildIds.Count == 0)
+                _visibleChildIds = _children.Select(c => c.Id).ToHashSet();
         }
         catch (Exception ex)
         {
             _error = ex.Message;
-            _lessons = [];
         }
-        finally
+        finally { _loading = false; }
+    }
+
+    private void FocusChild(Guid? id)
+    {
+        _focusChildId = id;
+        if (id is Guid childId)
+            _visibleChildIds.Add(childId);
+    }
+
+    private void ToggleChild(Guid id, bool on)
+    {
+        if (on)
+            _visibleChildIds.Add(id);
+        else
         {
-            _loading = false;
+            _visibleChildIds.Remove(id);
+            if (_focusChildId == id)
+                _focusChildId = null;
         }
+    }
+
+    private Task SetView(string view)
+    {
+        _view = view;
+        if (view == "month")
+            DisplayMonth = new DateTime(RangeStart.Year, RangeStart.Month, 1);
+        return Task.CompletedTask;
     }
 
     private void GoToToday()
     {
         var today = DateTime.Today;
-        var dow   = (int)today.DayOfWeek;
-        WeekStart    = today.AddDays(dow == 0 ? -6 : -(dow - 1));
+        var dow = (int)today.DayOfWeek;
+        WeekStart = today.AddDays(dow == 0 ? -6 : -(dow - 1));
         DisplayMonth = new DateTime(today.Year, today.Month, 1);
+        _currentDay = today;
     }
 
     private async Task GoToTodayAndReload()
     {
         GoToToday();
-        await LoadLessonsAsync();
+        await LoadAsync();
     }
 
-    private async Task GoToWeekAndReload(DateTime date)
+    private async Task GoToDateAsync(DateTime date)
     {
         var dow = (int)date.DayOfWeek;
         WeekStart = date.AddDays(dow == 0 ? -6 : -(dow - 1));
-        DisplayMonth = new DateTime(WeekStart.Year, WeekStart.Month, 1);
-        await LoadLessonsAsync();
+        DisplayMonth = new DateTime(date.Year, date.Month, 1);
+        _currentDay = date.Date;
+        if (_view == "list" || _view == "month")
+            _view = "day";
+        await LoadAsync();
     }
 
-    private async Task PreviousWeekAsync()
+    private async Task PreviousRangeAsync()
     {
-        WeekStart = WeekStart.AddDays(-7);
-        DisplayMonth = new DateTime(WeekStart.Year, WeekStart.Month, 1);
-        await LoadLessonsAsync();
+        ShiftRange(-1);
+        await LoadAsync();
     }
 
-    private async Task NextWeekAsync()
+    private async Task NextRangeAsync()
     {
-        WeekStart = WeekStart.AddDays(7);
-        DisplayMonth = new DateTime(WeekStart.Year, WeekStart.Month, 1);
-        await LoadLessonsAsync();
+        ShiftRange(1);
+        await LoadAsync();
+    }
+
+    private void ShiftRange(int dir)
+    {
+        switch (_view)
+        {
+            case "day":
+                _currentDay = _currentDay.AddDays(dir);
+                WeekStart = StartOfWeek(_currentDay);
+                DisplayMonth = new DateTime(_currentDay.Year, _currentDay.Month, 1);
+                break;
+            case "month":
+                DisplayMonth = DisplayMonth.AddMonths(dir);
+                WeekStart = StartOfWeek(DisplayMonth);
+                _currentDay = DisplayMonth;
+                break;
+            default:
+                WeekStart = WeekStart.AddDays(7 * dir);
+                DisplayMonth = new DateTime(WeekStart.Year, WeekStart.Month, 1);
+                _currentDay = WeekStart;
+                break;
+        }
+    }
+
+    private static DateTime StartOfWeek(DateTime date)
+    {
+        var dow = (int)date.DayOfWeek;
+        return date.Date.AddDays(dow == 0 ? -6 : -(dow - 1));
     }
 
     private void PreviousMonth() => DisplayMonth = DisplayMonth.AddMonths(-1);
-    private void NextMonth()     => DisplayMonth = DisplayMonth.AddMonths(1);
+    private void NextMonth() => DisplayMonth = DisplayMonth.AddMonths(1);
+
+    private void OpenEvent(ParentCalendarEventDto evt)
+    {
+        _selected = evt;
+        _showFullDetails = false;
+    }
+
+    private void CloseEvent()
+    {
+        _selected = null;
+        _showFullDetails = false;
+    }
+
+    private string ChildColor(Guid id)
+    {
+        var i = _children.FindIndex(c => c.Id == id);
+        return ChildPalette[Math.Max(0, i) % ChildPalette.Length];
+    }
+
+    private string EventAccent(ParentCalendarEventDto evt) => evt.Kind switch
+    {
+        "homework" => "#f59e0b",
+        "evaluation" => "#006D44",
+        _ => ChildColor(evt.StudentId)
+    };
+
+    private string ActivityLabel(ParentCalendarEventDto evt) => evt.Kind switch
+    {
+        "homework" => L["ParentCal_HomeworkDue"],
+        "evaluation" => L["ParentCal_KindEval"],
+        _ => evt.Subject
+    };
+
+    private string KindLabel(string kind) => kind switch
+    {
+        "homework" => L["ParentCal_KindHomework"],
+        "evaluation" => L["ParentCal_KindEval"],
+        _ => L["ParentCal_KindLesson"]
+    };
+
+    private string StatusLabel(string? status) => status switch
+    {
+        "upcoming" => L["ParentCal_StatusUpcoming"],
+        "live" => L["ParentCal_StatusLive"],
+        "done" => L["ParentCal_StatusDone"],
+        "cancelled" => L["ParentCal_StatusCancelled"],
+        "present" => L["ParentCal_StatusPresent"],
+        "due" => L["Children_HomeworkDue"],
+        "overdue" => L["Children_HomeworkOverdue"],
+        "submitted" => L["ParentCal_StatusSubmitted"],
+        "graded" => L["ParentCal_StatusGraded"],
+        _ => status ?? ""
+    };
+
+    private static string StatusCss(string? status) => status switch
+    {
+        "live" or "present" or "graded" or "submitted" => "pc-pill-ok",
+        "overdue" or "cancelled" => "pc-pill-danger",
+        _ => "pc-pill-warn"
+    };
+
+    private static bool CanJoin(ParentCalendarEventDto evt) =>
+        evt.Kind == "lesson" && !string.IsNullOrWhiteSpace(evt.MeetingUrl)
+        && (evt.MeetingUrl.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+            || evt.MeetingUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase));
+
+    private string FormatWhen(DateTime value)
+    {
+        var local = ToLocal(value);
+        var culture = CultureInfo.CurrentCulture;
+        if (local.Date == DateTime.Today)
+            return string.Format(culture, L["Children_TodayAt"], local.ToString("HH:mm"));
+        return local.ToString("dddd d MMMM, HH:mm", culture);
+    }
+
+    private static DateTime ToLocal(DateTime value) =>
+        value.Kind == DateTimeKind.Utc ? value.ToLocalTime() : DateTime.SpecifyKind(value, DateTimeKind.Local);
+
+    private static string Initials(string name) =>
+        string.IsNullOrWhiteSpace(name) ? "" : name.Trim()[..1].ToUpperInvariant();
 }
