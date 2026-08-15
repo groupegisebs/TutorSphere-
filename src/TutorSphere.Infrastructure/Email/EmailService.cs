@@ -35,6 +35,7 @@ internal static class EmailTemplates
     public const string LessonCancelled = "LESSON_CANCELLED";
 
     public const string ParentPaymentReceipt = "PARENT_PAYMENT_RECEIPT";
+    public const string ParentPaymentRefunded = "PARENT_PAYMENT_REFUNDED";
     public const string ParentPaymentFailed = "PARENT_PAYMENT_FAILED";
     public const string InvoiceReady = "INVOICE_READY";
     public const string ParentPaymentOverdue = "PARENT_PAYMENT_OVERDUE";
@@ -218,6 +219,24 @@ public class EmailService : IEmailService
             ["StudentName"] = studentName,
             ["Amount"] = amount.ToString("C", culture),
             ["InvoiceUrl"] = invoiceUrl
+        }, ct, culture.Name);
+    }
+
+    public async Task SendParentPaymentRefundedAsync(
+        string to,
+        string parentName,
+        string studentName,
+        string tutorName,
+        decimal amount,
+        CancellationToken ct = default)
+    {
+        var culture = await ResolveCultureAsync(to, ct);
+        await SendAsync(to, EmailTemplates.ParentPaymentRefunded, new Dictionary<string, string>
+        {
+            ["ParentName"] = parentName,
+            ["StudentName"] = studentName,
+            ["TutorName"] = tutorName,
+            ["Amount"] = amount.ToString("C", culture)
         }, ct, culture.Name);
     }
 

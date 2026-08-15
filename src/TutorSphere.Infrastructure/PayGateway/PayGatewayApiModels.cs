@@ -82,6 +82,8 @@ internal sealed record GatewayApiSubscriptionResponse(
 
 internal sealed record GatewayCancelSubscriptionRequest(string SubscriptionCode, bool CancelImmediately);
 
+internal sealed record GatewayRefundRequest(string? Reason = "requested_by_customer");
+
 internal sealed record GatewayCancelSubscriptionResponse(
     string SubscriptionCode,
     string Status,

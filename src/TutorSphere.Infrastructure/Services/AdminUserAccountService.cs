@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Logging;
 using TutorSphere.Application.Common.Interfaces;
+using TutorSphere.Application.Services;
 using TutorSphere.Domain.Entities;
 using TutorSphere.Domain.Enums;
 using TutorSphere.Infrastructure.Identity;
@@ -20,6 +22,8 @@ public interface IAdminUserAccountService
 
     /// <summary>
     /// Hard-deletes a teacher tenant/profile and related data. SuperAdmin only.
+    /// Cancels remaining scheduled lessons and refunds completed parent payments first
+    /// (no teacher/parent consent). Then removes the graph.
     /// Optionally removes the owner Tutor identity when it has no other role.
     /// </summary>
     Task DeleteTenantAsync(Guid tenantId, CancellationToken ct = default);
@@ -27,7 +31,11 @@ public interface IAdminUserAccountService
 
 public class AdminUserAccountService(
     IApplicationDbContext db,
-    UserManager<ApplicationUser> users) : IAdminUserAccountService
+    UserManager<ApplicationUser> users,
+    IPaymentGatewayService payments,
+    IBillingEmailOrchestrator billingEmail,
+    IEmailService email,
+    ILogger<AdminUserAccountService> logger) : IAdminUserAccountService
 {
     private static readonly HashSet<string> ProtectedSlugs = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -122,6 +130,34 @@ public class AdminUserAccountService(
         }
 
         var ownerUserId = tenant.OwnerUserId;
+        var tutorName = string.IsNullOrWhiteSpace(tenant.Name) ? "votre enseignant" : tenant.Name.Trim();
+
+        tenant.IsPublicProfile = false;
+        tenant.Status = TenantStatus.Suspended;
+        tenant.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+
+        await SettleTeacherTenantBeforeDeleteAsync(tenantId, tutorName, ct);
+
+        if (!string.IsNullOrWhiteSpace(ownerUserId))
+        {
+            var owner = await users.FindByIdAsync(ownerUserId);
+            if (owner is not null && !string.IsNullOrWhiteSpace(owner.Email))
+            {
+                try
+                {
+                    await email.SendAccountDeactivatedAsync(
+                        owner.Email,
+                        string.IsNullOrWhiteSpace(owner.FirstName) ? tutorName : owner.FirstName,
+                        "Votre profil enseignant a été retiré par l'administration. Les cours programmés ont été annulés et les parents déjà payés ont été remboursés.",
+                        ct);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Échec e-mail suppression enseignant {UserId}", ownerUserId);
+                }
+            }
+        }
 
         // Order matters for FKs.
         var remarks = db.ExpertRemarksForAnyTenant.Where(r => r.TenantId == tenantId).ToList();
@@ -263,6 +299,147 @@ public class AdminUserAccountService(
                 }
             }
         }
+    }
+
+    private async Task SettleTeacherTenantBeforeDeleteAsync(Guid tenantId, string tutorName, CancellationToken ct)
+    {
+        const string cancelReason =
+            "Enseignant retiré par l'administration. Les cours programmés sont annulés ; les paiements déjà effectués sont remboursés.";
+
+        var now = DateTime.UtcNow;
+        var lessons = db.LessonsForAnyTenant
+            .Where(l => l.TenantId == tenantId && l.SettlementStatus == LessonSettlementStatus.Scheduled)
+            .ToList();
+
+        var lessonIds = lessons.Select(l => l.Id).ToList();
+        var attendances = lessonIds.Count == 0
+            ? []
+            : db.LessonAttendancesForAnyTenant.Where(a => lessonIds.Contains(a.LessonId)).ToList();
+        var attendanceByLesson = attendances
+            .GroupBy(a => a.LessonId)
+            .ToDictionary(g => g.Key, g => g.Select(a => a.StudentId).Distinct().ToList());
+
+        var studentIds = attendances.Select(a => a.StudentId).Distinct().ToList();
+        var students = studentIds.Count == 0
+            ? []
+            : db.StudentsForAnyTenant.Where(s => studentIds.Contains(s.Id)).ToList();
+        var studentsById = students.ToDictionary(s => s.Id);
+        var parentIds = students
+            .Where(s => s.ParentProfileId.HasValue)
+            .Select(s => s.ParentProfileId!.Value)
+            .Distinct()
+            .ToList();
+        var parentsById = parentIds.Count == 0
+            ? new Dictionary<Guid, ParentProfile>()
+            : db.ParentProfilesForAnyTenant.Where(p => parentIds.Contains(p.Id)).ToList()
+                .ToDictionary(p => p.Id);
+
+        var tenantSubs = db.StudentSubscriptionsForAnyTenant.Where(s => s.TenantId == tenantId).ToList();
+
+        var tenantPayments = db.PaymentsForAnyTenant.Where(p => p.TenantId == tenantId).ToList();
+        foreach (var payment in tenantPayments)
+        {
+            if (payment.Status == PaymentStatus.Pending)
+            {
+                payment.Status = PaymentStatus.Failed;
+                payment.UpdatedAt = now;
+                continue;
+            }
+
+            if (payment.Status != PaymentStatus.Completed)
+                continue;
+
+            await payments.RefundCompletedPaymentAsync(payment.Id, ct);
+            await billingEmail.NotifyPaymentRefundedAsync(payment.Id, tutorName, ct);
+        }
+
+        foreach (var sub in tenantSubs)
+        {
+            await payments.TryCancelGatewaySubscriptionAsync(sub.Id, cancelImmediately: true, ct);
+            if (sub.Status is SubscriptionStatus.Pending
+                or SubscriptionStatus.AwaitingPayment
+                or SubscriptionStatus.Active
+                or SubscriptionStatus.Paused)
+            {
+                sub.Status = SubscriptionStatus.Cancelled;
+                sub.UpdatedAt = now;
+            }
+        }
+
+        await db.SaveChangesAsync(ct);
+
+        foreach (var lesson in lessons)
+        {
+            if (lesson.SessionCounted
+                && attendanceByLesson.TryGetValue(lesson.Id, out var creditedStudentIds))
+            {
+                foreach (var studentId in creditedStudentIds)
+                {
+                    var sub = tenantSubs
+                        .Where(s => s.StudentId == studentId
+                                    && (s.Status == SubscriptionStatus.Active || s.Status == SubscriptionStatus.Paused))
+                        .OrderByDescending(s => s.CreatedAt)
+                        .FirstOrDefault();
+                    if (sub is null) continue;
+                    sub.SessionsRemaining += 1;
+                    sub.UpdatedAt = now;
+                }
+
+                lesson.SessionCounted = false;
+            }
+
+            lesson.CancelledAt = now;
+            lesson.CancellationReason = cancelReason;
+            lesson.SettlementStatus = LessonSettlementStatus.CancelledFree;
+            lesson.TutorLiable = false;
+            lesson.UpdatedAt = now;
+        }
+
+        await db.SaveChangesAsync(ct);
+
+        foreach (var lesson in lessons)
+        {
+            if (!attendanceByLesson.TryGetValue(lesson.Id, out var attendeeIds))
+                continue;
+            var subject = lesson.Subject ?? lesson.Title;
+            foreach (var studentId in attendeeIds)
+            {
+                if (!studentsById.TryGetValue(studentId, out var student))
+                    continue;
+                try
+                {
+                    if (!string.IsNullOrWhiteSpace(student.Email))
+                    {
+                        await email.SendLessonCancelledAsync(
+                            student.Email,
+                            $"{student.FirstName} {student.LastName}".Trim(),
+                            tutorName,
+                            subject,
+                            lesson.StartTime,
+                            ct);
+                    }
+
+                    if (student.ParentProfileId is Guid pid
+                        && parentsById.TryGetValue(pid, out var parent)
+                        && !string.IsNullOrWhiteSpace(parent.Email))
+                    {
+                        await email.SendLessonCancelledAsync(
+                            parent.Email,
+                            parent.FirstName,
+                            tutorName,
+                            subject,
+                            lesson.StartTime,
+                            ct);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Échec e-mail d'annulation (suppression enseignant) pour l'élève {StudentId}", studentId);
+                }
+            }
+        }
+
+        await db.SaveChangesAsync(ct);
     }
 
     private async Task DeleteParentGraphAsync(string parentUserId, CancellationToken ct)

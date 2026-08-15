@@ -49,6 +49,13 @@ public interface IEmailService
 
     // Parent billing
     Task SendParentPaymentReceiptAsync(string to, string parentName, string studentName, decimal amount, string invoiceUrl, CancellationToken ct = default);
+    Task SendParentPaymentRefundedAsync(
+        string to,
+        string parentName,
+        string studentName,
+        string tutorName,
+        decimal amount,
+        CancellationToken ct = default);
     Task SendParentPaymentFailedAsync(string to, string parentName, CancellationToken ct = default);
     Task SendInvoiceReadyAsync(string to, string parentName, string invoiceUrl, CancellationToken ct = default);
     Task SendParentPaymentOverdueAsync(string to, string parentName, string studentName, string courseTitle, string payUrl, CancellationToken ct = default);

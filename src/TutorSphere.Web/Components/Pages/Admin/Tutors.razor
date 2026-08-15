@@ -218,7 +218,7 @@
     {
         var confirmed = await JS.InvokeAsync<bool>(
             "confirm",
-            $"Supprimer définitivement l'enseignant « {tutor.FullName} » ({tutor.Email}) ?\n\nLe compte, le profil public et les données associées seront effacés. Action irréversible.");
+            $"Supprimer définitivement l'enseignant « {tutor.FullName} » ({tutor.Email}) ?\n\nTous les cours programmés seront annulés et les parents déjà payés seront remboursés, sans leur consentement.\n\nLe compte et le profil seront ensuite effacés. Action irréversible.");
         if (!confirmed) return;
 
         _pendingUserId = tutor.Id;
@@ -236,7 +236,7 @@
             }
 
             _tutors.RemoveAll(t => t.Id == tutor.Id);
-            _successMessage = $"Enseignant « {tutor.FullName} » supprimé.";
+            _successMessage = $"Enseignant « {tutor.FullName} » supprimé. Cours annulés et paiements parents remboursés.";
         }
         catch (Exception ex)
         {

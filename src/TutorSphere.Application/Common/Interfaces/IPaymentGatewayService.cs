@@ -40,6 +40,20 @@ public interface IPaymentGatewayService
         CancellationToken ct = default);
 
     /// <summary>
+    /// Annule l'abonnement passerelle sans filtre tenant. Ignore si non lié / passerelle indisponible.
+    /// </summary>
+    Task TryCancelGatewaySubscriptionAsync(
+        Guid subscriptionId,
+        bool cancelImmediately,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Rembourse un paiement parent déjà encaissé (Stripe via Pay Gateway).
+    /// Mobile Money : marquage local + e-mail si la passerelle ne supporte pas le refund.
+    /// </summary>
+    Task RefundCompletedPaymentAsync(Guid paymentId, CancellationToken ct = default);
+
+    /// <summary>
     /// Crée / met à jour le produit+plan dans Pay Gateway et Stripe (SyncToStripe).
     /// </summary>
     Task SyncOfferingCatalogAsync(Guid offeringId, CancellationToken ct = default);

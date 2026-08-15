@@ -282,7 +282,7 @@ public class AdminController : ControllerBase
                 if (!User.IsInRole(UserRoles.SuperAdmin) && !User.IsInRole(UserRoles.PlatformAdmin))
                     return Forbid();
                 await _accountDeletion.DeleteTeacherAsync(userId, ct);
-                return Ok(new { message = "Enseignant et profil associés supprimés définitivement." });
+                return Ok(new { message = "Enseignant supprimé. Cours programmés annulés et paiements parents remboursés." });
             }
 
             if (!User.IsInRole(UserRoles.SuperAdmin))
@@ -692,7 +692,7 @@ public class AdminController : ControllerBase
         try
         {
             await _accountDeletion.DeleteTenantAsync(tenantId, ct);
-            return Ok(new { message = "Profil supprimé." });
+            return Ok(new { message = "Profil supprimé. Cours programmés annulés et paiements parents remboursés." });
         }
         catch (InvalidOperationException ex)
         {
@@ -954,7 +954,7 @@ public class AdminController : ControllerBase
         {
             "WELCOME", "CONFIRM_EMAIL", "CONFIRM_EMAIL_SIMPLE", "RESET_PASSWORD",
             "COURSE_ENROLLMENT_REQUEST", "COURSE_ENROLLMENT_ACCEPTED",
-            "INVOICE_READY", "PARENT_PAYMENT_RECEIPT", "PARENT_PAYMENT_OVERDUE", "PARENT_SUBSCRIPTION_RENEWAL",
+            "INVOICE_READY", "PARENT_PAYMENT_RECEIPT", "PARENT_PAYMENT_REFUNDED", "PARENT_PAYMENT_OVERDUE", "PARENT_SUBSCRIPTION_RENEWAL",
             "TUTOR_STUDENT_PAYMENT_RECEIVED", "LESSON_REMINDER", "LESSON_SCHEDULED"
         }
     });

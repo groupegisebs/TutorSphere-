@@ -341,6 +341,104 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             result.CancelledAt);
     }
 
+    public async Task TryCancelGatewaySubscriptionAsync(
+        Guid subscriptionId,
+        bool cancelImmediately,
+        CancellationToken ct = default)
+    {
+        var subscription = await _db.StudentSubscriptionsForAnyTenant
+            .FirstOrDefaultAsync(s => s.Id == subscriptionId, ct);
+        if (subscription is null || string.IsNullOrWhiteSpace(subscription.StripeSubscriptionId))
+            return;
+
+        if (!_gateway.IsConfigured)
+        {
+            _logger.LogWarning(
+                "Pay Gateway non configuré — annulation locale uniquement pour l'abonnement {SubscriptionId}.",
+                subscriptionId);
+            return;
+        }
+
+        try
+        {
+            var result = await _gateway.CancelSubscriptionAsync(
+                new GatewayCancelSubscriptionRequest(subscription.StripeSubscriptionId, cancelImmediately),
+                ct);
+            subscription.Status = MapSubscriptionStatus(result.Status);
+            subscription.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Impossible d'annuler l'abonnement passerelle {Code} (local {SubscriptionId}).",
+                subscription.StripeSubscriptionId,
+                subscriptionId);
+        }
+    }
+
+    public async Task RefundCompletedPaymentAsync(Guid paymentId, CancellationToken ct = default)
+    {
+        var payment = await _db.PaymentsForAnyTenant.FirstOrDefaultAsync(p => p.Id == paymentId, ct)
+            ?? throw new InvalidOperationException("Paiement introuvable.");
+
+        if (payment.Status == PaymentStatus.Refunded)
+            return;
+
+        if (payment.Status != PaymentStatus.Completed)
+            throw new InvalidOperationException($"Le paiement {paymentId} n'est pas encaissé (statut {payment.Status}).");
+
+        var isMobileMoney = !string.IsNullOrWhiteSpace(payment.Channel);
+
+        if (_gateway.IsConfigured && !string.IsNullOrWhiteSpace(payment.StripePaymentIntentId) && !isMobileMoney)
+        {
+            var result = await _gateway.RefundPaymentAsync(payment.StripePaymentIntentId, ct);
+            payment.Status = MapPaymentStatus(result.Status);
+            if (payment.Status != PaymentStatus.Refunded)
+                payment.Status = PaymentStatus.Refunded;
+        }
+        else if (_gateway.IsConfigured && !string.IsNullOrWhiteSpace(payment.StripePaymentIntentId) && isMobileMoney)
+        {
+            try
+            {
+                var result = await _gateway.RefundPaymentAsync(payment.StripePaymentIntentId, ct);
+                payment.Status = MapPaymentStatus(result.Status);
+                if (payment.Status != PaymentStatus.Refunded)
+                    payment.Status = PaymentStatus.Refunded;
+            }
+            catch (InvalidOperationException ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Remboursement Mobile Money non exécuté par la passerelle — marquage local du paiement {PaymentId}.",
+                    paymentId);
+                payment.Status = PaymentStatus.Refunded;
+            }
+        }
+        else
+        {
+            if (!_gateway.IsConfigured)
+                _logger.LogWarning(
+                    "Pay Gateway non configuré — remboursement local uniquement pour le paiement {PaymentId}.",
+                    paymentId);
+            payment.Status = PaymentStatus.Refunded;
+        }
+
+        payment.UpdatedAt = DateTime.UtcNow;
+        if (payment.InvoiceId is Guid invoiceId)
+        {
+            var invoice = await _db.InvoicesForAnyTenant.FirstOrDefaultAsync(i => i.Id == invoiceId, ct);
+            if (invoice is not null)
+            {
+                invoice.Status = PaymentStatus.Refunded;
+                invoice.UpdatedAt = DateTime.UtcNow;
+            }
+        }
+
+        await _db.SaveChangesAsync(ct);
+    }
+
     public async Task SyncOfferingCatalogAsync(Guid offeringId, CancellationToken ct = default)
     {
         var offering = await _db.SubscriptionOfferingsForAnyTenant

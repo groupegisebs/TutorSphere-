@@ -88,6 +88,17 @@ internal sealed class PayGatewayClient
         return await ReadSuccessAsync<GatewayCancelSubscriptionResponse>(response, ct);
     }
 
+    public async Task<GatewayPaymentResponse> RefundPaymentAsync(string paymentCode, CancellationToken ct = default)
+    {
+        using var response = await SendAsync(
+            HttpMethod.Post,
+            $"api/payments/{Uri.EscapeDataString(paymentCode)}/refund",
+            new GatewayRefundRequest(),
+            ct,
+            idempotencyKey: $"{paymentCode}:refund");
+        return await ReadSuccessAsync<GatewayPaymentResponse>(response, ct);
+    }
+
     public bool IsConfigured =>
         !string.IsNullOrWhiteSpace(_settings.BaseUrl)
         && !string.IsNullOrWhiteSpace(_settings.AppCode)

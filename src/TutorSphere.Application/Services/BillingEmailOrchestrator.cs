@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using TutorSphere.Application.Common;
 using TutorSphere.Application.Common.Interfaces;
+using TutorSphere.Domain.Entities;
 using TutorSphere.Domain.Enums;
 
 namespace TutorSphere.Application.Services;
@@ -10,6 +11,7 @@ public interface IBillingEmailOrchestrator
     Task NotifyEnrollmentRequestedAsync(Guid subscriptionId, CancellationToken ct = default);
     Task NotifyEnrollmentAcceptedAsync(Guid subscriptionId, CancellationToken ct = default);
     Task NotifyPaymentSucceededAsync(Guid paymentId, CancellationToken ct = default);
+    Task NotifyPaymentRefundedAsync(Guid paymentId, string tutorName, CancellationToken ct = default);
     Task NotifyPaymentLinkReadyAsync(Guid subscriptionId, string checkoutUrl, decimal amount, CancellationToken ct = default);
 }
 
@@ -172,6 +174,51 @@ public sealed class BillingEmailOrchestrator : IBillingEmailOrchestrator
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Échec e-mails paiement réussi {PaymentId}", paymentId);
+        }
+    }
+
+    public async Task NotifyPaymentRefundedAsync(Guid paymentId, string tutorName, CancellationToken ct = default)
+    {
+        try
+        {
+            var payment = _db.PaymentsForAnyTenant.FirstOrDefault(p => p.Id == paymentId);
+            if (payment is null)
+                return;
+
+            string studentName = "votre enfant";
+            ParentProfile? parent = null;
+
+            if (payment.SubscriptionId is Guid subId)
+            {
+                var ctx = ResolveSubscription(subId);
+                if (ctx is not null)
+                {
+                    studentName = ctx.Value.StudentName;
+                    parent = ctx.Value.Parent;
+                }
+            }
+
+            if (parent is null && payment.InvoiceId is Guid invId)
+            {
+                var invoice = _db.InvoicesForAnyTenant.FirstOrDefault(i => i.Id == invId);
+                if (invoice is not null)
+                    parent = _db.ParentProfilesForAnyTenant.FirstOrDefault(p => p.Id == invoice.ParentProfileId);
+            }
+
+            if (parent is null || string.IsNullOrWhiteSpace(parent.Email))
+                return;
+
+            await _email.SendParentPaymentRefundedAsync(
+                parent.Email,
+                parent.FirstName,
+                studentName,
+                string.IsNullOrWhiteSpace(tutorName) ? "votre enseignant" : tutorName,
+                payment.Amount,
+                ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Échec e-mail remboursement parent {PaymentId}", paymentId);
         }
     }
 
