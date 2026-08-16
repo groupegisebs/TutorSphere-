@@ -19,12 +19,27 @@
         </div>
     </div>
     <div class="cal-page-actions">
-        <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="OpenUnavailabilityModal">
+        <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="() => OpenUnavailabilityModal()">
             <i class="bi bi-calendar2-check me-1" aria-hidden="true"></i>@L["Calendar_Availabilities"]
         </button>
-        <button type="button" class="btn btn-primary btn-sm" @onclick="OpenUnavailabilityModal">
-            <i class="bi bi-slash-circle me-1" aria-hidden="true"></i>Indisponibilité
-        </button>
+        <div class="dropdown">
+            <button type="button" class="btn btn-primary btn-sm" @onclick="ToggleAddMenu"
+                    aria-expanded="@_showAddMenu">
+                <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>@L["Common_Add"]
+                <i class="bi bi-chevron-down ms-1" aria-hidden="true"></i>
+            </button>
+            @if (_showAddMenu)
+            {
+                <div class="dropdown-menu show cal-new-menu">
+                    <button type="button" class="dropdown-item" @onclick="() => OpenUnavailabilityModal()">
+                        <i class="bi bi-slash-circle me-2" aria-hidden="true"></i>Indisponibilité
+                    </button>
+                    <button type="button" class="dropdown-item" @onclick="GoToOfferCreation">
+                        <i class="bi bi-mortarboard me-2" aria-hidden="true"></i>Cours (nouvelle offre)
+                    </button>
+                </div>
+            }
+        </div>
     </div>
 </div>
 
@@ -204,7 +219,9 @@
                         <div class="cal-day-col @(isToday ? "today" : "")">
                             @foreach (var h in Hours)
                             {
-                                <div class="cal-hour-cell"></div>
+                                var slot = date.Date.AddHours(h);
+                                <button type="button" class="cal-hour-cell cal-hour-cell--clickable"
+                                        title="Bloquer ce créneau" @onclick="() => OpenSlot(slot)"></button>
                             }
                             @foreach (var evt in GetEventsForDay(date))
                             {
@@ -443,6 +460,7 @@
 
     private bool _showLessonModal;
     private bool _showUnavailModal;
+    private bool _showAddMenu;
     private bool _saving;
     private string? _formError;
     private string? _bannerError;
@@ -879,15 +897,28 @@
         _lessonForm.StudentIds = _lessonForm.StudentIds.Take(_lessonForm.MaxStudents).ToHashSet();
     }
 
-    private void OpenUnavailabilityModal()
+    private void ToggleAddMenu() => _showAddMenu = !_showAddMenu;
+
+    private void GoToOfferCreation()
+    {
+        _showAddMenu = false;
+        Navigation.NavigateTo("tutor/offers/create");
+    }
+
+    /// <summary>Clic sur une case vide : bloque l'heure choisie, les séances venant des offres.</summary>
+    private void OpenSlot(DateTime slot) =>
+        OpenUnavailabilityModal(slot.Date, TimeOnly.FromDateTime(slot), TimeOnly.FromDateTime(slot.AddHours(1)));
+
+    private void OpenUnavailabilityModal(DateTime? date = null, TimeOnly? start = null, TimeOnly? end = null)
     {
         _formError = null;
         _bannerSuccess = null;
+        _showAddMenu = false;
         _unavailForm = new UnavailFormModel
         {
-            Date = DateTime.Today,
-            StartTime = new TimeOnly(9, 0),
-            EndTime = new TimeOnly(12, 0)
+            Date = date ?? DateTime.Today,
+            StartTime = start ?? new TimeOnly(9, 0),
+            EndTime = end ?? new TimeOnly(12, 0)
         };
         _showUnavailModal = true;
     }
