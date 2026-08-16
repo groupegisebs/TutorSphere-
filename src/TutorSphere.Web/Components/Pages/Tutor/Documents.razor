@@ -17,14 +17,13 @@
         <button class="btn btn-outline-secondary" @onclick="NewFolder">
             <i class="bi bi-folder-plus me-1"></i>@L["Documents_NewFolder"]
         </button>
-        <button class="btn btn-primary" @onclick="() => _showUpload = true">
+        <button class="btn btn-primary" @onclick="OpenUpload">
             <i class="bi bi-cloud-upload me-1"></i>@L["Documents_Upload"]
         </button>
     </div>
 </div>
 
 <div class="docs-layout">
-    <!-- Folder tree -->
     <aside class="docs-tree">
         <div class="docs-tree-header">@L["Documents_MyFolders"]</div>
         @foreach (var folder in _folders)
@@ -46,9 +45,7 @@
         </div>
     </aside>
 
-    <!-- File list -->
     <main class="docs-main">
-        <!-- Breadcrumb & search -->
         <div class="docs-main-header">
             <span class="docs-breadcrumb">
                 <i class="bi bi-house me-1"></i>@L["Documents_MyDocs"]
@@ -65,7 +62,6 @@
             </div>
         </div>
 
-        <!-- View toggle -->
         <div class="docs-view-bar">
             <span class="text-muted small">@string.Format(L["Documents_FilesCount"].Value, FilteredFiles.Count())</span>
             <div class="ms-auto d-flex gap-1">
@@ -88,14 +84,26 @@
                             <i class="bi @FileIcon(f.Type)"></i>
                         </div>
                         <div class="doc-card-name" title="@f.Name">@f.Name</div>
+                        <div class="doc-card-meta">
+                            @if (!string.IsNullOrWhiteSpace(f.Subject)) { <span>@f.Subject</span> }
+                            @if (!string.IsNullOrWhiteSpace(f.SchoolLevel))
+                            {
+                                <span> · @LevelLabel(f.SchoolLevel)</span>
+                            }
+                        </div>
                         <div class="doc-card-meta">@f.Size · @f.Modified</div>
+                        @if (!string.IsNullOrWhiteSpace(f.Summary))
+                        {
+                            <div class="doc-card-meta text-muted" title="@f.Summary">@Truncate(f.Summary, 80)</div>
+                        }
+                        @if (f.FromExpert)
+                        {
+                            <span class="ts-badge ts-badge-neutral mt-1">@L["Documents_FromExpert"]</span>
+                        }
                         <div class="doc-card-actions">
                             <button class="ts-icon-btn" title="@L["Common_Download"]"
                                     @onclick:stopPropagation="true"
                                     @onclick="async () => await DownloadFile(f)"><i class="bi bi-download"></i></button>
-                            <button class="ts-icon-btn" title="@L["Common_Share"]"
-                                    @onclick:stopPropagation="true"
-                                    @onclick="async () => await ShareFile(f)"><i class="bi bi-share"></i></button>
                             <button class="ts-icon-btn ts-icon-btn--danger" title="@L["Common_Delete"]"
                                     @onclick:stopPropagation="true"
                                     @onclick="async () => await DeleteFile(f)">
@@ -113,7 +121,8 @@
                     <thead>
                         <tr>
                             <th>@L["Documents_Name"]</th>
-                            <th>@L["Documents_Type"]</th>
+                            <th>@L["Documents_Subject"]</th>
+                            <th>@L["Documents_Level"]</th>
                             <th>@L["Documents_Size"]</th>
                             <th>@L["Documents_Modified"]</th>
                             <th>@L["Documents_SharedWith"]</th>
@@ -127,10 +136,17 @@
                                 <td>
                                     <div class="ts-cell-user">
                                         <i class="bi @FileIcon(f.Type) me-2" style="color:@FileColor(f.Type)"></i>
-                                        @f.Name
+                                        <div>
+                                            <div>@f.Name</div>
+                                            @if (f.FromExpert)
+                                            {
+                                                <span class="ts-badge ts-badge-neutral">@L["Documents_FromExpert"]</span>
+                                            }
+                                        </div>
                                     </div>
                                 </td>
-                                <td><span class="ts-badge ts-badge-neutral">@f.Type.ToUpper()</span></td>
+                                <td>@(f.Subject ?? "—")</td>
+                                <td>@LevelLabel(f.SchoolLevel)</td>
                                 <td>@f.Size</td>
                                 <td>@f.Modified</td>
                                 <td>
@@ -143,8 +159,6 @@
                                     <div class="ts-action-group">
                                         <button class="ts-icon-btn" title="@L["Common_Download"]"
                                                 @onclick="async () => await DownloadFile(f)"><i class="bi bi-download"></i></button>
-                                        <button class="ts-icon-btn" title="@L["Common_Share"]"
-                                                @onclick="async () => await ShareFile(f)"><i class="bi bi-share"></i></button>
                                         <button class="ts-icon-btn ts-icon-btn--danger" title="@L["Common_Delete"]"
                                                 @onclick="async () => await DeleteFile(f)">
                                             <i class="bi bi-trash"></i>
@@ -160,16 +174,19 @@
     </main>
 </div>
 
-<!-- Upload modal -->
 @if (_showUpload)
 {
-    <div class="ts-modal-backdrop" @onclick="() => _showUpload = false">
-        <div class="ts-modal" @onclick:stopPropagation="true">
+    <div class="ts-modal-backdrop" @onclick="CloseUpload">
+        <div class="ts-modal ts-modal-lg" @onclick:stopPropagation="true">
             <div class="ts-modal-header">
                 <h2>@L["Documents_UploadFiles"]</h2>
-                <button class="ts-modal-close" @onclick="() => _showUpload = false"><i class="bi bi-x-lg"></i></button>
+                <button class="ts-modal-close" @onclick="CloseUpload"><i class="bi bi-x-lg"></i></button>
             </div>
             <div class="ts-modal-body">
+                @if (!string.IsNullOrEmpty(_uploadError))
+                {
+                    <div class="alert alert-danger">@_uploadError</div>
+                }
                 <div class="doc-upload-zone">
                     <i class="bi bi-cloud-arrow-up doc-upload-icon"></i>
                     <p>@L["Documents_DropHere"]</p>
@@ -189,7 +206,31 @@
                     }
                 </div>
                 <div class="row g-3 mt-3">
-                    <div class="col-12">
+                    <div class="col-md-6">
+                        <label class="form-label">@L["Documents_DocTitle"] *</label>
+                        <input class="form-control" @bind="_docTitle" maxlength="200" placeholder="@L["Documents_DocTitleHint"]" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">@L["Documents_Subject"] *</label>
+                        <select class="form-select" @bind="_docSubject">
+                            <option value="">—</option>
+                            @foreach (var s in Subjects)
+                            {
+                                <option value="@s">@s</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">@L["Documents_Level"] *</label>
+                        <select class="form-select" @bind="_docLevel">
+                            <option value="">—</option>
+                            @foreach (var lvl in Levels)
+                            {
+                                <option value="@lvl">@LevelLabel(lvl)</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-6">
                         <label class="form-label">@L["Documents_DestFolder"]</label>
                         <select class="form-select" @bind="_uploadFolder">
                             @foreach (var folder in _folders)
@@ -199,22 +240,50 @@
                         </select>
                     </div>
                     <div class="col-12">
-                        <label class="form-label">@L["Documents_ShareOptional"]</label>
-                        <div class="d-flex flex-wrap gap-2">
-                            @foreach (var s in _shareChoices)
+                        <label class="form-label">@L["Documents_Summary"] *</label>
+                        <textarea class="form-control" rows="3" maxlength="2000" @bind="_docSummary"
+                                  placeholder="@L["Documents_SummaryHint"]"></textarea>
+                    </div>
+                    <div class="col-12">
+                        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                            <label class="form-label mb-0">@L["Documents_ShareOptional"]</label>
+                            <div class="btn-group btn-group-sm">
+                                <button type="button" class="btn btn-outline-primary" @onclick="SelectAllStudents">@L["Homework_SelectAllClass"]</button>
+                                <button type="button" class="btn btn-outline-secondary" @onclick="() => _shareStudentIds.Clear()">Aucun</button>
+                            </div>
+                        </div>
+                        <div class="hw-student-picker">
+                            @if (_students.Count == 0)
                             {
-                                var sel = _shareWith.Contains(s);
-                                <button type="button" class="ts-chip @(sel?"active":"")"
-                                        @onclick="()=>{ if(sel) _shareWith.Remove(s); else _shareWith.Add(s); }">
-                                    @s
-                                </button>
+                                <p class="text-muted small mb-0">@L["Documents_NoStudents"]</p>
+                            }
+                            else
+                            {
+                                @foreach (var grp in _students
+                                    .GroupBy(s => string.IsNullOrWhiteSpace(s.SchoolLevel) ? "" : s.SchoolLevel!)
+                                    .OrderBy(g => LevelSort(g.Key)))
+                                {
+                                    <div class="hw-level-group">
+                                        <div class="hw-level-group-title">@LevelLabel(grp.Key)</div>
+                                        <div class="d-flex flex-wrap gap-2">
+                                            @foreach (var s in grp.OrderBy(x => x.LastName).ThenBy(x => x.FirstName))
+                                            {
+                                                var sel = _shareStudentIds.Contains(s.Id);
+                                                <button type="button" class="ts-chip @(sel ? "active" : "")"
+                                                        @onclick="() => ToggleStudent(s.Id)">
+                                                    @s.FirstName @s.LastName
+                                                </button>
+                                            }
+                                        </div>
+                                    </div>
+                                }
                             }
                         </div>
                     </div>
                 </div>
             </div>
             <div class="ts-modal-footer">
-                <button class="btn btn-outline-secondary" @onclick="() => _showUpload = false">@L["Common_Cancel"]</button>
+                <button class="btn btn-outline-secondary" @onclick="CloseUpload">@L["Common_Cancel"]</button>
                 <button class="btn btn-primary" @onclick="UploadFiles" disabled="@_uploading">
                     @if (_uploading) { <span class="spinner-border spinner-border-sm me-1"></span> }
                     @L["Documents_Upload"]
@@ -225,46 +294,79 @@
 }
 
 @code {
+    private static readonly string[] Subjects =
+        ["Mathématiques", "Physique", "Chimie", "Français", "Anglais", "Histoire", "Sciences", "Autre"];
+    private static readonly string[] Levels = ["Primaire", "Collège", "Lycée", "Université"];
+
     private string _search = "";
     private bool _viewGrid = true;
     private bool _showUpload;
     private bool _uploading;
+    private string? _uploadError;
     private DocFolder? _selectedFolder;
     private DocFile? _selected;
-    private string _uploadFolder = "Mathématiques";
-    private readonly HashSet<string> _shareWith = [];
+    private string _uploadFolder = "Documents";
+    private string _docTitle = "";
+    private string _docSubject = "";
+    private string _docLevel = "";
+    private string _docSummary = "";
+    private readonly HashSet<Guid> _shareStudentIds = [];
     private readonly List<string> _pendingUploadFiles = [];
     private List<IBrowserFile> _pendingBrowserFiles = [];
+    private List<StudentRow> _students = [];
 
     protected override async Task OnInitializedAsync()
     {
-        var docs = await Api.GetAsync<List<ApiDocumentDto>>("api/documents");
-        if (docs is not null && docs.Count > 0)
-        {
-            _files.Clear();
-            foreach (var d in docs)
-            {
-                var ext = System.IO.Path.GetExtension(d.FileName).TrimStart('.').ToLower();
-                _files.Add(new DocFile
-                {
-                    ApiId = d.Id,
-                    Name = d.FileName,
-                    Type = string.IsNullOrEmpty(ext) ? "bin" : ext,
-                    Size = FormatSize(d.FileSize),
-                    Folder = string.IsNullOrWhiteSpace(d.Folder) ? "Documents" : d.Folder,
-                    Modified = d.UploadedAt.ToLocalTime().ToString("dd/MM/yyyy"),
-                    SharedWith = []
-                });
-            }
-        }
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        await LoadStudentsAsync();
+        await LoadDocumentsAsync();
+    }
+
+    private async Task LoadStudentsAsync()
+    {
+        var result = await Api.GetWithErrorAsync<List<StudentRow>>("api/students");
+        _students = result.Value ?? [];
+    }
+
+    private async Task LoadDocumentsAsync()
+    {
+        var docs = await Api.GetAsync<List<ApiDocumentDto>>("api/documents") ?? [];
+        _files.Clear();
+        foreach (var d in docs)
+            _files.Add(MapFile(d));
         RebuildFolders();
+    }
+
+    private DocFile MapFile(ApiDocumentDto d)
+    {
+        var ext = System.IO.Path.GetExtension(d.FileName).TrimStart('.').ToLower();
+        var sharedNames = (d.SharedStudentIds ?? [])
+            .Select(id => _students.FirstOrDefault(s => s.Id == id))
+            .Where(s => s is not null)
+            .Select(s => $"{s!.FirstName} {s.LastName}")
+            .ToList();
+        return new DocFile
+        {
+            ApiId = d.Id,
+            Name = string.IsNullOrWhiteSpace(d.Title) ? d.FileName : d.Title!,
+            FileName = d.FileName,
+            Type = string.IsNullOrEmpty(ext) ? "bin" : ext,
+            Size = FormatSize(d.FileSize),
+            Folder = string.IsNullOrWhiteSpace(d.Folder) ? "Documents" : d.Folder,
+            Modified = d.UploadedAt.ToLocalTime().ToString("dd/MM/yyyy"),
+            Subject = d.Subject,
+            SchoolLevel = d.SchoolLevel,
+            Summary = d.Summary,
+            FromExpert = d.SharedByExpertGroupId.HasValue,
+            SharedWith = sharedNames
+        };
     }
 
     private static string FormatSize(long bytes) => bytes switch
     {
-        < 1024          => $"{bytes} o",
-        < 1024 * 1024   => $"{bytes / 1024} Ko",
-        _               => $"{bytes / (1024 * 1024):F1} Mo"
+        < 1024 => $"{bytes} o",
+        < 1024 * 1024 => $"{bytes / 1024} Ko",
+        _ => $"{bytes / (1024 * 1024):F1} Mo"
     };
 
     private void HandleUploadFileSelection(InputFileChangeEventArgs e)
@@ -273,20 +375,26 @@
         _pendingBrowserFiles = e.GetMultipleFiles(20).ToList();
         foreach (var file in _pendingBrowserFiles)
             _pendingUploadFiles.Add(file.Name);
+        if (string.IsNullOrWhiteSpace(_docTitle) && _pendingBrowserFiles.Count == 1)
+            _docTitle = System.IO.Path.GetFileNameWithoutExtension(_pendingBrowserFiles[0].Name);
     }
 
     private IEnumerable<DocFile> FilteredFiles => _files
         .Where(f => _selectedFolder == null || f.Folder == _selectedFolder.Name)
-        .Where(f => string.IsNullOrEmpty(_search) ||
-            f.Name.Contains(_search, StringComparison.OrdinalIgnoreCase));
+        .Where(f => string.IsNullOrEmpty(_search)
+            || f.Name.Contains(_search, StringComparison.OrdinalIgnoreCase)
+            || (f.Subject?.Contains(_search, StringComparison.OrdinalIgnoreCase) ?? false)
+            || (f.Summary?.Contains(_search, StringComparison.OrdinalIgnoreCase) ?? false));
 
-    private static string FileIcon(string ext) => ext switch {
+    private static string FileIcon(string ext) => ext switch
+    {
         "pdf" => "bi-file-earmark-pdf", "doc" or "docx" => "bi-file-earmark-word",
         "xls" or "xlsx" => "bi-file-earmark-excel", "ppt" or "pptx" => "bi-file-earmark-slides",
         "jpg" or "png" => "bi-file-earmark-image", "mp4" or "mov" => "bi-file-earmark-play",
         _ => "bi-file-earmark"
     };
-    private static string FileColor(string ext) => ext switch {
+    private static string FileColor(string ext) => ext switch
+    {
         "pdf" => "#ef4444", "doc" or "docx" => "#0ea5e9", "xls" or "xlsx" => "#10b981",
         "ppt" or "pptx" => "#f59e0b", _ => "#7c3aed"
     };
@@ -321,29 +429,63 @@
         _uploadFolder = _selectedFolder?.Name ?? "Documents";
     }
 
+    private void OpenUpload()
+    {
+        _uploadError = null;
+        _docTitle = "";
+        _docSubject = _selectedFolder is not null && Subjects.Contains(_selectedFolder.Name) ? _selectedFolder.Name : "";
+        _docLevel = "";
+        _docSummary = "";
+        _shareStudentIds.Clear();
+        _pendingUploadFiles.Clear();
+        _pendingBrowserFiles.Clear();
+        _uploadFolder = _selectedFolder?.Name ?? "Documents";
+        _showUpload = true;
+    }
+
+    private void CloseUpload()
+    {
+        if (_uploading) return;
+        _showUpload = false;
+        _uploadError = null;
+    }
+
+    private void ToggleStudent(Guid id)
+    {
+        if (!_shareStudentIds.Add(id))
+            _shareStudentIds.Remove(id);
+    }
+
+    private void SelectAllStudents()
+    {
+        foreach (var s in _students)
+            _shareStudentIds.Add(s.Id);
+    }
+
     private async Task DownloadFile(DocFile f)
     {
         if (f.ApiId is not Guid id) return;
         var result = await Api.GetBytesWithErrorAsync($"api/documents/{id}/file");
         if (result.Value is null) return;
-        await JS.InvokeVoidAsync("downloadFileFromBase64", f.Name, "application/octet-stream", Convert.ToBase64String(result.Value));
+        await JS.InvokeVoidAsync("downloadFileFromBase64", f.FileName, "application/octet-stream", Convert.ToBase64String(result.Value));
     }
-
-    private async Task ShareFile(DocFile f)
-    {
-        var url = NavigationBase() + $"/tutor/documents";
-        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", $"Document : {f.Name}"); }
-        catch { /* ignore */ }
-        f.SharedWith = ["Copié"];
-    }
-
-    private static string NavigationBase() => "";
 
     private async Task UploadFiles()
     {
-        if (_pendingBrowserFiles.Count == 0) return;
+        if (_pendingBrowserFiles.Count == 0)
+        {
+            _uploadError = L["Documents_SelectFile"];
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_docTitle) || string.IsNullOrWhiteSpace(_docSubject)
+            || string.IsNullOrWhiteSpace(_docLevel) || string.IsNullOrWhiteSpace(_docSummary))
+        {
+            _uploadError = L["Documents_MetaRequired"];
+            return;
+        }
 
         _uploading = true;
+        _uploadError = null;
         try
         {
             foreach (var browserFile in _pendingBrowserFiles)
@@ -359,32 +501,32 @@
                     string.IsNullOrEmpty(browserFile.ContentType) ? "application/octet-stream" : browserFile.ContentType);
                 content.Add(fileContent, "file", browserFile.Name);
                 content.Add(new StringContent(_uploadFolder), "folder");
+                content.Add(new StringContent(_docTitle.Trim()), "title");
+                content.Add(new StringContent(_docSubject.Trim()), "subject");
+                content.Add(new StringContent(_docLevel.Trim()), "schoolLevel");
+                content.Add(new StringContent(_docSummary.Trim()), "summary");
+                if (_shareStudentIds.Count > 0)
+                    content.Add(new StringContent(string.Join(',', _shareStudentIds)), "sharedStudentIds");
 
                 var result = await Api.PostMultipartAsync<ApiDocumentDto>("api/documents", content);
-                if (result.Value is null) continue;
-
-                var d = result.Value;
-                var ext = System.IO.Path.GetExtension(d.FileName).TrimStart('.').ToLower();
-                _files.Insert(0, new DocFile
+                if (result.Value is null)
                 {
-                    ApiId = d.Id,
-                    Name = d.FileName,
-                    Type = string.IsNullOrEmpty(ext) ? "bin" : ext,
-                    Size = FormatSize(d.FileSize),
-                    Folder = _uploadFolder,
-                    Modified = d.UploadedAt.ToLocalTime().ToString("dd/MM/yyyy"),
-                    SharedWith = [.. _shareWith]
-                });
+                    _uploadError = result.Error ?? L["Documents_MetaRequired"];
+                    return;
+                }
+
+                _files.Insert(0, MapFile(result.Value));
             }
+
+            _showUpload = false;
+            _shareStudentIds.Clear();
+            _pendingUploadFiles.Clear();
+            _pendingBrowserFiles.Clear();
+            RebuildFolders();
         }
         finally
         {
             _uploading = false;
-            _showUpload = false;
-            _shareWith.Clear();
-            _pendingUploadFiles.Clear();
-            _pendingBrowserFiles.Clear();
-            RebuildFolders();
         }
     }
 
@@ -396,24 +538,55 @@
         RebuildFolders();
     }
 
+    private string LevelLabel(string? level) => string.IsNullOrWhiteSpace(level)
+        ? "—"
+        : level switch
+        {
+            "Primaire" => L["Level_Primary"],
+            "Collège" => L["Level_Middle"],
+            "Lycée" => L["Level_High"],
+            "Université" => L["Level_University"],
+            _ => level
+        };
+
+    private static int LevelSort(string? level) => level switch
+    {
+        "Primaire" => 0,
+        "Collège" => 1,
+        "Lycée" => 2,
+        "Université" => 3,
+        "" => 99,
+        _ => 50
+    };
+
+    private static string Truncate(string value, int max) =>
+        value.Length <= max ? value : value[..max].TrimEnd() + "…";
+
     private record ApiDocumentDto(
         Guid Id, string FileName, long FileSize, string ContentType,
-        DateTime UploadedAt, Guid? StudentId, Guid? LessonId, string Url, string? Folder = null);
+        DateTime UploadedAt, Guid? StudentId, Guid? LessonId, string Url, string? Folder = null,
+        string? Title = null, string? Subject = null, string? SchoolLevel = null, string? Summary = null,
+        IReadOnlyList<Guid>? SharedStudentIds = null, Guid? SharedByExpertGroupId = null);
+
+    private record StudentRow(Guid Id, string FirstName, string LastName, string? SchoolLevel);
 
     private class DocFolder { public string Name { get; set; } = ""; public int FileCount { get; set; } public bool IsOpen { get; set; } }
     private class DocFile
     {
         public Guid? ApiId { get; set; }
         public string Name { get; set; } = "";
+        public string FileName { get; set; } = "";
         public string Type { get; set; } = "";
         public string Size { get; set; } = "";
         public string Folder { get; set; } = "";
         public string Modified { get; set; } = "";
+        public string? Subject { get; set; }
+        public string? SchoolLevel { get; set; }
+        public string? Summary { get; set; }
+        public bool FromExpert { get; set; }
         public List<string> SharedWith { get; set; } = [];
     }
 
     private readonly List<DocFolder> _folders = [];
-
     private readonly List<DocFile> _files = [];
-    private readonly List<string> _shareChoices = [];
 }

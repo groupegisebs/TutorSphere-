@@ -158,9 +158,6 @@ public class TutorOnboardingService(
     private static IReadOnlyList<ModuleDef> GetModuleCatalog(string culture) =>
         culture.StartsWith("fr", StringComparison.OrdinalIgnoreCase) ? FrModules() : EnModules();
 
-    /// <summary>Vidéo démo « créer une offre » (fichier Web wwwroot ou URL YouTube/Vimeo).</summary>
-    public const string CreateOfferGuideVideoUrl = "/videos/guides/create-offer.mp4";
-
     private sealed record QuizDef(string Question, IReadOnlyList<string> Choices, int CorrectIndex);
 
     private sealed record ModuleDef(
@@ -180,23 +177,22 @@ public class TutorOnboardingService(
             <p>TutorSphere est votre <strong>espace répétiteur</strong> : élèves, cours, devoirs et paiements parents.</p>
             <p>Après cette formation, votre profil sera <strong>actif et visible</strong> dans la recherche parents.</p>
             <p>Rappel : vous avez accepté le <strong>Code de conduite et d’éthique enseignant</strong> (respect, sécurité des mineurs, signalement, confidentialité). Un manquement peut entraîner la suspension du compte.</p>
-            <ul><li>Tableau de bord</li><li>Offres d'abonnement</li><li>Calendrier et salle de classe</li></ul>
+            <ul><li>Tableau de bord</li><li>Calendrier et disponibilités</li><li>Salle de classe</li></ul>
             """,
             [new("Quel est l'objectif de TutorSphere pour vous ?",
                 ["Réserver un hôtel", "Gérer votre profil d'enseignant", "Acheter des fournitures"], 1)]),
-        new("offers", 2, "Créer vos offres de cours",
-            "Regardez la vidéo puis publiez une offre que les parents peuvent choisir.",
+        new("offers", 2, "Offres issues de votre agenda",
+            "Vos disponibilités du calendrier deviennent les offres visibles aux parents.",
             """
-            <p>Regardez la <strong>vidéo de démonstration</strong> ci-dessous : elle montre comment créer une offre étape par étape.</p>
-            <p>Menu <strong>Offres</strong> → <strong>Nouvelle offre</strong> : matière, cycle, mode (en ligne / présentiel), puis tarification.</p>
-            <p>Modes de facturation : <strong>taux horaire</strong>, <strong>taux par séance</strong>, ou <strong>abonnement trimestriel</strong> — chaque cours n’est comptabilisé qu’après validation de son effectivité.</p>
-            <p>Une offre active devient visible aux parents <em>une fois votre profil public</em>.</p>
+            <p>Vous <strong>ne créez pas d'offre à la main</strong> dans un menu séparé.</p>
+            <p>Menu <strong>Calendrier</strong> : indiquez vos créneaux disponibles, matières et tarifs. Ces créneaux forment votre offre de cours.</p>
+            <p>Chaque cours n’est comptabilisé qu’après validation de son effectivité.</p>
+            <p>Votre offre devient visible aux parents <em>une fois votre profil public</em>.</p>
             """,
             [new("Quand un cours est-il facturé ?",
                 ["Dès la réservation", "Après validation / confirmation de l'effectivité du cours", "Une fois par an seulement"], 1),
-             new("Où créez-vous une offre de cours ?",
-                ["Menu Offres", "Menu Messages", "Espace parent"], 0)],
-            CreateOfferGuideVideoUrl),
+             new("D'où vient votre offre de cours ?",
+                ["De votre calendrier / agenda", "Menu Messages", "Espace parent"], 0)]),
         new("students", 3, "Élèves, parents et inscriptions",
             "Accepter une demande puis encaisser le paiement.",
             """
@@ -237,19 +233,18 @@ public class TutorOnboardingService(
             """,
             [new("What is TutorSphere for you?",
                 ["Book a hotel", "Run your tutoring school", "Buy supplies"], 1)]),
-        new("offers", 2, "Create course offerings",
-            "Watch the demo video, then publish an offer parents can enroll in.",
+        new("offers", 2, "Offers come from your calendar",
+            "Your calendar availability is what parents see as your offering.",
             """
-            <p>Watch the <strong>demo video</strong> below: it shows how to create an offer step by step.</p>
-            <p>Go to <strong>Offers</strong> → <strong>New offer</strong>: subject, cycle, mode (online / in-person), then pricing.</p>
-            <p>Billing modes: <strong>hourly rate</strong>, <strong>per-session rate</strong>, or <strong>quarterly subscription</strong> — each lesson is charged only after it is validated as having taken place.</p>
-            <p>Active offers become visible once your school is public.</p>
+            <p>You <strong>do not create offers by hand</strong> from a separate menu.</p>
+            <p>Open <strong>Calendar</strong>, set your available slots, subjects and rates. Those slots are your course offering.</p>
+            <p>Each lesson is charged only after it is validated as having taken place.</p>
+            <p>Your offering becomes visible once your profile is public.</p>
             """,
             [new("When is a lesson billed?",
                 ["As soon as it is booked", "After the lesson is validated / confirmed as completed", "Once a year only"], 1),
-             new("Where do you create a course offer?",
-                ["Offers menu", "Messages menu", "Parent portal"], 0)],
-            CreateOfferGuideVideoUrl),
+             new("Where does your course offering come from?",
+                ["Your calendar / agenda", "Messages menu", "Parent portal"], 0)]),
         new("students", 3, "Students, parents and enrollment",
             "Accept a request, then collect payment.",
             """

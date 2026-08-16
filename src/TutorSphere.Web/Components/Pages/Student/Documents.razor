@@ -44,7 +44,11 @@ else
                     <i class="bi @FileIcon(f.Extension)"></i>
                 </div>
                 <div class="doc-card-name">@f.Name</div>
-                <div class="doc-card-meta">@f.SizeLabel · @(f.Subject ?? "—")</div>
+                <div class="doc-card-meta">@f.SizeLabel · @(f.Subject ?? "—")@(!string.IsNullOrWhiteSpace(f.SchoolLevel) ? $" · {f.SchoolLevel}" : "")</div>
+                @if (!string.IsNullOrWhiteSpace(f.Summary))
+                {
+                    <div class="doc-card-meta text-muted small">@f.Summary</div>
+                }
                 <div class="doc-card-meta text-muted small">@f.UploadedAt.ToString("dd/MM/yyyy")</div>
                 <div class="doc-card-actions">
                     @if (!string.IsNullOrEmpty(f.Url))
@@ -118,7 +122,8 @@ else
             _docs = result.Select(d =>
             {
                 var ext = d.FileName.Contains('.') ? d.FileName.Split('.').Last().ToLower() : "";
-                return new DocVM(d.FileName, ext, FormatSize(d.FileSize), null, d.Url, d.UploadedAt);
+                var name = string.IsNullOrWhiteSpace(d.Title) ? d.FileName : d.Title!;
+                return new DocVM(name, ext, FormatSize(d.FileSize), d.Subject, d.Url, d.UploadedAt, d.SchoolLevel, d.Summary);
             }).ToList();
 
             _subjects = [.. _docs.Where(d => !string.IsNullOrEmpty(d.Subject))
@@ -130,8 +135,9 @@ else
         finally { _loading = false; }
     }
 
-    private record DocVM(string Name, string Extension, string SizeLabel, string? Subject, string? Url, DateTime UploadedAt);
+    private record DocVM(string Name, string Extension, string SizeLabel, string? Subject, string? Url, DateTime UploadedAt, string? SchoolLevel = null, string? Summary = null);
     private record DocumentDto(
         Guid Id, string FileName, long FileSize, string ContentType,
-        DateTime UploadedAt, Guid? StudentId, Guid? LessonId, string Url);
+        DateTime UploadedAt, Guid? StudentId, Guid? LessonId, string Url, string? Folder = null,
+        string? Title = null, string? Subject = null, string? SchoolLevel = null, string? Summary = null);
 }

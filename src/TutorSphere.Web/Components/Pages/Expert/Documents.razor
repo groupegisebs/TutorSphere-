@@ -3,16 +3,20 @@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject AuthService Auth
 @inject ApiClient Api
+@inject IJSRuntime JS
 
-<PageTitle>Documents & échéances — Expert</PageTitle>
+<PageTitle>Documents pédagogiques — Expert</PageTitle>
 
 <AuthorizeView Roles="Expert,GroupManager">
     <Authorized>
         <div class="cc-toolbar">
             <div>
-                <h1 class="cc-page-title">Documents & échéances</h1>
-                <p class="cc-page-sub">Dossiers en file d'attente — pièces jointes et complétude documentaire.</p>
+                <h1 class="cc-page-title">Documents pédagogiques</h1>
+                <p class="cc-page-sub">Ajoutez des supports (matière, niveau, sommaire) et partagez-les avec vos enseignants.</p>
             </div>
+            <button class="cc-btn cc-btn-primary" @onclick="OpenUpload">
+                <i class="bi bi-cloud-upload me-1"></i>Téléverser
+            </button>
         </div>
 
         @if (!string.IsNullOrEmpty(_error))
@@ -20,8 +24,68 @@
             <div class="alert alert-danger">@_error</div>
         }
 
+        <div class="cc-card mb-4">
+            <div class="cc-card-header">
+                <h2 class="cc-card-title mb-0">Bibliothèque partagée</h2>
+                <p class="cc-card-sub mb-0">Les fichiers copiés dans l'espace Documents de chaque enseignant sélectionné.</p>
+            </div>
+            @if (_loadingLibrary)
+            {
+                <span class="spinner-border"></span>
+            }
+            else if (_library.Count == 0)
+            {
+                <p class="text-muted mb-0">Aucun document partagé pour le moment. Téléversez un fichier pour le mettre à disposition des enseignants.</p>
+            }
+            else
+            {
+                <table class="cc-table">
+                    <thead>
+                        <tr>
+                            <th>Document</th>
+                            <th>Matière</th>
+                            <th>Niveau</th>
+                            <th>Enseignants</th>
+                            <th>Date</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in _library)
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@item.Title</strong>
+                                    <div class="small text-muted">@item.FileName</div>
+                                    @if (!string.IsNullOrWhiteSpace(item.Summary))
+                                    {
+                                        <div class="small text-muted mt-1">@item.Summary</div>
+                                    }
+                                </td>
+                                <td>@(item.Subject ?? "—")</td>
+                                <td>@LevelLabel(item.SchoolLevel)</td>
+                                <td>
+                                    @string.Join(" · ", item.SharedTeachers)
+                                    <div class="small text-muted">@item.SharedTeachers.Count enseignant(s)</div>
+                                </td>
+                                <td>@item.UploadedAt.ToLocalTime().ToString("dd/MM/yyyy")</td>
+                                <td class="text-end text-nowrap">
+                                    <button class="cc-btn btn-sm" @onclick="() => DownloadAsync(item)">Télécharger</button>
+                                    <button class="cc-btn btn-sm" @onclick="() => DeleteAsync(item)">Retirer</button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+
         <div class="cc-card">
-            @if (_loading)
+            <div class="cc-card-header">
+                <h2 class="cc-card-title mb-0">Dossiers en file d'attente</h2>
+                <p class="cc-card-sub mb-0">Pièces jointes et complétude documentaire des candidatures.</p>
+            </div>
+            @if (_loadingQueue)
             {
                 <span class="spinner-border"></span>
             }
@@ -70,31 +134,293 @@
     </Authorized>
 </AuthorizeView>
 
+@if (_showUpload)
+{
+    <div class="ts-modal-backdrop" @onclick="CloseUpload">
+        <div class="ts-modal ts-modal-lg" @onclick:stopPropagation="true">
+            <div class="ts-modal-header">
+                <h2>Partager un document</h2>
+                <button class="ts-modal-close" @onclick="CloseUpload"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <div class="ts-modal-body">
+                @if (!string.IsNullOrEmpty(_uploadError))
+                {
+                    <div class="alert alert-danger">@_uploadError</div>
+                }
+                <div class="doc-upload-zone">
+                    <i class="bi bi-cloud-arrow-up doc-upload-icon"></i>
+                    <p>Glissez vos fichiers ici</p>
+                    <small class="text-muted">PDF, Word, Excel, PowerPoint, Images — max 50 Mo</small>
+                    <label class="btn btn-outline-primary btn-sm mt-2" style="cursor:pointer;margin:0">
+                        Parcourir
+                        <InputFile OnChange="HandleUploadFileSelection" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png" style="display:none" />
+                    </label>
+                    @if (!string.IsNullOrEmpty(_pendingFileName))
+                    {
+                        <div class="mt-2 small text-muted"><i class="bi bi-file-earmark me-1"></i>@_pendingFileName</div>
+                    }
+                </div>
+                <div class="row g-3 mt-3">
+                    <div class="col-md-6">
+                        <label class="form-label">Nom du document *</label>
+                        <input class="form-control" @bind="_docTitle" maxlength="200" placeholder="Ex. Fiche de révision — équations" />
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Matière *</label>
+                        <select class="form-select" @bind="_docSubject">
+                            <option value="">—</option>
+                            @foreach (var s in Subjects)
+                            {
+                                <option value="@s">@s</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label">Niveau scolaire *</label>
+                        <select class="form-select" @bind="_docLevel">
+                            <option value="">—</option>
+                            <option value="Primaire">Primaire</option>
+                            <option value="Collège">Collège</option>
+                            <option value="Lycée">Lycée</option>
+                            <option value="Université">Université</option>
+                        </select>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">Sommaire du document *</label>
+                        <textarea class="form-control" rows="3" maxlength="2000" @bind="_docSummary"
+                                  placeholder="Résumez le contenu et l'usage prévu pour l'enseignant…"></textarea>
+                    </div>
+                    <div class="col-12">
+                        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                            <label class="form-label mb-0">Partager avec les enseignants *</label>
+                            <div class="btn-group btn-group-sm">
+                                <button type="button" class="btn btn-outline-primary" @onclick="SelectAllTeachers">Tous les enseignants</button>
+                                <button type="button" class="btn btn-outline-secondary" @onclick="() => _shareTeacherIds.Clear()">Aucun</button>
+                            </div>
+                        </div>
+                        <div class="hw-student-picker">
+                            @if (_teachers.Count == 0)
+                            {
+                                <p class="text-muted small mb-0">Aucun enseignant approuvé à qui partager ce document.</p>
+                            }
+                            else
+                            {
+                                <div class="d-flex flex-wrap gap-2">
+                                    @foreach (var t in _teachers)
+                                    {
+                                        var sel = _shareTeacherIds.Contains(t.TenantId);
+                                        <button type="button" class="ts-chip @(sel ? "active" : "")"
+                                                @onclick="() => ToggleTeacher(t.TenantId)">
+                                            @t.SchoolName
+                                        </button>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="ts-modal-footer">
+                <button class="btn btn-outline-secondary" @onclick="CloseUpload">Annuler</button>
+                <button class="btn btn-primary" @onclick="UploadAsync" disabled="@_uploading">
+                    @if (_uploading) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                    Téléverser
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
-    private bool _loading = true;
+    private static readonly string[] Subjects =
+        ["Mathématiques", "Physique", "Chimie", "Français", "Anglais", "Histoire", "Sciences", "Autre"];
+
+    private bool _loadingQueue = true;
+    private bool _loadingLibrary = true;
+    private bool _showUpload;
+    private bool _uploading;
     private string? _error;
+    private string? _uploadError;
+    private string _docTitle = "";
+    private string _docSubject = "";
+    private string _docLevel = "";
+    private string _docSummary = "";
+    private string? _pendingFileName;
+    private IBrowserFile? _pendingFile;
+    private readonly HashSet<Guid> _shareTeacherIds = [];
     private List<QueueItem> _queue = [];
+    private List<LibraryItem> _library = [];
+    private List<TeacherItem> _teachers = [];
 
     protected override async Task OnInitializedAsync()
     {
         try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
-        await LoadAsync();
+        await Task.WhenAll(LoadQueueAsync(), LoadLibraryAsync(), LoadTeachersAsync());
     }
 
-    private async Task LoadAsync()
+    private async Task LoadQueueAsync()
     {
-        _loading = true;
+        _loadingQueue = true;
         try
         {
             _queue = await Api.GetAsync<List<QueueItem>>("api/expert/approvals-queue") ?? [];
-            _error = null;
         }
         catch (Exception ex) { _error = ex.Message; }
-        finally { _loading = false; }
+        finally { _loadingQueue = false; }
+    }
+
+    private async Task LoadLibraryAsync()
+    {
+        _loadingLibrary = true;
+        try
+        {
+            var result = await Api.GetWithErrorAsync<List<LibraryItem>>("api/expert/library-documents");
+            if (result.Value is null)
+            {
+                _library = [];
+                if (!string.IsNullOrWhiteSpace(result.Error))
+                    _error = result.Error;
+            }
+            else
+            {
+                _library = result.Value;
+            }
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loadingLibrary = false; }
+    }
+
+    private async Task LoadTeachersAsync()
+    {
+        var directory = await Api.GetAsync<List<DirTeacher>>("api/expert/teacher-directory") ?? [];
+        _teachers = directory
+            .Select(d => new TeacherItem(d.TenantId, d.DisplayName))
+            .ToList();
+        if (_teachers.Count == 0)
+        {
+            var monitored = await Api.GetAsync<List<TeacherItem>>("api/expert/teachers") ?? [];
+            _teachers = monitored;
+        }
+    }
+
+    private void OpenUpload()
+    {
+        _uploadError = null;
+        _docTitle = "";
+        _docSubject = "";
+        _docLevel = "";
+        _docSummary = "";
+        _pendingFile = null;
+        _pendingFileName = null;
+        _shareTeacherIds.Clear();
+        _showUpload = true;
+    }
+
+    private void CloseUpload()
+    {
+        if (_uploading) return;
+        _showUpload = false;
+    }
+
+    private void HandleUploadFileSelection(InputFileChangeEventArgs e)
+    {
+        _pendingFile = e.File;
+        _pendingFileName = e.File?.Name;
+        if (string.IsNullOrWhiteSpace(_docTitle) && !string.IsNullOrWhiteSpace(_pendingFileName))
+            _docTitle = System.IO.Path.GetFileNameWithoutExtension(_pendingFileName);
+    }
+
+    private void ToggleTeacher(Guid id)
+    {
+        if (!_shareTeacherIds.Add(id))
+            _shareTeacherIds.Remove(id);
+    }
+
+    private void SelectAllTeachers()
+    {
+        foreach (var t in _teachers)
+            _shareTeacherIds.Add(t.TenantId);
+    }
+
+    private async Task UploadAsync()
+    {
+        if (_pendingFile is null)
+        {
+            _uploadError = "Sélectionnez un fichier.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_docTitle) || string.IsNullOrWhiteSpace(_docSubject)
+            || string.IsNullOrWhiteSpace(_docLevel) || string.IsNullOrWhiteSpace(_docSummary))
+        {
+            _uploadError = "Indiquez le nom du document, la matière, le niveau scolaire et le sommaire.";
+            return;
+        }
+        if (_shareTeacherIds.Count == 0)
+        {
+            _uploadError = "Sélectionnez au moins un enseignant.";
+            return;
+        }
+
+        _uploading = true;
+        _uploadError = null;
+        try
+        {
+            using var content = new MultipartFormDataContent();
+            await using var stream = _pendingFile.OpenReadStream(50L * 1024 * 1024);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            var fileContent = new ByteArrayContent(ms.ToArray());
+            fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
+                string.IsNullOrEmpty(_pendingFile.ContentType) ? "application/octet-stream" : _pendingFile.ContentType);
+            content.Add(fileContent, "file", _pendingFile.Name);
+            content.Add(new StringContent(_docTitle.Trim()), "title");
+            content.Add(new StringContent(_docSubject.Trim()), "subject");
+            content.Add(new StringContent(_docLevel.Trim()), "schoolLevel");
+            content.Add(new StringContent(_docSummary.Trim()), "summary");
+            content.Add(new StringContent(string.Join(',', _shareTeacherIds)), "teacherTenantIds");
+
+            var result = await Api.PostMultipartAsync<List<DocumentCopy>>("api/expert/library-documents", content);
+            if (result.Value is null)
+            {
+                _uploadError = result.Error ?? "Échec du téléversement.";
+                return;
+            }
+
+            _showUpload = false;
+            await LoadLibraryAsync();
+        }
+        finally
+        {
+            _uploading = false;
+        }
+    }
+
+    private async Task DownloadAsync(LibraryItem item)
+    {
+        var result = await Api.GetBytesWithErrorAsync($"api/expert/library-documents/{item.DocumentId}/file");
+        if (result.Value is null)
+        {
+            _error = result.Error ?? "Fichier introuvable.";
+            return;
+        }
+        await JS.InvokeVoidAsync("downloadFileFromBase64", item.FileName, "application/octet-stream", Convert.ToBase64String(result.Value));
+    }
+
+    private async Task DeleteAsync(LibraryItem item)
+    {
+        var ok = await Api.DeleteAsync($"api/expert/library-documents/batch/{item.BatchId}");
+        if (!ok)
+        {
+            _error = "Impossible de retirer ce document.";
+            return;
+        }
+        _library.Remove(item);
     }
 
     private static string JoinMeta(params string?[] parts) =>
         string.Join(" · ", parts.Where(p => !string.IsNullOrWhiteSpace(p)));
+
+    private static string LevelLabel(string? level) => string.IsNullOrWhiteSpace(level) ? "—" : level;
 
     private static string StatusLabel(int status) => status switch
     {
@@ -110,4 +436,14 @@
         int ApprovalStatus, DateTime CreatedAt, int AgeDays, string? OwnerEmail, string? OwnerName,
         int DocumentCount, bool IsComplete, int ReviewPriority,
         string? ReviewAssignedToUserId, string? ReviewAssignedToName, string? ReviewRequestNotes);
+
+    private sealed record TeacherItem(Guid TenantId, string SchoolName, string? Country = null, string? City = null, string? OwnerEmail = null, string? OwnerName = null);
+    private sealed record DirTeacher(Guid TenantId, string DisplayName);
+
+    private sealed record LibraryItem(
+        Guid BatchId, Guid DocumentId, string Title, string FileName,
+        string? Subject, string? SchoolLevel, string? Summary, string? Folder,
+        DateTime UploadedAt, IReadOnlyList<string> SharedTeachers);
+
+    private sealed record DocumentCopy(Guid Id);
 }
