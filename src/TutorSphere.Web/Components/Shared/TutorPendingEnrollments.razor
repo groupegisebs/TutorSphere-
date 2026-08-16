@@ -2,17 +2,21 @@
 @inject IStringLocalizer<SharedResources> L
 @using TutorSphere.Application.DTOs.StudentSubscriptions
 
-@if (_pending.Count > 0)
+@if (_loading)
+{
+    return;
+}
+
+@if (!string.IsNullOrEmpty(_error) || _pending.Count > 0 || AlwaysVisible)
 {
     <div class="cov-banner">
         <div class="cov-banner-head">
             <div class="cov-banner-icon" aria-hidden="true"><i class="bi bi-person-plus"></i></div>
             <div>
-                <strong>Demandes d'inscription à valider (@_pending.Count)</strong>
-                <p>
-                    Un parent ou un élève a souscrit à l'un de vos cours. Acceptez pour l'admettre
-                    (puis le paiement, si l'offre est payante), ou refusez la demande.
-                </p>
+                <strong>@( _pending.Count > 0
+                    ? string.Format(L["TutorEnroll_BannerTitle"].Value, _pending.Count)
+                    : L["TutorEnroll_Title"])</strong>
+                <p>@L["TutorEnroll_BannerHint"]</p>
             </div>
         </div>
 
@@ -23,6 +27,11 @@
         @if (!string.IsNullOrEmpty(_banner))
         {
             <div class="alert alert-success py-2 px-3 mb-3" role="alert">@_banner</div>
+        }
+
+        @if (_pending.Count == 0 && string.IsNullOrEmpty(_error))
+        {
+            <p class="text-muted mb-2">@L["TutorEnroll_EmptyPending"]</p>
         }
 
         @foreach (var item in _pending)
@@ -56,33 +65,42 @@
             </article>
         }
 
-        <a class="btn btn-sm btn-link px-0" href="/tutor/subscriptions?status=Pending">Ouvrir la liste Abonnements</a>
+        <a class="btn btn-sm btn-link px-0" href="/tutor/enrollments">@L["TutorEnroll_OpenList"]</a>
     </div>
 }
 
 @code {
     [Parameter] public EventCallback OnChanged { get; set; }
+    [Parameter] public bool AlwaysVisible { get; set; }
 
     private List<StudentSubscriptionDto> _pending = [];
     private Guid? _busyId;
     private string? _error;
     private string? _banner;
+    private bool _loading = true;
 
     protected override async Task OnInitializedAsync() => await ReloadAsync();
 
     private async Task ReloadAsync()
     {
+        _loading = true;
         try
         {
-            var all = await Api.GetAsync<List<StudentSubscriptionDto>>("api/subscription-offerings/subscribers") ?? [];
-            _pending = all
+            var result = await Api.GetWithErrorAsync<List<StudentSubscriptionDto>>(
+                "api/subscription-offerings/subscribers");
+            if (result.Error is not null)
+            {
+                _pending = [];
+                _error = result.Error;
+                return;
+            }
+
+            _error = null;
+            _pending = (result.Value ?? [])
                 .Where(s => string.Equals(s.Status, "Pending", StringComparison.OrdinalIgnoreCase))
                 .ToList();
         }
-        catch
-        {
-            _pending = [];
-        }
+        finally { _loading = false; }
     }
 
     private async Task AcceptAsync(StudentSubscriptionDto item)
@@ -124,7 +142,7 @@
                 return;
             }
 
-            _banner = "Demande refusée.";
+            _banner = L["TutorSubs_RejectBanner"];
             await ReloadAsync();
             await OnChanged.InvokeAsync();
         }

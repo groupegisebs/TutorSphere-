@@ -1,0 +1,243 @@
+@page "/tutor/enrollments"
+@layout TutorLayout
+@rendermode InteractiveServer
+@inject IStringLocalizer<SharedResources> L
+@inject ApiClient Api
+@inject AuthService Auth
+@using TutorSphere.Application.DTOs.StudentSubscriptions
+
+<PageTitle>@L["TutorEnroll_Title"] – TutorSphere</PageTitle>
+
+<div class="ts-page-header">
+    <div>
+        <h1><i class="bi bi-person-plus me-2" aria-hidden="true"></i>@L["TutorEnroll_Title"]</h1>
+        <p class="ts-page-subtitle">@L["TutorEnroll_Subtitle"]</p>
+    </div>
+</div>
+
+@if (_loading)
+{
+    <div class="ts-loading-state" style="padding:2rem;">
+        <div class="spinner-border text-primary" role="status"></div>
+        <span class="ms-2 text-muted">@L["Common_Loading"]</span>
+    </div>
+}
+else
+{
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="alert alert-danger" role="alert">@_error</div>
+    }
+    @if (!string.IsNullOrEmpty(_banner))
+    {
+        <div class="alert alert-success" role="alert">@_banner</div>
+    }
+
+    <div class="d-flex gap-2 flex-wrap mb-3">
+        <button type="button" class="btn btn-sm @ChipClass("")" @onclick='() => _filter = ""'>
+            @L["Common_All"] (@_items.Count)
+        </button>
+        <button type="button" class="btn btn-sm @ChipClass("Pending")" @onclick='() => _filter = "Pending"'>
+            @L["TutorSubs_StatusPending"] (@PendingCount)
+        </button>
+        <button type="button" class="btn btn-sm @ChipClass("AwaitingPayment")" @onclick='() => _filter = "AwaitingPayment"'>
+            @L["TutorSubs_StatusAwaitingPayment"] (@AwaitingCount)
+        </button>
+        <button type="button" class="btn btn-sm @ChipClass("Active")" @onclick='() => _filter = "Active"'>
+            @L["TutorSubs_StatusActive"] (@ActiveCount)
+        </button>
+    </div>
+
+    @if (!Visible.Any())
+    {
+        <div class="ts-empty-card">
+            <i class="bi bi-person-plus ts-empty-icon"></i>
+            <p>@(_filter == "Pending" || string.IsNullOrEmpty(_filter) && PendingCount == 0
+                ? L["TutorEnroll_EmptyPending"]
+                : L["TutorEnroll_Empty"])</p>
+        </div>
+    }
+    else
+    {
+        <div class="section-card">
+            <table class="table ts-table mb-0">
+                <thead>
+                    <tr>
+                        <th>@L["TutorSubs_StudentParent"]</th>
+                        <th>@L["TutorEnroll_Course"]</th>
+                        <th>@L["TutorSubs_Amount"]</th>
+                        <th>@L["TutorEnroll_RequestedAt"]</th>
+                        <th>@L["Common_Status"]</th>
+                        <th>@L["Common_Actions"]</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in Visible)
+                    {
+                        <tr>
+                            <td>
+                                <div><strong>@item.StudentName</strong></div>
+                                <small class="text-muted">@(string.IsNullOrWhiteSpace(item.ParentName) ? "—" : item.ParentName)</small>
+                            </td>
+                            <td>
+                                <div>@item.OfferingTitle</div>
+                                @if (!string.IsNullOrWhiteSpace(item.Subject) && item.Subject != item.OfferingTitle)
+                                {
+                                    <small class="text-muted">@item.Subject</small>
+                                }
+                            </td>
+                            <td class="fw-semibold">@item.Price.ToString("N2") @item.Currency</td>
+                            <td>@(item.RequestedAt?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "—")</td>
+                            <td><span class="ts-badge @StatusBadge(item.Status)">@StatusLabel(item.Status)</span></td>
+                            <td>
+                                @if (IsPending(item.Status))
+                                {
+                                    <div class="ts-action-group">
+                                        <button type="button" class="btn btn-sm btn-success"
+                                                disabled="@(_busyId == item.Id)"
+                                                @onclick="() => AcceptAsync(item)">
+                                            @if (_busyId == item.Id)
+                                            {
+                                                <span class="spinner-border spinner-border-sm"></span>
+                                            }
+                                            else
+                                            {
+                                                <i class="bi bi-check-lg me-1"></i>@L["TutorSubs_Accept"]
+                                            }
+                                        </button>
+                                        <button type="button" class="btn btn-sm btn-outline-danger"
+                                                disabled="@(_busyId == item.Id)"
+                                                @onclick="() => RejectAsync(item)">
+                                            <i class="bi bi-x-lg me-1"></i>@L["TutorSubs_Refuse"]
+                                        </button>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">—</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+@code {
+    private readonly List<StudentSubscriptionDto> _items = [];
+    private bool _loading = true;
+    private string? _error;
+    private string? _banner;
+    private string _filter = "Pending";
+    private Guid? _busyId;
+
+    private int PendingCount => _items.Count(s => IsPending(s.Status));
+    private int AwaitingCount => _items.Count(s => IsStatus(s.Status, "AwaitingPayment"));
+    private int ActiveCount => _items.Count(s => IsStatus(s.Status, "Active"));
+
+    private IEnumerable<StudentSubscriptionDto> Visible => _items
+        .Where(s => string.IsNullOrEmpty(_filter) || string.Equals(s.Status, _filter, StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.EnsureSessionRestoredAsync();
+        await ReloadAsync();
+    }
+
+    private string ChipClass(string value) =>
+        string.Equals(_filter, value, StringComparison.OrdinalIgnoreCase)
+            ? "btn-primary"
+            : "btn-outline-secondary";
+
+    private static bool IsPending(string status) =>
+        string.Equals(status, "Pending", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsStatus(string status, string expected) =>
+        string.Equals(status, expected, StringComparison.OrdinalIgnoreCase);
+
+    private static string StatusBadge(string s) => s switch
+    {
+        "Active" => "ts-badge-success",
+        "Paused" or "AwaitingPayment" or "Pending" => "ts-badge-warning",
+        "Cancelled" or "Rejected" => "ts-badge-danger",
+        _ => "ts-badge-neutral"
+    };
+
+    private string StatusLabel(string s) => s switch
+    {
+        "Active" => L["TutorSubs_StatusActive"],
+        "Paused" => L["TutorSubs_StatusSuspended"],
+        "Cancelled" => L["TutorSubs_StatusCancelled"],
+        "Pending" => L["TutorSubs_StatusPending"],
+        "AwaitingPayment" => L["TutorSubs_StatusAwaitingPayment"],
+        "Rejected" => L["TutorSubs_StatusRejected"],
+        "Expired" => L["TutorSubs_StatusExpired"],
+        _ => s
+    };
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            var result = await Api.GetWithErrorAsync<List<StudentSubscriptionDto>>(
+                "api/subscription-offerings/subscribers");
+            _items.Clear();
+            if (result.Error is not null)
+            {
+                _error = string.Format(L["TutorSubs_LoadError"].Value, result.Error);
+                return;
+            }
+
+            _items.AddRange(result.Value ?? []);
+        }
+        finally { _loading = false; }
+    }
+
+    private async Task AcceptAsync(StudentSubscriptionDto item)
+    {
+        _busyId = item.Id;
+        _error = null;
+        _banner = null;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<StudentSubscriptionDto>(
+                $"api/subscription-offerings/subscribers/{item.Id}/accept", new { });
+            if (result.Error is not null || result.Value is null)
+            {
+                _error = result.Error ?? L["TutorSubs_ActionFailed"];
+                return;
+            }
+
+            _banner = string.Equals(result.Value.Status, "Active", StringComparison.OrdinalIgnoreCase)
+                ? L["TutorSubs_AcceptActiveBanner"]
+                : L["TutorSubs_AcceptPaymentBanner"];
+            await ReloadAsync();
+        }
+        finally { _busyId = null; }
+    }
+
+    private async Task RejectAsync(StudentSubscriptionDto item)
+    {
+        _busyId = item.Id;
+        _error = null;
+        _banner = null;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<StudentSubscriptionDto>(
+                $"api/subscription-offerings/subscribers/{item.Id}/reject", new { });
+            if (result.Error is not null)
+            {
+                _error = result.Error;
+                return;
+            }
+
+            _banner = L["TutorSubs_RejectBanner"];
+            await ReloadAsync();
+        }
+        finally { _busyId = null; }
+    }
+}

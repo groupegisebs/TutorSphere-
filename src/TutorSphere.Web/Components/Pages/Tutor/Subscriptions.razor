@@ -397,18 +397,27 @@
         _loadError = null;
         try
         {
-            var offeringsTask = Api.GetAsync<List<ApiOfferingDto>>("api/subscription-offerings");
-            var subscribersTask = Api.GetAsync<List<ApiSubscriberDto>>("api/subscription-offerings/subscribers");
+            var offeringsTask = Api.GetWithErrorAsync<List<ApiOfferingDto>>("api/subscription-offerings");
+            var subscribersTask = Api.GetWithErrorAsync<List<ApiSubscriberDto>>("api/subscription-offerings/subscribers");
             await Task.WhenAll(offeringsTask, subscribersTask);
 
-            var offerings = await offeringsTask ?? [];
+            var offeringsResult = await offeringsTask;
+            var subscribersResult = await subscribersTask;
+            if (offeringsResult.Error is not null || subscribersResult.Error is not null)
+            {
+                _loadError = string.Format(
+                    L["TutorSubs_LoadError"].Value,
+                    offeringsResult.Error ?? subscribersResult.Error);
+            }
+
+            var offerings = offeringsResult.Value ?? [];
             _plans.Clear();
             foreach (var o in offerings)
             {
                 _plans.Add(MapPlan(o));
             }
 
-            var subscribers = await subscribersTask ?? [];
+            var subscribers = subscribersResult.Value ?? [];
             _subs.Clear();
             _subs.AddRange(subscribers.Select(MapSubscriber));
         }

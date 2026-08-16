@@ -31,6 +31,7 @@ public interface IStudentSubscriptionService
 public class StudentSubscriptionService : IStudentSubscriptionService
 {
     private readonly Common.Interfaces.IApplicationDbContext _db;
+    private readonly ITenantContext _tenantContext;
     private readonly ISubscriptionLessonScheduler _lessonScheduler;
     private readonly IBillingEmailOrchestrator _billingEmail;
     private readonly IPaymentGatewayService _payments;
@@ -39,6 +40,7 @@ public class StudentSubscriptionService : IStudentSubscriptionService
 
     public StudentSubscriptionService(
         Common.Interfaces.IApplicationDbContext db,
+        ITenantContext tenantContext,
         ISubscriptionLessonScheduler lessonScheduler,
         IBillingEmailOrchestrator billingEmail,
         IPaymentGatewayService payments,
@@ -46,6 +48,7 @@ public class StudentSubscriptionService : IStudentSubscriptionService
         IExpertMonitoringService monitoring)
     {
         _db = db;
+        _tenantContext = tenantContext;
         _lessonScheduler = lessonScheduler;
         _billingEmail = billingEmail;
         _payments = payments;
@@ -296,56 +299,18 @@ public class StudentSubscriptionService : IStudentSubscriptionService
 
     public Task<IReadOnlyList<StudentSubscriptionDto>> GetForCurrentTenantAsync(CancellationToken ct = default)
     {
-        var subs = _db.StudentSubscriptions
-            .OrderByDescending(s => s.CreatedAt)
-            .ToList();
-
-        if (subs.Count == 0)
+        if (!_tenantContext.HasTenant || _tenantContext.TenantId is not Guid tenantId)
             return Task.FromResult<IReadOnlyList<StudentSubscriptionDto>>([]);
 
-        var offeringIds = subs.Select(s => s.OfferingId).Distinct().ToList();
-        var studentIds = subs.Select(s => s.StudentId).Distinct().ToList();
-
-        var offerings = _db.SubscriptionOfferings
-            .Where(o => offeringIds.Contains(o.Id))
-            .ToDictionary(o => o.Id);
-
-        // Élèves peuvent appartenir à un autre tenant avant rattachement — IgnoreQueryFilters.
-        var students = _db.StudentsForAnyTenant
-            .Where(s => studentIds.Contains(s.Id))
+        var assignedOfferingIds = AssignedOfferingIds(tenantId);
+        var subs = _db.StudentSubscriptionsForAnyTenant
+            .Where(s => s.TenantId == tenantId || assignedOfferingIds.Contains(s.OfferingId))
+            .ToList()
+            .OrderBy(s => EnrollmentRank(s.Status))
+            .ThenByDescending(s => s.CreatedAt)
             .ToList();
 
-        var parentIds = students
-            .Where(s => s.ParentProfileId.HasValue)
-            .Select(s => s.ParentProfileId!.Value)
-            .Distinct()
-            .ToList();
-
-        var parents = _db.ParentProfilesForAnyTenant
-            .Where(p => parentIds.Contains(p.Id))
-            .ToDictionary(p => p.Id);
-
-        var studentsById = students.ToDictionary(s => s.Id);
-
-        var result = subs.Select(s =>
-        {
-            offerings.TryGetValue(s.OfferingId, out var offering);
-            studentsById.TryGetValue(s.StudentId, out var student);
-            string? parentName = null;
-            if (student?.ParentProfileId is Guid pid && parents.TryGetValue(pid, out var parent))
-                parentName = $"{parent.FirstName} {parent.LastName}".Trim();
-
-            return Map(
-                s,
-                offering?.Title ?? "Offre",
-                offering?.Subject,
-                offering?.Price ?? 0,
-                offering?.Currency ?? "CAD",
-                student is null ? "" : $"{student.FirstName} {student.LastName}".Trim(),
-                parentName);
-        }).ToList();
-
-        return Task.FromResult<IReadOnlyList<StudentSubscriptionDto>>(result);
+        return Task.FromResult(MapMany(subs));
     }
 
     public async Task CancelAsync(string parentUserId, Guid subscriptionId, CancellationToken ct = default)
@@ -397,8 +362,7 @@ public class StudentSubscriptionService : IStudentSubscriptionService
 
     public async Task<StudentSubscriptionDto> AcceptAsync(Guid subscriptionId, CancellationToken ct = default)
     {
-        var sub = _db.StudentSubscriptionsForAnyTenant.FirstOrDefault(s => s.Id == subscriptionId)
-            ?? throw new InvalidOperationException("Demande d'inscription introuvable.");
+        var sub = RequireTeacherOwnedSubscription(subscriptionId);
         await AcceptCoreAsync(sub, ct);
         await _billingEmail.NotifyEnrollmentAcceptedAsync(sub.Id, ct);
         return MapSubscription(sub);
@@ -406,8 +370,7 @@ public class StudentSubscriptionService : IStudentSubscriptionService
 
     public async Task<StudentSubscriptionDto> RejectAsync(Guid subscriptionId, CancellationToken ct = default)
     {
-        var sub = _db.StudentSubscriptionsForAnyTenant.FirstOrDefault(s => s.Id == subscriptionId)
-            ?? throw new InvalidOperationException("Demande d'inscription introuvable.");
+        var sub = RequireTeacherOwnedSubscription(subscriptionId);
         await RejectCoreAsync(sub, ct);
         await _billingEmail.NotifyEnrollmentRejectedAsync(sub.Id, ct);
         return MapSubscription(sub);
@@ -415,8 +378,7 @@ public class StudentSubscriptionService : IStudentSubscriptionService
 
     public async Task<StudentSubscriptionDto> PauseAsync(Guid subscriptionId, CancellationToken ct = default)
     {
-        var sub = _db.StudentSubscriptions.FirstOrDefault(s => s.Id == subscriptionId)
-            ?? throw new InvalidOperationException("Abonnement introuvable.");
+        var sub = RequireTeacherOwnedSubscription(subscriptionId);
         if (sub.Status != SubscriptionStatus.Active)
             throw new InvalidOperationException("Seul un abonnement actif peut être mis en pause.");
 
@@ -428,8 +390,7 @@ public class StudentSubscriptionService : IStudentSubscriptionService
 
     public async Task<StudentSubscriptionDto> ResumeAsync(Guid subscriptionId, CancellationToken ct = default)
     {
-        var sub = _db.StudentSubscriptions.FirstOrDefault(s => s.Id == subscriptionId)
-            ?? throw new InvalidOperationException("Abonnement introuvable.");
+        var sub = RequireTeacherOwnedSubscription(subscriptionId);
         if (sub.Status != SubscriptionStatus.Paused)
             throw new InvalidOperationException("Seul un abonnement en pause peut être réactivé.");
 
@@ -616,10 +577,111 @@ public class StudentSubscriptionService : IStudentSubscriptionService
         throw new InvalidOperationException("Accès réservé à un membre actif du groupe d'experts.");
     }
 
+    private Domain.Entities.StudentSubscription RequireTeacherOwnedSubscription(Guid subscriptionId)
+    {
+        var sub = _db.StudentSubscriptionsForAnyTenant.FirstOrDefault(s => s.Id == subscriptionId)
+            ?? throw new InvalidOperationException("Demande d'inscription introuvable.");
+        EnsureTeacherOwns(sub);
+        return sub;
+    }
+
+    private void EnsureTeacherOwns(Domain.Entities.StudentSubscription sub)
+    {
+        var tenantId = RequireTeacherTenantId();
+        if (sub.TenantId == tenantId)
+            return;
+
+        var assigned = AssignedOfferingIds(tenantId).Contains(sub.OfferingId);
+        if (!assigned)
+            throw new InvalidOperationException("Cette inscription n'appartient pas à vos cours.");
+    }
+
+    private Guid RequireTeacherTenantId()
+    {
+        if (_tenantContext.HasTenant && _tenantContext.TenantId is Guid tenantId)
+            return tenantId;
+        throw new InvalidOperationException("École enseignant introuvable.");
+    }
+
+    private List<Guid> AssignedOfferingIds(Guid tenantId) =>
+        _db.GroupOfferTeachers
+            .Where(a => a.TeacherTenantId == tenantId
+                && a.SubscriptionOfferingId != null
+                && (a.AssignmentStatus == GroupOfferTeacherAssignmentStatus.Approved
+                    || a.AssignmentStatus == GroupOfferTeacherAssignmentStatus.Active))
+            .Select(a => a.SubscriptionOfferingId!.Value)
+            .Distinct()
+            .ToList();
+
+    private static int EnrollmentRank(SubscriptionStatus status) => status switch
+    {
+        SubscriptionStatus.Pending => 0,
+        SubscriptionStatus.AwaitingPayment => 1,
+        SubscriptionStatus.Active => 2,
+        SubscriptionStatus.Paused => 3,
+        _ => 4
+    };
+
+    private IReadOnlyList<StudentSubscriptionDto> MapMany(List<Domain.Entities.StudentSubscription> subs)
+    {
+        if (subs.Count == 0)
+            return [];
+
+        var offeringIds = subs.Select(s => s.OfferingId).Distinct().ToList();
+        var studentIds = subs.Select(s => s.StudentId).Distinct().ToList();
+        var tenantIds = subs.Select(s => s.TenantId).Distinct().ToList();
+
+        var offerings = _db.SubscriptionOfferingsForAnyTenant
+            .Where(o => offeringIds.Contains(o.Id))
+            .ToDictionary(o => o.Id);
+
+        var students = _db.StudentsForAnyTenant
+            .Where(s => studentIds.Contains(s.Id))
+            .ToList();
+
+        var parentIds = students
+            .Where(s => s.ParentProfileId.HasValue)
+            .Select(s => s.ParentProfileId!.Value)
+            .Distinct()
+            .ToList();
+
+        var parents = _db.ParentProfilesForAnyTenant
+            .Where(p => parentIds.Contains(p.Id))
+            .ToDictionary(p => p.Id);
+
+        var teachers = _db.Tenants
+            .Where(t => tenantIds.Contains(t.Id))
+            .ToDictionary(t => t.Id, t => t.Name);
+
+        var studentsById = students.ToDictionary(s => s.Id);
+
+        return subs.Select(s =>
+        {
+            offerings.TryGetValue(s.OfferingId, out var offering);
+            studentsById.TryGetValue(s.StudentId, out var student);
+            string? parentName = null;
+            if (student?.ParentProfileId is Guid pid && parents.TryGetValue(pid, out var parent))
+                parentName = $"{parent.FirstName} {parent.LastName}".Trim();
+
+            teachers.TryGetValue(s.TenantId, out var teacherName);
+
+            return Map(
+                s,
+                offering?.Title ?? "Offre",
+                offering?.Subject,
+                offering?.Price ?? 0,
+                offering?.Currency ?? "CAD",
+                student is null ? "" : $"{student.FirstName} {student.LastName}".Trim(),
+                parentName,
+                teacherName);
+        }).ToList();
+    }
+
     private StudentSubscriptionDto MapSubscription(Domain.Entities.StudentSubscription sub)
     {
-        var offering = _db.SubscriptionOfferings.FirstOrDefault(o => o.Id == sub.OfferingId);
+        var offering = _db.SubscriptionOfferingsForAnyTenant.FirstOrDefault(o => o.Id == sub.OfferingId);
         var student = _db.StudentsForAnyTenant.FirstOrDefault(s => s.Id == sub.StudentId);
+        var teacherName = _db.Tenants.FirstOrDefault(t => t.Id == sub.TenantId)?.Name;
         return Map(
             sub,
             offering?.Title ?? "Offre",
@@ -627,7 +689,8 @@ public class StudentSubscriptionService : IStudentSubscriptionService
             offering?.Price ?? 0,
             offering?.Currency ?? "CAD",
             student is null ? "" : $"{student.FirstName} {student.LastName}".Trim(),
-            ResolveParentName(student));
+            ResolveParentName(student),
+            teacherName);
     }
 
     private void ClosePendingPayments(Guid subscriptionId)
@@ -658,7 +721,8 @@ public class StudentSubscriptionService : IStudentSubscriptionService
         decimal price,
         string currency,
         string studentName,
-        string? parentName = null) => new(
+        string? parentName = null,
+        string? teacherName = null) => new(
         s.Id,
         s.TenantId,
         s.StudentId,
@@ -672,5 +736,7 @@ public class StudentSubscriptionService : IStudentSubscriptionService
         s.StartDate,
         s.EndDate,
         s.SessionsRemaining,
-        parentName);
+        parentName,
+        teacherName,
+        s.CreatedAt);
 }
