@@ -632,6 +632,11 @@
     }
 
     // ── Lifecycle ──────────────────────────────────────────────────────────────
+
+    /// <summary>« ?availability=1 » ouvre directement la saisie des disponibilités.</summary>
+    [SupplyParameterFromQuery(Name = "availability")]
+    public string? AvailabilityRequest { get; set; }
+
     protected override async Task OnInitializedAsync()
     {
         GoToToday();
@@ -650,6 +655,9 @@
         _students.Clear();
         _students.AddRange(students.Select(s => new StudentOption(s.Id, $"{s.FirstName} {s.LastName}".Trim())));
         await LoadPlanSubjectsAsync();
+
+        if (!string.IsNullOrEmpty(AvailabilityRequest))
+            OpenUnavailabilityModal();
     }
 
     private async Task LoadPlanSubjectsAsync()

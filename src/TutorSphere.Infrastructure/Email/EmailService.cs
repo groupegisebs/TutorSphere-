@@ -57,6 +57,7 @@ internal static class EmailTemplates
     public const string SupportContact = "SUPPORT_CONTACT";
     public const string AdminDirectMessage = "ADMIN_DIRECT_MESSAGE";
     public const string MeetingInvitation = "MEETING_INVITATION";
+    public const string MeetingInvitationGuest = "MEETING_INVITATION_GUEST";
     public const string MeetingCancelled = "MEETING_CANCELLED";
     public const string MeetingGuestCode = "MEETING_GUEST_CODE";
     public const string MeetingReminder = "MEETING_REMINDER";
@@ -529,7 +530,7 @@ public class EmailService : IEmailService
     public Task SendMeetingInvitationAsync(
         string to, string recipientName, string title, DateTime startAtUtc, string timeZoneId,
         string organizerName, string? agenda, string joinUrl, bool recordingEnabled, bool aiEnabled,
-        bool isExternal, CancellationToken ct = default)
+        bool isExternal, DateTime? linkExpiresAtUtc = null, CancellationToken ct = default)
     {
         var culture = CultureInfo.GetCultureInfo("fr-FR");
         var privacy = isExternal
@@ -541,41 +542,50 @@ public class EmailService : IEmailService
         var notice = flags.Count == 0
             ? "Aucun enregistrement ni assistant IA n’est prévu pour le moment."
             : "Attention : " + string.Join(" et ", flags) + ".";
-        return SendAsync(to, EmailTemplates.MeetingInvitation, new Dictionary<string, string>
-        {
-            ["RecipientName"] = recipientName,
-            ["Title"] = title,
-            ["StartLocal"] = startAtUtc.ToString("f", culture),
-            ["TimeZone"] = timeZoneId,
-            ["OrganizerName"] = organizerName,
-            ["Agenda"] = agenda ?? "",
-            ["JoinUrl"] = joinUrl,
-            ["CalendarUrl"] = joinUrl,
-            ["Privacy"] = privacy,
-            ["RecordingAndAi"] = notice
-        }, ct, culture.Name);
+        var validity = linkExpiresAtUtc.HasValue
+            ? linkExpiresAtUtc.Value.ToLocalTime().ToString("f", culture)
+            : "l’heure de début de la réunion";
+        // La passerelle refuse un envoi dont une variable du modèle est vide.
+        return SendAsync(to, isExternal ? EmailTemplates.MeetingInvitationGuest : EmailTemplates.MeetingInvitation,
+            new Dictionary<string, string>
+            {
+                ["RecipientName"] = Fallback(recipientName, isExternal ? "Invité" : "Membre du groupe"),
+                ["Title"] = Fallback(title, "Réunion TutorSphere"),
+                ["StartLocal"] = startAtUtc.ToString("f", culture),
+                ["TimeZone"] = Fallback(timeZoneId, "UTC"),
+                ["OrganizerName"] = Fallback(organizerName, "L’organisateur"),
+                ["Agenda"] = Fallback(agenda, "Non précisé"),
+                ["JoinUrl"] = joinUrl,
+                ["CalendarUrl"] = joinUrl,
+                ["Privacy"] = privacy,
+                ["RecordingAndAi"] = notice,
+                ["LinkValidity"] = validity
+            }, ct, culture.Name);
     }
+
+    private static string Fallback(string? value, string fallback) =>
+        string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
 
     public Task SendMeetingCancelledAsync(string to, string title, DateTime startAtUtc, CancellationToken ct = default) =>
         SendAsync(to, EmailTemplates.MeetingCancelled, new Dictionary<string, string>
         {
-            ["Title"] = title,
+            ["Title"] = Fallback(title, "Réunion TutorSphere"),
             ["StartLocal"] = startAtUtc.ToString("f", CultureInfo.GetCultureInfo("fr-FR"))
         }, ct);
 
     public Task SendMeetingGuestCodeAsync(string to, string recipientName, string title, string code, CancellationToken ct = default) =>
         SendAsync(to, EmailTemplates.MeetingGuestCode, new Dictionary<string, string>
         {
-            ["RecipientName"] = recipientName,
-            ["Title"] = title,
+            ["RecipientName"] = Fallback(recipientName, "Invité"),
+            ["Title"] = Fallback(title, "Réunion TutorSphere"),
             ["Code"] = code
         }, ct);
 
     public Task SendMeetingReminderAsync(string to, string recipientName, string title, DateTime startAtUtc, string joinUrl, CancellationToken ct = default) =>
         SendAsync(to, EmailTemplates.MeetingReminder, new Dictionary<string, string>
         {
-            ["RecipientName"] = recipientName,
-            ["Title"] = title,
+            ["RecipientName"] = Fallback(recipientName, "Membre du groupe"),
+            ["Title"] = Fallback(title, "Réunion TutorSphere"),
             ["StartLocal"] = startAtUtc.ToString("f", CultureInfo.GetCultureInfo("fr-FR")),
             ["JoinUrl"] = joinUrl
         }, ct);
@@ -583,8 +593,8 @@ public class EmailService : IEmailService
     public Task SendMeetingMinutesAsync(string to, string recipientName, string title, string minutesUrl, CancellationToken ct = default) =>
         SendAsync(to, EmailTemplates.MeetingMinutes, new Dictionary<string, string>
         {
-            ["RecipientName"] = recipientName,
-            ["Title"] = title,
+            ["RecipientName"] = Fallback(recipientName, "Membre du groupe"),
+            ["Title"] = Fallback(title, "Réunion TutorSphere"),
             ["MinutesUrl"] = minutesUrl
         }, ct);
 

@@ -200,6 +200,10 @@ public interface IEmailService
         string inboxUrl,
         CancellationToken ct = default);
 
+    /// <summary>
+    /// Invitation à une réunion. Les invités externes reçoivent un modèle distinct :
+    /// lien personnel temporaire et vérification par code, sans accès au reste de la plateforme.
+    /// </summary>
     Task SendMeetingInvitationAsync(
         string to,
         string recipientName,
@@ -212,6 +216,7 @@ public interface IEmailService
         bool recordingEnabled,
         bool aiEnabled,
         bool isExternal,
+        DateTime? linkExpiresAtUtc = null,
         CancellationToken ct = default);
 
     Task SendMeetingCancelledAsync(string to, string title, DateTime startAtUtc, CancellationToken ct = default);

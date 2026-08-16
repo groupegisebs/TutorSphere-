@@ -13,12 +13,17 @@
 
 <div class="th-head">
     <div>
-        <h1 class="th-greeting">@L["TutorHome_Greeting", DisplayName]</h1>
+        <h1 class="th-greeting">
+            @L["TutorHome_Greeting", DisplayName]
+            @if (_approvalStatus is not null)
+            {
+                <span class="th-pill th-pill--@VerificationTone">
+                    <i class="bi @VerificationIcon" aria-hidden="true"></i>@VerificationTitle
+                </span>
+            }
+        </h1>
         <p class="th-subtitle">@L["TutorHome_Subtitle"]</p>
     </div>
-    <a href="tutor/calendar" class="btn btn-primary">
-        <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>@L["TutorHome_PlanCourse"]
-    </a>
 </div>
 
 <div class="th-hero @(IsJoinable ? "th-hero--live" : null)">
@@ -32,14 +37,29 @@
     else if (_nextSession is null)
     {
         <div class="th-hero-main">
-            <div class="th-hero-icon"><i class="bi bi-calendar2-week" aria-hidden="true"></i></div>
+            <svg class="th-hero-art" viewBox="0 0 120 96" role="img" aria-hidden="true">
+                <rect x="10" y="14" width="86" height="72" rx="10" fill="#ede9fe" />
+                <rect x="10" y="14" width="86" height="18" rx="10" fill="#5831e0" />
+                <rect x="26" y="8" width="6" height="14" rx="3" fill="#3b2ba8" />
+                <rect x="74" y="8" width="6" height="14" rx="3" fill="#3b2ba8" />
+                <g fill="#c4b5fd">
+                    <rect x="22" y="42" width="14" height="10" rx="3" />
+                    <rect x="44" y="42" width="14" height="10" rx="3" />
+                    <rect x="66" y="42" width="14" height="10" rx="3" />
+                    <rect x="22" y="58" width="14" height="10" rx="3" />
+                    <rect x="44" y="58" width="14" height="10" rx="3" />
+                </g>
+                <circle cx="88" cy="70" r="20" fill="#fff" stroke="#5831e0" stroke-width="4" />
+                <path d="M88 60v11l8 5" fill="none" stroke="#5831e0" stroke-width="4" stroke-linecap="round" />
+            </svg>
             <div>
-                <span class="th-badge th-badge--muted">@L["TutorHome_NextCourse"]</span>
-                <h2 class="th-hero-title">@L["TutorHome_NoNextCourse"]</h2>
+                <h2 class="th-hero-title">@L["TutorHome_ReadyTitle"]</h2>
+                <p class="th-hero-text">@L["TutorHome_ReadyText"]</p>
             </div>
         </div>
         <div class="th-hero-actions">
-            <a href="tutor/calendar" class="btn btn-outline-secondary">@L["TutorHome_ViewCalendar"]</a>
+            <a href="tutor/calendar" class="btn btn-primary">@L["TutorHome_PlanCourse"]</a>
+            <a href="tutor/calendar?availability=1" class="btn btn-outline-secondary">@L["TutorHome_SetAvailability"]</a>
         </div>
     }
     else
@@ -64,11 +84,8 @@
             <button type="button" class="btn btn-primary" @onclick="async () => await JoinClassroomAsync(_nextSession)">
                 @L["TutorHome_JoinCourse"]
             </button>
-            <a href="tutor/lessons" class="btn btn-outline-secondary btn-sm">@L["TutorHome_ViewSheet"]</a>
+            <a href="tutor/lessons" class="btn btn-outline-secondary">@L["TutorHome_ViewSheet"]</a>
         </div>
-        <a href="tutor/lessons" class="th-hero-more" title="@L["TutorHome_ViewSheet"]" aria-label="@L["TutorHome_ViewSheet"]">
-            <i class="bi bi-three-dots-vertical" aria-hidden="true"></i>
-        </a>
     }
 </div>
 
@@ -78,7 +95,10 @@
         <div class="th-kpi-body">
             <span class="th-kpi-label">@L["TutorHome_CoursesToday"]</span>
             <span class="th-kpi-val">@_todaySessions.Count</span>
-            <a class="th-link" href="tutor/calendar">@L["TutorHome_See"] <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
+            @if (_todaySessions.Count > 0)
+            {
+                <a class="th-link" href="tutor/calendar">@L["TutorHome_See"] <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
+            }
         </div>
     </div>
     <div class="th-kpi">
@@ -86,7 +106,13 @@
         <div class="th-kpi-body">
             <span class="th-kpi-label">@L["Stat_ActiveStudents"]</span>
             <span class="th-kpi-val">@_activeStudents</span>
-            <a class="th-link" href="tutor/students">@L["TutorHome_See"] <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
+            @if (_activeStudents > 0)
+            {
+                <a class="th-link" href="tutor/students">
+                    @(_activeStudents == 1 ? L["TutorHome_SeeStudent"] : L["TutorHome_SeeStudents"])
+                    <i class="bi bi-arrow-right" aria-hidden="true"></i>
+                </a>
+            }
         </div>
     </div>
     <div class="th-kpi">
@@ -94,7 +120,10 @@
         <div class="th-kpi-body">
             <span class="th-kpi-label">@L["TutorHome_UnreadMessages"]</span>
             <span class="th-kpi-val">@_unreadMessages</span>
-            <a class="th-link" href="tutor/messages">@L["TutorHome_See"] <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
+            @if (_unreadMessages > 0)
+            {
+                <a class="th-link" href="tutor/messages">@L["TutorHome_See"] <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
+            }
         </div>
     </div>
     <div class="th-kpi">
@@ -102,21 +131,20 @@
         <div class="th-kpi-body">
             <span class="th-kpi-label">@L["TutorHome_AvailableRevenue"]</span>
             <span class="th-kpi-val th-kpi-val--money">@FormatMoney(_available)</span>
-            <a class="th-link" href="tutor/account">@L["TutorHome_See"] <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
+            @if (_available > 0)
+            {
+                <a class="th-link" href="tutor/account">@L["TutorHome_See"] <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
+            }
         </div>
     </div>
 </div>
 
 <div class="th-grid">
-    <section class="th-card th-card--day">
-        <div class="th-card-head"><h2>@L["TutorHome_MyDay"]</h2></div>
-        <div class="th-card-body">
-            @if (_todaySessions.Count == 0)
-            {
-                <p class="th-empty">@L["TutorHome_NoCourseToday"]</p>
-            }
-            else
-            {
+    @if (_todaySessions.Count > 0)
+    {
+        <section class="th-card th-card--third">
+            <div class="th-card-head"><h2>@L["TutorHome_MyDay"]</h2></div>
+            <div class="th-card-body">
                 <ul class="th-day">
                     @foreach (var s in _todaySessions)
                     {
@@ -130,20 +158,17 @@
                             <span class="th-day-time">@s.StartLabel – @s.EndLabel</span>
                             <span class="th-day-title">@SessionLine(s)</span>
                             <span class="th-chip @ChipClass(s)">@StatusLabel(s)</span>
-                            <a class="th-day-link" href="tutor/lessons">
-                                @L["TutorHome_Details"] <i class="bi bi-chevron-right" aria-hidden="true"></i>
-                            </a>
                         </li>
                     }
                 </ul>
-            }
-        </div>
-        <div class="th-card-foot">
-            <a class="th-link" href="tutor/calendar">@L["TutorHome_ViewCalendar"] <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
-        </div>
-    </section>
+            </div>
+            <div class="th-card-foot">
+                <a class="th-link" href="tutor/calendar">@L["TutorHome_ViewCalendar"] <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
+            </div>
+        </section>
+    }
 
-    <section class="th-card th-card--students">
+    <section class="th-card th-card--third">
         <div class="th-card-head"><h2>@L["Nav_MyStudents"]</h2></div>
         <div class="th-card-body">
             @if (_students.Count == 0)
@@ -163,50 +188,128 @@
                             </div>
                             @if (s.NextAt is { } at)
                             {
-                                <span class="th-person-when">@string.Format(L["TutorHome_CourseAt"].Value, at.ToString("HH:mm"))</span>
+                                <span class="th-chip th-chip--next">@string.Format(L["TutorHome_CourseAt"].Value, at.ToString("HH:mm"))</span>
                             }
                             else
                             {
-                                <span class="th-person-when th-person-when--wait">@L["TutorHome_ToFollow"]</span>
+                                <span class="th-chip th-chip--wait">@L["TutorHome_ToFollow"]</span>
                             }
+                            <a class="th-day-link" href="tutor/students">
+                                @L["TutorHome_ViewSheet"] <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                            </a>
                         </li>
                     }
                 </ul>
             }
         </div>
         <div class="th-card-foot">
-            <a class="th-link" href="tutor/students">@L["TutorHome_AllStudents"] <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
+            <a class="th-dashed-btn" href="tutor/enrollments">
+                <i class="bi bi-plus-lg" aria-hidden="true"></i>@L["TutorHome_AddStudent"]
+            </a>
         </div>
     </section>
 
-    <section class="th-card th-card--todo">
-        <div class="th-card-head"><h2>@L["TutorHome_Todo"]</h2></div>
+    <section class="th-card th-card--third">
+        <div class="th-card-head"><h2>@L["TutorHome_AccountSetup"]</h2></div>
         <div class="th-card-body">
-            @if (_tasks.Count == 0)
+            <div class="th-setup">
+                <div class="th-kpi-icon th-kpi-icon--mint"><i class="bi bi-wallet2" aria-hidden="true"></i></div>
+                <div>
+                    @if (_payoutMethod is null)
+                    {
+                        <strong>@L["TutorHome_NoPayoutTitle"]</strong>
+                        <span class="th-setup-text">@L["TutorHome_NoPayoutText"]</span>
+                        <a class="btn btn-primary btn-sm mt-2" href="tutor/account">@L["TutorHome_Configure"]</a>
+                    }
+                    else
+                    {
+                        <strong>@_payoutMethod</strong>
+                        <span class="th-setup-text">@L["TutorHome_PayoutMethod"]</span>
+                    }
+                </div>
+            </div>
+            <p class="th-setup-check th-setup-check--@VerificationTone">
+                <i class="bi @(_approvalStatus == 1 ? "bi-check-circle-fill" : VerificationIcon)" aria-hidden="true"></i>
+                @(_approvalStatus == 1 ? L["TutorHome_IdentityVerified"] : VerificationTitle)
+            </p>
+        </div>
+    </section>
+
+    <section class="th-card th-card--third">
+        <div class="th-card-head"><h2>@L["TutorHome_QuickAccess"]</h2></div>
+        <div class="th-card-body">
+            <ul class="th-quick">
+                <li>
+                    <a href="tutor/calendar">
+                        <span class="th-kpi-icon th-kpi-icon--violet"><i class="bi bi-easel2" aria-hidden="true"></i></span>
+                        <span class="th-quick-label">@L["TutorHome_OpenMyClass"]</span>
+                        <i class="bi bi-arrow-right" aria-hidden="true"></i>
+                    </a>
+                </li>
+                <li>
+                    <a href="tutor/students">
+                        <span class="th-kpi-icon th-kpi-icon--green"><i class="bi bi-people" aria-hidden="true"></i></span>
+                        <span class="th-quick-label">@L["TutorHome_SeeMyStudents"]</span>
+                        <i class="bi bi-arrow-right" aria-hidden="true"></i>
+                    </a>
+                </li>
+                <li>
+                    <a href="tutor/messages">
+                        <span class="th-kpi-icon th-kpi-icon--pink"><i class="bi bi-chat-dots" aria-hidden="true"></i></span>
+                        <span class="th-quick-label">@L["TutorHome_OpenMessaging"]</span>
+                        <i class="bi bi-arrow-right" aria-hidden="true"></i>
+                    </a>
+                </li>
+            </ul>
+        </div>
+    </section>
+
+    <section class="th-card th-card--half">
+        <div class="th-card-head"><h2>@L["Nav_MyRevenue"]</h2></div>
+        <div class="th-card-body">
+            <div class="th-rev">
+                <div class="th-rev-balance">
+                    <div class="th-kpi-icon th-kpi-icon--mint"><i class="bi bi-wallet2" aria-hidden="true"></i></div>
+                    <div>
+                        <span class="th-kpi-label">@L["TutorHome_AvailableBalance"]</span>
+                        <span class="th-rev-amount">@FormatMoney(_available)</span>
+                    </div>
+                </div>
+                <div class="th-rev-method">
+                    <span class="th-kpi-label">@L["TutorHome_PayoutMethod"]</span>
+                    <span class="th-rev-method-val">@PayoutMethodLabel</span>
+                </div>
+            </div>
+            @if (_canWithdraw || _eligibleAt is not null)
             {
-                <p class="th-empty">@L["TutorHome_NoTodo"]</p>
+                <p class="th-rev-next">@L["TutorHome_NextPayout"] : <strong>@NextPayoutLabel</strong></p>
             }
             else
             {
-                <ul class="th-todo">
-                    @foreach (var t in _tasks)
-                    {
-                        <li class="th-todo-item">
-                            <span class="th-todo-check" aria-hidden="true"></span>
-                            <a href="@t.Href">@t.Label</a>
-                        </li>
-                    }
-                </ul>
+                <p class="th-rev-next">@L["TutorHome_RevenueNote"]</p>
             }
+            @if (_licenseWithholdRemaining > 0)
+            {
+                <p class="th-rev-hold">@L["TutorHome_LicenseWithhold", _licenseWithholdRemaining.ToString("0.##")]</p>
+            }
+        </div>
+        <div class="th-card-foot">
+            <a class="th-link" href="tutor/account">@L["TutorHome_ManageRevenue"] <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
         </div>
     </section>
 
-    <section class="th-card th-card--messages">
-        <div class="th-card-head"><h2>@L["TutorHome_RecentMessages"]</h2></div>
+    <section class="th-card th-card--half">
+        <div class="th-card-head"><h2>@L["Nav_Messages"]</h2></div>
         <div class="th-card-body">
             @if (_recentMessages.Count == 0)
             {
-                <p class="th-empty">@L["TutorHome_NoMessages"]</p>
+                <div class="th-msg-empty">
+                    <span class="th-msg-empty-icon"><i class="bi bi-chat-dots" aria-hidden="true"></i></span>
+                    <div>
+                        <strong>@L["TutorHome_NoUnread"]</strong>
+                        <span class="th-setup-text">@L["TutorHome_UpToDate"]</span>
+                    </div>
+                </div>
             }
             else
             {
@@ -229,58 +332,13 @@
                 </ul>
             }
         </div>
-        <div class="th-card-foot">
-            <a class="th-link" href="tutor/messages">@L["TutorHome_OpenMailbox"] <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
-        </div>
-    </section>
-
-    <section class="th-card th-card--revenue">
-        <div class="th-card-head"><h2>@L["Nav_MyRevenue"]</h2></div>
-        <div class="th-card-body">
-            <div class="th-rev">
-                <div class="th-rev-balance">
-                    <div class="th-kpi-icon th-kpi-icon--mint"><i class="bi bi-wallet2" aria-hidden="true"></i></div>
-                    <div>
-                        <span class="th-kpi-label">@L["TutorHome_AvailableBalance"]</span>
-                        <span class="th-rev-amount">@FormatMoney(_available)</span>
-                    </div>
-                </div>
-                <div class="th-rev-method">
-                    <span class="th-kpi-label">@L["TutorHome_PayoutMethod"]</span>
-                    <span class="th-rev-method-val">@PayoutMethodLabel</span>
-                </div>
+        @if (_recentMessages.Count > 0)
+        {
+            <div class="th-card-foot">
+                <a class="th-link" href="tutor/messages">@L["TutorHome_OpenMailbox"] <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
             </div>
-            <p class="th-rev-next">@L["TutorHome_NextPayout"] : <strong>@NextPayoutLabel</strong></p>
-            @if (_licenseWithholdRemaining > 0)
-            {
-                <p class="th-rev-hold">@L["TutorHome_LicenseWithhold", _licenseWithholdRemaining.ToString("0.##")]</p>
-            }
-        </div>
-        <div class="th-card-foot">
-            <a class="th-link" href="tutor/account">@L["TutorHome_ManageRevenue"] <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
-        </div>
+        }
     </section>
-
-    @if (_approvalStatus is not null)
-    {
-        <section class="th-card th-card--verified">
-            <div class="th-verified">
-                <div class="th-verified-icon th-verified-icon--@VerificationTone">
-                    <i class="bi @VerificationIcon" aria-hidden="true"></i>
-                </div>
-                <div>
-                    <strong>@VerificationTitle</strong>
-                    <span class="th-verified-hint">@VerificationHint</span>
-                    @if (_approvalStatus != 1)
-                    {
-                        <a class="th-link" href="tutor/verification">
-                            @L["TeacherVerification_Title"] <i class="bi bi-arrow-right" aria-hidden="true"></i>
-                        </a>
-                    }
-                </div>
-            </div>
-        </section>
-    }
 </div>
 
 @code {
@@ -296,7 +354,6 @@
 
     private sealed record StudentRow(string Name, string Initials, string Level, DateTime? NextAt, int Hue);
     private sealed record MessageRow(string Name, string Initials, string Excerpt, string TimeLabel, int Unread, int Hue);
-    private sealed record TaskRow(string Label, string Href);
 
     private sealed class LicenseStatusVm
     {
@@ -306,8 +363,6 @@
     private record EligibilityDto(bool CanWithdraw, DateTime? EligibleAt, bool SetupComplete);
     private record EarningsSummaryDto(decimal Available, string? Currency, EligibilityDto? Eligibility);
     private record DashboardDto(decimal MonthlyRevenue, int ActiveStudents, int ActiveSubscriptions, int UpcomingLessons, int PendingPayments);
-    private sealed record EnrollmentPeek(string Status);
-    private sealed record ExpertRemarkPeek(DateTime? ReadByTeacherAt);
     private sealed record ApprovalStatusPeek(int Status);
     private sealed record PayoutAccountPeek(
         string? ProviderKind, string? PhoneNumber, string? EmailOrAccountId,
@@ -320,7 +375,6 @@
     private List<SessionItem> _upcomingSessions = [];
     private List<StudentRow> _students = [];
     private List<MessageRow> _recentMessages = [];
-    private List<TaskRow> _tasks = [];
     private int _activeStudents;
     private int _unreadMessages;
     private decimal _available;
@@ -357,18 +411,22 @@
         return string.IsNullOrWhiteSpace(_currency) ? $"{value} $" : $"{value} {_currency}";
     }
 
-    private string NextPayoutLabel =>
-        _canWithdraw ? L["TutorHome_PayoutNow"].Value
-        : _eligibleAt is { } at ? DayLabel(at.ToLocalTime())
-        : "—";
+    private string NextPayoutLabel
+    {
+        get
+        {
+            if (_canWithdraw)
+                return L["TutorHome_PayoutNow"].Value;
+            if (_eligibleAt is not { } at)
+                return "—";
+
+            var moment = at.ToLocalTime();
+            var days = (moment.Date - DateTime.Today).TotalDays;
+            return days is >= 0 and < 7 ? moment.ToString("dddd") : moment.ToString("dd/MM/yyyy");
+        }
+    }
 
     private string PayoutMethodLabel => _payoutMethod ?? L["TutorHome_NoPayoutMethod"].Value;
-
-    private string DayLabel(DateTime moment)
-    {
-        var days = (moment.Date - DateTime.Today).TotalDays;
-        return days is >= 0 and < 7 ? moment.ToString("dddd") : moment.ToString("dd/MM/yyyy");
-    }
 
     private string WhenLabel(SessionItem s)
     {
@@ -417,6 +475,27 @@
             .Select(p => char.ToUpperInvariant(p!.Trim()[0]))
             .Take(2));
 
+    private string VerificationTone => _approvalStatus switch
+    {
+        1 => "ok",
+        2 => "danger",
+        _ => "wait"
+    };
+
+    private string VerificationIcon => _approvalStatus switch
+    {
+        1 => "bi-shield-check",
+        2 => "bi-shield-exclamation",
+        _ => "bi-hourglass-split"
+    };
+
+    private string VerificationTitle => _approvalStatus switch
+    {
+        1 => L["TutorHome_AccountVerified"].Value,
+        2 => L["TutorHome_AccountRejected"].Value,
+        _ => L["TutorHome_AccountPending"].Value
+    };
+
     protected override async Task OnInitializedAsync()
     {
         try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
@@ -426,7 +505,6 @@
         await LoadMessagesAsync();
         await LoadMoneyAsync();
         await LoadAccountStatusAsync();
-        await BuildTasksAsync();
 
         _loading = false;
     }
@@ -608,69 +686,7 @@
             var status = await Api.GetAsync<ApprovalStatusPeek>("api/teacher-documents/approval-status");
             _approvalStatus = status?.Status;
         }
-        catch { /* carte masquée */ }
-    }
-
-    private string VerificationTone => _approvalStatus switch
-    {
-        1 => "ok",
-        2 => "danger",
-        _ => "wait"
-    };
-
-    private string VerificationIcon => _approvalStatus switch
-    {
-        1 => "bi-shield-check",
-        2 => "bi-shield-exclamation",
-        _ => "bi-hourglass-split"
-    };
-
-    private string VerificationTitle => _approvalStatus switch
-    {
-        1 => L["TutorHome_AccountVerified"].Value,
-        2 => L["TutorHome_AccountRejected"].Value,
-        _ => L["TutorHome_AccountPending"].Value
-    };
-
-    private string VerificationHint => _approvalStatus switch
-    {
-        1 => L["TutorHome_AccountVerifiedHint"].Value,
-        2 => L["TutorHome_AccountRejectedHint"].Value,
-        _ => L["TutorHome_AccountPendingHint"].Value
-    };
-
-    private async Task BuildTasksAsync()
-    {
-        var tasks = new List<TaskRow>();
-
-        try
-        {
-            var enrollments = await Api.GetAsync<List<EnrollmentPeek>>("api/subscription-offerings/subscribers") ?? [];
-            var pending = enrollments.Count(e => string.Equals(e.Status, "Pending", StringComparison.OrdinalIgnoreCase));
-            if (pending > 0)
-                tasks.Add(new TaskRow(
-                    string.Format(L["TutorHome_TaskEnrollments"].Value, pending),
-                    "tutor/enrollments"));
-        }
-        catch { /* ignore */ }
-
-        if (_unreadMessages > 0)
-            tasks.Add(new TaskRow(
-                string.Format(L["TutorHome_TaskMessages"].Value, _unreadMessages),
-                "tutor/messages"));
-
-        try
-        {
-            var remarks = await Api.GetAsync<List<ExpertRemarkPeek>>("api/tutor/expert-remarks") ?? [];
-            var unread = remarks.Count(r => r.ReadByTeacherAt is null);
-            if (unread > 0)
-                tasks.Add(new TaskRow(
-                    string.Format(L["TutorHome_TaskRemarks"].Value, unread),
-                    "tutor/expert-remarks"));
-        }
-        catch { /* ignore */ }
-
-        _tasks = tasks;
+        catch { /* pastille masquée */ }
     }
 
     private async Task JoinClassroomAsync(SessionItem session)

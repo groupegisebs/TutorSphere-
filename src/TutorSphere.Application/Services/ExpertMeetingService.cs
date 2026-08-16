@@ -606,7 +606,7 @@ public class ExpertMeetingService(
         await email.SendMeetingInvitationAsync(
             guest.Email, guest.FullName, meeting.Title, meeting.StartAtUtc ?? DateTime.UtcNow,
             meeting.TimeZoneId, org?.DisplayName ?? "Organisateur", meeting.Agenda, join,
-            meeting.RecordingEnabled, meeting.AiEnabled, true, ct);
+            meeting.RecordingEnabled, meeting.AiEnabled, true, guest.TokenExpiresAtUtc, ct);
     }
 
     public Task EnsureCanJoinLiveAsync(string? userId, Guid meetingId, string? guestToken, CancellationToken ct = default)
@@ -758,18 +758,53 @@ public class ExpertMeetingService(
         var failed = db.MeetingInvitations
             .Where(i => i.Status == MeetingInvitationStatus.Failed && i.AttemptCount < 3)
             .ToList();
+        var web = urls.WebBaseUrl.TrimEnd('/');
         foreach (var inv in failed)
         {
             var meeting = db.Meetings.FirstOrDefault(m => m.Id == inv.MeetingId);
             if (meeting is null || meeting.Status is MeetingStatus.Cancelled or MeetingStatus.Ended or MeetingStatus.Draft)
                 continue;
-            var join = $"{urls.WebBaseUrl.TrimEnd('/')}/expert/meetings/{meeting.Id}/room";
+            var org = await contacts.GetAsync(meeting.OrganizerUserId, ct);
+            var organizer = org?.DisplayName ?? "Organisateur";
             try
             {
-                await email.SendMeetingInvitationAsync(
-                    inv.RecipientEmail, inv.RecipientEmail, meeting.Title, meeting.StartAtUtc ?? DateTime.UtcNow,
-                    meeting.TimeZoneId, "TutorSphere", meeting.Agenda, join,
-                    meeting.RecordingEnabled, meeting.AiEnabled, inv.Kind == MeetingInvitationKind.External, ct);
+                if (inv.Kind == MeetingInvitationKind.External)
+                {
+                    // Un invité externe n'a pas de compte : il faut un nouveau lien signé, pas la salle interne.
+                    var guest = inv.ExternalGuestId is Guid guestId
+                        ? db.MeetingExternalGuests.FirstOrDefault(g => g.Id == guestId)
+                        : db.MeetingExternalGuests.FirstOrDefault(g =>
+                            g.MeetingId == meeting.Id && g.Email == inv.RecipientEmail);
+                    if (guest is null)
+                    {
+                        inv.LastError = "Invité externe introuvable.";
+                        inv.AttemptCount++;
+                        inv.LastAttemptAtUtc = DateTime.UtcNow;
+                        continue;
+                    }
+
+                    var token = NewToken();
+                    guest.TokenHash = Hash(token);
+                    guest.TokenExpiresAtUtc = DateTime.UtcNow.AddHours(36);
+                    guest.RevokedAtUtc = null;
+                    await email.SendMeetingInvitationAsync(
+                        guest.Email, guest.FullName, meeting.Title, meeting.StartAtUtc ?? DateTime.UtcNow,
+                        meeting.TimeZoneId, organizer, meeting.Agenda,
+                        $"{web}/meet/join/{Uri.EscapeDataString(token)}",
+                        meeting.RecordingEnabled, meeting.AiEnabled, true, guest.TokenExpiresAtUtc, ct);
+                }
+                else
+                {
+                    var contact = inv.RecipientUserId is null
+                        ? null
+                        : await contacts.GetAsync(inv.RecipientUserId, ct);
+                    await email.SendMeetingInvitationAsync(
+                        inv.RecipientEmail, contact?.DisplayName ?? "Membre du groupe", meeting.Title,
+                        meeting.StartAtUtc ?? DateTime.UtcNow, meeting.TimeZoneId, organizer, meeting.Agenda,
+                        $"{web}/expert/meetings/{meeting.Id}/room",
+                        meeting.RecordingEnabled, meeting.AiEnabled, false, null, ct);
+                }
+
                 inv.Status = MeetingInvitationStatus.Sent;
                 inv.LastAttemptAtUtc = DateTime.UtcNow;
                 inv.AttemptCount++;
@@ -998,7 +1033,7 @@ public class ExpertMeetingService(
                 await email.SendMeetingInvitationAsync(
                     c.Value.Email, c.Value.DisplayName, meeting.Title, meeting.StartAtUtc ?? DateTime.UtcNow,
                     meeting.TimeZoneId, organizer, meeting.Agenda, memberJoin,
-                    meeting.RecordingEnabled, meeting.AiEnabled, false, ct);
+                    meeting.RecordingEnabled, meeting.AiEnabled, false, null, ct);
                 inv.Status = MeetingInvitationStatus.Sent;
                 inv.LastAttemptAtUtc = DateTime.UtcNow;
                 inv.AttemptCount = 1;
@@ -1036,7 +1071,7 @@ public class ExpertMeetingService(
                 await email.SendMeetingInvitationAsync(
                     guest.Email, guest.FullName, meeting.Title, meeting.StartAtUtc ?? DateTime.UtcNow,
                     meeting.TimeZoneId, organizer, meeting.Agenda, join,
-                    meeting.RecordingEnabled, meeting.AiEnabled, true, ct);
+                    meeting.RecordingEnabled, meeting.AiEnabled, true, guest.TokenExpiresAtUtc, ct);
                 inv.Status = MeetingInvitationStatus.Sent;
                 inv.AttemptCount = 1;
                 inv.LastAttemptAtUtc = DateTime.UtcNow;
