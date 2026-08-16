@@ -24,13 +24,14 @@ public class MeetingHub(IServiceScopeFactory scopes) : Hub
         string? role = null,
         bool micOn = true,
         bool camOn = false,
-        string? guestToken = null)
+        string? guestToken = null,
+        string? accessCode = null)
     {
         var userId = Context.User?.FindFirstValue(ClaimTypes.NameIdentifier);
         await using (var scope = scopes.CreateAsyncScope())
         {
             var meetings = scope.ServiceProvider.GetRequiredService<IExpertMeetingService>();
-            await meetings.EnsureCanJoinLiveAsync(userId, meetingId, guestToken, Context.ConnectionAborted);
+            await meetings.EnsureCanJoinLiveAsync(userId, meetingId, guestToken, accessCode, Context.ConnectionAborted);
         }
 
         var group = GroupName(meetingId);

@@ -17,6 +17,8 @@ public class Meeting : BaseEntity
     public MeetingStatus Status { get; set; } = MeetingStatus.Draft;
     public bool IsImmediate { get; set; }
     public bool WaitingRoomEnabled { get; set; } = true;
+    /// <summary>Code d'accès en clair : il doit être rappelé à l'organisateur et dans les invitations.</summary>
+    public string? AccessCode { get; set; }
     public string? AccessCodeHash { get; set; }
     public bool AllowMic { get; set; } = true;
     public bool AllowCamera { get; set; } = true;
@@ -94,6 +96,8 @@ public class MeetingExternalGuest : BaseEntity
     public string FullName { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public string TokenHash { get; set; } = string.Empty;
+    /// <summary>Code d'invitation propre à cet invité : une seule saisie suffit pour entrer.</summary>
+    public string? AccessCode { get; set; }
     public string? EmailVerifyCodeHash { get; set; }
     public DateTime TokenExpiresAtUtc { get; set; }
     public DateTime? VerifiedAtUtc { get; set; }

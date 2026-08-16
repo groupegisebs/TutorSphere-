@@ -162,8 +162,16 @@
                 <label class="mtg-switch"><input type="checkbox" @bind="AllowShare" /><span>Autoriser le partage d’écran</span></label>
                 <label class="mtg-switch"><input type="checkbox" @bind="Recording" /><span>Enregistrer la réunion</span></label>
                 <label class="mtg-switch"><input type="checkbox" @bind="Transcription" /><span>Transcription en direct</span></label>
-                <label class="form-label mt-2">Code d’accès (optionnel)</label>
-                <input class="form-control" @bind="AccessCode" />
+                <label class="form-label mt-2">Code de la réunion</label>
+                <div class="mtg-code-row">
+                    <input class="form-control mtg-code-input" maxlength="16" placeholder="Généré automatiquement"
+                           autocomplete="off" @bind="AccessCode" />
+                    <button type="button" class="cc-btn cc-btn-sm" @onclick="SuggestAccessCode">Générer</button>
+                </div>
+                <p class="mtg-hint">
+        Les membres saisissent ce code pour entrer dans la salle ; il est rappelé dans leurs invitations.
+        Chaque invité externe, lui, reçoit son propre code personnel.
+    </p>
                 <label class="form-label mt-2">Langue principale</label>
                 <select class="form-select" @bind="Language">
                     <option value="fr">Français</option>
@@ -310,6 +318,16 @@
         }
         if (SelectedPeople.Any(x => x.UserId == p.UserId)) return;
         SelectedPeople.Add(p);
+    }
+
+    /// <summary>Même alphabet que le serveur : pas de caractères confondus quand le code est dicté.</summary>
+    private void SuggestAccessCode()
+    {
+        const string alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        var chars = new char[6];
+        for (var i = 0; i < chars.Length; i++)
+            chars[i] = alphabet[Random.Shared.Next(alphabet.Length)];
+        AccessCode = new string(chars);
     }
 
     private void AddGuest()

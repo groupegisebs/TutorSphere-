@@ -217,13 +217,16 @@ public interface IEmailService
         bool aiEnabled,
         bool isExternal,
         DateTime? linkExpiresAtUtc = null,
+        string? accessCode = null,
         CancellationToken ct = default);
 
     Task SendMeetingCancelledAsync(string to, string title, DateTime startAtUtc, CancellationToken ct = default);
 
     Task SendMeetingGuestCodeAsync(string to, string recipientName, string title, string code, CancellationToken ct = default);
 
-    Task SendMeetingReminderAsync(string to, string recipientName, string title, DateTime startAtUtc, string joinUrl, CancellationToken ct = default);
+    Task SendMeetingReminderAsync(
+        string to, string recipientName, string title, DateTime startAtUtc, string joinUrl,
+        string? accessCode = null, CancellationToken ct = default);
 
     Task SendMeetingMinutesAsync(string to, string recipientName, string title, string minutesUrl, CancellationToken ct = default);
 }

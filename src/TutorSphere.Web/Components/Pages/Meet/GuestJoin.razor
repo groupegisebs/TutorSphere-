@@ -20,20 +20,11 @@
                 <label class="form-label">Votre nom</label>
                 <input class="form-control" @bind="_name" />
             </div>
-            @if (_preview.RequiresAccessCode)
-            {
-                <div class="mb-3">
-                    <label class="form-label">Code d’accès</label>
-                    <input class="form-control" @bind="_access" />
-                </div>
-            }
-            @if (_codeSent)
-            {
-                <div class="mb-3">
-                    <label class="form-label">Code reçu par courriel</label>
-                    <input class="form-control" @bind="_emailCode" />
-                </div>
-            }
+            <div class="mb-3">
+                <label class="form-label">Votre code d’invitation</label>
+                <input class="form-control mtg-code-input" maxlength="16" autocomplete="off" @bind="_access" />
+                <div class="form-text">Code personnel indiqué dans votre invitation. Une seule saisie suffit.</div>
+            </div>
             <button class="btn btn-primary w-100" type="button" disabled="@_busy" @onclick="EnterAsync">Rejoindre la réunion</button>
             <p class="small text-muted mt-3">Lien personnel, temporaire et non transférable. Il ne donne pas accès au reste de TutorSphere.</p>
         }
@@ -44,8 +35,8 @@
     [Parameter] public string Token { get; set; } = "";
     private Preview? _preview;
     private string? _error;
-    private bool _loading = true, _busy, _codeSent;
-    private string _name = "", _access = "", _emailCode = "";
+    private bool _loading = true, _busy;
+    private string _name = "", _access = "";
 
     protected override async Task OnInitializedAsync()
     {
@@ -68,13 +59,13 @@
                 token = Token,
                 displayName = _name,
                 accessCode = string.IsNullOrWhiteSpace(_access) ? null : _access,
-                emailCode = string.IsNullOrWhiteSpace(_emailCode) ? null : _emailCode
+                emailCode = (string?)null
             });
             var body = await resp.Content.ReadAsStringAsync();
             if ((int)resp.StatusCode == 202)
             {
-                _codeSent = true;
-                _error = "Un code de vérification a été envoyé à votre courriel.";
+                // Invitation antérieure aux codes personnels : le code vient d'être envoyé.
+                _error = "Un code de vérification a été envoyé à votre courriel. Saisissez-le ci-dessus.";
                 return;
             }
             if (!resp.IsSuccessStatusCode)

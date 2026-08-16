@@ -12,7 +12,24 @@
 
 <PageTitle>@(_detail?.Title ?? "Réunion") — TutorSphere</PageTitle>
 
-@if (_waiting)
+@if (_codeGate)
+{
+    <div class="mtg-wait mtg-gate">
+        <h1>Code de la réunion</h1>
+        <p>@(_detail?.Title ?? "Réunion") — saisissez le code reçu dans votre invitation.</p>
+        <input class="form-control mtg-gate-input" maxlength="16" autocomplete="off"
+               placeholder="Ex. K7M2QD" @bind="_code" @bind:event="oninput" @onkeydown="GateKey" />
+        @if (!string.IsNullOrEmpty(_error)) { <p class="mtg-gate-error">@_error</p> }
+        <button class="cc-btn cc-btn-primary" type="button" disabled="@_gateBusy" @onclick="SubmitCodeAsync">
+            @(_gateBusy ? "Vérification…" : "Entrer dans la salle")
+        </button>
+        @if (!string.IsNullOrEmpty(_detail?.AccessCode))
+        {
+            <p class="mtg-gate-hint">Code de cette réunion (organisateur) : <strong>@_detail.AccessCode</strong></p>
+        }
+    </div>
+}
+else if (_waiting)
 {
     <div class="mtg-wait">
         <h1>Salle d’attente</h1>
@@ -198,6 +215,8 @@ else if (_detail is not null)
     private string _selfName = "";
     private string _tab = "ai";
     private bool _mic = true, _cam, _hand, _recording, _waiting, _aiPrompt, _consentAsk, _allConsented, _isOrganizer;
+    private bool _codeGate, _gateBusy;
+    private string _code = "";
     private string _chatIn = "", _notes = "", _caption = "", _aiQ = "", _pollQ = "", _pollQLive = "";
     private readonly List<MeetingLivePeerDto> _peers = [];
     private readonly List<MeetingLivePeerDto> _waitingList = [];
@@ -229,12 +248,47 @@ else if (_detail is not null)
             _detail = r.Value;
             _isOrganizer = _detail.OrganizerUserId == Auth.UserId;
             _recording = _detail.RecordingEnabled;
+            // Chaque participant confirme le code de la réunion avant d'ouvrir la salle.
+            if (_detail.RequiresAccessCode)
+            {
+                _codeGate = true;
+                return;
+            }
         }
         else
         {
-            _detail = new Detail(Id, "Réunion", null, 2, DateTime.UtcNow, null, "", "", true, true, true, true, false, false, false, false, false, "fr");
+            _detail = new Detail(Id, "Réunion", null, 2, DateTime.UtcNow, null, "", "", true, true, true, true, false, false, false, false, false, "fr", false, null);
         }
 
+        await EnterRoomAsync();
+    }
+
+    private async Task GateKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await SubmitCodeAsync();
+    }
+
+    private async Task SubmitCodeAsync()
+    {
+        if (_gateBusy) return;
+        _error = null;
+        _gateBusy = true;
+        try
+        {
+            var r = await Api.PostWithErrorAsync<object>($"api/expert/meetings/{Id}/verify-code", new { code = _code });
+            if (r.Error is not null)
+            {
+                _error = r.Error;
+                return;
+            }
+            _codeGate = false;
+            await EnterRoomAsync();
+        }
+        finally { _gateBusy = false; }
+    }
+
+    private async Task EnterRoomAsync()
+    {
         _selfName = GuestName ?? Auth.UserName ?? "Participant";
         BindRt();
         await Rt.EnsureHubReadyAsync(GuestToken);
@@ -245,7 +299,7 @@ else if (_detail is not null)
         var role = _isOrganizer ? "Organizer" : string.IsNullOrEmpty(GuestToken) ? "Participant" : "ExternalGuest";
         if (_detail?.WaitingRoomEnabled == true && !_isOrganizer)
             role = "Waiting";
-        await Rt.JoinAsync(Id, _selfName, role, _mic, _cam, GuestToken);
+        await Rt.JoinAsync(Id, _selfName, role, _mic, _cam, GuestToken, _code);
         try { await JS.InvokeVoidAsync("classroomMedia.start", null, new { video = _cam, audio = _mic }); } catch { }
         _timer = new System.Timers.Timer(1000);
         _timer.Elapsed += (_, _) => { _elapsed++; _ = InvokeAsync(StateHasChanged); };
@@ -389,5 +443,6 @@ else if (_detail is not null)
         Guid Id, string Title, string? Agenda, int Status, DateTime? StartAtUtc, DateTime? EndAtUtc,
         string OrganizerUserId, string OrganizerName, bool WaitingRoomEnabled, bool AllowMic, bool AllowCamera,
         bool AllowScreenShare, bool RecordingEnabled, bool TranscriptionEnabled, bool AiEnabled,
-        bool AiActivatedByOrganizer, bool Locked, string Language);
+        bool AiActivatedByOrganizer, bool Locked, string Language,
+        bool RequiresAccessCode, string? AccessCode);
 }

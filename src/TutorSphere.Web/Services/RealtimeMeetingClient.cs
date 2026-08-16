@@ -56,7 +56,9 @@ public sealed class RealtimeMeetingClient : IAsyncDisposable
         return EnsureConnectedAsync();
     }
 
-    public async Task JoinAsync(Guid meetingId, string displayName, string role, bool micOn, bool camOn, string? guestToken = null)
+    public async Task JoinAsync(
+        Guid meetingId, string displayName, string role, bool micOn, bool camOn,
+        string? guestToken = null, string? accessCode = null)
     {
         await EnsureConnectedAsync();
         if (_hub is null || _hub.State != HubConnectionState.Connected) return;
@@ -64,7 +66,7 @@ public sealed class RealtimeMeetingClient : IAsyncDisposable
         {
             try { await _hub.InvokeAsync("LeaveMeeting", prev); } catch { }
         }
-        await _hub.InvokeAsync("JoinMeeting", meetingId, displayName, role, micOn, camOn, guestToken);
+        await _hub.InvokeAsync("JoinMeeting", meetingId, displayName, role, micOn, camOn, guestToken, accessCode);
         _joined = meetingId;
     }
 

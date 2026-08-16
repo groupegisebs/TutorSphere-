@@ -42,7 +42,9 @@ public record MeetingDetailDto(
     IReadOnlyList<Guid> GroupIds,
     IReadOnlyList<MeetingParticipantDto> Participants,
     IReadOnlyList<MeetingExternalGuestDto> ExternalGuests,
-    IReadOnlyList<string> Permissions);
+    IReadOnlyList<string> Permissions,
+    bool RequiresAccessCode = false,
+    string? AccessCode = null);
 
 public record MeetingParticipantDto(
     Guid Id,
@@ -64,7 +66,8 @@ public record MeetingExternalGuestDto(
     string Email,
     DateTime TokenExpiresAtUtc,
     bool Revoked,
-    bool Verified);
+    bool Verified,
+    string? AccessCode = null);
 
 public record CreateMeetingRequest(
     string Title,
@@ -125,6 +128,12 @@ public record GuestPreviewDto(
     bool AiEnabled);
 
 public record GuestEnterRequest(string Token, string DisplayName, string? AccessCode, string? EmailCode);
+
+public record SetMeetingAccessCodeRequest(string? Code);
+
+public record MeetingAccessCodeDto(string Code);
+
+public record VerifyMeetingAccessCodeRequest(string? Code);
 
 public record GuestEnterResult(Guid MeetingId, string DisplayName, bool Waiting);
 

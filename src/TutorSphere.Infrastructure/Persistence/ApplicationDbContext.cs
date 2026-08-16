@@ -685,6 +685,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             e.Property(m => m.Description).HasMaxLength(500);
             e.Property(m => m.Agenda).HasMaxLength(1000);
             e.Property(m => m.TimeZoneId).HasMaxLength(80);
+            e.Property(m => m.AccessCode).HasMaxLength(16);
             e.Property(m => m.AccessCodeHash).HasMaxLength(128);
             e.Property(m => m.Language).HasMaxLength(16);
             e.Property(m => m.RetentionPolicy).HasMaxLength(80);
@@ -724,6 +725,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             e.Property(g => g.FullName).HasMaxLength(200);
             e.Property(g => g.Email).HasMaxLength(256);
             e.Property(g => g.TokenHash).HasMaxLength(128);
+            e.Property(g => g.AccessCode).HasMaxLength(16);
             e.Property(g => g.EmailVerifyCodeHash).HasMaxLength(128);
             e.HasIndex(g => g.TokenHash);
             e.HasOne(g => g.Meeting).WithMany(m => m.ExternalGuests).HasForeignKey(g => g.MeetingId)

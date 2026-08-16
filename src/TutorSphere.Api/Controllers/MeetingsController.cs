@@ -149,6 +149,34 @@ public class MeetingsController(
         catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
     }
 
+    /// <summary>Définit ou régénère le code de réunion. Corps vide = nouveau code tiré par la plateforme.</summary>
+    [HttpPost("{id:guid}/access-code")]
+    public async Task<ActionResult<MeetingAccessCodeDto>> SetAccessCode(
+        Guid id, [FromBody] SetMeetingAccessCodeRequest? body, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        try
+        {
+            var code = await meetings.SetAccessCodeAsync(UserId, id, body?.Code, ct);
+            return Ok(new MeetingAccessCodeDto(code));
+        }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    /// <summary>Contrôle le code saisi par un membre avant d'ouvrir la salle.</summary>
+    [HttpPost("{id:guid}/verify-code")]
+    public async Task<IActionResult> VerifyAccessCode(
+        Guid id, [FromBody] VerifyMeetingAccessCodeRequest? body, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        try
+        {
+            await meetings.EnsureCanJoinLiveAsync(UserId, id, null, body?.Code, ct);
+            return NoContent();
+        }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
     [HttpPost("{id:guid}/lock")]
     public async Task<IActionResult> Lock(Guid id, [FromBody] LockMeetingRequest? body, CancellationToken ct)
     {

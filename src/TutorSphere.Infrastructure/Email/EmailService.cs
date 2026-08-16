@@ -530,7 +530,7 @@ public class EmailService : IEmailService
     public Task SendMeetingInvitationAsync(
         string to, string recipientName, string title, DateTime startAtUtc, string timeZoneId,
         string organizerName, string? agenda, string joinUrl, bool recordingEnabled, bool aiEnabled,
-        bool isExternal, DateTime? linkExpiresAtUtc = null, CancellationToken ct = default)
+        bool isExternal, DateTime? linkExpiresAtUtc = null, string? accessCode = null, CancellationToken ct = default)
     {
         var culture = CultureInfo.GetCultureInfo("fr-FR");
         var privacy = isExternal
@@ -559,7 +559,8 @@ public class EmailService : IEmailService
                 ["CalendarUrl"] = joinUrl,
                 ["Privacy"] = privacy,
                 ["RecordingAndAi"] = notice,
-                ["LinkValidity"] = validity
+                ["LinkValidity"] = validity,
+                ["AccessCode"] = Fallback(accessCode, "communiqué par l’organisateur")
             }, ct, culture.Name);
     }
 
@@ -581,13 +582,16 @@ public class EmailService : IEmailService
             ["Code"] = code
         }, ct);
 
-    public Task SendMeetingReminderAsync(string to, string recipientName, string title, DateTime startAtUtc, string joinUrl, CancellationToken ct = default) =>
+    public Task SendMeetingReminderAsync(
+        string to, string recipientName, string title, DateTime startAtUtc, string joinUrl,
+        string? accessCode = null, CancellationToken ct = default) =>
         SendAsync(to, EmailTemplates.MeetingReminder, new Dictionary<string, string>
         {
             ["RecipientName"] = Fallback(recipientName, "Membre du groupe"),
             ["Title"] = Fallback(title, "Réunion TutorSphere"),
             ["StartLocal"] = startAtUtc.ToString("f", CultureInfo.GetCultureInfo("fr-FR")),
-            ["JoinUrl"] = joinUrl
+            ["JoinUrl"] = joinUrl,
+            ["AccessCode"] = Fallback(accessCode, "communiqué par l’organisateur")
         }, ct);
 
     public Task SendMeetingMinutesAsync(string to, string recipientName, string title, string minutesUrl, CancellationToken ct = default) =>

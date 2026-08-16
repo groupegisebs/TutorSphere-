@@ -68,6 +68,10 @@
                                     {
                                         <a class="cc-btn cc-btn-sm" href="@($"/expert/meetings/{m.Id}/minutes")">Compte rendu</a>
                                     }
+                                    @if (m.IsOrganizer && m.Status != 4)
+                                    {
+                                        <button type="button" class="cc-btn cc-btn-sm" @onclick="() => OpenCodeAsync(m)">Code d’accès</button>
+                                    }
                                     @if (m.Status is 0 or 1 && m.IsOrganizer)
                                     {
                                         <button type="button" class="cc-btn cc-btn-sm" @onclick="() => CancelAsync(m.Id)">Annuler</button>
@@ -85,10 +89,63 @@
     </NotAuthorized>
 </AuthorizeView>
 
+@if (_codeMeetingId is not null)
+{
+    <div class="ts-modal-backdrop" @onclick="CloseCode">
+        <div class="ts-modal" @onclick:stopPropagation="true">
+            <div class="ts-modal-header">
+                <h2>Code d’accès — @_codeTitle</h2>
+                <button class="ts-modal-close" @onclick="CloseCode"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <div class="ts-modal-body">
+                @if (!string.IsNullOrEmpty(_codeError))
+                {
+                    <div class="alert alert-danger">@_codeError</div>
+                }
+                <p class="text-muted">
+                    Les membres du groupe saisissent ce code pour entrer dans la salle. Il est rappelé dans les
+                    invitations et les rappels envoyés par courriel.
+                </p>
+                <label class="form-label">Code de la réunion</label>
+                <input class="form-control mtg-code-input" maxlength="16" autocomplete="off" @bind="_codeInput" />
+                <p class="text-muted small mt-1">4 à 16 lettres ou chiffres. Laissez vide et régénérez pour un nouveau code tiré au hasard.</p>
+                @if (_codeGuests.Count > 0)
+                {
+                    <hr />
+                    <label class="form-label">Codes d’invitation des invités externes</label>
+                    <p class="text-muted small">
+                        Chaque invité reçoit son propre code dans son invitation et le saisit une seule fois.
+                        Renvoyer une invitation attribue un nouveau code.
+                    </p>
+                    <ul class="list-unstyled mb-0">
+                        @foreach (var g in _codeGuests)
+                        {
+                            <li class="d-flex justify-content-between align-items-center gap-2 py-1">
+                                <span>@g.FullName <span class="text-muted small">@g.Email</span></span>
+                                <strong class="mtg-code-input">@(g.AccessCode ?? "—")</strong>
+                            </li>
+                        }
+                    </ul>
+                }
+            </div>
+            <div class="ts-modal-footer">
+                <button type="button" class="cc-btn" disabled="@_codeBusy" @onclick="RegenerateCodeAsync">Régénérer</button>
+                <button type="button" class="cc-btn cc-btn-primary" disabled="@_codeBusy" @onclick="SaveCodeAsync">Enregistrer</button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
     private readonly List<Item> _items = [];
     private bool _loading = true;
     private string? _error;
+    private Guid? _codeMeetingId;
+    private string _codeTitle = "";
+    private string _codeInput = "";
+    private string? _codeError;
+    private bool _codeBusy;
+    private readonly List<GuestCode> _codeGuests = [];
 
     protected override async Task OnInitializedAsync()
     {
@@ -100,6 +157,43 @@
         }
         catch (Exception ex) { _error = ex.Message; }
         finally { _loading = false; }
+    }
+
+    private async Task OpenCodeAsync(Item m)
+    {
+        _codeMeetingId = m.Id;
+        _codeTitle = m.Title;
+        _codeError = null;
+        _codeInput = "";
+        _codeGuests.Clear();
+        var detail = await Api.GetAsync<CodeDetail>($"api/expert/meetings/{m.Id}");
+        _codeInput = detail?.AccessCode ?? "";
+        if (detail?.ExternalGuests is { Count: > 0 } guests)
+            _codeGuests.AddRange(guests.Where(g => !g.Revoked));
+    }
+
+    private void CloseCode()
+    {
+        _codeMeetingId = null;
+        _codeError = null;
+    }
+
+    private Task SaveCodeAsync() => ApplyCodeAsync(_codeInput);
+    private Task RegenerateCodeAsync() => ApplyCodeAsync(null);
+
+    private async Task ApplyCodeAsync(string? code)
+    {
+        if (_codeMeetingId is not Guid id) return;
+        _codeError = null;
+        _codeBusy = true;
+        try
+        {
+            var r = await Api.PostWithErrorAsync<CodeDetail>(
+                $"api/expert/meetings/{id}/access-code", new { code });
+            if (r.Error is not null) { _codeError = r.Error; return; }
+            _codeInput = r.Value?.Code ?? _codeInput;
+        }
+        finally { _codeBusy = false; }
     }
 
     private async Task CancelAsync(Guid id)
@@ -118,6 +212,22 @@
         4 => "Annulée",
         _ => "—"
     };
+
+    /// <summary>Le détail expose le code en clair uniquement aux organisateurs et modérateurs.</summary>
+    private sealed class CodeDetail
+    {
+        public string? AccessCode { get; set; }
+        public string? Code { get; set; }
+        public List<GuestCode>? ExternalGuests { get; set; }
+    }
+
+    private sealed class GuestCode
+    {
+        public string FullName { get; set; } = "";
+        public string Email { get; set; } = "";
+        public bool Revoked { get; set; }
+        public string? AccessCode { get; set; }
+    }
 
     private sealed class Item
     {

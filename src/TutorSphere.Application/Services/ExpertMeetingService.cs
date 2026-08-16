@@ -38,7 +38,8 @@ public interface IExpertMeetingService
     Task<GuestEnterResult> EnterGuestAsync(GuestEnterRequest request, CancellationToken ct = default);
     Task RevokeGuestAsync(string userId, Guid meetingId, Guid guestId, CancellationToken ct = default);
     Task ResendGuestAsync(string userId, Guid meetingId, Guid guestId, CancellationToken ct = default);
-    Task EnsureCanJoinLiveAsync(string? userId, Guid meetingId, string? guestToken, CancellationToken ct = default);
+    Task<string> SetAccessCodeAsync(string userId, Guid meetingId, string? code, CancellationToken ct = default);
+    Task EnsureCanJoinLiveAsync(string? userId, Guid meetingId, string? guestToken, string? accessCode = null, CancellationToken ct = default);
     Task PersistChatAsync(Guid meetingId, string senderUserId, string senderName, string body, CancellationToken ct = default);
     Task ToggleRecordingAsync(string userId, Guid meetingId, bool recording, CancellationToken ct = default);
     Task SetMinutesShareAsync(string userId, Guid meetingId, MeetingMinutesShare share, CancellationToken ct = default);
@@ -105,6 +106,11 @@ public class ExpertMeetingService(
         string userId, Guid meetingId, bool asPlatformAdmin, Guid? actAsGroupId, CancellationToken ct = default)
     {
         var meeting = RequireVisible(userId, meetingId, asPlatformAdmin, actAsGroupId);
+        if (meeting.AccessCodeHash is null)
+        {
+            ApplyAccessCode(meeting, null);
+            await db.SaveChangesAsync(ct);
+        }
         return await MapDetailAsync(userId, meeting, asPlatformAdmin, ct);
     }
 
@@ -161,7 +167,6 @@ public class ExpertMeetingService(
             Status = status,
             IsImmediate = mode == "start",
             WaitingRoomEnabled = request.WaitingRoomEnabled,
-            AccessCodeHash = string.IsNullOrWhiteSpace(request.AccessCode) ? null : Hash(request.AccessCode.Trim()),
             AllowMic = request.AllowMic,
             AllowCamera = request.AllowCamera,
             AllowScreenShare = request.AllowScreenShare,
@@ -175,6 +180,7 @@ public class ExpertMeetingService(
             SendEmailInvites = request.SendEmailInvites,
             LiveStartedAtUtc = status == MeetingStatus.Live ? DateTime.UtcNow : null
         };
+        ApplyAccessCode(meeting, request.AccessCode);
         if (request.AiEnabled)
         {
             if (!HasPerm(userId, scope.PrimaryGroupId, asPlatformAdmin, GroupMemberPermissionCatalog.MeetingsEnableAi))
@@ -228,6 +234,7 @@ public class ExpertMeetingService(
                     FullName = string.IsNullOrWhiteSpace(g.FullName) ? g.Email.Trim() : g.FullName.Trim(),
                     Email = g.Email.Trim(),
                     TokenHash = Hash(token),
+                    AccessCode = GenerateAccessCode(),
                     TokenExpiresAtUtc = (start ?? DateTime.UtcNow).AddHours(36)
                 };
                 db.Add(guest);
@@ -535,9 +542,10 @@ public class ExpertMeetingService(
         var guest = FindGuestByToken(token);
         var meeting = db.Meetings.First(m => m.Id == guest.MeetingId);
         var org = contacts.GetAsync(meeting.OrganizerUserId, ct).GetAwaiter().GetResult();
+        // L'invité saisit toujours un code : le sien, reçu dans son invitation.
         return Task.FromResult(new GuestPreviewDto(
             meeting.Id, meeting.Title, meeting.StartAtUtc, org?.DisplayName ?? "Organisateur",
-            meeting.AccessCodeHash is not null, meeting.WaitingRoomEnabled,
+            true, meeting.WaitingRoomEnabled,
             meeting.RecordingEnabled, meeting.AiActivatedByOrganizer));
     }
 
@@ -551,26 +559,20 @@ public class ExpertMeetingService(
         var meeting = db.Meetings.First(m => m.Id == guest.MeetingId);
         if (meeting.Locked)
             throw new InvalidOperationException("La réunion est verrouillée.");
-        if (meeting.AccessCodeHash is not null)
+        // Invitations émises avant les codes personnels : on en crée un et on l'envoie une fois.
+        if (string.IsNullOrWhiteSpace(guest.AccessCode))
         {
-            if (string.IsNullOrWhiteSpace(request.AccessCode) || !SlowEquals(meeting.AccessCodeHash, Hash(request.AccessCode.Trim())))
-                throw new InvalidOperationException("Code d’accès incorrect.");
+            var issued = GenerateAccessCode();
+            guest.AccessCode = issued;
+            await db.SaveChangesAsync(ct);
+            await email.SendMeetingGuestCodeAsync(guest.Email, guest.FullName, meeting.Title, issued, ct);
+            throw new InvalidOperationException("Un code de vérification a été envoyé à votre courriel.");
         }
 
-        if (guest.VerifiedAtUtc is null)
-        {
-            if (string.IsNullOrWhiteSpace(guest.EmailVerifyCodeHash))
-            {
-                var code = RandomNumberGenerator.GetInt32(100000, 999999).ToString();
-                guest.EmailVerifyCodeHash = Hash(code);
-                await db.SaveChangesAsync(ct);
-                await email.SendMeetingGuestCodeAsync(guest.Email, guest.FullName, meeting.Title, code, ct);
-                throw new InvalidOperationException("Un code de vérification a été envoyé à votre courriel.");
-            }
-            if (string.IsNullOrWhiteSpace(request.EmailCode) || !SlowEquals(guest.EmailVerifyCodeHash, Hash(request.EmailCode.Trim())))
-                throw new InvalidOperationException("Code de vérification incorrect.");
-            guest.VerifiedAtUtc = DateTime.UtcNow;
-        }
+        var provided = NormalizeAccessCode(request.AccessCode ?? request.EmailCode);
+        if (provided is null || !SlowEquals(Hash(guest.AccessCode), Hash(provided)))
+            throw new InvalidOperationException("Code d’invitation incorrect.");
+        guest.VerifiedAtUtc ??= DateTime.UtcNow;
 
         if (!string.IsNullOrWhiteSpace(request.DisplayName))
             guest.FullName = request.DisplayName.Trim();
@@ -596,8 +598,11 @@ public class ExpertMeetingService(
         var meeting = db.Meetings.First(m => m.Id == meetingId);
         var guest = db.MeetingExternalGuests.FirstOrDefault(g => g.Id == guestId && g.MeetingId == meetingId)
             ?? throw new InvalidOperationException("Invité introuvable.");
+        // Nouveau lien = nouveau code personnel : l'ancien couple ne doit plus ouvrir la salle.
         var token = NewToken();
         guest.TokenHash = Hash(token);
+        guest.AccessCode = GenerateAccessCode();
+        guest.VerifiedAtUtc = null;
         guest.TokenExpiresAtUtc = DateTime.UtcNow.AddHours(36);
         guest.RevokedAtUtc = null;
         await db.SaveChangesAsync(ct);
@@ -606,10 +611,21 @@ public class ExpertMeetingService(
         await email.SendMeetingInvitationAsync(
             guest.Email, guest.FullName, meeting.Title, meeting.StartAtUtc ?? DateTime.UtcNow,
             meeting.TimeZoneId, org?.DisplayName ?? "Organisateur", meeting.Agenda, join,
-            meeting.RecordingEnabled, meeting.AiEnabled, true, guest.TokenExpiresAtUtc, ct);
+            meeting.RecordingEnabled, meeting.AiEnabled, true, guest.TokenExpiresAtUtc, guest.AccessCode, ct);
     }
 
-    public Task EnsureCanJoinLiveAsync(string? userId, Guid meetingId, string? guestToken, CancellationToken ct = default)
+    public async Task<string> SetAccessCodeAsync(string userId, Guid meetingId, string? code, CancellationToken ct = default)
+    {
+        var meeting = RequireModerator(userId, meetingId);
+        var applied = ApplyAccessCode(meeting, code);
+        meeting.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        Audit(meetingId, userId, "access-code", string.IsNullOrWhiteSpace(code) ? "regenerated" : "set");
+        return applied;
+    }
+
+    public Task EnsureCanJoinLiveAsync(
+        string? userId, Guid meetingId, string? guestToken, string? accessCode = null, CancellationToken ct = default)
     {
         var meeting = db.Meetings.FirstOrDefault(m => m.Id == meetingId)
             ?? throw new InvalidOperationException("Réunion introuvable.");
@@ -620,6 +636,10 @@ public class ExpertMeetingService(
             var guest = FindGuestByToken(guestToken);
             if (guest.MeetingId != meetingId || guest.RevokedAtUtc is not null)
                 throw new InvalidOperationException("Invitation externe invalide.");
+            // Le code personnel de l'invité est contrôlé sur la page d'accès :
+            // sans vérification aboutie, le lien seul ne suffit pas pour entrer.
+            if (guest.VerifiedAtUtc is null)
+                throw new InvalidOperationException("Vérifiez votre invitation avant d’entrer.");
             return Task.CompletedTask;
         }
         if (string.IsNullOrWhiteSpace(userId))
@@ -629,6 +649,7 @@ public class ExpertMeetingService(
                 && p.Status != MeetingParticipantStatus.Denied && p.Status != MeetingParticipantStatus.Removed);
         if (!allowed)
             throw new InvalidOperationException("Vous n’êtes pas invité à cette réunion.");
+        EnsureAccessCodeMatches(meeting, accessCode);
         return Task.CompletedTask;
     }
 
@@ -785,13 +806,15 @@ public class ExpertMeetingService(
 
                     var token = NewToken();
                     guest.TokenHash = Hash(token);
+                    guest.AccessCode = GenerateAccessCode();
+                    guest.VerifiedAtUtc = null;
                     guest.TokenExpiresAtUtc = DateTime.UtcNow.AddHours(36);
                     guest.RevokedAtUtc = null;
                     await email.SendMeetingInvitationAsync(
                         guest.Email, guest.FullName, meeting.Title, meeting.StartAtUtc ?? DateTime.UtcNow,
                         meeting.TimeZoneId, organizer, meeting.Agenda,
                         $"{web}/meet/join/{Uri.EscapeDataString(token)}",
-                        meeting.RecordingEnabled, meeting.AiEnabled, true, guest.TokenExpiresAtUtc, ct);
+                        meeting.RecordingEnabled, meeting.AiEnabled, true, guest.TokenExpiresAtUtc, guest.AccessCode, ct);
                 }
                 else
                 {
@@ -802,7 +825,7 @@ public class ExpertMeetingService(
                         inv.RecipientEmail, contact?.DisplayName ?? "Membre du groupe", meeting.Title,
                         meeting.StartAtUtc ?? DateTime.UtcNow, meeting.TimeZoneId, organizer, meeting.Agenda,
                         $"{web}/expert/meetings/{meeting.Id}/room",
-                        meeting.RecordingEnabled, meeting.AiEnabled, false, null, ct);
+                        meeting.RecordingEnabled, meeting.AiEnabled, false, null, meeting.AccessCode, ct);
                 }
 
                 inv.Status = MeetingInvitationStatus.Sent;
@@ -833,7 +856,8 @@ public class ExpertMeetingService(
             if (c is null || string.IsNullOrWhiteSpace(c.Value.Email)) continue;
             try
             {
-                await email.SendMeetingReminderAsync(c.Value.Email, c.Value.DisplayName, meeting.Title, meeting.StartAtUtc ?? now, join, ct);
+                await email.SendMeetingReminderAsync(
+                    c.Value.Email, c.Value.DisplayName, meeting.Title, meeting.StartAtUtc ?? now, join, meeting.AccessCode, ct);
                 db.Add(new MeetingNotification
                 {
                     MeetingId = meeting.Id,
@@ -936,12 +960,17 @@ public class ExpertMeetingService(
     {
         var meeting = db.Meetings.FirstOrDefault(m => m.Id == meetingId)
             ?? throw new InvalidOperationException("Réunion introuvable.");
-        var p = db.MeetingParticipants.FirstOrDefault(x => x.MeetingId == meetingId && x.UserId == userId);
-        var moderator = meeting.OrganizerUserId == userId
-            || p?.Role is MeetingParticipantRole.Organizer or MeetingParticipantRole.CoOrganizer
-            || HasPerm(userId, meeting.OrganizerGroupId, false, GroupMemberPermissionCatalog.MeetingsModerate);
-        if (!moderator) throw new InvalidOperationException("Action réservée à l’organisateur ou au modérateur.");
+        if (!IsModerator(userId, meeting, false))
+            throw new InvalidOperationException("Action réservée à l’organisateur ou au modérateur.");
         return meeting;
+    }
+
+    private bool IsModerator(string userId, Meeting meeting, bool asPlatformAdmin)
+    {
+        if (meeting.OrganizerUserId == userId) return true;
+        var p = db.MeetingParticipants.FirstOrDefault(x => x.MeetingId == meeting.Id && x.UserId == userId);
+        return p?.Role is MeetingParticipantRole.Organizer or MeetingParticipantRole.CoOrganizer
+            || HasPerm(userId, meeting.OrganizerGroupId, asPlatformAdmin, GroupMemberPermissionCatalog.MeetingsModerate);
     }
 
     private void EnsureCan(string userId, Guid? groupId, bool asPlatformAdmin, string key)
@@ -996,8 +1025,12 @@ public class ExpertMeetingService(
                     p.Role, p.Status, p.DurationSeconds, true));
             }
         }
+        // Le code en clair reste réservé aux organisateurs et modérateurs : les autres le reçoivent par courriel.
+        var canSeeCode = IsModerator(userId, meeting, asPlatformAdmin);
         var guests = db.MeetingExternalGuests.Where(g => g.MeetingId == meeting.Id).ToList()
-            .Select(g => new MeetingExternalGuestDto(g.Id, g.FullName, g.Email, g.TokenExpiresAtUtc, g.RevokedAtUtc is not null, g.VerifiedAtUtc is not null))
+            .Select(g => new MeetingExternalGuestDto(
+                g.Id, g.FullName, g.Email, g.TokenExpiresAtUtc, g.RevokedAtUtc is not null,
+                g.VerifiedAtUtc is not null, canSeeCode ? g.AccessCode : null))
             .ToList();
         var rec = db.MeetingRecurrences.Any(r => r.MeetingId == meeting.Id);
         return new MeetingDetailDto(
@@ -1006,7 +1039,9 @@ public class ExpertMeetingService(
             meeting.OrganizerGroupId, meeting.WaitingRoomEnabled, meeting.AllowMic, meeting.AllowCamera, meeting.AllowScreenShare,
             meeting.RecordingEnabled, meeting.TranscriptionEnabled, meeting.AiEnabled, meeting.AiActivatedByOrganizer,
             meeting.Locked, meeting.Language, rec, groupIds, partDtos, guests,
-            PermissionsFor(userId, meeting.OrganizerGroupId, asPlatformAdmin));
+            PermissionsFor(userId, meeting.OrganizerGroupId, asPlatformAdmin),
+            meeting.AccessCodeHash is not null,
+            canSeeCode ? meeting.AccessCode : null);
     }
 
     private async Task SendInvitesAsync(Meeting meeting, List<(MeetingExternalGuest Guest, string Token)> guests, CancellationToken ct)
@@ -1033,7 +1068,7 @@ public class ExpertMeetingService(
                 await email.SendMeetingInvitationAsync(
                     c.Value.Email, c.Value.DisplayName, meeting.Title, meeting.StartAtUtc ?? DateTime.UtcNow,
                     meeting.TimeZoneId, organizer, meeting.Agenda, memberJoin,
-                    meeting.RecordingEnabled, meeting.AiEnabled, false, null, ct);
+                    meeting.RecordingEnabled, meeting.AiEnabled, false, null, meeting.AccessCode, ct);
                 inv.Status = MeetingInvitationStatus.Sent;
                 inv.LastAttemptAtUtc = DateTime.UtcNow;
                 inv.AttemptCount = 1;
@@ -1071,7 +1106,7 @@ public class ExpertMeetingService(
                 await email.SendMeetingInvitationAsync(
                     guest.Email, guest.FullName, meeting.Title, meeting.StartAtUtc ?? DateTime.UtcNow,
                     meeting.TimeZoneId, organizer, meeting.Agenda, join,
-                    meeting.RecordingEnabled, meeting.AiEnabled, true, guest.TokenExpiresAtUtc, ct);
+                    meeting.RecordingEnabled, meeting.AiEnabled, true, guest.TokenExpiresAtUtc, guest.AccessCode, ct);
                 inv.Status = MeetingInvitationStatus.Sent;
                 inv.AttemptCount = 1;
                 inv.LastAttemptAtUtc = DateTime.UtcNow;
@@ -1150,6 +1185,42 @@ public class ExpertMeetingService(
         ExpertGroupMemberRole.CommitteeLead => "Chef comité",
         _ => "Expert"
     };
+
+    /// <summary>Applique le code fourni par l'organisateur, ou en génère un si la saisie est vide.</summary>
+    private static string ApplyAccessCode(Meeting meeting, string? requested)
+    {
+        var code = NormalizeAccessCode(requested) ?? GenerateAccessCode();
+        meeting.AccessCode = code;
+        meeting.AccessCodeHash = Hash(code);
+        return code;
+    }
+
+    private static void EnsureAccessCodeMatches(Meeting meeting, string? provided)
+    {
+        if (meeting.AccessCodeHash is null) return;
+        var code = NormalizeAccessCode(provided);
+        if (code is null || !SlowEquals(meeting.AccessCodeHash, Hash(code)))
+            throw new InvalidOperationException("Code de réunion incorrect.");
+    }
+
+    private static string? NormalizeAccessCode(string? code)
+    {
+        if (string.IsNullOrWhiteSpace(code)) return null;
+        var cleaned = new string(code.Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
+        if (cleaned.Length is < 4 or > 16)
+            throw new InvalidOperationException("Le code doit contenir de 4 à 16 lettres ou chiffres.");
+        return cleaned;
+    }
+
+    /// <summary>Alphabet sans caractères ambigus (0/O, 1/I) pour un code dicté au téléphone.</summary>
+    private static string GenerateAccessCode()
+    {
+        const string alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        var chars = new char[6];
+        for (var i = 0; i < chars.Length; i++)
+            chars[i] = alphabet[RandomNumberGenerator.GetInt32(alphabet.Length)];
+        return new string(chars);
+    }
 
     private static string Hash(string value) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));

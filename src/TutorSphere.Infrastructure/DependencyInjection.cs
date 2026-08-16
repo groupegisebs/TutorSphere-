@@ -218,6 +218,13 @@ public static class DependencyInjection
             ALTER TABLE "ParentSupportRequestsSet" ADD COLUMN IF NOT EXISTS "Reason" character varying(40);
             """);
 
+        // Codes de réunion : sans ces colonnes, l'ouverture d'une réunion échoue en 500.
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            ALTER TABLE "MeetingsSet" ADD COLUMN IF NOT EXISTS "AccessCode" character varying(16);
+            ALTER TABLE "MeetingExternalGuestsSet" ADD COLUMN IF NOT EXISTS "AccessCode" character varying(16);
+            """);
+
         await db.Database.ExecuteSqlRawAsync(
             """ALTER TABLE "LessonsSet" ADD COLUMN IF NOT EXISTS "DeliveredByTenantId" uuid;""");
         await db.Database.ExecuteSqlRawAsync(
