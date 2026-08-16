@@ -352,7 +352,7 @@ else if (_detail is not null)
                     </button>
                     <button type="button" class="@TabCls("people")" @onclick='() => OpenTab("people")'>
                         <i class="bi bi-people-fill"></i><span>Participants (@(1 + _peers.Count))</span>
-                        @if (_isOrganizer && _waitingList.Count > 0)
+                        @if (!_waiting && _waitingList.Count > 0)
                         {
                             <span class="mtg-tab-badge" title="En attente d’admission">@_waitingList.Count</span>
                         }
@@ -399,7 +399,8 @@ else if (_detail is not null)
                             <button type="button" class="mtg-btn-primary" @onclick="OpenInvite"><i class="bi bi-plus-lg"></i> Inviter</button>
                         </div>
 
-                        @if (_isOrganizer)
+                        @* Toute personne déjà dans la salle peut faire entrer les arrivants. *@
+                        @if (!_waiting)
                         {
                             <div class="mtg-wait-head">
                                 <h5 class="mtg-group">
@@ -414,20 +415,27 @@ else if (_detail is not null)
                                     {
                                         <button type="button" class="mtg-btn-mini" disabled="@_waitBusy" @onclick="AdmitAllAsync">Tout admettre</button>
                                     }
-                                    <button type="button" class="mtg-wait-toggle @(WaitingRoomOn ? "is-on" : "")"
-                                            disabled="@_waitBusy" @onclick="ToggleWaitingRoomAsync"
-                                            title="@(WaitingRoomOn ? "Les arrivants patientent jusqu’à votre accord" : "Les invités entrent directement")">
-                                        <i class="bi @(WaitingRoomOn ? "bi-shield-check" : "bi-shield-slash")"></i>
-                                        @(WaitingRoomOn ? "Filtrage activé" : "Filtrage désactivé")
+                                    <button type="button" class="mtg-btn-mini" disabled="@_waitBusy" title="Actualiser la file"
+                                            @onclick="RefreshWaitingAsync">
+                                        <i class="bi bi-arrow-clockwise"></i>
                                     </button>
+                                    @if (_isOrganizer)
+                                    {
+                                        <button type="button" class="mtg-wait-toggle @(WaitingRoomOn ? "is-on" : "")"
+                                                disabled="@_waitBusy" @onclick="ToggleWaitingRoomAsync"
+                                                title="@(WaitingRoomOn ? "Les arrivants patientent jusqu’à votre accord" : "Les invités entrent directement")">
+                                            <i class="bi @(WaitingRoomOn ? "bi-shield-check" : "bi-shield-slash")"></i>
+                                            @(WaitingRoomOn ? "Filtrage activé" : "Filtrage désactivé")
+                                        </button>
+                                    }
                                 </div>
                             </div>
                             @if (_waitingList.Count == 0)
                             {
                                 <p class="mtg-empty mtg-empty-sm">
-                                    @(WaitingRoomOn
-                                        ? "Personne n’attend. Les nouveaux arrivants apparaîtront ici avant d’entrer."
-                                        : "Filtrage désactivé : les invités rejoignent la salle sans validation.")
+                                    @(_isOrganizer && !WaitingRoomOn
+                                        ? "Filtrage désactivé : les invités rejoignent la salle sans validation."
+                                        : "Personne n’attend. Les personnes qui cliquent sur leur lien d’invitation apparaîtront ici avant d’entrer.")
                                 </p>
                             }
                             @foreach (var w in _waitingList)
@@ -780,14 +788,20 @@ else if (_detail is not null)
         try { await JS.InvokeVoidAsync("classroomMedia.setEndedCallback", _jsRef); } catch { }
         if (!string.IsNullOrEmpty(Rt.ConnectionId))
             try { await JS.InvokeVoidAsync("classroomRtc.setSelfId", Rt.ConnectionId); } catch { }
+        // Le rôle définitif est décidé par le serveur ; cette valeur n'est qu'une indication.
         var role = _isOrganizer ? "Organizer" : string.IsNullOrEmpty(GuestToken) ? "Participant" : "ExternalGuest";
-        if (_detail?.WaitingRoomEnabled == true && !_isOrganizer)
-            role = "Waiting";
         await Rt.JoinAsync(Id, _selfName, role, _mic, _cam, GuestToken, _code);
         // Le média démarre après le premier rendu de la salle : la balise vidéo locale doit exister.
         _inRoom = true;
+        await Rt.RequestWaitingListAsync(Id);
         _timer = new System.Timers.Timer(1000);
-        _timer.Elapsed += (_, _) => { _elapsed++; _ = InvokeAsync(StateHasChanged); };
+        _timer.Elapsed += (_, _) =>
+        {
+            _elapsed++;
+            // Filet de sécurité : une diffusion perdue (reconnexion du hub) ne doit pas cacher la file d'attente.
+            if (_elapsed % 10 == 0 && !_waiting) _ = Rt.RequestWaitingListAsync(Id);
+            _ = InvokeAsync(StateHasChanged);
+        };
         _timer.Start();
         if (_detail is { Status: 0 or 1 } && _isOrganizer)
             await Api.PostWithErrorAsync<object>($"api/expert/meetings/{Id}/start", new { });
@@ -867,10 +881,10 @@ else if (_detail is not null)
             var arrivals = list.Where(w => _waitingList.All(x => x.ConnectionId != w.ConnectionId)).ToList();
             _waitingList.Clear();
             _waitingList.AddRange(list);
-            if (_isOrganizer && arrivals.Count > 0)
+            if (!_waiting && arrivals.Count > 0)
             {
                 foreach (var w in arrivals)
-                    Toast($"{w.DisplayName} attend votre accord");
+                    Toast($"{w.DisplayName} attend d’être admis");
                 _tab = "people";
             }
             StateHasChanged();
@@ -1200,6 +1214,12 @@ else if (_detail is not null)
 
     private bool WaitingRoomOn => _detail?.WaitingRoomEnabled == true;
 
+    private async Task RefreshWaitingAsync()
+    {
+        await Rt.RequestWaitingListAsync(Id);
+        Toast("File d’attente actualisée");
+    }
+
     private async Task AdmitAsync(string connectionId)
     {
         var name = _waitingList.FirstOrDefault(w => w.ConnectionId == connectionId)?.DisplayName;
@@ -1327,6 +1347,7 @@ else if (_detail is not null)
         _tab = tab;
         _menu = null;
         if (tab == "chat") _unread = 0;
+        if (tab == "people" && !_waiting) _ = Rt.RequestWaitingListAsync(Id);
     }
 
     private bool SelfHasVideo => _cam || _sharing;

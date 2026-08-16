@@ -199,9 +199,18 @@ public class MeetingHub(IServiceScopeFactory scopes) : Hub
         await RemovePeerAsync(targetConnectionId, GroupName(meetingId), meetingId);
     }
 
+    /// <summary>Renvoie la file d'attente au demandeur : rattrape une diffusion manquée (reconnexion, arrivée tardive).</summary>
+    public async Task RequestWaitingList(Guid meetingId)
+    {
+        var group = GroupName(meetingId);
+        if (!PeersByMeeting.TryGetValue(group, out var peers)) return;
+        await Clients.Caller.SendAsync("WaitingUpdated", meetingId, WaitingList(peers));
+    }
+
     public async Task AdmitWaiting(Guid meetingId, string connectionId)
     {
-        if (!IsModerator()) return;
+        // Toute personne déjà entrée peut faire entrer les suivantes : l'organisateur n'est pas toujours devant l'écran.
+        if (!IsInRoom()) return;
         var group = GroupName(meetingId);
         if (!PeersByMeeting.TryGetValue(group, out var peers) || !peers.TryGetValue(connectionId, out var peer))
             return;
@@ -226,7 +235,7 @@ public class MeetingHub(IServiceScopeFactory scopes) : Hub
 
     public async Task DenyWaiting(Guid meetingId, string connectionId)
     {
-        if (!IsModerator()) return;
+        if (!IsInRoom()) return;
         await Clients.Client(connectionId).SendAsync("Denied", meetingId);
         await RemovePeerAsync(connectionId, GroupName(meetingId), meetingId);
     }
@@ -282,6 +291,16 @@ public class MeetingHub(IServiceScopeFactory scopes) : Hub
             || !peers.TryGetValue(Context.ConnectionId, out var peer))
             return;
         await Clients.Group(group).SendAsync("PollVote", meetingId, peer.DisplayName, optionIndex);
+    }
+
+    /// <summary>Présent dans la salle et déjà admis : condition minimale pour agir sur la file d'attente.</summary>
+    private bool IsInRoom()
+    {
+        if (!ConnectionToMeeting.TryGetValue(Context.ConnectionId, out var group)
+            || !PeersByMeeting.TryGetValue(group, out var peers)
+            || !peers.TryGetValue(Context.ConnectionId, out var peer))
+            return false;
+        return !peer.Waiting;
     }
 
     private bool IsModerator()

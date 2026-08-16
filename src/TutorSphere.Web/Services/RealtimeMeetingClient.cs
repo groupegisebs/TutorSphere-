@@ -86,6 +86,7 @@ public sealed class RealtimeMeetingClient : IAsyncDisposable
     public Task ForceMuteAsync(Guid id, string target) => Send("ForceMute", id, target);
     public Task StopShareAsync(Guid id, string target) => Send("StopShare", id, target);
     public Task KickAsync(Guid id, string target) => Send("KickPeer", id, target);
+    public Task RequestWaitingListAsync(Guid id) => Send("RequestWaitingList", id);
     public Task AdmitAsync(Guid id, string connectionId) => Send("AdmitWaiting", id, connectionId);
     public Task DenyAsync(Guid id, string connectionId) => Send("DenyWaiting", id, connectionId);
     public Task NotifyLockedAsync(Guid id, bool locked) => Send("NotifyLocked", id, locked);
