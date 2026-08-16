@@ -25,45 +25,14 @@
 
         <div class="nav-item">
             <NavLink class="nav-link" href="tutor/dashboard" Match="NavLinkMatch.All">
-                <i class="bi bi-speedometer2" aria-hidden="true"></i>
-                <span>@L["Nav_Dashboard"]</span>
+                <i class="bi bi-house-door" aria-hidden="true"></i>
+                <span>@L["Nav_Home"]</span>
             </NavLink>
         </div>
 
-        <div class="nav-group @(IsOpen("people") ? "is-open" : "")">
-            <button type="button" class="nav-group-toggle" @onclick="@(() => Toggle("people"))" @onclick:stopPropagation="true">
-                <span>@L["Nav_Section_People"]</span>
-                <i class="bi bi-chevron-down nav-group-chevron" aria-hidden="true"></i>
-            </button>
-            <div class="nav-group-items">
-                <div class="nav-item">
-                    <NavLink class="nav-link" href="tutor/students">
-                        <i class="bi bi-people" aria-hidden="true"></i>
-                        <span>@L["Nav_MyStudents"]</span>
-                    </NavLink>
-                </div>
-                <div class="nav-item">
-                    <NavLink class="nav-link" href="tutor/enrollments">
-                        <i class="bi bi-person-plus" aria-hidden="true"></i>
-                        <span>@L["Nav_Enrollments"]</span>
-                        @if (_pendingEnrollments > 0)
-                        {
-                            <span class="sidebar-badge">@_pendingEnrollments</span>
-                        }
-                    </NavLink>
-                </div>
-                <div class="nav-item">
-                    <NavLink class="nav-link" href="tutor/parents">
-                        <i class="bi bi-person-hearts" aria-hidden="true"></i>
-                        <span>@L["Nav_Parents"]</span>
-                    </NavLink>
-                </div>
-            </div>
-        </div>
-
-        <div class="nav-group @(IsOpen("teaching") ? "is-open" : "")">
-            <button type="button" class="nav-group-toggle" @onclick="@(() => Toggle("teaching"))" @onclick:stopPropagation="true">
-                <span>@L["Nav_Section_Teaching"]</span>
+        <div class="nav-group @(IsOpen("class") ? "is-open" : "")">
+            <button type="button" class="nav-group-toggle" @onclick="@(() => Toggle("class"))" @onclick:stopPropagation="true">
+                <span><i class="bi bi-easel2 me-2" aria-hidden="true"></i>@L["Nav_MyClass"]</span>
                 <i class="bi bi-chevron-down nav-group-chevron" aria-hidden="true"></i>
             </button>
             <div class="nav-group-items">
@@ -86,55 +55,94 @@
                     </NavLink>
                 </div>
                 <div class="nav-item">
-                    <NavLink class="nav-link" href="tutor/reports">
-                        <i class="bi bi-file-earmark-bar-graph" aria-hidden="true"></i>
-                        <span>@L["Nav_Reports"]</span>
-                    </NavLink>
-                </div>
-                <div class="nav-item">
                     <NavLink class="nav-link" href="tutor/documents">
                         <i class="bi bi-folder2-open" aria-hidden="true"></i>
                         <span>@L["Nav_Documents"]</span>
                     </NavLink>
                 </div>
                 <div class="nav-item">
-                    <NavLink class="nav-link" href="tutor/expert-remarks">
-                        <i class="bi bi-chat-left-text" aria-hidden="true"></i>
-                        <span>@L["Nav_ExpertRemarks"]</span>
+                    <NavLink class="nav-link" href="tutor/reports">
+                        <i class="bi bi-file-earmark-bar-graph" aria-hidden="true"></i>
+                        <span>@L["Nav_Reports"]</span>
                     </NavLink>
                 </div>
             </div>
         </div>
 
-        <div class="nav-group @(IsOpen("communication") ? "is-open" : "")">
-            <button type="button" class="nav-group-toggle" @onclick="@(() => Toggle("communication"))" @onclick:stopPropagation="true">
-                <span>@L["Nav_Section_Communication"]</span>
+        <div class="nav-group @(IsOpen("students") ? "is-open" : "")">
+            <button type="button" class="nav-group-toggle" @onclick="@(() => Toggle("students"))" @onclick:stopPropagation="true">
+                <span><i class="bi bi-people me-2" aria-hidden="true"></i>@L["Nav_MyStudents"]</span>
+                @if (_pendingEnrollments > 0)
+                {
+                    <span class="sidebar-badge">@_pendingEnrollments</span>
+                }
+                <i class="bi bi-chevron-down nav-group-chevron" aria-hidden="true"></i>
+            </button>
+            <div class="nav-group-items">
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="tutor/students">
+                        <i class="bi bi-person-lines-fill" aria-hidden="true"></i>
+                        <span>@L["Nav_MyStudents"]</span>
+                    </NavLink>
+                </div>
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="tutor/enrollments">
+                        <i class="bi bi-person-plus" aria-hidden="true"></i>
+                        <span>@L["Nav_Enrollments"]</span>
+                        @if (_pendingEnrollments > 0)
+                        {
+                            <span class="sidebar-badge">@_pendingEnrollments</span>
+                        }
+                    </NavLink>
+                </div>
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="tutor/parents">
+                        <i class="bi bi-person-hearts" aria-hidden="true"></i>
+                        <span>@L["Nav_Parents"]</span>
+                    </NavLink>
+                </div>
+            </div>
+        </div>
+
+        <div class="nav-group @(IsOpen("messages") ? "is-open" : "")">
+            <button type="button" class="nav-group-toggle" @onclick="@(() => Toggle("messages"))" @onclick:stopPropagation="true">
+                <span><i class="bi bi-chat-left-text me-2" aria-hidden="true"></i>@L["Nav_Messages"]</span>
+                @if (NotifyState.UnreadTotal > 0)
+                {
+                    <span class="sidebar-badge">@NotifyState.UnreadTotal</span>
+                }
                 <i class="bi bi-chevron-down nav-group-chevron" aria-hidden="true"></i>
             </button>
             <div class="nav-group-items">
                 <div class="nav-item">
                     <NavLink class="nav-link" href="tutor/messages">
-                        <i class="bi bi-chat-left-text" aria-hidden="true"></i>
-                        <span>@L["Nav_Messages"]</span>
+                        <i class="bi bi-inbox" aria-hidden="true"></i>
+                        <span>@L["Nav_Mailbox"]</span>
                         @if (NotifyState.UnreadTotal > 0)
                         {
                             <span class="sidebar-badge">@NotifyState.UnreadTotal</span>
                         }
                     </NavLink>
                 </div>
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="tutor/expert-remarks">
+                        <i class="bi bi-chat-square-quote" aria-hidden="true"></i>
+                        <span>@L["Nav_ExpertRemarks"]</span>
+                    </NavLink>
+                </div>
             </div>
         </div>
 
-        <div class="nav-group @(IsOpen("business") ? "is-open" : "")">
-            <button type="button" class="nav-group-toggle" @onclick="@(() => Toggle("business"))" @onclick:stopPropagation="true">
-                <span>@L["Nav_Section_Business"]</span>
+        <div class="nav-group @(IsOpen("revenue") ? "is-open" : "")">
+            <button type="button" class="nav-group-toggle" @onclick="@(() => Toggle("revenue"))" @onclick:stopPropagation="true">
+                <span><i class="bi bi-graph-up me-2" aria-hidden="true"></i>@L["Nav_MyRevenue"]</span>
                 <i class="bi bi-chevron-down nav-group-chevron" aria-hidden="true"></i>
             </button>
             <div class="nav-group-items">
                 <div class="nav-item">
-                    <NavLink class="nav-link" href="tutor/subscriptions">
-                        <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
-                        <span>@L["Nav_Subscriptions"]</span>
+                    <NavLink class="nav-link" href="tutor/revenue">
+                        <i class="bi bi-graph-up" aria-hidden="true"></i>
+                        <span>@L["Nav_Revenue"]</span>
                     </NavLink>
                 </div>
                 <div class="nav-item">
@@ -144,9 +152,9 @@
                     </NavLink>
                 </div>
                 <div class="nav-item">
-                    <NavLink class="nav-link" href="tutor/revenue">
-                        <i class="bi bi-graph-up" aria-hidden="true"></i>
-                        <span>@L["Nav_Revenue"]</span>
+                    <NavLink class="nav-link" href="tutor/subscriptions">
+                        <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
+                        <span>@L["Nav_Subscriptions"]</span>
                     </NavLink>
                 </div>
                 <div class="nav-item">
@@ -160,7 +168,7 @@
 
         <div class="nav-group @(IsOpen("account") ? "is-open" : "")">
             <button type="button" class="nav-group-toggle" @onclick="@(() => Toggle("account"))" @onclick:stopPropagation="true">
-                <span>@L["Nav_Section_Account"]</span>
+                <span><i class="bi bi-person-circle me-2" aria-hidden="true"></i>@L["Nav_MyAccount"]</span>
                 <i class="bi bi-chevron-down nav-group-chevron" aria-hidden="true"></i>
             </button>
             <div class="nav-group-items">
@@ -171,15 +179,21 @@
                     </NavLink>
                 </div>
                 <div class="nav-item">
-                    <NavLink class="nav-link" href="tutor/fiche-publique">
-                        <i class="bi bi-globe2" aria-hidden="true"></i>
-                        <span>@L["Nav_MySchool"]</span>
-                    </NavLink>
-                </div>
-                <div class="nav-item">
                     <NavLink class="nav-link nav-link-license-ok" href="tutor/activate">
                         <i class="bi bi-shield-check" aria-hidden="true"></i>
                         <span>@L["Activate_Badge"]</span>
+                    </NavLink>
+                </div>
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="tutor/onboarding">
+                        <i class="bi bi-mortarboard" aria-hidden="true"></i>
+                        <span>@L["Nav_Training"]</span>
+                    </NavLink>
+                </div>
+                <div class="nav-item">
+                    <NavLink class="nav-link" href="tutor/fiche-publique">
+                        <i class="bi bi-globe2" aria-hidden="true"></i>
+                        <span>@L["Nav_MySchool"]</span>
                     </NavLink>
                 </div>
             </div>
@@ -201,11 +215,11 @@
 
     private static readonly Dictionary<string, string[]> SectionRoutes = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["people"] = ["tutor/students", "tutor/enrollments", "tutor/parents"],
-        ["teaching"] = ["tutor/calendar", "tutor/lessons", "tutor/homework", "tutor/reports", "tutor/documents", "tutor/classroom", "tutor/expert-remarks"],
-        ["communication"] = ["tutor/messages"],
-        ["business"] = ["tutor/subscriptions", "tutor/payments", "tutor/revenue", "tutor/payout-settings"],
-        ["account"] = ["tutor/profile", "tutor/fiche-publique", "tutor/school", "tutor/activate"],
+        ["class"] = ["tutor/calendar", "tutor/lessons", "tutor/homework", "tutor/documents", "tutor/reports", "tutor/classroom"],
+        ["students"] = ["tutor/students", "tutor/enrollments", "tutor/parents"],
+        ["messages"] = ["tutor/messages", "tutor/expert-remarks"],
+        ["revenue"] = ["tutor/revenue", "tutor/payments", "tutor/subscriptions", "tutor/payout-settings"],
+        ["account"] = ["tutor/profile", "tutor/activate", "tutor/onboarding", "tutor/fiche-publique", "tutor/school"],
     };
 
     protected override async Task OnInitializedAsync()
@@ -230,7 +244,7 @@
             _pendingEnrollments = list.Count(s =>
                 string.Equals(s.Status, "Pending", StringComparison.OrdinalIgnoreCase));
             if (_pendingEnrollments > 0)
-                _openSections.Add("people");
+                _openSections.Add("students");
         }
         catch { /* keep 0 */ }
     }
@@ -251,7 +265,7 @@
 
             if (routes.Any(r => path.StartsWith(r, StringComparison.OrdinalIgnoreCase)))
                 _openSections.Add(section);
-            else if (!(section == "people" && _pendingEnrollments > 0))
+            else if (!(section == "students" && _pendingEnrollments > 0))
                 _openSections.Remove(section);
         }
     }

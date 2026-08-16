@@ -3,9 +3,9 @@
 @rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
 @inject LessonService LessonSvc
-@inject MessageService MessageSvc
 @inject AuthService Auth
 @inject ApiClient Api
+@inject NavigationManager Navigation
 
 <PageTitle>@L["PageTitle_TutorDashboard"]</PageTitle>
 
@@ -26,193 +26,115 @@
 
 <TutorPendingEnrollments />
 
-<div class="row g-3 mb-4">
-    <div class="col-sm-6 col-xl">
-        <StatCard Label="@L["Stat_MonthlyRevenue"]" Value="@FormatMoney(_monthlyRevenue)" Icon="bi-currency-dollar" Variant="revenue" />
-    </div>
-    <div class="col-sm-6 col-xl">
-        <StatCard Label="@L["Stat_ActiveSubscriptions"]" Value="@_activeSubscriptions.ToString()" Icon="bi-arrow-repeat" Variant="subscriptions" />
-    </div>
-    <div class="col-sm-6 col-xl">
-        <StatCard Label="@L["Stat_UpcomingLessons"]" Value="@_upcomingLessonsCount.ToString()" Icon="bi-calendar-check" Variant="lessons" Change="@L["Stat_Today"]" ChangeVariant="neutral" />
-    </div>
-    <div class="col-sm-6 col-xl">
-        <StatCard Label="@L["Stat_ActiveStudents"]" Value="@_activeStudents.ToString()" Icon="bi-people" Variant="students" />
-    </div>
-    <div class="col-sm-6 col-xl">
-        <StatCard Label="@L["Stat_PendingPayments"]" Value="@FormatMoney(_pendingPayments)" Icon="bi-hourglass-split" Variant="payments" ChangeVariant="negative" />
-    </div>
-</div>
-
-<div class="row g-4 mb-4">
-    <div class="col-lg-7">
+<div class="row g-4">
+    <!-- Ma classe -->
+    <div class="col-lg-6">
         <div class="section-card h-100">
             <div class="section-card-header">
-                <div>
-                    <h2>@L["TutorDashboard_RevenueChart"]</h2>
-                    <p class="dashboard-amount">@FormatMoney(_monthlyRevenue)</p>
-                </div>
+                <h2><i class="bi bi-easel2 me-2"></i>@L["TutorDashboard_MyClass"]</h2>
+                <a href="tutor/lessons" class="btn btn-sm btn-link">@L["Button_ViewAll"]</a>
             </div>
-            <div class="chart-placeholder chart-placeholder--line" aria-hidden="true">
-                <p class="text-muted px-3 py-4 mb-0">@L["TutorDashboard_RevenueHint"]</p>
-            </div>
-        </div>
-    </div>
-    <div class="col-lg-5">
-        <div class="section-card h-100">
-            <div class="section-card-header">
-                <h2>@L["Stat_UpcomingLessons"]</h2>
-                <a href="tutor/calendar" class="btn btn-sm btn-link">@L["Button_ViewAll"]</a>
-            </div>
-            @if (_lessonsLoading)
+            @if (_loading)
             {
                 <div class="ts-loading-state" style="padding: 1.5rem;">
                     <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
                     <span class="ms-2 text-muted">@L["Common_Loading"]</span>
                 </div>
             }
-            else if (UpcomingLessons.Count == 0)
+            else if (_nextSessions.Count == 0)
             {
                 <p class="ts-empty-inline px-3 py-3">@L["TutorDashboard_NoUpcomingLessons"]</p>
             }
             else
             {
                 <ul class="lesson-list">
-                    @foreach (var lesson in UpcomingLessons)
+                    @foreach (var s in _nextSessions)
                     {
                         <li class="lesson-list-item">
-                            <span class="lesson-time-left">@lesson.Time</span>
-                            <div class="lesson-avatar">@lesson.Initials</div>
+                            <span class="lesson-time-left">@s.TimeLabel</span>
                             <div class="lesson-info">
-                                <strong>@lesson.Student</strong>
-                                <span>@lesson.Subject</span>
+                                <strong>@s.Title</strong>
+                                <span>@s.Subject</span>
                             </div>
-                            <span class="lesson-mode-badge lesson-mode-badge--@lesson.ModeClass">@lesson.Mode</span>
+                            <button type="button" class="btn btn-sm btn-primary"
+                                    @onclick="async () => await JoinClassroomAsync(s)">
+                                <i class="bi bi-easel2 me-1"></i>@L["Lessons_OpenClassroom"]
+                            </button>
                         </li>
                     }
                 </ul>
             }
         </div>
     </div>
-</div>
 
-<div class="row g-4">
-    <div class="col-lg-4">
-        <div class="section-card">
-            <div class="section-card-header">
-                <h2>@L["TutorDashboard_UnreadMessages"]</h2>
-                <a href="tutor/messages" class="btn btn-sm btn-link">@L["Button_ViewAll"]</a>
-            </div>
-            <p class="dashboard-big-stat">@_unreadMessages</p>
-            <p class="dashboard-big-stat-label">
-                <span class="dot dot--primary"></span> @L["TutorDashboard_NewMessages"]
-            </p>
-        </div>
-    </div>
-    <div class="col-lg-8">
+    <!-- Mes élèves -->
+    <div class="col-lg-6">
         <div class="section-card h-100">
             <div class="section-card-header">
-                <h2>@L["TutorDashboard_RecentActivity"]</h2>
+                <h2><i class="bi bi-people me-2"></i>@L["Nav_MyStudents"]</h2>
                 <a href="tutor/students" class="btn btn-sm btn-link">@L["Button_ViewAll"]</a>
             </div>
-            @if (RecentActivity.Count == 0)
-            {
-                <p class="ts-empty-inline px-3 py-3">@L["TutorDashboard_NoRecentActivity"]</p>
-            }
-            else
-            {
-                <ul class="activity-feed">
-                    @foreach (var item in RecentActivity)
-                    {
-                        <li class="activity-item">
-                            <div class="activity-icon activity-icon--@item.IconVariant">
-                                <i class="bi @item.Icon" aria-hidden="true"></i>
-                            </div>
-                            <div class="activity-content">
-                                <strong class="activity-title">@item.Title</strong>
-                                <span class="activity-description">@item.Description</span>
-                            </div>
-                            <span class="activity-time">@item.Time</span>
-                        </li>
-                    }
-                </ul>
-            }
+            <p class="dashboard-big-stat">@_activeStudents</p>
+            <p class="dashboard-big-stat-label">
+                <span class="dot dot--primary"></span> @L["Stat_ActiveStudents"]
+            </p>
+            <div class="px-3 pb-3">
+                <a href="tutor/enrollments" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-person-plus me-1"></i>@L["Nav_Enrollments"]
+                </a>
+            </div>
         </div>
     </div>
-</div>
 
-<div class="row g-4 mt-1">
+    <!-- Mon compte -->
     <div class="col-12">
         <div class="section-card">
             <div class="section-card-header">
-                <h2>
-                    @L["TutorDashboard_ExpertRemarksTitle"]
-                    @if (_unreadRemarks > 0)
-                    {
-                        <span class="sidebar-badge ms-2">@_unreadRemarks</span>
-                    }
-                </h2>
-                <a href="tutor/expert-remarks" class="btn btn-sm btn-link">@L["Button_ViewAll"]</a>
+                <h2><i class="bi bi-wallet2 me-2"></i>@L["TutorDashboard_MyAccount"]</h2>
+                <a href="tutor/revenue" class="btn btn-sm btn-link">@L["Button_ViewAll"]</a>
             </div>
-            @if (_remarksLoading)
-            {
-                <div class="ts-loading-state" style="padding: 1.5rem;">
-                    <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
-                    <span class="ms-2 text-muted">@L["Common_Loading"]</span>
+            <div class="row g-3 px-3 pb-3">
+                <div class="col-sm-4">
+                    <StatCard Label="@L["Stat_MonthlyRevenue"]" Value="@FormatMoney(_monthlyRevenue)"
+                              Icon="bi-currency-dollar" Variant="revenue" />
                 </div>
-            }
-            else if (RecentRemarks.Count == 0)
-            {
-                <p class="ts-empty-inline px-3 py-3">@L["TutorDashboard_ExpertRemarksEmpty"]</p>
-            }
-            else
-            {
-                <ul class="activity-feed">
-                    @foreach (var r in RecentRemarks)
-                    {
-                        <li class="activity-item">
-                            <div class="activity-icon activity-icon--primary">
-                                <i class="bi bi-chat-left-text" aria-hidden="true"></i>
-                            </div>
-                            <div class="activity-content">
-                                <strong class="activity-title">@r.CategoryLabel</strong>
-                                <span class="activity-description">@r.Excerpt</span>
-                            </div>
-                            <span class="activity-time">@r.Time</span>
-                        </li>
-                    }
-                </ul>
-            }
+                <div class="col-sm-4">
+                    <StatCard Label="@L["Stat_PendingPayments"]" Value="@FormatMoney(_pendingPayments)"
+                              Icon="bi-hourglass-split" Variant="payments" />
+                </div>
+                <div class="col-sm-4">
+                    <StatCard Label="@L["Stat_ActiveSubscriptions"]" Value="@_activeSubscriptions.ToString()"
+                              Icon="bi-arrow-repeat" Variant="subscriptions" />
+                </div>
+            </div>
+            <div class="px-3 pb-3 d-flex gap-2 flex-wrap">
+                <a href="tutor/payments" class="btn btn-sm btn-outline-primary">
+                    <i class="bi bi-credit-card me-1"></i>@L["Nav_Payments"]
+                </a>
+                <a href="tutor/payout-settings" class="btn btn-sm btn-outline-secondary">
+                    <i class="bi bi-wallet2 me-1"></i>@L["Nav_PayoutSettings"]
+                </a>
+            </div>
         </div>
     </div>
 </div>
 
 @code {
-    private record LessonItem(string Student, string Subject, string Time, string Initials, string Mode, string ModeClass);
-    private record ActivityItem(string Title, string Description, string Time, string Icon, string IconVariant);
+    private sealed record SessionItem(Guid Id, string Title, string Subject, string TimeLabel);
     private record DashboardDto(decimal MonthlyRevenue, int ActiveStudents, int ActiveSubscriptions, int UpcomingLessons, int PendingPayments);
+
     private sealed class LicenseStatusVm
     {
         public decimal LicenseFeeWithholdingRemainingUsd { get; set; }
     }
-    private record RemarkItem(string CategoryLabel, string Excerpt, string Time);
-    private sealed record ExpertRemarkDto(
-        Guid Id, Guid TenantId, int Category, string Message, Guid? RelatedHomeworkId,
-        Guid? RelatedDocumentId, string AuthorUserId, string? AuthorName, DateTime CreatedAt, DateTime? ReadByTeacherAt);
 
-    private bool _lessonsLoading = true;
-    private bool _remarksLoading = true;
+    private bool _loading = true;
     private decimal _monthlyRevenue;
     private int _activeStudents;
     private int _activeSubscriptions;
-    private int _upcomingLessonsCount;
     private decimal _pendingPayments;
-    private int _unreadMessages;
     private decimal _licenseWithholdRemaining;
-    private int _unreadRemarks;
-    private List<LessonItem> UpcomingLessons = [];
-    private List<ActivityItem> RecentActivity = [];
-    private List<RemarkItem> RecentRemarks = [];
+    private List<SessionItem> _nextSessions = [];
 
     private string DisplayName
     {
@@ -239,7 +161,6 @@
                 _monthlyRevenue = stats.MonthlyRevenue;
                 _activeStudents = stats.ActiveStudents;
                 _activeSubscriptions = stats.ActiveSubscriptions;
-                _upcomingLessonsCount = stats.UpcomingLessons;
                 _pendingPayments = stats.PendingPayments;
             }
 
@@ -253,72 +174,30 @@
 
         try
         {
-            var conversations = await MessageSvc.GetConversationsAsync();
-            _unreadMessages = conversations.Sum(c => c.UnreadCount);
-        }
-        catch { /* keep 0 */ }
-
-        try
-        {
-            var dtos = await LessonSvc.GetLessonsAsync();
-            var upcoming = dtos
-                .Where(d => d.StartTime >= DateTime.UtcNow)
+            var lessons = await LessonSvc.GetLessonsAsync();
+            _nextSessions = lessons
+                .Where(d => d.EndTime >= DateTime.UtcNow)
                 .OrderBy(d => d.StartTime)
-                .Take(5)
-                .ToList();
-
-            if (tenantId is null)
-                _upcomingLessonsCount = upcoming.Count;
-
-            UpcomingLessons = upcoming.Select(d =>
-            {
-                var local = d.StartTime.ToLocalTime();
-                var mode = LessonService.ModeToDisplay(d.Mode);
-                var modeClass = d.Mode == "InPerson" ? "inperson" : "online";
-                return new LessonItem(
-                    d.Title,
-                    d.Subject ?? "",
-                    local.ToString("HH:mm"),
-                    d.Title.Length > 0 ? d.Title[..1].ToUpperInvariant() : "?",
-                    mode,
-                    modeClass);
-            }).ToList();
-
-            RecentActivity = dtos
-                .OrderByDescending(d => d.UpdatedAt ?? d.CreatedAt)
-                .Take(5)
-                .Select(d => new ActivityItem(
-                    d.Title,
-                    d.Subject ?? LessonService.ModeToDisplay(d.Mode),
-                    (d.UpdatedAt ?? d.CreatedAt).ToLocalTime().ToString("dd/MM HH:mm"),
-                    "bi-calendar-event",
-                    "primary"))
+                .Take(3)
+                .Select(d =>
+                {
+                    var local = d.StartTime.ToLocalTime();
+                    return new SessionItem(
+                        d.Id,
+                        d.Title,
+                        d.Subject ?? LessonService.ModeToDisplay(d.Mode),
+                        $"{local:ddd dd/MM} · {local:HH:mm}");
+                })
                 .ToList();
         }
-        catch { /* empty until API available */ }
-        finally { _lessonsLoading = false; }
-
-        try
-        {
-            var remarks = await Api.GetAsync<List<ExpertRemarkDto>>("api/tutor/expert-remarks") ?? [];
-            _unreadRemarks = remarks.Count(r => r.ReadByTeacherAt is null);
-            RecentRemarks = remarks
-                .OrderByDescending(r => r.CreatedAt)
-                .Take(5)
-                .Select(r => new RemarkItem(
-                    CategoryLabel(r.Category),
-                    r.Message.Length > 140 ? r.Message[..140] + "…" : r.Message,
-                    r.CreatedAt.ToLocalTime().ToString("dd/MM HH:mm")))
-                .ToList();
-        }
-        catch { /* empty until API available */ }
-        finally { _remarksLoading = false; }
+        catch { /* liste vide si l'API ne répond pas */ }
+        finally { _loading = false; }
     }
 
-    private string CategoryLabel(int category) => category switch
+    private async Task JoinClassroomAsync(SessionItem session)
     {
-        1 => L["ExpertTeachers_RemarkCategory_Activity"],
-        2 => L["ExpertTeachers_RemarkCategory_CourseMaterial"],
-        _ => L["ExpertTeachers_RemarkCategory_General"]
-    };
+        try { await LessonSvc.NotifyLessonStartedAsync(session.Id); } catch { }
+        Navigation.NavigateTo(
+            $"/tutor/classroom/{session.Id}?title={Uri.EscapeDataString(session.Title)}&subject={Uri.EscapeDataString(session.Subject)}");
+    }
 }
