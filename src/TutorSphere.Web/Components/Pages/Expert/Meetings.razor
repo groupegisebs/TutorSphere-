@@ -4,6 +4,7 @@
 @inject AuthService Auth
 @inject ApiClient Api
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <PageTitle>Réunions — TutorSphere</PageTitle>
 
@@ -60,9 +61,13 @@
                                 <td>@m.OrganizerName</td>
                                 <td>@m.ParticipantCount</td>
                                 <td class="text-end">
-                                    @if (m.Status is 1 or 2)
+                                    @* La salle reste joignable tant que la réunion n'est pas annulée, terminée comprise. *@
+                                    @if (m.Status != 4)
                                     {
-                                        <a class="cc-btn cc-btn-primary cc-btn-sm" href="@($"/expert/meetings/{m.Id}/room")">Rejoindre</a>
+                                        <a class="cc-btn cc-btn-sm @(m.Status is 1 or 2 ? "cc-btn-primary" : "")"
+                                           href="@($"/expert/meetings/{m.Id}/room")">
+                                            @(m.Status == 3 ? "Rouvrir la salle" : "Rejoindre")
+                                        </a>
                                     }
                                     @if (m.Status == 3)
                                     {
@@ -103,9 +108,17 @@
                     <div class="alert alert-danger">@_codeError</div>
                 }
                 <p class="text-muted">
-                    Les membres du groupe saisissent ce code pour entrer dans la salle. Il est rappelé dans les
-                    invitations et les rappels envoyés par courriel.
+                    Le lien ci-dessous porte déjà le code : un clic suffit pour entrer. Il reste valable tant que la
+                    réunion n’est pas annulée, y compris après sa clôture.
                 </p>
+                <label class="form-label">Lien de la salle</label>
+                <div class="mtg-code-row">
+                    <input class="form-control" readonly value="@RoomLink" />
+                    <button type="button" class="cc-btn" @onclick="CopyRoomLinkAsync">
+                        <i class="bi bi-link-45deg"></i> @(_linkCopied ? "Copié" : "Copier")
+                    </button>
+                </div>
+                <hr />
                 <label class="form-label">Code de la réunion</label>
                 <input class="form-control mtg-code-input" maxlength="16" autocomplete="off" @bind="_codeInput" />
                 <p class="text-muted small mt-1">4 à 16 lettres ou chiffres. Laissez vide et régénérez pour un nouveau code tiré au hasard.</p>
@@ -144,8 +157,26 @@
     private string _codeTitle = "";
     private string _codeInput = "";
     private string? _codeError;
-    private bool _codeBusy;
+    private bool _codeBusy, _linkCopied;
     private readonly List<GuestCode> _codeGuests = [];
+
+    /// <summary>Lien de la salle avec le code : le destinataire n'a rien à saisir.</summary>
+    private string RoomLink
+    {
+        get
+        {
+            if (_codeMeetingId is not Guid id) return "";
+            var url = $"{Nav.BaseUri.TrimEnd('/')}/expert/meetings/{id}/room";
+            return string.IsNullOrWhiteSpace(_codeInput) ? url : $"{url}?code={Uri.EscapeDataString(_codeInput.Trim())}";
+        }
+    }
+
+    private async Task CopyRoomLinkAsync()
+    {
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", RoomLink); }
+        catch { _codeError = "Copie impossible : sélectionnez le lien et copiez-le à la main."; return; }
+        _linkCopied = true;
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -165,6 +196,7 @@
         _codeTitle = m.Title;
         _codeError = null;
         _codeInput = "";
+        _linkCopied = false;
         _codeGuests.Clear();
         var detail = await Api.GetAsync<CodeDetail>($"api/expert/meetings/{m.Id}");
         _codeInput = detail?.AccessCode ?? "";
@@ -185,6 +217,7 @@
     {
         if (_codeMeetingId is not Guid id) return;
         _codeError = null;
+        _linkCopied = false;
         _codeBusy = true;
         try
         {

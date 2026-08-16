@@ -11,6 +11,11 @@
         <h1>Rejoindre la réunion</h1>
         @if (!string.IsNullOrEmpty(_error)) { <div class="alert alert-danger">@_error</div> }
         @if (_loading) { <span class="spinner-border"></span> }
+        else if (_autoEntering)
+        {
+            <p class="login-subtitle"><strong>@(_preview?.Title ?? "Réunion")</strong></p>
+            <p><span class="spinner-border spinner-border-sm me-2"></span>Ouverture de la réunion…</p>
+        }
         else if (_preview is not null)
         {
             <p class="login-subtitle"><strong>@_preview.Title</strong><br />Organisateur : @_preview.OrganizerName</p>
@@ -23,7 +28,10 @@
             <div class="mb-3">
                 <label class="form-label">Votre code d’invitation</label>
                 <input class="form-control mtg-code-input" maxlength="16" autocomplete="off" @bind="_access" />
-                <div class="form-text">Code personnel indiqué dans votre invitation. Une seule saisie suffit.</div>
+                <div class="form-text">
+                    Normalement inutile : le lien de votre invitation contient déjà votre code.
+                    Saisissez-le seulement si le lien a été ouvert sans ses paramètres.
+                </div>
             </div>
             <button class="btn btn-primary w-100" type="button" disabled="@_busy" @onclick="EnterAsync">Rejoindre la réunion</button>
             <p class="small text-muted mt-3">Lien personnel, temporaire et non transférable. Il ne donne pas accès au reste de TutorSphere.</p>
@@ -33,9 +41,14 @@
 
 @code {
     [Parameter] public string Token { get; set; } = "";
+
+    /// <summary>Code personnel porté par le lien d'invitation : l'invité n'a qu'à cliquer.</summary>
+    [SupplyParameterFromQuery(Name = "code")] public string? CodeFromLink { get; set; }
+    [SupplyParameterFromQuery(Name = "name")] public string? NameFromLink { get; set; }
+
     private Preview? _preview;
     private string? _error;
-    private bool _loading = true, _busy;
+    private bool _loading = true, _busy, _autoEntering, _autoTried;
     private string _name = "", _access = "";
 
     protected override async Task OnInitializedAsync()
@@ -45,7 +58,21 @@
             _preview = await Http.GetFromJsonAsync<Preview>($"api/meetings/guest/{Uri.EscapeDataString(Token)}");
         }
         catch { _error = "Invitation introuvable ou expirée."; }
+        if (!string.IsNullOrWhiteSpace(NameFromLink)) _name = NameFromLink.Trim();
+        if (!string.IsNullOrWhiteSpace(CodeFromLink)) _access = CodeFromLink.Trim();
+        _autoEntering = _preview is not null && !string.IsNullOrWhiteSpace(_access);
         _loading = false;
+    }
+
+    /// <summary>L'entrée automatique attend le rendu interactif : le prérendu ne doit pas poster.</summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_autoEntering || _autoTried) return;
+        _autoTried = true;
+        await EnterAsync();
+        // Échec du code du lien : on retombe sur la saisie manuelle.
+        _autoEntering = false;
+        StateHasChanged();
     }
 
     private async Task EnterAsync()

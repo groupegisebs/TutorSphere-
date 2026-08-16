@@ -15,6 +15,9 @@
 @if (_codeGate)
 {
     <div class="mtg-wait mtg-gate">
+        <button type="button" class="mtg-back" @onclick="GoBack">
+            <i class="bi bi-arrow-left"></i> Retour
+        </button>
         <h1>Code de la réunion</h1>
         <p>@(_detail?.Title ?? "Réunion") — saisissez le code reçu dans votre invitation.</p>
         <input class="form-control mtg-gate-input" maxlength="16" autocomplete="off"
@@ -32,25 +35,91 @@
 else if (_waiting)
 {
     <div class="mtg-wait">
+        <button type="button" class="mtg-back" @onclick="GoBack">
+            <i class="bi bi-arrow-left"></i> Retour
+        </button>
         <h1>Salle d’attente</h1>
         <p>L’organisateur va bientôt vous faire entrer.</p>
     </div>
 }
 else if (_detail is null && !string.IsNullOrEmpty(_error))
 {
-    <div class="mtg-wait"><p>@_error</p></div>
+    <div class="mtg-wait">
+        <button type="button" class="mtg-back" @onclick="GoBack">
+            <i class="bi bi-arrow-left"></i> Retour
+        </button>
+        <p>@_error</p>
+    </div>
 }
 else if (_detail is not null)
 {
     <div class="mtg-room">
-        <header class="mtg-room-head">
-            <strong>TutorSphere</strong>
-            <span class="mtg-room-title">@_detail.Title <i class="bi bi-lock-fill"></i></span>
-            <span class="mtg-room-meta">@FormatElapsed(_elapsed)
-                @if (_recording) { <span class="mtg-rec">Enregistrement</span> }
+        @if (_menu is not null)
+        {
+            @* Voile de fermeture : rendu seulement menu ouvert, pour ne pas router chaque clic de la salle. *@
+            <div class="mtg-menu-veil" @onclick="CloseMenus"></div>
+        }
+        <header class="mtg-top">
+            <div class="mtg-brand">
+                <span class="mtg-brand-mark"><i class="bi bi-hexagon-fill"></i></span>
+                <span class="mtg-brand-name">TutorSphere</span>
+            </div>
+            <div class="mtg-top-meeting">
+                <span class="mtg-top-title">@_detail.Title <i class="bi bi-lock-fill" title="Réunion privée"></i></span>
+                <span class="mtg-top-sub">Réunion du groupe</span>
+            </div>
+            <div class="mtg-menu-wrap" @onclick:stopPropagation="true">
+                <button type="button" class="mtg-pill" @onclick='() => Menu("info")'>
+                    <i class="bi bi-info-circle"></i> Informations
+                </button>
+                @if (_menu == "info")
+                {
+                    <div class="mtg-pop mtg-pop-info">
+                        <h5>@_detail.Title</h5>
+                        <dl>
+                            <dt>Organisateur</dt>
+                            <dd>@(string.IsNullOrWhiteSpace(_detail.OrganizerName) ? "—" : _detail.OrganizerName)</dd>
+                            <dt>Début</dt>
+                            <dd>@(_detail.StartAtUtc?.ToLocalTime().ToString("dddd d MMMM · HH:mm") ?? "—")</dd>
+                            <dt>Ordre du jour</dt>
+                            <dd>@(string.IsNullOrWhiteSpace(_detail.Agenda) ? "Non précisé" : _detail.Agenda)</dd>
+                            @if (!string.IsNullOrEmpty(_detail.AccessCode))
+                            {
+                                <dt>Code de la réunion</dt>
+                                <dd class="mtg-pop-code">@_detail.AccessCode</dd>
+                            }
+                        </dl>
+                    </div>
+                }
+            </div>
+            <div class="mtg-top-right">
+                <span class="mtg-timer">@FormatElapsed(_elapsed)</span>
+                @if (_recording) { <span class="mtg-rec"><i class="bi bi-record-circle-fill"></i> Enregistrement</span> }
                 @if (_detail.AiActivatedByOrganizer) { <span class="mtg-ai-badge">IA active</span> }
-                <span class="mtg-net">Connexion stable</span>
-            </span>
+                <span class="mtg-net"><i class="bi bi-reception-4"></i> Connexion stable</span>
+                <button type="button" class="mtg-pill mtg-pill-solid" @onclick="OpenInvite">
+                    <i class="bi bi-person-plus"></i> Inviter
+                </button>
+                <div class="mtg-menu-wrap" @onclick:stopPropagation="true">
+                    <button type="button" class="mtg-icon-btn" title="Plus d’options" @onclick='() => Menu("top")'>
+                        <i class="bi bi-three-dots-vertical"></i>
+                    </button>
+                    @if (_menu == "top")
+                    {
+                        <div class="mtg-pop mtg-pop-end">
+                            <button type="button" @onclick='() => OpenTab("notes")'><i class="bi bi-journal-text"></i> Notes partagées</button>
+                            <button type="button" @onclick="ShareBoardAsync"><i class="bi bi-easel"></i> Partager le tableau blanc</button>
+                            @if (_isOrganizer)
+                            {
+                                <button type="button" @onclick="ToggleRecAsync">
+                                    <i class="bi bi-record-circle"></i> @(_recording ? "Arrêter l’enregistrement" : "Enregistrer")
+                                </button>
+                                <button type="button" @onclick="LockAsync"><i class="bi bi-lock"></i> Verrouiller la réunion</button>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
         </header>
         @if (_detail.AiActivatedByOrganizer && _allConsented)
         {
@@ -76,18 +145,92 @@ else if (_detail is not null)
             </div>
         }
 
+        @if (!string.IsNullOrEmpty(_mediaError))
+        {
+            <div class="mtg-media-warn">
+                <i class="bi bi-exclamation-triangle"></i> @_mediaError
+                <button type="button" @onclick="() => _mediaError = null">×</button>
+            </div>
+        }
+
         <div class="mtg-room-body">
             <div class="mtg-stage">
-                <div class="mtg-grid">
-                    <div class="mtg-tile">
-                        <video data-rtc-local autoplay playsinline muted></video>
-                        <span class="mtg-tile-name">@_selfName (vous)</span>
+                <div class="mtg-notice"><i class="bi bi-info-circle"></i> @NoticeText</div>
+                <div class="mtg-grid @(_peers.Count == 0 ? "is-solo" : "")">
+                    <div class="mtg-tile is-main @(_mic ? "is-speaking" : "")">
+                        @if (_mic)
+                        {
+                            <span class="mtg-tile-live"><i class="bi bi-volume-up-fill"></i></span>
+                        }
+                        @* is-hidden au départ : le JS l'enlève dès qu'une piste vidéo est réellement publiée. *@
+                        <video class="is-hidden" data-rtc-local @ref="_localVideo" autoplay playsinline muted></video>
+                        <span class="mtg-av mtg-av-lg" style="background:@AvatarBg(_selfName)">
+                            @Initials(_selfName)
+                            @if (!SelfHasVideo)
+                            {
+                                <span class="mtg-av-cam"><i class="bi bi-camera-video-off-fill"></i></span>
+                            }
+                        </span>
+                        <div class="mtg-tile-foot">
+                            <span class="mtg-tile-id">
+                                @_selfName (vous)
+                                <span class="mtg-badge @RoleCls(SelfRole)">@RoleLabel(SelfRole)</span>
+                            </span>
+                            <span class="mtg-tile-mic @(_mic ? "is-on" : "")">
+                                <i class="bi @(_mic ? "bi-mic-fill" : "bi-mic-mute-fill")"></i>
+                                @(_mic ? "Micro activé" : "Micro désactivé")
+                            </span>
+                        </div>
+                        <div class="mtg-menu-wrap mtg-tile-menu" @onclick:stopPropagation="true">
+                            <button type="button" title="Options" @onclick='() => Menu("self")'><i class="bi bi-three-dots"></i></button>
+                            @if (_menu == "self")
+                            {
+                                <div class="mtg-pop mtg-pop-up mtg-pop-end">
+                                    <button type="button" @onclick="ToggleMic"><i class="bi bi-mic"></i> @(_mic ? "Couper mon micro" : "Activer mon micro")</button>
+                                    <button type="button" @onclick="ToggleCam"><i class="bi bi-camera-video"></i> @(_cam ? "Couper ma caméra" : "Activer ma caméra")</button>
+                                    <button type="button" @onclick="ShareAsync"><i class="bi bi-display"></i> Partager mon écran</button>
+                                </div>
+                            }
+                        </div>
                     </div>
                     @foreach (var p in _peers)
                     {
                         <div class="mtg-tile">
-                            <video data-rtc-peer="@p.ConnectionId" autoplay playsinline></video>
-                            <span class="mtg-tile-name">@p.DisplayName · @p.Role @if (!p.MicOn) { <i class="bi bi-mic-mute-fill text-danger"></i> }</span>
+                            <video class="is-hidden" data-rtc-peer="@p.ConnectionId" autoplay playsinline></video>
+                            <span class="mtg-av" style="background:@AvatarBg(p.DisplayName)">
+                                @Initials(p.DisplayName)
+                                @if (!p.CamOn)
+                                {
+                                    <span class="mtg-av-cam"><i class="bi bi-camera-video-off-fill"></i></span>
+                                }
+                            </span>
+                            @if (p.HandRaised)
+                            {
+                                <span class="mtg-tile-hand"><i class="bi bi-hand-index-thumb-fill"></i></span>
+                            }
+                            <div class="mtg-tile-foot">
+                                <span class="mtg-tile-id">
+                                    @p.DisplayName <span class="mtg-dot">•</span> @RoleName(p.Role)
+                                    <span class="mtg-badge @RoleCls(p.Role)">@RoleLabel(p.Role)</span>
+                                </span>
+                                <span class="mtg-tile-mic @(p.MicOn ? "is-on" : "")">
+                                    <i class="bi @(p.MicOn ? "bi-mic-fill" : "bi-mic-mute-fill")"></i>
+                                    @(p.MicOn ? "Micro activé" : "Micro désactivé")
+                                </span>
+                            </div>
+                            @if (_isOrganizer)
+                            {
+                                <div class="mtg-menu-wrap mtg-tile-menu" @onclick:stopPropagation="true">
+                                    <button type="button" title="Options" @onclick='() => Menu($"tile:{p.ConnectionId}")'><i class="bi bi-three-dots"></i></button>
+                                    @if (_menu == $"tile:{p.ConnectionId}")
+                                    {
+                                        <div class="mtg-pop mtg-pop-up mtg-pop-end">
+                                            <button type="button" @onclick="() => ForceMuteAsync(p.ConnectionId)"><i class="bi bi-mic-mute"></i> Couper son micro</button>
+                                            <button type="button" class="is-danger" @onclick="() => KickAsync(p.ConnectionId)"><i class="bi bi-person-dash"></i> Exclure de la réunion</button>
+                                        </div>
+                                    }
+                                </div>
+                            }
                         </div>
                     }
                 </div>
@@ -95,109 +238,359 @@ else if (_detail is not null)
                 {
                     <div class="mtg-cc">[CC] @_caption</div>
                 }
+                <div class="mtg-dockwrap">
+                    <div class="mtg-react">
+                        <button type="button" @onclick='() => Rt.ReactAsync(Id, "👍")'>👍</button>
+                        <button type="button" @onclick='() => Rt.ReactAsync(Id, "👏")'>👏</button>
+                        <button type="button" @onclick='() => Rt.ReactAsync(Id, "❤️")'>❤️</button>
+                        <button type="button" @onclick='() => Rt.ReactAsync(Id, "🎉")'>🎉</button>
+                    </div>
+                    <div class="mtg-dock">
+                        <div class="mtg-dock-item" @onclick:stopPropagation="true">
+                            <button type="button" class="mtg-dock-btn @(_mic ? "" : "is-off")" @onclick="ToggleMic">
+                                <span class="mtg-dock-ic"><i class="bi @(_mic ? "bi-mic-fill" : "bi-mic-mute-fill")"></i></span>
+                                <span class="mtg-dock-lb">Micro</span>
+                            </button>
+                            <button type="button" class="mtg-dock-chev" @onclick='() => Menu("mic")'><i class="bi bi-chevron-up"></i></button>
+                            @if (_menu == "mic")
+                            {
+                                <div class="mtg-pop mtg-pop-up">
+                                    <button type="button" @onclick="ToggleMic"><i class="bi bi-mic"></i> @(_mic ? "Couper mon micro" : "Activer mon micro")</button>
+                                    @if (_isOrganizer && _peers.Count > 0)
+                                    {
+                                        <button type="button" @onclick="MuteEveryoneAsync"><i class="bi bi-mic-mute"></i> Couper le micro de tous</button>
+                                    }
+                                    <span class="mtg-pop-note">@_micLabel</span>
+                                </div>
+                            }
+                        </div>
+                        <div class="mtg-dock-item" @onclick:stopPropagation="true">
+                            <button type="button" class="mtg-dock-btn @(_cam ? "" : "is-off")" @onclick="ToggleCam">
+                                <span class="mtg-dock-ic"><i class="bi @(_cam ? "bi-camera-video-fill" : "bi-camera-video-off-fill")"></i></span>
+                                <span class="mtg-dock-lb">Caméra</span>
+                            </button>
+                            <button type="button" class="mtg-dock-chev" @onclick='() => Menu("cam")'><i class="bi bi-chevron-up"></i></button>
+                            @if (_menu == "cam")
+                            {
+                                <div class="mtg-pop mtg-pop-up">
+                                    <button type="button" @onclick="ToggleCam"><i class="bi bi-camera-video"></i> @(_cam ? "Couper ma caméra" : "Activer ma caméra")</button>
+                                    <button type="button" @onclick="ToggleBlurAsync"><i class="bi bi-circle-half"></i> @(_blur ? "Retirer le flou" : "Flouter l’arrière-plan")</button>
+                                    <span class="mtg-pop-note">@_camLabel</span>
+                                </div>
+                            }
+                        </div>
+                        <button type="button" class="mtg-dock-btn" @onclick="ShareAsync">
+                            <span class="mtg-dock-ic"><i class="bi bi-display"></i></span>
+                            <span class="mtg-dock-lb">Partager</span>
+                        </button>
+                        <button type="button" class="mtg-dock-btn" @onclick='() => OpenTab("chat")'>
+                            <span class="mtg-dock-ic">
+                                <i class="bi bi-chat-dots"></i>
+                                @if (_unread > 0) { <span class="mtg-dock-badge">@_unread</span> }
+                            </span>
+                            <span class="mtg-dock-lb">Discussion</span>
+                        </button>
+                        <button type="button" class="mtg-dock-btn" @onclick='() => OpenTab("people")'>
+                            <span class="mtg-dock-ic">
+                                <i class="bi bi-people-fill"></i>
+                                <span class="mtg-dock-badge is-violet">@(1 + _peers.Count)</span>
+                            </span>
+                            <span class="mtg-dock-lb">Participants</span>
+                        </button>
+                        <button type="button" class="mtg-dock-btn @(_hand ? "is-on" : "")" @onclick="ToggleHand">
+                            <span class="mtg-dock-ic"><i class="bi bi-hand-index-thumb"></i></span>
+                            <span class="mtg-dock-lb">Lever la main</span>
+                        </button>
+                        <div class="mtg-dock-item" @onclick:stopPropagation="true">
+                            <button type="button" class="mtg-dock-btn" @onclick='() => Menu("more")'>
+                                <span class="mtg-dock-ic"><i class="bi bi-three-dots"></i></span>
+                                <span class="mtg-dock-lb">Plus</span>
+                            </button>
+                            @if (_menu == "more")
+                            {
+                                <div class="mtg-pop mtg-pop-up">
+                                    <button type="button" @onclick='() => OpenTab("notes")'><i class="bi bi-journal-text"></i> Notes partagées</button>
+                                    <button type="button" @onclick="ShareBoardAsync"><i class="bi bi-easel"></i> Tableau blanc</button>
+                                    <button type="button" @onclick='() => OpenTab("ai")'><i class="bi bi-stars"></i> Assistant IA</button>
+                                    @if (_isOrganizer)
+                                    {
+                                        <button type="button" @onclick="ToggleRecAsync">
+                                            <i class="bi bi-record-circle"></i> @(_recording ? "Arrêter l’enregistrement" : "Enregistrer")
+                                        </button>
+                                        <button type="button" @onclick="LockAsync"><i class="bi bi-lock"></i> Verrouiller</button>
+                                    }
+                                </div>
+                            }
+                        </div>
+                        <div class="mtg-dock-item mtg-dock-end" @onclick:stopPropagation="true">
+                            <button type="button" class="mtg-leave" @onclick="LeaveAsync">
+                                <i class="bi bi-telephone-x-fill"></i> Quitter
+                            </button>
+                            <button type="button" class="mtg-dock-chev" @onclick='() => Menu("leave")'><i class="bi bi-chevron-down"></i></button>
+                            @if (_menu == "leave")
+                            {
+                                <div class="mtg-pop mtg-pop-up mtg-pop-end">
+                                    <button type="button" @onclick="LeaveOnlyAsync"><i class="bi bi-box-arrow-right"></i> Quitter la réunion</button>
+                                    @if (_isOrganizer)
+                                    {
+                                        <button type="button" class="is-danger" @onclick="EndForAllAsync"><i class="bi bi-stop-circle"></i> Terminer pour tous</button>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
             </div>
             <aside class="mtg-side">
                 <div class="mtg-side-tabs">
-                    <button type="button" class="@TabCls("chat")" @onclick='() => _tab = "chat"'>Discussion</button>
-                    <button type="button" class="@TabCls("people")" @onclick='() => _tab = "people"'>Participants (@(1 + _peers.Count))</button>
-                    <button type="button" class="@TabCls("notes")" @onclick='() => _tab = "notes"'>Notes</button>
-                    <button type="button" class="@TabCls("ai")" @onclick='() => _tab = "ai"'>Assistant IA</button>
+                    <button type="button" class="@TabCls("chat")" @onclick='() => OpenTab("chat")'>
+                        <i class="bi bi-chat-dots"></i><span>Discussion</span>
+                    </button>
+                    <button type="button" class="@TabCls("people")" @onclick='() => OpenTab("people")'>
+                        <i class="bi bi-people-fill"></i><span>Participants (@(1 + _peers.Count))</span>
+                    </button>
+                    <button type="button" class="@TabCls("notes")" @onclick='() => OpenTab("notes")'>
+                        <i class="bi bi-journal-text"></i><span>Notes</span>
+                    </button>
+                    <button type="button" class="@TabCls("ai")" @onclick='() => OpenTab("ai")'>
+                        <i class="bi bi-stars"></i><span>Assistant IA</span>
+                    </button>
                 </div>
+
                 @if (_tab == "chat")
                 {
-                    <div class="mtg-chat">
-                        @foreach (var m in _chat) { <p><strong>@m.SenderName</strong> @m.Text</p> }
+                    <div class="mtg-side-body mtg-chat">
+                        @if (_chat.Count == 0)
+                        {
+                            <p class="mtg-empty">Aucun message pour l’instant.</p>
+                        }
+                        @foreach (var m in _chat)
+                        {
+                            <div class="mtg-msg">
+                                <span class="mtg-av mtg-av-sm" style="background:@AvatarBg(m.SenderName)">@Initials(m.SenderName)</span>
+                                <div>
+                                    <span class="mtg-msg-head">@m.SenderName <time>@m.SentAtUtc.ToLocalTime().ToString("HH:mm")</time></span>
+                                    <p>@m.Text</p>
+                                </div>
+                            </div>
+                        }
                     </div>
                     <div class="mtg-chat-in">
                         <input @bind="_chatIn" @onkeydown="ChatKey" placeholder="Écrire un message…" />
-                        <button type="button" @onclick="SendChat">➤</button>
+                        <button type="button" title="Envoyer" @onclick="SendChat"><i class="bi bi-send-fill"></i></button>
                     </div>
                 }
                 else if (_tab == "people")
                 {
-                    @if (_waitingList.Count > 0 && _isOrganizer)
-                    {
-                        <h4>Salle d’attente</h4>
-                        @foreach (var w in _waitingList)
+                    <div class="mtg-side-body">
+                        <div class="mtg-search-row">
+                            <span class="mtg-search">
+                                <i class="bi bi-search"></i>
+                                <input placeholder="Rechercher un participant" @bind="_search" @bind:event="oninput" />
+                            </span>
+                            <button type="button" class="mtg-btn-primary" @onclick="OpenInvite"><i class="bi bi-plus-lg"></i> Inviter</button>
+                        </div>
+
+                        @if (_isOrganizer && _waitingList.Count > 0)
                         {
-                            <div class="mtg-person-row">
-                                @w.DisplayName
-                                <button type="button" @onclick="() => Rt.AdmitAsync(Id, w.ConnectionId)">Admettre</button>
-                                <button type="button" @onclick="() => Rt.DenyAsync(Id, w.ConnectionId)">Refuser</button>
+                            <h5 class="mtg-group">Salle d’attente — @_waitingList.Count</h5>
+                            @foreach (var w in _waitingList)
+                            {
+                                <div class="mtg-prow">
+                                    <span class="mtg-av mtg-av-sm" style="background:@AvatarBg(w.DisplayName)">@Initials(w.DisplayName)</span>
+                                    <span class="mtg-prow-name">@w.DisplayName</span>
+                                    <button type="button" class="mtg-btn-mini" @onclick="() => Rt.AdmitAsync(Id, w.ConnectionId)">Admettre</button>
+                                    <button type="button" class="mtg-btn-mini is-danger" @onclick="() => Rt.DenyAsync(Id, w.ConnectionId)">Refuser</button>
+                                </div>
+                            }
+                        }
+
+                        <h5 class="mtg-group">Dans la réunion — @(1 + _peers.Count)</h5>
+                        @if (Matches(_selfName))
+                        {
+                            <div class="mtg-prow">
+                                <span class="mtg-av mtg-av-sm" style="background:@AvatarBg(_selfName)">@Initials(_selfName)</span>
+                                <span class="mtg-prow-name">
+                                    @_selfName (vous)
+                                    <span class="mtg-badge @RoleCls(SelfRole)">@RoleLabel(SelfRole)</span>
+                                </span>
+                                <i class="bi @(_mic ? "bi-mic-fill" : "bi-mic-mute-fill") mtg-prow-mic @(_mic ? "is-on" : "")"></i>
+                                <div class="mtg-menu-wrap" @onclick:stopPropagation="true">
+                                    <button type="button" class="mtg-prow-menu" @onclick='() => Menu("row:self")'><i class="bi bi-three-dots-vertical"></i></button>
+                                    @if (_menu == "row:self")
+                                    {
+                                        <div class="mtg-pop mtg-pop-end">
+                                            <button type="button" @onclick="ToggleMic"><i class="bi bi-mic"></i> @(_mic ? "Couper mon micro" : "Activer mon micro")</button>
+                                            <button type="button" @onclick="ToggleCam"><i class="bi bi-camera-video"></i> @(_cam ? "Couper ma caméra" : "Activer ma caméra")</button>
+                                        </div>
+                                    }
+                                </div>
                             </div>
                         }
-                    }
-                    @foreach (var p in _peers)
-                    {
-                        <div class="mtg-person-row">
-                            @p.DisplayName <small>@p.Role</small>
-                            @if (_isOrganizer)
+                        @foreach (var p in _peers.Where(x => Matches(x.DisplayName)))
+                        {
+                            <div class="mtg-prow">
+                                <span class="mtg-av mtg-av-sm" style="background:@AvatarBg(p.DisplayName)">@Initials(p.DisplayName)</span>
+                                <span class="mtg-prow-name">
+                                    @p.DisplayName
+                                    <span class="mtg-badge @RoleCls(p.Role)">@RoleLabel(p.Role)</span>
+                                </span>
+                                @if (p.HandRaised)
+                                {
+                                    <i class="bi bi-hand-index-thumb-fill mtg-prow-hand"></i>
+                                }
+                                <i class="bi @(p.MicOn ? "bi-mic-fill" : "bi-mic-mute-fill") mtg-prow-mic @(p.MicOn ? "is-on" : "")"></i>
+                                <div class="mtg-menu-wrap" @onclick:stopPropagation="true">
+                                    <button type="button" class="mtg-prow-menu" @onclick='() => Menu($"row:{p.ConnectionId}")'><i class="bi bi-three-dots-vertical"></i></button>
+                                    @if (_menu == $"row:{p.ConnectionId}")
+                                    {
+                                        <div class="mtg-pop mtg-pop-end">
+                                            <button type="button" @onclick='() => OpenTab("chat")'><i class="bi bi-chat"></i> Écrire dans la discussion</button>
+                                            @if (_isOrganizer)
+                                            {
+                                                <button type="button" @onclick="() => ForceMuteAsync(p.ConnectionId)"><i class="bi bi-mic-mute"></i> Couper son micro</button>
+                                                <button type="button" class="is-danger" @onclick="() => KickAsync(p.ConnectionId)"><i class="bi bi-person-dash"></i> Exclure</button>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
+
+                        @{
+                            var guests = _peers.Where(x => IsGuest(x.Role) && Matches(x.DisplayName)).ToList();
+                        }
+                        @if (guests.Count > 0)
+                        {
+                            <h5 class="mtg-group">Invités externes</h5>
+                            @foreach (var p in guests)
                             {
-                                <button type="button" @onclick="() => Rt.ForceMuteAsync(Id, p.ConnectionId)">Couper micro</button>
-                                <button type="button" @onclick="() => Rt.KickAsync(Id, p.ConnectionId)">Exclure</button>
+                                <div class="mtg-prow">
+                                    <span class="mtg-av mtg-av-sm" style="background:@AvatarBg(p.DisplayName)">@Initials(p.DisplayName)</span>
+                                    <span class="mtg-prow-name">
+                                        @p.DisplayName
+                                        <span class="mtg-badge is-ext">Invité externe</span>
+                                        <i class="bi bi-patch-check-fill mtg-verified" title="Invitation vérifiée"></i>
+                                    </span>
+                                    <i class="bi @(p.MicOn ? "bi-mic-fill" : "bi-mic-mute-fill") mtg-prow-mic @(p.MicOn ? "is-on" : "")"></i>
+                                    <div class="mtg-menu-wrap" @onclick:stopPropagation="true">
+                                        <button type="button" class="mtg-prow-menu" @onclick='() => Menu($"guest:{p.ConnectionId}")'><i class="bi bi-three-dots-vertical"></i></button>
+                                        @if (_menu == $"guest:{p.ConnectionId}")
+                                        {
+                                            <div class="mtg-pop mtg-pop-end">
+                                                @if (_isOrganizer)
+                                                {
+                                                    <button type="button" @onclick="() => ForceMuteAsync(p.ConnectionId)"><i class="bi bi-mic-mute"></i> Couper son micro</button>
+                                                    <button type="button" class="is-danger" @onclick="() => KickAsync(p.ConnectionId)"><i class="bi bi-person-dash"></i> Retirer l’invité</button>
+                                                }
+                                                else
+                                                {
+                                                    <span class="mtg-pop-note">Invitation vérifiée par code personnel.</span>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
                             }
+                        }
+                    </div>
+                    <div class="mtg-side-foot">
+                        <button type="button" class="mtg-btn-ghost w-100" @onclick="CopyInviteAsync">
+                            <i class="bi bi-link-45deg"></i> @(_copied ? "Lien copié" : "Copier le lien d’invitation")
+                        </button>
+                        <div class="mtg-ai-card">
+                            <div>
+                                <h4>@(_detail.AiActivatedByOrganizer ? "Assistant IA actif" : "Assistant IA désactivé")</h4>
+                                @if (!_detail.AiActivatedByOrganizer && _isOrganizer)
+                                {
+                                    <button type="button" class="mtg-btn-ghost" @onclick="() => _aiPrompt = true">Activer la prise de notes IA</button>
+                                }
+                                <p>Capture les décisions, points clés et actions avec le consentement des participants.</p>
+                            </div>
+                            <i class="bi bi-shield-check mtg-ai-shield"></i>
                         </div>
-                    }
+                        <p class="mtg-privacy"><i class="bi bi-shield-lock"></i> Vos données restent confidentielles et sécurisées.</p>
+                    </div>
                 }
                 else if (_tab == "notes")
                 {
-                    <textarea class="form-control" rows="16" @bind="_notes" @bind:event="oninput" @onblur="PushNotes"></textarea>
-                    <h4 class="mt-3">Tableau blanc</h4>
-                    <canvas class="mtg-board" @ref="_board" width="480" height="280"></canvas>
-                    <h4 class="mt-3">Sondage</h4>
-                    @if (_isOrganizer)
-                    {
-                        <input class="form-control mb-1" placeholder="Question" @bind="_pollQ" />
-                        <button class="cc-btn cc-btn-sm" type="button" @onclick="StartPoll">Lancer</button>
-                    }
-                    @if (!string.IsNullOrEmpty(_pollQLive))
-                    {
-                        <p>@_pollQLive</p>
-                        <button type="button" @onclick="() => Rt.VotePollAsync(Id, 0)">Oui</button>
-                        <button type="button" @onclick="() => Rt.VotePollAsync(Id, 1)">Non</button>
-                    }
+                    <div class="mtg-side-body">
+                        <h5 class="mtg-group">Notes partagées</h5>
+                        <textarea class="mtg-input" rows="10" @bind="_notes" @bind:event="oninput" @onblur="PushNotes"></textarea>
+                        <h5 class="mtg-group">Tableau blanc</h5>
+                        <canvas class="mtg-board" @ref="_board" width="480" height="280"></canvas>
+                        <h5 class="mtg-group">Sondage</h5>
+                        @if (_isOrganizer)
+                        {
+                            <div class="mtg-search-row">
+                                <input class="mtg-input" placeholder="Question" @bind="_pollQ" />
+                                <button type="button" class="mtg-btn-primary" @onclick="StartPoll">Lancer</button>
+                            </div>
+                        }
+                        @if (!string.IsNullOrEmpty(_pollQLive))
+                        {
+                            <p class="mtg-poll-q">@_pollQLive</p>
+                            <div class="mtg-search-row">
+                                <button type="button" class="mtg-btn-ghost" @onclick="() => Rt.VotePollAsync(Id, 0)">Oui</button>
+                                <button type="button" class="mtg-btn-ghost" @onclick="() => Rt.VotePollAsync(Id, 1)">Non</button>
+                            </div>
+                        }
+                    </div>
                 }
                 else
                 {
-                    <div class="mtg-ai-panel">
-                        <h3><i class="bi bi-stars"></i> Assistant IA de réunion @if (_detail.AiActivatedByOrganizer) { <span class="mtg-ai-badge">Analyse en cours</span> }</h3>
+                    <div class="mtg-side-body">
+                        <h5 class="mtg-group">
+                            Assistant IA de réunion
+                            @if (_detail.AiActivatedByOrganizer) { <span class="mtg-ai-badge">Analyse en cours</span> }
+                        </h5>
                         @if (!_detail.AiActivatedByOrganizer)
                         {
-                            <p>Désactivé par défaut. L’organisateur peut l’activer explicitement.</p>
+                            <p class="mtg-hint">Désactivé par défaut. Seul l’organisateur peut l’activer, avec le consentement des participants.</p>
                             @if (_isOrganizer)
                             {
-                                <button class="cc-btn cc-btn-primary" type="button" @onclick="() => _aiPrompt = true">Activer l’IA</button>
+                                <button type="button" class="mtg-btn-primary" @onclick="() => _aiPrompt = true">Activer la prise de notes IA</button>
                             }
                         }
                         else
                         {
                             <p class="mtg-hint">Les réponses de l’IA peuvent contenir des erreurs. Les actions doivent être validées après la réunion.</p>
-                            <input class="form-control" placeholder="Poser une question sur la réunion…" @bind="_aiQ" />
+                            <input class="mtg-input" placeholder="Poser une question sur la réunion…" @bind="_aiQ" />
                         }
+                        <div class="mtg-ai-card mt-3">
+                            <div>
+                                <h4>Confidentialité</h4>
+                                <p>Capture les décisions, points clés et actions avec le consentement des participants.</p>
+                            </div>
+                            <i class="bi bi-shield-check mtg-ai-shield"></i>
+                        </div>
                     </div>
                 }
-                <div class="mtg-react">
-                    <button type="button" @onclick='() => Rt.ReactAsync(Id, "👍")'>👍</button>
-                    <button type="button" @onclick='() => Rt.ReactAsync(Id, "👏")'>👏</button>
-                    <button type="button" @onclick='() => Rt.ReactAsync(Id, "❤️")'>❤️</button>
-                </div>
             </aside>
         </div>
 
-        <div class="mtg-dock">
-            <button type="button" class="@(_mic ? "" : "is-off")" @onclick="ToggleMic"><i class="bi @(_mic ? "bi-mic" : "bi-mic-mute")"></i> Micro</button>
-            <button type="button" class="@(_cam ? "" : "is-off")" @onclick="ToggleCam"><i class="bi @(_cam ? "bi-camera-video" : "bi-camera-video-off")"></i> Caméra</button>
-            <button type="button" @onclick="ShareAsync"><i class="bi bi-display"></i> Partager</button>
-            <button type="button" @onclick='() => _tab = "chat"'><i class="bi bi-chat"></i> Discussion</button>
-            <button type="button" @onclick='() => _tab = "people"'><i class="bi bi-people"></i> Participants</button>
-            <button type="button" class="@(_hand ? "is-on" : "")" @onclick="ToggleHand"><i class="bi bi-hand-index"></i> Lever la main</button>
-            @if (_isOrganizer)
-            {
-                <button type="button" @onclick="ToggleRecAsync"><i class="bi bi-record-circle"></i> Enregistrer</button>
-                <button type="button" @onclick="LockAsync"><i class="bi bi-lock"></i> Verrouiller</button>
-            }
-            <button type="button" class="mtg-leave" @onclick="LeaveAsync">@(_isOrganizer ? "Terminer pour tous" : "Quitter")</button>
-        </div>
+        @if (_invite)
+        {
+            <div class="mtg-modal-back" @onclick="() => _invite = false">
+                <div class="mtg-modal" @onclick:stopPropagation="true">
+                    <h3>Inviter à cette réunion</h3>
+                    <p class="mtg-hint">Le lien contient déjà le code : le destinataire n’a qu’à cliquer pour entrer.</p>
+                    <label class="mtg-lbl">Lien d’invitation</label>
+                    <input class="mtg-input" readonly value="@InviteLink" />
+                    @if (!string.IsNullOrEmpty(_detail.AccessCode))
+                    {
+                        <label class="mtg-lbl">Code de la réunion</label>
+                        <p class="mtg-modal-code">@_detail.AccessCode</p>
+                    }
+                    <div class="mtg-modal-actions">
+                        <button type="button" class="mtg-btn-ghost" @onclick="() => _invite = false">Fermer</button>
+                        <button type="button" class="mtg-btn-primary" @onclick="CopyInviteAsync">
+                            <i class="bi bi-link-45deg"></i> @(_copied ? "Lien copié" : "Copier le lien")
+                        </button>
+                    </div>
+                </div>
+            </div>
+        }
         @if (_toasts.Count > 0)
         {
             <div class="mtg-toasts">@foreach (var t in _toasts) { <div>@t</div> }</div>
@@ -213,9 +606,14 @@ else if (_detail is not null)
     private Detail? _detail;
     private string? _error;
     private string _selfName = "";
-    private string _tab = "ai";
+    private string _tab = "people";
     private bool _mic = true, _cam, _hand, _recording, _waiting, _aiPrompt, _consentAsk, _allConsented, _isOrganizer;
     private bool _codeGate, _gateBusy;
+    private bool _sharing, _blur, _invite, _copied;
+    private int _unread;
+    private string? _menu;
+    private string _search = "";
+    private string _micLabel = "Micro par défaut", _camLabel = "Caméra par défaut";
     private string _code = "";
     private string _chatIn = "", _notes = "", _caption = "", _aiQ = "", _pollQ = "", _pollQLive = "";
     private readonly List<MeetingLivePeerDto> _peers = [];
@@ -224,14 +622,46 @@ else if (_detail is not null)
     private readonly List<string> _toasts = [];
     private DotNetObjectReference<MeetingRoom>? _jsRef;
     private ElementReference _board;
+    private ElementReference _localVideo;
+    private string? _mediaError;
+    private bool _mediaStarted, _inRoom;
+    private int _cameraCount;
     private int _elapsed;
     private System.Timers.Timer? _timer;
+
+    /// <summary>Retour de classroomMedia : état réel des périphériques après demande d'autorisation.</summary>
+    private sealed class MediaStartResult
+    {
+        public bool Ok { get; set; }
+        public bool Video { get; set; }
+        public bool Audio { get; set; }
+        public int Cameras { get; set; }
+        public int Mics { get; set; }
+        public string? Warning { get; set; }
+        public string? Error { get; set; }
+    }
+
+    public sealed class MediaDevicesInfo
+    {
+        public int Cameras { get; set; }
+        public int Mics { get; set; }
+    }
+
+    private sealed class DeviceList
+    {
+        public int Cameras { get; set; }
+        public int Mics { get; set; }
+        public string[]? CameraLabels { get; set; }
+        public string[]? MicLabels { get; set; }
+    }
 
     protected override async Task OnInitializedAsync()
     {
         var qs = QueryHelpers.ParseQuery(Nav.ToAbsoluteUri(Nav.Uri).Query);
         GuestToken = qs.TryGetValue("guest", out var g) ? g.ToString() : GuestToken;
         GuestName = qs.TryGetValue("name", out var n) ? n.ToString() : GuestName;
+        // Le lien reçu par courriel porte le code : un clic suffit, aucune saisie.
+        _code = qs.TryGetValue("code", out var c) ? c.ToString() : _code;
         _waiting = qs.TryGetValue("wait", out _);
 
         if (string.IsNullOrEmpty(GuestToken))
@@ -248,11 +678,24 @@ else if (_detail is not null)
             _detail = r.Value;
             _isOrganizer = _detail.OrganizerUserId == Auth.UserId;
             _recording = _detail.RecordingEnabled;
-            // Chaque participant confirme le code de la réunion avant d'ouvrir la salle.
+            // Code fourni par l'URL : on le valide sans rien demander, sinon on affiche la saisie.
             if (_detail.RequiresAccessCode)
             {
-                _codeGate = true;
-                return;
+                // L'organisateur et les modérateurs reçoivent le code dans le détail : rien à ressaisir.
+                if (string.IsNullOrWhiteSpace(_code))
+                    _code = _detail.AccessCode ?? "";
+                if (string.IsNullOrWhiteSpace(_code))
+                {
+                    _codeGate = true;
+                    return;
+                }
+                var check = await Api.PostWithErrorAsync<object>($"api/expert/meetings/{Id}/verify-code", new { code = _code });
+                if (check.Error is not null)
+                {
+                    _error = check.Error;
+                    _codeGate = true;
+                    return;
+                }
             }
         }
         else
@@ -294,13 +737,15 @@ else if (_detail is not null)
         await Rt.EnsureHubReadyAsync(GuestToken);
         _jsRef = DotNetObjectReference.Create(this);
         try { await JS.InvokeVoidAsync("classroomRtc.init", _jsRef, new { selfConnectionId = Rt.ConnectionId }); } catch { }
+        try { await JS.InvokeVoidAsync("classroomMedia.setEndedCallback", _jsRef); } catch { }
         if (!string.IsNullOrEmpty(Rt.ConnectionId))
             try { await JS.InvokeVoidAsync("classroomRtc.setSelfId", Rt.ConnectionId); } catch { }
         var role = _isOrganizer ? "Organizer" : string.IsNullOrEmpty(GuestToken) ? "Participant" : "ExternalGuest";
         if (_detail?.WaitingRoomEnabled == true && !_isOrganizer)
             role = "Waiting";
         await Rt.JoinAsync(Id, _selfName, role, _mic, _cam, GuestToken, _code);
-        try { await JS.InvokeVoidAsync("classroomMedia.start", null, new { video = _cam, audio = _mic }); } catch { }
+        // Le média démarre après le premier rendu de la salle : la balise vidéo locale doit exister.
+        _inRoom = true;
         _timer = new System.Timers.Timer(1000);
         _timer.Elapsed += (_, _) => { _elapsed++; _ = InvokeAsync(StateHasChanged); };
         _timer.Start();
@@ -313,9 +758,21 @@ else if (_detail is not null)
         Rt.PeerListReceived += (id, list) => _ = InvokeAsync(() => { ReplacePeers(list); ConnectAll(); });
         Rt.PeerJoined += (id, p) => _ = InvokeAsync(() => { Upsert(p); ConnectOne(p); StateHasChanged(); });
         Rt.PeerLeft += (id, cid) => _ = InvokeAsync(() => { _peers.RemoveAll(x => x.ConnectionId == cid); JS.InvokeVoidAsync("classroomRtc.closePeer", cid); StateHasChanged(); });
-        Rt.PeerMediaStateChanged += (id, cid, mic, cam) => _ = InvokeAsync(() => { });
+        Rt.PeerMediaStateChanged += (id, cid, mic, cam) => _ = InvokeAsync(async () =>
+        {
+            var i = _peers.FindIndex(x => x.ConnectionId == cid);
+            if (i >= 0) _peers[i] = _peers[i] with { MicOn = mic, CamOn = cam };
+            try { await JS.InvokeVoidAsync("classroomRtc.setRemoteMediaVisible", cid, cam); } catch { }
+            if (cam) { try { await JS.InvokeVoidAsync("classroomRtc.probeRemoteMedia", cid); } catch { } }
+            StateHasChanged();
+        });
         Rt.RtcSignalReceived += (id, from, type, payload) => _ = JS.InvokeVoidAsync("classroomRtc.handleSignal", from, type, payload);
-        Rt.ChatMessageReceived += m => _ = InvokeAsync(() => { _chat.Add(m); StateHasChanged(); });
+        Rt.ChatMessageReceived += m => _ = InvokeAsync(() =>
+        {
+            _chat.Add(m);
+            if (_tab != "chat") _unread++;
+            StateHasChanged();
+        });
         Rt.ChatHistoryReceived += (id, list) => _ = InvokeAsync(() => { _chat.Clear(); _chat.AddRange(list); });
         Rt.WaitingUpdated += (id, list) => _ = InvokeAsync(() => { _waitingList.Clear(); _waitingList.AddRange(list); StateHasChanged(); });
         Rt.WaitingRoom += _id => { _ = InvokeAsync(() => { _waiting = true; StateHasChanged(); }); };
@@ -337,7 +794,113 @@ else if (_detail is not null)
     [JSInvokable] public Task OnRtcOutgoingSignal(string target, string type, string payload) => Rt.SendRtcAsync(Id, target, type, payload);
     [JSInvokable] public Task OnRtcRemoteMedia(string remoteId, bool hasVideo, bool hasAudio) => Task.CompletedTask;
     [JSInvokable] public Task OnRtcConnectionState(string remoteId, string state) => Task.CompletedTask;
-    [JSInvokable] public Task OnScreenShareEnded(string kind) { Toast("Partage terminé"); return Task.CompletedTask; }
+
+    [JSInvokable]
+    public async Task OnScreenShareEnded(string kind)
+    {
+        _sharing = false;
+        Toast("Partage terminé");
+        await RefreshTracksAsync(force: true);
+        await Rt.BroadcastMediaAsync(Id, _mic, _cam);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public Task OnMediaDevicesChanged(MediaDevicesInfo info) => InvokeAsync(() =>
+    {
+        _cameraCount = info.Cameras;
+        if (info.Cameras == 0 && _cam)
+        {
+            _cam = false;
+            _mediaError = "Aucune caméra détectée.";
+        }
+        StateHasChanged();
+    });
+
+    /// <summary>Écran verrouillé ou onglet masqué : le JS coupe les pistes, on resynchronise au retour.</summary>
+    [JSInvokable]
+    public Task OnMediaPrivacyPause(bool paused) => InvokeAsync(async () =>
+    {
+        if (paused)
+        {
+            await Rt.BroadcastMediaAsync(Id, false, false);
+            StateHasChanged();
+            return;
+        }
+        try { await JS.InvokeVoidAsync("classroomMedia.setAudioEnabled", _mic); } catch { }
+        try { await JS.InvokeVoidAsync("classroomMedia.setVideoEnabled", _cam); } catch { }
+        await RefreshTracksAsync();
+        await Rt.BroadcastMediaAsync(Id, _mic, _cam);
+        StateHasChanged();
+    });
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // La salle n'est rendue qu'après le code d'accès et la salle d'attente :
+        // c'est seulement là que la balise vidéo locale existe pour recevoir le flux.
+        if (!_inRoom || _mediaStarted || _waiting || _detail is null || _codeGate)
+            return;
+        _mediaStarted = true;
+        await StartLocalMediaAsync();
+    }
+
+    /// <summary>Demande caméra + micro, puis publie les pistes obtenues aux pairs déjà connectés.</summary>
+    private async Task StartLocalMediaAsync()
+    {
+        try
+        {
+            var r = await JS.InvokeAsync<MediaStartResult>(
+                "classroomMedia.start", _localVideo, new { video = true, audio = true });
+            _cameraCount = r?.Cameras ?? 0;
+            if (r is null || !r.Ok)
+            {
+                _mic = _cam = false;
+                _mediaError = r?.Error ?? "Impossible d'accéder à la caméra ou au micro.";
+            }
+            else
+            {
+                _mic = r.Audio;
+                _cam = r.Video;
+                _mediaError = r.Warning;
+            }
+            await RefreshTracksAsync();
+            await Rt.BroadcastMediaAsync(Id, _mic, _cam);
+            try { await JS.InvokeVoidAsync("classroomRtc.unlockAudio"); } catch { }
+            await LoadDeviceLabelsAsync();
+            // Une négociation en cours au moment du getUserMedia ignore la republication : on repasse.
+            _ = RepublishSoonAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (JSException ex)
+        {
+            _mic = _cam = false;
+            _mediaError = ex.Message;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    /// <summary>Nom réel des périphériques : affiché dans les menus micro et caméra du dock.</summary>
+    private async Task LoadDeviceLabelsAsync()
+    {
+        try
+        {
+            var d = await JS.InvokeAsync<DeviceList>("classroomMedia.listDevices");
+            _micLabel = d?.MicLabels?.FirstOrDefault() is { Length: > 0 } m ? m : $"{d?.Mics ?? 0} micro(s) détecté(s)";
+            _camLabel = d?.CameraLabels?.FirstOrDefault() is { Length: > 0 } c ? c : $"{d?.Cameras ?? 0} caméra(s) détectée(s)";
+        }
+        catch { }
+    }
+
+    /// <summary>Republie le flux local : sans cet appel, les pairs déjà connectés ne reçoivent rien.</summary>
+    private async Task RefreshTracksAsync(bool force = false)
+    {
+        try
+        {
+            if (force) await JS.InvokeVoidAsync("classroomRtc.forceRenegotiate");
+            else await JS.InvokeVoidAsync("classroomRtc.refreshLocalTracks");
+        }
+        catch { }
+    }
 
     private void ReplacePeers(IReadOnlyList<MeetingLivePeerDto> list)
     {
@@ -357,25 +920,105 @@ else if (_detail is not null)
         var self = Rt.ConnectionId ?? "";
         var offer = string.CompareOrdinal(self, p.ConnectionId) < 0;
         _ = JS.InvokeVoidAsync("classroomRtc.connect", p.ConnectionId, offer);
+        // Filet contre la course négociation / getUserMedia : on republie le flux une fois le lien posé.
+        if (_mediaStarted)
+            _ = RepublishSoonAsync();
     }
 
-    private async Task ToggleMic() { _mic = !_mic; try { await JS.InvokeVoidAsync("classroomMedia.setAudioEnabled", _mic); } catch { } await Rt.BroadcastMediaAsync(Id, _mic, _cam); }
-    private async Task ToggleCam()
+    private async Task RepublishSoonAsync()
     {
-        _cam = !_cam;
-        try
+        await Task.Delay(1200);
+        await RefreshTracksAsync();
+    }
+
+    private async Task ToggleMic()
+    {
+        _menu = null;
+        if (!_mediaStarted) { await StartLocalMediaAsync(); return; }
+
+        if (!_mic)
         {
-            if (_cam) await JS.InvokeVoidAsync("classroomMedia.enableCamera");
-            else await JS.InvokeVoidAsync("classroomMedia.setVideoEnabled", false);
+            var hasAudio = false;
+            try { hasAudio = await JS.InvokeAsync<bool>("classroomMedia.hasAudioTrack"); } catch { }
+            if (!hasAudio)
+            {
+                var r = await InvokeMediaAsync("classroomMedia.enableMicrophone");
+                if (r is null || !r.Ok)
+                {
+                    _mediaError = r?.Error ?? "Aucun microphone détecté.";
+                    return;
+                }
+            }
+            _mic = true;
+            try { await JS.InvokeVoidAsync("classroomMedia.setAudioEnabled", true); } catch { }
+            _mediaError = null;
+            await RefreshTracksAsync();
+            await Rt.BroadcastMediaAsync(Id, _mic, _cam);
+            try { await JS.InvokeVoidAsync("classroomRtc.unlockAudio"); } catch { }
+            return;
         }
-        catch { }
+
+        _mic = false;
+        try { await JS.InvokeVoidAsync("classroomMedia.setAudioEnabled", false); } catch { }
         await Rt.BroadcastMediaAsync(Id, _mic, _cam);
     }
+
+    private async Task ToggleCam()
+    {
+        _menu = null;
+        if (!_mediaStarted) { await StartLocalMediaAsync(); return; }
+
+        if (!_cam)
+        {
+            var hasVideo = false;
+            try { hasVideo = await JS.InvokeAsync<bool>("classroomMedia.hasVideoTrack"); } catch { }
+            if (!hasVideo)
+            {
+                // Caméra jamais obtenue (refus initial, webcam branchée après) : nouvelle demande.
+                var r = await InvokeMediaAsync("classroomMedia.enableCamera", _localVideo);
+                _cameraCount = r?.Cameras ?? _cameraCount;
+                if (r is null || !r.Ok || !r.Video)
+                {
+                    _mediaError = r?.Error ?? "Aucune caméra détectée.";
+                    return;
+                }
+            }
+            _cam = true;
+            try { await JS.InvokeVoidAsync("classroomMedia.setVideoEnabled", true); } catch { }
+            _mediaError = null;
+            await RefreshTracksAsync(force: true);
+            await Rt.BroadcastMediaAsync(Id, _mic, _cam);
+            return;
+        }
+
+        _cam = false;
+        try { await JS.InvokeVoidAsync("classroomMedia.setVideoEnabled", false); } catch { }
+        await RefreshTracksAsync();
+        await Rt.BroadcastMediaAsync(Id, _mic, _cam);
+    }
+
+    private async Task<MediaStartResult?> InvokeMediaAsync(string identifier, params object?[] args)
+    {
+        try { return await JS.InvokeAsync<MediaStartResult>(identifier, args); }
+        catch (JSException ex) { return new MediaStartResult { Ok = false, Error = ex.Message }; }
+    }
+
     private async Task ToggleHand() { _hand = !_hand; await Rt.RaiseHandAsync(Id, _hand); }
+
     private async Task ShareAsync()
     {
-        try { await JS.InvokeVoidAsync("classroomMedia.startScreenShare"); Toast("Partage d’écran"); }
-        catch { Toast("Partage indisponible"); }
+        _menu = null;
+        var r = await InvokeMediaAsync("classroomMedia.startScreenShare", _localVideo);
+        if (r is null || !r.Ok)
+        {
+            Toast(r?.Error ?? "Partage indisponible");
+            return;
+        }
+        _sharing = true;
+        Toast("Partage d’écran");
+        // Le flux d'écran remplace la piste caméra : il faut renégocier pour que les pairs le voient.
+        await RefreshTracksAsync(force: true);
+        await Rt.BroadcastMediaAsync(Id, _mic, true);
     }
     private async Task SendChat()
     {
@@ -404,28 +1047,197 @@ else if (_detail is not null)
     }
     private async Task ToggleRecAsync()
     {
+        _menu = null;
         _recording = !_recording;
         await Api.PostWithErrorAsync<object>($"api/expert/meetings/{Id}/recording", new { recording = _recording });
         await Rt.NotifyRecordingAsync(Id, _recording);
     }
     private async Task LockAsync()
     {
+        _menu = null;
         await Api.PostWithErrorAsync<object>($"api/expert/meetings/{Id}/lock", new { locked = true });
         await Rt.NotifyLockedAsync(Id, true);
         Toast("Réunion verrouillée");
     }
-    private async Task LeaveAsync()
+    private Task LeaveAsync() => LeaveOnlyAsync();
+
+    private async Task LeaveOnlyAsync()
     {
-        if (_isOrganizer)
+        await Rt.LeaveAsync();
+        if (!string.IsNullOrEmpty(GuestToken))
         {
-            await Api.PostWithErrorAsync<object>($"api/expert/meetings/{Id}/end", new { });
-            await Rt.NotifyEndedAsync(Id);
-            Nav.NavigateTo($"/expert/meetings/{Id}/minutes");
+            Nav.NavigateTo("/");
             return;
         }
-        await Rt.LeaveAsync();
-        Nav.NavigateTo("/expert/meetings");
+        Nav.NavigateTo(Nav.Uri.Contains("/admin/meetings", StringComparison.OrdinalIgnoreCase)
+            ? "/admin/meetings"
+            : "/expert/meetings");
     }
+
+    /// <summary>Clôture pour tout le monde : réservée à l'organisateur, elle ouvre le compte rendu.</summary>
+    private async Task EndForAllAsync()
+    {
+        await Api.PostWithErrorAsync<object>($"api/expert/meetings/{Id}/end", new { });
+        await Rt.NotifyEndedAsync(Id);
+        Nav.NavigateTo($"/expert/meetings/{Id}/minutes");
+    }
+
+    private async Task MuteEveryoneAsync()
+    {
+        _menu = null;
+        foreach (var p in _peers.ToList())
+            await Rt.ForceMuteAsync(Id, p.ConnectionId);
+        Toast("Micros coupés");
+    }
+
+    private async Task ForceMuteAsync(string connectionId)
+    {
+        _menu = null;
+        await Rt.ForceMuteAsync(Id, connectionId);
+    }
+
+    private async Task KickAsync(string connectionId)
+    {
+        _menu = null;
+        await Rt.KickAsync(Id, connectionId);
+    }
+
+    private async Task ToggleBlurAsync()
+    {
+        _menu = null;
+        var mode = _blur ? "none" : "blur";
+        var r = await InvokeMediaAsync("classroomMedia.setBackgroundEffect", _localVideo, new { mode });
+        if (r is not null && !r.Ok)
+        {
+            Toast(r.Error ?? "Arrière-plan indisponible");
+            return;
+        }
+        _blur = !_blur;
+        await RefreshTracksAsync(force: true);
+    }
+
+    private async Task ShareBoardAsync()
+    {
+        _menu = null;
+        var r = await InvokeMediaAsync("classroomMedia.startWhiteboardShare", _localVideo, _board);
+        if (r is null || !r.Ok)
+        {
+            Toast(r?.Error ?? "Tableau blanc indisponible");
+            return;
+        }
+        _sharing = true;
+        Toast("Tableau blanc partagé");
+        await RefreshTracksAsync(force: true);
+        await Rt.BroadcastMediaAsync(Id, _mic, true);
+    }
+
+    private void OpenInvite()
+    {
+        _copied = false;
+        _invite = true;
+        _menu = null;
+    }
+
+    private async Task CopyInviteAsync()
+    {
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", InviteLink); }
+        catch { Toast("Copie impossible : copiez le lien à la main."); return; }
+        _copied = true;
+        Toast("Lien d’invitation copié");
+    }
+
+    /// <summary>Lien prêt à l'emploi : le code voyage avec, le destinataire n'a qu'à cliquer.</summary>
+    private string InviteLink
+    {
+        get
+        {
+            var url = $"{Nav.BaseUri.TrimEnd('/')}/expert/meetings/{Id}/room";
+            var code = _detail?.AccessCode ?? (_codeGate ? null : _code);
+            return string.IsNullOrWhiteSpace(code) ? url : $"{url}?code={Uri.EscapeDataString(code)}";
+        }
+    }
+
+    private void Menu(string key) => _menu = _menu == key ? null : key;
+    private void CloseMenus() => _menu = null;
+
+    private void OpenTab(string tab)
+    {
+        _tab = tab;
+        _menu = null;
+        if (tab == "chat") _unread = 0;
+    }
+
+    private bool SelfHasVideo => _cam || _sharing;
+    private string SelfRole => _isOrganizer ? "Organizer" : string.IsNullOrEmpty(GuestToken) ? "Participant" : "ExternalGuest";
+
+    private string NoticeText => (_recording, _detail?.AiActivatedByOrganizer ?? false) switch
+    {
+        (true, true) => "L’enregistrement et l’assistant IA sont actifs",
+        (true, false) => "L’enregistrement est en cours",
+        (false, true) => "L’assistant IA est actif",
+        _ => "L’enregistrement et l’assistant IA sont désactivés"
+    };
+
+    private bool Matches(string name) =>
+        string.IsNullOrWhiteSpace(_search) || name.Contains(_search.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsGuest(string role) => role is "ExternalGuest" or "Guest";
+
+    private static string RoleName(string role) => role switch
+    {
+        "Organizer" => "Organisateur",
+        "ExternalGuest" or "Guest" => "Invité externe",
+        "Waiting" => "En attente",
+        _ => "Participant"
+    };
+
+    private static string RoleLabel(string role) => role switch
+    {
+        "Organizer" => "Organisateur",
+        "ExternalGuest" or "Guest" => "Externe",
+        "Waiting" => "En attente",
+        _ => "Participant"
+    };
+
+    private static string RoleCls(string role) => role switch
+    {
+        "Organizer" => "is-org",
+        "ExternalGuest" or "Guest" => "is-ext",
+        "Waiting" => "is-wait",
+        _ => "is-part"
+    };
+
+    private static string Initials(string name)
+    {
+        var parts = (name ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) return "?";
+        var first = char.ToUpperInvariant(parts[0][0]);
+        if (parts.Length == 1)
+            return parts[0].Length > 1 ? $"{first}{char.ToUpperInvariant(parts[0][1])}" : first.ToString();
+        return $"{first}{char.ToUpperInvariant(parts[^1][0])}";
+    }
+
+    /// <summary>Couleur stable par personne : la même initiale garde sa teinte d'une vue à l'autre.</summary>
+    private static string AvatarBg(string name)
+    {
+        string[] palette = ["#7c3aed", "#2f9e8f", "#3b82f6", "#db2777", "#d97706", "#0ea5e9", "#16a34a", "#6366f1"];
+        var sum = 0;
+        foreach (var ch in name ?? "") sum = (sum + ch) % 4096;
+        return palette[sum % palette.Length];
+    }
+    /// <summary>Sortie avant l'entrée en salle : l'invité revient à sa page d'accès, le membre à sa liste.</summary>
+    private void GoBack()
+    {
+        if (!string.IsNullOrEmpty(GuestToken))
+        {
+            Nav.NavigateTo($"/meet/join/{Uri.EscapeDataString(GuestToken)}");
+            return;
+        }
+        Nav.NavigateTo(Nav.Uri.Contains("/admin/meetings", StringComparison.OrdinalIgnoreCase)
+            ? "/admin/meetings"
+            : "/expert/meetings");
+    }
+
     private void Toast(string t) { _toasts.Add(t); _ = Task.Delay(2500).ContinueWith(_ => InvokeAsync(() => { _toasts.Remove(t); StateHasChanged(); })); }
     private string TabCls(string t) => _tab == t ? "is-on" : "";
     private static string FormatElapsed(int s) => TimeSpan.FromSeconds(s).ToString(@"hh\:mm\:ss");

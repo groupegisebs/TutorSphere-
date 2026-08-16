@@ -607,7 +607,7 @@ public class ExpertMeetingService(
         guest.RevokedAtUtc = null;
         await db.SaveChangesAsync(ct);
         var org = await contacts.GetAsync(meeting.OrganizerUserId, ct);
-        var join = $"{urls.WebBaseUrl.TrimEnd('/')}/meet/join/{Uri.EscapeDataString(token)}";
+        var join = GuestJoinUrl(guest, token);
         await email.SendMeetingInvitationAsync(
             guest.Email, guest.FullName, meeting.Title, meeting.StartAtUtc ?? DateTime.UtcNow,
             meeting.TimeZoneId, org?.DisplayName ?? "Organisateur", meeting.Agenda, join,
@@ -813,7 +813,7 @@ public class ExpertMeetingService(
                     await email.SendMeetingInvitationAsync(
                         guest.Email, guest.FullName, meeting.Title, meeting.StartAtUtc ?? DateTime.UtcNow,
                         meeting.TimeZoneId, organizer, meeting.Agenda,
-                        $"{web}/meet/join/{Uri.EscapeDataString(token)}",
+                        GuestJoinUrl(guest, token),
                         meeting.RecordingEnabled, meeting.AiEnabled, true, guest.TokenExpiresAtUtc, guest.AccessCode, ct);
                 }
                 else
@@ -824,7 +824,7 @@ public class ExpertMeetingService(
                     await email.SendMeetingInvitationAsync(
                         inv.RecipientEmail, contact?.DisplayName ?? "Membre du groupe", meeting.Title,
                         meeting.StartAtUtc ?? DateTime.UtcNow, meeting.TimeZoneId, organizer, meeting.Agenda,
-                        $"{web}/expert/meetings/{meeting.Id}/room",
+                        MemberJoinUrl(meeting, contact?.DisplayName, inv.RecipientEmail),
                         meeting.RecordingEnabled, meeting.AiEnabled, false, null, meeting.AccessCode, ct);
                 }
 
@@ -849,7 +849,6 @@ public class ExpertMeetingService(
         if (now < dueUtc || now > dueUtc + window) return;
         if (db.MeetingNotifications.Any(n => n.MeetingId == meeting.Id && n.Kind == kind))
             return;
-        var join = $"{urls.WebBaseUrl.TrimEnd('/')}/expert/meetings/{meeting.Id}/room";
         foreach (var p in db.MeetingParticipants.Where(x => x.MeetingId == meeting.Id && x.UserId != null).ToList())
         {
             var c = await contacts.GetAsync(p.UserId!, ct);
@@ -857,7 +856,8 @@ public class ExpertMeetingService(
             try
             {
                 await email.SendMeetingReminderAsync(
-                    c.Value.Email, c.Value.DisplayName, meeting.Title, meeting.StartAtUtc ?? now, join, meeting.AccessCode, ct);
+                    c.Value.Email, c.Value.DisplayName, meeting.Title, meeting.StartAtUtc ?? now,
+                    MemberJoinUrl(meeting, c.Value.DisplayName, c.Value.Email), meeting.AccessCode, ct);
                 db.Add(new MeetingNotification
                 {
                     MeetingId = meeting.Id,
@@ -1044,16 +1044,40 @@ public class ExpertMeetingService(
             canSeeCode ? meeting.AccessCode : null);
     }
 
+    /// <summary>
+    /// Lien membre : code et identité portés par l'URL pour que le destinataire n'ait qu'un clic à faire.
+    /// </summary>
+    private string MemberJoinUrl(Meeting meeting, string? displayName, string? email)
+    {
+        var url = $"{urls.WebBaseUrl.TrimEnd('/')}/expert/meetings/{meeting.Id}/room";
+        return AppendAccess(url, meeting.AccessCode, displayName, email);
+    }
+
+    /// <summary>Lien invité : jeton personnel + code personnel, saisie inutile.</summary>
+    private string GuestJoinUrl(MeetingExternalGuest guest, string token)
+    {
+        var url = $"{urls.WebBaseUrl.TrimEnd('/')}/meet/join/{Uri.EscapeDataString(token)}";
+        return AppendAccess(url, guest.AccessCode, guest.FullName, guest.Email);
+    }
+
+    private static string AppendAccess(string url, string? code, string? name, string? email)
+    {
+        var parts = new List<string>(3);
+        if (!string.IsNullOrWhiteSpace(code)) parts.Add($"code={Uri.EscapeDataString(code)}");
+        if (!string.IsNullOrWhiteSpace(name)) parts.Add($"name={Uri.EscapeDataString(name)}");
+        if (!string.IsNullOrWhiteSpace(email)) parts.Add($"email={Uri.EscapeDataString(email)}");
+        return parts.Count == 0 ? url : $"{url}?{string.Join('&', parts)}";
+    }
+
     private async Task SendInvitesAsync(Meeting meeting, List<(MeetingExternalGuest Guest, string Token)> guests, CancellationToken ct)
     {
         var org = await contacts.GetAsync(meeting.OrganizerUserId, ct);
         var organizer = org?.DisplayName ?? "Organisateur";
-        var web = urls.WebBaseUrl.TrimEnd('/');
-        var memberJoin = $"{web}/expert/meetings/{meeting.Id}/room";
         foreach (var p in db.MeetingParticipants.Where(x => x.MeetingId == meeting.Id && x.UserId != null).ToList())
         {
             var c = await contacts.GetAsync(p.UserId!, ct);
             if (c is null || string.IsNullOrWhiteSpace(c.Value.Email)) continue;
+            var memberJoin = MemberJoinUrl(meeting, c.Value.DisplayName, c.Value.Email);
             var inv = new MeetingInvitation
             {
                 MeetingId = meeting.Id,
@@ -1091,7 +1115,7 @@ public class ExpertMeetingService(
 
         foreach (var (guest, token) in guests)
         {
-            var join = $"{web}/meet/join/{Uri.EscapeDataString(token)}";
+            var join = GuestJoinUrl(guest, token);
             var inv = new MeetingInvitation
             {
                 MeetingId = meeting.Id,
