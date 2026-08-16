@@ -338,7 +338,10 @@ public class ParentService : IParentService
             .OrderBy(l => l.StartTime)
             .ToList();
 
-        var tenantIds = lessons.Select(l => l.TenantId).Distinct().ToList();
+        var tenantIds = lessons.Select(l => l.TenantId)
+            .Concat(lessons.Where(l => l.DeliveredByTenantId.HasValue).Select(l => l.DeliveredByTenantId!.Value))
+            .Distinct()
+            .ToList();
         var tenants = _db.Tenants
             .Where(t => tenantIds.Contains(t.Id))
             .ToDictionary(t => t.Id);
@@ -586,6 +589,7 @@ public class ParentService : IParentService
             .ToList();
 
         var tenantIds = lessons.Select(l => l.TenantId)
+            .Concat(lessons.Where(l => l.DeliveredByTenantId.HasValue).Select(l => l.DeliveredByTenantId!.Value))
             .Concat(homeworks.Select(h => h.TenantId))
             .Distinct()
             .ToList();
@@ -605,7 +609,7 @@ public class ParentService : IParentService
             if (!childLookup.TryGetValue(attendance.StudentId, out var student))
                 continue;
 
-            tenants.TryGetValue(lesson.TenantId, out var tenant);
+            tenants.TryGetValue(lesson.DeliveredByTenantId ?? lesson.TenantId, out var tenant);
             var teacherId = string.IsNullOrWhiteSpace(tenant?.OwnerUserId) || tenant!.OwnerUserId == userId
                 ? null
                 : tenant.OwnerUserId;
@@ -1707,7 +1711,10 @@ public class ParentService : IParentService
             .OrderBy(l => l.StartTime)
             .FirstOrDefault();
 
-        var tenantIds = lessons.Select(l => l.TenantId).Distinct().ToHashSet();
+        var tenantIds = lessons.Select(l => l.TenantId)
+            .Concat(lessons.Where(l => l.DeliveredByTenantId.HasValue).Select(l => l.DeliveredByTenantId!.Value))
+            .Distinct()
+            .ToHashSet();
         var subscriptions = _db.StudentSubscriptionsForAnyTenant
             .Where(s => s.StudentId == student.Id
                         && s.Status != SubscriptionStatus.Cancelled
@@ -1726,7 +1733,7 @@ public class ParentService : IParentService
         ParentChildNextLessonDto? nextLesson = null;
         if (nextLessonEntity is not null)
         {
-            tenants.TryGetValue(nextLessonEntity.TenantId, out var nextTenant);
+            tenants.TryGetValue(nextLessonEntity.DeliveredByTenantId ?? nextLessonEntity.TenantId, out var nextTenant);
             nextLesson = new ParentChildNextLessonDto(
                 nextLessonEntity.Id,
                 nextLessonEntity.Subject ?? nextLessonEntity.Title,
@@ -1968,7 +1975,7 @@ public class ParentService : IParentService
         Lesson lesson,
         IReadOnlyDictionary<Guid, Tenant> tenants)
     {
-        tenants.TryGetValue(lesson.TenantId, out var tenant);
+        tenants.TryGetValue(lesson.DeliveredByTenantId ?? lesson.TenantId, out var tenant);
         var tutorName = tenant?.Name ?? lesson.Title;
         return new ParentDashboardSessionDto(
             lesson.Id,

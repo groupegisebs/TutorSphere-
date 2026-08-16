@@ -197,16 +197,32 @@ public class StudentPortalService : IStudentPortalService
         if (end.HasValue)
             query = query.Where(l => l.StartTime < end.Value);
 
-        var lessons = query
+        var listed = query
             .OrderBy(l => l.StartTime)
-            .ToList()
+            .ToList();
+        var teacherIds = listed
+            .SelectMany(l => new[] { l.TenantId, l.DeliveredByTenantId ?? Guid.Empty })
+            .Where(id => id != Guid.Empty)
+            .Distinct()
+            .ToList();
+        var teacherNames = teacherIds.Count == 0
+            ? new Dictionary<Guid, string>()
+            : _db.Tenants.Where(t => teacherIds.Contains(t.Id)).ToDictionary(t => t.Id, t => t.Name);
+
+        var lessons = listed
             .Select(l =>
             {
                 var access = _access.Evaluate(student.Id, l.Id);
+                teacherNames.TryGetValue(l.TenantId, out var original);
+                string? substitute = null;
+                if (l.DeliveredByTenantId is Guid subId)
+                    teacherNames.TryGetValue(subId, out substitute);
                 return MapLesson(
                     l,
                     presentByLesson.TryGetValue(l.Id, out var p) ? p : null,
-                    access);
+                    access,
+                    original,
+                    substitute);
             })
             .ToList();
 
@@ -559,7 +575,12 @@ public class StudentPortalService : IStudentPortalService
             ? []
             : raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-    private static LessonDto MapLesson(Lesson l, bool? isPresent, LessonAccessDto access) => new(
+    private static LessonDto MapLesson(
+        Lesson l,
+        bool? isPresent,
+        LessonAccessDto access,
+        string? originalTeacherName = null,
+        string? substituteTeacherName = null) => new(
         l.Id, l.Title, l.Description, l.Subject, l.StartTime, l.EndTime,
         l.Mode.ToString(),
         l.Location,
@@ -568,7 +589,10 @@ public class StudentPortalService : IStudentPortalService
         l.SettlementStatus.ToString(), l.CancelledAt, l.SessionCounted, l.TutorLiable, l.TutorLiabilityResolution,
         IsPresent: isPresent,
         CanJoin: access.CanJoin,
-        PaymentRequired: access.PaymentRequired);
+        PaymentRequired: access.PaymentRequired,
+        SubstituteTeacherName: substituteTeacherName,
+        OriginalTeacherName: originalTeacherName,
+        CoverageStatus: l.DeliveredByTenantId.HasValue ? "Approved" : null);
 
     private static LessonDto MapLesson(Lesson l, bool? isPresent = null) =>
         MapLesson(l, isPresent, new LessonAccessDto(true, false, null));

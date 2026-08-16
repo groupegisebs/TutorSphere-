@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -24,7 +25,8 @@ public static class DependencyInjection
         services.AddScoped<TenantContext>();
 
         services.AddDbContext<ApplicationDbContext>(options =>
-            options.UseNpgsql(configuration.GetConnectionString("DefaultConnection")));
+            options.UseNpgsql(configuration.GetConnectionString("DefaultConnection"))
+                .ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning)));
 
         services.AddScoped<IApplicationDbContext>(sp => sp.GetRequiredService<ApplicationDbContext>());
 
@@ -79,11 +81,19 @@ public static class DependencyInjection
             pending.Count == 0 ? "(none)" : string.Join(", ", pending));
 
         logger.LogInformation("Applying database migrations…");
-        await db.Database.MigrateAsync();
-        logger.LogInformation("Database migrations applied.");
+        try
+        {
+            await db.Database.MigrateAsync();
+            logger.LogInformation("Database migrations applied.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "EF MigrateAsync failed — schema filets will still run so the API can start.");
+        }
 
         // Filet si une migration a déjà été livrée sans attribut [Migration] (EF l'ignore).
         await EnsureTeacherLicenseSchemaAsync(db, logger);
+        await EnsureRecentFeatureSchemaAsync(db, logger);
 
         var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
         foreach (var role in UserRoles.All)
@@ -156,6 +166,79 @@ public static class DependencyInjection
         await db.Database.ExecuteSqlRawAsync(
             """ALTER TABLE "PlatformPromoCodesSet" ALTER COLUMN "Code" TYPE character varying(64);""");
         logger.LogInformation("Teacher license schema columns are present.");
+    }
+
+    /// <summary>
+    /// Filet idempotent si EF ignore une migration manuscrite (sans [Migration])
+    /// ou bloque sur PendingModelChangesWarning.
+    /// </summary>
+    private static async Task EnsureRecentFeatureSchemaAsync(ApplicationDbContext db, ILogger logger)
+    {
+        await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "LessonsSet" ADD COLUMN IF NOT EXISTS "DeliveredByTenantId" uuid;""");
+        await db.Database.ExecuteSqlRawAsync(
+            """CREATE INDEX IF NOT EXISTS "IX_LessonsSet_DeliveredByTenantId" ON "LessonsSet" ("DeliveredByTenantId");""");
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            CREATE TABLE IF NOT EXISTS "LessonCoverageAssignmentsSet" (
+                "Id" uuid NOT NULL,
+                "ExpertGroupId" uuid NOT NULL,
+                "OriginalTenantId" uuid NOT NULL,
+                "SubstituteTenantId" uuid NOT NULL,
+                "LessonId" uuid NOT NULL,
+                "UnavailabilityId" uuid,
+                "Reason" character varying(500) NOT NULL,
+                "ProposedByUserId" character varying(450) NOT NULL,
+                "Status" integer NOT NULL,
+                "RespondedAt" timestamp with time zone,
+                "RespondedByUserId" character varying(450),
+                "TransferredAt" timestamp with time zone,
+                "TransferredTutorAmount" numeric(18,2),
+                "TransferCurrency" character varying(8) NOT NULL,
+                "CreatedAt" timestamp with time zone NOT NULL,
+                "UpdatedAt" timestamp with time zone,
+                CONSTRAINT "PK_LessonCoverageAssignmentsSet" PRIMARY KEY ("Id")
+            );
+            """);
+        await db.Database.ExecuteSqlRawAsync(
+            """CREATE INDEX IF NOT EXISTS "IX_LessonCoverageAssignmentsSet_ExpertGroupId" ON "LessonCoverageAssignmentsSet" ("ExpertGroupId");""");
+        await db.Database.ExecuteSqlRawAsync(
+            """CREATE INDEX IF NOT EXISTS "IX_LessonCoverageAssignmentsSet_LessonId" ON "LessonCoverageAssignmentsSet" ("LessonId");""");
+        await db.Database.ExecuteSqlRawAsync(
+            """CREATE INDEX IF NOT EXISTS "IX_LessonCoverageAssignmentsSet_OriginalTenantId" ON "LessonCoverageAssignmentsSet" ("OriginalTenantId");""");
+        await db.Database.ExecuteSqlRawAsync(
+            """CREATE INDEX IF NOT EXISTS "IX_LessonCoverageAssignmentsSet_Status" ON "LessonCoverageAssignmentsSet" ("Status");""");
+        await db.Database.ExecuteSqlRawAsync(
+            """CREATE INDEX IF NOT EXISTS "IX_LessonCoverageAssignmentsSet_SubstituteTenantId" ON "LessonCoverageAssignmentsSet" ("SubstituteTenantId");""");
+
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            ALTER TABLE "DocumentsSet" ADD COLUMN IF NOT EXISTS "Title" character varying(200);
+            ALTER TABLE "DocumentsSet" ADD COLUMN IF NOT EXISTS "Subject" character varying(120);
+            ALTER TABLE "DocumentsSet" ADD COLUMN IF NOT EXISTS "SchoolLevel" character varying(40);
+            ALTER TABLE "DocumentsSet" ADD COLUMN IF NOT EXISTS "Summary" character varying(2000);
+            ALTER TABLE "DocumentsSet" ADD COLUMN IF NOT EXISTS "SharedStudentIds" character varying(4000);
+            ALTER TABLE "DocumentsSet" ADD COLUMN IF NOT EXISTS "SharedByExpertGroupId" uuid;
+            ALTER TABLE "DocumentsSet" ADD COLUMN IF NOT EXISTS "LibraryBatchId" uuid;
+            """);
+        await db.Database.ExecuteSqlRawAsync(
+            """CREATE INDEX IF NOT EXISTS "IX_DocumentsSet_LibraryBatchId" ON "DocumentsSet" ("LibraryBatchId");""");
+        await db.Database.ExecuteSqlRawAsync(
+            """CREATE INDEX IF NOT EXISTS "IX_DocumentsSet_SharedByExpertGroupId" ON "DocumentsSet" ("SharedByExpertGroupId");""");
+
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            ALTER TABLE "TutorPayoutsSet" ADD COLUMN IF NOT EXISTS "InvoiceNumber" character varying(40);
+            ALTER TABLE "TutorPayoutsSet" ADD COLUMN IF NOT EXISTS "ExpertGroupId" uuid;
+            ALTER TABLE "TutorPayoutsSet" ADD COLUMN IF NOT EXISTS "PaymentMethodSnapshot" character varying(4000);
+            ALTER TABLE "TutorPayoutsSet" ADD COLUMN IF NOT EXISTS "ProcessingAt" timestamp with time zone;
+            ALTER TABLE "TutorPayoutsSet" ADD COLUMN IF NOT EXISTS "PaidByUserId" character varying(450);
+            """);
+        await db.Database.ExecuteSqlRawAsync(
+            """CREATE INDEX IF NOT EXISTS "IX_TutorPayoutsSet_ExpertGroupId" ON "TutorPayoutsSet" ("ExpertGroupId");""");
+        await db.Database.ExecuteSqlRawAsync(
+            """CREATE INDEX IF NOT EXISTS "IX_TutorPayoutsSet_InvoiceNumber" ON "TutorPayoutsSet" ("InvoiceNumber");""");
+        logger.LogInformation("Coverage, document metadata, and payout invoice schema columns are present.");
     }
 
     /// <summary>

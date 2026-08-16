@@ -3559,8 +3559,26 @@ namespace TutorSphere.Infrastructure.Migrations
                         .HasMaxLength(80)
                         .HasColumnType("character varying(80)");
 
+                    b.Property<string>("InvoiceNumber")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<Guid?>("ExpertGroupId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Note")
                         .HasColumnType("text");
+
+                    b.Property<string>("PaidByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<string>("PaymentMethodSnapshot")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<DateTime?>("ProcessingAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<Guid?>("PayoutAccountId")
                         .HasColumnType("uuid");
@@ -3586,7 +3604,11 @@ namespace TutorSphere.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("ExpertGroupId");
+
                     b.HasIndex("IdempotencyKey");
+
+                    b.HasIndex("InvoiceNumber");
 
                     b.HasIndex("PayoutAccountId");
 

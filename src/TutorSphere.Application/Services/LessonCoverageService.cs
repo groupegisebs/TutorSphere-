@@ -159,11 +159,38 @@ public sealed class LessonCoverageService(
             .Select(c => c.LessonId)
             .ToHashSet();
 
+        var substituteBusy = db.LessonsForAnyTenant
+            .Where(l => l.TenantId == request.SubstituteTenantId
+                        && l.SettlementStatus == LessonSettlementStatus.Scheduled
+                        && l.EndTime > windowStart
+                        && l.StartTime < windowEnd)
+            .Select(l => new { l.StartTime, l.EndTime })
+            .ToList();
+        var substituteCoveringIds = db.LessonCoverageAssignments
+            .Where(c => c.SubstituteTenantId == request.SubstituteTenantId
+                        && (c.Status == LessonCoverageStatus.Approved || c.Status == LessonCoverageStatus.Pending))
+            .Select(c => c.LessonId)
+            .ToList();
+        if (substituteCoveringIds.Count > 0)
+        {
+            substituteBusy.AddRange(db.LessonsForAnyTenant
+                .Where(l => substituteCoveringIds.Contains(l.Id)
+                            && l.SettlementStatus == LessonSettlementStatus.Scheduled)
+                .Select(l => new { l.StartTime, l.EndTime })
+                .ToList());
+        }
+
         var created = new List<LessonCoverageAssignment>();
+        var skippedBusy = 0;
         foreach (var lesson in candidates)
         {
             if (blockedLessonIds.Contains(lesson.Id) || lesson.DeliveredByTenantId.HasValue)
                 continue;
+            if (substituteBusy.Any(b => lesson.StartTime < b.EndTime && lesson.EndTime > b.StartTime))
+            {
+                skippedBusy++;
+                continue;
+            }
 
             var row = new LessonCoverageAssignment
             {
@@ -181,7 +208,11 @@ public sealed class LessonCoverageService(
         }
 
         if (created.Count == 0)
-            throw new InvalidOperationException("Ces séances ont déjà un remplacement proposé ou accepté.");
+        {
+            throw new InvalidOperationException(skippedBusy > 0
+                ? "Le suppléant a déjà un cours (ou un autre remplacement) sur ces horaires."
+                : "Ces séances ont déjà un remplacement proposé ou accepté.");
+        }
 
         await db.SaveChangesAsync(ct);
         await NotifyFamiliesAsync(created, ct);

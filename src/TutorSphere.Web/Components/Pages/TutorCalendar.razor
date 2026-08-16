@@ -759,8 +759,16 @@
                 ? lesson.EndTime.ToLocalTime()
                 : DateTime.SpecifyKind(lesson.EndTime, DateTimeKind.Local);
             var dur = Math.Max(15, (int)(endLocal - local).TotalMinutes);
+            var subtitle = lesson.Subject ?? "";
+            if (!string.IsNullOrWhiteSpace(lesson.SubstituteTeacherName)
+                && !string.IsNullOrWhiteSpace(lesson.OriginalTeacherName))
+            {
+                subtitle = string.IsNullOrWhiteSpace(subtitle)
+                    ? $"{lesson.OriginalTeacherName} → {lesson.SubstituteTeacherName}"
+                    : $"{subtitle} · {lesson.OriginalTeacherName} → {lesson.SubstituteTeacherName}";
+            }
             _apiEvents.Add(new CalEvent(
-                lesson.Id, local.Date, lesson.Title, lesson.Subject ?? "", MapMode(lesson.Mode),
+                lesson.Id, local.Date, lesson.Title, subtitle, MapMode(lesson.Mode),
                 local.Hour, local.Minute, dur, lesson.Mode, lesson.Description, lesson.Location, lesson.MeetingUrl,
                 maxStudents: lesson.MaxStudents));
         }

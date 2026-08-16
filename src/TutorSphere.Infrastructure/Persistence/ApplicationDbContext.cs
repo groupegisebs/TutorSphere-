@@ -613,6 +613,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
         });
 
         builder.Entity<Unavailability>(e => e.HasIndex(u => u.TenantId));
+        builder.Entity<Lesson>(e => e.HasIndex(l => l.DeliveredByTenantId));
         builder.Entity<LessonCoverageAssignment>(e =>
         {
             e.ToTable("LessonCoverageAssignmentsSet");

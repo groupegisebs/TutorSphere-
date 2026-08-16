@@ -16,56 +16,33 @@ namespace TutorSphere.Infrastructure.Migrations
 
             migrationBuilder.Sql("""CREATE INDEX IF NOT EXISTS "IX_LessonsSet_DeliveredByTenantId" ON "LessonsSet" ("DeliveredByTenantId");""");
 
-            migrationBuilder.CreateTable(
-                name: "LessonCoverageAssignmentsSet",
-                columns: table => new
-                {
-                    Id = table.Column<Guid>(type: "uuid", nullable: false),
-                    ExpertGroupId = table.Column<Guid>(type: "uuid", nullable: false),
-                    OriginalTenantId = table.Column<Guid>(type: "uuid", nullable: false),
-                    SubstituteTenantId = table.Column<Guid>(type: "uuid", nullable: false),
-                    LessonId = table.Column<Guid>(type: "uuid", nullable: false),
-                    UnavailabilityId = table.Column<Guid>(type: "uuid", nullable: true),
-                    Reason = table.Column<string>(type: "character varying(500)", maxLength: 500, nullable: false),
-                    ProposedByUserId = table.Column<string>(type: "character varying(450)", maxLength: 450, nullable: false),
-                    Status = table.Column<int>(type: "integer", nullable: false),
-                    RespondedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
-                    RespondedByUserId = table.Column<string>(type: "character varying(450)", maxLength: 450, nullable: true),
-                    TransferredAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true),
-                    TransferredTutorAmount = table.Column<decimal>(type: "numeric(18,2)", precision: 18, scale: 2, nullable: true),
-                    TransferCurrency = table.Column<string>(type: "character varying(8)", maxLength: 8, nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
-                    UpdatedAt = table.Column<DateTime>(type: "timestamp with time zone", nullable: true)
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_LessonCoverageAssignmentsSet", x => x.Id);
-                });
+            migrationBuilder.Sql("""
+                CREATE TABLE IF NOT EXISTS "LessonCoverageAssignmentsSet" (
+                    "Id" uuid NOT NULL,
+                    "ExpertGroupId" uuid NOT NULL,
+                    "OriginalTenantId" uuid NOT NULL,
+                    "SubstituteTenantId" uuid NOT NULL,
+                    "LessonId" uuid NOT NULL,
+                    "UnavailabilityId" uuid,
+                    "Reason" character varying(500) NOT NULL,
+                    "ProposedByUserId" character varying(450) NOT NULL,
+                    "Status" integer NOT NULL,
+                    "RespondedAt" timestamp with time zone,
+                    "RespondedByUserId" character varying(450),
+                    "TransferredAt" timestamp with time zone,
+                    "TransferredTutorAmount" numeric(18,2),
+                    "TransferCurrency" character varying(8) NOT NULL,
+                    "CreatedAt" timestamp with time zone NOT NULL,
+                    "UpdatedAt" timestamp with time zone,
+                    CONSTRAINT "PK_LessonCoverageAssignmentsSet" PRIMARY KEY ("Id")
+                );
+                """);
 
-            migrationBuilder.CreateIndex(
-                name: "IX_LessonCoverageAssignmentsSet_ExpertGroupId",
-                table: "LessonCoverageAssignmentsSet",
-                column: "ExpertGroupId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_LessonCoverageAssignmentsSet_LessonId",
-                table: "LessonCoverageAssignmentsSet",
-                column: "LessonId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_LessonCoverageAssignmentsSet_OriginalTenantId",
-                table: "LessonCoverageAssignmentsSet",
-                column: "OriginalTenantId");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_LessonCoverageAssignmentsSet_Status",
-                table: "LessonCoverageAssignmentsSet",
-                column: "Status");
-
-            migrationBuilder.CreateIndex(
-                name: "IX_LessonCoverageAssignmentsSet_SubstituteTenantId",
-                table: "LessonCoverageAssignmentsSet",
-                column: "SubstituteTenantId");
+            migrationBuilder.Sql("""CREATE INDEX IF NOT EXISTS "IX_LessonCoverageAssignmentsSet_ExpertGroupId" ON "LessonCoverageAssignmentsSet" ("ExpertGroupId");""");
+            migrationBuilder.Sql("""CREATE INDEX IF NOT EXISTS "IX_LessonCoverageAssignmentsSet_LessonId" ON "LessonCoverageAssignmentsSet" ("LessonId");""");
+            migrationBuilder.Sql("""CREATE INDEX IF NOT EXISTS "IX_LessonCoverageAssignmentsSet_OriginalTenantId" ON "LessonCoverageAssignmentsSet" ("OriginalTenantId");""");
+            migrationBuilder.Sql("""CREATE INDEX IF NOT EXISTS "IX_LessonCoverageAssignmentsSet_Status" ON "LessonCoverageAssignmentsSet" ("Status");""");
+            migrationBuilder.Sql("""CREATE INDEX IF NOT EXISTS "IX_LessonCoverageAssignmentsSet_SubstituteTenantId" ON "LessonCoverageAssignmentsSet" ("SubstituteTenantId");""");
         }
 
         /// <inheritdoc />
