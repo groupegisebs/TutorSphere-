@@ -373,9 +373,11 @@ public class StudentPortalService : IStudentPortalService
             .Distinct()
             .ToList();
 
+        var studentIdText = student.Id.ToString();
         var docs = _db.DocumentsForAnyTenant
             .Where(d => d.StudentId == student.Id
-                        || (d.LessonId != null && lessonIds.Contains(d.LessonId.Value)))
+                        || (d.LessonId != null && lessonIds.Contains(d.LessonId.Value))
+                        || (d.SharedStudentIds != null && d.SharedStudentIds.Contains(studentIdText)))
             .OrderByDescending(d => d.CreatedAt)
             .ToList()
             .Select(MapDocument)
@@ -581,7 +583,12 @@ public class StudentPortalService : IStudentPortalService
         d.CreatedAt,
         d.StudentId,
         d.LessonId,
-        d.FileUrl);
+        d.FileUrl,
+        d.Folder,
+        d.Title,
+        d.Subject,
+        d.SchoolLevel,
+        d.Summary);
 
     private static LessonReportDto MapReport(LessonReport r) => new(
         r.Id, r.TenantId, r.LessonId, r.StudentId, r.TopicsStudied, r.Participation,

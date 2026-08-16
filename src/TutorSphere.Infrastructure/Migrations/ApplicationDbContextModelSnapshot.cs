@@ -253,15 +253,41 @@ namespace TutorSphere.Infrastructure.Migrations
                     b.Property<Guid?>("LessonId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("LibraryBatchId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("text");
 
+                    b.Property<string>("SchoolLevel")
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<Guid?>("SharedByExpertGroupId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("SharedStudentIds")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
                     b.Property<Guid?>("StudentId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Subject")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<string>("Summary")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
+
+                    b.Property<string>("Title")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone");
@@ -273,6 +299,10 @@ namespace TutorSphere.Infrastructure.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("LessonId");
+
+                    b.HasIndex("LibraryBatchId");
+
+                    b.HasIndex("SharedByExpertGroupId");
 
                     b.HasIndex("StudentId");
 

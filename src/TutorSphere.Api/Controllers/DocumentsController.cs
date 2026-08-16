@@ -45,10 +45,23 @@ public class DocumentsController : ControllerBase
         [FromForm] Guid? studentId,
         [FromForm] Guid? lessonId,
         [FromForm] string? folder,
+        [FromForm] string? title,
+        [FromForm] string? subject,
+        [FromForm] string? schoolLevel,
+        [FromForm] string? summary,
+        [FromForm] string? sharedStudentIds,
         CancellationToken ct)
     {
         if (file is null || file.Length == 0)
             return BadRequest(new { error = "Fichier requis." });
+
+        var studentIds = ParseGuidList(sharedStudentIds);
+        var hasMeta = HasAnyMeta(title, subject, schoolLevel, summary) || studentIds.Count > 0;
+        if (hasMeta && !HasCompleteMeta(title, subject, schoolLevel, summary))
+            return BadRequest(new
+            {
+                error = "Indiquez le nom du document, la matière, le niveau scolaire et le sommaire."
+            });
 
         try
         {
@@ -63,6 +76,15 @@ public class DocumentsController : ControllerBase
             var fileUrl = $"/uploads/{safeFileName}";
             var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? string.Empty;
 
+            var meta = hasMeta
+                ? new DocumentWriteRequest(
+                    Title: title?.Trim(),
+                    Subject: subject?.Trim(),
+                    SchoolLevel: schoolLevel?.Trim(),
+                    Summary: summary?.Trim(),
+                    SharedStudentIds: studentIds)
+                : null;
+
             var doc = await _documentService.CreateAsync(
                 file.FileName,
                 file.ContentType,
@@ -72,7 +94,8 @@ public class DocumentsController : ControllerBase
                 studentId,
                 lessonId,
                 folder,
-                ct);
+                ct,
+                meta);
 
             return CreatedAtAction(nameof(GetById), new { id = doc.Id }, doc);
         }
@@ -80,6 +103,25 @@ public class DocumentsController : ControllerBase
         {
             return BadRequest(new { error = ex.Message });
         }
+    }
+
+    private static bool HasAnyMeta(params string?[] values) =>
+        values.Any(v => !string.IsNullOrWhiteSpace(v));
+
+    private static bool HasCompleteMeta(string? title, string? subject, string? schoolLevel, string? summary) =>
+        !string.IsNullOrWhiteSpace(title)
+        && !string.IsNullOrWhiteSpace(subject)
+        && !string.IsNullOrWhiteSpace(schoolLevel)
+        && !string.IsNullOrWhiteSpace(summary);
+
+    private static IReadOnlyList<Guid> ParseGuidList(string? csv)
+    {
+        if (string.IsNullOrWhiteSpace(csv)) return [];
+        return csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(s => Guid.TryParse(s, out var id) ? id : Guid.Empty)
+            .Where(id => id != Guid.Empty)
+            .Distinct()
+            .ToList();
     }
 
     [HttpGet("{id:guid}/file")]
