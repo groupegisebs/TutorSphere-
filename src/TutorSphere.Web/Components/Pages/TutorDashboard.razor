@@ -1,8 +1,10 @@
 @page "/tutor/dashboard"
 @layout TutorLayout
 @rendermode InteractiveServer
+@using TutorSphere.Application.DTOs.Messages
 @inject IStringLocalizer<SharedResources> L
 @inject LessonService LessonSvc
+@inject MessageService MessageSvc
 @inject AuthService Auth
 @inject ApiClient Api
 @inject NavigationManager Navigation
@@ -11,55 +13,109 @@
 
 <div class="dashboard-header">
     <div>
-        <h1 class="dashboard-greeting">@L["TutorDashboard_Title"]</h1>
-        <p class="dashboard-date">@L["TutorDashboard_Subtitle_Welcome", DisplayName]</p>
+        <h1 class="dashboard-greeting">@L["TutorDashboard_Subtitle_Welcome", DisplayName]</h1>
+        <p class="dashboard-date">@L["TutorHome_Subtitle"]</p>
     </div>
 </div>
 
-@if (_licenseWithholdRemaining > 0)
-{
-    <div class="alert alert-info mb-4">
-        Un montant équivalent à 10 $ USD sera retenu à la source sur vos premiers paiements
-        jusqu’à solde de <strong>@_licenseWithholdRemaining.ToString("0.##") $ USD</strong>.
-    </div>
-}
+<!-- Prochain cours : action principale -->
+<div class="tdash-hero @(IsJoinable ? "tdash-hero--live" : null)">
+    @if (_loading)
+    {
+        <div class="ts-loading-state" style="padding:1rem 0">
+            <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+            <span class="ms-2 text-muted">@L["Common_Loading"]</span>
+        </div>
+    }
+    else if (_nextSession is null)
+    {
+        <div class="tdash-hero-main">
+            <div class="tdash-hero-icon"><i class="bi bi-calendar2-week"></i></div>
+            <div>
+                <span class="tdash-hero-badge tdash-hero-badge--muted">@L["TutorHome_NextCourse"]</span>
+                <h2 class="tdash-hero-title">@L["TutorHome_NoNextCourse"]</h2>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="tdash-hero-main">
+            <div class="tdash-hero-icon"><i class="bi bi-easel2"></i></div>
+            <div>
+                <span class="tdash-hero-badge">@WhenLabel(_nextSession)</span>
+                <h2 class="tdash-hero-title">@_nextSession.Title</h2>
+                <p class="tdash-hero-meta">
+                    @if (!string.IsNullOrWhiteSpace(_nextSession.StudentNames))
+                    {
+                        <span><i class="bi bi-person me-1"></i>@_nextSession.StudentNames</span>
+                    }
+                    <span><i class="bi bi-clock me-1"></i>@_nextSession.DurationLabel</span>
+                    <span><i class="bi bi-display me-1"></i>@_nextSession.Mode</span>
+                </p>
+            </div>
+        </div>
+        <div class="tdash-hero-actions">
+            <button type="button" class="btn btn-primary @(IsJoinable ? "btn-lg" : null)"
+                    @onclick="async () => await JoinClassroomAsync(_nextSession)">
+                <i class="bi bi-camera-video me-1"></i>@L["TutorHome_JoinCourse"]
+            </button>
+            <a href="tutor/lessons" class="btn btn-outline-secondary">@L["TutorHome_ViewSheet"]</a>
+        </div>
+    }
+</div>
 
-<TutorPendingEnrollments />
+<!-- Essentiel du jour -->
+<div class="row g-3 my-1">
+    <div class="col-6 col-lg-3">
+        <div class="ts-kpi-card">
+            <span class="ts-kpi-val">@_todaySessions.Count</span>
+            <span class="ts-kpi-label">@L["TutorHome_CoursesToday"]</span>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="ts-kpi-card">
+            <span class="ts-kpi-val">@_activeStudents</span>
+            <span class="ts-kpi-label">@L["Stat_ActiveStudents"]</span>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="ts-kpi-card">
+            <span class="ts-kpi-val">@_unreadMessages</span>
+            <span class="ts-kpi-label">@L["TutorHome_UnreadMessages"]</span>
+        </div>
+    </div>
+    <div class="col-6 col-lg-3">
+        <div class="ts-kpi-card">
+            <span class="ts-kpi-val">@FormatMoney(_available)</span>
+            <span class="ts-kpi-label">@L["TutorHome_AvailableBalance"]</span>
+        </div>
+    </div>
+</div>
 
 <div class="row g-4">
-    <!-- Ma classe -->
-    <div class="col-lg-6">
+    <!-- Ma journée -->
+    <div class="col-lg-5">
         <div class="section-card h-100">
             <div class="section-card-header">
-                <h2><i class="bi bi-easel2 me-2"></i>@L["TutorDashboard_MyClass"]</h2>
-                <a href="tutor/lessons" class="btn btn-sm btn-link">@L["Button_ViewAll"]</a>
+                <h2>@L["TutorHome_MyDay"]</h2>
+                <a href="tutor/calendar" class="btn btn-sm btn-link">@L["TutorHome_ViewCalendar"]</a>
             </div>
-            @if (_loading)
+            @if (_todaySessions.Count == 0)
             {
-                <div class="ts-loading-state" style="padding: 1.5rem;">
-                    <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
-                    <span class="ms-2 text-muted">@L["Common_Loading"]</span>
-                </div>
-            }
-            else if (_nextSessions.Count == 0)
-            {
-                <p class="ts-empty-inline px-3 py-3">@L["TutorDashboard_NoUpcomingLessons"]</p>
+                <p class="ts-empty-inline px-3 py-3">@L["TutorHome_NoCourseToday"]</p>
             }
             else
             {
                 <ul class="lesson-list">
-                    @foreach (var s in _nextSessions)
+                    @foreach (var s in _todaySessions)
                     {
                         <li class="lesson-list-item">
-                            <span class="lesson-time-left">@s.TimeLabel</span>
+                            <span class="lesson-time-left">@s.StartLabel – @s.EndLabel</span>
                             <div class="lesson-info">
                                 <strong>@s.Title</strong>
-                                <span>@s.Subject</span>
+                                <span>@s.StudentNames</span>
                             </div>
-                            <button type="button" class="btn btn-sm btn-primary"
-                                    @onclick="async () => await JoinClassroomAsync(s)">
-                                <i class="bi bi-easel2 me-1"></i>@L["Lessons_OpenClassroom"]
-                            </button>
+                            <span class="ts-badge @StatusBadge(s)">@StatusLabel(s)</span>
                         </li>
                     }
                 </ul>
@@ -68,73 +124,166 @@
     </div>
 
     <!-- Mes élèves -->
-    <div class="col-lg-6">
+    <div class="col-lg-4">
         <div class="section-card h-100">
             <div class="section-card-header">
-                <h2><i class="bi bi-people me-2"></i>@L["Nav_MyStudents"]</h2>
-                <a href="tutor/students" class="btn btn-sm btn-link">@L["Button_ViewAll"]</a>
+                <h2>@L["Nav_MyStudents"]</h2>
+                <a href="tutor/students" class="btn btn-sm btn-link">@L["TutorHome_AllStudents"]</a>
             </div>
-            <p class="dashboard-big-stat">@_activeStudents</p>
-            <p class="dashboard-big-stat-label">
-                <span class="dot dot--primary"></span> @L["Stat_ActiveStudents"]
-            </p>
-            <div class="px-3 pb-3">
-                <a href="tutor/enrollments" class="btn btn-sm btn-outline-primary">
-                    <i class="bi bi-person-plus me-1"></i>@L["Nav_Enrollments"]
-                </a>
-            </div>
+            @if (_students.Count == 0)
+            {
+                <p class="ts-empty-inline px-3 py-3">@L["Students_EmptyEnrolled"]</p>
+            }
+            else
+            {
+                <ul class="lesson-list">
+                    @foreach (var s in _students)
+                    {
+                        <li class="lesson-list-item">
+                            <div class="lesson-avatar">@s.Initials</div>
+                            <div class="lesson-info">
+                                <strong>@s.Name</strong>
+                                <span>@s.Level</span>
+                            </div>
+                        </li>
+                    }
+                </ul>
+            }
         </div>
     </div>
 
-    <!-- Mon compte -->
-    <div class="col-12">
-        <div class="section-card">
+    <!-- À faire -->
+    <div class="col-lg-3">
+        <div class="section-card h-100">
             <div class="section-card-header">
-                <h2><i class="bi bi-wallet2 me-2"></i>@L["TutorDashboard_MyAccount"]</h2>
-                <a href="tutor/revenue" class="btn btn-sm btn-link">@L["Button_ViewAll"]</a>
+                <h2>@L["TutorHome_Todo"]</h2>
             </div>
-            <div class="row g-3 px-3 pb-3">
-                <div class="col-sm-4">
-                    <StatCard Label="@L["Stat_MonthlyRevenue"]" Value="@FormatMoney(_monthlyRevenue)"
-                              Icon="bi-currency-dollar" Variant="revenue" />
-                </div>
-                <div class="col-sm-4">
-                    <StatCard Label="@L["Stat_PendingPayments"]" Value="@FormatMoney(_pendingPayments)"
-                              Icon="bi-hourglass-split" Variant="payments" />
-                </div>
-                <div class="col-sm-4">
-                    <StatCard Label="@L["Stat_ActiveSubscriptions"]" Value="@_activeSubscriptions.ToString()"
-                              Icon="bi-arrow-repeat" Variant="subscriptions" />
-                </div>
+            @if (_tasks.Count == 0)
+            {
+                <p class="ts-empty-inline px-3 py-3">@L["TutorHome_NoTodo"]</p>
+            }
+            else
+            {
+                <ul class="activity-feed">
+                    @foreach (var t in _tasks)
+                    {
+                        <li class="activity-item">
+                            <div class="activity-icon activity-icon--primary">
+                                <i class="bi @t.Icon" aria-hidden="true"></i>
+                            </div>
+                            <div class="activity-content">
+                                <a class="activity-title" href="@t.Href">@t.Label</a>
+                            </div>
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+    </div>
+
+    <!-- Messages récents -->
+    <div class="col-lg-7">
+        <div class="section-card h-100">
+            <div class="section-card-header">
+                <h2>@L["TutorHome_RecentMessages"]</h2>
+                <a href="tutor/messages" class="btn btn-sm btn-link">@L["TutorHome_OpenMailbox"]</a>
             </div>
-            <div class="px-3 pb-3 d-flex gap-2 flex-wrap">
-                <a href="tutor/payments" class="btn btn-sm btn-outline-primary">
-                    <i class="bi bi-credit-card me-1"></i>@L["Nav_Payments"]
-                </a>
-                <a href="tutor/payout-settings" class="btn btn-sm btn-outline-secondary">
-                    <i class="bi bi-wallet2 me-1"></i>@L["Nav_PayoutSettings"]
-                </a>
+            @if (_recentMessages.Count == 0)
+            {
+                <p class="ts-empty-inline px-3 py-3">@L["TutorHome_NoMessages"]</p>
+            }
+            else
+            {
+                <ul class="activity-feed">
+                    @foreach (var m in _recentMessages)
+                    {
+                        <li class="activity-item">
+                            <div class="lesson-avatar">@m.Initials</div>
+                            <div class="activity-content">
+                                <strong class="activity-title">@m.Name</strong>
+                                <span class="activity-description">@m.Excerpt</span>
+                            </div>
+                            <span class="activity-time">@m.TimeLabel</span>
+                            @if (m.Unread > 0)
+                            {
+                                <span class="dot dot--primary ms-2"></span>
+                            }
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+    </div>
+
+    <!-- Mes revenus -->
+    <div class="col-lg-5">
+        <div class="section-card h-100">
+            <div class="section-card-header">
+                <h2>@L["Nav_MyRevenue"]</h2>
+                <a href="tutor/revenue" class="btn btn-sm btn-link">@L["TutorHome_ManageRevenue"]</a>
+            </div>
+            <div class="px-3 pb-3">
+                <p class="dashboard-big-stat mb-1">@FormatMoney(_available)</p>
+                <p class="dashboard-big-stat-label">
+                    <span class="dot dot--primary"></span> @L["TutorHome_AvailableBalance"]
+                </p>
+                <p class="text-muted mb-0">
+                    <i class="bi bi-calendar-check me-1"></i>@L["TutorHome_NextPayout"] : <strong>@NextPayoutLabel</strong>
+                </p>
+                @if (_licenseWithholdRemaining > 0)
+                {
+                    <p class="small text-muted mt-2 mb-0">
+                        Retenue de licence restante : @_licenseWithholdRemaining.ToString("0.##") $ USD
+                    </p>
+                }
             </div>
         </div>
     </div>
 </div>
 
 @code {
-    private sealed record SessionItem(Guid Id, string Title, string Subject, string TimeLabel);
-    private record DashboardDto(decimal MonthlyRevenue, int ActiveStudents, int ActiveSubscriptions, int UpcomingLessons, int PendingPayments);
+    private sealed record SessionItem(
+        Guid Id, string Title, string Subject, string StudentNames, string Mode,
+        DateTime StartLocal, DateTime EndLocal)
+    {
+        public string StartLabel => StartLocal.ToString("HH:mm");
+        public string EndLabel => EndLocal.ToString("HH:mm");
+        public string DurationLabel => $"{(int)(EndLocal - StartLocal).TotalMinutes} min";
+    }
+
+    private sealed record StudentRow(string Name, string Initials, string Level);
+    private sealed record MessageRow(string Name, string Initials, string Excerpt, string TimeLabel, int Unread);
+    private sealed record TaskRow(string Label, string Href, string Icon);
 
     private sealed class LicenseStatusVm
     {
         public decimal LicenseFeeWithholdingRemainingUsd { get; set; }
     }
 
+    private record EligibilityDto(bool CanWithdraw, DateTime? EligibleAt, bool SetupComplete);
+    private record EarningsSummaryDto(decimal Available, string? Currency, EligibilityDto? Eligibility);
+    private record DashboardDto(decimal MonthlyRevenue, int ActiveStudents, int ActiveSubscriptions, int UpcomingLessons, int PendingPayments);
+    private sealed record EnrollmentPeek(string Status);
+    private sealed record ExpertRemarkPeek(DateTime? ReadByTeacherAt);
+
     private bool _loading = true;
-    private decimal _monthlyRevenue;
+    private SessionItem? _nextSession;
+    private List<SessionItem> _todaySessions = [];
+    private List<StudentRow> _students = [];
+    private List<MessageRow> _recentMessages = [];
+    private List<TaskRow> _tasks = [];
     private int _activeStudents;
-    private int _activeSubscriptions;
-    private decimal _pendingPayments;
+    private int _unreadMessages;
+    private decimal _available;
+    private string _currency = "";
+    private DateTime? _eligibleAt;
+    private bool _canWithdraw;
     private decimal _licenseWithholdRemaining;
-    private List<SessionItem> _nextSessions = [];
+
+    private bool IsJoinable =>
+        _nextSession is not null
+        && DateTime.Now >= _nextSession.StartLocal.AddMinutes(-15)
+        && DateTime.Now <= _nextSession.EndLocal;
 
     private string DisplayName
     {
@@ -147,51 +296,192 @@
         }
     }
 
-    private static string FormatMoney(decimal amount) =>
-        amount.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("fr-CA")) + " $";
+    private string FormatMoney(decimal amount)
+    {
+        var value = amount.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("fr-CA"));
+        return string.IsNullOrWhiteSpace(_currency) ? $"{value} $" : $"{value} {_currency}";
+    }
+
+    private string NextPayoutLabel =>
+        _canWithdraw ? L["TutorHome_PayoutNow"].Value
+        : _eligibleAt is { } at ? at.ToLocalTime().ToString("dd/MM/yyyy")
+        : "—";
+
+    private string WhenLabel(SessionItem s)
+    {
+        var day = s.StartLocal.Date == DateTime.Today
+            ? L["Common_Today"].Value
+            : s.StartLocal.ToString("ddd dd/MM");
+        return $"{day} · {s.StartLabel}";
+    }
+
+    private string StatusLabel(SessionItem s) =>
+        DateTime.Now > s.EndLocal ? L["Common_Completed"].Value
+        : DateTime.Now >= s.StartLocal ? L["Common_InProgress"].Value
+        : L["TutorHome_StatusUpcoming"].Value;
+
+    private static string StatusBadge(SessionItem s) =>
+        DateTime.Now > s.EndLocal ? "ts-badge-success"
+        : DateTime.Now >= s.StartLocal ? "ts-badge-primary"
+        : "ts-badge-neutral";
 
     protected override async Task OnInitializedAsync()
     {
-        var tenantId = Auth.TenantId;
-        if (tenantId is not null)
-        {
-            var stats = await Api.GetAsync<DashboardDto>($"api/tenants/{tenantId}/dashboard");
-            if (stats is not null)
-            {
-                _monthlyRevenue = stats.MonthlyRevenue;
-                _activeStudents = stats.ActiveStudents;
-                _activeSubscriptions = stats.ActiveSubscriptions;
-                _pendingPayments = stats.PendingPayments;
-            }
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
 
+        await LoadSessionsAsync();
+        await LoadStudentsAsync();
+        await LoadMessagesAsync();
+        await LoadMoneyAsync();
+        await BuildTasksAsync();
+
+        _loading = false;
+    }
+
+    private async Task LoadSessionsAsync()
+    {
+        try
+        {
+            var lessons = await LessonSvc.GetLessonsAsync();
+            var items = lessons
+                .Select(d => new SessionItem(
+                    d.Id,
+                    d.Title,
+                    d.Subject ?? "",
+                    string.Join(", ", (d.StudentNames ?? []).Where(n => !string.IsNullOrWhiteSpace(n))),
+                    LessonService.ModeToDisplay(d.Mode),
+                    d.StartTime.ToLocalTime(),
+                    d.EndTime.ToLocalTime()))
+                .OrderBy(s => s.StartLocal)
+                .ToList();
+
+            _todaySessions = items.Where(s => s.StartLocal.Date == DateTime.Today).ToList();
+            _nextSession = items.FirstOrDefault(s => s.EndLocal >= DateTime.Now);
+        }
+        catch { /* garde les listes vides */ }
+    }
+
+    private async Task LoadStudentsAsync()
+    {
+        try
+        {
+            var result = await Api.GetWithErrorAsync<List<TutorSphere.Application.DTOs.Students.StudentDto>>("api/students");
+            var students = result.Value ?? [];
+            _activeStudents = students.Count;
+            _students = students
+                .OrderBy(s => s.LastName).ThenBy(s => s.FirstName)
+                .Take(4)
+                .Select(s =>
+                {
+                    var name = $"{s.FirstName} {s.LastName}".Trim();
+                    var initials = string.Concat(
+                        new[] { s.FirstName, s.LastName }
+                            .Where(p => !string.IsNullOrWhiteSpace(p))
+                            .Select(p => char.ToUpperInvariant(p!.Trim()[0])));
+                    return new StudentRow(name, initials, s.SchoolLevel ?? "");
+                })
+                .ToList();
+        }
+        catch { /* garde la liste vide */ }
+    }
+
+    private async Task LoadMessagesAsync()
+    {
+        try
+        {
+            var conversations = await MessageSvc.GetConversationsAsync();
+            _unreadMessages = conversations.Sum(c => c.UnreadCount);
+            _recentMessages = conversations
+                .OrderByDescending(c => c.LastMessage?.CreatedAt ?? DateTime.MinValue)
+                .Take(3)
+                .Select(ToMessageRow)
+                .ToList();
+        }
+        catch { /* garde la liste vide */ }
+    }
+
+    private MessageRow ToMessageRow(ConversationDto c)
+    {
+        var name = string.IsNullOrWhiteSpace(c.OtherUserName) ? "—" : c.OtherUserName;
+        var initials = string.Concat(
+            name.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Take(2)
+                .Select(p => char.ToUpperInvariant(p[0])));
+        var body = c.LastMessage?.Body ?? "";
+        var excerpt = body.Length > 90 ? body[..90] + "…" : body;
+        var time = c.LastMessage?.CreatedAt.ToLocalTime().ToString("dd/MM HH:mm") ?? "";
+        return new MessageRow(name, initials, excerpt, time, c.UnreadCount);
+    }
+
+    private async Task LoadMoneyAsync()
+    {
+        try
+        {
+            var earnings = await Api.GetAsync<EarningsSummaryDto>("api/tutor-earnings");
+            if (earnings is not null)
+            {
+                _available = earnings.Available;
+                _currency = earnings.Currency ?? "";
+                _canWithdraw = earnings.Eligibility?.CanWithdraw ?? false;
+                _eligibleAt = earnings.Eligibility?.EligibleAt;
+            }
+        }
+        catch { /* solde à 0 */ }
+
+        if (_activeStudents == 0 && Auth.TenantId is { } tenantId)
+        {
             try
             {
-                var license = await Api.GetAsync<LicenseStatusVm>("api/platform-billing/status");
-                _licenseWithholdRemaining = license?.LicenseFeeWithholdingRemainingUsd ?? 0;
+                var stats = await Api.GetAsync<DashboardDto>($"api/tenants/{tenantId}/dashboard");
+                if (stats is not null)
+                    _activeStudents = stats.ActiveStudents;
             }
             catch { /* ignore */ }
         }
 
         try
         {
-            var lessons = await LessonSvc.GetLessonsAsync();
-            _nextSessions = lessons
-                .Where(d => d.EndTime >= DateTime.UtcNow)
-                .OrderBy(d => d.StartTime)
-                .Take(3)
-                .Select(d =>
-                {
-                    var local = d.StartTime.ToLocalTime();
-                    return new SessionItem(
-                        d.Id,
-                        d.Title,
-                        d.Subject ?? LessonService.ModeToDisplay(d.Mode),
-                        $"{local:ddd dd/MM} · {local:HH:mm}");
-                })
-                .ToList();
+            var license = await Api.GetAsync<LicenseStatusVm>("api/platform-billing/status");
+            _licenseWithholdRemaining = license?.LicenseFeeWithholdingRemainingUsd ?? 0;
         }
-        catch { /* liste vide si l'API ne répond pas */ }
-        finally { _loading = false; }
+        catch { /* ignore */ }
+    }
+
+    private async Task BuildTasksAsync()
+    {
+        var tasks = new List<TaskRow>();
+
+        try
+        {
+            var enrollments = await Api.GetAsync<List<EnrollmentPeek>>("api/subscription-offerings/subscribers") ?? [];
+            var pending = enrollments.Count(e => string.Equals(e.Status, "Pending", StringComparison.OrdinalIgnoreCase));
+            if (pending > 0)
+                tasks.Add(new TaskRow(
+                    string.Format(L["TutorHome_TaskEnrollments"].Value, pending),
+                    "tutor/enrollments",
+                    "bi-person-plus"));
+        }
+        catch { /* ignore */ }
+
+        if (_unreadMessages > 0)
+            tasks.Add(new TaskRow(
+                string.Format(L["TutorHome_TaskMessages"].Value, _unreadMessages),
+                "tutor/messages",
+                "bi-chat-left-text"));
+
+        try
+        {
+            var remarks = await Api.GetAsync<List<ExpertRemarkPeek>>("api/tutor/expert-remarks") ?? [];
+            var unread = remarks.Count(r => r.ReadByTeacherAt is null);
+            if (unread > 0)
+                tasks.Add(new TaskRow(
+                    string.Format(L["TutorHome_TaskRemarks"].Value, unread),
+                    "tutor/expert-remarks",
+                    "bi-chat-square-quote"));
+        }
+        catch { /* ignore */ }
+
+        _tasks = tasks;
     }
 
     private async Task JoinClassroomAsync(SessionItem session)
