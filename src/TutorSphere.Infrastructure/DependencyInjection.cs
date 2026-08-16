@@ -72,9 +72,18 @@ public static class DependencyInjection
         var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
+        var pending = (await db.Database.GetPendingMigrationsAsync()).ToList();
+        logger.LogInformation(
+            "Pending EF migrations ({Count}): {Ids}",
+            pending.Count,
+            pending.Count == 0 ? "(none)" : string.Join(", ", pending));
+
         logger.LogInformation("Applying database migrations…");
         await db.Database.MigrateAsync();
         logger.LogInformation("Database migrations applied.");
+
+        // Filet si une migration a déjà été livrée sans attribut [Migration] (EF l'ignore).
+        await EnsureTeacherLicenseSchemaAsync(db, logger);
 
         var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
         foreach (var role in UserRoles.All)
@@ -130,6 +139,23 @@ public static class DependencyInjection
 
         var userCount = await db.Users.CountAsync();
         logger.LogInformation("Seed complete — {UserCount} user(s) in database (real data only).", userCount);
+    }
+
+    /// <summary>
+    /// Colonnes licence enseignant : ADD COLUMN IF NOT EXISTS pour débloquer un
+    /// démarrage après un deploy où EF a ignoré une migration manuscrite.
+    /// </summary>
+    private static async Task EnsureTeacherLicenseSchemaAsync(ApplicationDbContext db, ILogger logger)
+    {
+        await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "TenantsSet" ADD COLUMN IF NOT EXISTS "LicenseFeeWithholdingRemainingUsd" numeric(18,2) NOT NULL DEFAULT 0;""");
+        await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "TenantsSet" ADD COLUMN IF NOT EXISTS "LicenseSettlementKind" text;""");
+        await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "TenantsSet" ADD COLUMN IF NOT EXISTS "LicenseAutoRenewAtSource" boolean NOT NULL DEFAULT false;""");
+        await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "PlatformPromoCodesSet" ALTER COLUMN "Code" TYPE character varying(64);""");
+        logger.LogInformation("Teacher license schema columns are present.");
     }
 
     /// <summary>
