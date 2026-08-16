@@ -3,6 +3,8 @@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject AuthService Auth
 @inject ApiClient Api
+@inject NavigationManager Nav
+@inject IJSRuntime JS
 @inject IStringLocalizer<SharedResources> L
 
 <ApplyRequestCulture />
@@ -178,9 +180,9 @@
                                 <div class="ex-alert-item @alert.Severity">
                                     <span class="ex-alert-dot" aria-hidden="true"></span>
                                     <div class="ex-alert-msg">@alert.Message</div>
-                                    @if (!string.IsNullOrWhiteSpace(alert.ActionUrl))
+                                    @if (!string.IsNullOrWhiteSpace(alert.ActionUrl) || alert.Code == "pending_enrollments")
                                     {
-                                        <a class="cc-btn btn-sm" href="@alert.ActionUrl.TrimStart('/')">Ouvrir</a>
+                                        <button type="button" class="cc-btn btn-sm" @onclick="() => OpenAlertAsync(alert)">Ouvrir</button>
                                     }
                                 </div>
                             }
@@ -388,6 +390,34 @@
             _error = ex.Message;
         }
         finally { _loading = false; }
+    }
+
+    private async Task OpenAlertAsync(DashboardAlert alert)
+    {
+        var url = alert.ActionUrl ?? "";
+        var enrollments = string.Equals(alert.Code, "pending_enrollments", StringComparison.OrdinalIgnoreCase)
+            || url.Contains("#expert-enrollments", StringComparison.OrdinalIgnoreCase);
+
+        if (enrollments)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("tsScrollToId", "expert-enrollments");
+            }
+            catch
+            {
+                Nav.NavigateTo("expert/dashboard");
+            }
+            return;
+        }
+
+        var path = url.Trim();
+        var hash = path.IndexOf('#');
+        if (hash >= 0)
+            path = path[..hash];
+        path = path.TrimStart('/');
+        if (!string.IsNullOrEmpty(path))
+            Nav.NavigateTo(path);
     }
 
     private async Task DecideEnrollmentAsync(Guid id, bool accept)

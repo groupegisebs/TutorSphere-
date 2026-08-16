@@ -140,10 +140,13 @@ else
     private IEnumerable<StudentSubscriptionDto> Visible => _items
         .Where(s => string.IsNullOrEmpty(_filter) || string.Equals(s.Status, _filter, StringComparison.OrdinalIgnoreCase));
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        await Auth.EnsureSessionRestoredAsync();
+        if (!firstRender)
+            return;
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
         await ReloadAsync();
+        StateHasChanged();
     }
 
     private string ChipClass(string value) =>
