@@ -624,7 +624,7 @@ else if (_detail is not null)
     private ElementReference _board;
     private ElementReference _localVideo;
     private string? _mediaError;
-    private bool _mediaStarted, _inRoom;
+    private bool _mediaStarted, _inRoom, _scriptsReady;
     private int _cameraCount;
     private int _elapsed;
     private System.Timers.Timer? _timer;
@@ -733,6 +733,7 @@ else if (_detail is not null)
     private async Task EnterRoomAsync()
     {
         _selfName = GuestName ?? Auth.UserName ?? "Participant";
+        await EnsureMediaScriptsAsync();
         BindRt();
         await Rt.EnsureHubReadyAsync(GuestToken);
         _jsRef = DotNetObjectReference.Create(this);
@@ -751,6 +752,24 @@ else if (_detail is not null)
         _timer.Start();
         if (_detail is { Status: 0 or 1 } && _isOrganizer)
             await Api.PostWithErrorAsync<object>($"api/expert/meetings/{Id}/start", new { });
+    }
+
+    /// <summary>
+    /// Charge les moteurs média et WebRTC : sans eux, classroomMedia et classroomRtc n'existent pas
+    /// et la salle s'ouvre sans caméra ni micro.
+    /// </summary>
+    private async Task EnsureMediaScriptsAsync()
+    {
+        if (_scriptsReady) return;
+        try
+        {
+            await JS.InvokeVoidAsync("tsPageAssets.loadMeetingRoom");
+            _scriptsReady = true;
+        }
+        catch (Exception ex)
+        {
+            _mediaError = "Moteur audio/vidéo indisponible : rechargez la page. (" + ex.Message + ")";
+        }
     }
 
     private void BindRt()

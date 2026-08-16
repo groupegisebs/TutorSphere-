@@ -71,6 +71,15 @@ window.tsPageAssets = (function () {
         { js: 'js/classroom-rtc.js' }
       ]);
     },
+    // Salle de réunion : mêmes moteurs média/WebRTC que la classe, sans la feuille de style des cours.
+    loadMeetingRoom: function () {
+      return loadMany([
+        { js: 'js/whiteboard.js' },
+        { js: 'js/classroom-virtual-bg.js' },
+        { js: 'js/classroom-media.js' },
+        { js: 'js/classroom-rtc.js' }
+      ]);
+    },
     loadLanding: function () {
       return loadMany([{ js: 'js/landing.js' }]);
     },
