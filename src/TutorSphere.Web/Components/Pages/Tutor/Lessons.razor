@@ -203,7 +203,20 @@
                             <input class="form-control" @bind="_newStudent.LastName" /></div>
                     }
                     <div class="col-6"><label class="form-label">@L["Lessons_SubjectRequired"]</label>
-                        <input class="form-control" @bind="_lf.Subject" /></div>
+                        <select class="form-select" @bind="_lf.Subject">
+                            <option value="">@L["Lessons_PickSubject"]</option>
+                            @foreach (var subject in LessonSubjectChoices)
+                            {
+                                <option value="@subject.Name">
+                                    @(string.IsNullOrWhiteSpace(subject.Cycle) ? subject.Name : $"{subject.Name} ({subject.Cycle})")
+                                </option>
+                            }
+                        </select>
+                        @if (_planSubjects.Count == 0)
+                        {
+                            <small class="text-muted">@L["Lessons_NoPlanSubjects"]</small>
+                        }
+                    </div>
                     <div class="col-6"><label class="form-label">@L["Lessons_DateRequired"]</label>
                         <input type="date" class="form-control" @bind="_lf.Date" disabled="@_dateLocked" /></div>
                     <div class="col-3"><label class="form-label">@L["Lessons_StartTime"]</label>
@@ -330,8 +343,24 @@
     private LessonVM? _attendanceLesson;
     private List<LessonAttendanceDto> _attendances = [];
     private readonly List<StudentOpt> _students = [];
+    private readonly List<PlanSubjectDto> _planSubjects = [];
 
     private sealed record StudentOpt(Guid Id, string Name);
+    private sealed record PlanSubjectDto(string Name, string? Cycle);
+
+    private IEnumerable<PlanSubjectDto> LessonSubjectChoices
+    {
+        get
+        {
+            var list = _planSubjects.ToList();
+            if (!string.IsNullOrWhiteSpace(_lf.Subject)
+                && list.All(s => !s.Name.Equals(_lf.Subject, StringComparison.OrdinalIgnoreCase)))
+            {
+                list.Insert(0, new PlanSubjectDto(_lf.Subject.Trim(), null));
+            }
+            return list;
+        }
+    }
 
     private static string StatusBadge(string s) => s switch {
         "Terminé" or "Validé" => "ts-badge-success",
@@ -370,6 +399,11 @@
             _students.Clear();
             if (students.Error is null)
                 _students.AddRange((students.Value ?? []).Select(s => new StudentOpt(s.Id, $"{s.FirstName} {s.LastName}".Trim())));
+
+            var plans = await Api.GetWithErrorAsync<List<PlanSubjectDto>>("api/tutor/plan-subjects");
+            _planSubjects.Clear();
+            if (plans.Value is not null)
+                _planSubjects.AddRange(plans.Value);
         }
         catch { _error = L["Search_Error_Load"]; }
         finally { _loading = false; }
@@ -417,6 +451,8 @@
     {
         _editingLesson = null;
         _lf = new();
+        if (_planSubjects.Count == 1)
+            _lf.Subject = _planSubjects[0].Name;
         _newStudent = new();
         _creatingStudent = false;
         _dateLocked = false;

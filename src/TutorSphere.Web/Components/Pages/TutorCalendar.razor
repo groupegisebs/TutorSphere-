@@ -302,8 +302,20 @@
                         <input class="form-control" @bind="_lessonForm.Title" placeholder="Cours de mathématiques" />
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">@L["Common_Subject"]</label>
-                        <input class="form-control" @bind="_lessonForm.Subject" placeholder="Mathématiques" />
+                        <label class="form-label">@L["Lessons_SubjectRequired"]</label>
+                        <select class="form-select" @bind="_lessonForm.Subject" @bind:after="OnSubjectChanged">
+                            <option value="">@L["Lessons_PickSubject"]</option>
+                            @foreach (var subject in SubjectChoices)
+                            {
+                                <option value="@subject.Name">
+                                    @(string.IsNullOrWhiteSpace(subject.Cycle) ? subject.Name : $"{subject.Name} ({subject.Cycle})")
+                                </option>
+                            }
+                        </select>
+                        @if (_planSubjects.Count == 0)
+                        {
+                            <small class="text-muted">@L["Lessons_NoPlanSubjects"]</small>
+                        }
                     </div>
                     <div class="col-md-6">
                         <label class="form-label">@L["Common_Mode"]</label>
@@ -494,8 +506,24 @@
     private Guid? _editingLessonId;
     private bool _slotTimeLocked;
     private readonly List<StudentOption> _students = [];
+    private readonly List<PlanSubjectDto> _planSubjects = [];
 
     private record StudentOption(Guid Id, string Name);
+    private record PlanSubjectDto(string Name, string? Cycle);
+
+    private IEnumerable<PlanSubjectDto> SubjectChoices
+    {
+        get
+        {
+            var list = _planSubjects.ToList();
+            if (!string.IsNullOrWhiteSpace(_lessonForm.Subject)
+                && list.All(s => !s.Name.Equals(_lessonForm.Subject, StringComparison.OrdinalIgnoreCase)))
+            {
+                list.Insert(0, new PlanSubjectDto(_lessonForm.Subject.Trim(), null));
+            }
+            return list;
+        }
+    }
 
     // ── Calendar filter model ──────────────────────────────────────────────────
     private class CalFilter { public required string Label; public bool Checked = true; }
@@ -673,9 +701,38 @@
         var students = await Api.GetAsync<List<ApiStudentListDto>>("api/students") ?? [];
         _students.Clear();
         _students.AddRange(students.Select(s => new StudentOption(s.Id, $"{s.FirstName} {s.LastName}".Trim())));
+        await LoadPlanSubjectsAsync();
+    }
+
+    private async Task LoadPlanSubjectsAsync()
+    {
+        var result = await Api.GetWithErrorAsync<List<PlanSubjectDto>>("api/tutor/plan-subjects");
+        _planSubjects.Clear();
+        if (result.Value is not null)
+            _planSubjects.AddRange(result.Value);
     }
 
     private record ApiStudentListDto(Guid Id, string FirstName, string LastName);
+
+    private void ApplyDefaultSubject()
+    {
+        if (!string.IsNullOrWhiteSpace(_lessonForm.Subject))
+            return;
+        if (_planSubjects.Count == 1)
+        {
+            _lessonForm.Subject = _planSubjects[0].Name;
+            OnSubjectChanged();
+        }
+    }
+
+    private void OnSubjectChanged()
+    {
+        if (string.IsNullOrWhiteSpace(_lessonForm.Subject))
+            return;
+        var prefix = "Cours de ";
+        if (string.IsNullOrWhiteSpace(_lessonForm.Title) || _lessonForm.Title.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            _lessonForm.Title = prefix + _lessonForm.Subject;
+    }
 
     private async Task LoadCalendarDataAsync()
     {
@@ -766,6 +823,7 @@
             Occurrences = 8,
             UntilDate = null
         };
+        ApplyDefaultSubject();
         _showLessonModal = true;
     }
 
@@ -875,6 +933,11 @@
         if (string.IsNullOrWhiteSpace(_lessonForm.Title))
         {
             _formError = "Le titre est obligatoire.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_lessonForm.Subject))
+        {
+            _formError = L["Lessons_SubjectRequiredHint"];
             return;
         }
 
