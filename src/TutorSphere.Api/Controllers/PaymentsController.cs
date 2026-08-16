@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using TutorSphere.Application.Common;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.Payments;
@@ -18,17 +19,20 @@ public class PaymentsController : ControllerBase
     private readonly IEmailService _email;
     private readonly IBillingEmailOrchestrator _billingEmail;
     private readonly UserManager<ApplicationUser> _userManager;
+    private readonly ILogger<PaymentsController> _logger;
 
     public PaymentsController(
         IPaymentGatewayService paymentGateway,
         IEmailService email,
         IBillingEmailOrchestrator billingEmail,
-        UserManager<ApplicationUser> userManager)
+        UserManager<ApplicationUser> userManager,
+        ILogger<PaymentsController> logger)
     {
         _paymentGateway = paymentGateway;
         _email = email;
         _billingEmail = billingEmail;
         _userManager = userManager;
+        _logger = logger;
     }
 
     [HttpGet("config")]
@@ -81,6 +85,27 @@ public class PaymentsController : ControllerBase
         {
             return BadRequest(new { error = ex.Message });
         }
+        catch (DbUpdateException ex)
+        {
+            // Le message d'EF ne dit rien : seule l'exception interne porte l'erreur SQL réelle.
+            _logger.LogError(
+                ex,
+                "Échec enregistrement du paiement pour l'abonnement {SubscriptionId} : {DbError}",
+                subscriptionId,
+                InnermostMessage(ex));
+            return BadRequest(new
+            {
+                error = "Le paiement n'a pas pu être enregistré. L'équipe technique a été notifiée."
+            });
+        }
+    }
+
+    private static string InnermostMessage(Exception ex)
+    {
+        var current = ex;
+        while (current.InnerException is not null)
+            current = current.InnerException;
+        return current.Message;
     }
 
     [HttpPost("subscriptions/{subscriptionId:guid}/payment-intent")]

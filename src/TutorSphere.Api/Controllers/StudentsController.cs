@@ -29,7 +29,10 @@ public class StudentsController : ControllerBase
         return student is null ? NotFound() : Ok(student);
     }
 
+    // Un enseignant ne crée pas d'élève : l'élève entre dans son espace via une inscription
+    // (souscription) validée. Ces trois endpoints restent réservés au support plateforme.
     [HttpPost]
+    [Authorize(Roles = UserRoles.SuperAdmin)]
     public async Task<ActionResult<StudentDto>> Create([FromBody] CreateStudentRequest request, CancellationToken ct)
     {
         try
@@ -48,6 +51,7 @@ public class StudentsController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
+    [Authorize(Roles = UserRoles.SuperAdmin)]
     public async Task<ActionResult<StudentDto>> Update(Guid id, [FromBody] UpdateStudentRequest request, CancellationToken ct)
     {
         try
@@ -61,6 +65,7 @@ public class StudentsController : ControllerBase
     }
 
     [HttpDelete("{id:guid}")]
+    [Authorize(Roles = UserRoles.SuperAdmin)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
         try

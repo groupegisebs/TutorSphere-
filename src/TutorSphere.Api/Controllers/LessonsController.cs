@@ -49,7 +49,10 @@ public class LessonsController : ControllerBase
         return lesson is null ? NotFound() : Ok(lesson);
     }
 
+    // Un enseignant ne crée pas de séance : elles sont générées à partir du planning de son offre
+    // quand un abonnement devient actif (SubscriptionLessonScheduler). Réservé au support plateforme.
     [HttpPost]
+    [Authorize(Roles = UserRoles.SuperAdmin)]
     public async Task<ActionResult<IReadOnlyList<LessonDto>>> Create([FromBody] CreateLessonRequest request, CancellationToken ct)
     {
         try
@@ -79,7 +82,9 @@ public class LessonsController : ControllerBase
         }
     }
 
+    // Une séance issue d'une offre ne se supprime pas : l'enseignant l'annule (endpoint /cancel).
     [HttpDelete("{id:guid}")]
+    [Authorize(Roles = UserRoles.SuperAdmin)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
         try

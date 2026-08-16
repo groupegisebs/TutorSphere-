@@ -52,9 +52,7 @@ public static class OfferScheduleCalendarExpander
                 if (!AvailabilityWindows.TryParseTime(slot.Time, out var startTime))
                     continue;
 
-                var windows = SlotWindows(slot, startTime, durationMin);
-                if (windows.Count == 0)
-                    continue;
+                var (winStart, winEnd) = SlotPeriod(slot, startTime, durationMin);
 
                 for (var day = startDate; day < rangeEnd; day = day.AddDays(1))
                 {
@@ -63,22 +61,19 @@ public static class OfferScheduleCalendarExpander
                     if (!MatchesCadence(day, cadence, cadenceAnchor))
                         continue;
 
-                    foreach (var (winStart, winEnd) in windows)
-                    {
-                        var start = DateTime.SpecifyKind(day.Add(winStart), DateTimeKind.Unspecified);
-                        var end = DateTime.SpecifyKind(day.Add(winEnd), DateTimeKind.Unspecified);
-                        if (end <= rangeStart || start >= rangeEnd)
-                            continue;
+                    var start = DateTime.SpecifyKind(day.Add(winStart), DateTimeKind.Unspecified);
+                    var end = DateTime.SpecifyKind(day.Add(winEnd), DateTimeKind.Unspecified);
+                    if (end <= rangeStart || start >= rangeEnd)
+                        continue;
 
-                        results.Add(new OfferAvailabilityDto(
-                            offering.Id,
-                            offering.Title,
-                            offering.Subject,
-                            start,
-                            end,
-                            mode,
-                            cadence));
-                    }
+                    results.Add(new OfferAvailabilityDto(
+                        offering.Id,
+                        offering.Title,
+                        offering.Subject,
+                        start,
+                        end,
+                        mode,
+                        cadence));
                 }
             }
         }
@@ -101,6 +96,21 @@ public static class OfferScheduleCalendarExpander
     {
         var diff = ((int)date.DayOfWeek - (int)DayOfWeek.Monday + 7) % 7;
         return date.Date.AddDays(-diff);
+    }
+
+    /// <summary>
+    /// Période telle que déclarée dans l'offre (une plage = un bloc d'agenda).
+    /// Ancien format (heure seule) : la plage vaut la durée d'une séance.
+    /// </summary>
+    private static (TimeSpan Start, TimeSpan End) SlotPeriod(
+        OfferingScheduleSlotDto slot,
+        TimeSpan startTime,
+        int durationMin)
+    {
+        if (AvailabilityWindows.TryParseTime(slot.EndTime, out var endTime) && endTime > startTime)
+            return (startTime, endTime);
+
+        return (startTime, startTime.Add(TimeSpan.FromMinutes(durationMin)));
     }
 
     /// <summary>

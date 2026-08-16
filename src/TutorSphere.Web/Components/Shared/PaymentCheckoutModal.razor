@@ -12,7 +12,7 @@
                         <h5 class="modal-title">@L["PayMethod_Title"]</h5>
                         <p class="pay-checkout-secure mb-0">
                             <i class="bi bi-shield-check" aria-hidden="true"></i>
-                            @L["PayMethod_SecureBy"]
+                            @SecureByLabel
                         </p>
                     </div>
                     <button type="button" class="btn-close" disabled="@_busy" @onclick="CloseAsync" aria-label="@L["PayMethod_Cancel"]"></button>
@@ -248,6 +248,10 @@
                             <span>@L["PayMethod_SecurityBanner"]</span>
                             <span class="badges">
                                 <span>@L["PayMethod_Ssl"]</span>
+                                @if (IsStripeProcessed)
+                                {
+                                    <span>Stripe</span>
+                                }
                                 <span>GiseBsPayGateway</span>
                             </span>
                         </div>
@@ -347,6 +351,12 @@
     private decimal AmountInclusive => _taxQuote?.AmountInclusive ?? Amount;
     private decimal EstimatedFcfa => Math.Round(Amount * UsdToXafDisplay, 0, MidpointRounding.AwayFromZero);
     private string NextRenewalLabel => DateTime.Today.AddYears(1).ToString("d MMMM yyyy");
+
+    /// <summary>Carte et PayPal transitent par Stripe ; Mobile Money est collecté chez l'opérateur.</summary>
+    private bool IsStripeProcessed => _family is "card" or "paypal";
+
+    private string SecureByLabel =>
+        IsStripeProcessed ? L["PayMethod_SecureByStripe"] : L["PayMethod_SecureBy"];
 
     private string ContinueLabel => _family switch
     {

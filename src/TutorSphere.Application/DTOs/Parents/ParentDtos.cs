@@ -10,6 +10,18 @@ public record ParentDto(
     int UnreadMessagesCount = 0,
     string? Country = null);
 
+/// <summary>
+/// Vue enseignant d'un parent : identité et enfants inscrits à ses cours, sans coordonnées.
+/// Le contact se fait uniquement par la messagerie interne.
+/// </summary>
+public record TutorParentDto(
+    Guid Id,
+    string FirstName,
+    string LastName,
+    int ChildrenCount,
+    IReadOnlyList<string> Children,
+    string? MessagingUserId);
+
 public record CreateParentRequest(
     string FirstName,
     string LastName,

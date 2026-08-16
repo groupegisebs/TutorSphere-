@@ -14,6 +14,8 @@ namespace TutorSphere.Application.Services;
 public interface IParentService
 {
     Task<IReadOnlyList<ParentDto>> GetAllAsync(CancellationToken ct = default);
+    Task<IReadOnlyList<TutorParentDto>> GetForCurrentTenantAsync(CancellationToken ct = default);
+    Task<IReadOnlyList<StudentDto>> GetChildrenForCurrentTenantAsync(Guid parentId, CancellationToken ct = default);
     Task<ParentDto?> GetByIdAsync(Guid id, CancellationToken ct = default);
     Task<ParentDto?> GetByUserIdAsync(string userId, CancellationToken ct = default);
     Task<ParentDto> CreateAsync(CreateParentRequest request, CancellationToken ct = default);
@@ -86,6 +88,64 @@ public class ParentService : IParentService
             .Select(p => MapToDto(p, _db.Students.Count(s => s.ParentProfileId == p.Id)))
             .ToList();
         return Task.FromResult<IReadOnlyList<ParentDto>>(parents);
+    }
+
+    public Task<IReadOnlyList<TutorParentDto>> GetForCurrentTenantAsync(CancellationToken ct = default)
+    {
+        var students = LoadLinkedStudents()
+            .Where(s => s.ParentProfileId.HasValue)
+            .ToList();
+        if (students.Count == 0)
+            return Task.FromResult<IReadOnlyList<TutorParentDto>>([]);
+
+        var parentIds = students.Select(s => s.ParentProfileId!.Value).Distinct().ToList();
+        var parents = _db.ParentProfilesForAnyTenant
+            .Where(p => parentIds.Contains(p.Id))
+            .OrderBy(p => p.LastName).ThenBy(p => p.FirstName)
+            .ToList();
+
+        var result = parents
+            .Select(p => new TutorParentDto(
+                p.Id,
+                p.FirstName,
+                p.LastName,
+                students.Count(s => s.ParentProfileId == p.Id),
+                students
+                    .Where(s => s.ParentProfileId == p.Id)
+                    .OrderBy(s => s.FirstName)
+                    .Select(s => $"{s.FirstName} {s.LastName}".Trim())
+                    .ToList(),
+                string.IsNullOrWhiteSpace(p.UserId) ? null : p.UserId))
+            .ToList();
+
+        return Task.FromResult<IReadOnlyList<TutorParentDto>>(result);
+    }
+
+    public Task<IReadOnlyList<StudentDto>> GetChildrenForCurrentTenantAsync(Guid parentId, CancellationToken ct = default)
+    {
+        var children = LoadLinkedStudents()
+            .Where(s => s.ParentProfileId == parentId)
+            .OrderBy(s => s.LastName).ThenBy(s => s.FirstName)
+            .Select(MapStudentToDto)
+            .ToList();
+        return Task.FromResult<IReadOnlyList<StudentDto>>(children);
+    }
+
+    /// <summary>
+    /// Élèves rattachés au locataire courant : ceux de son espace et ceux abonnés à ses offres.
+    /// </summary>
+    private List<Student> LoadLinkedStudents()
+    {
+        var studentIds = _db.Students.Select(s => s.Id).ToHashSet();
+        foreach (var id in _db.StudentSubscriptions.Select(s => s.StudentId).Distinct().ToList())
+            studentIds.Add(id);
+
+        if (studentIds.Count == 0)
+            return [];
+
+        return _db.StudentsForAnyTenant
+            .Where(s => studentIds.Contains(s.Id))
+            .ToList();
     }
 
     public Task<ParentDto?> GetByIdAsync(Guid id, CancellationToken ct = default)

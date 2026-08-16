@@ -10,22 +10,13 @@
 <div class="ts-page-header">
     <div>
         <h1><i class="bi bi-people me-2" aria-hidden="true"></i>@L["Students_Title"]</h1>
-        <p class="ts-page-subtitle">@string.Format(L["Students_CountInSchool"].Value, _students.Count)</p>
-    </div>
-    <div class="ts-page-actions">
-        <button type="button" class="btn btn-primary" @onclick="OpenAddModal">
-            <i class="bi bi-plus-lg me-1"></i>@L["Students_Add"]
-        </button>
+        <p class="ts-page-subtitle">@string.Format(L["Students_CountEnrolled"].Value, _students.Count)</p>
     </div>
 </div>
 
 @if (!string.IsNullOrEmpty(_loadError))
 {
     <div class="alert alert-danger">@_loadError</div>
-}
-@if (!string.IsNullOrEmpty(_deleteError))
-{
-    <div class="alert alert-danger">@_deleteError</div>
 }
 
 <TutorPendingEnrollments OnChanged="ReloadStudentsAsync" />
@@ -48,9 +39,6 @@
         <option value="active">@L["Common_Active"]</option>
         <option value="inactive">@L["Common_Inactive"]</option>
     </select>
-    <button type="button" class="btn btn-primary" @onclick="OpenAddModal">
-        <i class="bi bi-plus-lg me-1"></i>@L["Students_Add"]
-    </button>
 </div>
 
 @if (_loading)
@@ -63,11 +51,8 @@
 else if (_students.Count == 0)
 {
     <div class="ts-empty-card">
-        <i class="bi bi-person-plus ts-empty-icon"></i>
-        <p>@L["Students_Empty"]</p>
-        <button type="button" class="btn btn-primary btn-lg" @onclick="OpenAddModal">
-            <i class="bi bi-plus-lg me-1"></i>@L["Students_Add"]
-        </button>
+        <i class="bi bi-people ts-empty-icon"></i>
+        <p>@L["Students_EmptyEnrolled"]</p>
     </div>
 }
 else if (!Filtered.Any())
@@ -96,15 +81,9 @@ else
                     <span class="student-card-date">@string.Format(L["Students_Since"].Value, s.SinceDate)</span>
                 </div>
                 <div class="student-card-actions" @onclick:stopPropagation="true">
-                                <button type="button" class="ts-icon-btn" title="@L["Students_ViewProfile"]" @onclick="() => OpenProfile(s)">
-                                    <i class="bi bi-eye"></i>
-                                </button>
-                                <button type="button" class="ts-icon-btn" title="@L["Common_Edit"]" @onclick="() => OpenEdit(s)">
-                                    <i class="bi bi-pencil"></i>
-                                </button>
-                                <button type="button" class="ts-icon-btn ts-icon-btn--danger" title="@L["Common_Delete"]" @onclick="() => AskDelete(s)">
-                                    <i class="bi bi-trash"></i>
-                                </button>
+                    <button type="button" class="ts-icon-btn" title="@L["Students_ViewProfile"]" @onclick="() => OpenProfile(s)">
+                        <i class="bi bi-eye"></i>
+                    </button>
                 </div>
             </div>
         }
@@ -153,116 +132,7 @@ else
                 </div>
             </div>
             <div class="ts-modal-footer">
-                <button type="button" class="btn btn-outline-danger me-auto" @onclick="() => AskDelete(_profileStudent)">
-                    <i class="bi bi-trash me-1"></i>@L["Common_Delete"]
-                </button>
-                <button type="button" class="btn btn-outline-secondary" @onclick="CloseProfile">@L["Common_Cancel"]</button>
-                <button type="button" class="btn btn-primary" @onclick="() => OpenEdit(_profileStudent)">
-                    <i class="bi bi-pencil me-1"></i>@L["Common_Edit"]
-                </button>
-            </div>
-        </div>
-    </div>
-}
-
-@if (_showAddModal)
-{
-    <div class="ts-modal-backdrop" @onclick="CloseAddModal">
-        <div class="ts-modal" @onclick:stopPropagation="true">
-            <div class="ts-modal-header">
-                <h2>@(_editingId is null ? L["Students_Add"] : L["Common_Edit"])</h2>
-                <button type="button" class="ts-modal-close" @onclick="CloseAddModal"><i class="bi bi-x-lg"></i></button>
-            </div>
-            <div class="ts-modal-body">
-                <div class="row g-3">
-                    <div class="col-6"><label class="form-label">@L["Common_FirstName"] *</label>
-                        <input class="form-control" @bind="_form.FirstName" /></div>
-                    <div class="col-6"><label class="form-label">@L["Common_LastName"] *</label>
-                        <input class="form-control" @bind="_form.LastName" /></div>
-                    <div class="col-6"><label class="form-label">@L["Students_BirthDate"]</label>
-                        <input type="date" class="form-control" @bind="_form.BirthDate" /></div>
-                    <div class="col-6"><label class="form-label">@L["Common_Parent"]</label>
-                        <select class="form-select" @bind="_form.ParentProfileId" disabled="@_creatingParent">
-                            <option value="">@L["Students_NoneParent"]</option>
-                            @foreach (var p in _parents)
-                            {
-                                <option value="@p.Id">@p.FirstName @p.LastName</option>
-                            }
-                        </select>
-                        <button type="button" class="btn btn-link btn-sm px-0 mt-1" @onclick="ToggleCreateParent">
-                            @(_creatingParent ? L["Common_Cancel"] : L["Students_AddParent"])
-                        </button>
-                    </div>
-                    @if (_creatingParent)
-                    {
-                        <div class="col-6"><label class="form-label">@L["Common_FirstName"] *</label>
-                            <input class="form-control" @bind="_newParent.FirstName" /></div>
-                        <div class="col-6"><label class="form-label">@L["Common_LastName"] *</label>
-                            <input class="form-control" @bind="_newParent.LastName" /></div>
-                        <div class="col-6"><label class="form-label">@L["Common_Email"] *</label>
-                            <input type="email" class="form-control" @bind="_newParent.Email" /></div>
-                        <div class="col-6"><label class="form-label">@L["Common_Phone"]</label>
-                            <input class="form-control" @bind="_newParent.Phone" /></div>
-                    }
-                    <div class="col-6"><label class="form-label">@L["Students_School"]</label>
-                        <input class="form-control" @bind="_form.School" /></div>
-                    <div class="col-6"><label class="form-label">@L["Students_Level"]</label>
-                        <select class="form-select" @bind="_form.Level">
-                            <option value="">—</option>
-                            <option value="Primaire">@L["Level_Primary"]</option>
-                            <option value="Collège">@L["Level_Middle"]</option>
-                            <option value="Lycée">@L["Level_High"]</option>
-                            <option value="Université">@L["Level_University"]</option>
-                        </select>
-                    </div>
-                    <div class="col-6"><label class="form-label">@L["Students_MainSubject"]</label>
-                        <input class="form-control" @bind="_form.Subject" /></div>
-                    <div class="col-6"><label class="form-label">@L["Common_Email"]</label>
-                        <input type="email" class="form-control" @bind="_form.Email" /></div>
-                    <div class="col-12"><label class="form-label">@L["Common_Phone"]</label>
-                        <input class="form-control" @bind="_form.Phone" /></div>
-                    <div class="col-12"><label class="form-label">@L["Students_Notes"]</label>
-                        <textarea class="form-control" rows="2" @bind="_form.Observations"></textarea></div>
-                </div>
-                @if (!string.IsNullOrEmpty(_addError))
-                {
-                    <div class="alert alert-danger mt-3">@_addError</div>
-                }
-            </div>
-            <div class="ts-modal-footer">
-                <button type="button" class="btn btn-outline-secondary" @onclick="CloseAddModal" disabled="@_saving">@L["Common_Cancel"]</button>
-                <button type="button" class="btn btn-primary" @onclick="SaveStudent" disabled="@_saving">
-                    @(_saving ? L["Common_Saving"] : L["Common_Save"])
-                </button>
-            </div>
-        </div>
-    </div>
-}
-
-@if (_pendingDelete != null)
-{
-    <div class="ts-modal-backdrop" @onclick="CancelDelete">
-        <div class="ts-modal" @onclick:stopPropagation="true">
-            <div class="ts-modal-header">
-                <h2>@L["Students_ConfirmDelete"]</h2>
-                <button type="button" class="ts-modal-close" @onclick="CancelDelete"><i class="bi bi-x-lg"></i></button>
-            </div>
-            <div class="ts-modal-body">
-                <p>@string.Format(L["Students_ConfirmDeleteBody"].Value, $"{_pendingDelete.FirstName} {_pendingDelete.LastName}".Trim())</p>
-                @if (!string.IsNullOrEmpty(_deleteError))
-                {
-                    <div class="alert alert-danger mb-0">@_deleteError</div>
-                }
-            </div>
-            <div class="ts-modal-footer">
-                <button type="button" class="btn btn-outline-secondary" @onclick="CancelDelete" disabled="@_deleting">@L["Common_Cancel"]</button>
-                <button type="button" class="btn btn-danger" disabled="@_deleting" @onclick="ConfirmDeleteAsync">
-                    @if (_deleting)
-                    {
-                        <span class="spinner-border spinner-border-sm me-1"></span>
-                    }
-                    @L["Common_Delete"]
-                </button>
+                <button type="button" class="btn btn-outline-secondary" @onclick="CloseProfile">@L["Common_Close"]</button>
             </div>
         </div>
     </div>
@@ -273,20 +143,9 @@ else
     private string _filterLevel = "";
     private string _filterStatus = "";
     private StudentViewModel? _profileStudent;
-    private StudentViewModel? _pendingDelete;
-    private bool _showAddModal;
-    private Guid? _editingId;
-    private string _addError = "";
     private string _loadError = "";
-    private string _deleteError = "";
     private bool _loading = true;
-    private bool _saving;
-    private bool _deleting;
-    private bool _creatingParent;
-    private StudentForm _form = new();
-    private ParentForm _newParent = new();
     private readonly List<StudentViewModel> _students = [];
-    private readonly List<ParentOption> _parents = [];
     private static readonly string[] AvatarColors = ["#7c3aed", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444", "#ec4899"];
 
     private IEnumerable<StudentViewModel> Filtered => _students
@@ -322,12 +181,6 @@ else
             foreach (var d in studentsResult.Value ?? [])
                 _students.Add(MapStudent(d, i++));
 
-            var parentsResult = await Api.GetWithErrorAsync<List<ParentDto>>("api/parents");
-            _parents.Clear();
-            if (parentsResult.Error is null)
-            {
-                _parents.AddRange((parentsResult.Value ?? []).Select(p => new ParentOption(p.Id, p.FirstName, p.LastName)));
-            }
             _loadError = "";
         }
         catch
@@ -339,177 +192,6 @@ else
 
     private void OpenProfile(StudentViewModel s) => _profileStudent = s;
     private void CloseProfile() => _profileStudent = null;
-    private void OpenAddModal()
-    {
-        _editingId = null;
-        _form = new();
-        _newParent = new();
-        _creatingParent = false;
-        _addError = "";
-        _showAddModal = true;
-    }
-    private void CloseAddModal()
-    {
-        _showAddModal = false;
-        _editingId = null;
-        _creatingParent = false;
-        _addError = "";
-    }
-
-    private void ToggleCreateParent()
-    {
-        _creatingParent = !_creatingParent;
-        if (!_creatingParent)
-            _newParent = new();
-        else
-            _form.ParentProfileId = "";
-    }
-
-    private void OpenEdit(StudentViewModel s)
-    {
-        _editingId = s.Id;
-        _form = new StudentForm
-        {
-            FirstName = s.FirstName,
-            LastName = s.LastName,
-            BirthDate = s.BirthDateValue ?? default,
-            ParentProfileId = s.ParentProfileId?.ToString() ?? "",
-            School = s.School ?? "",
-            Level = s.Level ?? "",
-            Subject = s.Subject ?? "",
-            Email = s.Email ?? "",
-            Phone = s.Phone ?? "",
-            Observations = s.Observations ?? ""
-        };
-        _creatingParent = false;
-        _newParent = new();
-        _addError = "";
-        _profileStudent = null;
-        _showAddModal = true;
-    }
-
-    private void AskDelete(StudentViewModel s)
-    {
-        _pendingDelete = s;
-        _deleteError = "";
-        _profileStudent = null;
-    }
-
-    private void CancelDelete()
-    {
-        if (_deleting) return;
-        _pendingDelete = null;
-        _deleteError = "";
-    }
-
-    private async Task ConfirmDeleteAsync()
-    {
-        if (_pendingDelete is null) return;
-        _deleting = true;
-        _deleteError = "";
-        try
-        {
-            var result = await Api.DeleteWithErrorAsync($"api/students/{_pendingDelete.Id}");
-            if (result.Error is not null || !result.Value)
-            {
-                _deleteError = result.Error ?? L["Students_DeleteFailed"].Value;
-                return;
-            }
-
-            _students.Remove(_pendingDelete);
-            _pendingDelete = null;
-        }
-        finally { _deleting = false; }
-    }
-
-    private async Task SaveStudent()
-    {
-        if (string.IsNullOrWhiteSpace(_form.FirstName) || string.IsNullOrWhiteSpace(_form.LastName))
-        {
-            _addError = $"{L["Common_FirstName"]} / {L["Common_LastName"]}";
-            return;
-        }
-
-        _saving = true;
-        _addError = "";
-        try
-        {
-            Guid? parentId = Guid.TryParse(_form.ParentProfileId, out var pid) ? pid : null;
-
-            if (_creatingParent)
-            {
-                if (string.IsNullOrWhiteSpace(_newParent.FirstName) || string.IsNullOrWhiteSpace(_newParent.LastName))
-                {
-                    _addError = L["Parents_RequiredName"];
-                    return;
-                }
-                if (string.IsNullOrWhiteSpace(_newParent.Email))
-                {
-                    _addError = L["Parents_RequiredEmail"];
-                    return;
-                }
-
-                var parentResult = await Api.PostWithErrorAsync<ParentDto>("api/parents", new
-                {
-                    firstName = _newParent.FirstName.Trim(),
-                    lastName = _newParent.LastName.Trim(),
-                    email = _newParent.Email.Trim(),
-                    phone = string.IsNullOrWhiteSpace(_newParent.Phone) ? null : _newParent.Phone.Trim()
-                });
-                if (parentResult.Error is not null || parentResult.Value is null)
-                {
-                    _addError = parentResult.Error ?? L["Parents_CreateFailed"].Value;
-                    return;
-                }
-
-                var created = parentResult.Value;
-                _parents.Add(new ParentOption(created.Id, created.FirstName, created.LastName));
-                parentId = created.Id;
-            }
-
-            var payload = new
-            {
-                firstName = _form.FirstName.Trim(),
-                lastName = _form.LastName.Trim(),
-                email = string.IsNullOrWhiteSpace(_form.Email) ? null : _form.Email.Trim(),
-                phone = string.IsNullOrWhiteSpace(_form.Phone) ? null : _form.Phone.Trim(),
-                dateOfBirth = _form.BirthDate == default ? (DateTime?)null : _form.BirthDate,
-                parentProfileId = parentId,
-                schoolLevel = string.IsNullOrWhiteSpace(_form.Level) ? null : _form.Level,
-                schoolName = string.IsNullOrWhiteSpace(_form.School) ? null : _form.School.Trim(),
-                subjects = string.IsNullOrWhiteSpace(_form.Subject) ? null : _form.Subject.Trim(),
-                notes = string.IsNullOrWhiteSpace(_form.Observations) ? null : _form.Observations.Trim(),
-                isActive = true
-            };
-
-            var result = _editingId is Guid id
-                ? await Api.PutWithErrorAsync<StudentDto>($"api/students/{id}", payload)
-                : await Api.PostWithErrorAsync<StudentDto>("api/students", payload);
-
-            if (result.Error is not null || result.Value is null)
-            {
-                _addError = result.Error ?? L["Search_Error_Load"].Value;
-                return;
-            }
-
-            var saved = result.Value;
-            if (_editingId is Guid edited)
-            {
-                var idx = _students.FindIndex(x => x.Id == edited);
-                if (idx >= 0) _students[idx] = MapStudent(saved, idx);
-            }
-            else
-                _students.Insert(0, MapStudent(saved, _students.Count));
-            _showAddModal = false;
-            _editingId = null;
-            _creatingParent = false;
-        }
-        catch (Exception ex)
-        {
-            _addError = ex.Message;
-        }
-        finally { _saving = false; }
-    }
 
     private StudentViewModel MapStudent(StudentDto d, int index) => new()
     {
@@ -543,31 +225,6 @@ else
         Guid? ParentProfileId, string? ParentName, string? PhotoUrl,
         string? SchoolLevel, string? SchoolName, List<string>? Subjects,
         string? Notes, bool IsActive, DateTime CreatedAt);
-
-    private record ParentDto(Guid Id, string FirstName, string LastName);
-    private record ParentOption(Guid Id, string FirstName, string LastName);
-
-    private class StudentForm
-    {
-        public string FirstName { get; set; } = "";
-        public string LastName { get; set; } = "";
-        public DateTime BirthDate { get; set; }
-        public string ParentProfileId { get; set; } = "";
-        public string School { get; set; } = "";
-        public string Level { get; set; } = "";
-        public string Subject { get; set; } = "";
-        public string Email { get; set; } = "";
-        public string Phone { get; set; } = "";
-        public string Observations { get; set; } = "";
-    }
-
-    private class ParentForm
-    {
-        public string FirstName { get; set; } = "";
-        public string LastName { get; set; } = "";
-        public string Email { get; set; } = "";
-        public string Phone { get; set; } = "";
-    }
 
     private class StudentViewModel
     {

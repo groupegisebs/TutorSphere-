@@ -4,18 +4,14 @@
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
 @inject AuthService Auth
+@inject NavigationManager Nav
 
 <PageTitle>@L["Parents_Title"] – TutorSphere</PageTitle>
 
 <div class="ts-page-header">
     <div>
         <h1><i class="bi bi-person-hearts me-2"></i>@L["Parents_Title"]</h1>
-        <p class="ts-page-subtitle">@string.Format(L["Parents_Count"].Value, _parents.Count)</p>
-    </div>
-    <div class="ts-page-actions">
-        <button type="button" class="btn btn-primary" @onclick="OpenAdd">
-            <i class="bi bi-plus-lg me-1"></i>@L["Parents_Add"]
-        </button>
+        <p class="ts-page-subtitle">@string.Format(L["Parents_CountEnrolled"].Value, _parents.Count)</p>
     </div>
 </div>
 
@@ -23,10 +19,11 @@
 {
     <div class="alert alert-danger">@_loadError</div>
 }
-@if (!string.IsNullOrEmpty(_deleteError) && _pendingDelete is null)
-{
-    <div class="alert alert-danger">@_deleteError</div>
-}
+
+<div class="alert alert-light border d-flex align-items-start gap-2">
+    <i class="bi bi-shield-lock text-primary mt-1"></i>
+    <span class="small mb-0">@L["Parents_PrivacyNotice"]</span>
+</div>
 
 <div class="ts-toolbar">
     <div class="ts-search-box">
@@ -34,9 +31,6 @@
         <input class="form-control" placeholder="@L["Parents_Search"]"
                @bind="_search" @bind:event="oninput" />
     </div>
-    <button type="button" class="btn btn-primary" @onclick="OpenAdd">
-        <i class="bi bi-plus-lg me-1"></i>@L["Parents_Add"]
-    </button>
 </div>
 
 @if (_loading)
@@ -49,11 +43,8 @@
 else if (_parents.Count == 0)
 {
     <div class="ts-empty-card">
-        <i class="bi bi-person-plus ts-empty-icon"></i>
-        <p>@L["Parents_Empty"]</p>
-        <button type="button" class="btn btn-primary btn-lg" @onclick="OpenAdd">
-            <i class="bi bi-plus-lg me-1"></i>@L["Parents_Add"]
-        </button>
+        <i class="bi bi-person-hearts ts-empty-icon"></i>
+        <p>@L["Parents_EmptyEnrolled"]</p>
     </div>
 }
 else if (!FilteredParents.Any())
@@ -71,8 +62,6 @@ else
                 <tr>
                     <th>@L["Parents_Title"]</th>
                     <th>@L["Parents_Children"]</th>
-                    <th>@L["Common_Phone"]</th>
-                    <th>@L["Common_Email"]</th>
                     <th>@L["Common_Actions"]</th>
                 </tr>
             </thead>
@@ -99,13 +88,15 @@ else
                                 }
                             }
                         </td>
-                        <td>@(p.Phone ?? "—")</td>
-                        <td>@p.Email</td>
                         <td>
                             <div class="ts-action-group">
                                 <button type="button" class="ts-icon-btn" title="@L["Common_View"]" @onclick="() => OpenDetail(p)"><i class="bi bi-eye"></i></button>
-                                <button type="button" class="ts-icon-btn" title="@L["Common_Edit"]" @onclick="() => OpenEdit(p)"><i class="bi bi-pencil"></i></button>
-                                <button type="button" class="ts-icon-btn ts-icon-btn--danger" title="@L["Common_Delete"]" @onclick="() => AskDelete(p)"><i class="bi bi-trash"></i></button>
+                                <button type="button" class="btn btn-sm btn-outline-primary"
+                                        disabled="@(!p.CanMessage)"
+                                        title="@(p.CanMessage ? L["Parents_SendMessage"].Value : L["Parents_NoMailbox"].Value)"
+                                        @onclick="() => OpenMessage(p)">
+                                    <i class="bi bi-chat-dots me-1"></i>@L["Parents_SendMessage"]
+                                </button>
                             </div>
                         </td>
                     </tr>
@@ -135,9 +126,12 @@ else
                 {
                     <div class="ts-form-grid">
                         <div class="ts-form-row"><label>@L["Parents_FullName"]</label><span>@_selected.FullName</span></div>
-                        <div class="ts-form-row"><label>@L["Common_Phone"]</label><span>@(_selected.Phone ?? "—")</span></div>
-                        <div class="ts-form-row"><label>@L["Common_Email"]</label><span>@_selected.Email</span></div>
+                        <div class="ts-form-row">
+                            <label>@L["Parents_Children"]</label>
+                            <span>@_selected.ChildrenCount @L["Parents_ChildrenCount"]</span>
+                        </div>
                     </div>
+                    <p class="text-muted small mt-3 mb-0">@L["Parents_PrivacyNotice"]</p>
                 }
                 else if (_pTab == "children")
                 {
@@ -159,75 +153,10 @@ else
                 }
             </div>
             <div class="ts-modal-footer">
-                <button type="button" class="btn btn-outline-danger me-auto" @onclick="() => AskDelete(_selected)">
-                    <i class="bi bi-trash me-1"></i>@L["Common_Delete"]
-                </button>
-                <button type="button" class="btn btn-outline-secondary" @onclick="() => _selected = null">@L["Common_Cancel"]</button>
-                <button type="button" class="btn btn-primary" @onclick="() => OpenEdit(_selected)">
-                    <i class="bi bi-pencil me-1"></i>@L["Common_Edit"]
-                </button>
-            </div>
-        </div>
-    </div>
-}
-
-@if (_showAdd)
-{
-    <div class="ts-modal-backdrop" @onclick="() => _showAdd = false">
-        <div class="ts-modal" @onclick:stopPropagation="true">
-            <div class="ts-modal-header">
-                <h2>@(_editingId is null ? L["Parents_Add"] : L["Common_Edit"])</h2>
-                <button type="button" class="ts-modal-close" @onclick="() => _showAdd = false"><i class="bi bi-x-lg"></i></button>
-            </div>
-            <div class="ts-modal-body">
-                <div class="row g-3">
-                    <div class="col-6"><label class="form-label">@L["Common_FirstName"] *</label>
-                        <input class="form-control" @bind="_pForm.First" /></div>
-                    <div class="col-6"><label class="form-label">@L["Common_LastName"] *</label>
-                        <input class="form-control" @bind="_pForm.Last" /></div>
-                    <div class="col-6"><label class="form-label">@L["Common_Phone"]</label>
-                        <input class="form-control" @bind="_pForm.Phone" /></div>
-                    <div class="col-6"><label class="form-label">@L["Common_Email"] *</label>
-                        <input type="email" class="form-control" @bind="_pForm.Email" /></div>
-                </div>
-                @if (!string.IsNullOrEmpty(_addError))
-                {
-                    <div class="alert alert-danger mt-3">@_addError</div>
-                }
-            </div>
-            <div class="ts-modal-footer">
-                <button type="button" class="btn btn-outline-secondary" @onclick="() => _showAdd = false" disabled="@_saving">@L["Common_Cancel"]</button>
-                <button type="button" class="btn btn-primary" @onclick="SaveParent" disabled="@_saving">
-                    @(_saving ? L["Common_Saving"] : L["Common_Save"])
-                </button>
-            </div>
-        </div>
-    </div>
-}
-
-@if (_pendingDelete != null)
-{
-    <div class="ts-modal-backdrop" @onclick="CancelDelete">
-        <div class="ts-modal" @onclick:stopPropagation="true">
-            <div class="ts-modal-header">
-                <h2>@L["Parents_ConfirmDelete"]</h2>
-                <button type="button" class="ts-modal-close" @onclick="CancelDelete"><i class="bi bi-x-lg"></i></button>
-            </div>
-            <div class="ts-modal-body">
-                <p>@string.Format(L["Parents_ConfirmDeleteBody"].Value, _pendingDelete.FullName)</p>
-                @if (!string.IsNullOrEmpty(_deleteError))
-                {
-                    <div class="alert alert-danger mb-0">@_deleteError</div>
-                }
-            </div>
-            <div class="ts-modal-footer">
-                <button type="button" class="btn btn-outline-secondary" @onclick="CancelDelete" disabled="@_deleting">@L["Common_Cancel"]</button>
-                <button type="button" class="btn btn-danger" disabled="@_deleting" @onclick="ConfirmDeleteAsync">
-                    @if (_deleting)
-                    {
-                        <span class="spinner-border spinner-border-sm me-1"></span>
-                    }
-                    @L["Common_Delete"]
+                <button type="button" class="btn btn-outline-secondary" @onclick="() => _selected = null">@L["Common_Close"]</button>
+                <button type="button" class="btn btn-primary" disabled="@(!_selected.CanMessage)"
+                        @onclick="() => OpenMessage(_selected)">
+                    <i class="bi bi-chat-dots me-1"></i>@L["Parents_SendMessage"]
                 </button>
             </div>
         </div>
@@ -237,38 +166,12 @@ else
 @code {
     private string _search = "";
     private ParentVM? _selected;
-    private ParentVM? _pendingDelete;
     private string _pTab = "info";
-    private bool _showAdd;
-    private Guid? _editingId;
     private bool _loading = true;
-    private bool _saving;
-    private bool _deleting;
     private bool _childrenLoading;
     private string _loadError = "";
-    private string _addError = "";
-    private string _deleteError = "";
-    private ParentForm _pForm = new();
     private readonly List<ParentVM> _parents = [];
     private static readonly string[] Colors = ["#7c3aed", "#0ea5e9", "#10b981", "#f59e0b"];
-
-    private void OpenAdd() { _editingId = null; _pForm = new(); _addError = ""; _showAdd = true; }
-
-    private void OpenEdit(ParentVM p)
-    {
-        _editingId = p.Id;
-        var parts = p.FullName.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
-        _pForm = new ParentForm
-        {
-            First = parts.Length > 0 ? parts[0] : p.FullName,
-            Last = parts.Length > 1 ? parts[1] : "",
-            Phone = p.Phone ?? "",
-            Email = p.Email
-        };
-        _addError = "";
-        _selected = null;
-        _showAdd = true;
-    }
 
     private IEnumerable<ParentVM> FilteredParents => _parents
         .Where(p => string.IsNullOrEmpty(_search) ||
@@ -313,7 +216,12 @@ else
         try
         {
             var children = await Api.GetAsync<List<ApiChildDto>>($"api/parents/{p.Id}/children") ?? [];
-            p.Children = children.Select(c => $"{c.FirstName} {c.LastName}").ToList();
+            if (children.Count > 0)
+                p.Children = children.Select(c => $"{c.FirstName} {c.LastName}".Trim()).ToList();
+        }
+        catch
+        {
+            // la liste envoyée avec les parents reste affichée
         }
         finally
         {
@@ -321,120 +229,37 @@ else
         }
     }
 
-    private void AskDelete(ParentVM p)
+    private void OpenMessage(ParentVM p)
     {
-        _pendingDelete = p;
-        _deleteError = "";
+        if (!p.CanMessage) return;
         _selected = null;
-    }
-
-    private void CancelDelete()
-    {
-        if (_deleting) return;
-        _pendingDelete = null;
-        _deleteError = "";
-    }
-
-    private async Task ConfirmDeleteAsync()
-    {
-        if (_pendingDelete is null) return;
-        _deleting = true;
-        _deleteError = "";
-        try
-        {
-            var result = await Api.DeleteWithErrorAsync($"api/parents/{_pendingDelete.Id}");
-            if (result.Error is not null || !result.Value)
-            {
-                _deleteError = result.Error ?? L["Parents_DeleteFailed"].Value;
-                return;
-            }
-
-            _parents.Remove(_pendingDelete);
-            _pendingDelete = null;
-        }
-        finally { _deleting = false; }
-    }
-
-    private async Task SaveParent()
-    {
-        if (string.IsNullOrWhiteSpace(_pForm.First) || string.IsNullOrWhiteSpace(_pForm.Last))
-        {
-            _addError = L["Parents_RequiredName"];
-            return;
-        }
-        if (string.IsNullOrWhiteSpace(_pForm.Email))
-        {
-            _addError = L["Parents_RequiredEmail"];
-            return;
-        }
-
-        _saving = true;
-        _addError = "";
-        try
-        {
-            var req = new
-            {
-                firstName = _pForm.First.Trim(),
-                lastName = _pForm.Last.Trim(),
-                email = _pForm.Email.Trim(),
-                phone = string.IsNullOrWhiteSpace(_pForm.Phone) ? null : _pForm.Phone.Trim()
-            };
-
-            var result = _editingId is Guid id
-                ? await Api.PutWithErrorAsync<ApiParentDto>($"api/parents/{id}", req)
-                : await Api.PostWithErrorAsync<ApiParentDto>("api/parents", req);
-            if (result.Error is not null || result.Value is null)
-            {
-                _addError = result.Error ?? L["Parents_CreateFailed"].Value;
-                return;
-            }
-
-            if (_editingId is Guid edited)
-            {
-                var idx = _parents.FindIndex(x => x.Id == edited);
-                if (idx >= 0) _parents[idx] = MapParent(result.Value, idx);
-            }
-            else
-                _parents.Add(MapParent(result.Value, _parents.Count));
-            _showAdd = false;
-            _editingId = null;
-        }
-        finally
-        {
-            _saving = false;
-        }
+        Nav.NavigateTo($"tutor/messages?to={Uri.EscapeDataString(p.MessagingUserId!)}&name={Uri.EscapeDataString(p.FullName)}&role=parent");
     }
 
     private static ParentVM MapParent(ApiParentDto d, int index) => new()
     {
         Id = d.Id,
         FullName = $"{d.FirstName} {d.LastName}".Trim(),
-        Phone = d.Phone,
-        Email = d.Email,
         ChildrenCount = d.ChildrenCount,
-        Children = [],
+        Children = d.Children ?? [],
+        MessagingUserId = d.MessagingUserId,
         Color = Colors[index % Colors.Length]
     };
 
-    private record ApiParentDto(Guid Id, string FirstName, string LastName, string Email, string? Phone, int ChildrenCount);
-    private record ApiChildDto(Guid Id, string FirstName, string LastName);
+    private record ApiParentDto(
+        Guid Id, string FirstName, string LastName, int ChildrenCount,
+        List<string>? Children, string? MessagingUserId);
 
-    private class ParentForm
-    {
-        public string First { get; set; } = "";
-        public string Last { get; set; } = "";
-        public string Phone { get; set; } = "";
-        public string Email { get; set; } = "";
-    }
+    private record ApiChildDto(Guid Id, string FirstName, string LastName);
 
     private class ParentVM
     {
         public Guid Id { get; set; }
         public string FullName { get; set; } = "";
-        public string? Phone { get; set; }
-        public string Email { get; set; } = "";
         public int ChildrenCount { get; set; }
         public List<string> Children { get; set; } = [];
+        public string? MessagingUserId { get; set; }
+        public bool CanMessage => !string.IsNullOrWhiteSpace(MessagingUserId);
         public string Color { get; set; } = "#7c3aed";
         public string Initials
         {

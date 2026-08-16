@@ -3,7 +3,6 @@
 @rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
 @inject LessonService LessonSvc
-@inject ApiClient Api
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
 @inject AuthService Auth
@@ -13,12 +12,7 @@
 <div class="ts-page-header">
     <div>
         <h1><i class="bi bi-journal-bookmark me-2"></i>@L["Lessons_Title"]</h1>
-        <p class="ts-page-subtitle">@L["Lessons_Subtitle"]</p>
-    </div>
-    <div class="ts-page-actions">
-        <button type="button" class="btn btn-primary" @onclick="OpenAdd">
-            <i class="bi bi-plus-lg me-1"></i>@L["Lessons_New"]
-        </button>
+        <p class="ts-page-subtitle">@L["Lessons_SubtitleFromOffer"]</p>
     </div>
 </div>
 
@@ -59,12 +53,9 @@
         <option value="En ligne">@L["Common_Online"]</option>
         <option value="Présentiel">@L["Common_InPerson"]</option>
     </select>
-    <button type="button" class="btn btn-primary" @onclick="OpenAdd">
-        <i class="bi bi-plus-lg me-1"></i>@L["Lessons_New"]
-    </button>
 </div>
 
-@if (!string.IsNullOrEmpty(_error) && !_showModal)
+@if (!string.IsNullOrEmpty(_error))
 {
     <div class="alert alert-danger">
         <i class="bi bi-exclamation-triangle me-2"></i>@_error
@@ -83,11 +74,8 @@
     else if (_lessons.Count == 0)
     {
         <div class="ts-empty-card m-4">
-            <i class="bi bi-journal-plus ts-empty-icon"></i>
-            <p>@L["Lessons_Empty"]</p>
-            <button type="button" class="btn btn-primary btn-lg" @onclick="OpenAdd">
-                <i class="bi bi-plus-lg me-1"></i>@L["Lessons_New"]
-            </button>
+            <i class="bi bi-journal-bookmark ts-empty-icon"></i>
+            <p>@L["Lessons_EmptyFromOffer"]</p>
         </div>
     }
     else
@@ -119,10 +107,11 @@
                         <td><span class="ts-badge @StatusBadge(l.Status)">@l.Status</span></td>
                         <td>
                             <div class="ts-action-group">
-                                @if (l.Status == "Planifié")
+                                @if (l.Status is "Planifié" or "En cours")
                                 {
-                                    <button class="ts-icon-btn" title="@L["Lessons_Start"]" @onclick="async () => await StartLesson(l)">
-                                        <i class="bi bi-play-fill text-success"></i>
+                                    <button class="btn btn-sm btn-primary" title="@L["Lessons_OpenClassroom"]"
+                                            @onclick="async () => await StartLesson(l)">
+                                        <i class="bi bi-easel2 me-1"></i>@L["Lessons_OpenClassroom"]
                                     </button>
                                 }
                                 @if (l.Status is "Terminé" or "En cours" or "Validé")
@@ -156,11 +145,6 @@
                                         <i class="bi bi-cash-coin text-success"></i>
                                     </button>
                                 }
-                                <button class="ts-icon-btn" title="@L["Common_Edit"]" @onclick="()=>OpenEdit(l)"><i class="bi bi-pencil"></i></button>
-                                <button class="ts-icon-btn ts-icon-btn--danger" title="@L["Lessons_Delete"]"
-                                        @onclick="async () => await DeleteLesson(l)">
-                                    <i class="bi bi-trash"></i>
-                                </button>
                             </div>
                         </td>
                     </tr>
@@ -169,117 +153,6 @@
         </table>
     }
 </div>
-
-<!-- Add/Edit lesson modal -->
-@if (_showModal)
-{
-    <div class="ts-modal-backdrop" @onclick="CloseModal">
-        <div class="ts-modal" @onclick:stopPropagation="true">
-            <div class="ts-modal-header">
-                <h2>@(_editingLesson == null ? L["Lessons_New"] : L["Lessons_Edit"])</h2>
-                <button class="ts-modal-close" @onclick="CloseModal"><i class="bi bi-x-lg"></i></button>
-            </div>
-            <div class="ts-modal-body">
-                <div class="row g-3">
-                    <div class="col-12"><label class="form-label">@L["Common_Title"] *</label>
-                        <input class="form-control" @bind="_lf.Title" /></div>
-                    <div class="col-6"><label class="form-label">@L["Common_Student"]</label>
-                        <select class="form-select" @bind="_lf.StudentId" disabled="@_creatingStudent">
-                            <option value="">@L["Common_Choose"]</option>
-                            @foreach (var s in _students)
-                            {
-                                <option value="@s.Id.ToString()">@s.Name</option>
-                            }
-                        </select>
-                        <button type="button" class="btn btn-link btn-sm px-0 mt-1" @onclick="ToggleCreateStudent">
-                            @(_creatingStudent ? L["Common_Cancel"] : L["Students_Add"])
-                        </button>
-                    </div>
-                    @if (_creatingStudent)
-                    {
-                        <div class="col-6"><label class="form-label">@L["Common_FirstName"] *</label>
-                            <input class="form-control" @bind="_newStudent.FirstName" /></div>
-                        <div class="col-6"><label class="form-label">@L["Common_LastName"] *</label>
-                            <input class="form-control" @bind="_newStudent.LastName" /></div>
-                    }
-                    <div class="col-6"><label class="form-label">@L["Lessons_SubjectRequired"]</label>
-                        <select class="form-select" @bind="_lf.Subject">
-                            <option value="">@L["Lessons_PickSubject"]</option>
-                            @foreach (var subject in LessonSubjectChoices)
-                            {
-                                <option value="@subject.Name">
-                                    @(string.IsNullOrWhiteSpace(subject.Cycle) ? subject.Name : $"{subject.Name} ({subject.Cycle})")
-                                </option>
-                            }
-                        </select>
-                        @if (_planSubjects.Count == 0)
-                        {
-                            <small class="text-muted">@L["Lessons_NoPlanSubjects"]</small>
-                        }
-                    </div>
-                    <div class="col-6"><label class="form-label">@L["Lessons_DateRequired"]</label>
-                        <input type="date" class="form-control" @bind="_lf.Date" disabled="@_dateLocked" /></div>
-                    <div class="col-3"><label class="form-label">@L["Lessons_StartTime"]</label>
-                        <input type="time" class="form-control" @bind="_lf.StartTime" disabled="@_dateLocked" /></div>
-                    <div class="col-3"><label class="form-label">@L["Lessons_DurationHours"]</label>
-                        <input type="number" step="0.5" class="form-control" @bind="_lf.Duration" disabled="@_dateLocked" /></div>
-                    @if (_dateLocked)
-                    {
-                        <div class="col-12">
-                            <div class="alert alert-warning py-2 mb-0">@L["Lessons_DateLocked24h"]</div>
-                        </div>
-                    }
-                    <div class="col-6"><label class="form-label">@L["Common_Mode"]</label>
-                        <select class="form-select" @bind="_lf.Mode">
-                            <option value="En ligne">@L["Common_Online"]</option>
-                            <option value="Présentiel">@L["Common_InPerson"]</option>
-                        </select></div>
-                    <div class="col-6"><label class="form-label">@L["Lessons_Type"]</label>
-                        <select class="form-select" @bind="_lf.Type" @bind:after="OnLessonTypeChanged">
-                            <option value="Individuel">@L["Lessons_Individual"]</option>
-                            <option value="Collectif">@L["Lessons_Group"]</option>
-                            <option value="Intensif">@L["Lessons_Intensive"]</option>
-                        </select></div>
-                    <div class="col-6"><label class="form-label">@L["Lessons_MaxStudents"]</label>
-                        <input type="number" class="form-control" min="1" max="100"
-                               @bind="_lf.MaxStudents" disabled="@(_lf.Type == "Individuel")" /></div>
-                    <div class="col-12">
-                        <label class="form-label">@L["Lessons_Recurrence"]</label>
-                        <select class="form-select" @bind="_lf.Recurrence">
-                            <option value="none">@L["Lessons_Once"]</option>
-                            <option value="weekly">@L["Lessons_Weekly"]</option>
-                            <option value="biweekly">@L["Lessons_Biweekly"]</option>
-                            <option value="monthly">@L["Lessons_Monthly"]</option>
-                        </select>
-                    </div>
-                    @if (_lf.Recurrence != "none" && _editingLesson is null)
-                    {
-                        <div class="col-6">
-                            <label class="form-label">@L["Lessons_Occurrences"]</label>
-                            <input type="number" class="form-control" min="2" max="52" @bind="_lf.Occurrences" />
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label">@L["Lessons_Until"]</label>
-                            <input type="date" class="form-control" @bind="_lf.UntilDate" />
-                        </div>
-                    }
-                    <div class="col-12"><label class="form-label">@L["Lessons_Description"]</label>
-                        <textarea class="form-control" rows="2" @bind="_lf.Description"></textarea></div>
-                </div>
-                @if (!string.IsNullOrEmpty(_formError))
-                {
-                    <div class="alert alert-danger mt-3 mb-0">@_formError</div>
-                }
-            </div>
-            <div class="ts-modal-footer">
-                <button type="button" class="btn btn-outline-secondary" @onclick="CloseModal" disabled="@_saving">@L["Common_Cancel"]</button>
-                <button type="button" class="btn btn-primary" @onclick="SaveLesson" disabled="@_saving">
-                    @(_saving ? L["Common_Saving"] : L["Common_Save"])
-                </button>
-            </div>
-        </div>
-    </div>
-}
 
 @if (_showAttendance && _attendanceLesson is not null)
 {
@@ -328,39 +201,12 @@
     private const string RefundResolution = "refund";
 
     private string _search = "", _filterStatus = "", _filterMode = "";
-    private bool _showModal;
     private bool _loading = true;
-    private bool _saving;
-    private bool _creatingStudent;
     private string _error = "";
-    private string _formError = "";
-    private LessonVM? _editingLesson;
-    private LessonForm _lf = new();
-    private StudentForm _newStudent = new();
-    private bool _dateLocked;
     private bool _showAttendance;
     private bool _attendanceLoading;
     private LessonVM? _attendanceLesson;
     private List<LessonAttendanceDto> _attendances = [];
-    private readonly List<StudentOpt> _students = [];
-    private readonly List<PlanSubjectDto> _planSubjects = [];
-
-    private sealed record StudentOpt(Guid Id, string Name);
-    private sealed record PlanSubjectDto(string Name, string? Cycle);
-
-    private IEnumerable<PlanSubjectDto> LessonSubjectChoices
-    {
-        get
-        {
-            var list = _planSubjects.ToList();
-            if (!string.IsNullOrWhiteSpace(_lf.Subject)
-                && list.All(s => !s.Name.Equals(_lf.Subject, StringComparison.OrdinalIgnoreCase)))
-            {
-                list.Insert(0, new PlanSubjectDto(_lf.Subject.Trim(), null));
-            }
-            return list;
-        }
-    }
 
     private static string StatusBadge(string s) => s switch {
         "Terminé" or "Validé" => "ts-badge-success",
@@ -378,7 +224,7 @@
             l.Subject.Contains(_search, StringComparison.OrdinalIgnoreCase))
         .Where(l => string.IsNullOrEmpty(_filterStatus) || l.Status == _filterStatus)
         .Where(l => string.IsNullOrEmpty(_filterMode) || l.Mode == _filterMode)
-        .OrderByDescending(l => l.Date);
+        .OrderBy(l => l.Date);
 
     protected override async Task OnInitializedAsync()
     {
@@ -387,23 +233,9 @@
         {
             var lessonsResult = await LessonSvc.GetLessonsWithErrorAsync();
             if (lessonsResult.Error is not null)
-            {
                 _error = lessonsResult.Error;
-            }
             else
-            {
                 _lessons = (lessonsResult.Value ?? []).Select(MapFromDto).ToList();
-            }
-
-            var students = await Api.GetWithErrorAsync<List<TutorSphere.Application.DTOs.Students.StudentDto>>("api/students");
-            _students.Clear();
-            if (students.Error is null)
-                _students.AddRange((students.Value ?? []).Select(s => new StudentOpt(s.Id, $"{s.FirstName} {s.LastName}".Trim())));
-
-            var plans = await Api.GetWithErrorAsync<List<PlanSubjectDto>>("api/tutor/plan-subjects");
-            _planSubjects.Clear();
-            if (plans.Value is not null)
-                _planSubjects.AddRange(plans.Value);
         }
         catch { _error = L["Search_Error_Load"]; }
         finally { _loading = false; }
@@ -437,66 +269,6 @@
             MaxStudents = d.MaxStudents,
             AvatarColor = "#7c3aed"
         };
-    }
-
-    private void OnLessonTypeChanged()
-    {
-        if (_lf.Type == "Individuel")
-            _lf.MaxStudents = 1;
-        else if (_lf.MaxStudents < 2)
-            _lf.MaxStudents = 5;
-    }
-
-    private void OpenAdd()
-    {
-        _editingLesson = null;
-        _lf = new();
-        if (_planSubjects.Count == 1)
-            _lf.Subject = _planSubjects[0].Name;
-        _newStudent = new();
-        _creatingStudent = false;
-        _dateLocked = false;
-        _formError = "";
-        _showModal = true;
-    }
-
-    private void ToggleCreateStudent()
-    {
-        _creatingStudent = !_creatingStudent;
-        if (!_creatingStudent)
-            _newStudent = new();
-        else
-            _lf.StudentId = "";
-    }
-
-    private void OpenEdit(LessonVM l)
-    {
-        _editingLesson = l;
-        _lf = new LessonForm
-        {
-            Title = l.Title,
-            StudentId = "",
-            Subject = l.Subject,
-            Date = l.Date,
-            StartTime = TimeOnly.FromDateTime(l.Date),
-            Duration = l.Duration,
-            Mode = l.Mode,
-            Type = l.MaxStudents > 1 ? "Collectif" : "Individuel",
-            MaxStudents = Math.Max(1, l.MaxStudents)
-        };
-        var hoursLeft = l.Date.ToUniversalTime() - DateTime.UtcNow;
-        _dateLocked = hoursLeft < TimeSpan.FromHours(24)
-                      || l.SettlementStatus is "CancelledFree" or "TutorNoShow" or "LiabilityResolved";
-        _creatingStudent = false;
-        _formError = "";
-        _showModal = true;
-    }
-    private void CloseModal()
-    {
-        if (_saving) return;
-        _showModal = false;
-        _creatingStudent = false;
-        _formError = "";
     }
 
     private async Task OpenAttendance(LessonVM lesson)
@@ -566,157 +338,6 @@
         if (idx >= 0) _lessons[idx] = updated;
     }
 
-    private async Task DeleteLesson(LessonVM lesson)
-    {
-        var label = string.IsNullOrEmpty(lesson.StudentName) ? lesson.Title : lesson.StudentName;
-        var confirmed = await JS.InvokeAsync<bool>(
-            "confirm",
-            string.Format(L["Lessons_CancelConfirmDetail"].Value, label, lesson.Date.ToString("dd/MM/yyyy")));
-        if (!confirmed)
-            return;
-
-        if (lesson.ApiId is Guid id)
-        {
-            var dto = await LessonSvc.CancelLessonAsync(id, "Annulation");
-            if (dto is null)
-            {
-                _error = L["Lessons_CancelError"];
-                return;
-            }
-            ReplaceLesson(lesson, MapFromDto(dto));
-        }
-        else
-        {
-            _lessons.Remove(lesson);
-        }
-        _error = "";
-    }
-
-    private async Task SaveLesson()
-    {
-        if (string.IsNullOrWhiteSpace(_lf.Title) || string.IsNullOrWhiteSpace(_lf.Subject))
-        {
-            _formError = L["Lessons_RequiredFields"];
-            return;
-        }
-
-        _saving = true;
-        _formError = "";
-        try
-        {
-            Guid? studentId = Guid.TryParse(_lf.StudentId, out var sid) ? sid : null;
-
-            if (_creatingStudent)
-            {
-                if (string.IsNullOrWhiteSpace(_newStudent.FirstName) || string.IsNullOrWhiteSpace(_newStudent.LastName))
-                {
-                    _formError = L["Parents_RequiredName"];
-                    return;
-                }
-
-                var createdStudent = await Api.PostWithErrorAsync<TutorSphere.Application.DTOs.Students.StudentDto>("api/students", new
-                {
-                    firstName = _newStudent.FirstName.Trim(),
-                    lastName = _newStudent.LastName.Trim(),
-                    isActive = true
-                });
-                if (createdStudent.Error is not null || createdStudent.Value is null)
-                {
-                    _formError = createdStudent.Error ?? L["Lessons_SaveFailed"].Value;
-                    return;
-                }
-
-                var s = createdStudent.Value;
-                _students.Add(new StudentOpt(s.Id, $"{s.FirstName} {s.LastName}".Trim()));
-                studentId = s.Id;
-            }
-
-            var start = _lf.Date.Date.Add(_lf.StartTime.ToTimeSpan());
-            var end   = start.AddHours(_lf.Duration);
-            if (end <= start)
-            {
-                _formError = L["Lessons_RequiredFields"];
-                return;
-            }
-
-            if (_editingLesson == null)
-            {
-                var recurrence = _lf.Recurrence;
-                int? occurrences = null;
-                DateTime? until = null;
-                if (recurrence != "none")
-                {
-                    if (_lf.UntilDate is { } u && u.Date >= _lf.Date.Date)
-                        until = u.Date;
-                    else
-                        occurrences = Math.Clamp(_lf.Occurrences, 2, 52);
-                }
-
-                var studentIds = studentId is Guid id ? new[] { id } : (IReadOnlyList<Guid>?)null;
-                var created = await LessonSvc.CreateLessonWithErrorAsync(
-                    _lf.Title, _lf.Description, _lf.Subject,
-                    start.ToUniversalTime(), end.ToUniversalTime(), _lf.Mode,
-                    recurrenceFrequency: recurrence == "none" ? null : recurrence,
-                    recurrenceOccurrences: occurrences,
-                    recurrenceUntil: until?.ToUniversalTime(),
-                    maxStudents: _lf.Type == "Individuel" ? 1 : Math.Clamp(_lf.MaxStudents, 1, 100),
-                    studentIds: studentIds);
-
-                if (created.Error is not null || created.Value is null || created.Value.Count == 0)
-                {
-                    _formError = created.Error ?? L["Lessons_SaveFailed"].Value;
-                    return;
-                }
-
-                foreach (var dto in created.Value)
-                    _lessons.Add(MapFromDto(dto));
-            }
-            else if (_editingLesson.ApiId.HasValue)
-            {
-                var editStart = _dateLocked ? _editingLesson.Date : start;
-                var editEnd = _dateLocked
-                    ? _editingLesson.Date.AddHours(_editingLesson.Duration)
-                    : end;
-                var result = await LessonSvc.UpdateLessonWithErrorAsync(
-                    _editingLesson.ApiId.Value,
-                    _lf.Title, _lf.Description, _lf.Subject,
-                    editStart.ToUniversalTime(), editEnd.ToUniversalTime(), _lf.Mode,
-                    maxStudents: _lf.Type == "Individuel" ? 1 : Math.Clamp(_lf.MaxStudents, 1, 100));
-                if (result.Error is not null)
-                {
-                    _formError = result.Error;
-                    return;
-                }
-                if (result.Value != null)
-                {
-                    var updated = MapFromDto(result.Value);
-                    var idx = _lessons.IndexOf(_editingLesson);
-                    if (idx >= 0) _lessons[idx] = updated;
-                }
-                else
-                {
-                    _editingLesson.Title   = _lf.Title;
-                    _editingLesson.Subject = _lf.Subject;
-                    if (!_dateLocked)
-                    {
-                        _editingLesson.Date    = start;
-                        _editingLesson.EndTime = end.ToString("HH:mm");
-                        _editingLesson.Duration = _lf.Duration;
-                    }
-                    _editingLesson.Mode    = _lf.Mode;
-                }
-            }
-            _error = "";
-            _showModal = false;
-            _creatingStudent = false;
-        }
-        catch (Exception ex)
-        {
-            _formError = ex.Message;
-        }
-        finally { _saving = false; }
-    }
-
     private async Task StartLesson(LessonVM lesson)
     {
         if (lesson.ApiId is Guid id)
@@ -731,29 +352,6 @@
     {
         if (lesson.ApiId is not Guid lid) return;
         Navigation.NavigateTo($"/tutor/reports?lessonId={lid}");
-    }
-
-    private class LessonForm
-    {
-        public string Title { get; set; } = "";
-        public string StudentId { get; set; } = "";
-        public string Subject { get; set; } = "";
-        public DateTime Date { get; set; } = DateTime.Today;
-        public TimeOnly StartTime { get; set; } = new TimeOnly(10, 0);
-        public double Duration { get; set; } = 1;
-        public string Mode { get; set; } = "En ligne";
-        public string Type { get; set; } = "Individuel";
-        public int MaxStudents { get; set; } = 1;
-        public string Description { get; set; } = "";
-        public string Recurrence { get; set; } = "none";
-        public int Occurrences { get; set; } = 8;
-        public DateTime? UntilDate { get; set; }
-    }
-
-    private class StudentForm
-    {
-        public string FirstName { get; set; } = "";
-        public string LastName { get; set; } = "";
     }
 
     private class LessonVM

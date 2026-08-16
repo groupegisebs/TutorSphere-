@@ -22,19 +22,9 @@
         <button type="button" class="btn btn-outline-secondary btn-sm" @onclick="OpenUnavailabilityModal">
             <i class="bi bi-calendar2-check me-1" aria-hidden="true"></i>@L["Calendar_Availabilities"]
         </button>
-        <div class="dropdown">
-            <button type="button" class="btn btn-primary btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"
-                    @onclick="ToggleNewMenu" @onclick:stopPropagation="true">
-                <i class="bi bi-plus me-1" aria-hidden="true"></i>@L["Calendar_NewLesson"]
-            </button>
-            @if (_showNewMenu)
-            {
-                <ul class="dropdown-menu show cal-new-menu">
-                    <li><button type="button" class="dropdown-item" @onclick="() => OpenLessonModal()"><i class="bi bi-journal-bookmark me-2"></i>Nouveau cours</button></li>
-                    <li><button type="button" class="dropdown-item" @onclick="OpenUnavailabilityModal"><i class="bi bi-slash-circle me-2"></i>Indisponibilité</button></li>
-                </ul>
-            }
-        </div>
+        <button type="button" class="btn btn-primary btn-sm" @onclick="OpenUnavailabilityModal">
+            <i class="bi bi-slash-circle me-1" aria-hidden="true"></i>Indisponibilité
+        </button>
     </div>
 </div>
 
@@ -52,7 +42,7 @@
     </div>
 }
 
-<div class="cal-layout" @onclick="CloseNewMenu">
+<div class="cal-layout">
 
     <!-- ── Left panel ── -->
     <aside class="cal-side">
@@ -212,18 +202,14 @@
                         <div class="cal-day-col @(isToday ? "today" : "")">
                             @foreach (var h in Hours)
                             {
-                                var hour = h;
-                                var slotDate = date;
-                                <div class="cal-hour-cell cal-hour-cell--clickable"
-                                     title="Créer un cours à @hour:00"
-                                     @onclick="() => OpenLessonModal(slotDate, hour)"
-                                     @onclick:stopPropagation="true"></div>
+                                <div class="cal-hour-cell"></div>
                             }
                             @foreach (var evt in GetEventsForDay(date))
                             {
-                                <div class="cal-event cal-event--@evt.Type @(evt.Id.HasValue ? "cal-event--editable" : "") @(evt.Type == "offer" ? "cal-event--offer-click" : "")"
-                                     style="top:@(evt.TopPx)px;height:@(Math.Max(evt.HeightPx, 26))px;left:4px;right:4px;"
-                                     title="@(evt.Type == "offer" ? L["Calendar_Type_Offer"].Value : (evt.Id.HasValue ? "Modifier" : null))"
+                                var isOffer = evt.Type == "offer";
+                                <div class="cal-event cal-event--@evt.Type @(evt.Id.HasValue ? "cal-event--editable" : "") @(isOffer ? "cal-event--offer-click" : "")"
+                                     style="top:@(evt.TopPx)px;height:@(Math.Max(evt.HeightPx, 26))px;left:@(isOffer ? "2px" : "14px");right:@(isOffer ? "2px" : "4px");"
+                                     title="@(isOffer ? L["Calendar_OfferPeriodHint"].Value : (evt.Id.HasValue ? "Modifier" : null))"
                                      @onclick="() => OnEventClick(evt)"
                                      @onclick:stopPropagation="true">
                                     <span class="cal-event-time">@evt.TimeLabel</span>
@@ -286,7 +272,7 @@
              @onclick:stopPropagation="true"
              @onmousedown:stopPropagation="true">
             <div class="ts-modal-header">
-                <h2>@(_editingLessonId.HasValue ? L["Lessons_Edit"] : L["Lessons_New"])</h2>
+                <h2>@L["Lessons_Edit"]</h2>
                 <button type="button" class="ts-modal-close" @onclick="RequestCloseLessonModal" aria-label="@L["Common_Cancel"]">
                     <i class="bi bi-x-lg"></i>
                 </button>
@@ -328,25 +314,16 @@
 
                     <div class="col-md-6">
                         <label class="form-label">@L["Lessons_DateRequired"]</label>
-                        <input type="date" class="form-control" @bind="_lessonForm.Date" disabled="@_slotTimeLocked" />
+                        <input type="date" class="form-control" @bind="_lessonForm.Date" />
                     </div>
                     <div class="col-md-3">
                         <label class="form-label">@L["Lessons_StartTime"]</label>
-                        <input type="time" class="form-control" @bind="_lessonForm.StartTime" disabled="@_slotTimeLocked" />
+                        <input type="time" class="form-control" @bind="_lessonForm.StartTime" />
                     </div>
                     <div class="col-md-3">
                         <label class="form-label">@L["Lessons_DurationHours"]</label>
                         <input type="number" step="0.5" min="0.5" max="8" class="form-control" @bind="_lessonForm.Duration" />
                     </div>
-                    @if (_slotTimeLocked && !_editingLessonId.HasValue)
-                    {
-                        <div class="col-12">
-                            <div class="alert alert-info py-2 mb-0">
-                                <i class="bi bi-calendar-check me-1"></i>
-                                Créneau choisi : @_lessonForm.Date.ToString("dddd d MMMM yyyy") à @_lessonForm.StartTime.ToString("HH:mm")
-                            </div>
-                        </div>
-                    }
 
                     <div class="col-md-6">
                         <label class="form-label">@L["Lessons_MaxStudents"]</label>
@@ -360,36 +337,11 @@
                                placeholder="Adresse ou URL de visioconférence" />
                     </div>
 
-                    @if (!_editingLessonId.HasValue)
-                    {
-                        <div class="col-12">
-                            <label class="form-label">@L["Lessons_Recurrence"]</label>
-                            <select class="form-select" @bind="_lessonForm.Recurrence">
-                                <option value="none">@L["Lessons_Once"]</option>
-                                <option value="weekly">@L["Lessons_Weekly"]</option>
-                                <option value="biweekly">@L["Lessons_Biweekly"]</option>
-                                <option value="monthly">@L["Lessons_Monthly"]</option>
-                            </select>
-                            <small class="text-muted">Optionnel — crée plusieurs séances à partir du créneau choisi.</small>
-                        </div>
-                        @if (_lessonForm.Recurrence != "none")
-                        {
-                            <div class="col-md-6">
-                                <label class="form-label">@L["Lessons_Occurrences"]</label>
-                                <input type="number" class="form-control" min="2" max="52" @bind="_lessonForm.Occurrences" />
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label">@L["Lessons_Until"]</label>
-                                <input type="date" class="form-control" @bind="_lessonForm.UntilDate" />
-                            </div>
-                        }
-                    }
-
                     <div class="col-12">
                         <label class="form-label">Élèves (pour rappels e-mail) — @_lessonForm.StudentIds.Count / @_lessonForm.MaxStudents</label>
                         @if (_students.Count == 0)
                         {
-                            <p class="text-muted small mb-0">Aucun élève — ajoutez-en dans « Mes élèves ».</p>
+                            <p class="text-muted small mb-0">@L["Documents_NoStudents"]</p>
                         }
                         else
                         {
@@ -417,16 +369,10 @@
                 </div>
             </div>
             <div class="ts-modal-footer">
-                @if (_editingLessonId.HasValue)
-                {
-                    <button type="button" class="btn btn-outline-danger me-auto" @onclick="DeleteLessonAsync" disabled="@_saving">
-                        <i class="bi bi-trash me-1"></i>Supprimer
-                    </button>
-                }
                 <button type="button" class="btn btn-outline-secondary" @onclick="RequestCloseLessonModal" disabled="@_saving">@L["Common_Cancel"]</button>
                 <button type="button" class="btn btn-primary" @onclick="SaveLessonAsync" disabled="@_saving">
                     @if (_saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
-                    @(_editingLessonId.HasValue ? L["Common_Save"] : L["Common_Create"])
+                    @L["Common_Save"]
                 </button>
             </div>
         </div>
@@ -493,7 +439,6 @@
     private DateTime WeekStart { get; set; }
     private DateTime DisplayMonth { get; set; }
 
-    private bool _showNewMenu;
     private bool _showLessonModal;
     private bool _showUnavailModal;
     private bool _saving;
@@ -504,7 +449,6 @@
     private LessonFormModel _lessonForm = new();
     private UnavailFormModel _unavailForm = new();
     private Guid? _editingLessonId;
-    private bool _slotTimeLocked;
     private readonly List<StudentOption> _students = [];
     private readonly List<PlanSubjectDto> _planSubjects = [];
 
@@ -807,46 +751,55 @@
     private void OnEventClick(CalEvent evt)
     {
         if (evt.Type == "offer")
+        {
+            JoinPeriodClassroom(evt);
             return;
+        }
 
         OpenEditLesson(evt);
     }
 
-    // ── Create UI ──────────────────────────────────────────────────────────────
-    private void ToggleNewMenu() => _showNewMenu = !_showNewMenu;
-    private void CloseNewMenu() => _showNewMenu = false;
-
-    private void OpenLessonModal(DateTime? date = null, int? hour = null)
+    /// <summary>
+    /// Période d'offre : rejoint la salle de la séance en cours, sinon la prochaine de la période.
+    /// </summary>
+    private void JoinPeriodClassroom(CalEvent offer)
     {
-        CloseNewMenu();
-        _formError = null;
-        _bannerSuccess = null;
-        _editingLessonId = null;
-        _slotTimeLocked = date.HasValue || hour.HasValue;
-        _lessonForm = new LessonFormModel
+        var periodStart = StartOf(offer);
+        var periodEnd = periodStart.AddMinutes(offer.DurMin);
+        var now = DateTime.Now;
+
+        var sessions = _apiEvents
+            .Where(e => e.Id.HasValue && e.Type is not ("offer" or "unavailable"))
+            .Where(e => StartOf(e) < periodEnd && StartOf(e).AddMinutes(e.DurMin) > periodStart)
+            .OrderBy(StartOf)
+            .ToList();
+
+        if (sessions.Count == 0)
         {
-            Date = (date ?? WeekStart.AddDays(Math.Max(0, (DateTime.Today - WeekStart).Days))).Date,
-            StartTime = hour is int h ? new TimeOnly(h, 0) : new TimeOnly(10, 0),
-            Duration = 1,
-            Mode = "En ligne",
-            Recurrence = "none",
-            Occurrences = 8,
-            UntilDate = null
-        };
-        ApplyDefaultSubject();
-        _showLessonModal = true;
+            _bannerError = L["Calendar_OfferNoSession"];
+            return;
+        }
+
+        var target = sessions.FirstOrDefault(e => StartOf(e) <= now && StartOf(e).AddMinutes(e.DurMin) > now)
+                     ?? sessions.FirstOrDefault(e => StartOf(e) >= now)
+                     ?? sessions[^1];
+
+        _bannerError = null;
+        Navigation.NavigateTo(
+            $"/tutor/classroom/{target.Id}?title={Uri.EscapeDataString(target.Title)}&subject={Uri.EscapeDataString(target.Subtitle)}");
     }
+
+    private static DateTime StartOf(CalEvent evt) =>
+        evt.Date.AddHours(evt.StartH).AddMinutes(evt.StartM);
 
     private void OpenEditLesson(CalEvent evt)
     {
         if (evt.Type is "unavailable" or "offer" || !evt.Id.HasValue)
             return;
 
-        CloseNewMenu();
         _formError = null;
         _bannerSuccess = null;
         _editingLessonId = evt.Id;
-        _slotTimeLocked = false;
         var locOrUrl = string.IsNullOrWhiteSpace(evt.MeetingUrl) ? (evt.Location ?? "") : evt.MeetingUrl;
         _lessonForm = new LessonFormModel
         {
@@ -884,7 +837,6 @@
     {
         _showLessonModal = false;
         _editingLessonId = null;
-        _slotTimeLocked = false;
         _formError = null;
     }
 
@@ -919,7 +871,6 @@
 
     private void OpenUnavailabilityModal()
     {
-        CloseNewMenu();
         _formError = null;
         _bannerSuccess = null;
         _unavailForm = new UnavailFormModel
@@ -976,104 +927,38 @@
                 _ => Domain.Enums.LessonMode.Online
             };
 
-            if (_editingLessonId.HasValue)
+            if (!_editingLessonId.HasValue)
             {
-                var updateReq = new Application.DTOs.Lessons.UpdateLessonRequest(
-                    _lessonForm.Title.Trim(),
-                    string.IsNullOrWhiteSpace(_lessonForm.Description) ? null : _lessonForm.Description.Trim(),
-                    string.IsNullOrWhiteSpace(_lessonForm.Subject) ? null : _lessonForm.Subject.Trim(),
-                    start.ToUniversalTime(),
-                    end.ToUniversalTime(),
-                    mode,
-                    location,
-                    meetingUrl,
-                    null,
-                    Math.Clamp(_lessonForm.MaxStudents, 1, 100));
-
-                var updated = await Api.PutWithErrorAsync<Application.DTOs.Lessons.LessonDto>(
-                    $"api/lessons/{_editingLessonId}", updateReq);
-                if (updated.Error is not null || updated.Value is null)
-                {
-                    _formError = updated.Error ?? "Échec de la mise à jour du cours.";
-                    return;
-                }
-
-                _showLessonModal = false;
-                _editingLessonId = null;
-                _bannerSuccess = "Cours mis à jour.";
+                _formError = L["Lessons_NoManualCreate"];
+                return;
             }
-            else
+
+            var updateReq = new Application.DTOs.Lessons.UpdateLessonRequest(
+                _lessonForm.Title.Trim(),
+                string.IsNullOrWhiteSpace(_lessonForm.Description) ? null : _lessonForm.Description.Trim(),
+                string.IsNullOrWhiteSpace(_lessonForm.Subject) ? null : _lessonForm.Subject.Trim(),
+                start.ToUniversalTime(),
+                end.ToUniversalTime(),
+                mode,
+                location,
+                meetingUrl,
+                null,
+                Math.Clamp(_lessonForm.MaxStudents, 1, 100));
+
+            var updated = await Api.PutWithErrorAsync<Application.DTOs.Lessons.LessonDto>(
+                $"api/lessons/{_editingLessonId}", updateReq);
+            if (updated.Error is not null || updated.Value is null)
             {
-                string? recurrenceFrequency = null;
-                int? recurrenceOccurrences = null;
-                DateTime? recurrenceUntil = null;
-
-                if (_lessonForm.Recurrence is not "none")
-                {
-                    recurrenceFrequency = _lessonForm.Recurrence;
-                    if (_lessonForm.UntilDate is { } until && until.Date >= _lessonForm.Date.Date)
-                        recurrenceUntil = DateTime.SpecifyKind(until.Date, DateTimeKind.Utc);
-                    else
-                        recurrenceOccurrences = Math.Clamp(_lessonForm.Occurrences, 2, 52);
-                }
-
-                var req = new Application.DTOs.Lessons.CreateLessonRequest(
-                    _lessonForm.Title.Trim(),
-                    string.IsNullOrWhiteSpace(_lessonForm.Description) ? null : _lessonForm.Description.Trim(),
-                    string.IsNullOrWhiteSpace(_lessonForm.Subject) ? null : _lessonForm.Subject.Trim(),
-                    start.ToUniversalTime(),
-                    end.ToUniversalTime(),
-                    mode,
-                    location,
-                    meetingUrl,
-                    null,
-                    _lessonForm.StudentIds.Count > 0 ? _lessonForm.StudentIds.ToList() : null,
-                    RecurrenceFrequency: recurrenceFrequency,
-                    RecurrenceOccurrences: recurrenceOccurrences,
-                    RecurrenceUntil: recurrenceUntil,
-                    MaxStudents: Math.Clamp(_lessonForm.MaxStudents, 1, 100));
-
-                var result = await Api.PostWithErrorAsync<List<Application.DTOs.Lessons.LessonDto>>("api/lessons", req);
-
-                if (result.Error is not null || result.Value is null || result.Value.Count == 0)
-                {
-                    _formError = result.Error ?? "Échec de la création du cours.";
-                    return;
-                }
-
-                _showLessonModal = false;
-                _slotTimeLocked = false;
-                _bannerSuccess = result.Value.Count > 1
-                    ? $"{result.Value.Count} cours créés (récurrence)."
-                    : "Cours créé.";
+                _formError = updated.Error ?? "Échec de la mise à jour du cours.";
+                return;
             }
+
+            _showLessonModal = false;
+            _editingLessonId = null;
+            _bannerSuccess = "Cours mis à jour.";
 
             await LoadCalendarDataAsync();
             GoToWeek(start);
-        }
-        finally
-        {
-            _saving = false;
-        }
-    }
-
-    private async Task DeleteLessonAsync()
-    {
-        if (!_editingLessonId.HasValue) return;
-        _saving = true;
-        _formError = null;
-        try
-        {
-            var ok = await Api.DeleteAsync($"api/lessons/{_editingLessonId}");
-            if (!ok)
-            {
-                _formError = "Échec de la suppression du cours.";
-                return;
-            }
-            _showLessonModal = false;
-            _editingLessonId = null;
-            _bannerSuccess = "Cours supprimé.";
-            await LoadCalendarDataAsync();
         }
         finally
         {

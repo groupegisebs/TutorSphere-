@@ -18,18 +18,26 @@ public class ParentsController : ControllerBase
 
     public ParentsController(IParentService parentService) => _parentService = parentService;
 
+    /// <summary>
+    /// Parents dont un enfant est inscrit aux cours de l'enseignant, sans coordonnées :
+    /// le contact se fait uniquement par la messagerie interne.
+    /// </summary>
     [HttpGet]
-    public async Task<ActionResult<IReadOnlyList<ParentDto>>> List(CancellationToken ct)
-        => Ok(await _parentService.GetAllAsync(ct));
+    public async Task<ActionResult<IReadOnlyList<TutorParentDto>>> List(CancellationToken ct)
+        => Ok(await _parentService.GetForCurrentTenantAsync(ct));
 
     [HttpGet("{id:guid}")]
+    [Authorize(Roles = UserRoles.SuperAdmin)]
     public async Task<ActionResult<ParentDto>> GetById(Guid id, CancellationToken ct)
     {
         var parent = await _parentService.GetByIdAsync(id, ct);
         return parent is null ? NotFound() : Ok(parent);
     }
 
+    // Un enseignant n'ajoute, ne modifie ni ne supprime un parent : le parent crée son compte
+    // et inscrit son enfant lui-même. Ces endpoints restent réservés au support plateforme.
     [HttpPost]
+    [Authorize(Roles = UserRoles.SuperAdmin)]
     public async Task<ActionResult<ParentDto>> Create([FromBody] CreateParentRequest request, CancellationToken ct)
     {
         try
@@ -44,6 +52,7 @@ public class ParentsController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
+    [Authorize(Roles = UserRoles.SuperAdmin)]
     public async Task<ActionResult<ParentDto>> Update(Guid id, [FromBody] UpdateParentRequest request, CancellationToken ct)
     {
         try
@@ -57,6 +66,7 @@ public class ParentsController : ControllerBase
     }
 
     [HttpDelete("{id:guid}")]
+    [Authorize(Roles = UserRoles.SuperAdmin)]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
         try
@@ -70,7 +80,8 @@ public class ParentsController : ControllerBase
         }
     }
 
+    /// <summary>Enfants de ce parent inscrits aux cours de l'enseignant, uniquement.</summary>
     [HttpGet("{id:guid}/children")]
     public async Task<ActionResult<IReadOnlyList<StudentDto>>> GetChildren(Guid id, CancellationToken ct)
-        => Ok(await _parentService.GetChildrenAsync(id, ct));
+        => Ok(await _parentService.GetChildrenForCurrentTenantAsync(id, ct));
 }

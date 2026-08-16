@@ -81,7 +81,7 @@ public class MessageService : IMessageService
         if (IsStudent(roles))
             return await SearchTeachersForLearnerAsync(userId, q, ct);
         if (IsTeacher(roles))
-            return await SearchStudentsForTeacherAsync(q, ct);
+            return await SearchContactsForTeacherAsync(q, ct);
         if (IsParent(roles))
             return await SearchTeachersForLearnerAsync(userId, q, ct);
 
@@ -534,7 +534,7 @@ public class MessageService : IMessageService
             .ToList();
     }
 
-    private async Task<IReadOnlyList<MessageRecipientDto>> SearchStudentsForTeacherAsync(
+    private async Task<IReadOnlyList<MessageRecipientDto>> SearchContactsForTeacherAsync(
         string query, CancellationToken ct)
     {
         var students = _db.Students
@@ -559,8 +559,49 @@ public class MessageService : IMessageService
                 UserRoles.Student));
         }
 
+        results.AddRange(SearchLinkedParentsForTeacher(query));
+
         await Task.CompletedTask;
         return results.Take(25).ToList();
+    }
+
+    /// <summary>
+    /// Parents dont un enfant est inscrit aux cours de l'enseignant. Les coordonnées ne sont pas
+    /// exposées : l'échange passe uniquement par la messagerie interne.
+    /// </summary>
+    private List<MessageRecipientDto> SearchLinkedParentsForTeacher(string query)
+    {
+        var studentIds = _db.Students.Select(s => s.Id).ToHashSet();
+        foreach (var id in _db.StudentSubscriptions.Select(s => s.StudentId).Distinct().ToList())
+            studentIds.Add(id);
+        if (studentIds.Count == 0)
+            return [];
+
+        var parentIds = _db.StudentsForAnyTenant
+            .Where(s => studentIds.Contains(s.Id) && s.ParentProfileId != null)
+            .Select(s => s.ParentProfileId!.Value)
+            .Distinct()
+            .ToList();
+        if (parentIds.Count == 0)
+            return [];
+
+        return _db.ParentProfilesForAnyTenant
+            .Where(p => parentIds.Contains(p.Id) && p.UserId != null && p.UserId != "")
+            .OrderBy(p => p.LastName).ThenBy(p => p.FirstName)
+            .ToList()
+            .Select(p => new
+            {
+                p.UserId,
+                Name = $"{p.FirstName} {p.LastName}".Trim()
+            })
+            .Where(p => string.IsNullOrEmpty(query)
+                        || p.Name.Contains(query, StringComparison.OrdinalIgnoreCase))
+            .Select(p => new MessageRecipientDto(
+                p.UserId!,
+                string.IsNullOrWhiteSpace(p.Name) ? "Parent" : p.Name,
+                null,
+                UserRoles.Parent))
+            .ToList();
     }
 
     private async Task<HashSet<string>> ResolveLinkedTeacherUserIdsAsync(string learnerUserId, CancellationToken ct)

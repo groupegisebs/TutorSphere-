@@ -2,6 +2,7 @@
 @layout TutorLayout
 @rendermode InteractiveServer
 @implements IDisposable
+@using Microsoft.AspNetCore.WebUtilities
 @inject IStringLocalizer<SharedResources> L
 @inject MessageService MessageSvc
 @inject AuthService Auth
@@ -14,7 +15,7 @@
 <div class="ts-page-header">
     <div>
         <h1><i class="bi bi-chat-dots me-2"></i>@L["Messages_Title"]</h1>
-        <p class="text-muted small mb-0">Discutez uniquement avec vos élèves.</p>
+        <p class="text-muted small mb-0">Discutez uniquement avec vos élèves et leurs parents.</p>
     </div>
     <button class="btn btn-primary btn-sm" @onclick="OpenNewConversation">
         <i class="bi bi-plus-lg me-1"></i>@L["Messages_New"]
@@ -25,10 +26,10 @@
 {
     <div class="cc-card mb-3 p-3">
         <div class="d-flex justify-content-between align-items-center mb-2">
-            <strong>Rechercher un élève</strong>
+            <strong>Rechercher un élève ou un parent</strong>
             <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ClosePicker">Fermer</button>
         </div>
-        <input class="form-control form-control-sm mb-2" placeholder="Nom ou e-mail…"
+        <input class="form-control form-control-sm mb-2" placeholder="Nom…"
                @bind="_recipientQuery" @bind:event="oninput" @onkeyup="SearchRecipientsAsync" />
         @if (_recipientSearching)
         {
@@ -36,7 +37,7 @@
         }
         else if (_recipientHits.Count == 0 && (_recipientQuery?.Length ?? 0) >= 1)
         {
-            <p class="text-muted small mb-0">Aucun élève trouvé.</p>
+            <p class="text-muted small mb-0">Aucun contact trouvé.</p>
         }
         else
         {
@@ -47,7 +48,7 @@
                         <button type="button" class="btn btn-sm btn-outline-secondary w-100 text-start"
                                 @onclick="() => SelectRecipientAsync(r)">
                             <strong>@r.DisplayName</strong>
-                            <span class="small text-muted d-block">@(r.Email ?? "Élève")</span>
+                            <span class="small text-muted d-block">@(r.Email ?? RoleLabel(r.Role))</span>
                         </button>
                     </li>
                 }
@@ -164,10 +165,49 @@
             if (dtos.Count > 0)
                 _convs = dtos.Select((d, i) => MapConversation(d, i)).ToList();
             NotifyState.SetUnreadTotal(_convs.Sum(c => c.Unread));
+            await OpenRequestedConversationAsync();
         }
         catch { }
         finally { _loading = false; }
     }
+
+    /// <summary>Ouvre la conversation demandée via ?to=&name=&role= (fiche parent, fiche élève…).</summary>
+    private async Task OpenRequestedConversationAsync()
+    {
+        var query = QueryHelpers.ParseQuery(new Uri(Navigation.Uri).Query);
+        if (!query.TryGetValue("to", out var to) || string.IsNullOrWhiteSpace(to))
+            return;
+
+        var userId = to.ToString();
+        var existing = _convs.FirstOrDefault(c => c.ApiUserId == userId);
+        if (existing is not null)
+        {
+            await SelectConversation(existing);
+            return;
+        }
+
+        var name = query.TryGetValue("name", out var n) && !string.IsNullOrWhiteSpace(n)
+            ? n.ToString()
+            : "Contact";
+        var role = query.TryGetValue("role", out var r) ? r.ToString() : null;
+
+        var conv = new ConversationVM
+        {
+            ApiUserId = userId,
+            Id = _convs.Count + 1,
+            Name = name,
+            Role = string.Equals(role, "parent", StringComparison.OrdinalIgnoreCase) ? "Parent" : "Élève",
+            Initials = InitialsFrom(name),
+            Color = "#7c3aed",
+            LastMessage = "",
+            LastTime = ""
+        };
+        _convs.Insert(0, conv);
+        await SelectConversation(conv);
+    }
+
+    private static string RoleLabel(string? role) =>
+        string.Equals(role, "Parent", StringComparison.OrdinalIgnoreCase) ? "Parent" : "Élève";
 
     private void OpenNewConversation()
     {
@@ -215,7 +255,7 @@
             ApiUserId = r.UserId,
             Id = _convs.Count + 1,
             Name = r.DisplayName,
-            Role = "Élève",
+            Role = RoleLabel(r.Role),
             Initials = InitialsFrom(r.DisplayName),
             Color = "#0ea5e9",
             LastMessage = "",
@@ -300,7 +340,7 @@
             ApiUserId   = d.OtherUserId,
             Id          = index + 1,
             Name        = d.OtherUserName,
-            Role        = "Élève",
+            Role        = "",
             Initials    = initials.ToUpperInvariant(),
             Color       = colors[index % colors.Length],
             LastMessage = d.LastMessage?.Body ?? "",
