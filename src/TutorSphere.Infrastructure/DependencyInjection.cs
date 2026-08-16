@@ -92,8 +92,18 @@ public static class DependencyInjection
         }
 
         // Filet si une migration a déjà été livrée sans attribut [Migration] (EF l'ignore).
-        await EnsureTeacherLicenseSchemaAsync(db, logger);
-        await EnsureRecentFeatureSchemaAsync(db, logger);
+        // Chaque filet est isolé : un échec ne doit pas empêcher les suivants de rattraper le schéma.
+        await RunSchemaFiletAsync("licence enseignant", () => EnsureTeacherLicenseSchemaAsync(db, logger), logger);
+        await RunSchemaFiletAsync("fonctionnalités récentes", () => EnsureRecentFeatureSchemaAsync(db, logger), logger);
+
+        var stillPending = (await db.Database.GetPendingMigrationsAsync()).ToList();
+        if (stillPending.Count > 0)
+        {
+            logger.LogError(
+                "Migrations toujours non appliquées ({Count}) : {Ids}. Le schéma peut être incomplet — lancez « dotnet ef database update ».",
+                stillPending.Count,
+                string.Join(", ", stillPending));
+        }
 
         var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
         foreach (var role in UserRoles.All)
@@ -151,6 +161,18 @@ public static class DependencyInjection
         logger.LogInformation("Seed complete — {UserCount} user(s) in database (real data only).", userCount);
     }
 
+    private static async Task RunSchemaFiletAsync(string name, Func<Task> filet, ILogger logger)
+    {
+        try
+        {
+            await filet();
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Filet schéma « {Filet} » en échec.", name);
+        }
+    }
+
     /// <summary>
     /// Colonnes licence enseignant : ADD COLUMN IF NOT EXISTS pour débloquer un
     /// démarrage après un deploy où EF a ignoré une migration manuscrite.
@@ -174,6 +196,28 @@ public static class DependencyInjection
     /// </summary>
     private static async Task EnsureRecentFeatureSchemaAsync(ApplicationDbContext db, ILogger logger)
     {
+        // Rappels de fin de pack : sans ces colonnes, toute lecture ou création
+        // d'abonnement élève échoue (500 sur inscriptions et abonnements).
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            ALTER TABLE "StudentSubscriptionsSet" ADD COLUMN IF NOT EXISTS "LowSessionsReminderSentAt" timestamp with time zone;
+            ALTER TABLE "StudentSubscriptionsSet" ADD COLUMN IF NOT EXISTS "LessonAccessReminderSentAt" timestamp with time zone;
+            """);
+
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            ALTER TABLE "MessagesSet" ADD COLUMN IF NOT EXISTS "StudentId" uuid;
+            ALTER TABLE "MessagesSet" ADD COLUMN IF NOT EXISTS "ParentChannel" character varying(20);
+            ALTER TABLE "MessagesSet" ADD COLUMN IF NOT EXISTS "ParentReason" character varying(40);
+            ALTER TABLE "MessagesSet" ADD COLUMN IF NOT EXISTS "CaseNumber" character varying(20);
+            ALTER TABLE "MessagesSet" ADD COLUMN IF NOT EXISTS "AttachmentType" character varying(20);
+            ALTER TABLE "MessagesSet" ADD COLUMN IF NOT EXISTS "AttachmentId" uuid;
+            ALTER TABLE "MessagesSet" ADD COLUMN IF NOT EXISTS "AttachmentLabel" character varying(200);
+            ALTER TABLE "ParentSupportRequestsSet" ADD COLUMN IF NOT EXISTS "CaseNumber" character varying(20);
+            ALTER TABLE "ParentSupportRequestsSet" ADD COLUMN IF NOT EXISTS "StudentId" uuid;
+            ALTER TABLE "ParentSupportRequestsSet" ADD COLUMN IF NOT EXISTS "Reason" character varying(40);
+            """);
+
         await db.Database.ExecuteSqlRawAsync(
             """ALTER TABLE "LessonsSet" ADD COLUMN IF NOT EXISTS "DeliveredByTenantId" uuid;""");
         await db.Database.ExecuteSqlRawAsync(

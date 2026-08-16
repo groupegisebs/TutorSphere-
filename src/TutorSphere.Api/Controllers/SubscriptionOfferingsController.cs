@@ -16,23 +16,50 @@ public class SubscriptionOfferingsController : ControllerBase
 {
     private readonly ISubscriptionOfferingService _offeringService;
     private readonly IStudentSubscriptionService _subscriptions;
+    private readonly ILogger<SubscriptionOfferingsController> _logger;
 
     public SubscriptionOfferingsController(
         ISubscriptionOfferingService offeringService,
-        IStudentSubscriptionService subscriptions)
+        IStudentSubscriptionService subscriptions,
+        ILogger<SubscriptionOfferingsController> logger)
     {
         _offeringService = offeringService;
         _subscriptions = subscriptions;
+        _logger = logger;
     }
 
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<SubscriptionOfferingDto>>> List(CancellationToken ct)
-        => Ok(await _offeringService.GetAllAsync(ct));
+    {
+        try
+        {
+            return Ok(await _offeringService.GetAllAsync(ct));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Échec listage des offres enseignant.");
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new { error = "Impossible de charger vos offres pour le moment." });
+        }
+    }
 
     /// <summary>Abonnés aux offres du tuteur (locataire courant).</summary>
     [HttpGet("subscribers")]
     public async Task<ActionResult<IReadOnlyList<StudentSubscriptionDto>>> Subscribers(CancellationToken ct)
-        => Ok(await _subscriptions.GetForCurrentTenantAsync(ct));
+    {
+        try
+        {
+            return Ok(await _subscriptions.GetForCurrentTenantAsync(ct));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Échec listage des inscriptions enseignant.");
+            return StatusCode(
+                StatusCodes.Status500InternalServerError,
+                new { error = "Impossible de charger les inscriptions pour le moment." });
+        }
+    }
 
     /// <summary>Accepte une demande d'inscription : active (gratuit) ou ouvre le paiement, puis admet aux prochains cours.</summary>
     [HttpPost("subscribers/{subscriptionId:guid}/accept")]

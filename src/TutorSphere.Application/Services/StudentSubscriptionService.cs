@@ -302,9 +302,11 @@ public class StudentSubscriptionService : IStudentSubscriptionService
         if (!_tenantContext.HasTenant || _tenantContext.TenantId is not Guid tenantId)
             return Task.FromResult<IReadOnlyList<StudentSubscriptionDto>>([]);
 
-        var assignedOfferingIds = AssignedOfferingIds(tenantId);
+        // Les offres de groupe restent portées par le locataire du groupe : on ajoute
+        // celles affectées à cet enseignant pour qu'il voie les demandes de ses élèves.
+        var assigned = AssignedOfferingIds(tenantId);
         var subs = _db.StudentSubscriptionsForAnyTenant
-            .Where(s => s.TenantId == tenantId || assignedOfferingIds.Contains(s.OfferingId))
+            .Where(s => s.TenantId == tenantId || assigned.Contains(s.OfferingId))
             .ToList()
             .OrderBy(s => EnrollmentRank(s.Status))
             .ThenByDescending(s => s.CreatedAt)
@@ -606,12 +608,16 @@ public class StudentSubscriptionService : IStudentSubscriptionService
     private List<Guid> AssignedOfferingIds(Guid tenantId) =>
         _db.GroupOfferTeachers
             .Where(a => a.TeacherTenantId == tenantId
-                && a.SubscriptionOfferingId != null
                 && (a.AssignmentStatus == GroupOfferTeacherAssignmentStatus.Approved
-                    || a.AssignmentStatus == GroupOfferTeacherAssignmentStatus.Active))
+                    || a.AssignmentStatus == GroupOfferTeacherAssignmentStatus.Active)
+                && a.SubscriptionOfferingId != null)
             .Select(a => a.SubscriptionOfferingId!.Value)
             .Distinct()
             .ToList();
+
+    private static Dictionary<TKey, T> UniqueBy<T, TKey>(IReadOnlyList<T> items, Func<T, TKey> keySelector)
+        where TKey : notnull
+        => items.GroupBy(keySelector).ToDictionary(g => g.Key, g => g.First());
 
     private static int EnrollmentRank(SubscriptionStatus status) => status switch
     {
@@ -631,29 +637,35 @@ public class StudentSubscriptionService : IStudentSubscriptionService
         var studentIds = subs.Select(s => s.StudentId).Distinct().ToList();
         var tenantIds = subs.Select(s => s.TenantId).Distinct().ToList();
 
-        var offerings = _db.SubscriptionOfferingsForAnyTenant
-            .Where(o => offeringIds.Contains(o.Id))
-            .ToDictionary(o => o.Id);
+        var offerings = offeringIds.Count == 0
+            ? []
+            : UniqueBy(
+                _db.SubscriptionOfferingsForAnyTenant.Where(o => offeringIds.Contains(o.Id)).ToList(),
+                o => o.Id);
 
-        var students = _db.StudentsForAnyTenant
-            .Where(s => studentIds.Contains(s.Id))
-            .ToList();
+        var studentsById = studentIds.Count == 0
+            ? []
+            : UniqueBy(
+                _db.StudentsForAnyTenant.Where(s => studentIds.Contains(s.Id)).ToList(),
+                s => s.Id);
 
-        var parentIds = students
+        var parentIds = studentsById.Values
             .Where(s => s.ParentProfileId.HasValue)
             .Select(s => s.ParentProfileId!.Value)
             .Distinct()
             .ToList();
 
-        var parents = _db.ParentProfilesForAnyTenant
-            .Where(p => parentIds.Contains(p.Id))
-            .ToDictionary(p => p.Id);
+        var parents = parentIds.Count == 0
+            ? []
+            : UniqueBy(
+                _db.ParentProfilesForAnyTenant.Where(p => parentIds.Contains(p.Id)).ToList(),
+                p => p.Id);
 
-        var teachers = _db.Tenants
-            .Where(t => tenantIds.Contains(t.Id))
-            .ToDictionary(t => t.Id, t => t.Name);
-
-        var studentsById = students.ToDictionary(s => s.Id);
+        var teachers = tenantIds.Count == 0
+            ? []
+            : UniqueBy(
+                _db.Tenants.Where(t => tenantIds.Contains(t.Id)).ToList(),
+                t => t.Id);
 
         return subs.Select(s =>
         {
@@ -663,7 +675,8 @@ public class StudentSubscriptionService : IStudentSubscriptionService
             if (student?.ParentProfileId is Guid pid && parents.TryGetValue(pid, out var parent))
                 parentName = $"{parent.FirstName} {parent.LastName}".Trim();
 
-            teachers.TryGetValue(s.TenantId, out var teacherName);
+            teachers.TryGetValue(s.TenantId, out var teacher);
+            var teacherName = teacher?.Name;
 
             return Map(
                 s,

@@ -23,6 +23,7 @@ public static class DependencyInjection
         services.AddScoped<ITutorPlanCatalogService, TutorPlanCatalogService>();
         services.AddScoped<ILessonCoverageService, LessonCoverageService>();
         services.AddScoped<ILessonAccessService, LessonAccessService>();
+        services.AddScoped<ILessonService, LessonService>();
         services.AddScoped<ICalendarService, CalendarService>();
         services.AddScoped<IStudentService, StudentService>();
         services.AddScoped<IStudentPortalService, StudentPortalService>();
