@@ -41,6 +41,10 @@ public interface IExpertMeetingService
     Task ResendGuestAsync(string userId, Guid meetingId, Guid guestId, CancellationToken ct = default);
     Task<string> SetAccessCodeAsync(string userId, Guid meetingId, string? code, CancellationToken ct = default);
     Task EnsureCanJoinLiveAsync(string? userId, Guid meetingId, string? guestToken, string? accessCode = null, CancellationToken ct = default);
+    /// <summary>Valide l'entrée et renvoie le rôle réel : le client ne doit pas choisir son propre rôle.</summary>
+    Task<MeetingJoinContext> ResolveJoinContextAsync(
+        string? userId, Guid meetingId, string? guestToken, string? accessCode = null, CancellationToken ct = default);
+    Task SetWaitingRoomAsync(string userId, Guid meetingId, bool enabled, CancellationToken ct = default);
     Task PersistChatAsync(Guid meetingId, string senderUserId, string senderName, string body, CancellationToken ct = default);
     Task ToggleRecordingAsync(string userId, Guid meetingId, bool recording, CancellationToken ct = default);
     Task SetMinutesShareAsync(string userId, Guid meetingId, MeetingMinutesShare share, CancellationToken ct = default);
@@ -671,6 +675,10 @@ public class ExpertMeetingService(
     }
 
     public Task EnsureCanJoinLiveAsync(
+        string? userId, Guid meetingId, string? guestToken, string? accessCode = null, CancellationToken ct = default) =>
+        ResolveJoinContextAsync(userId, meetingId, guestToken, accessCode, ct);
+
+    public Task<MeetingJoinContext> ResolveJoinContextAsync(
         string? userId, Guid meetingId, string? guestToken, string? accessCode = null, CancellationToken ct = default)
     {
         var meeting = db.Meetings.FirstOrDefault(m => m.Id == meetingId)
@@ -686,17 +694,35 @@ public class ExpertMeetingService(
             // sans vérification aboutie, le lien seul ne suffit pas pour entrer.
             if (guest.VerifiedAtUtc is null)
                 throw new InvalidOperationException("Vérifiez votre invitation avant d’entrer.");
-            return Task.CompletedTask;
+            return Task.FromResult(new MeetingJoinContext(
+                "ExternalGuest", meeting.WaitingRoomEnabled, guest.FullName));
         }
         if (string.IsNullOrWhiteSpace(userId))
             throw new InvalidOperationException("Authentification requise.");
-        var allowed = meeting.OrganizerUserId == userId
-            || db.MeetingParticipants.Any(p => p.MeetingId == meetingId && p.UserId == userId
+        var participant = db.MeetingParticipants
+            .FirstOrDefault(p => p.MeetingId == meetingId && p.UserId == userId
                 && p.Status != MeetingParticipantStatus.Denied && p.Status != MeetingParticipantStatus.Removed);
-        if (!allowed)
+        var isOrganizer = meeting.OrganizerUserId == userId;
+        if (!isOrganizer && participant is null)
             throw new InvalidOperationException("Vous n’êtes pas invité à cette réunion.");
         EnsureAccessCodeMatches(meeting, accessCode);
-        return Task.CompletedTask;
+
+        if (isOrganizer || participant?.Role is MeetingParticipantRole.Organizer)
+            return Task.FromResult(new MeetingJoinContext("Organizer", false, null));
+        if (participant?.Role is MeetingParticipantRole.CoOrganizer)
+            return Task.FromResult(new MeetingJoinContext("CoOrganizer", false, null));
+        return Task.FromResult(new MeetingJoinContext("Participant", meeting.WaitingRoomEnabled, null));
+    }
+
+    /// <summary>Ouvre ou ferme la salle d'attente en cours de séance : n'affecte que les arrivées suivantes.</summary>
+    public async Task SetWaitingRoomAsync(string userId, Guid meetingId, bool enabled, CancellationToken ct = default)
+    {
+        var meeting = RequireModerator(userId, meetingId);
+        if (meeting.WaitingRoomEnabled == enabled) return;
+        meeting.WaitingRoomEnabled = enabled;
+        meeting.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        Audit(meetingId, userId, "waiting-room", enabled ? "enabled" : "disabled");
     }
 
     public async Task PersistChatAsync(Guid meetingId, string senderUserId, string senderName, string body, CancellationToken ct = default)

@@ -198,6 +198,19 @@ public class MeetingsController(
         catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
     }
 
+    /// <summary>Ouvre ou ferme la salle d'attente : s'applique aux arrivées suivantes.</summary>
+    [HttpPost("{id:guid}/waiting-room")]
+    public async Task<IActionResult> WaitingRoom(Guid id, [FromBody] ToggleWaitingRoomRequest? body, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        try
+        {
+            await meetings.SetWaitingRoomAsync(UserId, id, body?.Enabled ?? true, ct);
+            return NoContent();
+        }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
     [HttpPost("{id:guid}/lock")]
     public async Task<IActionResult> Lock(Guid id, [FromBody] LockMeetingRequest? body, CancellationToken ct)
     {

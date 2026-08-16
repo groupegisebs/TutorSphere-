@@ -3,6 +3,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.DependencyInjection;
+using TutorSphere.Application.DTOs.Meetings;
 using TutorSphere.Application.Services;
 
 namespace TutorSphere.Api.Hubs;
@@ -28,10 +29,12 @@ public class MeetingHub(IServiceScopeFactory scopes) : Hub
         string? accessCode = null)
     {
         var userId = Context.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+        MeetingJoinContext access;
         await using (var scope = scopes.CreateAsyncScope())
         {
             var meetings = scope.ServiceProvider.GetRequiredService<IExpertMeetingService>();
-            await meetings.EnsureCanJoinLiveAsync(userId, meetingId, guestToken, accessCode, Context.ConnectionAborted);
+            access = await meetings.ResolveJoinContextAsync(
+                userId, meetingId, guestToken, accessCode, Context.ConnectionAborted);
         }
 
         var group = GroupName(meetingId);
@@ -39,10 +42,12 @@ public class MeetingHub(IServiceScopeFactory scopes) : Hub
         ConnectionToMeeting[Context.ConnectionId] = group;
 
         var name = string.IsNullOrWhiteSpace(displayName)
-            ? Context.User?.Identity?.Name ?? "Participant"
+            ? access.DisplayName ?? Context.User?.Identity?.Name ?? "Participant"
             : displayName.Trim();
-        var peerRole = string.IsNullOrWhiteSpace(role) ? "Participant" : role.Trim();
-        var waiting = string.Equals(peerRole, "Waiting", StringComparison.OrdinalIgnoreCase);
+        // Rôle et salle d'attente décidés par le serveur : sinon un participant s'annonce « Organizer »
+        // et contourne à la fois la modération et la salle d'attente.
+        var waiting = access.Waiting;
+        var peerRole = access.Role;
 
         var peers = PeersByMeeting.GetOrAdd(group, _ => new ConcurrentDictionary<string, MeetingPeer>(StringComparer.Ordinal));
         var peer = new MeetingPeer(Context.ConnectionId, userId, name, peerRole, micOn, camOn, waiting, guestToken);
@@ -200,12 +205,23 @@ public class MeetingHub(IServiceScopeFactory scopes) : Hub
         var group = GroupName(meetingId);
         if (!PeersByMeeting.TryGetValue(group, out var peers) || !peers.TryGetValue(connectionId, out var peer))
             return;
-        var admitted = peer with { Waiting = false, Role = "Participant" };
+        if (!peer.Waiting) return;
+        // Le rôle d'origine est conservé : un invité externe admis reste un invité externe.
+        var admitted = peer with { Waiting = false };
         peers[connectionId] = admitted;
         await Groups.AddToGroupAsync(connectionId, group);
         await Clients.Client(connectionId).SendAsync("Admitted", meetingId);
+        // L'admis a besoin de la liste des présents pour ouvrir ses connexions audio/vidéo.
+        var existing = peers.Values
+            .Where(p => p.ConnectionId != connectionId && !p.Waiting)
+            .Select(ToDto)
+            .ToList();
+        await Clients.Client(connectionId).SendAsync("PeerList", meetingId, existing);
         await Clients.Group(group).SendAsync("PeerJoined", meetingId, ToDto(admitted));
+        await Clients.Group(group).SendAsync("MediaSyncRequest", meetingId);
         await Clients.Group(group).SendAsync("WaitingUpdated", meetingId, WaitingList(peers));
+        if (ChatByMeeting.TryGetValue(group, out var chat) && chat.Count > 0)
+            await Clients.Client(connectionId).SendAsync("ChatHistory", meetingId, chat.ToList());
     }
 
     public async Task DenyWaiting(Guid meetingId, string connectionId)

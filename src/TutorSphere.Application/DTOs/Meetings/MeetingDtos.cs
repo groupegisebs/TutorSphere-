@@ -21,6 +21,12 @@ public record MeetingListItemDto(
     /// <summary>Premiers participants, pour la pile d'avatars de la liste.</summary>
     IReadOnlyList<string>? ParticipantPreview = null);
 
+/// <summary>
+/// Rôle réel d'un arrivant dans la salle, calculé par le serveur : Organizer, CoOrganizer,
+/// Participant ou ExternalGuest, et passage obligatoire ou non par la salle d'attente.
+/// </summary>
+public record MeetingJoinContext(string Role, bool Waiting, string? DisplayName);
+
 public record MeetingDetailDto(
     Guid Id,
     string Title,
@@ -182,6 +188,7 @@ public record AdmitParticipantRequest(bool Admit);
 public record RespondToMeetingRequest(string? Response);
 public record SetParticipantRoleRequest(MeetingParticipantRole Role);
 public record LockMeetingRequest(bool Locked);
+public record ToggleWaitingRoomRequest(bool Enabled);
 public record ToggleRecordingRequest(bool Recording);
 public record ShareMinutesRequest(MeetingMinutesShare Share);
 public record SendMinutesEmailRequest(IReadOnlyList<string>? ExtraEmails);
