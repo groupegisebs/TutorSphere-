@@ -1465,6 +1465,9 @@ namespace TutorSphere.Infrastructure.Migrations
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("DeliveredByTenantId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasColumnType("text");
@@ -1485,7 +1488,83 @@ namespace TutorSphere.Infrastructure.Migrations
 
                     b.HasIndex("TenantId");
 
+                    b.HasIndex("DeliveredByTenantId");
+
                     b.ToTable("LessonsSet");
+                });
+
+            modelBuilder.Entity("TutorSphere.Domain.Entities.LessonCoverageAssignment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("ExpertGroupId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("LessonId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("OriginalTenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("SubstituteTenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("UnavailabilityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ProposedByUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<string>("RespondedByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<DateTime?>("RespondedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("TransferCurrency")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("character varying(8)");
+
+                    b.Property<decimal?>("TransferredTutorAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTime?>("TransferredAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpertGroupId");
+
+                    b.HasIndex("LessonId");
+
+                    b.HasIndex("OriginalTenantId");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("SubstituteTenantId");
+
+                    b.ToTable("LessonCoverageAssignmentsSet");
                 });
 
             modelBuilder.Entity("TutorSphere.Domain.Entities.LessonAttendance", b =>

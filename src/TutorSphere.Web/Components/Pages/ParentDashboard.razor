@@ -26,6 +26,15 @@
     }
     else
     {
+        @if (_pendingCoverage.Count > 0 || !string.IsNullOrEmpty(_coverageError))
+        {
+            <LessonCoverageRespondPanel Items="_pendingCoverage"
+                                        Error="_coverageError"
+                                        Busy="_coverageBusy"
+                                        OnApprove="id => RespondCoverageAsync(id, true)"
+                                        OnReject="id => RespondCoverageAsync(id, false)" />
+        }
+
         <section class="pd-section">
             <div class="pd-section-head">
                 <h2>@L["Parent_MyChildren_Title"]</h2>
@@ -381,6 +390,9 @@
     private List<MonthCell> _monthCells = [];
     private string[] _weekDayNames = ["L", "M", "M", "J", "V", "S", "D"];
     private ParentDashboardSessionDto? _featuredSession;
+    private List<LessonCoverageDto> _pendingCoverage = [];
+    private bool _coverageBusy;
+    private string? _coverageError;
 
     private string FirstNameOnly
     {
@@ -395,6 +407,7 @@
     protected override async Task OnInitializedAsync()
     {
         var profileTask = ParentProfile.EnsureLoadedAsync();
+        var coverageTask = LoadPendingCoverageAsync();
         BuildMonthGrid(DateTime.Today);
 
         try
@@ -434,8 +447,39 @@
         }
         catch { }
 
-        await profileTask;
+        await Task.WhenAll(profileTask, coverageTask);
         _loading = false;
+    }
+
+    private async Task LoadPendingCoverageAsync()
+    {
+        try
+        {
+            _pendingCoverage = await Api.GetAsync<List<LessonCoverageDto>>("api/parent/lesson-coverage/pending") ?? [];
+        }
+        catch
+        {
+            _pendingCoverage = [];
+        }
+    }
+
+    private async Task RespondCoverageAsync(Guid id, bool approve)
+    {
+        _coverageBusy = true;
+        _coverageError = null;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<LessonCoverageDto>(
+                $"api/parent/lesson-coverage/{id}/respond",
+                new RespondLessonCoverageRequest(approve));
+            if (result.Error is not null)
+            {
+                _coverageError = result.Error;
+                return;
+            }
+            await LoadPendingCoverageAsync();
+        }
+        finally { _coverageBusy = false; }
     }
 
     private List<TodoItem> BuildTodoItems()

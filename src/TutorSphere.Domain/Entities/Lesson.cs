@@ -33,6 +33,9 @@ public class Lesson : BaseEntity, ITenantEntity
     /// <summary>True si le moniteur doit replanifier ou rembourser (TutorNoShow).</summary>
     public bool TutorLiable { get; set; }
 
+    /// <summary>Enseignant qui donne réellement la séance après accord (suppléant).</summary>
+    public Guid? DeliveredByTenantId { get; set; }
+
     /// <summary>reschedule | refund</summary>
     public string? TutorLiabilityResolution { get; set; }
     public DateTime? TutorLiabilityResolvedAt { get; set; }

@@ -26,7 +26,8 @@ public record ExpertDashboardSummaryDto(
     int ActiveGroupMembers,
     Guid? NextPendingTenantId,
     Guid? NextOpenExpertVoteId,
-    IReadOnlyList<ExpertDashboardAlertDto> Alerts);
+    IReadOnlyList<ExpertDashboardAlertDto> Alerts,
+    int PendingTeacherEnrollments = 0);
 
 public record ExpertApprovalQueueFilter(
     string? Country = null,

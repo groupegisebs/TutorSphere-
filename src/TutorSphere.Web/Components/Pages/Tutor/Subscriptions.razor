@@ -4,6 +4,7 @@
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
 @inject AuthService Auth
+@inject NavigationManager Nav
 
 <PageTitle>@L["TutorSubs_Title"] – TutorSphere</PageTitle>
 
@@ -39,10 +40,10 @@
         </div>
     </div>
     <div class="col-6 col-lg-3">
-        <div class="ts-kpi-card ts-kpi-card--warning">
-            <span class="ts-kpi-val">@_subs.Count(s => IsActiveStatus(s.Status) && s.ExpiresAt <= DateTime.Today.AddDays(14))</span>
-            <span class="ts-kpi-label">@L["TutorSubs_ExpiringSoon"]</span>
-        </div>
+                <div class="ts-kpi-card ts-kpi-card--warning">
+                    <span class="ts-kpi-val">@_subs.Count(s => string.Equals(s.Status, "Pending", StringComparison.OrdinalIgnoreCase))</span>
+                    <span class="ts-kpi-label">@L["TutorSubs_StatusPending"]</span>
+                </div>
     </div>
     <div class="col-6 col-lg-3">
         <div class="ts-kpi-card">
@@ -155,7 +156,7 @@
                         <td><span class="ts-badge @SubBadge(s.Status)">@SubStatusLabel(s.Status)</span></td>
                         <td>
                             <div class="ts-action-group">
-                                @if (s.Status == "Pending")
+                                @if (string.Equals(s.Status, "Pending", StringComparison.OrdinalIgnoreCase))
                                 {
                                     <button class="btn btn-sm btn-success"
                                             disabled="@(_busyId == s.Id)"
@@ -279,7 +280,8 @@
 
     private IEnumerable<SubVM> FilteredSubs => _subs
         .Where(s => string.IsNullOrEmpty(_filterSubStatus) || s.Status == _filterSubStatus)
-        .OrderBy(s => s.ExpiresAt);
+        .OrderBy(s => string.Equals(s.Status, "Pending", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+        .ThenBy(s => s.ExpiresAt);
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -288,6 +290,11 @@
 
         _initialLoadDone = true;
         await Auth.EnsureSessionRestoredAsync(forceJs: true);
+        var uri = Nav.ToAbsoluteUri(Nav.Uri);
+        if (Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query)
+                .TryGetValue("status", out var status)
+            && !string.IsNullOrWhiteSpace(status))
+            _filterSubStatus = status.ToString();
         await LoadAsync();
         StateHasChanged();
     }

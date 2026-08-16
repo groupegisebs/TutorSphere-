@@ -3,6 +3,7 @@
 @rendermode InteractiveServer
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
+@inject AuthService Auth
 
 <PageTitle>@L["Parents_Title"] – TutorSphere</PageTitle>
 
@@ -11,14 +12,20 @@
         <h1><i class="bi bi-person-hearts me-2"></i>@L["Parents_Title"]</h1>
         <p class="ts-page-subtitle">@string.Format(L["Parents_Count"].Value, _parents.Count)</p>
     </div>
-    <button class="btn btn-primary" @onclick="OpenAdd">
-        <i class="bi bi-plus-lg me-1"></i>@L["Common_Add"]
-    </button>
+    <div class="ts-page-actions">
+        <button type="button" class="btn btn-primary" @onclick="OpenAdd">
+            <i class="bi bi-plus-lg me-1"></i>@L["Parents_Add"]
+        </button>
+    </div>
 </div>
 
 @if (!string.IsNullOrEmpty(_loadError))
 {
     <div class="alert alert-danger">@_loadError</div>
+}
+@if (!string.IsNullOrEmpty(_deleteError) && _pendingDelete is null)
+{
+    <div class="alert alert-danger">@_deleteError</div>
 }
 
 <div class="ts-toolbar">
@@ -27,6 +34,9 @@
         <input class="form-control" placeholder="@L["Parents_Search"]"
                @bind="_search" @bind:event="oninput" />
     </div>
+    <button type="button" class="btn btn-primary" @onclick="OpenAdd">
+        <i class="bi bi-plus-lg me-1"></i>@L["Parents_Add"]
+    </button>
 </div>
 
 @if (_loading)
@@ -36,11 +46,21 @@
         <span class="ms-2 text-muted">@L["Parents_Loading"]</span>
     </div>
 }
-else if (!FilteredParents.Any())
+else if (_parents.Count == 0)
 {
     <div class="ts-empty-card">
         <i class="bi bi-person-plus ts-empty-icon"></i>
         <p>@L["Parents_Empty"]</p>
+        <button type="button" class="btn btn-primary btn-lg" @onclick="OpenAdd">
+            <i class="bi bi-plus-lg me-1"></i>@L["Parents_Add"]
+        </button>
+    </div>
+}
+else if (!FilteredParents.Any())
+{
+    <div class="ts-empty-card">
+        <i class="bi bi-search ts-empty-icon"></i>
+        <p>@L["Parents_None"]</p>
     </div>
 }
 else
@@ -83,8 +103,9 @@ else
                         <td>@p.Email</td>
                         <td>
                             <div class="ts-action-group">
-                                <button class="ts-icon-btn" title="@L["Common_View"]" @onclick="() => OpenDetail(p)"><i class="bi bi-eye"></i></button>
-                                <button class="ts-icon-btn" title="@L["Common_Edit"]" @onclick="() => OpenEdit(p)"><i class="bi bi-pencil"></i></button>
+                                <button type="button" class="ts-icon-btn" title="@L["Common_View"]" @onclick="() => OpenDetail(p)"><i class="bi bi-eye"></i></button>
+                                <button type="button" class="ts-icon-btn" title="@L["Common_Edit"]" @onclick="() => OpenEdit(p)"><i class="bi bi-pencil"></i></button>
+                                <button type="button" class="ts-icon-btn ts-icon-btn--danger" title="@L["Common_Delete"]" @onclick="() => AskDelete(p)"><i class="bi bi-trash"></i></button>
                             </div>
                         </td>
                     </tr>
@@ -103,11 +124,11 @@ else
                 <div>
                     <h2>@_selected.FullName</h2>
                 </div>
-                <button class="ts-modal-close" @onclick="() => _selected = null"><i class="bi bi-x-lg"></i></button>
+                <button type="button" class="ts-modal-close" @onclick="() => _selected = null"><i class="bi bi-x-lg"></i></button>
             </div>
             <div class="ts-modal-tabs">
-                <button class="ts-tab @(_pTab == "info" ? "active" : "")" @onclick='() => _pTab = "info"'>@L["Parents_Info"]</button>
-                <button class="ts-tab @(_pTab == "children" ? "active" : "")" @onclick='() => _pTab = "children"'>@L["Parents_Children"]</button>
+                <button type="button" class="ts-tab @(_pTab == "info" ? "active" : "")" @onclick='() => _pTab = "info"'>@L["Parents_Info"]</button>
+                <button type="button" class="ts-tab @(_pTab == "children" ? "active" : "")" @onclick='() => _pTab = "children"'>@L["Parents_Children"]</button>
             </div>
             <div class="ts-modal-body">
                 @if (_pTab == "info")
@@ -137,6 +158,15 @@ else
                     }
                 }
             </div>
+            <div class="ts-modal-footer">
+                <button type="button" class="btn btn-outline-danger me-auto" @onclick="() => AskDelete(_selected)">
+                    <i class="bi bi-trash me-1"></i>@L["Common_Delete"]
+                </button>
+                <button type="button" class="btn btn-outline-secondary" @onclick="() => _selected = null">@L["Common_Cancel"]</button>
+                <button type="button" class="btn btn-primary" @onclick="() => OpenEdit(_selected)">
+                    <i class="bi bi-pencil me-1"></i>@L["Common_Edit"]
+                </button>
+            </div>
         </div>
     </div>
 }
@@ -147,7 +177,7 @@ else
         <div class="ts-modal" @onclick:stopPropagation="true">
             <div class="ts-modal-header">
                 <h2>@(_editingId is null ? L["Parents_Add"] : L["Common_Edit"])</h2>
-                <button class="ts-modal-close" @onclick="() => _showAdd = false"><i class="bi bi-x-lg"></i></button>
+                <button type="button" class="ts-modal-close" @onclick="() => _showAdd = false"><i class="bi bi-x-lg"></i></button>
             </div>
             <div class="ts-modal-body">
                 <div class="row g-3">
@@ -166,9 +196,38 @@ else
                 }
             </div>
             <div class="ts-modal-footer">
-                <button class="btn btn-outline-secondary" @onclick="() => _showAdd = false" disabled="@_saving">@L["Common_Cancel"]</button>
-                <button class="btn btn-primary" @onclick="SaveParent" disabled="@_saving">
+                <button type="button" class="btn btn-outline-secondary" @onclick="() => _showAdd = false" disabled="@_saving">@L["Common_Cancel"]</button>
+                <button type="button" class="btn btn-primary" @onclick="SaveParent" disabled="@_saving">
                     @(_saving ? L["Common_Saving"] : L["Common_Save"])
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_pendingDelete != null)
+{
+    <div class="ts-modal-backdrop" @onclick="CancelDelete">
+        <div class="ts-modal" @onclick:stopPropagation="true">
+            <div class="ts-modal-header">
+                <h2>@L["Parents_ConfirmDelete"]</h2>
+                <button type="button" class="ts-modal-close" @onclick="CancelDelete"><i class="bi bi-x-lg"></i></button>
+            </div>
+            <div class="ts-modal-body">
+                <p>@string.Format(L["Parents_ConfirmDeleteBody"].Value, _pendingDelete.FullName)</p>
+                @if (!string.IsNullOrEmpty(_deleteError))
+                {
+                    <div class="alert alert-danger mb-0">@_deleteError</div>
+                }
+            </div>
+            <div class="ts-modal-footer">
+                <button type="button" class="btn btn-outline-secondary" @onclick="CancelDelete" disabled="@_deleting">@L["Common_Cancel"]</button>
+                <button type="button" class="btn btn-danger" disabled="@_deleting" @onclick="ConfirmDeleteAsync">
+                    @if (_deleting)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                    }
+                    @L["Common_Delete"]
                 </button>
             </div>
         </div>
@@ -178,14 +237,17 @@ else
 @code {
     private string _search = "";
     private ParentVM? _selected;
+    private ParentVM? _pendingDelete;
     private string _pTab = "info";
     private bool _showAdd;
     private Guid? _editingId;
     private bool _loading = true;
     private bool _saving;
+    private bool _deleting;
     private bool _childrenLoading;
     private string _loadError = "";
     private string _addError = "";
+    private string _deleteError = "";
     private ParentForm _pForm = new();
     private readonly List<ParentVM> _parents = [];
     private static readonly string[] Colors = ["#7c3aed", "#0ea5e9", "#10b981", "#f59e0b"];
@@ -212,7 +274,11 @@ else
         .Where(p => string.IsNullOrEmpty(_search) ||
             p.FullName.Contains(_search, StringComparison.OrdinalIgnoreCase));
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        await LoadAsync();
+    }
 
     private async Task LoadAsync()
     {
@@ -253,6 +319,40 @@ else
         {
             _childrenLoading = false;
         }
+    }
+
+    private void AskDelete(ParentVM p)
+    {
+        _pendingDelete = p;
+        _deleteError = "";
+        _selected = null;
+    }
+
+    private void CancelDelete()
+    {
+        if (_deleting) return;
+        _pendingDelete = null;
+        _deleteError = "";
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        if (_pendingDelete is null) return;
+        _deleting = true;
+        _deleteError = "";
+        try
+        {
+            var result = await Api.DeleteWithErrorAsync($"api/parents/{_pendingDelete.Id}");
+            if (result.Error is not null || !result.Value)
+            {
+                _deleteError = result.Error ?? L["Parents_DeleteFailed"].Value;
+                return;
+            }
+
+            _parents.Remove(_pendingDelete);
+            _pendingDelete = null;
+        }
+        finally { _deleting = false; }
     }
 
     private async Task SaveParent()

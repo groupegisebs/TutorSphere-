@@ -141,6 +141,13 @@ public class LessonAccessServiceTests
     }
 
     [Fact]
+    public void Tutor_can_add_roster_student_without_pack()
+    {
+        var (access, _) = Create();
+        access.EnsureStudentEligibleForManualLesson(_studentId, _tenantId);
+    }
+
+    [Fact]
     public void Tutor_cannot_manually_add_unpaid_student()
     {
         var (access, db) = Create();

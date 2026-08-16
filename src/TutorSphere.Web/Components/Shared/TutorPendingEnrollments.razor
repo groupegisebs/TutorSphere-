@@ -1,0 +1,133 @@
+@inject ApiClient Api
+@inject IStringLocalizer<SharedResources> L
+@using TutorSphere.Application.DTOs.StudentSubscriptions
+
+@if (_pending.Count > 0)
+{
+    <div class="cov-banner">
+        <div class="cov-banner-head">
+            <div class="cov-banner-icon" aria-hidden="true"><i class="bi bi-person-plus"></i></div>
+            <div>
+                <strong>Demandes d'inscription à valider (@_pending.Count)</strong>
+                <p>
+                    Un parent ou un élève a souscrit à l'un de vos cours. Acceptez pour l'admettre
+                    (puis le paiement, si l'offre est payante), ou refusez la demande.
+                </p>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger py-2 px-3 mb-3" role="alert">@_error</div>
+        }
+        @if (!string.IsNullOrEmpty(_banner))
+        {
+            <div class="alert alert-success py-2 px-3 mb-3" role="alert">@_banner</div>
+        }
+
+        @foreach (var item in _pending)
+        {
+            <article class="cov-card">
+                <div class="cov-card-main">
+                    <h3>@item.StudentName</h3>
+                    @if (!string.IsNullOrWhiteSpace(item.ParentName))
+                    {
+                        <p>Parent : @item.ParentName</p>
+                    }
+                    <p>@item.OfferingTitle · @item.Price.ToString("N2") @item.Currency</p>
+                </div>
+                <div class="cov-card-actions">
+                    <button type="button" class="btn btn-success" disabled="@(_busyId == item.Id)"
+                            @onclick="() => AcceptAsync(item)">
+                        @if (_busyId == item.Id)
+                        {
+                            <span class="spinner-border spinner-border-sm"></span>
+                        }
+                        else
+                        {
+                            <i class="bi bi-check-lg me-1"></i>@L["TutorSubs_Accept"]
+                        }
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary" disabled="@(_busyId == item.Id)"
+                            @onclick="() => RejectAsync(item)">
+                        <i class="bi bi-x-lg me-1"></i>@L["TutorSubs_Refuse"]
+                    </button>
+                </div>
+            </article>
+        }
+
+        <a class="btn btn-sm btn-link px-0" href="/tutor/subscriptions?status=Pending">Ouvrir la liste Abonnements</a>
+    </div>
+}
+
+@code {
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private List<StudentSubscriptionDto> _pending = [];
+    private Guid? _busyId;
+    private string? _error;
+    private string? _banner;
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+
+    private async Task ReloadAsync()
+    {
+        try
+        {
+            var all = await Api.GetAsync<List<StudentSubscriptionDto>>("api/subscription-offerings/subscribers") ?? [];
+            _pending = all
+                .Where(s => string.Equals(s.Status, "Pending", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
+        catch
+        {
+            _pending = [];
+        }
+    }
+
+    private async Task AcceptAsync(StudentSubscriptionDto item)
+    {
+        _busyId = item.Id;
+        _error = null;
+        _banner = null;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<StudentSubscriptionDto>(
+                $"api/subscription-offerings/subscribers/{item.Id}/accept", new { });
+            if (result.Error is not null || result.Value is null)
+            {
+                _error = result.Error ?? L["TutorSubs_ActionFailed"];
+                return;
+            }
+
+            _banner = string.Equals(result.Value.Status, "Active", StringComparison.OrdinalIgnoreCase)
+                ? L["TutorSubs_AcceptActiveBanner"]
+                : L["TutorSubs_AcceptPaymentBanner"];
+            await ReloadAsync();
+            await OnChanged.InvokeAsync();
+        }
+        finally { _busyId = null; }
+    }
+
+    private async Task RejectAsync(StudentSubscriptionDto item)
+    {
+        _busyId = item.Id;
+        _error = null;
+        _banner = null;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<StudentSubscriptionDto>(
+                $"api/subscription-offerings/subscribers/{item.Id}/reject", new { });
+            if (result.Error is not null)
+            {
+                _error = result.Error;
+                return;
+            }
+
+            _banner = "Demande refusée.";
+            await ReloadAsync();
+            await OnChanged.InvokeAsync();
+        }
+        finally { _busyId = null; }
+    }
+}

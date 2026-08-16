@@ -16,6 +16,17 @@
     </div>
 </div>
 
+@if (_pendingCoverage.Count > 0 || !string.IsNullOrEmpty(_coverageError))
+{
+    <LessonCoverageRespondPanel Items="_pendingCoverage"
+                                Title="Un remplaçant vous est proposé"
+                                Subtitle="Vous continuez le cours. Seul l'enseignant change si vous acceptez."
+                                Error="_coverageError"
+                                Busy="_coverageBusy"
+                                OnApprove="id => RespondCoverageAsync(id, true)"
+                                OnReject="id => RespondCoverageAsync(id, false)" />
+}
+
 <div class="row g-3 mb-4">
     <div class="col-sm-6 col-xl-3">
         <StatCard Label="@L["StudentDashboard_CoursesThisWeek"]" Value="@_weekLessons.ToString()" Icon="bi-book" Variant="lessons" Change="@L["Stat_Today"]" ChangeVariant="neutral" />
@@ -59,8 +70,12 @@
                                 @(lesson.Subject?.Length > 0 ? lesson.Subject[0].ToString().ToUpperInvariant() : "?")
                             </div>
                             <div class="lesson-info">
-                                <strong>@lesson.Title</strong>
-                                <span>@lesson.StartTime.ToLocalTime().ToString("ddd dd/MM HH:mm")</span>
+                            <strong>@lesson.Title</strong>
+                            <span>@lesson.StartTime.ToLocalTime().ToString("ddd dd/MM HH:mm")</span>
+                            @if (!string.IsNullOrWhiteSpace(lesson.SubstituteTeacherName) && lesson.CoverageStatus == "Approved")
+                            {
+                                <span class="text-muted">Avec @lesson.SubstituteTeacherName (remplaçant)</span>
+                            }
                             </div>
                             <span class="lesson-time">@LessonService.ModeToDisplay(lesson.Mode)</span>
                         </li>
@@ -142,12 +157,16 @@
     private decimal? _lastGrade;
     private List<LessonDto>            _upcomingLessons = [];
     private List<LessonReportApiDto>   _recentReports   = [];
+    private List<LessonCoverageDto>    _pendingCoverage = [];
+    private bool _coverageBusy;
+    private string? _coverageError;
 
     protected override async Task OnInitializedAsync()
     {
         var t1 = LoadLessonsAsync();
         var t2 = LoadProfileAsync();
-        await Task.WhenAll(t1, t2);
+        var t3 = LoadPendingCoverageAsync();
+        await Task.WhenAll(t1, t2, t3);
     }
 
     private async Task LoadLessonsAsync()
@@ -193,6 +212,38 @@
         }
         catch { }
         finally { _reportsLoading = false; }
+    }
+
+    private async Task LoadPendingCoverageAsync()
+    {
+        try
+        {
+            _pendingCoverage = await Api.GetAsync<List<LessonCoverageDto>>("api/students/lesson-coverage/pending") ?? [];
+        }
+        catch
+        {
+            _pendingCoverage = [];
+        }
+    }
+
+    private async Task RespondCoverageAsync(Guid id, bool approve)
+    {
+        _coverageBusy = true;
+        _coverageError = null;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<LessonCoverageDto>(
+                $"api/students/lesson-coverage/{id}/respond",
+                new RespondLessonCoverageRequest(approve));
+            if (result.Error is not null)
+            {
+                _coverageError = result.Error;
+                return;
+            }
+            await LoadPendingCoverageAsync();
+            await LoadLessonsAsync();
+        }
+        finally { _coverageBusy = false; }
     }
 
     private record LessonReportApiDto(

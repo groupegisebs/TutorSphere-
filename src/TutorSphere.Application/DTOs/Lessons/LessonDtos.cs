@@ -57,7 +57,10 @@ public record LessonDto(
     /// <summary>Présence de l'élève courant (portail élève) ; null si non applicable.</summary>
     bool? IsPresent = null,
     bool CanJoin = true,
-    bool PaymentRequired = false);
+    bool PaymentRequired = false,
+    string? SubstituteTeacherName = null,
+    string? OriginalTeacherName = null,
+    string? CoverageStatus = null);
 
 /// <summary>Droit d'entrée en salle (forfait payé / encore valide).</summary>
 public record LessonAccessDto(bool CanJoin, bool PaymentRequired, string? PayUrl);

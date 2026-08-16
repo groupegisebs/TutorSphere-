@@ -47,6 +47,13 @@
         {
             <div class="ex-kpi-grid">
                 <div class="ex-kpi" data-tone="amber">
+                    <i class="bi bi-person-plus ex-kpi-icon" aria-hidden="true"></i>
+                    <div>
+                        <div class="ex-kpi-value">@_summary.PendingTeacherEnrollments</div>
+                        <div class="ex-kpi-label">Inscriptions à valider</div>
+                    </div>
+                </div>
+                <div class="ex-kpi" data-tone="amber">
                     <i class="bi bi-hourglass-split ex-kpi-icon" aria-hidden="true"></i>
                     <div>
                         <div class="ex-kpi-value">@_summary.TeachersPending</div>
@@ -92,6 +99,64 @@
 
             <div class="ex-panel-grid">
                 <div class="ex-panel-col">
+                <section class="ex-panel" id="expert-enrollments">
+                    <div class="ex-panel-head">
+                        <h2 class="ex-panel-title">Inscriptions en attente de l'enseignant</h2>
+                        <span class="ex-panel-meta">@_enrollments.Count demande(s)</span>
+                    </div>
+                    @if (!string.IsNullOrEmpty(_enrollError))
+                    {
+                        <div class="alert alert-danger py-2 px-3">@_enrollError</div>
+                    }
+                    @if (!string.IsNullOrEmpty(_enrollBanner))
+                    {
+                        <div class="alert alert-success py-2 px-3">@_enrollBanner</div>
+                    }
+                    @if (_enrollments.Count == 0)
+                    {
+                        <div class="ex-empty">
+                            <i class="bi bi-person-check" aria-hidden="true"></i>
+                            <strong>Aucune demande en attente</strong>
+                            <span>Les souscriptions à valider par un enseignant du groupe apparaîtront ici. Vous pouvez les accepter à sa place.</span>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="ex-alert-list">
+                            @foreach (var item in _enrollments)
+                            {
+                                <div class="ex-alert-item warning">
+                                    <span class="ex-alert-dot" aria-hidden="true"></span>
+                                    <div class="ex-alert-msg">
+                                        <strong>@item.StudentName</strong>
+                                        @if (!string.IsNullOrWhiteSpace(item.ParentName))
+                                        {
+                                            <span> · parent @item.ParentName</span>
+                                        }
+                                        <div class="small text-muted">
+                                            Cours « @item.OfferingTitle » chez <strong>@item.TeacherName</strong>
+                                            · @item.Price.ToString("N2") @item.Currency
+                                            · @item.RequestedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                                        </div>
+                                    </div>
+                                    <div class="d-flex gap-1 flex-wrap">
+                                        <button type="button" class="cc-btn cc-btn-primary btn-sm"
+                                                disabled="@(_busyEnrollmentId == item.Id)"
+                                                @onclick="() => DecideEnrollmentAsync(item.Id, true)">
+                                            Accepter
+                                        </button>
+                                        <button type="button" class="cc-btn btn-sm"
+                                                disabled="@(_busyEnrollmentId == item.Id)"
+                                                @onclick="() => DecideEnrollmentAsync(item.Id, false)">
+                                            Refuser
+                                        </button>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                </section>
+
                 <section class="ex-panel">
                     <div class="ex-panel-head">
                         <h2 class="ex-panel-title">Alertes</h2>
@@ -282,6 +347,10 @@
     private bool _isManager;
     private DashboardSummary? _summary;
     private readonly List<MeetingItem> _meetings = [];
+    private List<ExpertPendingEnrollmentDto> _enrollments = [];
+    private Guid? _busyEnrollmentId;
+    private string? _enrollError;
+    private string? _enrollBanner;
 
     protected override async Task OnInitializedAsync()
     {
@@ -299,6 +368,15 @@
             if (_summary is null)
                 _error = "Impossible de charger le tableau de bord.";
 
+            try
+            {
+                _enrollments = await Api.GetAsync<List<ExpertPendingEnrollmentDto>>("api/expert/enrollments/pending") ?? [];
+            }
+            catch
+            {
+                _enrollments = [];
+            }
+
             if (_isManager)
             {
                 var list = await Api.GetAsync<List<MeetingItem>>("api/expert/meetings") ?? [];
@@ -310,6 +388,31 @@
             _error = ex.Message;
         }
         finally { _loading = false; }
+    }
+
+    private async Task DecideEnrollmentAsync(Guid id, bool accept)
+    {
+        _busyEnrollmentId = id;
+        _enrollError = null;
+        _enrollBanner = null;
+        try
+        {
+            var action = accept ? "accept" : "reject";
+            var result = await Api.PostWithErrorAsync<ExpertPendingEnrollmentDto>(
+                $"api/expert/enrollments/{id}/{action}", new { });
+            if (result.Error is not null)
+            {
+                _enrollError = result.Error;
+                return;
+            }
+
+            _enrollBanner = accept
+                ? "Inscription acceptée. L'enseignant a été averti (e-mail et remarque)."
+                : "Inscription refusée. L'enseignant a été averti.";
+            _enrollments = await Api.GetAsync<List<ExpertPendingEnrollmentDto>>("api/expert/enrollments/pending") ?? [];
+            _summary = await Api.GetAsync<DashboardSummary>("api/expert/dashboard-summary") ?? _summary;
+        }
+        finally { _busyEnrollmentId = null; }
     }
 
     private static string StatusFr(int s) => s switch
@@ -350,5 +453,6 @@
         int ActiveGroupMembers,
         Guid? NextPendingTenantId,
         Guid? NextOpenExpertVoteId,
-        List<DashboardAlert> Alerts);
+        List<DashboardAlert> Alerts,
+        int PendingTeacherEnrollments = 0);
 }

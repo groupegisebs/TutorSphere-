@@ -347,6 +347,13 @@ public class TutorEarningsService : ITutorEarningsService
             .ToList();
 
         var collected = completedPayments.Sum(p => p.TutorAmount);
+        var inbound = _db.LessonCoverageAssignments
+            .Where(c => c.SubstituteTenantId == tenantId && c.TransferredTutorAmount != null)
+            .Sum(c => (decimal?)c.TransferredTutorAmount) ?? 0m;
+        var outbound = _db.LessonCoverageAssignments
+            .Where(c => c.OriginalTenantId == tenantId && c.TransferredTutorAmount != null)
+            .Sum(c => (decimal?)c.TransferredTutorAmount) ?? 0m;
+        collected = decimal.Round(collected - outbound + inbound, 2, MidpointRounding.AwayFromZero);
         var currency = TutorPayoutPolicy.PolicyCurrency;
 
         var subscriptionIds = completedPayments

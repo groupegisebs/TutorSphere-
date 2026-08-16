@@ -1,0 +1,64 @@
+@if (Items.Count > 0)
+{
+    <div class="cov-banner">
+        <div class="cov-banner-head">
+            <div class="cov-banner-icon" aria-hidden="true"><i class="bi bi-person-bounding-box"></i></div>
+            <div>
+                <strong>@Title</strong>
+                <p>@Subtitle</p>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(Error))
+        {
+            <div class="alert alert-danger py-2 px-3 mb-3" role="alert">@Error</div>
+        }
+
+        @foreach (var item in Items)
+        {
+            <article class="cov-card">
+                <div class="cov-card-main">
+                    <h3>@item.LessonTitle</h3>
+                    <p>
+                        <span>@item.StartTime.ToLocalTime().ToString("dddd d MMMM yyyy · HH:mm")</span>
+                        @if (!string.IsNullOrWhiteSpace(item.Subject))
+                        {
+                            <span> · @item.Subject</span>
+                        }
+                    </p>
+                    <p class="cov-teachers">
+                        <span>@item.OriginalTeacherName</span>
+                        <i class="bi bi-arrow-right" aria-hidden="true"></i>
+                        <strong>@item.SubstituteTeacherName</strong>
+                    </p>
+                    @if (item.StudentNames is { Count: > 0 })
+                    {
+                        <p class="cov-students">@string.Join(" · ", item.StudentNames)</p>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(item.Reason))
+                    {
+                        <p class="cov-reason">Motif : @item.Reason</p>
+                    }
+                </div>
+                <div class="cov-card-actions">
+                    <button type="button" class="btn btn-primary" disabled="@Busy" @onclick="() => OnApprove.InvokeAsync(item.Id)">
+                        Accepter le remplaçant
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary" disabled="@Busy" @onclick="() => OnReject.InvokeAsync(item.Id)">
+                        Garder l'enseignant
+                    </button>
+                </div>
+            </article>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public List<LessonCoverageDto> Items { get; set; } = [];
+    [Parameter] public string Title { get; set; } = "Remplacement d'enseignant proposé";
+    [Parameter] public string Subtitle { get; set; } = "La séance reste la même. Seul l'enseignant change si vous acceptez.";
+    [Parameter] public string? Error { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public EventCallback<Guid> OnApprove { get; set; }
+    [Parameter] public EventCallback<Guid> OnReject { get; set; }
+}

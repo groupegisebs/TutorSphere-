@@ -6,6 +6,7 @@
 @inject AuthenticationStateProvider AuthState
 @inject MessagingNotificationState NotifyState
 @inject RealtimeMessagingClient Realtime
+@inject ApiClient Api
 
 <div class="sidebar-brand sidebar-brand--navy">
     <a class="sidebar-brand-link" href="tutor/dashboard">
@@ -130,6 +131,10 @@
                     <NavLink class="nav-link" href="tutor/subscriptions">
                         <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
                         <span>@L["Nav_Subscriptions"]</span>
+                        @if (_pendingEnrollments > 0)
+                        {
+                            <span class="sidebar-badge">@_pendingEnrollments</span>
+                        }
                     </NavLink>
                 </div>
                 <div class="nav-item">
@@ -216,6 +221,7 @@
 @code {
     private readonly HashSet<string> _openSections = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _userToggled = new(StringComparer.OrdinalIgnoreCase);
+    private int _pendingEnrollments;
 
     private static readonly Dictionary<string, string[]> SectionRoutes = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -234,10 +240,24 @@
         SyncActiveSection();
 
         await AuthSvc.EnsureSessionRestoredAsync();
+        await LoadPendingEnrollmentsAsync();
         await Realtime.EnsureConnectedAsync();
     }
 
     private void OnNotifyChanged() => InvokeAsync(StateHasChanged);
+
+    private async Task LoadPendingEnrollmentsAsync()
+    {
+        try
+        {
+            var list = await Api.GetAsync<List<EnrollmentPeek>>("api/subscription-offerings/subscribers") ?? [];
+            _pendingEnrollments = list.Count(s =>
+                string.Equals(s.Status, "Pending", StringComparison.OrdinalIgnoreCase));
+            if (_pendingEnrollments > 0)
+                _openSections.Add("business");
+        }
+        catch { /* keep 0 */ }
+    }
 
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
     {
@@ -255,7 +275,7 @@
 
             if (routes.Any(r => path.StartsWith(r, StringComparison.OrdinalIgnoreCase)))
                 _openSections.Add(section);
-            else
+            else if (!(section == "business" && _pendingEnrollments > 0))
                 _openSections.Remove(section);
         }
     }
@@ -288,4 +308,6 @@
         AuthState.AuthenticationStateChanged -= OnAuthStateChanged;
         NotifyState.Changed -= OnNotifyChanged;
     }
+
+    private sealed record EnrollmentPeek(string Status);
 }

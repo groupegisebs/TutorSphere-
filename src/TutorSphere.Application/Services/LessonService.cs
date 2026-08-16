@@ -3,6 +3,7 @@ using TutorSphere.Application.DTOs.Calendar;
 using TutorSphere.Application.DTOs.Lessons;
 using TutorSphere.Domain.Entities;
 using TutorSphere.Domain.Enums;
+using TutorSphere.Domain.Payouts;
 using Microsoft.Extensions.Logging;
 
 namespace TutorSphere.Application.Services;
@@ -237,7 +238,7 @@ public class LessonService : ILessonService
 
     public Task<LessonDto?> GetByIdAsync(Guid id, CancellationToken ct = default)
     {
-        var lesson = _db.Lessons.FirstOrDefault(l => l.Id == id);
+        var lesson = FindTutorLesson(id);
         return Task.FromResult(lesson is null ? null : MapToDto(lesson, LoadStudentNames([lesson.Id])));
     }
 
@@ -250,6 +251,27 @@ public class LessonService : ILessonService
             .Where(l => l.StartTime < end && l.EndTime > start)
             .OrderBy(l => l.StartTime)
             .ToList();
+
+        var tenantId = _tenantContext.TenantId;
+        if (tenantId is Guid tid)
+        {
+            var extraIds = _db.LessonCoverageAssignments
+                .Where(c => c.SubstituteTenantId == tid && c.Status == LessonCoverageStatus.Approved)
+                .Select(c => c.LessonId)
+                .ToList();
+            if (extraIds.Count > 0)
+            {
+                var extra = _db.LessonsForAnyTenant
+                    .Where(l => extraIds.Contains(l.Id) && l.StartTime < end && l.EndTime > start)
+                    .ToList();
+                foreach (var lesson in extra)
+                {
+                    if (lessons.All(l => l.Id != lesson.Id))
+                        lessons.Add(lesson);
+                }
+                lessons = lessons.OrderBy(l => l.StartTime).ToList();
+            }
+        }
 
         return MapManyToDto(lessons);
     }
@@ -517,6 +539,7 @@ public class LessonService : ILessonService
             ConsumeSessionCredit(studentId, lesson.TenantId);
 
         lesson.SessionCounted = true;
+        TransferCoverageShare(lesson);
         lesson.UpdatedAt = DateTime.UtcNow;
     }
 
@@ -558,9 +581,68 @@ public class LessonService : ILessonService
         sub.UpdatedAt = DateTime.UtcNow;
     }
 
+    private Lesson? FindTutorLesson(Guid id)
+    {
+        var lesson = _db.Lessons.FirstOrDefault(l => l.Id == id);
+        if (lesson is not null)
+            return lesson;
+        var tenantId = _tenantContext.TenantId;
+        if (tenantId is null)
+            return null;
+        var covered = _db.LessonCoverageAssignments.Any(c =>
+            c.LessonId == id
+            && c.SubstituteTenantId == tenantId
+            && c.Status == LessonCoverageStatus.Approved);
+        return covered ? _db.LessonsForAnyTenant.FirstOrDefault(l => l.Id == id) : null;
+    }
+
+    private void TransferCoverageShare(Lesson lesson)
+    {
+        var coverage = _db.LessonCoverageAssignments.FirstOrDefault(c =>
+            c.LessonId == lesson.Id
+            && c.Status == LessonCoverageStatus.Approved
+            && c.TransferredAt == null
+            && lesson.DeliveredByTenantId == c.SubstituteTenantId
+            && c.SubstituteTenantId != lesson.TenantId);
+        if (coverage is null)
+            return;
+
+        coverage.TransferredTutorAmount = EstimateTutorShare(lesson);
+        coverage.TransferredAt = DateTime.UtcNow;
+        coverage.TransferCurrency = TutorPayoutPolicy.PolicyCurrency;
+        coverage.UpdatedAt = DateTime.UtcNow;
+    }
+
+    private decimal EstimateTutorShare(Lesson lesson)
+    {
+        var studentIds = _db.LessonAttendancesForAnyTenant
+            .Where(a => a.LessonId == lesson.Id)
+            .Select(a => a.StudentId)
+            .Distinct()
+            .ToList();
+        foreach (var studentId in studentIds)
+        {
+            var sub = _db.StudentSubscriptionsForAnyTenant
+                .Where(s => s.StudentId == studentId && s.TenantId == lesson.TenantId)
+                .OrderByDescending(s => s.CreatedAt)
+                .FirstOrDefault();
+            if (sub is null) continue;
+            var payment = _db.PaymentsForAnyTenant
+                .Where(p => p.SubscriptionId == sub.Id && p.Status == PaymentStatus.Completed)
+                .OrderByDescending(p => p.CompletedAt ?? p.CreatedAt)
+                .FirstOrDefault();
+            if (payment is null) continue;
+            var offering = _db.SubscriptionOfferingsForAnyTenant.FirstOrDefault(o => o.Id == sub.OfferingId);
+            var sessionCount = Math.Max(1, offering?.SessionCount ?? 1);
+            return decimal.Round(payment.TutorAmount / sessionCount, 2, MidpointRounding.AwayFromZero);
+        }
+
+        return 0m;
+    }
+
     public async Task NotifySessionStartedAsync(Guid lessonId, CancellationToken ct = default)
     {
-        var lesson = _db.Lessons.FirstOrDefault(l => l.Id == lessonId)
+        var lesson = FindTutorLesson(lessonId)
             ?? throw new InvalidOperationException("Cours introuvable.");
 
         if (lesson.SettlementStatus is LessonSettlementStatus.CancelledFree
@@ -568,13 +650,13 @@ public class LessonService : ILessonService
             or LessonSettlementStatus.LiabilityResolved)
             throw new InvalidOperationException("Ce cours est clôturé — impossible de démarrer la salle.");
 
-        var studentIds = _db.LessonAttendances
+        var studentIds = _db.LessonAttendancesForAnyTenant
             .Where(a => a.LessonId == lessonId)
             .Select(a => a.StudentId)
             .Distinct()
             .ToList();
 
-        var students = _db.Students.Where(s => studentIds.Contains(s.Id)).ToList();
+        var students = _db.StudentsForAnyTenant.Where(s => studentIds.Contains(s.Id)).ToList();
         var recipientIds = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var student in students)
@@ -587,13 +669,13 @@ public class LessonService : ILessonService
 
             if (student.IsMinor && student.ParentProfileId is Guid parentId)
             {
-                var parent = _db.ParentProfiles.FirstOrDefault(p => p.Id == parentId);
+                var parent = _db.ParentProfilesForAnyTenant.FirstOrDefault(p => p.Id == parentId);
                 if (parent is not null && !string.IsNullOrWhiteSpace(parent.UserId))
                     recipientIds.Add(parent.UserId);
             }
         }
 
-        var tutorName = _db.Tenants.FirstOrDefault(t => t.Id == lesson.TenantId)?.Name ?? "Votre tuteur";
+        var tutorName = _db.Tenants.FirstOrDefault(t => t.Id == (lesson.DeliveredByTenantId ?? lesson.TenantId))?.Name ?? "Votre tuteur";
         var payload = new LessonStartedNotificationDto(
             lesson.Id,
             lesson.Title,
@@ -648,9 +730,9 @@ public class LessonService : ILessonService
         if (ids.Count == 0)
             return new Dictionary<Guid, List<string>>();
 
-        var rows = _db.LessonAttendances.Where(a => ids.Contains(a.LessonId)).ToList();
+        var rows = _db.LessonAttendancesForAnyTenant.Where(a => ids.Contains(a.LessonId)).ToList();
         var studentIds = rows.Select(r => r.StudentId).Distinct().ToList();
-        var students = _db.Students.Where(s => studentIds.Contains(s.Id)).ToDictionary(s => s.Id);
+        var students = _db.StudentsForAnyTenant.Where(s => studentIds.Contains(s.Id)).ToDictionary(s => s.Id);
 
         return rows
             .GroupBy(r => r.LessonId)
@@ -663,13 +745,26 @@ public class LessonService : ILessonService
                 }).Where(n => n.Length > 0).ToList());
     }
 
-    private static LessonDto MapToDto(
+    private LessonDto MapToDto(
         Lesson lesson,
         Dictionary<Guid, List<string>>? studentNamesByLesson = null)
     {
         IReadOnlyList<string>? names = null;
         if (studentNamesByLesson is not null && studentNamesByLesson.TryGetValue(lesson.Id, out var list))
             names = list;
+
+        var coverage = _db.LessonCoverageAssignments
+            .Where(c => c.LessonId == lesson.Id && c.Status != LessonCoverageStatus.Cancelled)
+            .OrderByDescending(c => c.CreatedAt)
+            .FirstOrDefault();
+        string? substituteName = null;
+        string? originalName = null;
+        if (coverage is not null)
+        {
+            originalName = _db.Tenants.FirstOrDefault(t => t.Id == coverage.OriginalTenantId)?.Name;
+            if (coverage.Status == LessonCoverageStatus.Approved)
+                substituteName = _db.Tenants.FirstOrDefault(t => t.Id == coverage.SubstituteTenantId)?.Name;
+        }
 
         return new(
             lesson.Id,
@@ -690,6 +785,9 @@ public class LessonService : ILessonService
             lesson.TutorLiable,
             lesson.TutorLiabilityResolution,
             lesson.MaxStudents,
-            names);
+            names,
+            SubstituteTeacherName: substituteName,
+            OriginalTeacherName: originalName,
+            CoverageStatus: coverage?.Status.ToString());
     }
 }

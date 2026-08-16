@@ -4,6 +4,7 @@
 @inject IStringLocalizer<SharedResources> L
 @inject HomeworkService HomeworkSvc
 @inject ApiClient Api
+@inject AuthService Auth
 @using TutorSphere.Application.DTOs.Homework
 @using TutorSphere.Domain.Enums
 
@@ -180,34 +181,71 @@ else
                                     <div class="form-text text-end">@(_hf.Description?.Length ?? 0)/1000</div>
                                 </div>
                                 <div class="col-12">
-                                    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-1">
-                                        <label class="form-label mb-0">Élèves / classe concernés *</label>
-                                        <div class="btn-group btn-group-sm">
+                                    <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+                                        <label class="form-label mb-0">@L["Homework_ShareWith"]</label>
+                                        <div class="btn-group btn-group-sm flex-wrap">
                                             <button type="button" class="btn btn-outline-primary" @onclick="SelectAllStudents">
-                                                Toute la classe
+                                                @L["Homework_SelectAllClass"]
+                                            </button>
+                                            <button type="button" class="btn btn-outline-primary" @onclick="SelectVisibleStudents" disabled="@(VisibleStudents.Count == 0)">
+                                                @L["Homework_SelectLevel"]
                                             </button>
                                             <button type="button" class="btn btn-outline-secondary" @onclick="ClearStudents">
                                                 Aucun
                                             </button>
                                         </div>
                                     </div>
-                                    <div class="d-flex flex-wrap gap-2">
-                                        @foreach (var s in _students)
+                                    <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+                                        <label class="form-label mb-0 small text-muted">@L["Students_Level"]</label>
+                                        <select class="form-select form-select-sm w-auto" @bind="_assignLevel">
+                                            <option value="">@L["Students_AllLevels"]</option>
+                                            @foreach (var lvl in AvailableLevels)
+                                            {
+                                                <option value="@lvl">@LevelLabel(lvl)</option>
+                                            }
+                                            @if (_students.Any(s => string.IsNullOrWhiteSpace(s.SchoolLevel)))
+                                            {
+                                                <option value="__none">@L["Homework_NoLevel"]</option>
+                                            }
+                                        </select>
+                                    </div>
+                                    <div class="hw-student-picker">
+                                        @if (_students.Count == 0)
                                         {
-                                            var selected = _hf.StudentIds.Contains(s.Id);
-                                            <button type="button" class="ts-chip @(selected ? "active" : null)"
-                                                    @onclick="() => ToggleStudent(s.Id)">
-                                                @s.FirstName @s.LastName
-                                            </button>
+                                            <p class="text-muted small mb-2">Aucun élève trouvé. Ajoutez des élèves dans votre espace pour partager un devoir.</p>
+                                            <a class="btn btn-sm btn-primary" href="/tutor/students">@L["Students_Add"]</a>
+                                        }
+                                        else if (!VisibleStudents.Any())
+                                        {
+                                            <p class="text-muted small mb-0">Aucun élève pour ce niveau.</p>
+                                        }
+                                        else
+                                        {
+                                            @foreach (var grp in VisibleStudents
+                                                .GroupBy(s => string.IsNullOrWhiteSpace(s.SchoolLevel) ? "" : s.SchoolLevel!)
+                                                .OrderBy(g => LevelSort(g.Key)))
+                                            {
+                                                <div class="hw-level-group">
+                                                    <div class="hw-level-group-title">@LevelLabel(grp.Key)</div>
+                                                    <div class="d-flex flex-wrap gap-2">
+                                                        @foreach (var s in grp.OrderBy(x => x.LastName).ThenBy(x => x.FirstName))
+                                                        {
+                                                            var selected = _hf.StudentIds.Contains(s.Id);
+                                                            <button type="button" class="ts-chip @(selected ? "active" : null)"
+                                                                    @onclick="() => ToggleStudent(s.Id)">
+                                                                @s.FirstName @s.LastName
+                                                            </button>
+                                                        }
+                                                    </div>
+                                                </div>
+                                            }
                                         }
                                     </div>
-                                    @if (_students.Count == 0)
+                                    @if (_students.Count > 0)
                                     {
-                                        <p class="text-muted small mb-0 mt-1">Aucun élève trouvé. Ajoutez des élèves dans votre espace.</p>
-                                    }
-                                    else
-                                    {
-                                        <p class="form-text mb-0 mt-1">@_hf.StudentIds.Count / @_students.Count sélectionné(s) — le devoir sera enregistré en base pour chaque élève.</p>
+                                        <p class="form-text mb-0 mt-1">
+                                            @string.Format(L["Homework_ShareHint"].Value, _hf.StudentIds.Count, _students.Count)
+                                        </p>
                                     }
                                 </div>
                             </div>
@@ -464,7 +502,7 @@ else
     private static readonly string[] _subjects =
         ["Mathématiques", "Physique", "Chimie", "Français", "Anglais", "Histoire", "Sciences", "Autre"];
 
-    private string _search = "", _filterStatus = "", _filterStudentId = "";
+    private string _search = "", _filterStatus = "", _filterStudentId = "", _assignLevel = "";
     private bool _showModal, _loading = true, _saving, _uploadingFile;
     private string _error = "", _saveError = "", _fileUploadError = "";
     private int _wizardStep;
@@ -483,6 +521,45 @@ else
         .Where(h => string.IsNullOrEmpty(_filterStudentId)
                     || (Guid.TryParse(_filterStudentId, out var sid) && h.StudentIds.Contains(sid)))
         .OrderByDescending(h => h.DueDate ?? DateTime.MinValue);
+
+    private static readonly string[] StandardLevels = ["Primaire", "Collège", "Lycée", "Université"];
+
+    private IReadOnlyList<StudentChoice> VisibleStudents
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(_assignLevel))
+                return _students;
+            if (_assignLevel == "__none")
+                return _students.Where(s => string.IsNullOrWhiteSpace(s.SchoolLevel)).ToList();
+            return _students.Where(s => string.Equals(s.SchoolLevel, _assignLevel, StringComparison.OrdinalIgnoreCase)).ToList();
+        }
+    }
+
+    private IEnumerable<string> AvailableLevels => _students
+        .Select(s => s.SchoolLevel)
+        .Where(l => !string.IsNullOrWhiteSpace(l))
+        .Select(l => l!)
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(LevelSort);
+
+    private string LevelLabel(string? level) => string.IsNullOrWhiteSpace(level)
+        ? L["Homework_NoLevel"]
+        : level switch
+        {
+            "Primaire" => L["Level_Primary"],
+            "Collège" => L["Level_Middle"],
+            "Lycée" => L["Level_High"],
+            "Université" => L["Level_University"],
+            _ => level
+        };
+
+    private static int LevelSort(string? level)
+    {
+        if (string.IsNullOrWhiteSpace(level)) return 99;
+        var i = Array.FindIndex(StandardLevels, x => string.Equals(x, level, StringComparison.OrdinalIgnoreCase));
+        return i >= 0 ? i : 50;
+    }
 
     private static string HwBadge(string s) => s switch
     {
@@ -507,13 +584,22 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
         try
         {
-            var students = await Api.GetAsync<List<StudentDto>>("api/students") ?? [];
-            _students = students
-                .Select(s => new StudentChoice(s.Id, s.FirstName, s.LastName))
-                .OrderBy(s => s.LastName)
-                .ToList();
+            var studentsResult = await Api.GetWithErrorAsync<List<StudentDto>>("api/students");
+            if (studentsResult.Error is not null)
+            {
+                _error = studentsResult.Error;
+            }
+            else
+            {
+                _students = (studentsResult.Value ?? [])
+                    .Select(s => new StudentChoice(s.Id, s.FirstName, s.LastName, s.SchoolLevel))
+                    .OrderBy(s => LevelSort(s.SchoolLevel))
+                    .ThenBy(s => s.LastName)
+                    .ToList();
+            }
 
             await ReloadAsync();
         }
@@ -587,6 +673,7 @@ else
         _editing = null;
         _wizardStep = 0;
         _saveError = "";
+        _assignLevel = "";
         _hf = new HomeworkForm
         {
             DueDate = DateTime.Today.AddDays(7),
@@ -603,6 +690,7 @@ else
         _editing = h;
         _wizardStep = 0;
         _saveError = "";
+        _assignLevel = "";
         var due = h.DueDate ?? DateTime.Today.AddDays(7);
         _hf = new HomeworkForm
         {
@@ -648,6 +736,11 @@ else
             _saveError = "Le titre est obligatoire.";
             return;
         }
+        if (_wizardStep == 0 && _hf.StudentIds.Count == 0)
+        {
+            _saveError = L["Homework_NeedStudents"];
+            return;
+        }
         _saveError = "";
         if (_wizardStep < _stepLabels.Length - 1)
             _wizardStep++;
@@ -662,6 +755,15 @@ else
     private void SelectAllStudents()
     {
         _hf.StudentIds = _students.Select(s => s.Id).ToList();
+    }
+
+    private void SelectVisibleStudents()
+    {
+        foreach (var s in VisibleStudents)
+        {
+            if (!_hf.StudentIds.Contains(s.Id))
+                _hf.StudentIds.Add(s.Id);
+        }
     }
 
     private void ClearStudents() => _hf.StudentIds.Clear();
@@ -784,7 +886,7 @@ else
         }
         if (_hf.StudentIds.Count == 0)
         {
-            _saveError = "Sélectionnez au moins un élève.";
+            _saveError = L["Homework_NeedStudents"];
             _wizardStep = 0;
             return;
         }
@@ -997,6 +1099,6 @@ else
     private sealed record HomeworkDocDto(
         Guid Id, string FileName, long FileSize, string ContentType,
         DateTime UploadedAt, Guid? StudentId, Guid? LessonId, string Url);
-    private sealed record StudentChoice(Guid Id, string FirstName, string LastName);
-    private sealed record StudentDto(Guid Id, string FirstName, string LastName);
+    private sealed record StudentChoice(Guid Id, string FirstName, string LastName, string? SchoolLevel);
+    private sealed record StudentDto(Guid Id, string FirstName, string LastName, string? SchoolLevel);
 }

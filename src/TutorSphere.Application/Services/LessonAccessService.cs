@@ -83,6 +83,12 @@ public sealed class LessonAccessService : ILessonAccessService
         if (HasUsablePack(studentId, tenantId))
             return;
 
+        // Élève du carnet enseignant : aucun forfait marketplace, le tutorat peut planifier librement.
+        var hasMarketplacePack = _db.StudentSubscriptionsForAnyTenant.Any(s =>
+            s.StudentId == studentId && s.TenantId == tenantId);
+        if (!hasMarketplacePack)
+            return;
+
         throw new InvalidOperationException(
             "Cet élève n'a pas de forfait actif (impayé, expiré ou plus de séances). " +
             "Le parent doit payer ou renouveler le pack avant d'être ajouté au cours.");

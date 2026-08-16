@@ -13,6 +13,7 @@ internal sealed class MemoryAppDb : IApplicationDbContext
     public List<StudentSubscription> SubscriptionsList { get; } = [];
     public List<SubscriptionOffering> OfferingsList { get; } = [];
     public List<Payment> PaymentsList { get; } = [];
+    public List<LessonCoverageAssignment> CoverageList { get; } = [];
     public List<Tenant> TenantsList { get; } = [];
 
     public IQueryable<Student> Students => StudentsList.AsQueryable();
@@ -33,6 +34,8 @@ internal sealed class MemoryAppDb : IApplicationDbContext
 
     IQueryable<TenantBranding> IApplicationDbContext.TenantBrandings => None<TenantBranding>();
     IQueryable<Unavailability> IApplicationDbContext.Unavailabilities => None<Unavailability>();
+    IQueryable<Unavailability> IApplicationDbContext.UnavailabilitiesForAnyTenant => None<Unavailability>();
+    IQueryable<LessonCoverageAssignment> IApplicationDbContext.LessonCoverageAssignments => CoverageList.AsQueryable();
     IQueryable<TeacherAvailability> IApplicationDbContext.TeacherAvailabilities => None<TeacherAvailability>();
     IQueryable<TeacherAvailability> IApplicationDbContext.TeacherAvailabilitiesForAnyTenant => None<TeacherAvailability>();
     IQueryable<Holiday> IApplicationDbContext.Holidays => None<Holiday>();
@@ -103,7 +106,7 @@ internal sealed class MemoryAppDb : IApplicationDbContext
             case Lesson lesson: LessonsList.Add(lesson); break;
             case LessonAttendance attendance: AttendancesList.Add(attendance); break;
             case StudentSubscription sub: SubscriptionsList.Add(sub); break;
-            case Payment payment: PaymentsList.Add(payment); break;
+            case LessonCoverageAssignment coverage: CoverageList.Add(coverage); break;
             case Student student: StudentsList.Add(student); break;
             default: throw new NotSupportedException(typeof(T).Name);
         }

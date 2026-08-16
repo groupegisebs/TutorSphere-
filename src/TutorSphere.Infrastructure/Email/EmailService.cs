@@ -279,12 +279,13 @@ public class EmailService : IEmailService
         }, ct, culture.Name);
     }
 
-    public Task SendCourseEnrollmentRequestAsync(string to, string tutorName, string studentName, string courseTitle, CancellationToken ct = default) =>
+    public Task SendCourseEnrollmentRequestAsync(string to, string tutorName, string studentName, string courseTitle, CancellationToken ct = default, string? actionUrl = null) =>
         SendAsync(to, EmailTemplates.CourseEnrollmentRequest, new Dictionary<string, string>
         {
             ["TutorName"] = tutorName,
             ["StudentName"] = studentName,
-            ["CourseTitle"] = courseTitle
+            ["CourseTitle"] = courseTitle,
+            ["ActionUrl"] = actionUrl ?? string.Empty
         }, ct);
 
     public Task SendCourseEnrollmentAcceptedAsync(string to, string parentName, string studentName, string courseTitle, string statusNote, string actionUrl, CancellationToken ct = default) =>

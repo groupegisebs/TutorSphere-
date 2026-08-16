@@ -193,6 +193,20 @@ public class ExpertDashboardService(
                 "/expert/teachers"));
         }
 
+        var pendingEnrollments = approved.Count == 0
+            ? 0
+            : db.StudentSubscriptionsForAnyTenant.Count(s =>
+                approved.Contains(s.TenantId) && s.Status == SubscriptionStatus.Pending);
+
+        if (pendingEnrollments > 0)
+        {
+            alerts.Insert(0, new ExpertDashboardAlertDto(
+                "warning",
+                "pending_enrollments",
+                $"{pendingEnrollments} inscription(s) élève en attente de validation enseignant.",
+                "/expert/dashboard#expert-enrollments"));
+        }
+
         return Task.FromResult(new ExpertDashboardSummaryDto(
             group.Name,
             group.CountryCode,
@@ -211,6 +225,7 @@ public class ExpertDashboardService(
             activeMembers,
             nextPending?.Id,
             nextVote,
-            alerts));
+            alerts,
+            pendingEnrollments));
     }
 }

@@ -23,6 +23,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     public DbSet<SubscriptionOffering> SubscriptionOfferingsSet => Set<SubscriptionOffering>();
     public DbSet<StudentSubscription> StudentSubscriptionsSet => Set<StudentSubscription>();
     public DbSet<Lesson> LessonsSet => Set<Lesson>();
+    public DbSet<LessonCoverageAssignment> LessonCoverageAssignmentsSet => Set<LessonCoverageAssignment>();
     public DbSet<Unavailability> UnavailabilitiesSet => Set<Unavailability>();
     public DbSet<TeacherAvailability> TeacherAvailabilitiesSet => Set<TeacherAvailability>();
     public DbSet<Holiday> HolidaysSet => Set<Holiday>();
@@ -94,6 +95,10 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     IQueryable<Lesson> IApplicationDbContext.Lessons => LessonsSet;
     IQueryable<Lesson> IApplicationDbContext.LessonsForAnyTenant => LessonsSet.IgnoreQueryFilters();
     IQueryable<Unavailability> IApplicationDbContext.Unavailabilities => UnavailabilitiesSet;
+    IQueryable<Unavailability> IApplicationDbContext.UnavailabilitiesForAnyTenant =>
+        UnavailabilitiesSet.IgnoreQueryFilters();
+    IQueryable<LessonCoverageAssignment> IApplicationDbContext.LessonCoverageAssignments =>
+        LessonCoverageAssignmentsSet;
     IQueryable<TeacherAvailability> IApplicationDbContext.TeacherAvailabilities => TeacherAvailabilitiesSet;
     IQueryable<TeacherAvailability> IApplicationDbContext.TeacherAvailabilitiesForAnyTenant =>
         TeacherAvailabilitiesSet.IgnoreQueryFilters();
@@ -571,6 +576,17 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             e.Property(h => h.Grade).HasPrecision(5, 2);
         });
 
+        builder.Entity<Document>(e =>
+        {
+            e.Property(d => d.Title).HasMaxLength(200);
+            e.Property(d => d.Subject).HasMaxLength(120);
+            e.Property(d => d.SchoolLevel).HasMaxLength(40);
+            e.Property(d => d.Summary).HasMaxLength(2000);
+            e.Property(d => d.SharedStudentIds).HasMaxLength(4000);
+            e.HasIndex(d => d.LibraryBatchId);
+            e.HasIndex(d => d.SharedByExpertGroupId);
+        });
+
         builder.Entity<Message>(e =>
         {
             e.Property(m => m.SenderUserId).HasMaxLength(450).IsRequired();
@@ -592,6 +608,20 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
         });
 
         builder.Entity<Unavailability>(e => e.HasIndex(u => u.TenantId));
+        builder.Entity<LessonCoverageAssignment>(e =>
+        {
+            e.ToTable("LessonCoverageAssignmentsSet");
+            e.Property(c => c.Reason).HasMaxLength(500).IsRequired();
+            e.Property(c => c.ProposedByUserId).HasMaxLength(450).IsRequired();
+            e.Property(c => c.RespondedByUserId).HasMaxLength(450);
+            e.Property(c => c.TransferCurrency).HasMaxLength(8);
+            e.Property(c => c.TransferredTutorAmount).HasPrecision(18, 2);
+            e.HasIndex(c => c.LessonId);
+            e.HasIndex(c => c.ExpertGroupId);
+            e.HasIndex(c => c.OriginalTenantId);
+            e.HasIndex(c => c.SubstituteTenantId);
+            e.HasIndex(c => c.Status);
+        });
         builder.Entity<TeacherAvailability>(e =>
         {
             e.HasIndex(a => a.TenantId);

@@ -60,7 +60,8 @@ public sealed class BillingEmailOrchestrator : IBillingEmailOrchestrator
                 tutor.Value.DisplayName,
                 ctx.Value.StudentName,
                 ctx.Value.CourseTitle,
-                ct);
+                ct,
+                $"{WebBase}/tutor/subscriptions?status=Pending");
         }
         catch (Exception ex)
         {

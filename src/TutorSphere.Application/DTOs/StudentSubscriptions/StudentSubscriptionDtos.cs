@@ -18,4 +18,20 @@ public record StudentSubscriptionDto(
     DateTime StartDate,
     DateTime EndDate,
     int SessionsRemaining,
-    string? ParentName = null);
+    string? ParentName = null,
+    string? TeacherName = null,
+    DateTime? RequestedAt = null);
+
+public record ExpertPendingEnrollmentDto(
+    Guid Id,
+    Guid TenantId,
+    string TeacherName,
+    Guid StudentId,
+    string StudentName,
+    string? ParentName,
+    Guid OfferingId,
+    string OfferingTitle,
+    decimal Price,
+    string Currency,
+    DateTime RequestedAt,
+    string Status);

@@ -14,6 +14,16 @@ public class Document : BaseEntity, ITenantEntity
     public Guid? LessonId { get; set; }
     public string UploadedByUserId { get; set; } = string.Empty;
 
+    /// <summary>Nom affiché du document (distinct du nom de fichier).</summary>
+    public string? Title { get; set; }
+    public string? Subject { get; set; }
+    public string? SchoolLevel { get; set; }
+    public string? Summary { get; set; }
+    /// <summary>Identifiants d'élèves destinataires, séparés par des virgules.</summary>
+    public string? SharedStudentIds { get; set; }
+    public Guid? SharedByExpertGroupId { get; set; }
+    public Guid? LibraryBatchId { get; set; }
+
     public Student? Student { get; set; }
     public Lesson? Lesson { get; set; }
 }

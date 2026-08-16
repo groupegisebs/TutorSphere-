@@ -1,0 +1,83 @@
+@page "/parent/coverage"
+@layout ParentLayout
+@rendermode InteractiveServer
+@inject ApiClient Api
+@inject AuthService Auth
+
+<PageTitle>Remplacements — TutorSphere</PageTitle>
+
+<div class="parent-dashboard pd-mock">
+    <header class="pc-header">
+        <div>
+            <h1>Remplacements d'enseignants</h1>
+            <p class="ts-page-subtitle">
+                Si l'enseignant habituel est indisponible, un membre du groupe d'experts peut proposer un suppléant.
+                Votre enfant suit la même séance ; seul l'enseignant change si vous acceptez.
+            </p>
+        </div>
+    </header>
+
+    @if (_loading)
+    {
+        <div class="pd-loading">
+            <span class="spinner-border spinner-border-sm" role="status"></span>
+            <span>Chargement…</span>
+        </div>
+    }
+    else if (_pending.Count == 0)
+    {
+        <div class="cov-empty">
+            <i class="bi bi-person-check" aria-hidden="true"></i>
+            <p>Aucun remplacement en attente. Les prochaines séances restent avec l'enseignant habituel.</p>
+        </div>
+    }
+    else
+    {
+        <LessonCoverageRespondPanel Items="_pending" Error="_error" Busy="_busy"
+                                    OnApprove="id => RespondAsync(id, true)"
+                                    OnReject="id => RespondAsync(id, false)" />
+    }
+</div>
+
+@code {
+    private bool _loading = true;
+    private bool _busy;
+    private string? _error;
+    private List<LessonCoverageDto> _pending = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _pending = await Api.GetAsync<List<LessonCoverageDto>>("api/parent/lesson-coverage/pending") ?? [];
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally { _loading = false; }
+    }
+
+    private async Task RespondAsync(Guid id, bool approve)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<LessonCoverageDto>(
+                $"api/parent/lesson-coverage/{id}/respond",
+                new RespondLessonCoverageRequest(approve));
+            if (result.Error is not null) { _error = result.Error; return; }
+            await ReloadAsync();
+        }
+        finally { _busy = false; }
+    }
+}

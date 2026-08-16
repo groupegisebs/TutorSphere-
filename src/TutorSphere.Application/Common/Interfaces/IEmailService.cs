@@ -70,7 +70,7 @@ public interface IEmailService
         CancellationToken ct = default);
 
     // Course enrollment
-    Task SendCourseEnrollmentRequestAsync(string to, string tutorName, string studentName, string courseTitle, CancellationToken ct = default);
+    Task SendCourseEnrollmentRequestAsync(string to, string tutorName, string studentName, string courseTitle, CancellationToken ct = default, string? actionUrl = null);
     Task SendCourseEnrollmentAcceptedAsync(string to, string parentName, string studentName, string courseTitle, string statusNote, string actionUrl, CancellationToken ct = default);
 
     /// <summary>Notifie le tuteur qu'un paiement parent a été reçu pour un cours.</summary>

@@ -70,7 +70,13 @@ else
                             <strong>@ToLocal(c.StartTime).ToString("dd/MM/yyyy")</strong><br />
                             <small class="text-muted">@ToLocal(c.StartTime).ToString("HH:mm")</small>
                         </td>
-                        <td>@c.Title</td>
+                        <td>
+                            @c.Title
+                            @if (!string.IsNullOrWhiteSpace(c.SubstituteTeacherName) && c.CoverageStatus == "Approved")
+                            {
+                                <br /><small class="text-muted">Remplaçant : @c.SubstituteTeacherName</small>
+                            }
+                        </td>
                         <td>@(c.Subject ?? "—")</td>
                         <td>@((c.EndTime - c.StartTime).TotalHours.ToString("N1")) h</td>
                         <td><span class="ts-badge ts-badge-neutral">@ModeLabel(c.Mode)</span></td>

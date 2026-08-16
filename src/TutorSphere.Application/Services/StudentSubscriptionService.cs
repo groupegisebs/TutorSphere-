@@ -19,6 +19,13 @@ public interface IStudentSubscriptionService
     Task<StudentSubscriptionDto> RejectAsync(Guid subscriptionId, CancellationToken ct = default);
     Task<StudentSubscriptionDto> PauseAsync(Guid subscriptionId, CancellationToken ct = default);
     Task<StudentSubscriptionDto> ResumeAsync(Guid subscriptionId, CancellationToken ct = default);
+
+    Task<IReadOnlyList<ExpertPendingEnrollmentDto>> ListPendingForExpertGroupAsync(
+        string expertUserId, Guid? groupId, CancellationToken ct = default);
+    Task<ExpertPendingEnrollmentDto> AcceptForExpertGroupAsync(
+        string expertUserId, Guid subscriptionId, Guid? groupId, CancellationToken ct = default);
+    Task<ExpertPendingEnrollmentDto> RejectForExpertGroupAsync(
+        string expertUserId, Guid subscriptionId, Guid? groupId, CancellationToken ct = default);
 }
 
 public class StudentSubscriptionService : IStudentSubscriptionService
@@ -27,17 +34,23 @@ public class StudentSubscriptionService : IStudentSubscriptionService
     private readonly ISubscriptionLessonScheduler _lessonScheduler;
     private readonly IBillingEmailOrchestrator _billingEmail;
     private readonly IPaymentGatewayService _payments;
+    private readonly IExpertGroupManagerService _managers;
+    private readonly IExpertMonitoringService _monitoring;
 
     public StudentSubscriptionService(
         Common.Interfaces.IApplicationDbContext db,
         ISubscriptionLessonScheduler lessonScheduler,
         IBillingEmailOrchestrator billingEmail,
-        IPaymentGatewayService payments)
+        IPaymentGatewayService payments,
+        IExpertGroupManagerService managers,
+        IExpertMonitoringService monitoring)
     {
         _db = db;
         _lessonScheduler = lessonScheduler;
         _billingEmail = billingEmail;
         _payments = payments;
+        _managers = managers;
+        _monitoring = monitoring;
     }
 
     public async Task<StudentSubscriptionDto> EnrollAsync(
@@ -384,72 +397,20 @@ public class StudentSubscriptionService : IStudentSubscriptionService
 
     public async Task<StudentSubscriptionDto> AcceptAsync(Guid subscriptionId, CancellationToken ct = default)
     {
-        var sub = _db.StudentSubscriptions.FirstOrDefault(s => s.Id == subscriptionId)
+        var sub = _db.StudentSubscriptionsForAnyTenant.FirstOrDefault(s => s.Id == subscriptionId)
             ?? throw new InvalidOperationException("Demande d'inscription introuvable.");
-
-        if (sub.Status != SubscriptionStatus.Pending)
-            throw new InvalidOperationException("Seules les demandes en attente peuvent être acceptées.");
-
-        var offering = _db.SubscriptionOfferings.FirstOrDefault(o => o.Id == sub.OfferingId)
-            ?? throw new InvalidOperationException("Offre introuvable.");
-
-        var student = _db.StudentsForAnyTenant.FirstOrDefault(s => s.Id == sub.StudentId);
-        var parentName = ResolveParentName(student);
-
-        if (offering.Price <= 0)
-        {
-            sub.Status = SubscriptionStatus.Active;
-            sub.SessionsRemaining = PackPaymentProcess.SessionsOnFreeAccept(offering.SessionCount);
-            sub.UpdatedAt = DateTime.UtcNow;
-            await _db.SaveChangesAsync(ct);
-            await _lessonScheduler.EnsureScheduledAsync(sub.Id, ct);
-        }
-        else
-        {
-            sub.Status = SubscriptionStatus.AwaitingPayment;
-            sub.UpdatedAt = DateTime.UtcNow;
-            await _db.SaveChangesAsync(ct);
-        }
-
+        await AcceptCoreAsync(sub, ct);
         await _billingEmail.NotifyEnrollmentAcceptedAsync(sub.Id, ct);
-
-        return Map(
-            sub,
-            offering.Title,
-            offering.Subject,
-            offering.Price,
-            offering.Currency,
-            student is null ? "" : $"{student.FirstName} {student.LastName}".Trim(),
-            parentName);
+        return MapSubscription(sub);
     }
 
     public async Task<StudentSubscriptionDto> RejectAsync(Guid subscriptionId, CancellationToken ct = default)
     {
-        var sub = _db.StudentSubscriptions.FirstOrDefault(s => s.Id == subscriptionId)
+        var sub = _db.StudentSubscriptionsForAnyTenant.FirstOrDefault(s => s.Id == subscriptionId)
             ?? throw new InvalidOperationException("Demande d'inscription introuvable.");
-
-        if (sub.Status != SubscriptionStatus.Pending)
-            throw new InvalidOperationException("Seules les demandes en attente peuvent être refusées.");
-
-        var offering = _db.SubscriptionOfferings.FirstOrDefault(o => o.Id == sub.OfferingId);
-        var student = _db.StudentsForAnyTenant.FirstOrDefault(s => s.Id == sub.StudentId);
-        var parentName = ResolveParentName(student);
-
-        sub.Status = SubscriptionStatus.Rejected;
-        sub.UpdatedAt = DateTime.UtcNow;
-        ClosePendingPayments(sub.Id);
-        await _db.SaveChangesAsync(ct);
-
+        await RejectCoreAsync(sub, ct);
         await _billingEmail.NotifyEnrollmentRejectedAsync(sub.Id, ct);
-
-        return Map(
-            sub,
-            offering?.Title ?? "Offre",
-            offering?.Subject,
-            offering?.Price ?? 0,
-            offering?.Currency ?? "CAD",
-            student is null ? "" : $"{student.FirstName} {student.LastName}".Trim(),
-            parentName);
+        return MapSubscription(sub);
     }
 
     public async Task<StudentSubscriptionDto> PauseAsync(Guid subscriptionId, CancellationToken ct = default)
@@ -477,6 +438,182 @@ public class StudentSubscriptionService : IStudentSubscriptionService
         await _db.SaveChangesAsync(ct);
         await _lessonScheduler.EnsureScheduledAsync(sub.Id, ct);
         return MapSubscription(sub);
+    }
+
+    public Task<IReadOnlyList<ExpertPendingEnrollmentDto>> ListPendingForExpertGroupAsync(
+        string expertUserId, Guid? groupId, CancellationToken ct = default)
+    {
+        var gid = ResolveExpertGroupId(expertUserId, groupId);
+        return Task.FromResult(LoadPendingForGroup(gid));
+    }
+
+    public async Task<ExpertPendingEnrollmentDto> AcceptForExpertGroupAsync(
+        string expertUserId, Guid subscriptionId, Guid? groupId, CancellationToken ct = default)
+    {
+        var (gid, sub) = LoadPendingInGroup(expertUserId, subscriptionId, groupId);
+        await AcceptCoreAsync(sub, ct);
+        await _billingEmail.NotifyEnrollmentAcceptedAsync(sub.Id, ct);
+        await NotifyTeacherViaRemarkAsync(expertUserId, sub, accepted: true, ct);
+        return MapExpert(sub, gid);
+    }
+
+    public async Task<ExpertPendingEnrollmentDto> RejectForExpertGroupAsync(
+        string expertUserId, Guid subscriptionId, Guid? groupId, CancellationToken ct = default)
+    {
+        var (gid, sub) = LoadPendingInGroup(expertUserId, subscriptionId, groupId);
+        await RejectCoreAsync(sub, ct);
+        await _billingEmail.NotifyEnrollmentRejectedAsync(sub.Id, ct);
+        await NotifyTeacherViaRemarkAsync(expertUserId, sub, accepted: false, ct);
+        return MapExpert(sub, gid);
+    }
+
+    private async Task AcceptCoreAsync(Domain.Entities.StudentSubscription sub, CancellationToken ct)
+    {
+        if (sub.Status != SubscriptionStatus.Pending)
+            throw new InvalidOperationException("Seules les demandes en attente peuvent être acceptées.");
+
+        var offering = _db.SubscriptionOfferingsForAnyTenant.FirstOrDefault(o => o.Id == sub.OfferingId)
+            ?? throw new InvalidOperationException("Offre introuvable.");
+
+        if (offering.Price <= 0)
+        {
+            sub.Status = SubscriptionStatus.Active;
+            sub.SessionsRemaining = PackPaymentProcess.SessionsOnFreeAccept(offering.SessionCount);
+            sub.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync(ct);
+            await _lessonScheduler.EnsureScheduledAsync(sub.Id, ct);
+        }
+        else
+        {
+            sub.Status = SubscriptionStatus.AwaitingPayment;
+            sub.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync(ct);
+        }
+    }
+
+    private async Task RejectCoreAsync(Domain.Entities.StudentSubscription sub, CancellationToken ct)
+    {
+        if (sub.Status != SubscriptionStatus.Pending)
+            throw new InvalidOperationException("Seules les demandes en attente peuvent être refusées.");
+
+        sub.Status = SubscriptionStatus.Rejected;
+        sub.UpdatedAt = DateTime.UtcNow;
+        ClosePendingPayments(sub.Id);
+        await _db.SaveChangesAsync(ct);
+    }
+
+    private (Guid GroupId, Domain.Entities.StudentSubscription Sub) LoadPendingInGroup(
+        string expertUserId, Guid subscriptionId, Guid? groupId)
+    {
+        var gid = ResolveExpertGroupId(expertUserId, groupId);
+        var sub = _db.StudentSubscriptionsForAnyTenant.FirstOrDefault(s => s.Id == subscriptionId)
+            ?? throw new InvalidOperationException("Demande d'inscription introuvable.");
+        var teacher = _db.Tenants.FirstOrDefault(t => t.Id == sub.TenantId)
+            ?? throw new InvalidOperationException("Enseignant introuvable.");
+        if (teacher.ApprovedByExpertGroupId != gid)
+            throw new InvalidOperationException("Cette demande n'appartient pas aux enseignants de votre groupe.");
+        return (gid, sub);
+    }
+
+    private IReadOnlyList<ExpertPendingEnrollmentDto> LoadPendingForGroup(Guid groupId)
+    {
+        var teacherIds = _db.Tenants
+            .Where(t => t.ApprovedByExpertGroupId == groupId)
+            .Select(t => t.Id)
+            .ToHashSet();
+        if (teacherIds.Count == 0)
+            return [];
+
+        var rows = _db.StudentSubscriptionsForAnyTenant
+            .Where(s => teacherIds.Contains(s.TenantId) && s.Status == SubscriptionStatus.Pending)
+            .OrderBy(s => s.CreatedAt)
+            .ToList();
+        return rows.Select(s => MapExpert(s, groupId)).ToList();
+    }
+
+    private async Task NotifyTeacherViaRemarkAsync(
+        string expertUserId,
+        Domain.Entities.StudentSubscription sub,
+        bool accepted,
+        CancellationToken ct)
+    {
+        var student = _db.StudentsForAnyTenant.FirstOrDefault(s => s.Id == sub.StudentId);
+        var offering = _db.SubscriptionOfferingsForAnyTenant.FirstOrDefault(o => o.Id == sub.OfferingId);
+        var studentName = student is null ? "un élève" : $"{student.FirstName} {student.LastName}".Trim();
+        var course = offering?.Title ?? "un cours";
+        string followUp = accepted
+            ? (sub.Status == SubscriptionStatus.AwaitingPayment
+                ? "Le parent (ou l'élève) peut maintenant payer pour activer le forfait."
+                : "L'élève est admis. Les séances peuvent être planifiées.")
+            : "La famille a été informée du refus.";
+        var verb = accepted ? "accepté" : "refusé";
+        var message =
+            $"Le groupe d'experts a {verb} l'inscription de {studentName} à « {course} » à votre place. {followUp}";
+
+        try
+        {
+            await _monitoring.AddRemarkAsync(
+                expertUserId,
+                sub.TenantId,
+                new DTOs.ExpertApproval.CreateExpertRemarkRequest(ExpertRemarkCategory.Activity, message),
+                ct);
+        }
+        catch
+        {
+            // La décision est déjà enregistrée ; l'avertissement enseignant est best-effort.
+        }
+    }
+
+    private ExpertPendingEnrollmentDto MapExpert(Domain.Entities.StudentSubscription sub, Guid groupId)
+    {
+        _ = groupId;
+        var teacher = _db.Tenants.FirstOrDefault(t => t.Id == sub.TenantId);
+        var student = _db.StudentsForAnyTenant.FirstOrDefault(s => s.Id == sub.StudentId);
+        var offering = _db.SubscriptionOfferingsForAnyTenant.FirstOrDefault(o => o.Id == sub.OfferingId);
+        return new ExpertPendingEnrollmentDto(
+            sub.Id,
+            sub.TenantId,
+            teacher?.Name ?? "Enseignant",
+            sub.StudentId,
+            student is null ? "" : $"{student.FirstName} {student.LastName}".Trim(),
+            ResolveParentName(student),
+            sub.OfferingId,
+            offering?.Title ?? "Offre",
+            offering?.Price ?? 0,
+            offering?.Currency ?? "CAD",
+            sub.CreatedAt,
+            sub.Status.ToString());
+    }
+
+    private Guid ResolveExpertGroupId(string expertUserId, Guid? preferredGroupId)
+    {
+        var memberships = _db.ExpertGroupMembers
+            .Where(m => m.UserId == expertUserId && m.Status == ExpertMembershipStatus.Active)
+            .ToList();
+
+        if (preferredGroupId is Guid gid)
+        {
+            _ = _db.ExpertGroups.FirstOrDefault(g => g.Id == gid && g.IsActive)
+                ?? throw new InvalidOperationException("Groupe introuvable.");
+            if (memberships.Any(m => m.ExpertGroupId == gid) || _managers.IsActiveManager(expertUserId, gid))
+                return gid;
+            if (memberships.Count == 0)
+                return gid;
+            throw new InvalidOperationException("Ce groupe n'est pas le vôtre.");
+        }
+
+        if (memberships.Count > 0)
+            return memberships[0].ExpertGroupId;
+
+        if (_managers.IsActiveManager(expertUserId))
+        {
+            var mandate = _db.ExpertGroupManagerMandates.FirstOrDefault(m =>
+                m.UserId == expertUserId && m.Status == ExpertGroupManagerMandateStatus.Active);
+            if (mandate is not null)
+                return mandate.ExpertGroupId;
+        }
+
+        throw new InvalidOperationException("Accès réservé à un membre actif du groupe d'experts.");
     }
 
     private StudentSubscriptionDto MapSubscription(Domain.Entities.StudentSubscription sub)

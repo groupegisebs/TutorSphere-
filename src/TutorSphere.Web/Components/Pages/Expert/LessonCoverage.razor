@@ -1,0 +1,382 @@
+@page "/expert/lesson-coverage"
+@layout ExpertLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService Auth
+@inject ApiClient Api
+
+<ApplyRequestCulture />
+
+<PageTitle>Remplacements — Expert</PageTitle>
+
+<AuthorizeView Roles="Expert,GroupManager,SuperAdmin,PlatformAdmin">
+    <Authorized>
+        <div class="cc-toolbar">
+            <div>
+                <h1 class="cc-page-title">Remplacements d'enseignants</h1>
+                <p class="cc-page-sub">
+                    Un enseignant indisponible peut céder ses séances à venir à un suppléant du même groupe.
+                    Le parent (ou l'élève autonome) doit accepter : le cours continue, l'enseignant change, et la part tuteur suit le suppléant.
+                </p>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger">@_error</div>
+        }
+        @if (!string.IsNullOrEmpty(_success))
+        {
+            <div class="alert alert-success">@_success</div>
+        }
+
+        <div class="lc-grid">
+            <div class="cc-card">
+                <h2 class="cc-card-title">Enseignants indisponibles</h2>
+                @if (_loadingUnav)
+                {
+                    <span class="spinner-border spinner-border-sm"></span>
+                }
+                else if (_unavailable.Count == 0)
+                {
+                    <p class="text-muted mb-0">
+                        Aucune indisponibilité à venir. L'enseignant doit d'abord marquer une période dans son agenda.
+                    </p>
+                }
+                else
+                {
+                    <ul class="lc-unav-list">
+                        @foreach (var u in _unavailable)
+                        {
+                            var selected = _selectedUnav?.UnavailabilityId == u.UnavailabilityId;
+                            <li>
+                                <button type="button" class="lc-unav @(selected ? "is-selected" : "")" @onclick="() => SelectUnavailabilityAsync(u)">
+                                    <strong>@u.Name</strong>
+                                    <span>@u.StartTime.ToLocalTime().ToString("dd/MM HH:mm") → @u.EndTime.ToLocalTime().ToString("dd/MM HH:mm")</span>
+                                    <span>@u.UpcomingLessonCount séance(s) à venir</span>
+                                    @if (!string.IsNullOrWhiteSpace(u.Reason))
+                                    {
+                                        <em>@u.Reason</em>
+                                    }
+                                </button>
+                            </li>
+                        }
+                    </ul>
+                }
+            </div>
+
+            <div class="cc-card">
+                <h2 class="cc-card-title">Proposer un suppléant</h2>
+                @if (_selectedUnav is null)
+                {
+                    <p class="text-muted mb-0">Choisissez un enseignant indisponible à gauche.</p>
+                }
+                else
+                {
+                    <p class="mb-3">
+                        Remplacer <strong>@_selectedUnav.Name</strong>
+                        du @_selectedUnav.StartTime.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                        au @_selectedUnav.EndTime.ToLocalTime().ToString("dd/MM/yyyy HH:mm").
+                    </p>
+
+                    <div class="mb-3">
+                        <label class="form-label" for="lc-sub">Suppléant du groupe</label>
+                        @if (_substitutes.Count == 0)
+                        {
+                            <p class="text-muted small mb-0">Aucun autre enseignant du groupe n'a une session active et une fiche approuvée.</p>
+                        }
+                        else
+                        {
+                            <select id="lc-sub" class="form-select" @bind="_substituteId">
+                                <option value="">Choisir un remplaçant…</option>
+                                @foreach (var s in _substitutes)
+                                {
+                                    <option value="@s.TenantId">@s.Name</option>
+                                }
+                            </select>
+                        }
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label" for="lc-reason">Raison</label>
+                        <textarea id="lc-reason" class="form-control" rows="3" @bind="_reason"
+                                  placeholder="Indisponibilité, déplacement, motif médical…"></textarea>
+                    </div>
+
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <span class="form-label mb-0">Séances concernées</span>
+                            @if (SelectableLessons.Any())
+                            {
+                                <button type="button" class="cc-btn btn-sm" @onclick="ToggleAllSelectable">Tout cocher / décocher</button>
+                            }
+                        </div>
+                        @if (_loadingLessons)
+                        {
+                            <span class="spinner-border spinner-border-sm"></span>
+                        }
+                        else if (_upcoming.Count == 0)
+                        {
+                            <p class="text-muted small mb-0">Aucune séance planifiée sur cette période.</p>
+                        }
+                        else
+                        {
+                            <ul class="lc-lessons">
+                                @foreach (var lesson in _upcoming)
+                                {
+                                    var selectable = IsSelectable(lesson);
+                                    <li class="@(selectable ? "" : "is-locked")">
+                                        <label class="lc-lesson">
+                                            @if (selectable)
+                                            {
+                                                <input type="checkbox" checked="@_selectedLessonIds.Contains(lesson.LessonId)"
+                                                       @onchange="e => ToggleLesson(lesson.LessonId, e.Value is true)" />
+                                            }
+                                            else
+                                            {
+                                                <input type="checkbox" disabled checked="@false" />
+                                            }
+                                            <span>
+                                                <strong>@lesson.LessonTitle</strong>
+                                                <span>@lesson.StartTime.ToLocalTime().ToString("ddd dd/MM HH:mm")</span>
+                                                @if (lesson.StudentNames is { Count: > 0 })
+                                                {
+                                                    <span>@string.Join(", ", lesson.StudentNames)</span>
+                                                }
+                                                @if (!selectable)
+                                                {
+                                                    <em>@StatusFr(lesson.Status) — @(lesson.SubstituteTeacherName)</em>
+                                                }
+                                            </span>
+                                        </label>
+                                    </li>
+                                }
+                            </ul>
+                        }
+                    </div>
+
+                    <button type="button" class="cc-btn cc-btn-primary" disabled="@(!CanPropose)" @onclick="ProposeAsync">
+                        @(_busy ? "Envoi…" : "Proposer le remplacement")
+                    </button>
+                }
+            </div>
+        </div>
+
+        <div class="cc-card mt-3">
+            <h2 class="cc-card-title">Affectations du groupe</h2>
+            @if (_loadingAssign)
+            {
+                <span class="spinner-border spinner-border-sm"></span>
+            }
+            else if (_assignments.Count == 0)
+            {
+                <p class="text-muted mb-0">Aucune proposition pour l'instant.</p>
+            }
+            else
+            {
+                <table class="cc-table">
+                    <thead>
+                        <tr>
+                            <th>Séance</th>
+                            <th>Enseignant</th>
+                            <th>Suppléant</th>
+                            <th>Statut</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var a in _assignments)
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@a.LessonTitle</strong><br />
+                                    <span class="small text-muted">@a.StartTime.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</span>
+                                </td>
+                                <td>@a.OriginalTeacherName</td>
+                                <td>@a.SubstituteTeacherName</td>
+                                <td>@StatusFr(a.Status)</td>
+                                <td class="text-end">
+                                    @if (a.Status == "Pending")
+                                    {
+                                        <button type="button" class="cc-btn btn-sm" disabled="@_busy" @onclick="() => CancelAsync(a.Id)">Annuler</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </Authorized>
+    <NotAuthorized>
+        <div class="cc-card cc-empty">
+            <p>Connectez-vous à l'espace expert pour proposer un remplaçant.</p>
+            <a class="cc-btn cc-btn-primary" href="/login/expert">Connexion</a>
+        </div>
+    </NotAuthorized>
+</AuthorizeView>
+
+<style>
+    .lc-grid { display: grid; grid-template-columns: minmax(260px, 320px) 1fr; gap: 1rem; align-items: start; }
+    .lc-unav-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+    .lc-unav {
+        width: 100%; text-align: left; border: 1px solid #e2e8f0; background: #fff; border-radius: 12px;
+        padding: 0.75rem 0.85rem; display: grid; gap: 0.15rem;
+    }
+    .lc-unav strong { color: #0f172a; }
+    .lc-unav span, .lc-unav em { font-size: 0.8rem; color: #64748b; font-style: normal; }
+    .lc-unav.is-selected { border-color: #5831E0; background: #f4efff; }
+    .lc-lessons { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.35rem; max-height: 280px; overflow: auto; }
+    .lc-lesson { display: flex; gap: 0.6rem; align-items: flex-start; padding: 0.45rem 0.2rem; }
+    .lc-lesson span { display: grid; gap: 0.1rem; font-size: 0.85rem; }
+    .lc-lesson em { color: #92400e; font-size: 0.78rem; }
+    .lc-lessons .is-locked { opacity: 0.65; }
+    @@media (max-width: 900px) { .lc-grid { grid-template-columns: 1fr; } }
+</style>
+
+@code {
+    private bool _loadingUnav = true;
+    private bool _loadingLessons;
+    private bool _loadingAssign = true;
+    private bool _busy;
+    private string? _error;
+    private string? _success;
+    private string _reason = "";
+    private string _substituteId = "";
+    private List<UnavailableTeacherDto> _unavailable = [];
+    private List<LessonCoverageTeacherOptionDto> _substitutes = [];
+    private List<LessonCoverageDto> _upcoming = [];
+    private List<LessonCoverageDto> _assignments = [];
+    private HashSet<Guid> _selectedLessonIds = [];
+    private UnavailableTeacherDto? _selectedUnav;
+
+    private IEnumerable<LessonCoverageDto> SelectableLessons => _upcoming.Where(IsSelectable);
+    private bool CanPropose =>
+        !_busy
+        && _selectedUnav is not null
+        && Guid.TryParse(_substituteId, out _)
+        && _reason.Trim().Length >= 3
+        && _selectedLessonIds.Count > 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        await ReloadListsAsync();
+    }
+
+    private async Task ReloadListsAsync()
+    {
+        _error = null;
+        _loadingUnav = true;
+        _loadingAssign = true;
+        try
+        {
+            var unav = await Api.GetWithErrorAsync<List<UnavailableTeacherDto>>("api/expert/lesson-coverage/unavailable");
+            if (unav.Error is not null) { _error = unav.Error; return; }
+            _unavailable = unav.Value ?? [];
+
+            var assign = await Api.GetWithErrorAsync<List<LessonCoverageDto>>("api/expert/lesson-coverage");
+            if (assign.Error is not null) { _error = assign.Error; return; }
+            _assignments = assign.Value ?? [];
+        }
+        finally
+        {
+            _loadingUnav = false;
+            _loadingAssign = false;
+        }
+    }
+
+    private async Task SelectUnavailabilityAsync(UnavailableTeacherDto u)
+    {
+        _selectedUnav = u;
+        _success = null;
+        _error = null;
+        _substituteId = "";
+        _reason = u.Reason ?? "";
+        _selectedLessonIds.Clear();
+        _loadingLessons = true;
+        try
+        {
+            var subs = await Api.GetWithErrorAsync<List<LessonCoverageTeacherOptionDto>>(
+                $"api/expert/lesson-coverage/substitutes?originalTenantId={u.TenantId}");
+            if (subs.Error is not null) { _error = subs.Error; return; }
+            _substitutes = subs.Value ?? [];
+
+            var from = Uri.EscapeDataString(u.StartTime.ToUniversalTime().ToString("o"));
+            var to = Uri.EscapeDataString(u.EndTime.ToUniversalTime().ToString("o"));
+            var lessons = await Api.GetWithErrorAsync<List<LessonCoverageDto>>(
+                $"api/expert/lesson-coverage/upcoming?originalTenantId={u.TenantId}&from={from}&to={to}");
+            if (lessons.Error is not null) { _error = lessons.Error; return; }
+            _upcoming = lessons.Value ?? [];
+            _selectedLessonIds = SelectableLessons.Select(l => l.LessonId).ToHashSet();
+        }
+        finally { _loadingLessons = false; }
+    }
+
+    private async Task ProposeAsync()
+    {
+        if (_selectedUnav is null || !Guid.TryParse(_substituteId, out var subId) || !CanPropose)
+            return;
+        _busy = true;
+        _error = null;
+        _success = null;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<List<LessonCoverageDto>>(
+                "api/expert/lesson-coverage",
+                new CreateLessonCoverageRequest(
+                    _selectedUnav.TenantId,
+                    subId,
+                    _reason.Trim(),
+                    _selectedUnav.UnavailabilityId,
+                    _selectedLessonIds.ToList()));
+            if (result.Error is not null) { _error = result.Error; return; }
+            var n = result.Value?.Count ?? 0;
+            _success = n <= 1
+                ? "Proposition envoyée. Le parent (ou l'élève autonome) doit l'accepter avant la séance."
+                : $"{n} propositions envoyées. Les familles doivent accepter avant les séances.";
+            await ReloadListsAsync();
+            await SelectUnavailabilityAsync(_selectedUnav);
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task CancelAsync(Guid id)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            var r = await Api.PostWithErrorAsync<object>($"api/expert/lesson-coverage/{id}/cancel", new { });
+            if (r.Error is not null) { _error = r.Error; return; }
+            _success = "Proposition annulée.";
+            await ReloadListsAsync();
+            if (_selectedUnav is not null)
+                await SelectUnavailabilityAsync(_selectedUnav);
+        }
+        finally { _busy = false; }
+    }
+
+    private void ToggleLesson(Guid lessonId, bool on)
+    {
+        if (on) _selectedLessonIds.Add(lessonId);
+        else _selectedLessonIds.Remove(lessonId);
+    }
+
+    private void ToggleAllSelectable()
+    {
+        var ids = SelectableLessons.Select(l => l.LessonId).ToHashSet();
+        _selectedLessonIds = _selectedLessonIds.SetEquals(ids) ? [] : ids;
+    }
+
+    private static bool IsSelectable(LessonCoverageDto lesson) =>
+        lesson.Id == Guid.Empty || lesson.Status is "Rejected" or "Cancelled";
+
+    private static string StatusFr(string status) => status switch
+    {
+        "Pending" => "En attente famille",
+        "Approved" => "Accepté",
+        "Rejected" => "Refusé",
+        "Cancelled" => "Annulé",
+        _ => status
+    };
+}

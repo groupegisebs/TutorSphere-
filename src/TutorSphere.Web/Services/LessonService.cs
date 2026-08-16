@@ -12,12 +12,36 @@ public sealed class LessonService
     /// <summary>Returns lessons for a ±60 / +180-day window around today.</summary>
     public async Task<List<LessonDto>> GetLessonsAsync()
     {
+        var result = await GetLessonsWithErrorAsync();
+        return result.Value ?? [];
+    }
+
+    public async Task<ApiResult<List<LessonDto>>> GetLessonsWithErrorAsync()
+    {
         var start = Uri.EscapeDataString(DateTime.UtcNow.AddDays(-60).ToString("O"));
         var end   = Uri.EscapeDataString(DateTime.UtcNow.AddDays(180).ToString("O"));
-        return await _api.GetAsync<List<LessonDto>>($"api/lessons?start={start}&end={end}") ?? [];
+        return await _api.GetWithErrorAsync<List<LessonDto>>($"api/lessons?start={start}&end={end}");
     }
 
     public async Task<List<LessonDto>> CreateLessonAsync(
+        string title, string? description, string? subject,
+        DateTime startTime, DateTime endTime,
+        string modeDisplay,
+        string? location = null, string? meetingUrl = null, string? sessionNotes = null,
+        string? recurrenceFrequency = null,
+        int? recurrenceOccurrences = null,
+        DateTime? recurrenceUntil = null,
+        int maxStudents = 1,
+        IReadOnlyList<Guid>? studentIds = null)
+    {
+        var result = await CreateLessonWithErrorAsync(
+            title, description, subject, startTime, endTime, modeDisplay,
+            location, meetingUrl, sessionNotes,
+            recurrenceFrequency, recurrenceOccurrences, recurrenceUntil, maxStudents, studentIds);
+        return result.Value ?? [];
+    }
+
+    public async Task<ApiResult<List<LessonDto>>> CreateLessonWithErrorAsync(
         string title, string? description, string? subject,
         DateTime startTime, DateTime endTime,
         string modeDisplay,
@@ -37,7 +61,7 @@ public sealed class LessonService
             RecurrenceOccurrences: recurrenceOccurrences,
             RecurrenceUntil: recurrenceUntil,
             MaxStudents: maxStudents);
-        return await _api.PostAsync<List<LessonDto>>("api/lessons", req) ?? [];
+        return await _api.PostWithErrorAsync<List<LessonDto>>("api/lessons", req);
     }
 
     public async Task<LessonDto?> UpdateLessonAsync(

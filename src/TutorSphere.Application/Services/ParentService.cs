@@ -169,6 +169,9 @@ public class ParentService : IParentService
         var parent = _db.ParentProfiles.FirstOrDefault(p => p.Id == id)
             ?? throw new InvalidOperationException("Parent introuvable.");
 
+        foreach (var child in _db.Students.Where(s => s.ParentProfileId == id).ToList())
+            child.ParentProfileId = null;
+
         _db.Remove(parent);
         await _db.SaveChangesAsync(ct);
     }
