@@ -10,6 +10,12 @@ public interface ILessonCoverageService
 {
     Task<IReadOnlyList<UnavailableTeacherDto>> ListUnavailableTeachersAsync(
         string expertUserId, Guid? groupId, CancellationToken ct = default);
+    Task<IReadOnlyList<LessonCoverageTeacherOptionDto>> ListGroupTeachersAsync(
+        string expertUserId, Guid? groupId, CancellationToken ct = default);
+    Task<UnavailableTeacherDto> DeclareAbsenceAsync(
+        string expertUserId, DeclareTeacherAbsenceRequest request, Guid? groupId, CancellationToken ct = default);
+    Task DeleteAbsenceAsync(
+        string expertUserId, Guid unavailabilityId, Guid? groupId, CancellationToken ct = default);
     Task<IReadOnlyList<LessonCoverageTeacherOptionDto>> ListSubstituteOptionsAsync(
         string expertUserId, Guid originalTenantId, Guid? groupId, CancellationToken ct = default);
     Task<IReadOnlyList<LessonCoverageDto>> ListUpcomingLessonsAsync(
@@ -30,7 +36,9 @@ public interface ILessonCoverageService
 public sealed class LessonCoverageService(
     IApplicationDbContext db,
     IEmailService email,
-    IExpertGroupManagerService managers) : ILessonCoverageService
+    IExpertGroupManagerService managers,
+    IUserContactLookup contacts,
+    IAppUrlProvider urls) : ILessonCoverageService
 {
     public Task<IReadOnlyList<UnavailableTeacherDto>> ListUnavailableTeachersAsync(
         string expertUserId, Guid? groupId, CancellationToken ct = default)
@@ -48,18 +56,98 @@ public sealed class LessonCoverageService(
         var result = new List<UnavailableTeacherDto>();
         foreach (var u in unavs)
         {
-            var count = db.LessonsForAnyTenant.Count(l =>
-                l.TenantId == u.TenantId
-                && l.SettlementStatus == LessonSettlementStatus.Scheduled
-                && l.StartTime >= u.StartTime
-                && l.StartTime < u.EndTime
-                && l.StartTime > now);
             tenants.TryGetValue(u.TenantId, out var name);
             result.Add(new UnavailableTeacherDto(
-                u.TenantId, name ?? "Enseignant", u.Id, u.StartTime, u.EndTime, u.Reason, count));
+                u.TenantId, name ?? "Enseignant", u.Id, u.StartTime, u.EndTime, u.Reason,
+                CountUpcomingLessons(u.TenantId, u.StartTime, u.EndTime)));
         }
 
         return Task.FromResult<IReadOnlyList<UnavailableTeacherDto>>(result);
+    }
+
+    /// <summary>Enseignants approuvés du groupe : cible possible d'une absence saisie par le responsable.</summary>
+    public Task<IReadOnlyList<LessonCoverageTeacherOptionDto>> ListGroupTeachersAsync(
+        string expertUserId, Guid? groupId, CancellationToken ct = default)
+    {
+        var gid = RequireMemberGroupId(expertUserId, groupId);
+        var teacherIds = GroupTeacherIds(gid);
+        var options = db.Tenants
+            .Where(t => teacherIds.Contains(t.Id) && t.ExpertApprovalStatus == ExpertApprovalStatus.Approved)
+            .OrderBy(t => t.Name)
+            .Select(t => new LessonCoverageTeacherOptionDto(t.Id, t.Name))
+            .ToList();
+        return Task.FromResult<IReadOnlyList<LessonCoverageTeacherOptionDto>>(options);
+    }
+
+    /// <summary>
+    /// Le responsable enregistre l'absence à la place de l'enseignant : sans cela, aucun remplacement
+    /// n'est possible avant que l'enseignant n'ouvre lui-même son agenda.
+    /// </summary>
+    public async Task<UnavailableTeacherDto> DeclareAbsenceAsync(
+        string expertUserId, DeclareTeacherAbsenceRequest request, Guid? groupId, CancellationToken ct = default)
+    {
+        var gid = RequireMemberGroupId(expertUserId, groupId);
+        EnsureTeacherInGroup(gid, request.TenantId);
+
+        var start = request.StartTime;
+        var end = request.EndTime;
+        if (end <= start)
+            throw new InvalidOperationException("La fin de l'absence doit suivre son début.");
+        if (end <= DateTime.UtcNow)
+            throw new InvalidOperationException("Cette période est déjà passée : aucune séance ne peut être réaffectée.");
+        if ((end - start).TotalDays > 180)
+            throw new InvalidOperationException("Une absence ne peut pas dépasser six mois.");
+
+        var overlap = db.UnavailabilitiesForAnyTenant.Any(u =>
+            u.TenantId == request.TenantId && u.StartTime < end && u.EndTime > start);
+        if (overlap)
+            throw new InvalidOperationException("Une indisponibilité couvre déjà tout ou partie de cette période.");
+
+        var entity = new Unavailability
+        {
+            TenantId = request.TenantId,
+            StartTime = start,
+            EndTime = end,
+            Reason = string.IsNullOrWhiteSpace(request.Reason) ? "Absence signalée par le groupe" : request.Reason.Trim()
+        };
+        db.Add(entity);
+        await db.SaveChangesAsync(ct);
+
+        var name = db.Tenants.FirstOrDefault(t => t.Id == request.TenantId)?.Name ?? "Enseignant";
+        return new UnavailableTeacherDto(
+            entity.TenantId, name, entity.Id, entity.StartTime, entity.EndTime, entity.Reason,
+            CountUpcomingLessons(entity.TenantId, entity.StartTime, entity.EndTime));
+    }
+
+    public async Task DeleteAbsenceAsync(
+        string expertUserId, Guid unavailabilityId, Guid? groupId, CancellationToken ct = default)
+    {
+        var gid = RequireMemberGroupId(expertUserId, groupId);
+        var teacherIds = GroupTeacherIds(gid);
+        var entity = db.UnavailabilitiesForAnyTenant.FirstOrDefault(u => u.Id == unavailabilityId)
+            ?? throw new InvalidOperationException("Indisponibilité introuvable.");
+        if (!teacherIds.Contains(entity.TenantId))
+            throw new InvalidOperationException("Cet enseignant n'appartient pas à ce groupe d'experts.");
+
+        var linked = db.LessonCoverageAssignments.Any(c =>
+            c.UnavailabilityId == unavailabilityId
+            && (c.Status == LessonCoverageStatus.Pending || c.Status == LessonCoverageStatus.Approved));
+        if (linked)
+            throw new InvalidOperationException("Des remplacements sont rattachés à cette période : annulez-les d'abord.");
+
+        db.Remove(entity);
+        await db.SaveChangesAsync(ct);
+    }
+
+    private int CountUpcomingLessons(Guid tenantId, DateTime windowStart, DateTime windowEnd)
+    {
+        var now = DateTime.UtcNow;
+        return db.LessonsForAnyTenant.Count(l =>
+            l.TenantId == tenantId
+            && l.SettlementStatus == LessonSettlementStatus.Scheduled
+            && l.StartTime >= windowStart
+            && l.StartTime < windowEnd
+            && l.StartTime > now);
     }
 
     public Task<IReadOnlyList<LessonCoverageTeacherOptionDto>> ListSubstituteOptionsAsync(
@@ -216,6 +304,7 @@ public sealed class LessonCoverageService(
 
         await db.SaveChangesAsync(ct);
         await NotifyFamiliesAsync(created, ct);
+        await NotifySubstituteAsync(created, ct);
         var lessons = candidates.Where(l => created.Any(c => c.LessonId == l.Id)).ToList();
         return MapAssignments(created, lessons);
     }
@@ -295,6 +384,7 @@ public sealed class LessonCoverageService(
         lesson.DeliveredByTenantId = approve ? row.SubstituteTenantId : null;
         lesson.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
+        await NotifyTeachersOfDecisionAsync(row, lesson, approve, ct);
         _ = requireAutonomousStudent;
         return MapAssignments([row], [lesson]).First();
     }
@@ -329,8 +419,8 @@ public sealed class LessonCoverageService(
 
     private async Task NotifyFamiliesAsync(IReadOnlyList<LessonCoverageAssignment> created, CancellationToken ct)
     {
-        var original = db.Tenants.FirstOrDefault(t => t.Id == created[0].OriginalTenantId)?.Name ?? "l'enseignant";
-        var substitute = db.Tenants.FirstOrDefault(t => t.Id == created[0].SubstituteTenantId)?.Name ?? "un suppléant";
+        var original = TeacherName(created[0].OriginalTenantId);
+        var substitute = TeacherName(created[0].SubstituteTenantId);
         var lessonIds = created.Select(c => c.LessonId).ToList();
         var lessons = db.LessonsForAnyTenant.Where(l => lessonIds.Contains(l.Id)).ToDictionary(l => l.Id);
         var attendances = db.LessonAttendancesForAnyTenant.Where(a => lessonIds.Contains(a.LessonId)).ToList();
@@ -343,33 +433,25 @@ public sealed class LessonCoverageService(
         {
             if (!lessons.TryGetValue(row.LessonId, out var lesson))
                 continue;
-            var subject = $"Remplacement proposé — {lesson.Title}";
             foreach (var studentId in attendances.Where(a => a.LessonId == lesson.Id).Select(a => a.StudentId))
             {
                 var student = students.FirstOrDefault(s => s.Id == studentId);
                 if (student is null) continue;
+                var studentName = $"{student.FirstName} {student.LastName}".Trim();
                 try
                 {
                     if (student.IsAutonomous && !string.IsNullOrWhiteSpace(student.Email))
                     {
-                        await email.SendLessonScheduledAsync(
-                            student.Email,
-                            $"{student.FirstName} {student.LastName}".Trim(),
-                            $"{substitute} (à la place de {original})",
-                            subject,
-                            lesson.StartTime,
-                            ct);
+                        await email.SendLessonCoverageProposedAsync(
+                            student.Email, studentName, studentName, lesson.Title, lesson.StartTime,
+                            original, substitute, row.Reason, PortalUrl("student"), ct);
                     }
                     if (student.ParentProfileId is Guid pid && parents.TryGetValue(pid, out var parent)
                         && !string.IsNullOrWhiteSpace(parent.Email))
                     {
-                        await email.SendLessonScheduledAsync(
-                            parent.Email,
-                            parent.FirstName,
-                            $"{substitute} (à la place de {original})",
-                            subject,
-                            lesson.StartTime,
-                            ct);
+                        await email.SendLessonCoverageProposedAsync(
+                            parent.Email, parent.FirstName, studentName, lesson.Title, lesson.StartTime,
+                            original, substitute, row.Reason, PortalUrl("parent"), ct);
                     }
                 }
                 catch
@@ -379,6 +461,74 @@ public sealed class LessonCoverageService(
             }
         }
     }
+
+    /// <summary>Le suppléant doit savoir qu'on compte sur lui, avant même l'accord des familles.</summary>
+    private async Task NotifySubstituteAsync(IReadOnlyList<LessonCoverageAssignment> created, CancellationToken ct)
+    {
+        var first = created[0];
+        var contact = await TeacherContactAsync(first.SubstituteTenantId, ct);
+        if (contact is null) return;
+        var lessonIds = created.Select(c => c.LessonId).ToList();
+        var firstStart = db.LessonsForAnyTenant
+            .Where(l => lessonIds.Contains(l.Id))
+            .OrderBy(l => l.StartTime)
+            .Select(l => l.StartTime)
+            .FirstOrDefault();
+        try
+        {
+            await email.SendLessonCoverageSubstituteAsync(
+                contact.Value.Email,
+                contact.Value.Name,
+                TeacherName(first.OriginalTenantId),
+                created.Count,
+                firstStart,
+                first.Reason,
+                $"{urls.WebBaseUrl.TrimEnd('/')}/tutor/calendar",
+                ct);
+        }
+        catch
+        {
+            // l'affectation est déjà enregistrée
+        }
+    }
+
+    /// <summary>Les deux enseignants apprennent la décision de la famille : sinon personne ne sait qui assure la séance.</summary>
+    private async Task NotifyTeachersOfDecisionAsync(LessonCoverageAssignment row, Lesson lesson, bool approved, CancellationToken ct)
+    {
+        var original = TeacherName(row.OriginalTenantId);
+        var substitute = TeacherName(row.SubstituteTenantId);
+        var url = $"{urls.WebBaseUrl.TrimEnd('/')}/tutor/calendar";
+        foreach (var tenantId in new[] { row.SubstituteTenantId, row.OriginalTenantId })
+        {
+            var contact = await TeacherContactAsync(tenantId, ct);
+            if (contact is null) continue;
+            try
+            {
+                await email.SendLessonCoverageDecisionAsync(
+                    contact.Value.Email, contact.Value.Name, lesson.Title, lesson.StartTime,
+                    original, substitute, approved, url, ct);
+            }
+            catch
+            {
+                // la décision est déjà enregistrée
+            }
+        }
+    }
+
+    private string TeacherName(Guid tenantId) =>
+        db.Tenants.FirstOrDefault(t => t.Id == tenantId)?.Name ?? "l'enseignant";
+
+    private async Task<(string Email, string Name)?> TeacherContactAsync(Guid tenantId, CancellationToken ct)
+    {
+        var tenant = db.Tenants.FirstOrDefault(t => t.Id == tenantId);
+        if (tenant is null || string.IsNullOrWhiteSpace(tenant.OwnerUserId)) return null;
+        var contact = await contacts.GetAsync(tenant.OwnerUserId, ct);
+        if (contact is null || string.IsNullOrWhiteSpace(contact.Value.Email)) return null;
+        var name = string.IsNullOrWhiteSpace(contact.Value.DisplayName) ? tenant.Name : contact.Value.DisplayName;
+        return (contact.Value.Email, name);
+    }
+
+    private string PortalUrl(string space) => $"{urls.WebBaseUrl.TrimEnd('/')}/{space}/coverage";
 
     private List<Lesson> LoadCandidateLessons(Guid tenantId, DateTime windowStart, DateTime windowEnd)
     {

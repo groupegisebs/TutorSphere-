@@ -755,21 +755,34 @@ else if (_detail is not null)
     }
 
     /// <summary>
-    /// Charge les moteurs média et WebRTC : sans eux, classroomMedia et classroomRtc n'existent pas
-    /// et la salle s'ouvre sans caméra ni micro.
+    /// Charge les moteurs média et WebRTC et vérifie qu'ils se sont bien exécutés : sans eux,
+    /// classroomMedia n'existe pas et chaque action caméra/micro échoue avec « was undefined ».
     /// </summary>
-    private async Task EnsureMediaScriptsAsync()
+    private async Task<bool> EnsureMediaScriptsAsync()
     {
-        if (_scriptsReady) return;
+        if (_scriptsReady) return true;
         try
         {
-            await JS.InvokeVoidAsync("tsPageAssets.loadMeetingRoom");
-            _scriptsReady = true;
+            var status = await JS.InvokeAsync<AssetStatus>("tsPageAssets.loadMeetingRoom");
+            _scriptsReady = status?.Ok == true;
+            _mediaError = _scriptsReady
+                ? null
+                : "Moteur audio/vidéo non chargé (" + string.Join(", ", status?.Missing ?? []) +
+                  "). Rechargez la page avec Ctrl+F5 ; si le problème persiste, désactivez le bloqueur de scripts.";
         }
         catch (Exception ex)
         {
+            _scriptsReady = false;
             _mediaError = "Moteur audio/vidéo indisponible : rechargez la page. (" + ex.Message + ")";
         }
+        return _scriptsReady;
+    }
+
+    /// <summary>Retour de tsPageAssets : globales JS manquantes après chargement.</summary>
+    public sealed class AssetStatus
+    {
+        public bool Ok { get; set; }
+        public string[]? Missing { get; set; }
     }
 
     private void BindRt()
@@ -866,6 +879,12 @@ else if (_detail is not null)
     /// <summary>Demande caméra + micro, puis publie les pistes obtenues aux pairs déjà connectés.</summary>
     private async Task StartLocalMediaAsync()
     {
+        if (!await EnsureMediaScriptsAsync())
+        {
+            _mic = _cam = false;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
         try
         {
             var r = await JS.InvokeAsync<MediaStartResult>(
@@ -953,7 +972,7 @@ else if (_detail is not null)
     private async Task ToggleMic()
     {
         _menu = null;
-        if (!_mediaStarted) { await StartLocalMediaAsync(); return; }
+        if (!_mediaStarted || !_scriptsReady) { await StartLocalMediaAsync(); return; }
 
         if (!_mic)
         {
@@ -985,7 +1004,7 @@ else if (_detail is not null)
     private async Task ToggleCam()
     {
         _menu = null;
-        if (!_mediaStarted) { await StartLocalMediaAsync(); return; }
+        if (!_mediaStarted || !_scriptsReady) { await StartLocalMediaAsync(); return; }
 
         if (!_cam)
         {
@@ -1018,6 +1037,8 @@ else if (_detail is not null)
 
     private async Task<MediaStartResult?> InvokeMediaAsync(string identifier, params object?[] args)
     {
+        if (!await EnsureMediaScriptsAsync())
+            return new MediaStartResult { Ok = false, Error = _mediaError };
         try { return await JS.InvokeAsync<MediaStartResult>(identifier, args); }
         catch (JSException ex) { return new MediaStartResult { Ok = false, Error = ex.Message }; }
     }

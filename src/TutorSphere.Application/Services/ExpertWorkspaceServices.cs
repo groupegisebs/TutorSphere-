@@ -22,11 +22,17 @@ public interface IExpertGovernanceAuditService
     Task<IReadOnlyList<ExpertGovernanceEventDto>> ListForGroupAsync(
         string expertUserId, int take = 100, bool notificationsOnly = false, CancellationToken ct = default);
 
+    /// <summary>Journal paginé : le total permet d'afficher le nombre de pages réel.</summary>
+    Task<ExpertGovernanceEventPageDto> ListPageForGroupAsync(
+        string expertUserId, int page, int pageSize, bool notificationsOnly = false,
+        int? eventType = null, string? search = null, CancellationToken ct = default);
+
     Task MarkReadAsync(Guid eventId, string expertUserId, CancellationToken ct = default);
     Task MarkAllNotificationsReadAsync(string expertUserId, CancellationToken ct = default);
 }
 
-public class ExpertGovernanceAuditService(IApplicationDbContext db) : IExpertGovernanceAuditService
+public class ExpertGovernanceAuditService(IApplicationDbContext db, IUserContactLookup contacts)
+    : IExpertGovernanceAuditService
 {
     public async Task RecordAsync(
         ExpertGovernanceEventType type,
@@ -53,8 +59,37 @@ public class ExpertGovernanceAuditService(IApplicationDbContext db) : IExpertGov
         await db.SaveChangesAsync(ct);
     }
 
-    public Task<IReadOnlyList<ExpertGovernanceEventDto>> ListForGroupAsync(
+    public async Task<IReadOnlyList<ExpertGovernanceEventDto>> ListForGroupAsync(
         string expertUserId, int take = 100, bool notificationsOnly = false, CancellationToken ct = default)
+    {
+        var list = Scope(expertUserId, notificationsOnly, null, null)
+            .OrderByDescending(e => e.CreatedAt)
+            .Take(Math.Clamp(take, 1, 500))
+            .ToList();
+        return await MapAsync(list, ct);
+    }
+
+    public async Task<ExpertGovernanceEventPageDto> ListPageForGroupAsync(
+        string expertUserId, int page, int pageSize, bool notificationsOnly = false,
+        int? eventType = null, string? search = null, CancellationToken ct = default)
+    {
+        pageSize = Math.Clamp(pageSize, 5, 200);
+        var q = Scope(expertUserId, notificationsOnly, eventType, search);
+        var total = q.Count();
+        // Une page demandée au-delà du total renverrait du vide : on retombe sur la dernière page.
+        var pages = Math.Max(1, (int)Math.Ceiling(total / (double)pageSize));
+        page = Math.Clamp(page, 1, pages);
+
+        var rows = q.OrderByDescending(e => e.CreatedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToList();
+        return new ExpertGovernanceEventPageDto(await MapAsync(rows, ct), total, page, pageSize);
+    }
+
+    /// <summary>Événements des groupes où l'utilisateur est membre actif, filtres appliqués.</summary>
+    private IQueryable<ExpertGovernanceEvent> Scope(
+        string expertUserId, bool notificationsOnly, int? eventType, string? search)
     {
         var groupIds = db.ExpertGroupMembers
             .Where(m => m.UserId == expertUserId && m.Status == ExpertMembershipStatus.Active)
@@ -66,9 +101,14 @@ public class ExpertGovernanceAuditService(IApplicationDbContext db) : IExpertGov
             .Where(e => e.ExpertGroupId.HasValue && groupIds.Contains(e.ExpertGroupId.Value));
         if (notificationsOnly)
             q = q.Where(e => e.IsNotification);
-
-        var list = q.OrderByDescending(e => e.CreatedAt).Take(Math.Clamp(take, 1, 500)).ToList();
-        return Task.FromResult(Map(list));
+        if (eventType is int t)
+            q = q.Where(e => (int)e.EventType == t);
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var needle = search.Trim();
+            q = q.Where(e => e.Summary.Contains(needle));
+        }
+        return q;
     }
 
     public async Task MarkReadAsync(Guid eventId, string expertUserId, CancellationToken ct = default)
@@ -100,10 +140,25 @@ public class ExpertGovernanceAuditService(IApplicationDbContext db) : IExpertGov
             await db.SaveChangesAsync(ct);
     }
 
-    private static IReadOnlyList<ExpertGovernanceEventDto> Map(List<ExpertGovernanceEvent> list) =>
-        list.Select(e => new ExpertGovernanceEventDto(
-            e.Id, e.ExpertGroupId, e.EventType, e.ActorUserId, null, e.Summary,
-            e.RelatedTenantId, e.RelatedEntityId, e.IsNotification, e.ReadAtUtc, e.CreatedAt)).ToList();
+    /// <summary>Le journal affiche l'acteur : sans ce nom, la colonne montrait l'identifiant brut.</summary>
+    private async Task<IReadOnlyList<ExpertGovernanceEventDto>> MapAsync(
+        List<ExpertGovernanceEvent> list, CancellationToken ct)
+    {
+        var names = new Dictionary<string, string?>(StringComparer.Ordinal);
+        var result = new List<ExpertGovernanceEventDto>(list.Count);
+        foreach (var e in list)
+        {
+            if (!names.TryGetValue(e.ActorUserId, out var name))
+            {
+                name = (await contacts.GetAsync(e.ActorUserId, ct))?.DisplayName;
+                names[e.ActorUserId] = name;
+            }
+            result.Add(new ExpertGovernanceEventDto(
+                e.Id, e.ExpertGroupId, e.EventType, e.ActorUserId, name, e.Summary,
+                e.RelatedTenantId, e.RelatedEntityId, e.IsNotification, e.ReadAtUtc, e.CreatedAt));
+        }
+        return result;
+    }
 }
 
 public interface IExpertWorkspaceService

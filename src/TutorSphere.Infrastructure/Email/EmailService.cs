@@ -33,6 +33,10 @@ internal static class EmailTemplates
     public const string LessonScheduled = "LESSON_SCHEDULED";
     public const string LessonReminder = "LESSON_REMINDER";
     public const string LessonCancelled = "LESSON_CANCELLED";
+    public const string LessonCoverageProposed = "LESSON_COVERAGE_PROPOSED";
+    public const string LessonCoverageSubstitute = "LESSON_COVERAGE_SUBSTITUTE";
+    public const string LessonCoverageApproved = "LESSON_COVERAGE_APPROVED";
+    public const string LessonCoverageRejected = "LESSON_COVERAGE_REJECTED";
 
     public const string ParentPaymentReceipt = "PARENT_PAYMENT_RECEIPT";
     public const string ParentPaymentRefunded = "PARENT_PAYMENT_REFUNDED";
@@ -601,6 +605,78 @@ public class EmailService : IEmailService
             ["Title"] = Fallback(title, "Réunion TutorSphere"),
             ["MinutesUrl"] = minutesUrl
         }, ct);
+
+    public async Task SendLessonCoverageProposedAsync(
+        string to,
+        string recipientName,
+        string studentName,
+        string lessonTitle,
+        DateTime lessonDate,
+        string originalTeacherName,
+        string substituteTeacherName,
+        string reason,
+        string actionUrl,
+        CancellationToken ct = default)
+    {
+        var culture = await ResolveCultureAsync(to, ct);
+        await SendAsync(to, EmailTemplates.LessonCoverageProposed, new Dictionary<string, string>
+        {
+            ["RecipientName"] = Fallback(recipientName, "Bonjour"),
+            ["StudentName"] = Fallback(studentName, "votre enfant"),
+            ["LessonTitle"] = Fallback(lessonTitle, "la séance"),
+            ["LessonDate"] = lessonDate.ToString("f", culture),
+            ["OriginalTeacherName"] = Fallback(originalTeacherName, "l'enseignant"),
+            ["SubstituteTeacherName"] = Fallback(substituteTeacherName, "un suppléant"),
+            ["Reason"] = Fallback(reason, "indisponibilité"),
+            ["ActionUrl"] = actionUrl
+        }, ct, culture.Name);
+    }
+
+    public async Task SendLessonCoverageSubstituteAsync(
+        string to,
+        string recipientName,
+        string originalTeacherName,
+        int lessonCount,
+        DateTime firstLessonDate,
+        string reason,
+        string actionUrl,
+        CancellationToken ct = default)
+    {
+        var culture = await ResolveCultureAsync(to, ct);
+        await SendAsync(to, EmailTemplates.LessonCoverageSubstitute, new Dictionary<string, string>
+        {
+            ["RecipientName"] = Fallback(recipientName, "Bonjour"),
+            ["OriginalTeacherName"] = Fallback(originalTeacherName, "un collègue"),
+            ["LessonCount"] = lessonCount.ToString(culture),
+            ["LessonDate"] = firstLessonDate.ToString("f", culture),
+            ["Reason"] = Fallback(reason, "indisponibilité"),
+            ["ActionUrl"] = actionUrl
+        }, ct, culture.Name);
+    }
+
+    public async Task SendLessonCoverageDecisionAsync(
+        string to,
+        string recipientName,
+        string lessonTitle,
+        DateTime lessonDate,
+        string originalTeacherName,
+        string substituteTeacherName,
+        bool approved,
+        string actionUrl,
+        CancellationToken ct = default)
+    {
+        var culture = await ResolveCultureAsync(to, ct);
+        var template = approved ? EmailTemplates.LessonCoverageApproved : EmailTemplates.LessonCoverageRejected;
+        await SendAsync(to, template, new Dictionary<string, string>
+        {
+            ["RecipientName"] = Fallback(recipientName, "Bonjour"),
+            ["LessonTitle"] = Fallback(lessonTitle, "la séance"),
+            ["LessonDate"] = lessonDate.ToString("f", culture),
+            ["OriginalTeacherName"] = Fallback(originalTeacherName, "l'enseignant"),
+            ["SubstituteTeacherName"] = Fallback(substituteTeacherName, "le suppléant"),
+            ["ActionUrl"] = actionUrl
+        }, ct, culture.Name);
+    }
 
     private static Dictionary<string, string> LessonBody(
         string recipientName,

@@ -162,6 +162,77 @@
             </div>
 
             <div class="th-grid">
+                @if (_isManager)
+                {
+                    <section class="th-card th-card--full" id="expert-meetings">
+                        <div class="th-card-head">
+                            <h2><i class="bi bi-camera-video me-2" aria-hidden="true"></i>Réunions</h2>
+                            <a class="th-link" href="expert/meetings">Voir tout <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
+                        </div>
+                        <div class="th-card-body">
+                            @if (_meetings.Count == 0)
+                            {
+                                <div class="th-msg-empty">
+                                    <span class="th-msg-empty-icon"><i class="bi bi-calendar-plus" aria-hidden="true"></i></span>
+                                    <div>
+                                        <strong>Aucune réunion programmée</strong>
+                                        <span class="th-setup-text">Planifiez une rencontre avec les membres du groupe.</span>
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                <ul class="th-people">
+                                    @foreach (var m in PagedMeetings)
+                                    {
+                                        <li class="th-person">
+                                            <span class="th-kpi-icon th-kpi-icon--violet"><i class="bi bi-camera-video" aria-hidden="true"></i></span>
+                                            <div class="th-person-body">
+                                                <strong>@m.Title</strong>
+                                                <span>@StatusFr(m.Status) · @(m.StartAtUtc?.ToLocalTime().ToString("g") ?? "Brouillon")</span>
+                                            </div>
+                                            @if (m.Status is 1 or 2)
+                                            {
+                                                <a class="btn btn-sm btn-primary" href="@($"expert/meetings/{m.Id}/room")">Rejoindre</a>
+                                            }
+                                            else if (m.Status == 3)
+                                            {
+                                                <a class="btn btn-sm btn-outline-secondary" href="@($"expert/meetings/{m.Id}/minutes")">Compte rendu</a>
+                                            }
+                                        </li>
+                                    }
+                                </ul>
+
+                                @if (MeetingPageCount > 1)
+                                {
+                                    <div class="th-mini-pager">
+                                        <span>@MeetingFrom à @MeetingTo sur @_meetings.Count réunions</span>
+                                        <div class="th-mini-pager-nav">
+                                            <button type="button" class="btn btn-sm btn-outline-secondary"
+                                                    disabled="@(_meetingPage <= 1)" aria-label="Page précédente"
+                                                    @onclick="() => GoMeetingPage(_meetingPage - 1)">
+                                                <i class="bi bi-chevron-left" aria-hidden="true"></i>
+                                            </button>
+                                            <span>@_meetingPage / @MeetingPageCount</span>
+                                            <button type="button" class="btn btn-sm btn-outline-secondary"
+                                                    disabled="@(_meetingPage >= MeetingPageCount)" aria-label="Page suivante"
+                                                    @onclick="() => GoMeetingPage(_meetingPage + 1)">
+                                                <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                }
+                            }
+                        </div>
+                        <div class="th-card-foot th-card-foot--actions">
+                            <a class="btn btn-sm btn-primary" href="expert/meetings/create">
+                                <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>Créer une réunion
+                            </a>
+                            <a class="btn btn-sm btn-outline-secondary" href="expert/meetings">Toutes les réunions</a>
+                        </div>
+                    </section>
+                }
+
                 <section class="th-card th-card--half" id="expert-enrollments">
                     <div class="th-card-head">
                         <h2>Inscriptions en attente de l'enseignant</h2>
@@ -382,56 +453,6 @@
                     </div>
                 </section>
 
-                @if (_isManager)
-                {
-                    <section class="th-card th-card--full">
-                        <div class="th-card-head">
-                            <h2><i class="bi bi-camera-video me-2" aria-hidden="true"></i>Réunions</h2>
-                            <a class="th-link" href="expert/meetings">Voir tout <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
-                        </div>
-                        <div class="th-card-body">
-                            @if (_meetings.Count == 0)
-                            {
-                                <div class="th-msg-empty">
-                                    <span class="th-msg-empty-icon"><i class="bi bi-calendar-plus" aria-hidden="true"></i></span>
-                                    <div>
-                                        <strong>Aucune réunion programmée</strong>
-                                        <span class="th-setup-text">Planifiez une rencontre avec les membres du groupe.</span>
-                                    </div>
-                                </div>
-                            }
-                            else
-                            {
-                                <ul class="th-people">
-                                    @foreach (var m in _meetings)
-                                    {
-                                        <li class="th-person">
-                                            <span class="th-kpi-icon th-kpi-icon--violet"><i class="bi bi-camera-video" aria-hidden="true"></i></span>
-                                            <div class="th-person-body">
-                                                <strong>@m.Title</strong>
-                                                <span>@StatusFr(m.Status) · @(m.StartAtUtc?.ToLocalTime().ToString("g") ?? "Brouillon")</span>
-                                            </div>
-                                            @if (m.Status is 1 or 2)
-                                            {
-                                                <a class="btn btn-sm btn-primary" href="@($"expert/meetings/{m.Id}/room")">Rejoindre</a>
-                                            }
-                                            else if (m.Status == 3)
-                                            {
-                                                <a class="btn btn-sm btn-outline-secondary" href="@($"expert/meetings/{m.Id}/minutes")">Compte rendu</a>
-                                            }
-                                        </li>
-                                    }
-                                </ul>
-                            }
-                        </div>
-                        <div class="th-card-foot th-card-foot--actions">
-                            <a class="btn btn-sm btn-primary" href="expert/meetings/create">
-                                <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>Créer une réunion
-                            </a>
-                            <a class="btn btn-sm btn-outline-secondary" href="expert/meetings">Toutes les réunions</a>
-                        </div>
-                    </section>
-                }
             </div>
         }
     </Authorized>
@@ -451,6 +472,8 @@
     private bool _isManager;
     private DashboardSummary? _summary;
     private readonly List<MeetingItem> _meetings = [];
+    private const int MeetingPageSize = 5;
+    private int _meetingPage = 1;
     private List<ExpertPendingEnrollmentDto> _enrollments = [];
     private Guid? _busyEnrollmentId;
     private string? _enrollError;
@@ -459,6 +482,14 @@
     private int ReviewQueue => _summary is null
         ? 0
         : _summary.TeachersPending + _summary.TeachersUnderReview + _summary.TeachersChangesRequested;
+
+    private int MeetingPageCount => Math.Max(1, (int)Math.Ceiling(_meetings.Count / (double)MeetingPageSize));
+    private int MeetingFrom => _meetings.Count == 0 ? 0 : ((_meetingPage - 1) * MeetingPageSize) + 1;
+    private int MeetingTo => Math.Min(_meetings.Count, _meetingPage * MeetingPageSize);
+    private IEnumerable<MeetingItem> PagedMeetings =>
+        _meetings.Skip((_meetingPage - 1) * MeetingPageSize).Take(MeetingPageSize);
+
+    private void GoMeetingPage(int page) => _meetingPage = Math.Clamp(page, 1, MeetingPageCount);
 
     protected override async Task OnInitializedAsync()
     {
@@ -487,8 +518,9 @@
 
             if (_isManager)
             {
+                // Toutes les réunions vivantes : la carte les parcourt cinq par cinq.
                 var list = await Api.GetAsync<List<MeetingItem>>("api/expert/meetings") ?? [];
-                _meetings.AddRange(list.Where(m => m.Status is not 4).Take(4));
+                _meetings.AddRange(list.Where(m => m.Status is not 4));
             }
         }
         catch (Exception ex)

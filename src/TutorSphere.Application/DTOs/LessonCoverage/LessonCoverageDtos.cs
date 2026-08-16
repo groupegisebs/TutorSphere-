@@ -13,6 +13,13 @@ public record CreateLessonCoverageRequest(
 
 public record RespondLessonCoverageRequest(bool Approve);
 
+/// <summary>Absence saisie par le responsable pour un enseignant du groupe (appel, arrêt, imprévu).</summary>
+public record DeclareTeacherAbsenceRequest(
+    Guid TenantId,
+    DateTime StartTime,
+    DateTime EndTime,
+    string? Reason);
+
 public record LessonCoverageDto(
     Guid Id,
     Guid LessonId,

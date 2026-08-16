@@ -50,7 +50,22 @@
         @if (_canManage)
         {
             <div class="cc-card mb-3">
-                <h2 class="cc-card-title">@(_editId is null ? "Nouvelle offre (brouillon)" : "Modifier l'offre")</h2>
+                <button type="button" class="off-toggle" aria-expanded="@(_formOpen ? "true" : "false")"
+                        @onclick="() => _formOpen = !_formOpen">
+                    <h2 class="cc-card-title mb-0">@(_editId is null ? "Nouvelle offre (brouillon)" : "Modifier l'offre")</h2>
+                    <span class="off-toggle-ic" aria-hidden="true">
+                        <i class="bi @(_formOpen ? "bi-dash-lg" : "bi-plus-lg")"></i>
+                    </span>
+                </button>
+                @if (!_formOpen)
+                {
+                    <p class="small text-muted mb-0">
+                        @(_editId is null
+                            ? "Dépliez pour créer une offre du groupe."
+                            : "Dépliez pour reprendre la modification en cours.")
+                    </p>
+                }
+                <div class="@(_formOpen ? "" : "d-none")">
                 <div class="row g-2">
                     <div class="col-md-6">
                         <label class="form-label">Nom *</label>
@@ -99,6 +114,7 @@
                 <p class="small text-muted mt-2 mb-0">
                     Devise internationale : Europe → EUR · Canada → $CAD · USA → $USD · Cameroun / Afrique → XAF.
                 </p>
+                </div>
             </div>
         }
 
@@ -230,10 +246,24 @@
     </Authorized>
 </AuthorizeView>
 
+<style>
+    .off-toggle {
+        display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+        width: 100%; background: none; border: 0; padding: 0; text-align: left;
+    }
+    .off-toggle-ic {
+        flex: 0 0 auto; width: 2rem; height: 2rem; border-radius: 999px;
+        display: inline-flex; align-items: center; justify-content: center;
+        border: 1px solid #e2e8f0; color: #5831E0; background: #f8fafc;
+    }
+    .off-toggle:hover .off-toggle-ic { background: #f4efff; border-color: #d8ccff; }
+</style>
+
 @code {
     private bool _loading = true;
     private bool _busy;
     private bool _canManage;
+    private bool _formOpen;
     private string? _error;
     private string? _info;
     private string _name = "";
@@ -314,6 +344,7 @@
 
     private void BeginEdit(OfferItem o)
     {
+        _formOpen = true;
         _editId = o.Id;
         _name = o.Name;
         _code = o.Code;

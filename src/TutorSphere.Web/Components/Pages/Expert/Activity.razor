@@ -21,13 +21,31 @@
         }
 
         <div class="cc-card">
+            <div class="cc-card-header d-flex flex-wrap gap-2 align-items-center justify-content-between">
+                <h2 class="cc-card-title mb-0">Événements</h2>
+                @* Recherche validée à la sortie du champ : évite un aller-retour serveur par frappe. *@
+                <div class="d-flex gap-2 flex-wrap">
+                    <input class="form-control form-control-sm" style="width:16rem"
+                           placeholder="Rechercher un résumé…" @bind="_search" @bind:after="OnFilterChangedAsync" />
+                    <select class="form-select form-select-sm" style="width:13rem" @bind="_type" @bind:after="OnFilterChangedAsync">
+                        <option value="">Tous les types</option>
+                        @foreach (var t in KnownTypes)
+                        {
+                            <option value="@t">@EventTypeLabel(t)</option>
+                        }
+                    </select>
+                </div>
+            </div>
+
             @if (_loading)
             {
                 <span class="spinner-border"></span>
             }
             else if (_events.Count == 0)
             {
-                <p class="text-muted mb-0">Aucun événement enregistré.</p>
+                <p class="text-muted mb-0">
+                    @(HasFilter ? "Aucun événement ne correspond à cette recherche." : "Aucun événement enregistré.")
+                </p>
             }
             else
             {
@@ -52,6 +70,26 @@
                         }
                     </tbody>
                 </table>
+
+                <div class="ex-table-foot">
+                    <span>Affichage de @FromRow à @ToRow sur @_total événement@(_total > 1 ? "s" : "")</span>
+                    <div class="ex-table-pager">
+                        <select class="form-select form-select-sm" @bind="_pageSize" @bind:after="OnPageSizeChangedAsync">
+                            <option value="20">20 par page</option>
+                            <option value="50">50 par page</option>
+                            <option value="100">100 par page</option>
+                        </select>
+                        <button type="button" class="cc-btn btn-sm" disabled="@(_page <= 1)" @onclick="() => GoPageAsync(1)">«</button>
+                        <button type="button" class="cc-btn btn-sm" disabled="@(_page <= 1)" @onclick="() => GoPageAsync(_page - 1)">‹</button>
+                        @foreach (var p in PageWindow)
+                        {
+                            <button type="button" class="ex-page-n @(_page == p ? "is-on" : null)"
+                                    @onclick="() => GoPageAsync(p)">@p</button>
+                        }
+                        <button type="button" class="cc-btn btn-sm" disabled="@(_page >= PageCount)" @onclick="() => GoPageAsync(_page + 1)">›</button>
+                        <button type="button" class="cc-btn btn-sm" disabled="@(_page >= PageCount)" @onclick="() => GoPageAsync(PageCount)">»</button>
+                    </div>
+                </div>
             }
         </div>
     </Authorized>
@@ -61,6 +99,28 @@
     private bool _loading = true;
     private string? _error;
     private List<GovernanceEvent> _events = [];
+    private int _total;
+    private int _page = 1;
+    private int _pageSize = 20;
+    private string _search = "";
+    private string _type = "";
+
+    private bool HasFilter => !string.IsNullOrWhiteSpace(_search) || !string.IsNullOrEmpty(_type);
+    private int PageCount => Math.Max(1, (int)Math.Ceiling(_total / (double)_pageSize));
+    private int FromRow => _total == 0 ? 0 : ((_page - 1) * _pageSize) + 1;
+    private int ToRow => Math.Min(_total, _page * _pageSize);
+
+    /// <summary>Fenêtre de numéros autour de la page courante : un journal peut compter des centaines de pages.</summary>
+    private IEnumerable<int> PageWindow
+    {
+        get
+        {
+            var first = Math.Max(1, _page - 2);
+            var last = Math.Min(PageCount, first + 4);
+            first = Math.Max(1, last - 4);
+            return Enumerable.Range(first, last - first + 1);
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -73,12 +133,45 @@
         _loading = true;
         try
         {
-            _events = await Api.GetAsync<List<GovernanceEvent>>("api/expert/activity?take=100") ?? [];
+            var url = $"api/expert/activity/page?page={_page}&pageSize={_pageSize}";
+            if (!string.IsNullOrWhiteSpace(_search))
+                url += $"&search={Uri.EscapeDataString(_search.Trim())}";
+            if (!string.IsNullOrEmpty(_type))
+                url += $"&type={_type}";
+
+            var result = await Api.GetAsync<EventPage>(url);
+            _events = result?.Items ?? [];
+            _total = result?.Total ?? 0;
+            _page = result?.Page ?? 1;
             _error = null;
         }
         catch (Exception ex) { _error = ex.Message; }
         finally { _loading = false; }
     }
+
+    private Task OnFilterChangedAsync()
+    {
+        _page = 1;
+        return LoadAsync();
+    }
+
+    private Task OnPageSizeChangedAsync()
+    {
+        _page = 1;
+        return LoadAsync();
+    }
+
+    private Task GoPageAsync(int page)
+    {
+        var target = Math.Clamp(page, 1, PageCount);
+        if (target == _page) return Task.CompletedTask;
+        _page = target;
+        return LoadAsync();
+    }
+
+    private static readonly int[] KnownTypes =
+        [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+         20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30];
 
     private static string EventTypeLabel(int t) => t switch
     {
@@ -99,13 +192,30 @@
         14 => "Remarque ajoutée",
         15 => "Offre créée",
         16 => "Offre publiée",
+        17 => "Échange direction ouvert",
+        18 => "Message direction",
+        19 => "Mandat responsable clos",
         20 => "Rôle membre",
         21 => "Membre suspendu",
         22 => "Membre réactivé",
         23 => "Membre retiré",
         24 => "Permissions membre",
+        25 => "Rôle de groupe créé",
+        26 => "Réunion programmée",
+        27 => "Réunion modifiée",
+        28 => "Réunion annulée",
+        29 => "Réunion démarrée",
+        30 => "Réunion terminée",
         _ => t.ToString()
     };
+
+    private sealed class EventPage
+    {
+        public List<GovernanceEvent>? Items { get; set; }
+        public int Total { get; set; }
+        public int Page { get; set; }
+        public int PageSize { get; set; }
+    }
 
     private sealed record GovernanceEvent(
         Guid Id, Guid? ExpertGroupId, int EventType, string ActorUserId, string? ActorName,

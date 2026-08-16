@@ -31,6 +31,51 @@ public class ExpertLessonCoverageController(
         }
     }
 
+    /// <summary>Enseignants approuvés du groupe, pour déclarer une absence à leur place.</summary>
+    [HttpGet("teachers")]
+    public async Task<ActionResult<IReadOnlyList<LessonCoverageTeacherOptionDto>>> Teachers(CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        try
+        {
+            return Ok(await coverage.ListGroupTeachersAsync(UserId, ResolveGroup(), ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("unavailable")]
+    public async Task<ActionResult<UnavailableTeacherDto>> DeclareAbsence(
+        [FromBody] DeclareTeacherAbsenceRequest request, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        try
+        {
+            return Ok(await coverage.DeclareAbsenceAsync(UserId, request, ResolveGroup(), ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpDelete("unavailable/{id:guid}")]
+    public async Task<IActionResult> DeleteAbsence(Guid id, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        try
+        {
+            await coverage.DeleteAbsenceAsync(UserId, id, ResolveGroup(), ct);
+            return NoContent();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     [HttpGet("substitutes")]
     public async Task<ActionResult<IReadOnlyList<LessonCoverageTeacherOptionDto>>> Substitutes(
         [FromQuery] Guid originalTenantId, CancellationToken ct)

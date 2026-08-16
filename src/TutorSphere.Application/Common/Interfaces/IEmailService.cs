@@ -47,6 +47,43 @@ public interface IEmailService
     Task SendLessonReminderAsync(string to, string recipientName, string tutorName, string subject, DateTime lessonDate, CancellationToken ct = default);
     Task SendLessonCancelledAsync(string to, string recipientName, string tutorName, string subject, DateTime lessonDate, CancellationToken ct = default);
 
+    // Remplacement d'enseignant (suppléance)
+    /// <summary>Demande d'accord adressée au parent ou à l'élève autonome, avec lien de réponse.</summary>
+    Task SendLessonCoverageProposedAsync(
+        string to,
+        string recipientName,
+        string studentName,
+        string lessonTitle,
+        DateTime lessonDate,
+        string originalTeacherName,
+        string substituteTeacherName,
+        string reason,
+        string actionUrl,
+        CancellationToken ct = default);
+
+    /// <summary>Le suppléant apprend qu'on lui propose les séances d'un collègue absent.</summary>
+    Task SendLessonCoverageSubstituteAsync(
+        string to,
+        string recipientName,
+        string originalTeacherName,
+        int lessonCount,
+        DateTime firstLessonDate,
+        string reason,
+        string actionUrl,
+        CancellationToken ct = default);
+
+    /// <summary>Décision de la famille communiquée aux deux enseignants.</summary>
+    Task SendLessonCoverageDecisionAsync(
+        string to,
+        string recipientName,
+        string lessonTitle,
+        DateTime lessonDate,
+        string originalTeacherName,
+        string substituteTeacherName,
+        bool approved,
+        string actionUrl,
+        CancellationToken ct = default);
+
     // Parent billing
     Task SendParentPaymentReceiptAsync(string to, string parentName, string studentName, decimal amount, string invoiceUrl, CancellationToken ct = default);
     Task SendParentPaymentRefundedAsync(

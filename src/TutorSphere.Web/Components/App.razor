@@ -66,14 +66,28 @@
         </div>
     </div>
 
+    @* Scripts chargés à la demande : URL empreintées, sinon un cache périmé rend classroomMedia introuvable. *@
+    <script>
+        window.tsAssetMap = {
+            'js/whiteboard.js': '@Assets["js/whiteboard.js"]',
+            'js/classroom-virtual-bg.js': '@Assets["js/classroom-virtual-bg.js"]',
+            'js/classroom-media.js': '@Assets["js/classroom-media.js"]',
+            'js/classroom-rtc.js': '@Assets["js/classroom-rtc.js"]',
+            'css/classroom-pro.css': '@Assets["css/classroom-pro.css"]',
+            'js/landing.js': '@Assets["js/landing.js"]',
+            'js/presentation-recorder.js': '@Assets["js/presentation-recorder.js"]'
+        };
+    </script>
+
     @* auth-storage must load before Blazor so login can persist the JWT immediately *@
-    <script src="js/auth-storage.js"></script>
-    <script src="js/page-assets.js"></script>
+    @* URL versionnées : sans elles, un navigateur gardait un page-assets.js périmé (moteurs média absents). *@
+    <script src="@Assets["js/auth-storage.js"]"></script>
+    <script src="@Assets["js/page-assets.js"]"></script>
     <script src="@Assets["_framework/blazor.web.js"]" autostart="false"></script>
-    <script src="js/culture.js"></script>
-    <script src="js/file-download.js"></script>
-    <script src="js/ts-image-crop.js"></script>
-    <script src="js/pwa-install.js"></script>
+    <script src="@Assets["js/culture.js"]"></script>
+    <script src="@Assets["js/file-download.js"]"></script>
+    <script src="@Assets["js/ts-image-crop.js"]"></script>
+    <script src="@Assets["js/pwa-install.js"]"></script>
     <script>
         Blazor.start({
             circuit: {

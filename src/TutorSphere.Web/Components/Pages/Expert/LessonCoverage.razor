@@ -18,6 +18,9 @@
                     Le parent (ou l'élève autonome) doit accepter : le cours continue, l'enseignant change, et la part tuteur suit le suppléant.
                 </p>
             </div>
+            <button type="button" class="cc-btn cc-btn-primary" @onclick="OpenAbsenceAsync">
+                <i class="bi bi-calendar-x"></i> Déclarer une absence
+            </button>
         </div>
 
         @if (!string.IsNullOrEmpty(_error))
@@ -39,7 +42,8 @@
                 else if (_unavailable.Count == 0)
                 {
                     <p class="text-muted mb-0">
-                        Aucune indisponibilité à venir. L'enseignant doit d'abord marquer une période dans son agenda.
+                        Aucune indisponibilité à venir. L'enseignant peut la marquer dans son agenda,
+                        ou vous la déclarez pour lui avec « Déclarer une absence ».
                     </p>
                 }
                 else
@@ -48,7 +52,7 @@
                         @foreach (var u in _unavailable)
                         {
                             var selected = _selectedUnav?.UnavailabilityId == u.UnavailabilityId;
-                            <li>
+                            <li class="lc-unav-item">
                                 <button type="button" class="lc-unav @(selected ? "is-selected" : "")" @onclick="() => SelectUnavailabilityAsync(u)">
                                     <strong>@u.Name</strong>
                                     <span>@u.StartTime.ToLocalTime().ToString("dd/MM HH:mm") → @u.EndTime.ToLocalTime().ToString("dd/MM HH:mm")</span>
@@ -57,6 +61,11 @@
                                     {
                                         <em>@u.Reason</em>
                                     }
+                                </button>
+                                <button type="button" class="lc-unav-del" disabled="@_busy"
+                                        title="Retirer cette période" aria-label="Retirer cette période"
+                                        @onclick="() => DeleteAbsenceAsync(u)">
+                                    <i class="bi bi-trash"></i>
                                 </button>
                             </li>
                         }
@@ -206,6 +215,64 @@
                 </table>
             }
         </div>
+        @if (_absenceOpen)
+        {
+            <div class="lc-modal-back" @onclick="CloseAbsence">
+                <div class="lc-modal" @onclick:stopPropagation="true">
+                    <h2 class="cc-card-title">Déclarer une absence</h2>
+                    <p class="text-muted small">
+                        La période s'ajoute à l'agenda de l'enseignant et ses séances deviennent réaffectables à un suppléant.
+                    </p>
+
+                    @if (!string.IsNullOrEmpty(_absenceError))
+                    {
+                        <div class="alert alert-danger">@_absenceError</div>
+                    }
+
+                    <div class="mb-3">
+                        <label class="form-label" for="lc-abs-teacher">Enseignant</label>
+                        @if (_teachers.Count == 0)
+                        {
+                            <p class="text-muted small mb-0">Aucun enseignant approuvé dans le groupe.</p>
+                        }
+                        else
+                        {
+                            <select id="lc-abs-teacher" class="form-select" @bind="_absenceTenantId">
+                                <option value="">Choisir un enseignant…</option>
+                                @foreach (var t in _teachers)
+                                {
+                                    <option value="@t.TenantId">@t.Name</option>
+                                }
+                            </select>
+                        }
+                    </div>
+
+                    <div class="lc-abs-times">
+                        <div>
+                            <label class="form-label" for="lc-abs-start">Du</label>
+                            <input id="lc-abs-start" type="datetime-local" class="form-control" @bind="_absenceStart" />
+                        </div>
+                        <div>
+                            <label class="form-label" for="lc-abs-end">Au</label>
+                            <input id="lc-abs-end" type="datetime-local" class="form-control" @bind="_absenceEnd" />
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label" for="lc-abs-reason">Motif</label>
+                        <input id="lc-abs-reason" class="form-control" maxlength="200" @bind="_absenceReason"
+                               placeholder="Arrêt maladie, déplacement, congé…" />
+                    </div>
+
+                    <div class="lc-modal-actions">
+                        <button type="button" class="cc-btn" disabled="@_busy" @onclick="CloseAbsence">Annuler</button>
+                        <button type="button" class="cc-btn cc-btn-primary" disabled="@(!CanDeclare)" @onclick="SaveAbsenceAsync">
+                            @(_busy ? "Enregistrement…" : "Enregistrer l'absence")
+                        </button>
+                    </div>
+                </div>
+            </div>
+        }
     </Authorized>
     <NotAuthorized>
         <div class="cc-card cc-empty">
@@ -225,6 +292,23 @@
     .lc-unav strong { color: #0f172a; }
     .lc-unav span, .lc-unav em { font-size: 0.8rem; color: #64748b; font-style: normal; }
     .lc-unav.is-selected { border-color: #5831E0; background: #f4efff; }
+    .lc-unav-item { display: flex; align-items: start; gap: 0.35rem; }
+    .lc-unav-item .lc-unav { flex: 1; }
+    .lc-unav-del {
+        border: 1px solid #e2e8f0; background: #fff; border-radius: 10px; color: #b91c1c;
+        padding: 0.4rem 0.55rem; line-height: 1;
+    }
+    .lc-unav-del:hover:not(:disabled) { background: #fef2f2; border-color: #fecaca; }
+    .lc-modal-back {
+        position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); z-index: 1050;
+        display: flex; align-items: center; justify-content: center; padding: 1rem;
+    }
+    .lc-modal {
+        background: #fff; border-radius: 16px; padding: 1.25rem; width: min(520px, 100%);
+        max-height: 90vh; overflow: auto; box-shadow: 0 18px 40px rgba(15, 23, 42, 0.25);
+    }
+    .lc-abs-times { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1rem; }
+    .lc-modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
     .lc-lessons { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.35rem; max-height: 280px; overflow: auto; }
     .lc-lesson { display: flex; gap: 0.6rem; align-items: flex-start; padding: 0.45rem 0.2rem; }
     .lc-lesson span { display: grid; gap: 0.1rem; font-size: 0.85rem; }
@@ -244,6 +328,13 @@
     private string _substituteId = "";
     private List<UnavailableTeacherDto> _unavailable = [];
     private List<LessonCoverageTeacherOptionDto> _substitutes = [];
+    private List<LessonCoverageTeacherOptionDto> _teachers = [];
+    private bool _absenceOpen;
+    private string? _absenceError;
+    private string _absenceTenantId = "";
+    private string _absenceReason = "";
+    private DateTime _absenceStart = DateTime.Now.Date.AddDays(1).AddHours(8);
+    private DateTime _absenceEnd = DateTime.Now.Date.AddDays(1).AddHours(18);
     private List<LessonCoverageDto> _upcoming = [];
     private List<LessonCoverageDto> _assignments = [];
     private HashSet<Guid> _selectedLessonIds = [];
@@ -256,6 +347,8 @@
         && Guid.TryParse(_substituteId, out _)
         && _reason.Trim().Length >= 3
         && _selectedLessonIds.Count > 0;
+    private bool CanDeclare =>
+        !_busy && Guid.TryParse(_absenceTenantId, out _) && _absenceEnd > _absenceStart;
 
     protected override async Task OnInitializedAsync()
     {
@@ -283,6 +376,78 @@
             _loadingUnav = false;
             _loadingAssign = false;
         }
+    }
+
+    private async Task OpenAbsenceAsync()
+    {
+        _absenceError = null;
+        _success = null;
+        _absenceOpen = true;
+        if (_teachers.Count == 0)
+        {
+            var res = await Api.GetWithErrorAsync<List<LessonCoverageTeacherOptionDto>>("api/expert/lesson-coverage/teachers");
+            if (res.Error is not null) { _absenceError = res.Error; return; }
+            _teachers = res.Value ?? [];
+        }
+    }
+
+    private void CloseAbsence()
+    {
+        _absenceOpen = false;
+        _absenceError = null;
+    }
+
+    private async Task SaveAbsenceAsync()
+    {
+        if (!CanDeclare) return;
+        _busy = true;
+        _absenceError = null;
+        try
+        {
+            var body = new
+            {
+                tenantId = Guid.Parse(_absenceTenantId),
+                startTime = DateTime.SpecifyKind(_absenceStart, DateTimeKind.Local).ToUniversalTime(),
+                endTime = DateTime.SpecifyKind(_absenceEnd, DateTimeKind.Local).ToUniversalTime(),
+                reason = string.IsNullOrWhiteSpace(_absenceReason) ? null : _absenceReason.Trim()
+            };
+            var created = await Api.PostWithErrorAsync<UnavailableTeacherDto>("api/expert/lesson-coverage/unavailable", body);
+            if (created.Error is not null) { _absenceError = created.Error; return; }
+
+            _absenceOpen = false;
+            _absenceReason = "";
+            _success = created.Value is { UpcomingLessonCount: 0 }
+                ? "Absence enregistrée. Aucune séance planifiée sur cette période : rien à réaffecter pour l'instant."
+                : "Absence enregistrée. Choisissez maintenant un suppléant pour ses séances.";
+            await ReloadListsAsync();
+            var fresh = created.Value is null
+                ? null
+                : _unavailable.FirstOrDefault(u => u.UnavailabilityId == created.Value.UnavailabilityId);
+            if (fresh is not null)
+                await SelectUnavailabilityAsync(fresh);
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task DeleteAbsenceAsync(UnavailableTeacherDto u)
+    {
+        _busy = true;
+        _error = null;
+        _success = null;
+        try
+        {
+            var res = await Api.DeleteWithErrorAsync($"api/expert/lesson-coverage/unavailable/{u.UnavailabilityId}");
+            if (res.Error is not null) { _error = res.Error; return; }
+            if (_selectedUnav?.UnavailabilityId == u.UnavailabilityId)
+            {
+                _selectedUnav = null;
+                _upcoming = [];
+                _selectedLessonIds.Clear();
+            }
+            _success = "Période retirée.";
+            await ReloadListsAsync();
+        }
+        finally { _busy = false; }
     }
 
     private async Task SelectUnavailabilityAsync(UnavailableTeacherDto u)

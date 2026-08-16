@@ -15,6 +15,13 @@ public record ExpertGovernanceEventDto(
     DateTime? ReadAtUtc,
     DateTime CreatedAt);
 
+/// <summary>Une page du journal d'activité, avec le total pour caler la pagination.</summary>
+public record ExpertGovernanceEventPageDto(
+    IReadOnlyList<ExpertGovernanceEventDto> Items,
+    int Total,
+    int Page,
+    int PageSize);
+
 public record ExpertWorkspaceItemDto(
     Guid Id,
     Guid ExpertGroupId,

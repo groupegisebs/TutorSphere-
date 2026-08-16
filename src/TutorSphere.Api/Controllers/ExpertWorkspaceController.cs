@@ -88,6 +88,20 @@ public class ExpertWorkspaceController : ControllerBase
         return Ok(await _audit.ListForGroupAsync(UserId, take, notificationsOnly: false, ct));
     }
 
+    /// <summary>Journal d'activité paginé, avec recherche et filtre par type.</summary>
+    [HttpGet("activity/page")]
+    public async Task<ActionResult<ExpertGovernanceEventPageDto>> ActivityPage(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20,
+        [FromQuery] int? type = null,
+        [FromQuery] string? search = null,
+        CancellationToken ct = default)
+    {
+        if (UserId is null) return Unauthorized();
+        return Ok(await _audit.ListPageForGroupAsync(
+            UserId, page, pageSize, notificationsOnly: false, type, search, ct));
+    }
+
     [HttpGet("notifications")]
     public async Task<ActionResult<IReadOnlyList<ExpertGovernanceEventDto>>> Notifications(
         [FromQuery] int take = 50, CancellationToken ct = default)
