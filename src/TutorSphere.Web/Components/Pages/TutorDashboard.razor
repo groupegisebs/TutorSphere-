@@ -11,249 +11,292 @@
 
 <PageTitle>@L["PageTitle_TutorDashboard"]</PageTitle>
 
-<div class="dashboard-header">
+<div class="th-head">
     <div>
-        <h1 class="dashboard-greeting">@L["TutorDashboard_Subtitle_Welcome", DisplayName]</h1>
-        <p class="dashboard-date">@L["TutorHome_Subtitle"]</p>
+        <h1 class="th-greeting">@L["TutorHome_Greeting", DisplayName]</h1>
+        <p class="th-subtitle">@L["TutorHome_Subtitle"]</p>
     </div>
+    <a href="tutor/calendar" class="btn btn-primary">
+        <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>@L["TutorHome_PlanCourse"]
+    </a>
 </div>
 
-<!-- Prochain cours : action principale -->
-<div class="tdash-hero @(IsJoinable ? "tdash-hero--live" : null)">
+<div class="th-hero @(IsJoinable ? "th-hero--live" : null)">
     @if (_loading)
     {
-        <div class="ts-loading-state" style="padding:1rem 0">
+        <div class="th-hero-main">
             <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
-            <span class="ms-2 text-muted">@L["Common_Loading"]</span>
+            <span class="text-muted">@L["Common_Loading"]</span>
         </div>
     }
     else if (_nextSession is null)
     {
-        <div class="tdash-hero-main">
-            <div class="tdash-hero-icon"><i class="bi bi-calendar2-week"></i></div>
+        <div class="th-hero-main">
+            <div class="th-hero-icon"><i class="bi bi-calendar2-week" aria-hidden="true"></i></div>
             <div>
-                <span class="tdash-hero-badge tdash-hero-badge--muted">@L["TutorHome_NextCourse"]</span>
-                <h2 class="tdash-hero-title">@L["TutorHome_NoNextCourse"]</h2>
+                <span class="th-badge th-badge--muted">@L["TutorHome_NextCourse"]</span>
+                <h2 class="th-hero-title">@L["TutorHome_NoNextCourse"]</h2>
             </div>
+        </div>
+        <div class="th-hero-actions">
+            <a href="tutor/calendar" class="btn btn-outline-secondary">@L["TutorHome_ViewCalendar"]</a>
         </div>
     }
     else
     {
-        <div class="tdash-hero-main">
-            <div class="tdash-hero-icon"><i class="bi bi-easel2"></i></div>
+        <div class="th-hero-main">
+            <div class="th-hero-icon"><i class="bi bi-calendar2-event" aria-hidden="true"></i></div>
             <div>
-                <span class="tdash-hero-badge">@WhenLabel(_nextSession)</span>
-                <h2 class="tdash-hero-title">@_nextSession.Title</h2>
-                <p class="tdash-hero-meta">
+                <span class="th-badge">@WhenLabel(_nextSession)</span>
+                <h2 class="th-hero-title">@SessionLine(_nextSession)</h2>
+                <p class="th-hero-meta">
                     @if (!string.IsNullOrWhiteSpace(_nextSession.StudentNames))
                     {
-                        <span><i class="bi bi-person me-1"></i>@_nextSession.StudentNames</span>
+                        <span><i class="bi bi-person" aria-hidden="true"></i>@_nextSession.StudentNames</span>
                     }
-                    <span><i class="bi bi-clock me-1"></i>@_nextSession.DurationLabel</span>
-                    <span><i class="bi bi-display me-1"></i>@_nextSession.Mode</span>
+                    <span><i class="bi bi-clock" aria-hidden="true"></i>@_nextSession.DurationLabel</span>
+                    <span><i class="bi bi-display" aria-hidden="true"></i>@_nextSession.Mode</span>
                 </p>
+                <span class="th-hero-tag">@KindLabel(_nextSession)</span>
             </div>
         </div>
-        <div class="tdash-hero-actions">
-            <button type="button" class="btn btn-primary @(IsJoinable ? "btn-lg" : null)"
-                    @onclick="async () => await JoinClassroomAsync(_nextSession)">
-                <i class="bi bi-camera-video me-1"></i>@L["TutorHome_JoinCourse"]
+        <div class="th-hero-actions">
+            <button type="button" class="btn btn-primary" @onclick="async () => await JoinClassroomAsync(_nextSession)">
+                @L["TutorHome_JoinCourse"]
             </button>
-            <a href="tutor/lessons" class="btn btn-outline-secondary">@L["TutorHome_ViewSheet"]</a>
+            <a href="tutor/lessons" class="btn btn-outline-secondary btn-sm">@L["TutorHome_ViewSheet"]</a>
         </div>
+        <a href="tutor/lessons" class="th-hero-more" title="@L["TutorHome_ViewSheet"]" aria-label="@L["TutorHome_ViewSheet"]">
+            <i class="bi bi-three-dots-vertical" aria-hidden="true"></i>
+        </a>
     }
 </div>
 
-<!-- Essentiel du jour -->
-<div class="row g-3 my-1">
-    <div class="col-6 col-lg-3">
-        <div class="ts-kpi-card">
-            <span class="ts-kpi-val">@_todaySessions.Count</span>
-            <span class="ts-kpi-label">@L["TutorHome_CoursesToday"]</span>
+<div class="th-kpis">
+    <div class="th-kpi">
+        <div class="th-kpi-icon th-kpi-icon--violet"><i class="bi bi-calendar2-week" aria-hidden="true"></i></div>
+        <div class="th-kpi-body">
+            <span class="th-kpi-label">@L["TutorHome_CoursesToday"]</span>
+            <span class="th-kpi-val">@_todaySessions.Count</span>
+            <a class="th-link" href="tutor/calendar">@L["TutorHome_See"] <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
         </div>
     </div>
-    <div class="col-6 col-lg-3">
-        <div class="ts-kpi-card">
-            <span class="ts-kpi-val">@_activeStudents</span>
-            <span class="ts-kpi-label">@L["Stat_ActiveStudents"]</span>
+    <div class="th-kpi">
+        <div class="th-kpi-icon th-kpi-icon--green"><i class="bi bi-people" aria-hidden="true"></i></div>
+        <div class="th-kpi-body">
+            <span class="th-kpi-label">@L["Stat_ActiveStudents"]</span>
+            <span class="th-kpi-val">@_activeStudents</span>
+            <a class="th-link" href="tutor/students">@L["TutorHome_See"] <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
         </div>
     </div>
-    <div class="col-6 col-lg-3">
-        <div class="ts-kpi-card">
-            <span class="ts-kpi-val">@_unreadMessages</span>
-            <span class="ts-kpi-label">@L["TutorHome_UnreadMessages"]</span>
+    <div class="th-kpi">
+        <div class="th-kpi-icon th-kpi-icon--pink"><i class="bi bi-chat-dots" aria-hidden="true"></i></div>
+        <div class="th-kpi-body">
+            <span class="th-kpi-label">@L["TutorHome_UnreadMessages"]</span>
+            <span class="th-kpi-val">@_unreadMessages</span>
+            <a class="th-link" href="tutor/messages">@L["TutorHome_See"] <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
         </div>
     </div>
-    <div class="col-6 col-lg-3">
-        <div class="ts-kpi-card">
-            <span class="ts-kpi-val">@FormatMoney(_available)</span>
-            <span class="ts-kpi-label">@L["TutorHome_AvailableBalance"]</span>
+    <div class="th-kpi">
+        <div class="th-kpi-icon th-kpi-icon--mint"><i class="bi bi-wallet2" aria-hidden="true"></i></div>
+        <div class="th-kpi-body">
+            <span class="th-kpi-label">@L["TutorHome_AvailableRevenue"]</span>
+            <span class="th-kpi-val th-kpi-val--money">@FormatMoney(_available)</span>
+            <a class="th-link" href="tutor/revenue">@L["TutorHome_See"] <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
         </div>
     </div>
 </div>
 
-<div class="row g-4">
-    <!-- Ma journée -->
-    <div class="col-lg-5">
-        <div class="section-card h-100">
-            <div class="section-card-header">
-                <h2>@L["TutorHome_MyDay"]</h2>
-                <a href="tutor/calendar" class="btn btn-sm btn-link">@L["TutorHome_ViewCalendar"]</a>
-            </div>
+<div class="th-grid">
+    <section class="th-card th-card--day">
+        <div class="th-card-head"><h2>@L["TutorHome_MyDay"]</h2></div>
+        <div class="th-card-body">
             @if (_todaySessions.Count == 0)
             {
-                <p class="ts-empty-inline px-3 py-3">@L["TutorHome_NoCourseToday"]</p>
+                <p class="th-empty">@L["TutorHome_NoCourseToday"]</p>
             }
             else
             {
-                <ul class="lesson-list">
+                <ul class="th-day">
                     @foreach (var s in _todaySessions)
                     {
-                        <li class="lesson-list-item">
-                            <span class="lesson-time-left">@s.StartLabel – @s.EndLabel</span>
-                            <div class="lesson-info">
-                                <strong>@s.Title</strong>
-                                <span>@s.StudentNames</span>
-                            </div>
-                            <span class="ts-badge @StatusBadge(s)">@StatusLabel(s)</span>
+                        <li class="th-day-item">
+                            <span class="th-day-dot @DotClass(s)">
+                                @if (IsDone(s))
+                                {
+                                    <i class="bi bi-check" aria-hidden="true"></i>
+                                }
+                            </span>
+                            <span class="th-day-time">@s.StartLabel – @s.EndLabel</span>
+                            <span class="th-day-title">@SessionLine(s)</span>
+                            <span class="th-chip @ChipClass(s)">@StatusLabel(s)</span>
+                            <a class="th-day-link" href="tutor/lessons">
+                                @L["TutorHome_Details"] <i class="bi bi-chevron-right" aria-hidden="true"></i>
+                            </a>
                         </li>
                     }
                 </ul>
             }
         </div>
-    </div>
+        <div class="th-card-foot">
+            <a class="th-link" href="tutor/calendar">@L["TutorHome_ViewCalendar"] <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
+        </div>
+    </section>
 
-    <!-- Mes élèves -->
-    <div class="col-lg-4">
-        <div class="section-card h-100">
-            <div class="section-card-header">
-                <h2>@L["Nav_MyStudents"]</h2>
-                <a href="tutor/students" class="btn btn-sm btn-link">@L["TutorHome_AllStudents"]</a>
-            </div>
+    <section class="th-card th-card--students">
+        <div class="th-card-head"><h2>@L["Nav_MyStudents"]</h2></div>
+        <div class="th-card-body">
             @if (_students.Count == 0)
             {
-                <p class="ts-empty-inline px-3 py-3">@L["Students_EmptyEnrolled"]</p>
+                <p class="th-empty">@L["Students_EmptyEnrolled"]</p>
             }
             else
             {
-                <ul class="lesson-list">
+                <ul class="th-people">
                     @foreach (var s in _students)
                     {
-                        <li class="lesson-list-item">
-                            <div class="lesson-avatar">@s.Initials</div>
-                            <div class="lesson-info">
+                        <li class="th-person">
+                            <span class="th-avatar th-avatar--@s.Hue">@s.Initials</span>
+                            <div class="th-person-body">
                                 <strong>@s.Name</strong>
                                 <span>@s.Level</span>
                             </div>
-                        </li>
-                    }
-                </ul>
-            }
-        </div>
-    </div>
-
-    <!-- À faire -->
-    <div class="col-lg-3">
-        <div class="section-card h-100">
-            <div class="section-card-header">
-                <h2>@L["TutorHome_Todo"]</h2>
-            </div>
-            @if (_tasks.Count == 0)
-            {
-                <p class="ts-empty-inline px-3 py-3">@L["TutorHome_NoTodo"]</p>
-            }
-            else
-            {
-                <ul class="activity-feed">
-                    @foreach (var t in _tasks)
-                    {
-                        <li class="activity-item">
-                            <div class="activity-icon activity-icon--primary">
-                                <i class="bi @t.Icon" aria-hidden="true"></i>
-                            </div>
-                            <div class="activity-content">
-                                <a class="activity-title" href="@t.Href">@t.Label</a>
-                            </div>
-                        </li>
-                    }
-                </ul>
-            }
-        </div>
-    </div>
-
-    <!-- Messages récents -->
-    <div class="col-lg-7">
-        <div class="section-card h-100">
-            <div class="section-card-header">
-                <h2>@L["TutorHome_RecentMessages"]</h2>
-                <a href="tutor/messages" class="btn btn-sm btn-link">@L["TutorHome_OpenMailbox"]</a>
-            </div>
-            @if (_recentMessages.Count == 0)
-            {
-                <p class="ts-empty-inline px-3 py-3">@L["TutorHome_NoMessages"]</p>
-            }
-            else
-            {
-                <ul class="activity-feed">
-                    @foreach (var m in _recentMessages)
-                    {
-                        <li class="activity-item">
-                            <div class="lesson-avatar">@m.Initials</div>
-                            <div class="activity-content">
-                                <strong class="activity-title">@m.Name</strong>
-                                <span class="activity-description">@m.Excerpt</span>
-                            </div>
-                            <span class="activity-time">@m.TimeLabel</span>
-                            @if (m.Unread > 0)
+                            @if (s.NextAt is { } at)
                             {
-                                <span class="dot dot--primary ms-2"></span>
+                                <span class="th-person-when">@string.Format(L["TutorHome_CourseAt"].Value, at.ToString("HH:mm"))</span>
+                            }
+                            else
+                            {
+                                <span class="th-person-when th-person-when--wait">@L["TutorHome_ToFollow"]</span>
                             }
                         </li>
                     }
                 </ul>
             }
         </div>
-    </div>
-
-    <!-- Mes revenus -->
-    <div class="col-lg-5">
-        <div class="section-card h-100">
-            <div class="section-card-header">
-                <h2>@L["Nav_MyRevenue"]</h2>
-                <a href="tutor/revenue" class="btn btn-sm btn-link">@L["TutorHome_ManageRevenue"]</a>
-            </div>
-            <div class="px-3 pb-3">
-                <p class="dashboard-big-stat mb-1">@FormatMoney(_available)</p>
-                <p class="dashboard-big-stat-label">
-                    <span class="dot dot--primary"></span> @L["TutorHome_AvailableBalance"]
-                </p>
-                <p class="text-muted mb-0">
-                    <i class="bi bi-calendar-check me-1"></i>@L["TutorHome_NextPayout"] : <strong>@NextPayoutLabel</strong>
-                </p>
-                @if (_licenseWithholdRemaining > 0)
-                {
-                    <p class="small text-muted mt-2 mb-0">
-                        Retenue de licence restante : @_licenseWithholdRemaining.ToString("0.##") $ USD
-                    </p>
-                }
-            </div>
+        <div class="th-card-foot">
+            <a class="th-link" href="tutor/students">@L["TutorHome_AllStudents"] <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
         </div>
-    </div>
+    </section>
+
+    <section class="th-card th-card--todo">
+        <div class="th-card-head"><h2>@L["TutorHome_Todo"]</h2></div>
+        <div class="th-card-body">
+            @if (_tasks.Count == 0)
+            {
+                <p class="th-empty">@L["TutorHome_NoTodo"]</p>
+            }
+            else
+            {
+                <ul class="th-todo">
+                    @foreach (var t in _tasks)
+                    {
+                        <li class="th-todo-item">
+                            <span class="th-todo-check" aria-hidden="true"></span>
+                            <a href="@t.Href">@t.Label</a>
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+    </section>
+
+    <section class="th-card th-card--messages">
+        <div class="th-card-head"><h2>@L["TutorHome_RecentMessages"]</h2></div>
+        <div class="th-card-body">
+            @if (_recentMessages.Count == 0)
+            {
+                <p class="th-empty">@L["TutorHome_NoMessages"]</p>
+            }
+            else
+            {
+                <ul class="th-people">
+                    @foreach (var m in _recentMessages)
+                    {
+                        <li class="th-person">
+                            <span class="th-avatar th-avatar--@m.Hue">@m.Initials</span>
+                            <div class="th-person-body">
+                                <strong>@m.Name</strong>
+                                <span>@m.Excerpt</span>
+                            </div>
+                            <span class="th-msg-time">@m.TimeLabel</span>
+                            @if (m.Unread > 0)
+                            {
+                                <span class="th-unread" aria-hidden="true"></span>
+                            }
+                        </li>
+                    }
+                </ul>
+            }
+        </div>
+        <div class="th-card-foot">
+            <a class="th-link" href="tutor/messages">@L["TutorHome_OpenMailbox"] <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
+        </div>
+    </section>
+
+    <section class="th-card th-card--revenue">
+        <div class="th-card-head"><h2>@L["Nav_MyRevenue"]</h2></div>
+        <div class="th-card-body">
+            <div class="th-rev">
+                <div class="th-rev-balance">
+                    <div class="th-kpi-icon th-kpi-icon--mint"><i class="bi bi-wallet2" aria-hidden="true"></i></div>
+                    <div>
+                        <span class="th-kpi-label">@L["TutorHome_AvailableBalance"]</span>
+                        <span class="th-rev-amount">@FormatMoney(_available)</span>
+                    </div>
+                </div>
+                <div class="th-rev-method">
+                    <span class="th-kpi-label">@L["TutorHome_PayoutMethod"]</span>
+                    <span class="th-rev-method-val">@PayoutMethodLabel</span>
+                </div>
+            </div>
+            <p class="th-rev-next">@L["TutorHome_NextPayout"] : <strong>@NextPayoutLabel</strong></p>
+            @if (_licenseWithholdRemaining > 0)
+            {
+                <p class="th-rev-hold">@L["TutorHome_LicenseWithhold", _licenseWithholdRemaining.ToString("0.##")]</p>
+            }
+        </div>
+        <div class="th-card-foot">
+            <a class="th-link" href="tutor/revenue">@L["TutorHome_ManageRevenue"] <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
+        </div>
+    </section>
+
+    @if (_approvalStatus is not null)
+    {
+        <section class="th-card th-card--verified">
+            <div class="th-verified">
+                <div class="th-verified-icon th-verified-icon--@VerificationTone">
+                    <i class="bi @VerificationIcon" aria-hidden="true"></i>
+                </div>
+                <div>
+                    <strong>@VerificationTitle</strong>
+                    <span class="th-verified-hint">@VerificationHint</span>
+                    @if (_approvalStatus != 1)
+                    {
+                        <a class="th-link" href="tutor/verification">
+                            @L["TeacherVerification_Title"] <i class="bi bi-arrow-right" aria-hidden="true"></i>
+                        </a>
+                    }
+                </div>
+            </div>
+        </section>
+    }
 </div>
 
 @code {
     private sealed record SessionItem(
-        Guid Id, string Title, string Subject, string StudentNames, string Mode,
-        DateTime StartLocal, DateTime EndLocal)
+        Guid Id, string Title, string Subject, IReadOnlyList<string> Students, string Mode,
+        DateTime StartLocal, DateTime EndLocal, int MaxStudents)
     {
+        public string StudentNames => string.Join(", ", Students);
         public string StartLabel => StartLocal.ToString("HH:mm");
         public string EndLabel => EndLocal.ToString("HH:mm");
         public string DurationLabel => $"{(int)(EndLocal - StartLocal).TotalMinutes} min";
     }
 
-    private sealed record StudentRow(string Name, string Initials, string Level);
-    private sealed record MessageRow(string Name, string Initials, string Excerpt, string TimeLabel, int Unread);
-    private sealed record TaskRow(string Label, string Href, string Icon);
+    private sealed record StudentRow(string Name, string Initials, string Level, DateTime? NextAt, int Hue);
+    private sealed record MessageRow(string Name, string Initials, string Excerpt, string TimeLabel, int Unread, int Hue);
+    private sealed record TaskRow(string Label, string Href);
 
     private sealed class LicenseStatusVm
     {
@@ -265,10 +308,16 @@
     private record DashboardDto(decimal MonthlyRevenue, int ActiveStudents, int ActiveSubscriptions, int UpcomingLessons, int PendingPayments);
     private sealed record EnrollmentPeek(string Status);
     private sealed record ExpertRemarkPeek(DateTime? ReadByTeacherAt);
+    private sealed record ApprovalStatusPeek(int Status);
+    private sealed record PayoutAccountPeek(
+        string? ProviderKind, string? PhoneNumber, string? EmailOrAccountId,
+        string? PaymentDetails, bool IsPrimary, bool IsActive);
+    private sealed record PayoutSetupPeek(List<PayoutAccountPeek>? Accounts);
 
     private bool _loading = true;
     private SessionItem? _nextSession;
     private List<SessionItem> _todaySessions = [];
+    private List<SessionItem> _upcomingSessions = [];
     private List<StudentRow> _students = [];
     private List<MessageRow> _recentMessages = [];
     private List<TaskRow> _tasks = [];
@@ -279,6 +328,8 @@
     private DateTime? _eligibleAt;
     private bool _canWithdraw;
     private decimal _licenseWithholdRemaining;
+    private string? _payoutMethod;
+    private int? _approvalStatus;
 
     private bool IsJoinable =>
         _nextSession is not null
@@ -290,22 +341,34 @@
         get
         {
             var name = Auth.UserName;
-            if (string.IsNullOrWhiteSpace(name)) return "Tuteur";
-            var first = name.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
-            return first ?? name;
+            if (string.IsNullOrWhiteSpace(name))
+                return L["Nav_Section_Tutor"].Value;
+
+            var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            return parts.Length > 1 ? string.Join(' ', parts[..^1]) : parts[0];
         }
     }
 
     private string FormatMoney(decimal amount)
     {
         var value = amount.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("fr-CA"));
+        if (_currency is "XOF" or "XAF")
+            return $"{value} FCFA";
         return string.IsNullOrWhiteSpace(_currency) ? $"{value} $" : $"{value} {_currency}";
     }
 
     private string NextPayoutLabel =>
         _canWithdraw ? L["TutorHome_PayoutNow"].Value
-        : _eligibleAt is { } at ? at.ToLocalTime().ToString("dd/MM/yyyy")
+        : _eligibleAt is { } at ? DayLabel(at.ToLocalTime())
         : "—";
+
+    private string PayoutMethodLabel => _payoutMethod ?? L["TutorHome_NoPayoutMethod"].Value;
+
+    private string DayLabel(DateTime moment)
+    {
+        var days = (moment.Date - DateTime.Today).TotalDays;
+        return days is >= 0 and < 7 ? moment.ToString("dddd") : moment.ToString("dd/MM/yyyy");
+    }
 
     private string WhenLabel(SessionItem s)
     {
@@ -315,15 +378,44 @@
         return $"{day} · {s.StartLabel}";
     }
 
+    /// <summary>« Matière — élève(s) », ou le titre de la séance si la matière manque.</summary>
+    private static string SessionLine(SessionItem s)
+    {
+        var left = string.IsNullOrWhiteSpace(s.Subject) ? s.Title : s.Subject;
+        var right = s.StudentNames;
+        return string.IsNullOrWhiteSpace(right) ? left : $"{left} — {right}";
+    }
+
+    private string KindLabel(SessionItem s) =>
+        s.MaxStudents > 1 ? L["TutorHome_GroupCourse"].Value : L["TutorHome_PrivateCourse"].Value;
+
+    private static bool IsDone(SessionItem s) => DateTime.Now > s.EndLocal;
+    private static bool IsRunning(SessionItem s) => DateTime.Now >= s.StartLocal && DateTime.Now <= s.EndLocal;
+
     private string StatusLabel(SessionItem s) =>
-        DateTime.Now > s.EndLocal ? L["Common_Completed"].Value
-        : DateTime.Now >= s.StartLocal ? L["Common_InProgress"].Value
+        IsDone(s) ? L["Common_Completed"].Value
+        : IsRunning(s) ? L["Common_InProgress"].Value
+        : ReferenceEquals(s, _nextSession) ? L["TutorHome_NextCourse"].Value
         : L["TutorHome_StatusUpcoming"].Value;
 
-    private static string StatusBadge(SessionItem s) =>
-        DateTime.Now > s.EndLocal ? "ts-badge-success"
-        : DateTime.Now >= s.StartLocal ? "ts-badge-primary"
-        : "ts-badge-neutral";
+    private string ChipClass(SessionItem s) =>
+        IsDone(s) ? "th-chip--done"
+        : IsRunning(s) || ReferenceEquals(s, _nextSession) ? "th-chip--next"
+        : "th-chip--soon";
+
+    private string DotClass(SessionItem s) =>
+        IsDone(s) ? "th-day-dot--done"
+        : IsRunning(s) || ReferenceEquals(s, _nextSession) ? "th-day-dot--next"
+        : "th-day-dot--soon";
+
+    private static int HueOf(string value) =>
+        string.IsNullOrEmpty(value) ? 0 : Math.Abs(value.Sum(c => c)) % 5;
+
+    private static string InitialsOf(params string?[] parts) =>
+        string.Concat(parts
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .Select(p => char.ToUpperInvariant(p!.Trim()[0]))
+            .Take(2));
 
     protected override async Task OnInitializedAsync()
     {
@@ -333,6 +425,7 @@
         await LoadStudentsAsync();
         await LoadMessagesAsync();
         await LoadMoneyAsync();
+        await LoadAccountStatusAsync();
         await BuildTasksAsync();
 
         _loading = false;
@@ -348,15 +441,17 @@
                     d.Id,
                     d.Title,
                     d.Subject ?? "",
-                    string.Join(", ", (d.StudentNames ?? []).Where(n => !string.IsNullOrWhiteSpace(n))),
+                    (d.StudentNames ?? []).Where(n => !string.IsNullOrWhiteSpace(n)).ToList(),
                     LessonService.ModeToDisplay(d.Mode),
                     d.StartTime.ToLocalTime(),
-                    d.EndTime.ToLocalTime()))
+                    d.EndTime.ToLocalTime(),
+                    d.MaxStudents))
                 .OrderBy(s => s.StartLocal)
                 .ToList();
 
             _todaySessions = items.Where(s => s.StartLocal.Date == DateTime.Today).ToList();
-            _nextSession = items.FirstOrDefault(s => s.EndLocal >= DateTime.Now);
+            _upcomingSessions = items.Where(s => s.EndLocal >= DateTime.Now).ToList();
+            _nextSession = _upcomingSessions.FirstOrDefault();
         }
         catch { /* garde les listes vides */ }
     }
@@ -369,21 +464,31 @@
             var students = result.Value ?? [];
             _activeStudents = students.Count;
             _students = students
-                .OrderBy(s => s.LastName).ThenBy(s => s.FirstName)
-                .Take(4)
                 .Select(s =>
                 {
                     var name = $"{s.FirstName} {s.LastName}".Trim();
-                    var initials = string.Concat(
-                        new[] { s.FirstName, s.LastName }
-                            .Where(p => !string.IsNullOrWhiteSpace(p))
-                            .Select(p => char.ToUpperInvariant(p!.Trim()[0])));
-                    return new StudentRow(name, initials, s.SchoolLevel ?? "");
+                    return new StudentRow(
+                        name,
+                        InitialsOf(s.FirstName, s.LastName),
+                        s.SchoolLevel ?? "",
+                        NextSessionFor(name),
+                        HueOf(name));
                 })
+                .OrderBy(s => s.NextAt is null)
+                .ThenBy(s => s.NextAt)
+                .ThenBy(s => s.Name)
+                .Take(4)
                 .ToList();
         }
         catch { /* garde la liste vide */ }
     }
+
+    private DateTime? NextSessionFor(string studentName) =>
+        _upcomingSessions
+            .FirstOrDefault(s => s.Students.Any(n =>
+                n.Contains(studentName, StringComparison.OrdinalIgnoreCase)
+                || studentName.Contains(n, StringComparison.OrdinalIgnoreCase)))
+            ?.StartLocal;
 
     private async Task LoadMessagesAsync()
     {
@@ -403,14 +508,28 @@
     private MessageRow ToMessageRow(ConversationDto c)
     {
         var name = string.IsNullOrWhiteSpace(c.OtherUserName) ? "—" : c.OtherUserName;
-        var initials = string.Concat(
-            name.Split(' ', StringSplitOptions.RemoveEmptyEntries)
-                .Take(2)
-                .Select(p => char.ToUpperInvariant(p[0])));
         var body = c.LastMessage?.Body ?? "";
-        var excerpt = body.Length > 90 ? body[..90] + "…" : body;
-        var time = c.LastMessage?.CreatedAt.ToLocalTime().ToString("dd/MM HH:mm") ?? "";
-        return new MessageRow(name, initials, excerpt, time, c.UnreadCount);
+        var excerpt = body.Length > 80 ? body[..80] + "…" : body;
+        var time = c.LastMessage?.CreatedAt is { } at ? RelativeTime(at.ToLocalTime()) : "";
+        var initials = string.Concat(name
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Take(2)
+            .Select(p => char.ToUpperInvariant(p[0])));
+        return new MessageRow(name, initials, excerpt, time, c.UnreadCount, HueOf(name));
+    }
+
+    private string RelativeTime(DateTime moment)
+    {
+        var elapsed = DateTime.Now - moment;
+        if (elapsed < TimeSpan.FromMinutes(1))
+            return L["TutorHome_JustNow"].Value;
+        if (elapsed < TimeSpan.FromHours(1))
+            return string.Format(L["TutorHome_MinutesAgo"].Value, (int)elapsed.TotalMinutes);
+        if (moment.Date == DateTime.Today)
+            return string.Format(L["TutorHome_HoursAgo"].Value, (int)elapsed.TotalHours);
+        if (moment.Date == DateTime.Today.AddDays(-1))
+            return L["TutorHome_Yesterday"].Value;
+        return moment.ToString("dd/MM");
     }
 
     private async Task LoadMoneyAsync()
@@ -445,7 +564,80 @@
             _licenseWithholdRemaining = license?.LicenseFeeWithholdingRemainingUsd ?? 0;
         }
         catch { /* ignore */ }
+
+        try
+        {
+            var setup = await Api.GetAsync<PayoutSetupPeek>("api/tutor-payout-accounts/setup");
+            var accounts = setup?.Accounts ?? [];
+            var primary = accounts.FirstOrDefault(a => a.IsPrimary && a.IsActive)
+                          ?? accounts.FirstOrDefault(a => a.IsActive);
+            if (primary is not null)
+                _payoutMethod = DescribePayoutAccount(primary);
+        }
+        catch { /* mode de versement inconnu */ }
     }
+
+    private static string DescribePayoutAccount(PayoutAccountPeek account)
+    {
+        var label = ProviderLabel(account.ProviderKind);
+        var reference = account.PhoneNumber ?? account.EmailOrAccountId ?? account.PaymentDetails ?? "";
+        var digits = new string(reference.Where(char.IsDigit).ToArray());
+        return digits.Length >= 4 ? $"{label} •••• {digits[^4..]}" : label;
+    }
+
+    private static string ProviderLabel(string? kind) => kind switch
+    {
+        "InteracETransfer" => "Interac e-Transfer",
+        "BankAccount" => "Compte bancaire",
+        "StripeConnect" => "Stripe Connect",
+        "PayPal" => "PayPal",
+        "TapTapSend" => "TapTap Send",
+        "OrangeMoney" => "Orange Money",
+        "MtnMomo" => "MTN MoMo",
+        "Mpesa" => "M-Pesa",
+        "Moov" => "Moov Money",
+        "Airtel" => "Airtel Money",
+        "Wave" => "Wave",
+        _ => kind ?? "—"
+    };
+
+    private async Task LoadAccountStatusAsync()
+    {
+        try
+        {
+            var status = await Api.GetAsync<ApprovalStatusPeek>("api/teacher-documents/approval-status");
+            _approvalStatus = status?.Status;
+        }
+        catch { /* carte masquée */ }
+    }
+
+    private string VerificationTone => _approvalStatus switch
+    {
+        1 => "ok",
+        2 => "danger",
+        _ => "wait"
+    };
+
+    private string VerificationIcon => _approvalStatus switch
+    {
+        1 => "bi-shield-check",
+        2 => "bi-shield-exclamation",
+        _ => "bi-hourglass-split"
+    };
+
+    private string VerificationTitle => _approvalStatus switch
+    {
+        1 => L["TutorHome_AccountVerified"].Value,
+        2 => L["TutorHome_AccountRejected"].Value,
+        _ => L["TutorHome_AccountPending"].Value
+    };
+
+    private string VerificationHint => _approvalStatus switch
+    {
+        1 => L["TutorHome_AccountVerifiedHint"].Value,
+        2 => L["TutorHome_AccountRejectedHint"].Value,
+        _ => L["TutorHome_AccountPendingHint"].Value
+    };
 
     private async Task BuildTasksAsync()
     {
@@ -458,16 +650,14 @@
             if (pending > 0)
                 tasks.Add(new TaskRow(
                     string.Format(L["TutorHome_TaskEnrollments"].Value, pending),
-                    "tutor/enrollments",
-                    "bi-person-plus"));
+                    "tutor/enrollments"));
         }
         catch { /* ignore */ }
 
         if (_unreadMessages > 0)
             tasks.Add(new TaskRow(
                 string.Format(L["TutorHome_TaskMessages"].Value, _unreadMessages),
-                "tutor/messages",
-                "bi-chat-left-text"));
+                "tutor/messages"));
 
         try
         {
@@ -476,8 +666,7 @@
             if (unread > 0)
                 tasks.Add(new TaskRow(
                     string.Format(L["TutorHome_TaskRemarks"].Value, unread),
-                    "tutor/expert-remarks",
-                    "bi-chat-square-quote"));
+                    "tutor/expert-remarks"));
         }
         catch { /* ignore */ }
 
