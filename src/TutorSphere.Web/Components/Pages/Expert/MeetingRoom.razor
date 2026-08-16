@@ -149,6 +149,10 @@ else if (_detail is not null)
         {
             <div class="mtg-media-warn">
                 <i class="bi bi-exclamation-triangle"></i> @_mediaError
+                @if (!_scriptsReady)
+                {
+                    <button type="button" class="mtg-media-retry" @onclick="RetryMediaAsync">Réessayer</button>
+                }
                 <button type="button" @onclick="() => _mediaError = null">×</button>
             </div>
         }
@@ -773,9 +777,25 @@ else if (_detail is not null)
         catch (Exception ex)
         {
             _scriptsReady = false;
-            _mediaError = "Moteur audio/vidéo indisponible : rechargez la page. (" + ex.Message + ")";
+            _mediaError = "Moteur audio/vidéo indisponible : rechargez la page. (" + Short(ex.Message) + ")";
         }
         return _scriptsReady;
+    }
+
+    /// <summary>Première ligne du message : une pile JavaScript entière rendait la bannière illisible.</summary>
+    private static string Short(string? message)
+    {
+        var text = (message ?? "").Split('\n')[0].Trim();
+        return text.Length > 160 ? text[..160] + "…" : text;
+    }
+
+    /// <summary>Nouvelle tentative de chargement des moteurs, puis relance caméra et micro.</summary>
+    private async Task RetryMediaAsync()
+    {
+        if (!await EnsureMediaScriptsAsync()) return;
+        try { await JS.InvokeVoidAsync("classroomRtc.init", _jsRef, new { selfConnectionId = Rt.ConnectionId }); } catch { }
+        try { await JS.InvokeVoidAsync("classroomMedia.setEndedCallback", _jsRef); } catch { }
+        await StartLocalMediaAsync();
     }
 
     /// <summary>Retour de tsPageAssets : globales JS manquantes après chargement.</summary>
@@ -912,7 +932,7 @@ else if (_detail is not null)
         catch (JSException ex)
         {
             _mic = _cam = false;
-            _mediaError = ex.Message;
+            _mediaError = Short(ex.Message);
             await InvokeAsync(StateHasChanged);
         }
     }
@@ -1040,7 +1060,7 @@ else if (_detail is not null)
         if (!await EnsureMediaScriptsAsync())
             return new MediaStartResult { Ok = false, Error = _mediaError };
         try { return await JS.InvokeAsync<MediaStartResult>(identifier, args); }
-        catch (JSException ex) { return new MediaStartResult { Ok = false, Error = ex.Message }; }
+        catch (JSException ex) { return new MediaStartResult { Ok = false, Error = Short(ex.Message) }; }
     }
 
     private async Task ToggleHand() { _hand = !_hand; await Rt.RaiseHandAsync(Id, _hand); }

@@ -72,11 +72,12 @@ window.tsPageAssets = (function () {
   }
 
   // Moteurs média/WebRTC : le nom de la globale attendue permet de vérifier que le script s'est bien exécuté.
+  // Seuls classroomMedia et classroomRtc conditionnent la caméra ; tableau blanc et flou d'arrière-plan sont des bonus.
   var mediaEngines = [
     { js: 'js/whiteboard.js', global: 'whiteboard' },
     { js: 'js/classroom-virtual-bg.js', global: 'classroomVirtualBg' },
-    { js: 'js/classroom-media.js', global: 'classroomMedia' },
-    { js: 'js/classroom-rtc.js', global: 'classroomRtc' }
+    { js: 'js/classroom-media.js', global: 'classroomMedia', required: true },
+    { js: 'js/classroom-rtc.js', global: 'classroomRtc', required: true }
   ];
 
   /**
@@ -104,7 +105,7 @@ window.tsPageAssets = (function () {
       }
     }
     var missing = mediaEngines
-      .filter(function (i) { return !window[i.global]; })
+      .filter(function (i) { return i.required && !window[i.global]; })
       .map(function (i) { return i.global; });
     return { ok: missing.length === 0, missing: missing };
   }
@@ -114,7 +115,8 @@ window.tsPageAssets = (function () {
     loadScript: loadScript,
     loadMany: loadMany,
     loadClassroom: async function () {
-      await loadCss('css/classroom-pro.css');
+      // Une feuille de style manquante ne doit pas empêcher la caméra de démarrer.
+      try { await loadCss('css/classroom-pro.css'); } catch (e) { }
       return loadEngines();
     },
     // Salle de réunion : mêmes moteurs média/WebRTC que la classe, sans la feuille de style des cours.
