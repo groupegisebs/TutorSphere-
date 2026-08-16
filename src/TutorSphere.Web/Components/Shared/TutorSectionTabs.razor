@@ -1,0 +1,104 @@
+@inject IStringLocalizer<SharedResources> L
+
+@* Barre de boutons d'une section enseignant : les sous-pages s'ouvrent en modale. *@
+<div class="ts-tabs">
+    <span class="ts-tab ts-tab--active">
+        <i class="bi @Layout.Landing.Icon" aria-hidden="true"></i>@Layout.Landing.Label
+    </span>
+    @foreach (var item in Layout.Subs)
+    {
+        <button type="button" class="ts-tab" @onclick="() => Open(item)">
+            <i class="bi @item.Icon" aria-hidden="true"></i>@item.Label
+        </button>
+    }
+</div>
+
+@if (_open is not null)
+{
+    <div class="ts-subpage-backdrop" @onclick="Close">
+        <div class="ts-subpage" @onclick:stopPropagation="true">
+            <div class="ts-subpage-bar">
+                <span class="ts-subpage-title">
+                    <i class="bi @_open.Icon me-2" aria-hidden="true"></i>@_open.Label
+                </span>
+                <a class="ts-subpage-expand" href="@_open.Href" title="@L["Tabs_FullPage"]">
+                    <i class="bi bi-arrows-fullscreen" aria-hidden="true"></i>
+                    <span>@L["Tabs_FullPage"]</span>
+                </a>
+                <button type="button" class="ts-modal-close" @onclick="Close" aria-label="@L["Common_Close"]">
+                    <i class="bi bi-x-lg" aria-hidden="true"></i>
+                </button>
+            </div>
+            <div class="ts-subpage-body">
+                <ErrorBoundary>
+                    <ChildContent>
+                        <DynamicComponent Type="_open.Type" />
+                    </ChildContent>
+                    <ErrorContent>
+                        <div class="alert alert-warning my-3">
+                            @L["Tabs_LoadError"]
+                            <a class="btn btn-sm btn-outline-secondary ms-2" href="@_open.Href">@L["Tabs_FullPage"]</a>
+                        </div>
+                    </ErrorContent>
+                </ErrorBoundary>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>Section courante : « class », « students », « account » ou « messages ».</summary>
+    [Parameter, EditorRequired]
+    public string Section { get; set; } = "";
+
+    private sealed record TabItem(string Label, string Icon, string Href, Type Type);
+    private sealed record LandingItem(string Label, string Icon);
+
+    private TabItem? _open;
+
+    private (LandingItem Landing, TabItem[] Subs) Layout => Section switch
+    {
+        "class" =>
+        (
+            new LandingItem(L["Nav_Calendar"].Value, "bi-calendar3"),
+            [
+                new TabItem(L["Nav_Lessons"].Value, "bi-journal-bookmark", "tutor/lessons", typeof(Pages.Tutor.Lessons)),
+                new TabItem(L["Nav_Homework"].Value, "bi-journal-text", "tutor/homework", typeof(Pages.Tutor.Homework)),
+                new TabItem(L["Nav_Documents"].Value, "bi-folder2-open", "tutor/documents", typeof(Pages.Tutor.Documents)),
+                new TabItem(L["Nav_Reports"].Value, "bi-file-earmark-bar-graph", "tutor/reports", typeof(Pages.Tutor.Reports)),
+            ]
+        ),
+        "students" =>
+        (
+            new LandingItem(L["Nav_StudentsList"].Value, "bi-person-lines-fill"),
+            [
+                new TabItem(L["Nav_Enrollments"].Value, "bi-person-plus", "tutor/enrollments", typeof(Pages.Tutor.Enrollments)),
+                new TabItem(L["Nav_Parents"].Value, "bi-person-hearts", "tutor/parents", typeof(Pages.Tutor.Parents)),
+            ]
+        ),
+        "messages" =>
+        (
+            new LandingItem(L["Nav_Mailbox"].Value, "bi-inbox"),
+            [
+                new TabItem(L["Nav_ExpertRemarks"].Value, "bi-chat-square-quote", "tutor/expert-remarks", typeof(Pages.Tutor.ExpertRemarks)),
+            ]
+        ),
+        _ =>
+        (
+            new LandingItem(L["Nav_MyAccount"].Value, "bi-person-circle"),
+            [
+                new TabItem(L["Nav_Revenue"].Value, "bi-graph-up", "tutor/revenue", typeof(Pages.Tutor.Revenue)),
+                new TabItem(L["Nav_Payments"].Value, "bi-credit-card", "tutor/payments", typeof(Pages.Tutor.Payments)),
+                new TabItem(L["Nav_Subscriptions"].Value, "bi-arrow-repeat", "tutor/subscriptions", typeof(Pages.Tutor.Subscriptions)),
+                new TabItem(L["Nav_PayoutSettings"].Value, "bi-wallet2", "tutor/payout-settings", typeof(Pages.Tutor.PayoutSettings)),
+                new TabItem(L["Nav_MyProfile"].Value, "bi-person-badge", "tutor/profile", typeof(Pages.Tutor.Profile)),
+                new TabItem(L["TeacherVerification_Title"].Value, "bi-shield-check", "tutor/verification", typeof(Pages.Tutor.Verification)),
+                new TabItem(L["Nav_Training"].Value, "bi-mortarboard", "tutor/onboarding", typeof(Pages.Tutor.Onboarding)),
+                new TabItem(L["Nav_MySchool"].Value, "bi-globe2", "tutor/fiche-publique", typeof(Pages.Tutor.School)),
+            ]
+        )
+    };
+
+    private void Open(TabItem item) => _open = item;
+    private void Close() => _open = null;
+}

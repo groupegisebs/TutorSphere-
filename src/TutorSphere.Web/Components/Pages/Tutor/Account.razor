@@ -1,0 +1,171 @@
+@page "/tutor/account"
+@layout TutorLayout
+@rendermode InteractiveServer
+@inject IStringLocalizer<SharedResources> L
+@inject ApiClient Api
+@inject AuthService Auth
+
+<PageTitle>@L["Nav_MyAccount"] – TutorSphere</PageTitle>
+
+<div class="ts-page-header">
+    <div>
+        <h1><i class="bi bi-person-circle me-2" aria-hidden="true"></i>@L["Nav_MyAccount"]</h1>
+        <p class="ts-page-subtitle">@L["Account_Subtitle"]</p>
+    </div>
+</div>
+
+<TutorSectionTabs Section="account" />
+
+<div class="th-kpis">
+    <div class="th-kpi">
+        <div class="th-kpi-icon th-kpi-icon--mint"><i class="bi bi-wallet2" aria-hidden="true"></i></div>
+        <div class="th-kpi-body">
+            <span class="th-kpi-label">@L["TutorHome_AvailableBalance"]</span>
+            <span class="th-kpi-val th-kpi-val--money">@FormatMoney(_available)</span>
+        </div>
+    </div>
+    <div class="th-kpi">
+        <div class="th-kpi-icon th-kpi-icon--violet"><i class="bi bi-calendar-check" aria-hidden="true"></i></div>
+        <div class="th-kpi-body">
+            <span class="th-kpi-label">@L["TutorHome_NextPayout"]</span>
+            <span class="th-kpi-val th-kpi-val--money">@NextPayoutLabel</span>
+        </div>
+    </div>
+    <div class="th-kpi">
+        <div class="th-kpi-icon th-kpi-icon--green"><i class="bi bi-bank" aria-hidden="true"></i></div>
+        <div class="th-kpi-body">
+            <span class="th-kpi-label">@L["TutorHome_PayoutMethod"]</span>
+            <span class="th-kpi-val th-kpi-val--money">@PayoutMethodLabel</span>
+        </div>
+    </div>
+    <div class="th-kpi">
+        <div class="th-kpi-icon th-verified-icon--@VerificationTone"><i class="bi @VerificationIcon" aria-hidden="true"></i></div>
+        <div class="th-kpi-body">
+            <span class="th-kpi-label">@L["TeacherVerification_Title"]</span>
+            <span class="th-kpi-val th-kpi-val--money">@VerificationTitle</span>
+        </div>
+    </div>
+</div>
+
+@code {
+    private record EligibilityDto(bool CanWithdraw, DateTime? EligibleAt, bool SetupComplete);
+    private record EarningsSummaryDto(decimal Available, string? Currency, EligibilityDto? Eligibility);
+    private sealed record ApprovalStatusPeek(int Status);
+    private sealed record PayoutAccountPeek(
+        string? ProviderKind, string? PhoneNumber, string? EmailOrAccountId,
+        string? PaymentDetails, bool IsPrimary, bool IsActive);
+    private sealed record PayoutSetupPeek(List<PayoutAccountPeek>? Accounts);
+
+    private decimal _available;
+    private string _currency = "";
+    private DateTime? _eligibleAt;
+    private bool _canWithdraw;
+    private string? _payoutMethod;
+    private int? _approvalStatus;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+
+        try
+        {
+            var earnings = await Api.GetAsync<EarningsSummaryDto>("api/tutor-earnings");
+            if (earnings is not null)
+            {
+                _available = earnings.Available;
+                _currency = earnings.Currency ?? "";
+                _canWithdraw = earnings.Eligibility?.CanWithdraw ?? false;
+                _eligibleAt = earnings.Eligibility?.EligibleAt;
+            }
+        }
+        catch { /* solde à 0 */ }
+
+        try
+        {
+            var setup = await Api.GetAsync<PayoutSetupPeek>("api/tutor-payout-accounts/setup");
+            var accounts = setup?.Accounts ?? [];
+            var primary = accounts.FirstOrDefault(a => a.IsPrimary && a.IsActive)
+                          ?? accounts.FirstOrDefault(a => a.IsActive);
+            if (primary is not null)
+                _payoutMethod = DescribePayoutAccount(primary);
+        }
+        catch { /* mode de versement inconnu */ }
+
+        try
+        {
+            var status = await Api.GetAsync<ApprovalStatusPeek>("api/teacher-documents/approval-status");
+            _approvalStatus = status?.Status;
+        }
+        catch { /* statut inconnu */ }
+    }
+
+    private string FormatMoney(decimal amount)
+    {
+        var value = amount.ToString("N0", System.Globalization.CultureInfo.GetCultureInfo("fr-CA"));
+        if (_currency is "XOF" or "XAF")
+            return $"{value} FCFA";
+        return string.IsNullOrWhiteSpace(_currency) ? $"{value} $" : $"{value} {_currency}";
+    }
+
+    private string NextPayoutLabel
+    {
+        get
+        {
+            if (_canWithdraw)
+                return L["TutorHome_PayoutNow"].Value;
+            if (_eligibleAt is not { } at)
+                return "—";
+
+            var moment = at.ToLocalTime();
+            var days = (moment.Date - DateTime.Today).TotalDays;
+            return days is >= 0 and < 7 ? moment.ToString("dddd") : moment.ToString("dd/MM/yyyy");
+        }
+    }
+
+    private string PayoutMethodLabel => _payoutMethod ?? L["TutorHome_NoPayoutMethod"].Value;
+
+    private static string DescribePayoutAccount(PayoutAccountPeek account)
+    {
+        var label = ProviderLabel(account.ProviderKind);
+        var reference = account.PhoneNumber ?? account.EmailOrAccountId ?? account.PaymentDetails ?? "";
+        var digits = new string(reference.Where(char.IsDigit).ToArray());
+        return digits.Length >= 4 ? $"{label} •••• {digits[^4..]}" : label;
+    }
+
+    private static string ProviderLabel(string? kind) => kind switch
+    {
+        "InteracETransfer" => "Interac e-Transfer",
+        "BankAccount" => "Compte bancaire",
+        "StripeConnect" => "Stripe Connect",
+        "PayPal" => "PayPal",
+        "TapTapSend" => "TapTap Send",
+        "OrangeMoney" => "Orange Money",
+        "MtnMomo" => "MTN MoMo",
+        "Mpesa" => "M-Pesa",
+        "Moov" => "Moov Money",
+        "Airtel" => "Airtel Money",
+        "Wave" => "Wave",
+        _ => kind ?? "—"
+    };
+
+    private string VerificationTone => _approvalStatus switch
+    {
+        1 => "ok",
+        2 => "danger",
+        _ => "wait"
+    };
+
+    private string VerificationIcon => _approvalStatus switch
+    {
+        1 => "bi-shield-check",
+        2 => "bi-shield-exclamation",
+        _ => "bi-hourglass-split"
+    };
+
+    private string VerificationTitle => _approvalStatus switch
+    {
+        1 => L["TutorHome_AccountVerified"].Value,
+        2 => L["TutorHome_AccountRejected"].Value,
+        _ => L["TutorHome_AccountPending"].Value
+    };
+}
