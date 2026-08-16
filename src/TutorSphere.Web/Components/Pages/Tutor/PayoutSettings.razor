@@ -4,8 +4,12 @@
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
 @inject NavigationManager Nav
+@inject AuthService Auth
+@using System.Text.Json
 @using Microsoft.AspNetCore.WebUtilities
 @using Microsoft.AspNetCore.Components.Web
+@using TutorSphere.Domain.Payouts
+@using TutorSphere.Web.Common
 
 <PageTitle>@L["Payout_Title"] – TutorSphere</PageTitle>
 
@@ -14,6 +18,9 @@
         <h1><i class="bi bi-wallet2 me-2"></i>@L["Payout_Title"]</h1>
         <p class="ts-page-subtitle">@L["Payout_Subtitle"]</p>
     </div>
+    <a class="btn btn-outline-secondary" href="/tutor/revenue">
+        <i class="bi bi-clock-history me-1"></i>Historique des versements
+    </a>
 </div>
 
 @if (!string.IsNullOrEmpty(_error))
@@ -31,203 +38,377 @@
 }
 else if (_setup is not null)
 {
+    <ol class="payout-stepper mb-4">
+        <li class="is-done">
+            <span class="payout-step-icon"><i class="bi bi-check-lg"></i></span>
+            Identité
+        </li>
+        <li class="is-done">
+            <span class="payout-step-icon"><i class="bi bi-check-lg"></i></span>
+            Coordonnées
+        </li>
+        <li class="is-current">
+            <span class="payout-step-icon">3</span>
+            Compte de versement
+        </li>
+        <li class="@(_setup.SetupComplete ? "is-done" : "is-pending")">
+            <span class="payout-step-icon">
+                @if (_setup.SetupComplete)
+                { <i class="bi bi-check-lg"></i> }
+                else
+                { <text>4</text> }
+            </span>
+            Vérification
+        </li>
+    </ol>
+
     <div class="row g-3 mb-4">
-        <div class="col-md-4">
+        <div class="col-6 col-lg-3">
             <div class="ts-kpi-card @(_setup.SetupComplete ? "ts-kpi-card--success" : "ts-kpi-card--warning")">
-                <span class="ts-kpi-val">@(_setup.SetupComplete ? L["Payout_SetupOk"] : L["Payout_SetupIncomplete"])</span>
-                <span class="ts-kpi-label">@L["Payout_SetupStatus"]</span>
+                <span class="ts-kpi-val">@(_setup.SetupComplete ? L["Payout_SetupOk"] : "À compléter")</span>
+                <span class="ts-kpi-label">Configuration</span>
             </div>
         </div>
-        <div class="col-md-4">
+        <div class="col-6 col-lg-3">
             <div class="ts-kpi-card">
-                <span class="ts-kpi-val">@_setup.Region</span>
-                <span class="ts-kpi-label">@L["Payout_Region"] (@_setup.CountryCode)</span>
+                <span class="ts-kpi-val">@CountryLabel(_country)</span>
+                <span class="ts-kpi-label">Pays</span>
             </div>
         </div>
-        <div class="col-md-4">
+        <div class="col-6 col-lg-3">
             <div class="ts-kpi-card">
-                <span class="ts-kpi-val">@_setup.Currency</span>
-                <span class="ts-kpi-label">@L["Payout_Currency"]</span>
+                <span class="ts-kpi-val">@PayoutCurrency</span>
+                <span class="ts-kpi-label">Devise de versement</span>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="ts-kpi-card">
+                <span class="ts-kpi-val">@FormatBalance(_available)</span>
+                <span class="ts-kpi-label">Solde disponible</span>
             </div>
         </div>
     </div>
 
-    <div class="section-card mb-4">
-        <div class="section-card-header"><h2>@L["Payout_RulesTitle"]</h2></div>
-        <ul class="mb-0">
-            <li>@L["Payout_Rule100"]</li>
-            <li>@L["Payout_Rule30"]</li>
-            <li>@L["Payout_Rule10"]</li>
-            <li>@L["Payout_RuleGateway"]</li>
-        </ul>
-    </div>
-
-    <div class="section-card mb-4">
-        <div class="section-card-header"><h2>@L["Payout_ProfileTitle"]</h2></div>
-        <p class="text-muted small">@L["Payout_ProfileHint"]</p>
-        <div class="row g-3">
-            <div class="col-md-6">
-                <label class="form-label">@L["School_Country"]</label>
-                <select class="form-select" @bind="_country">
-                    <option value="CA">Canada (CA)</option>
-                    <option value="US">United States (US)</option>
-                    <option value="GB">United Kingdom (GB)</option>
-                    <option value="FR">France (FR)</option>
-                    <option value="DE">Germany (DE)</option>
-                    <option value="CH">Switzerland (CH)</option>
-                    <option value="BE">Belgium (BE)</option>
-                    <option value="CM">Cameroun (CM)</option>
-                    <option value="CI">Côte d'Ivoire (CI)</option>
-                    <option value="SN">Sénégal (SN)</option>
-                    <option value="GH">Ghana (GH)</option>
-                    <option value="NG">Nigeria (NG)</option>
-                    <option value="KE">Kenya (KE)</option>
-                    <option value="MA">Maroc (MA)</option>
-                </select>
-            </div>
-            <div class="col-md-6">
-                <label class="form-label">@L["Payout_PayPalEmail"]</label>
-                <input class="form-control" @bind="_paypalEmail" placeholder="email@paypal.com" />
-            </div>
-        </div>
-        <div class="d-flex flex-wrap gap-2 mt-3">
-            <button class="btn btn-primary" disabled="@_busy" @onclick="SaveProfileAsync">
-                @L["Common_Save"]
-            </button>
-            @if (_setup.Region == "StripeConnectZone")
-            {
-                <button class="btn btn-outline-primary" disabled="@_busy" @onclick="StartStripeAsync">
-                    @L["Payout_StripeOnboard"]
-                </button>
-                <button class="btn btn-outline-secondary" disabled="@_busy" @onclick="SyncStripeAsync">
-                    @L["Payout_StripeSync"]
-                </button>
-                <button class="btn btn-outline-primary" disabled="@_busy" @onclick="StartPayPalOAuthAsync">
-                    @L["Payout_PayPalOAuth"]
-                </button>
-            }
-        </div>
-        @if (_setup.StripeConfigured)
-        {
-            <p class="small text-success mt-2 mb-0"><i class="bi bi-check-circle me-1"></i>@L["Payout_StripeConfigured"]</p>
-        }
-    </div>
-
-    <div class="section-card mb-4">
-        <div class="section-card-header d-flex justify-content-between align-items-center">
-            <h2 class="mb-0">@L["Payout_AccountsTitle"]</h2>
-            <button class="btn btn-outline-primary btn-sm" @onclick="() => _showAdd = !_showAdd">
-                <i class="bi bi-plus-lg me-1"></i>@L["Payout_AddAccount"]
-            </button>
-        </div>
-
-        @if (_showAdd)
-        {
-            <div class="border rounded p-3 mb-3 bg-light">
-                <p class="small text-muted">@L["Payout_PublicInfoOnly"]</p>
-                <div class="row g-2">
-                    <div class="col-md-3">
-                        <label class="form-label">@L["Payout_Provider"]</label>
-                        <select class="form-select" @bind="_form.ProviderKind">
-                            @foreach (var c in _setup.CatalogList.Where(x => x.ProviderKind != "StripeConnect"))
-                            {
-                                <option value="@c.ProviderKind">@c.DisplayName @(c.IsRequired ? "*" : "")</option>
-                            }
-                        </select>
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label">@L["Payout_Label"]</label>
-                        <input class="form-control" @bind="_form.Label" />
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label">@L["Payout_Holder"]</label>
-                        <input class="form-control" @bind="_form.AccountHolderName" />
-                    </div>
-                    @if (_form.ProviderKind is "PayPal" or "InteracETransfer")
-                    {
-                        <div class="col-md-3">
-                            <label class="form-label">
-                                @(_form.ProviderKind == "InteracETransfer" ? L["Payout_InteracEmail"] : L["Payout_PayPalEmail"])
-                            </label>
-                            <input class="form-control" @bind="_form.EmailOrAccountId" type="email"
-                                   placeholder="@(_form.ProviderKind == "InteracETransfer" ? "email@autodeposit.ca" : "email@paypal.com")" />
-                        </div>
-                        @if (_form.ProviderKind == "InteracETransfer")
-                        {
+    <div class="row g-4 align-items-start">
+        <div class="col-lg-8">
+            <div class="section-card payout-form-card mb-4">
+                <div class="section-card-header">
+                    <h2>@(_editId is null ? "Ajouter un compte de versement" : "Modifier le compte")</h2>
+                </div>
+                <div class="p-3 p-md-4">
+                    <section class="payout-block">
+                        <h3 class="payout-block-title"><span>A</span> Titulaire du compte</h3>
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label">Type de compte</label>
+                                <div class="payout-toggle" role="group">
+                                    <button type="button" class="@(_form.AccountType == "individual" ? "is-on" : "")"
+                                            @onclick='() => _form.AccountType = "individual"'>Particulier</button>
+                                    <button type="button" class="@(_form.AccountType == "business" ? "is-on" : "")"
+                                            @onclick='() => _form.AccountType = "business"'>Entreprise</button>
+                                </div>
+                            </div>
                             <div class="col-md-6">
-                                <label class="form-label">@L["Payout_InteracDetails"]</label>
-                                <input class="form-control" @bind="_form.PaymentDetails"
-                                       placeholder="@L["Payout_InteracDetailsPlaceholder"]" />
-                                <div class="form-text">@L["Payout_InteracHint"]</div>
+                                <label class="form-label">Nom légal du titulaire *</label>
+                                <input class="form-control" @bind="_form.AccountHolderName" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Pays de résidence *</label>
+                                <CountrySelect Value="@_country" ValueChanged="OnCountryChanged" Placeholder="Pays de résidence" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Devise de versement</label>
+                                <input class="form-control" value="@TutorPayoutPolicy.FormatPayoutCurrencyLabel(PayoutCurrency)" disabled readonly />
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="payout-block">
+                        <h3 class="payout-block-title"><span>B</span> Choisir le moyen de versement</h3>
+                        <div class="payout-channels">
+                            @if (IsAfrica)
+                            {
+                                <button type="button" class="payout-channel @(_form.Channel == "mobile" ? "is-on" : "")"
+                                        @onclick='() => SelectChannel("mobile")'>
+                                    <strong>Mobile Money</strong>
+                                    <small>Orange Money · MTN MoMo · Wave</small>
+                                </button>
+                            }
+                            <button type="button" class="payout-channel @(_form.Channel == "bank" ? "is-on" : "")"
+                                    @onclick='() => SelectChannel("bank")'>
+                                <i class="bi bi-bank d-block fs-4 mb-1"></i>
+                                <strong>Compte bancaire</strong>
+                                <small>@(IsCanada ? "Interac e-Transfer" : "RIB / IBAN")</small>
+                            </button>
+                            <button type="button" class="payout-channel @(_form.Channel == "paypal" ? "is-on" : "")"
+                                    @onclick='() => SelectChannel("paypal")'>
+                                <strong>PayPal</strong>
+                                <small>Virement international</small>
+                            </button>
+                            @if (IsStripeZone)
+                            {
+                                <button type="button" class="payout-channel @(_form.Channel == "stripe" ? "is-on" : "")"
+                                        @onclick='() => SelectChannel("stripe")'>
+                                    <strong>Stripe</strong>
+                                    <small>Compte Connect</small>
+                                </button>
+                            }
+                        </div>
+
+                        @if (_form.Channel == "mobile")
+                        {
+                            <div class="row g-3 mt-1">
+                                <div class="col-md-4">
+                                    <label class="form-label">Opérateur *</label>
+                                    <select class="form-select" @bind="_form.ProviderKind">
+                                        @foreach (var op in MobileOperators)
+                                        {
+                                            <option value="@op.ProviderKind">@op.DisplayName</option>
+                                        }
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label">Indicatif</label>
+                                    <input class="form-control" @bind="_form.DialCode" />
+                                </div>
+                                <div class="col-md-5">
+                                    <label class="form-label">Numéro Mobile Money *</label>
+                                    <input class="form-control" @bind="_form.NationalNumber" inputmode="tel" placeholder="07 00 00 00 00" />
+                                </div>
+                                <div class="col-12">
+                                    <label class="form-label">Nom enregistré auprès de l'opérateur</label>
+                                    <input class="form-control" @bind="_form.OperatorRegisteredName" />
+                                </div>
+                                <div class="col-12">
+                                    <div class="alert alert-warning py-2 mb-0">
+                                        Vérifiez que le numéro appartient bien au titulaire.
+                                        La confirmation se fait à l'enregistrement (aucun code PIN demandé).
+                                    </div>
+                                </div>
                             </div>
                         }
-                    }
-                    else
-                    {
-                        <div class="col-md-3">
-                            <label class="form-label">@L["Payout_Phone"]</label>
-                            <input class="form-control" @bind="_form.PhoneNumber" placeholder="+237…" />
-                        </div>
-                    }
-                    <div class="col-md-3 d-flex align-items-end">
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" @bind="_form.IsPrimary" id="prim" />
-                            <label class="form-check-label" for="prim">@L["Payout_Primary"]</label>
-                        </div>
-                    </div>
-                </div>
-                <button class="btn btn-primary btn-sm mt-3" disabled="@_busy" @onclick="AddAccountAsync">
-                    @L["Common_Save"]
-                </button>
-            </div>
-        }
+                        else if (_form.Channel == "bank" && IsCanada)
+                        {
+                            <div class="row g-3 mt-1">
+                                <div class="col-md-6">
+                                    <label class="form-label">E-mail Interac (Autodépôt) *</label>
+                                    <input class="form-control" type="email" @bind="_form.EmailOrAccountId" placeholder="email@autodeposit.ca" />
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">@L["Payout_InteracDetails"]</label>
+                                    <input class="form-control" @bind="_form.BankAccountNumber" placeholder="@L["Payout_InteracDetailsPlaceholder"]" />
+                                </div>
+                            </div>
+                        }
+                        else if (_form.Channel == "bank")
+                        {
+                            <div class="row g-3 mt-1">
+                                <div class="col-md-6">
+                                    <label class="form-label">Nom de la banque *</label>
+                                    <input class="form-control" @bind="_form.BankName" />
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Numéro de compte / IBAN *</label>
+                                    <input class="form-control" @bind="_form.BankAccountNumber" />
+                                </div>
+                            </div>
+                        }
+                        else if (_form.Channel == "paypal")
+                        {
+                            <div class="row g-3 mt-1">
+                                <div class="col-md-8">
+                                    <label class="form-label">E-mail PayPal *</label>
+                                    <input class="form-control" type="email" @bind="_form.EmailOrAccountId" placeholder="email@paypal.com" />
+                                </div>
+                                @if (IsStripeZone)
+                                {
+                                    <div class="col-md-4 d-flex align-items-end">
+                                        <button class="btn btn-outline-primary w-100" disabled="@_busy" @onclick="StartPayPalOAuthAsync">
+                                            @L["Payout_PayPalOAuth"]
+                                        </button>
+                                    </div>
+                                }
+                            </div>
+                        }
+                        else if (_form.Channel == "stripe")
+                        {
+                            <div class="mt-3">
+                                <p class="text-muted small">Ouvrez l’onboarding Stripe Connect : trop de secrets bancaires restent chez Stripe.</p>
+                                <div class="d-flex flex-wrap gap-2">
+                                    <button class="btn btn-primary" disabled="@_busy" @onclick="StartStripeAsync">@L["Payout_StripeOnboard"]</button>
+                                    <button class="btn btn-outline-secondary" disabled="@_busy" @onclick="SyncStripeAsync">@L["Payout_StripeSync"]</button>
+                                </div>
+                                @if (_setup.StripeConfigured)
+                                {
+                                    <p class="small text-success mt-2 mb-0"><i class="bi bi-check-circle me-1"></i>@L["Payout_StripeConfigured"]</p>
+                                }
+                            </div>
+                        }
 
-        @if (_setup.AccountList.Count == 0)
-        {
-            <p class="text-muted mb-0">@L["Payout_NoAccounts"]</p>
-        }
-        else
-        {
-            <table class="table ts-table mb-0">
-                <thead>
-                    <tr>
-                        <th>@L["Payout_Label"]</th>
-                        <th>@L["Payout_Provider"]</th>
-                        <th>@L["Payout_Holder"]</th>
-                        <th>@L["Payout_EmailOrId"]</th>
-                        <th>@L["Payout_Phone"]</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var a in _setup.AccountList)
+                        <div class="alert alert-info py-2 mt-3 mb-0">
+                            <i class="bi bi-shield-lock me-1"></i>
+                            Nous ne demanderons jamais votre PIN, mot de passe ou code OTP. Ces secrets restent chez le fournisseur.
+                        </div>
+                    </section>
+
+                    @if (_form.Channel != "stripe")
                     {
-                        <tr>
-                            <td>
-                                <strong>@a.Label</strong>
-                                @if (a.IsPrimary)
-                                {
-                                    <span class="ts-badge ts-badge-success ms-1">@L["Payout_Primary"]</span>
-                                }
-                            </td>
-                            <td>@ProviderLabel(a.ProviderKind)</td>
-                            <td>@a.AccountHolderName</td>
-                            <td>@(a.EmailOrAccountId ?? a.PaymentDetails ?? "—")</td>
-                            <td>@(a.PhoneNumber ?? "—")</td>
-                            <td class="text-end">
-                                @if (!a.IsPrimary)
-                                {
-                                    <button class="btn btn-link btn-sm" @onclick="() => SetPrimaryAsync(a.Id)">@L["Payout_MakePrimary"]</button>
-                                }
-                                <button class="btn btn-link btn-sm text-danger" @onclick="() => DeactivateAsync(a.Id)">@L["Common_Delete"]</button>
-                            </td>
-                        </tr>
+                        <section class="payout-block mb-0">
+                            <h3 class="payout-block-title"><span>C</span> Préférences de versement</h3>
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">Fréquence de versement</label>
+                                    <select class="form-select" @bind="_form.Frequency">
+                                        <option value="weekly">Chaque semaine</option>
+                                        <option value="biweekly">Toutes les 2 semaines</option>
+                                        <option value="monthly">Chaque mois</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Montant minimum de versement</label>
+                                    <select class="form-select" @bind="_form.MinimumAmount">
+                                        @foreach (var m in MinimumChoices)
+                                        {
+                                            <option value="@m">@m.ToString("N0") @PayoutCurrency</option>
+                                        }
+                                    </select>
+                                </div>
+                                <div class="col-12">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="payout-primary" @bind="_form.IsPrimary" />
+                                        <label class="form-check-label" for="payout-primary">Utiliser comme compte principal</label>
+                                    </div>
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="payout-notify" @bind="_form.NotifyBeforePayout" />
+                                        <label class="form-check-label" for="payout-notify">Recevoir une notification avant chaque versement</label>
+                                    </div>
+                                </div>
+                                <div class="col-12 payout-meta small text-muted">
+                                    <span><i class="bi bi-clock me-1"></i>Délai estimé d'arrivée : @EtaLabel</span>
+                                    <span class="ms-3"><i class="bi bi-info-circle me-1"></i>Frais du fournisseur selon l’opérateur</span>
+                                </div>
+                            </div>
+                            <div class="d-flex justify-content-end gap-2 mt-4">
+                                <button type="button" class="btn btn-outline-secondary" @onclick="ResetForm">Annuler</button>
+                                <button type="button" class="btn btn-primary" disabled="@_busy" @onclick="AddAccountAsync">
+                                    @if (_busy) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                                    Enregistrer et vérifier
+                                </button>
+                            </div>
+                        </section>
                     }
-                </tbody>
-            </table>
-        }
+                </div>
+            </div>
+
+            <div class="section-card mb-4">
+                <div class="section-card-header d-flex justify-content-between align-items-center">
+                    <h2 class="mb-0">Comptes enregistrés</h2>
+                    <button class="btn btn-outline-primary btn-sm" @onclick="ResetForm">
+                        <i class="bi bi-plus-lg me-1"></i>Ajouter un autre compte
+                    </button>
+                </div>
+                @if (_setup.AccountList.Count == 0)
+                {
+                    <p class="text-muted mb-0 p-4">Aucun compte configuré. Ajoutez vos moyens pour des versements rapides.</p>
+                }
+                else
+                {
+                    <div class="table-responsive">
+                        <table class="table ts-table mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Moyen de versement</th>
+                                    <th>Titulaire</th>
+                                    <th>Devise</th>
+                                    <th>Statut</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var a in _setup.AccountList)
+                                {
+                                    <tr>
+                                        <td>
+                                            <strong>@ProviderLabel(a.ProviderKind)</strong>
+                                            <div class="small text-muted">@(a.PhoneNumber ?? a.EmailOrAccountId ?? a.PaymentDetails ?? a.Label)</div>
+                                        </td>
+                                        <td>@a.AccountHolderName</td>
+                                        <td>@TutorPayoutPolicy.FormatPayoutCurrencyLabel(a.Currency)</td>
+                                        <td>
+                                            @if (a.IsPrimary)
+                                            {
+                                                <span class="ts-badge ts-badge-primary">Principal</span>
+                                            }
+                                            @if (a.IsVerified)
+                                            {
+                                                <span class="ts-badge ts-badge-success">Vérifié</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="ts-badge ts-badge-warning">Vérification en attente</span>
+                                            }
+                                        </td>
+                                        <td class="text-end text-nowrap">
+                                            <button class="btn btn-link btn-sm" @onclick="() => BeginEdit(a)">Modifier</button>
+                                            @if (!a.IsPrimary)
+                                            {
+                                                <button class="btn btn-link btn-sm" @onclick="() => SetPrimaryAsync(a.Id)">@L["Payout_MakePrimary"]</button>
+                                            }
+                                            <button class="btn btn-link btn-sm text-danger" @onclick="() => DeactivateAsync(a.Id)">@L["Common_Delete"]</button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="section-card p-3 mb-3">
+                <h3 class="h6 fw-bold">Résumé du compte</h3>
+                <dl class="payout-summary mb-0">
+                    <div><dt>Titulaire</dt><dd>@(string.IsNullOrWhiteSpace(_form.AccountHolderName) ? "—" : _form.AccountHolderName)</dd></div>
+                    <div><dt>Pays</dt><dd>@CountryLabel(_country)</dd></div>
+                    <div><dt>Moyen</dt><dd>@ChannelLabel</dd></div>
+                    <div><dt>Devise</dt><dd>@TutorPayoutPolicy.FormatPayoutCurrencyLabel(PayoutCurrency)</dd></div>
+                    <div><dt>Fréquence</dt><dd>@FrequencyLabel</dd></div>
+                </dl>
+            </div>
+            <div class="section-card p-3 mb-3">
+                <h3 class="h6 fw-bold">Documents requis</h3>
+                <ul class="payout-docs mb-0">
+                    <li class="is-ok"><i class="bi bi-check-circle-fill"></i> Nom du titulaire</li>
+                    <li class="@(_setup.SetupComplete ? "is-ok" : "is-wait")">
+                        <i class="bi @(_setup.SetupComplete ? "bi-check-circle-fill" : "bi-hourglass-split")"></i>
+                        Moyen de versement
+                    </li>
+                    <li class="is-wait"><i class="bi bi-hourglass-split"></i> Vérification opérateur</li>
+                </ul>
+                <a class="small d-inline-block mt-2" href="/tutor/verification">Pièce d'identité →</a>
+            </div>
+            <div class="section-card p-3 mb-3">
+                <h3 class="h6 fw-bold">Règles de versement</h3>
+                <ul class="small mb-0 ps-3">
+                    <li>@L["Payout_Rule100"]</li>
+                    <li>@L["Payout_Rule30"]</li>
+                    <li>@L["Payout_Rule10"]</li>
+                    <li>@L["Payout_RuleGateway"]</li>
+                </ul>
+            </div>
+            <div class="section-card p-3">
+                <h3 class="h6 fw-bold">Besoin d'aide ?</h3>
+                <p class="small text-muted">Un conseiller peut vous aider à relier le bon compte de versement.</p>
+                <a class="btn btn-outline-primary btn-sm" href="/tutor/messages">Contacter le support</a>
+            </div>
+        </div>
     </div>
 
+    <div class="alert alert-info mb-3">
+        Si vous êtes rattaché à un groupe d’experts, une partie des revenus peut être versée au responsable du groupe.
+        Consultez les règles de votre groupe.
+    </div>
     <div class="alert alert-info mb-0">
         <i class="bi bi-shield-lock me-1"></i>@L["Payout_SecurityNote"]
     </div>
@@ -243,11 +424,13 @@ else
 }
 
 @code {
-    private bool _loading = true, _busy, _showAdd;
+    private static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web);
+    private bool _loading = true, _busy;
     private string? _error, _success;
     private SetupDto? _setup;
-    private string _country = "CA";
-    private string? _paypalEmail;
+    private string _country = "CI";
+    private decimal _available;
+    private Guid? _editId;
     private AccountForm _form = new();
 
     private record CatalogItem(string ProviderKind, string DisplayName, bool IsRequired, string Region);
@@ -265,21 +448,70 @@ else
     }
     private record OnboardResult(string ExternalAccountId, string OnboardingUrl, string Status);
     private record OAuthStart(string AuthorizationUrl, string State);
+    private record EarningsSummary(decimal Available, string Currency);
 
-    private class AccountForm
+    private sealed class AccountForm
     {
-        public string Label { get; set; } = "";
-        public string ProviderKind { get; set; } = "PayPal";
+        public string AccountType { get; set; } = "individual";
         public string AccountHolderName { get; set; } = "";
+        public string Channel { get; set; } = "mobile";
+        public string ProviderKind { get; set; } = "OrangeMoney";
+        public string DialCode { get; set; } = "+225";
+        public string NationalNumber { get; set; } = "";
+        public string OperatorRegisteredName { get; set; } = "";
         public string? EmailOrAccountId { get; set; }
-        public string? PhoneNumber { get; set; }
-        public string? PaymentDetails { get; set; }
+        public string BankName { get; set; } = "";
+        public string BankAccountNumber { get; set; } = "";
+        public string Frequency { get; set; } = "weekly";
+        public decimal MinimumAmount { get; set; } = 25000;
         public bool IsPrimary { get; set; } = true;
+        public bool NotifyBeforePayout { get; set; } = true;
     }
+
+    private bool IsAfrica => string.Equals(_setup?.Region, "Africa", StringComparison.OrdinalIgnoreCase);
+    private bool IsStripeZone => string.Equals(_setup?.Region, "StripeConnectZone", StringComparison.OrdinalIgnoreCase);
+    private bool IsCanada => string.Equals(_country, "CA", StringComparison.OrdinalIgnoreCase);
+    private string PayoutCurrency => string.IsNullOrWhiteSpace(_setup?.Currency)
+        ? TutorPayoutPolicy.ResolvePayoutCurrency(_country)
+        : _setup!.Currency;
+
+    private IEnumerable<CatalogItem> MobileOperators =>
+        _setup?.CatalogList.Where(c => IsMobileKind(c.ProviderKind)) ?? [];
+
+    private int[] MinimumChoices => PayoutCurrency is "XOF" or "XAF"
+        ? [10000, 25000, 50000, 100000]
+        : [10, 25, 50, 100];
+
+    private string ChannelLabel => _form.Channel switch
+    {
+        "mobile" => ProviderLabel(_form.ProviderKind),
+        "bank" => IsCanada ? "Interac e-Transfer" : "Compte bancaire",
+        "paypal" => "PayPal",
+        "stripe" => "Stripe Connect",
+        _ => "—"
+    };
+
+    private string FrequencyLabel => _form.Frequency switch
+    {
+        "biweekly" => "Toutes les 2 semaines",
+        "monthly" => "Chaque mois",
+        _ => "Chaque semaine"
+    };
+
+    private string EtaLabel => _form.Channel switch
+    {
+        "mobile" => "1–2 jours ouvrés",
+        "paypal" => "1–3 jours ouvrés",
+        _ => "2–5 jours ouvrés"
+    };
+
+    private static bool IsMobileKind(string? kind) => kind is
+        "Wave" or "OrangeMoney" or "MtnMomo" or "TapTapSend" or "Mpesa" or "Moov" or "Airtel";
 
     private static string ProviderLabel(string? kind) => kind switch
     {
         "InteracETransfer" => "Interac e-Transfer",
+        "BankAccount" => "Compte bancaire",
         "StripeConnect" => "Stripe Connect",
         "PayPal" => "PayPal",
         "TapTapSend" => "TapTap Send",
@@ -288,8 +520,19 @@ else
         "Mpesa" => "M-Pesa",
         "Moov" => "Moov Money",
         "Airtel" => "Airtel Money",
+        "Wave" => "Wave",
         _ => kind ?? ""
     };
+
+    private static string CountryLabel(string? code) =>
+        CountryCatalog.Find(code)?.Name ?? code ?? "—";
+
+    private string FormatBalance(decimal amount)
+    {
+        if (PayoutCurrency is "XOF" or "XAF")
+            return $"{amount:N0} FCFA";
+        return $"{amount:N0} {PayoutCurrency}";
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -299,7 +542,6 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        // Recharge une fois le circuit interactif prêt (évite page vide après prerender sans auth).
         if (firstRender && _setup is null && !_loading)
             await ReloadAsync();
     }
@@ -327,10 +569,7 @@ else
                 Nav.NavigateTo("/tutor/payout-settings", replace: true);
             }
         }
-        catch
-        {
-            // ignore query handling errors; ReloadAsync will surface setup issues
-        }
+        catch { }
     }
 
     private async Task ReloadAsync()
@@ -352,17 +591,20 @@ else
             if (_setup is not null)
             {
                 _country = _setup.CountryCode;
-                _paypalEmail = _setup.PayPalEmail;
-                var catalog = _setup.CatalogList;
-                if (catalog.Count > 0)
-                    _form.ProviderKind = catalog.FirstOrDefault(c => c.ProviderKind == "InteracETransfer")?.ProviderKind
-                        ?? catalog.FirstOrDefault(c => c.ProviderKind != "StripeConnect")?.ProviderKind
-                        ?? catalog[0].ProviderKind;
+                ApplySetupDefaults(resetHolder: string.IsNullOrWhiteSpace(_form.AccountHolderName));
             }
             else
             {
                 _error = L["Payout_LoadFailed"];
             }
+
+            try
+            {
+                var earnings = await Api.GetAsync<EarningsSummary>("api/tutor-earnings");
+                if (earnings is not null)
+                    _available = earnings.Available;
+            }
+            catch { }
         }
         catch (Exception ex)
         {
@@ -376,19 +618,218 @@ else
         }
     }
 
-    private async Task SaveProfileAsync()
+    private void ApplySetupDefaults(bool resetHolder)
     {
-        _busy = true; _error = null; _success = null;
+        if (resetHolder)
+            _form.AccountHolderName = Auth.SchoolName ?? Auth.UserName ?? "";
+        _form.DialCode = CountryCatalog.DialPrefix(_country) ?? "+225";
+        if (IsAfrica)
+        {
+            _form.Channel = "mobile";
+            _form.ProviderKind = MobileOperators.FirstOrDefault()?.ProviderKind ?? "OrangeMoney";
+            _form.MinimumAmount = 25000;
+        }
+        else if (IsCanada)
+        {
+            _form.Channel = "bank";
+            _form.ProviderKind = "InteracETransfer";
+            _form.MinimumAmount = 25;
+        }
+        else
+        {
+            _form.Channel = "paypal";
+            _form.ProviderKind = "PayPal";
+            _form.MinimumAmount = 25;
+        }
+    }
+
+    private async Task OnCountryChanged(string? code)
+    {
+        _country = string.IsNullOrWhiteSpace(code) ? _country : code;
+        _form.DialCode = CountryCatalog.DialPrefix(_country) ?? _form.DialCode;
+        await SaveProfileCountryAsync();
+    }
+
+    private async Task SaveProfileCountryAsync()
+    {
+        _busy = true; _error = null;
         try
         {
             var result = await Api.PutWithErrorAsync<SetupDto>("api/tutor-payout-accounts/profile", new
             {
                 country = _country,
-                payPalEmail = _paypalEmail
+                payPalEmail = (string?)null
             });
             if (result.Error is not null) { _error = result.Error; return; }
             _setup = result.Value;
+            if (_setup is not null)
+                _country = _setup.CountryCode;
+            ApplySetupDefaults(resetHolder: false);
+        }
+        finally { _busy = false; }
+    }
+
+    private void SelectChannel(string channel)
+    {
+        _form.Channel = channel;
+        _form.ProviderKind = channel switch
+        {
+            "mobile" => MobileOperators.FirstOrDefault()?.ProviderKind ?? "OrangeMoney",
+            "bank" => IsCanada ? "InteracETransfer" : "BankAccount",
+            "paypal" => "PayPal",
+            "stripe" => "StripeConnect",
+            _ => _form.ProviderKind
+        };
+    }
+
+    private void ResetForm()
+    {
+        _editId = null;
+        _form = new AccountForm
+        {
+            AccountHolderName = Auth.SchoolName ?? Auth.UserName ?? ""
+        };
+        ApplySetupDefaults(resetHolder: false);
+        _error = null;
+    }
+
+    private void BeginEdit(AccountDto a)
+    {
+        _editId = a.Id;
+        var meta = TryReadMeta(a.PaymentDetails);
+        _form.AccountHolderName = a.AccountHolderName;
+        _form.IsPrimary = a.IsPrimary;
+        _form.EmailOrAccountId = a.EmailOrAccountId;
+        _form.AccountType = meta?.AccountType ?? "individual";
+        _form.Frequency = meta?.Frequency ?? "weekly";
+        _form.MinimumAmount = meta?.MinimumAmount ?? _form.MinimumAmount;
+        _form.NotifyBeforePayout = meta?.NotifyBeforePayout ?? true;
+        _form.OperatorRegisteredName = meta?.OperatorRegisteredName ?? "";
+        _form.BankName = meta?.BankName ?? "";
+        _form.BankAccountNumber = meta?.BankAccountNumber ?? a.PaymentDetails ?? "";
+        _form.DialCode = meta?.DialCode ?? CountryCatalog.DialPrefix(a.CountryCode) ?? "+225";
+        _form.NationalNumber = StripDial(a.PhoneNumber, _form.DialCode);
+        _form.ProviderKind = a.ProviderKind;
+        _form.Channel = a.ProviderKind switch
+        {
+            "PayPal" => "paypal",
+            "StripeConnect" => "stripe",
+            "InteracETransfer" or "BankAccount" => "bank",
+            _ => "mobile"
+        };
+    }
+
+    private sealed record AccountMeta(
+        string? AccountType,
+        string? DialCode,
+        string? OperatorRegisteredName,
+        string? Frequency,
+        decimal? MinimumAmount,
+        bool? NotifyBeforePayout,
+        string? BankName,
+        string? BankAccountNumber);
+
+    private static AccountMeta? TryReadMeta(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json) || json.TrimStart() is not ['{', ..])
+            return null;
+        try { return JsonSerializer.Deserialize<AccountMeta>(json, JsonOpts); }
+        catch { return null; }
+    }
+
+    private static string StripDial(string? phone, string dial)
+    {
+        if (string.IsNullOrWhiteSpace(phone)) return "";
+        var p = phone.Trim();
+        if (p.StartsWith(dial, StringComparison.Ordinal))
+            return p[dial.Length..].Trim();
+        return p.TrimStart('+');
+    }
+
+    private string BuildDetailsJson()
+    {
+        var meta = new AccountMeta(
+            _form.AccountType,
+            _form.DialCode,
+            string.IsNullOrWhiteSpace(_form.OperatorRegisteredName) ? null : _form.OperatorRegisteredName,
+            _form.Frequency,
+            _form.MinimumAmount,
+            _form.NotifyBeforePayout,
+            string.IsNullOrWhiteSpace(_form.BankName) ? null : _form.BankName,
+            string.IsNullOrWhiteSpace(_form.BankAccountNumber) ? null : _form.BankAccountNumber);
+        return JsonSerializer.Serialize(meta, JsonOpts);
+    }
+
+    private async Task AddAccountAsync()
+    {
+        if (_form.Channel == "stripe")
+            return;
+        if (string.IsNullOrWhiteSpace(_form.AccountHolderName))
+        {
+            _error = "Le nom légal du titulaire est obligatoire.";
+            return;
+        }
+        if (_form.Channel == "mobile" && string.IsNullOrWhiteSpace(_form.NationalNumber))
+        {
+            _error = "Indiquez le numéro Mobile Money.";
+            return;
+        }
+        if (_form.Channel == "paypal" && (string.IsNullOrWhiteSpace(_form.EmailOrAccountId) || !_form.EmailOrAccountId.Contains('@')))
+        {
+            _error = "E-mail PayPal obligatoire.";
+            return;
+        }
+        if (_form.Channel == "bank" && !IsCanada && (string.IsNullOrWhiteSpace(_form.BankName) || string.IsNullOrWhiteSpace(_form.BankAccountNumber)))
+        {
+            _error = "Indiquez la banque et le numéro de compte.";
+            return;
+        }
+        if (_form.Channel == "bank" && IsCanada && (string.IsNullOrWhiteSpace(_form.EmailOrAccountId) || !_form.EmailOrAccountId.Contains('@')))
+        {
+            _error = "E-mail Interac (Autodépôt) obligatoire.";
+            return;
+        }
+
+        _busy = true; _error = null; _success = null;
+        try
+        {
+            var provider = _form.Channel switch
+            {
+                "mobile" => _form.ProviderKind,
+                "bank" => IsCanada ? "InteracETransfer" : "BankAccount",
+                "paypal" => "PayPal",
+                _ => _form.ProviderKind
+            };
+
+            var phone = _form.Channel == "mobile"
+                ? $"{_form.DialCode}{_form.NationalNumber}".Replace(" ", "")
+                : null;
+
+            var url = _editId is Guid id
+                ? $"api/tutor-payout-accounts/{id}"
+                : "api/tutor-payout-accounts";
+
+            var payload = new
+            {
+                label = ChannelLabel,
+                providerKind = provider,
+                countryCode = _country,
+                currency = PayoutCurrency,
+                isPrimary = _form.IsPrimary,
+                accountHolderName = _form.AccountHolderName,
+                emailOrAccountId = _form.EmailOrAccountId,
+                phoneNumber = phone,
+                paymentDetails = BuildDetailsJson()
+            };
+
+            var result = _editId is not null
+                ? await Api.PutWithErrorAsync<AccountDto>(url, payload)
+                : await Api.PostWithErrorAsync<AccountDto>(url, payload);
+
+            if (result.Error is not null) { _error = result.Error; return; }
             _success = L["Payout_Saved"];
+            ResetForm();
+            await ReloadAsync();
         }
         finally { _busy = false; }
     }
@@ -434,35 +875,6 @@ else
             if (result.Error is not null) { _error = result.Error; return; }
             if (!string.IsNullOrWhiteSpace(result.Value?.AuthorizationUrl))
                 Nav.NavigateTo(result.Value.AuthorizationUrl, forceLoad: true);
-        }
-        finally { _busy = false; }
-    }
-
-    private async Task AddAccountAsync()
-    {
-        _busy = true; _error = null; _success = null;
-        try
-        {
-            var result = await Api.PostWithErrorAsync<AccountDto>("api/tutor-payout-accounts", new
-            {
-                label = string.IsNullOrWhiteSpace(_form.Label) ? _form.ProviderKind : _form.Label,
-                providerKind = _form.ProviderKind,
-                countryCode = _country,
-                currency = "CAD",
-                isPrimary = _form.IsPrimary,
-                accountHolderName = _form.AccountHolderName,
-                emailOrAccountId = _form.EmailOrAccountId,
-                phoneNumber = _form.PhoneNumber,
-                paymentDetails = string.IsNullOrWhiteSpace(_form.PaymentDetails) ? null : _form.PaymentDetails.Trim()
-            });
-            if (result.Error is not null) { _error = result.Error; return; }
-            _showAdd = false;
-            _form = new AccountForm
-            {
-                ProviderKind = _country == "CA" ? "InteracETransfer" : "PayPal"
-            };
-            _success = L["Payout_Saved"];
-            await ReloadAsync();
         }
         finally { _busy = false; }
     }

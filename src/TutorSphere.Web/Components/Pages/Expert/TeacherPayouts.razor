@@ -1,0 +1,245 @@
+@page "/expert/teacher-payouts"
+@layout ExpertLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject AuthService Auth
+@inject ApiClient Api
+@inject IJSRuntime JS
+
+<ApplyRequestCulture />
+
+<PageTitle>Factures enseignants — TutorSphere</PageTitle>
+
+<AuthorizeView Roles="Expert,GroupManager,SuperAdmin,PlatformAdmin">
+    <Authorized>
+        <div class="cc-toolbar">
+            <div>
+                <h1 class="cc-page-title">Factures des enseignants</h1>
+                <p class="cc-page-sub">Demandes de versement transmises au responsable. La facture reprend le moyen de paiement fourni par l’enseignant et peut être imprimée à tout moment.</p>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger">@_error</div>
+        }
+        @if (!string.IsNullOrEmpty(_info))
+        {
+            <div class="alert alert-success">@_info</div>
+        }
+
+        <div class="cc-tabs mb-3" role="tablist">
+            <button type="button" class="cc-tab @(_tab == "pending" ? "active" : null)" @onclick='() => SetTab("pending")'>
+                Demande de paiement (@Count("pending"))
+            </button>
+            <button type="button" class="cc-tab @(_tab == "processing" ? "active" : null)" @onclick='() => SetTab("processing")'>
+                Paiement en cours (@Count("processing"))
+            </button>
+            <button type="button" class="cc-tab @(_tab == "paid" ? "active" : null)" @onclick='() => SetTab("paid")'>
+                Facture payée (@Count("paid"))
+            </button>
+        </div>
+
+        <div class="cc-card">
+            @if (_loading)
+            {
+                <span class="spinner-border"></span>
+            }
+            else if (Filtered.Count == 0)
+            {
+                <p class="text-muted mb-0">Aucune facture dans cet onglet.</p>
+            }
+            else
+            {
+                <table class="cc-table">
+                    <thead>
+                        <tr>
+                            <th>Facture</th>
+                            <th>Enseignant</th>
+                            <th>Montant</th>
+                            <th>Moyen de paiement</th>
+                            <th>Demandée</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in Filtered)
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@row.InvoiceNumber</strong>
+                                    <div class="small text-muted">@StatusLabel(row.Status)</div>
+                                </td>
+                                <td>@row.TeacherName</td>
+                                <td class="fw-semibold">@row.Amount.ToString("N2") @row.Currency</td>
+                                <td>
+                                    <div><strong>@ProviderLabel(row.PaymentMethod.ProviderKind)</strong></div>
+                                    <div class="small">@row.PaymentMethod.AccountHolderName</div>
+                                    <div class="small text-muted">@Destination(row.PaymentMethod)</div>
+                                </td>
+                                <td>@row.RequestedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                                <td class="text-end text-nowrap">
+                                    <button type="button" class="cc-btn btn-sm" @onclick="() => _open = row">Détail</button>
+                                    <button type="button" class="cc-btn btn-sm" disabled="@_busy" @onclick="() => PrintAsync(row)">
+                                        <i class="bi bi-printer"></i> Imprimer
+                                    </button>
+                                    @if (_tab == "pending")
+                                    {
+                                        <button type="button" class="cc-btn cc-btn-primary btn-sm" disabled="@_busy"
+                                                @onclick="() => TakeAsync(row)">Prendre en charge</button>
+                                    }
+                                    @if (_tab is "pending" or "processing")
+                                    {
+                                        <button type="button" class="cc-btn cc-btn-primary btn-sm" disabled="@_busy"
+                                                @onclick="() => PayAsync(row)">Marquer payée</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+
+        @if (_open is not null)
+        {
+            <div class="cc-card mt-3">
+                <div class="d-flex justify-content-between">
+                    <h2 class="cc-card-title">Facture @_open.InvoiceNumber</h2>
+                    <button type="button" class="cc-btn btn-sm" @onclick="() => _open = null">Fermer</button>
+                </div>
+                <p class="mb-1"><strong>Enseignant :</strong> @_open.TeacherName</p>
+                <p class="mb-1"><strong>Montant :</strong> @_open.Amount.ToString("N2") @_open.Currency</p>
+                <p class="mb-3"><strong>Statut :</strong> @StatusLabel(_open.Status)</p>
+                <h3 class="h6">Moyen de paiement fourni par l’enseignant</h3>
+                <dl class="row mb-3">
+                    <dt class="col-sm-4">Canal</dt><dd class="col-sm-8">@ProviderLabel(_open.PaymentMethod.ProviderKind)</dd>
+                    <dt class="col-sm-4">Libellé</dt><dd class="col-sm-8">@_open.PaymentMethod.Label</dd>
+                    <dt class="col-sm-4">Titulaire</dt><dd class="col-sm-8">@_open.PaymentMethod.AccountHolderName</dd>
+                    <dt class="col-sm-4">Pays / devise</dt><dd class="col-sm-8">@_open.PaymentMethod.CountryCode · @_open.PaymentMethod.Currency</dd>
+                    <dt class="col-sm-4">Téléphone</dt><dd class="col-sm-8">@(_open.PaymentMethod.PhoneNumber ?? "—")</dd>
+                    <dt class="col-sm-4">E-mail / identifiant</dt><dd class="col-sm-8">@(_open.PaymentMethod.EmailOrAccountId ?? "—")</dd>
+                    <dt class="col-sm-4">Détails</dt><dd class="col-sm-8">@(_open.PaymentMethod.PaymentDetails ?? "—")</dd>
+                </dl>
+                <button type="button" class="cc-btn cc-btn-primary" disabled="@_busy" @onclick="() => PrintAsync(_open)">
+                    <i class="bi bi-printer me-1"></i>Imprimer la facture
+                </button>
+            </div>
+        }
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    private string _tab = "pending";
+    private bool _loading = true, _busy;
+    private string? _error, _info;
+    private List<InvoiceRow> _all = [];
+    private InvoiceRow? _open;
+
+    private List<InvoiceRow> Filtered => _all
+        .Where(r => _tab switch
+        {
+            "processing" => r.Status == "processing",
+            "paid" => r.Status == "completed",
+            _ => r.Status == "pending"
+        })
+        .ToList();
+
+    private int Count(string tab) => tab switch
+    {
+        "processing" => _all.Count(r => r.Status == "processing"),
+        "paid" => _all.Count(r => r.Status == "completed"),
+        _ => _all.Count(r => r.Status == "pending")
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(forceJs: true); } catch { }
+        try { await Auth.RestoreActAsGroupAsync(); } catch { }
+        await ReloadAsync();
+    }
+
+    private async Task SetTab(string tab)
+    {
+        _tab = tab;
+        _open = null;
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            _all = await Api.GetAsync<List<InvoiceRow>>("api/expert/teacher-payouts") ?? [];
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _loading = false; }
+    }
+
+    private Task TakeAsync(InvoiceRow row) => MarkAsync(row, "processing");
+    private Task PayAsync(InvoiceRow row) => MarkAsync(row, "paid");
+
+    private async Task MarkAsync(InvoiceRow row, string action)
+    {
+        _busy = true; _error = null; _info = null;
+        try
+        {
+            var path = action == "paid"
+                ? $"api/expert/teacher-payouts/{row.Id}/paid"
+                : $"api/expert/teacher-payouts/{row.Id}/processing";
+            var result = await Api.PostWithErrorAsync<InvoiceRow>(path, new { });
+            if (result.Error is not null) { _error = result.Error; return; }
+            _info = action == "paid" ? "Facture marquée payée." : "Demande prise en charge (paiement en cours).";
+            _tab = action == "paid" ? "paid" : "processing";
+            await ReloadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task PrintAsync(InvoiceRow row)
+    {
+        _busy = true; _error = null;
+        try
+        {
+            var result = await Api.GetBytesWithErrorAsync($"api/expert/teacher-payouts/{row.Id}/pdf");
+            if (result.Value is null) { _error = result.Error ?? "PDF indisponible."; return; }
+            await JS.InvokeVoidAsync("downloadFileFromBase64", $"facture-{row.InvoiceNumber}.pdf", "application/pdf", Convert.ToBase64String(result.Value));
+        }
+        finally { _busy = false; }
+    }
+
+    private static string StatusLabel(string s) => s switch
+    {
+        "pending" => "Demande de paiement",
+        "processing" => "Paiement en cours",
+        "completed" => "Facture payée",
+        "failed" => "Échec",
+        _ => s
+    };
+
+    private static string ProviderLabel(string? kind) => kind switch
+    {
+        "OrangeMoney" => "Orange Money",
+        "MtnMomo" => "MTN MoMo",
+        "Wave" => "Wave",
+        "PayPal" => "PayPal",
+        "BankAccount" => "Compte bancaire",
+        "InteracETransfer" => "Interac e-Transfer",
+        "StripeConnect" => "Stripe Connect",
+        _ => kind ?? "—"
+    };
+
+    private static string Destination(PaymentMethod m) =>
+        m.PhoneNumber ?? m.EmailOrAccountId ?? (string.IsNullOrWhiteSpace(m.PaymentDetails) ? m.Label : m.PaymentDetails);
+
+    private sealed record PaymentMethod(
+        string ProviderKind, string Label, string AccountHolderName, string CountryCode, string Currency,
+        string? EmailOrAccountId, string? PhoneNumber, string? PaymentDetails, bool IsPrimary);
+
+    private sealed record InvoiceRow(
+        Guid Id, string InvoiceNumber, Guid TenantId, string TeacherName,
+        decimal Amount, string Currency, string Status,
+        DateTime RequestedAt, DateTime? ProcessingAt, DateTime? CompletedAt,
+        PaymentMethod PaymentMethod, string? Note);
+}

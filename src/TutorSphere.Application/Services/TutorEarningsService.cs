@@ -1,3 +1,4 @@
+using System.Text.Json;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.TutorEarnings;
 using TutorSphere.Application.DTOs.TutorPayouts;
@@ -13,6 +14,7 @@ public interface ITutorEarningsService
     Task<IReadOnlyList<TutorPayoutDto>> ListPayoutsAsync(CancellationToken ct = default);
     Task<TutorPayoutDto> RequestPayoutAsync(RequestTutorPayoutRequest request, CancellationToken ct = default);
     Task<PayoutEligibilityDto> GetEligibilityAsync(CancellationToken ct = default);
+    Task<(byte[] Content, string FileName)> BuildPayoutInvoicePdfAsync(Guid payoutId, CancellationToken ct = default);
     Task<(bool Success, string? Error)> CompleteFromGatewayAsync(string idempotencyKeyOrRef, string? providerPayoutId, CancellationToken ct = default);
     Task<(bool Success, string? Error)> RejectFromGatewayAsync(string idempotencyKeyOrRef, string? reason, CancellationToken ct = default);
 }
@@ -51,7 +53,7 @@ public class TutorEarningsService : ITutorEarningsService
             .OrderByDescending(p => p.RequestedAt)
             .Take(20)
             .ToList()
-            .Select(MapPayout)
+            .Select(p => MapPayout(p))
             .ToList();
 
         var eligibility = await BuildEligibilityAsync(snapshot, ct);
@@ -74,7 +76,7 @@ public class TutorEarningsService : ITutorEarningsService
         var list = _db.TutorPayouts
             .OrderByDescending(p => p.RequestedAt)
             .ToList()
-            .Select(MapPayout)
+            .Select(p => MapPayout(p))
             .ToList();
         return Task.FromResult<IReadOnlyList<TutorPayoutDto>>(list);
     }
@@ -122,26 +124,36 @@ public class TutorEarningsService : ITutorEarningsService
         if (string.IsNullOrWhiteSpace(destinationToken))
             throw new InvalidOperationException("Destination de versement incomplète.");
 
+        var tenant = _db.Tenants.FirstOrDefault(t => t.Id == tenantId);
         var idempotencyKey = $"tutor-payout-{tenantId:N}-{Guid.NewGuid():N}"[..64];
         var payout = new TutorPayout
         {
             TenantId = tenantId,
             Amount = amount,
-            Currency = TutorPayoutPolicy.PolicyCurrency,
+            Currency = string.IsNullOrWhiteSpace(primary.Currency) ? TutorPayoutPolicy.PolicyCurrency : primary.Currency,
             Status = TutorPayoutStatus.Pending,
             Note = string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim(),
             RequestedAt = DateTime.UtcNow,
             PayoutAccountId = primary.Id,
             ProviderKind = primary.ProviderKind,
-            IdempotencyKey = idempotencyKey
+            IdempotencyKey = idempotencyKey,
+            InvoiceNumber = GroupTeacherPayoutService.NewInvoiceNumber(),
+            PaymentMethodSnapshot = GroupTeacherPayoutService.SnapshotJson(primary),
+            ExpertGroupId = tenant?.ApprovedByExpertGroupId
         };
 
         _db.Add(payout);
         await _db.SaveChangesAsync(ct);
 
+        if (payout.ExpertGroupId is Guid)
+        {
+            var afterGroup = ComputeSnapshot();
+            await SyncHoldingClockAsync(tenantId, afterGroup.Available, ct, forceRestartIfBelowThreshold: true);
+            return MapPayout(payout, tenant?.Name);
+        }
+
         if (_disbursements.IsConfigured)
         {
-            var tenant = _db.Tenants.FirstOrDefault(t => t.Id == tenantId);
             var amountMinor = (long)Math.Round(amount * 100m, MidpointRounding.AwayFromZero);
             var enqueued = await _disbursements.EnqueueAsync(new TutorDisbursementEnqueueRequest(
                 ExternalReference: $"tutor-payout-{payout.Id:N}",
@@ -161,7 +173,6 @@ public class TutorEarningsService : ITutorEarningsService
         }
         else
         {
-            // Sans PayGateway : reste en attente manuelle (admin / ops).
             payout.Status = TutorPayoutStatus.Processing;
             payout.Note = (payout.Note ?? "") + " | PayGateway non configuré — traitement manuel.";
             await _db.SaveChangesAsync(ct);
@@ -171,6 +182,13 @@ public class TutorEarningsService : ITutorEarningsService
         await SyncHoldingClockAsync(tenantId, after.Available, ct, forceRestartIfBelowThreshold: true);
 
         return MapPayout(payout);
+    }
+
+    public Task<(byte[] Content, string FileName)> BuildPayoutInvoicePdfAsync(
+        Guid payoutId, CancellationToken ct = default)
+    {
+        var tenantId = RequireTenantId();
+        return new GroupTeacherPayoutService(_db).BuildPdfAsync(payoutId, expertGroupId: null, tenantId, ct);
     }
 
     public async Task<(bool Success, string? Error)> CompleteFromGatewayAsync(
@@ -422,7 +440,7 @@ public class TutorEarningsService : ITutorEarningsService
             PayoutProviderKind.PayPal => account.EmailOrAccountId,
             _ when PayoutProviderCodes.IsMobileMoney(account.ProviderKind)
                 => account.EmailOrAccountId ?? account.PhoneNumber,
-            _ => account.EmailOrAccountId ?? account.PhoneNumber
+            _ => account.EmailOrAccountId ?? account.PhoneNumber ?? account.PaymentDetails
         };
 
     private static string MaskDestination(TutorPayoutAccount account)
@@ -452,16 +470,35 @@ public class TutorEarningsService : ITutorEarningsService
         _tenantContext.TenantId
         ?? throw new InvalidOperationException("Tenant requis.");
 
-    private static TutorPayoutDto MapPayout(TutorPayout p) => new(
-        p.Id,
-        p.Amount,
-        p.Currency,
-        TutorPayoutStatusNames.Of(p.Status),
-        p.Note,
-        p.RequestedAt,
-        p.CompletedAt,
-        p.ProviderKind?.ToString(),
-        p.PayoutAccountId);
+    private static TutorPayoutDto MapPayout(TutorPayout p, string? teacherName = null)
+    {
+        TutorPayoutMethodSnapshotDto? method = null;
+        if (!string.IsNullOrWhiteSpace(p.PaymentMethodSnapshot))
+        {
+            try
+            {
+                method = JsonSerializer.Deserialize<TutorPayoutMethodSnapshotDto>(
+                    p.PaymentMethodSnapshot,
+                    new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            }
+            catch (JsonException) { }
+        }
+
+        return new(
+            p.Id,
+            p.Amount,
+            p.Currency,
+            TutorPayoutStatusNames.Of(p.Status),
+            p.Note,
+            p.RequestedAt,
+            p.CompletedAt,
+            p.ProviderKind?.ToString(),
+            p.PayoutAccountId,
+            p.InvoiceNumber,
+            teacherName,
+            method is null ? null : GroupTeacherPayoutService.Summarize(method),
+            p.ExpertGroupId);
+    }
 
     private sealed record EarningsSnapshot(
         decimal Collected,

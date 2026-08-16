@@ -23,7 +23,11 @@ public record TutorPayoutDto(
     DateTime RequestedAt,
     DateTime? CompletedAt,
     string? ProviderKind,
-    Guid? PayoutAccountId);
+    Guid? PayoutAccountId,
+    string? InvoiceNumber = null,
+    string? TeacherName = null,
+    string? PaymentMethodSummary = null,
+    Guid? ExpertGroupId = null);
 
 public record RequestTutorPayoutRequest(
     decimal? Amount,

@@ -50,4 +50,18 @@ public class TutorEarningsController : ControllerBase
             return BadRequest(new { error = ex.Message });
         }
     }
+
+    [HttpGet("payouts/{id:guid}/pdf")]
+    public async Task<IActionResult> DownloadPayoutInvoice(Guid id, CancellationToken ct)
+    {
+        try
+        {
+            var (content, fileName) = await _earnings.BuildPayoutInvoicePdfAsync(id, ct);
+            return File(content, "application/pdf", fileName);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
 }

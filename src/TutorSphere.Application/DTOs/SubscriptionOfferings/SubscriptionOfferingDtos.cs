@@ -38,7 +38,11 @@ public record SubscriptionOfferingDto(
     OfferingScheduleDto? Schedule,
     int ActiveSubscribers = 0,
     decimal MonthlyRevenue = 0,
-    int MaxCapacity = 20);
+    int MaxCapacity = 20,
+    string? Code = null,
+    bool IsInternational = false,
+    string? MarketCountryCode = null,
+    string? OwnerTeacherName = null);
 
 public record CreateSubscriptionOfferingRequest(
     string Title,
@@ -52,7 +56,10 @@ public record CreateSubscriptionOfferingRequest(
     string? Mode = null,
     string? Conditions = null,
     OfferingScheduleDto? Schedule = null,
-    int MaxCapacity = 20);
+    int MaxCapacity = 20,
+    string? Code = null,
+    bool IsInternational = false,
+    string? MarketCountryCode = null);
 
 public record UpdateSubscriptionOfferingRequest(
     string Title,

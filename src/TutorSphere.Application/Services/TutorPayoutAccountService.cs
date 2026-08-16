@@ -126,9 +126,9 @@ public class TutorPayoutAccountService : ITutorPayoutAccountService
 
         account.Label = request.Label.Trim();
         account.ProviderKind = kind;
-        account.CountryCode = TutorPayoutPolicy.NormalizeCountry(request.CountryCode ?? tenant.Country);
+        account.CountryCode = country;
         account.Currency = string.IsNullOrWhiteSpace(request.Currency)
-            ? TutorPayoutPolicy.PolicyCurrency
+            ? TutorPayoutPolicy.ResolvePayoutCurrency(country)
             : request.Currency.Trim().ToUpperInvariant();
         account.AccountHolderName = request.AccountHolderName.Trim();
         account.EmailOrAccountId = string.IsNullOrWhiteSpace(externalToken)
@@ -350,17 +350,11 @@ public class TutorPayoutAccountService : ITutorPayoutAccountService
             || accounts.Any(a => a.ProviderKind.Equals(nameof(PayoutProviderKind.PayPal), StringComparison.OrdinalIgnoreCase)
                                  && !string.IsNullOrWhiteSpace(a.EmailOrAccountId));
 
-        var mobileMoneyOk = accounts.Any(a =>
-            Enum.TryParse<PayoutProviderKind>(a.ProviderKind, true, out var kind)
-            && PayoutProviderCodes.IsMobileMoney(kind)
-            && !string.IsNullOrWhiteSpace(a.PhoneNumber)
-            && !string.IsNullOrWhiteSpace(a.AccountHolderName));
-
         var setupComplete = region switch
         {
             PayoutRegionKind.StripeConnectZone => stripeOk && paypalOk,
-            PayoutRegionKind.Africa => mobileMoneyOk,
-            _ => paypalOk
+            PayoutRegionKind.Africa => accounts.Count > 0,
+            _ => paypalOk || accounts.Count > 0
         };
 
         var catalog = new List<PayoutProviderCatalogItemDto>();
@@ -371,6 +365,17 @@ public class TutorPayoutAccountService : ITutorPayoutAccountService
                 catalog.Add(new PayoutProviderCatalogItemDto(
                     p.ToString(), DisplayName(p), IsRequired: false, region.ToString()));
             }
+
+            catalog.Add(new PayoutProviderCatalogItemDto(
+                nameof(PayoutProviderKind.BankAccount),
+                DisplayName(PayoutProviderKind.BankAccount),
+                IsRequired: false,
+                region.ToString()));
+            catalog.Add(new PayoutProviderCatalogItemDto(
+                nameof(PayoutProviderKind.PayPal),
+                DisplayName(PayoutProviderKind.PayPal),
+                IsRequired: false,
+                region.ToString()));
         }
         else
         {
@@ -391,7 +396,10 @@ public class TutorPayoutAccountService : ITutorPayoutAccountService
             {
                 if (required.Contains(extra)) continue;
                 if (PayoutProviderCodes.IsMobileMoney(extra)) continue;
-                if (PayoutProviderCodes.IsInterac(extra)) continue; // déjà ajouté pour CA uniquement
+                if (PayoutProviderCodes.IsInterac(extra)) continue;
+                if (extra == PayoutProviderKind.StripeConnect) continue;
+                if (extra == PayoutProviderKind.BankAccount && TutorPayoutPolicy.SupportsInteracETransfer(country))
+                    continue;
                 catalog.Add(new PayoutProviderCatalogItemDto(extra.ToString(), DisplayName(extra), false, region.ToString()));
             }
         }
@@ -399,7 +407,7 @@ public class TutorPayoutAccountService : ITutorPayoutAccountService
         return new TutorPayoutSetupDto(
             region.ToString(),
             country,
-            TutorPayoutPolicy.PolicyCurrency,
+            TutorPayoutPolicy.ResolvePayoutCurrency(country),
             required.Select(r => r.ToString()).ToList(),
             stripeOk,
             paypalOk,
@@ -427,6 +435,10 @@ public class TutorPayoutAccountService : ITutorPayoutAccountService
                 if (string.IsNullOrWhiteSpace(request.EmailOrAccountId) || !request.EmailOrAccountId.Contains('@'))
                     throw new InvalidOperationException("E-mail Interac (Autodépôt) obligatoire.");
                 break;
+            case PayoutProviderKind.BankAccount:
+                if (string.IsNullOrWhiteSpace(request.PaymentDetails))
+                    throw new InvalidOperationException("Indiquez la banque et le numéro de compte (aucun PIN / mot de passe).");
+                break;
             case PayoutProviderKind.StripeConnect:
                 throw new InvalidOperationException("Utilisez l'onboarding Stripe Connect (pas de saisie manuelle acct_).");
             default:
@@ -444,6 +456,7 @@ public class TutorPayoutAccountService : ITutorPayoutAccountService
         PayoutProviderKind.StripeConnect => "Stripe Connect",
         PayoutProviderKind.PayPal => "PayPal",
         PayoutProviderKind.InteracETransfer => "Interac e-Transfer",
+        PayoutProviderKind.BankAccount => "Compte bancaire",
         PayoutProviderKind.Wave => "Wave",
         PayoutProviderKind.TapTapSend => "TapTap Send",
         PayoutProviderKind.OrangeMoney => "Orange Money",

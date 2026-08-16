@@ -297,7 +297,8 @@
     private record PayoutDto(
         Guid Id, decimal Amount, string Currency, string Status,
         string? Note, DateTime RequestedAt, DateTime? CompletedAt,
-        string? ProviderKind, Guid? PayoutAccountId);
+        string? ProviderKind, Guid? PayoutAccountId,
+        string? InvoiceNumber = null, Guid? ExpertGroupId = null);
 
     private record EligibilityDto(
         bool CanWithdraw, decimal Available, decimal ClaimableNow,
@@ -376,7 +377,9 @@
                 return;
             }
 
-            _payoutSuccess = L["Revenue_CashOutPending"];
+            _payoutSuccess = result.Value?.InvoiceNumber is { Length: > 0 } no && result.Value.ExpertGroupId is not null
+                ? $"Facture {no} générée et transmise au responsable du groupe."
+                : L["Revenue_CashOutPending"].Value;
             await LoadEarningsAsync();
         }
         finally

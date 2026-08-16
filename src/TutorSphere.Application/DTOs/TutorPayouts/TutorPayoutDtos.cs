@@ -66,3 +66,28 @@ public record PayoutEligibilityDto(
     bool SetupComplete,
     string? BlockReason,
     string Currency);
+
+public record TutorPayoutMethodSnapshotDto(
+    string ProviderKind,
+    string Label,
+    string AccountHolderName,
+    string CountryCode,
+    string Currency,
+    string? EmailOrAccountId,
+    string? PhoneNumber,
+    string? PaymentDetails,
+    bool IsPrimary);
+
+public record GroupTeacherPayoutInvoiceDto(
+    Guid Id,
+    string InvoiceNumber,
+    Guid TenantId,
+    string TeacherName,
+    decimal Amount,
+    string Currency,
+    string Status,
+    DateTime RequestedAt,
+    DateTime? ProcessingAt,
+    DateTime? CompletedAt,
+    TutorPayoutMethodSnapshotDto PaymentMethod,
+    string? Note);

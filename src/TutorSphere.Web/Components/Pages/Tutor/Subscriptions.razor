@@ -13,7 +13,7 @@
         <h1><i class="bi bi-arrow-repeat me-2"></i>@L["TutorSubs_Title"]</h1>
         <p class="ts-page-subtitle">@L["TutorSubs_Subtitle"]</p>
     </div>
-    <button class="btn btn-primary" @onclick="()=>_showPlanModal=true">
+    <button class="btn btn-primary" @onclick="ResetPlanForm">
         <i class="bi bi-plus-lg me-1"></i>@L["TutorSubs_CreatePlan"]
     </button>
 </div>
@@ -47,16 +47,65 @@
     </div>
     <div class="col-6 col-lg-3">
         <div class="ts-kpi-card">
-            <span class="ts-kpi-val">@_subs.Where(s => IsActiveStatus(s.Status)).Sum(s => s.Amount).ToString("N0") $</span>
+            <span class="ts-kpi-val">@_subs.Where(s => IsActiveStatus(s.Status)).Sum(s => s.Amount).ToString("N0") @DisplayCurrencyLabel</span>
             <span class="ts-kpi-label">@L["TutorSubs_MRR"]</span>
         </div>
     </div>
     <div class="col-6 col-lg-3">
         <div class="ts-kpi-card">
-            <span class="ts-kpi-val">@AvgActiveAmount().ToString("N0") $</span>
+            <span class="ts-kpi-val">@AvgActiveAmount().ToString("N0") @DisplayCurrencyLabel</span>
             <span class="ts-kpi-label">@L["TutorSubs_AvgAmount"]</span>
         </div>
     </div>
+</div>
+
+<div class="section-card mb-3 p-3">
+    <h2 class="h6 fw-bold mb-3">Nouveau plan (brouillon)</h2>
+    <div class="row g-2">
+        <div class="col-md-6">
+            <label class="form-label">Nom *</label>
+            <input class="form-control" @bind="_name" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">Code</label>
+            <input class="form-control" @bind="_code" />
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">Prix recommandé (@PreviewCurrencyLabel)</label>
+            <input class="form-control" type="number" @bind="_price" />
+        </div>
+        <div class="col-md-4">
+            <label class="form-label">Portée *</label>
+            <select class="form-select" @bind="_scope" @bind:after="OnScopeChanged">
+                <option value="local">Locale (pays de l'enseignant)</option>
+                <option value="international">Internationale</option>
+            </select>
+        </div>
+        @if (IsInternational)
+        {
+            <div class="col-md-4">
+                <label class="form-label">Pays de marché *</label>
+                <CountrySelect Value="@_marketCountry" ValueChanged="OnMarketCountryChanged" Placeholder="Pays cible" />
+            </div>
+        }
+        <div class="col-md-4">
+            <label class="form-label">Devise (automatique)</label>
+            <input class="form-control" value="@PreviewCurrencyLabel" disabled readonly />
+        </div>
+        <div class="col-12">
+            <label class="form-label">Description courte</label>
+            <input class="form-control" @bind="_short" />
+        </div>
+    </div>
+    <div class="d-flex gap-2 mt-2">
+        <button type="button" class="btn btn-primary" disabled="@_saving" @onclick="SavePlan">
+            @if (_saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+            Créer
+        </button>
+    </div>
+    <p class="small text-muted mt-2 mb-0">
+        Devise internationale : Europe → EUR · Canada → $CAD · USA → $USD · Cameroun / Afrique → XAF.
+    </p>
 </div>
 
 <!-- Plans section -->
@@ -64,34 +113,57 @@
     <div class="section-card-header">
         <h2>@L["TutorSubs_MyPlans"]</h2>
     </div>
-    <div class="sub-plans-grid">
-        @foreach (var plan in _plans)
-        {
-            <div class="sub-plan-card @(plan.Popular?"sub-plan-card--featured":"")">
-                @if (plan.Popular) { <div class="sub-plan-badge">@L["TutorSubs_Popular"]</div> }
-                <h3>@plan.Name</h3>
-                <div class="sub-plan-price">
-                    <span class="sub-plan-amount">@plan.Price $</span>
-                    <span class="sub-plan-period">/ @plan.Period</span>
-                </div>
-                <ul class="sub-plan-features">
-                    @foreach (var f in plan.Features)
+    @if (_plans.Count == 0)
+    {
+        <p class="text-muted mb-0 p-4">Aucun plan.</p>
+    }
+    else
+    {
+        <div class="sub-plans-grid">
+            @foreach (var plan in _plans)
+            {
+                <div class="sub-plan-card">
+                    @if (!string.IsNullOrWhiteSpace(plan.OwnerTeacherName))
                     {
-                        <li><i class="bi bi-check-circle-fill text-success me-2"></i>@f</li>
+                        <span class="sub-plan-teacher-tag">
+                            <i class="bi bi-person-badge me-1"></i>@plan.OwnerTeacherName
+                        </span>
                     }
-                </ul>
-                <div class="sub-plan-footer">
-                    <span class="text-muted small">@string.Format(L["TutorSubs_Subscribers"].Value, _subs.Count(s => s.PlanName == plan.Name && IsActiveStatus(s.Status)))</span>
-                    <div class="d-flex gap-1">
-                        <button class="ts-icon-btn" title="@(plan.IsActive ? L["TutorSubs_Deactivate"] : L["TutorSubs_Activate"])"
-                                @onclick="async () => await TogglePlan(plan)">
-                            <i class="bi @(plan.IsActive ? "bi-toggle-on text-success" : "bi-toggle-off text-muted")"></i>
-                        </button>
+                    <h3>@plan.Name</h3>
+                    @if (!string.IsNullOrWhiteSpace(plan.Code) || plan.IsInternational)
+                    {
+                        <div class="small text-muted">
+                            @if (!string.IsNullOrWhiteSpace(plan.Code)) { <span>@plan.Code</span> }
+                            @if (!string.IsNullOrWhiteSpace(plan.Code) && (plan.IsInternational || !string.IsNullOrWhiteSpace(plan.MarketCountryCode)))
+                            { <span> · </span> }
+                            @(plan.IsInternational ? "Internationale" : "Locale")
+                            @if (!string.IsNullOrWhiteSpace(plan.MarketCountryCode))
+                            {
+                                <span> · @plan.MarketCountryCode</span>
+                            }
+                        </div>
+                    }
+                    <div class="sub-plan-price">
+                        <span class="sub-plan-amount">@plan.Price.ToString("N0")</span>
+                        <span class="sub-plan-period">@GroupOfferCurrencyRules.FormatCurrencyLabel(plan.Currency)</span>
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(plan.Description))
+                    {
+                        <p class="small text-muted mb-0">@plan.Description</p>
+                    }
+                    <div class="sub-plan-footer">
+                        <span class="text-muted small">@string.Format(L["TutorSubs_Subscribers"].Value, _subs.Count(s => s.PlanName == plan.Name && IsActiveStatus(s.Status)))</span>
+                        <div class="d-flex gap-1">
+                            <button class="ts-icon-btn" title="@(plan.IsActive ? L["TutorSubs_Deactivate"] : L["TutorSubs_Activate"])"
+                                    @onclick="async () => await TogglePlan(plan)">
+                                <i class="bi @(plan.IsActive ? "bi-toggle-on text-success" : "bi-toggle-off text-muted")"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
-            </div>
-        }
-    </div>
+            }
+        </div>
+    }
 </div>
 
 <!-- Subscribers table -->
@@ -146,7 +218,7 @@
                             <small class="text-muted">@(string.IsNullOrWhiteSpace(s.ParentName) ? "—" : s.ParentName)</small>
                         </td>
                         <td><span class="ts-badge ts-badge-neutral">@s.PlanName</span></td>
-                        <td class="fw-semibold">@s.Amount.ToString("N2") $</td>
+                        <td class="fw-semibold">@s.Amount.ToString("N2") @DisplayCurrencyLabel</td>
                         <td>@s.ExpiresAt.ToString("dd/MM/yyyy")
                             @if (s.ExpiresAt <= DateTime.Today.AddDays(14) && IsActiveStatus(s.Status))
                             {
@@ -200,55 +272,30 @@
     }
 </div>
 
-@if (_showPlanModal)
-{
-    <div class="ts-modal-backdrop" @onclick="()=>_showPlanModal=false">
-        <div class="ts-modal" @onclick:stopPropagation="true">
-            <div class="ts-modal-header">
-                <h2>@L["TutorSubs_CreatePlanTitle"]</h2>
-                <button class="ts-modal-close" @onclick="()=>_showPlanModal=false"><i class="bi bi-x-lg"></i></button>
-            </div>
-            <div class="ts-modal-body">
-                <div class="row g-3">
-                    <div class="col-12"><label class="form-label">@L["TutorSubs_PlanName"] *</label>
-                        <input class="form-control" @bind="_pf.Name" /></div>
-                    <div class="col-6"><label class="form-label">@L["TutorSubs_Price"] *</label>
-                        <input type="number" class="form-control" @bind="_pf.Price" /></div>
-                    <div class="col-6"><label class="form-label">@L["TutorSubs_Period"]</label>
-                        <select class="form-select" @bind="_pf.Period">
-                            <option value="mois">@L["TutorSubs_PeriodMonth"]</option>
-                            <option value="trimestre">@L["TutorSubs_PeriodQuarter"]</option>
-                            <option value="semestre">@L["TutorSubs_PeriodSemester"]</option>
-                            <option value="an">@L["TutorSubs_PeriodYear"]</option>
-                        </select></div>
-                    <div class="col-12"><label class="form-label">@L["TutorSubs_Features"]</label>
-                        <textarea class="form-control" rows="4" @bind="_pf.Features"></textarea></div>
-                    <div class="col-12">
-                        <div class="form-check form-switch">
-                            <input class="form-check-input" type="checkbox" @bind="_pf.Popular" id="plan-popular" />
-                            <label class="form-check-label" for="plan-popular">@L["TutorSubs_MarkPopular"]</label>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="ts-modal-footer">
-                <button class="btn btn-outline-secondary" @onclick="()=>_showPlanModal=false">@L["Common_Cancel"]</button>
-                <button class="btn btn-primary" @onclick="async () => await SavePlan()">@L["TutorSubs_Create"]</button>
-            </div>
-        </div>
-    </div>
-}
-
 @code {
     private string _filterSubStatus = "";
-    private bool _showPlanModal;
     private bool _loading = true;
+    private bool _saving;
     private bool _initialLoadDone;
     private string? _loadError;
     private string? _actionError;
     private string? _actionBanner;
     private Guid? _busyId;
-    private PlanForm _pf = new();
+    private string _name = "";
+    private string? _code;
+    private string? _short;
+    private decimal? _price;
+    private string _scope = "local";
+    private string? _marketCountry;
+    private string? _teacherCountry;
+    private string? _teacherName;
+
+    private bool IsInternational => string.Equals(_scope, "international", StringComparison.OrdinalIgnoreCase);
+    private string PreviewCurrencyLabel => GroupOfferCurrencyRules.FormatCurrencyLabel(
+        GroupOfferCurrencyRules.ResolveOfferCurrency(IsInternational, _marketCountry, _teacherCountry));
+    private string DisplayCurrencyLabel => _plans.Count > 0
+        ? GroupOfferCurrencyRules.FormatCurrencyLabel(_plans[0].Currency)
+        : PreviewCurrencyLabel;
 
     private static bool IsActiveStatus(string status) =>
         status is "Active" or "Actif";
@@ -295,8 +342,53 @@
                 .TryGetValue("status", out var status)
             && !string.IsNullOrWhiteSpace(status))
             _filterSubStatus = status.ToString();
+        await LoadProfileAsync();
         await LoadAsync();
         StateHasChanged();
+    }
+
+    private async Task LoadProfileAsync()
+    {
+        _teacherName = Auth.SchoolName ?? Auth.UserName;
+        if (Auth.TenantId is not Guid tenantId)
+            return;
+
+        try
+        {
+            var profile = await Api.GetAsync<TutorProfileDto>($"api/tenants/{tenantId}/profile");
+            if (profile is null)
+                return;
+            if (!string.IsNullOrWhiteSpace(profile.Name))
+                _teacherName = profile.Name;
+            _teacherCountry = profile.Country;
+        }
+        catch
+        {
+            /* devise locale XAF si pays inconnu */
+        }
+    }
+
+    private Task OnScopeChanged()
+    {
+        if (!IsInternational)
+            _marketCountry = null;
+        return Task.CompletedTask;
+    }
+
+    private Task OnMarketCountryChanged(string? code)
+    {
+        _marketCountry = code;
+        return Task.CompletedTask;
+    }
+
+    private void ResetPlanForm()
+    {
+        _name = "";
+        _code = _short = null;
+        _price = null;
+        _scope = "local";
+        _marketCountry = null;
+        _actionError = null;
     }
 
     private async Task LoadAsync()
@@ -313,18 +405,7 @@
             _plans.Clear();
             foreach (var o in offerings)
             {
-                _plans.Add(new PlanVM
-                {
-                    ApiId = o.Id,
-                    Name = o.Title,
-                    Price = o.Price,
-                    Period = "mois",
-                    Popular = false,
-                    IsActive = o.IsActive,
-                    Features = string.IsNullOrEmpty(o.Description)
-                        ? []
-                        : o.Description.Split('\n').Where(f => !string.IsNullOrWhiteSpace(f)).ToList()
-                });
+                _plans.Add(MapPlan(o));
             }
 
             var subscribers = await subscribersTask ?? [];
@@ -438,35 +519,71 @@
         _subs[idx] = MapSubscriber(dto);
     }
 
+    private PlanVM MapPlan(ApiOfferingDto o) => new()
+    {
+        ApiId = o.Id,
+        Name = o.Title,
+        Code = o.Code,
+        Description = o.Description,
+        Price = o.Price,
+        Currency = string.IsNullOrWhiteSpace(o.Currency) ? "XAF" : o.Currency,
+        IsInternational = o.IsInternational,
+        MarketCountryCode = o.MarketCountryCode,
+        OwnerTeacherName = string.IsNullOrWhiteSpace(o.OwnerTeacherName) ? _teacherName : o.OwnerTeacherName,
+        IsActive = o.IsActive
+    };
+
     private async Task SavePlan()
     {
-        if (string.IsNullOrWhiteSpace(_pf.Name)) return;
-
-        var req = new
+        if (string.IsNullOrWhiteSpace(_name))
         {
-            title = _pf.Name,
-            description = _pf.Features,
-            subject = (string?)null,
-            price = _pf.Price,
-            currency = "CAD",
-            durationDays = 30,
-            sessionCount = 4,
-            frequency = _pf.Period
-        };
-        var created = await Api.PostAsync<ApiOfferingDto>("api/subscription-offerings", req);
+            _actionError = "Le nom du plan est requis.";
+            return;
+        }
 
-        _plans.Add(new PlanVM
+        if (IsInternational && string.IsNullOrWhiteSpace(_marketCountry))
         {
-            ApiId = created?.Id,
-            Name = _pf.Name,
-            Price = _pf.Price,
-            Period = _pf.Period,
-            Popular = _pf.Popular,
-            IsActive = true,
-            Features = _pf.Features.Split('\n').Where(f => !string.IsNullOrWhiteSpace(f)).ToList()
-        });
-        _showPlanModal = false;
-        _pf = new();
+            _actionError = "Sélectionnez un pays de marché pour une offre internationale.";
+            return;
+        }
+
+        _saving = true;
+        _actionError = null;
+        _actionBanner = null;
+        try
+        {
+            var currency = GroupOfferCurrencyRules.ResolveOfferCurrency(
+                IsInternational, _marketCountry, _teacherCountry);
+            var req = new
+            {
+                title = _name.Trim(),
+                description = _short,
+                subject = _name.Trim(),
+                price = _price ?? 0,
+                currency,
+                durationDays = 30,
+                sessionCount = 4,
+                frequency = "mois",
+                code = _code,
+                isInternational = IsInternational,
+                marketCountryCode = IsInternational ? _marketCountry : null
+            };
+            var result = await Api.PostWithErrorAsync<ApiOfferingDto>("api/subscription-offerings", req);
+            if (result.Error is not null || result.Value is null)
+            {
+                _actionError = result.Error ?? L["TutorSubs_ActionFailed"];
+                return;
+            }
+
+            _plans.Insert(0, MapPlan(result.Value));
+            _actionBanner = "Plan créé et tagué à votre nom.";
+            ResetPlanForm();
+        }
+        catch (Exception ex)
+        {
+            _actionError = ex.Message;
+        }
+        finally { _saving = false; }
     }
 
     private async Task TogglePlan(PlanVM plan)
@@ -483,7 +600,11 @@
     private record ApiOfferingDto(
         Guid Id, string Title, string? Description, string? Subject,
         decimal Price, string Currency, int DurationDays, int SessionCount,
-        string? Frequency, bool IsActive);
+        string? Frequency, bool IsActive,
+        string? Code = null,
+        bool IsInternational = false,
+        string? MarketCountryCode = null,
+        string? OwnerTeacherName = null);
 
     private record ApiSubscriberDto(
         Guid Id,
@@ -494,23 +615,18 @@
         string Status,
         DateTime EndDate);
 
-    private class PlanForm
-    {
-        public string Name { get; set; } = "";
-        public decimal Price { get; set; } = 150;
-        public string Period { get; set; } = "mois";
-        public string Features { get; set; } = "";
-        public bool Popular { get; set; }
-    }
     private class PlanVM
     {
         public Guid? ApiId { get; set; }
         public string Name { get; set; } = "";
+        public string? Code { get; set; }
+        public string? Description { get; set; }
         public decimal Price { get; set; }
-        public string Period { get; set; } = "";
-        public bool Popular { get; set; }
+        public string Currency { get; set; } = "XAF";
+        public bool IsInternational { get; set; }
+        public string? MarketCountryCode { get; set; }
+        public string? OwnerTeacherName { get; set; }
         public bool IsActive { get; set; } = true;
-        public List<string> Features { get; set; } = [];
     }
     private class SubVM
     {

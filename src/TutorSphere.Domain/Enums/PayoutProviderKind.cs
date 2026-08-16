@@ -19,7 +19,9 @@ public enum PayoutProviderKind
     Moov = 7,
     Airtel = 8,
     /// <summary>Interac e-Transfer — Canada (virement bancaire via e-mail Autodépôt).</summary>
-    InteracETransfer = 9
+    InteracETransfer = 9,
+    /// <summary>Compte bancaire (RIB / IBAN / n° de compte) — hors Interac Canada.</summary>
+    BankAccount = 10
 }
 
 public enum PayoutRegionKind
@@ -59,4 +61,7 @@ public static class PayoutProviderCodes
 
     public static bool IsInterac(PayoutProviderKind kind) =>
         kind == PayoutProviderKind.InteracETransfer;
+
+    public static bool IsBankAccount(PayoutProviderKind kind) =>
+        kind is PayoutProviderKind.BankAccount or PayoutProviderKind.InteracETransfer;
 }

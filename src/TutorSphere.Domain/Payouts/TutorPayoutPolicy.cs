@@ -84,6 +84,44 @@ public static class TutorPayoutPolicy
         PayoutProviderKind.Airtel
     ];
 
+    public static readonly HashSet<string> WestAfricaFrancCountries = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "BJ", "BF", "CI", "GW", "ML", "NE", "SN", "TG"
+    };
+
+    /// <summary>Devise de versement selon le pays du titulaire.</summary>
+    public static string ResolvePayoutCurrency(string? country)
+    {
+        var code = NormalizeCountry(country);
+        if (string.Equals(code, "CA", StringComparison.OrdinalIgnoreCase))
+            return "CAD";
+        if (string.Equals(code, "US", StringComparison.OrdinalIgnoreCase))
+            return "USD";
+        if (string.Equals(code, "GB", StringComparison.OrdinalIgnoreCase) || string.Equals(code, "UK", StringComparison.OrdinalIgnoreCase))
+            return "GBP";
+        if (string.Equals(code, "CH", StringComparison.OrdinalIgnoreCase))
+            return "CHF";
+        if (StripeConnectCountries.Contains(code))
+            return "EUR";
+        if (WestAfricaFrancCountries.Contains(code))
+            return "XOF";
+        if (AfricaCountries.Contains(code))
+            return "XAF";
+        return "XAF";
+    }
+
+    public static string FormatPayoutCurrencyLabel(string? currency) => (currency ?? "").ToUpperInvariant() switch
+    {
+        "XOF" => "XOF (FCFA)",
+        "XAF" => "XAF (FCFA)",
+        "CAD" => "CAD ($)",
+        "USD" => "USD ($)",
+        "EUR" => "EUR (€)",
+        "GBP" => "GBP (£)",
+        "CHF" => "CHF",
+        _ => string.IsNullOrWhiteSpace(currency) ? "—" : currency.ToUpperInvariant()
+    };
+
     public static bool RequiresPayPalAtSignup(string? country) =>
         ResolveRegion(country) is PayoutRegionKind.StripeConnectZone or PayoutRegionKind.Other;
 

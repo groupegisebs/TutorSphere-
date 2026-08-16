@@ -236,6 +236,11 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             e.HasIndex(p => p.IdempotencyKey);
             e.HasOne(p => p.PayoutAccount).WithMany().HasForeignKey(p => p.PayoutAccountId)
                 .OnDelete(DeleteBehavior.SetNull);
+            e.Property(p => p.InvoiceNumber).HasMaxLength(40);
+            e.Property(p => p.PaymentMethodSnapshot).HasMaxLength(4000);
+            e.Property(p => p.PaidByUserId).HasMaxLength(450);
+            e.HasIndex(p => p.ExpertGroupId);
+            e.HasIndex(p => p.InvoiceNumber);
         });
 
         builder.Entity<TutorPayoutAccount>(e =>

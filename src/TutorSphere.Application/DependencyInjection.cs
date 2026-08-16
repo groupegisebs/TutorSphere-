@@ -33,6 +33,7 @@ public static class DependencyInjection
         services.AddScoped<ISubscriptionLessonScheduler, SubscriptionLessonScheduler>();
         services.AddScoped<IInvoiceService, InvoiceService>();
         services.AddScoped<ITutorEarningsService, TutorEarningsService>();
+        services.AddScoped<IGroupTeacherPayoutService, GroupTeacherPayoutService>();
         services.AddScoped<ITutorPayoutAccountService, TutorPayoutAccountService>();
         services.AddScoped<IBillingEmailOrchestrator, BillingEmailOrchestrator>();
         services.AddScoped<IPlatformBillingService, PlatformBillingService>();

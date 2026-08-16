@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using TutorSphere.Application.Common;
 using TutorSphere.Application.Common.Interfaces;
@@ -60,8 +61,9 @@ public class SubscriptionOfferingService : ISubscriptionOfferingService
             .ToList()
             .ToDictionary(x => x.OfferingId, x => x.Count);
 
+        var owners = ResolveOwnerNames(offerings.Select(o => o.TenantId));
         var result = offerings
-            .Select(o => MapToDto(o, counts.GetValueOrDefault(o.Id)))
+            .Select(o => MapToDto(o, counts.GetValueOrDefault(o.Id), owners.GetValueOrDefault(o.TenantId)))
             .ToList();
         return Task.FromResult<IReadOnlyList<SubscriptionOfferingDto>>(result);
     }
@@ -82,8 +84,9 @@ public class SubscriptionOfferingService : ISubscriptionOfferingService
             .ToList()
             .ToDictionary(x => x.OfferingId, x => x.Count);
 
+        var owners = ResolveOwnerNames(offerings.Select(o => o.TenantId));
         IReadOnlyList<SubscriptionOfferingDto> result = offerings
-            .Select(o => MapToDto(o, counts.GetValueOrDefault(o.Id)))
+            .Select(o => MapToDto(o, counts.GetValueOrDefault(o.Id), owners.GetValueOrDefault(o.TenantId)))
             .ToList();
         return Task.FromResult(result);
     }
@@ -97,7 +100,8 @@ public class SubscriptionOfferingService : ISubscriptionOfferingService
         var subscribers = _db.StudentSubscriptions.Count(s =>
             s.OfferingId == id
             && (s.Status == SubscriptionStatus.Active || s.Status == SubscriptionStatus.Paused));
-        return Task.FromResult<SubscriptionOfferingDto?>(MapToDto(offering, subscribers));
+        var ownerName = ResolveOwnerNames([offering.TenantId]).GetValueOrDefault(offering.TenantId);
+        return Task.FromResult<SubscriptionOfferingDto?>(MapToDto(offering, subscribers, ownerName));
     }
 
     public Task<SubscriptionOfferingDto> CreateAsync(CreateSubscriptionOfferingRequest request, CancellationToken ct = default)
@@ -110,24 +114,38 @@ public class SubscriptionOfferingService : ISubscriptionOfferingService
     {
         if (tenantId == Guid.Empty)
             throw new InvalidOperationException("Profil introuvable.");
-        if (_db.Tenants.FirstOrDefault(t => t.Id == tenantId) is null)
-            throw new InvalidOperationException("Profil introuvable.");
+        var tenant = _db.Tenants.FirstOrDefault(t => t.Id == tenantId)
+            ?? throw new InvalidOperationException("Profil introuvable.");
         if (string.IsNullOrWhiteSpace(request.Title))
             throw new InvalidOperationException("Le titre de l'offre est obligatoire.");
         if (request.Price < 0)
             throw new InvalidOperationException("Le prix de l'offre ne peut pas être négatif.");
+        if (request.IsInternational && string.IsNullOrWhiteSpace(request.MarketCountryCode))
+            throw new InvalidOperationException("Sélectionnez un pays de marché pour une offre internationale.");
 
-        var currency = string.IsNullOrWhiteSpace(request.Currency) ? "XAF" : request.Currency.Trim();
+        var ownerName = tenant.Name.Trim();
+        var currency = string.IsNullOrWhiteSpace(request.Currency)
+            ? GroupOfferCurrencyRules.ResolveOfferCurrency(
+                request.IsInternational, request.MarketCountryCode, tenant.Country)
+            : request.Currency.Trim();
+        if (!string.IsNullOrWhiteSpace(request.Code) || request.IsInternational || !string.IsNullOrWhiteSpace(request.MarketCountryCode))
+        {
+            currency = GroupOfferCurrencyRules.ResolveOfferCurrency(
+                request.IsInternational, request.MarketCountryCode, tenant.Country);
+        }
+
         var durationDays = request.DurationDays > 0 ? request.DurationDays : 30;
         var (frequency, conditions, mode, sessionCount) = NormalizeSchedule(
             request with { Currency = currency, DurationDays = durationDays });
+
+        conditions = MergePlanCatalog(conditions, request.Code, request.IsInternational, request.MarketCountryCode, ownerName);
 
         var offering = new SubscriptionOffering
         {
             TenantId = tenantId,
             Title = request.Title.Trim(),
             Description = TeacherContactPrivacy.RedactFromPublicText(request.Description?.Trim()),
-            Subject = request.Subject?.Trim(),
+            Subject = string.IsNullOrWhiteSpace(request.Subject) ? request.Title.Trim() : request.Subject.Trim(),
             Price = request.Price,
             Currency = currency,
             DurationDays = durationDays,
@@ -151,7 +169,7 @@ public class SubscriptionOfferingService : ISubscriptionOfferingService
             // L'offre reste créée même si la sync catalogue paiement échoue (gateway indisponible).
         }
 
-        return MapToDto(offering);
+        return MapToDto(offering, 0, ownerName);
     }
 
     public async Task<SubscriptionOfferingDto> UpdateAsync(Guid id, UpdateSubscriptionOfferingRequest request, CancellationToken ct = default)
@@ -176,7 +194,8 @@ public class SubscriptionOfferingService : ISubscriptionOfferingService
 
         await _db.SaveChangesAsync(ct);
         await _payments.SyncOfferingCatalogAsync(offering.Id, ct);
-        return MapToDto(offering);
+        var ownerName = ResolveOwnerNames([offering.TenantId]).GetValueOrDefault(offering.TenantId);
+        return MapToDto(offering, 0, ownerName);
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
@@ -198,7 +217,8 @@ public class SubscriptionOfferingService : ISubscriptionOfferingService
         PublishTenantProfile(offering.TenantId);
         await _db.SaveChangesAsync(ct);
         await _payments.SyncOfferingCatalogAsync(offering.Id, ct);
-        return MapToDto(offering);
+        var ownerName = ResolveOwnerNames([offering.TenantId]).GetValueOrDefault(offering.TenantId);
+        return MapToDto(offering, 0, ownerName);
     }
 
     public async Task<SubscriptionOfferingDto> DeactivateAsync(Guid id, CancellationToken ct = default)
@@ -209,7 +229,8 @@ public class SubscriptionOfferingService : ISubscriptionOfferingService
         offering.IsActive = false;
         offering.UpdatedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync(ct);
-        return MapToDto(offering);
+        var ownerName = ResolveOwnerNames([offering.TenantId]).GetValueOrDefault(offering.TenantId);
+        return MapToDto(offering, 0, ownerName);
     }
 
     private Guid RequireTenantId()
@@ -392,9 +413,88 @@ public class SubscriptionOfferingService : ISubscriptionOfferingService
         }
     }
 
-    private static SubscriptionOfferingDto MapToDto(SubscriptionOffering o, int activeSubscribers = 0)
+    private Dictionary<Guid, string> ResolveOwnerNames(IEnumerable<Guid> tenantIds)
+    {
+        var ids = tenantIds.Distinct().ToList();
+        if (ids.Count == 0)
+            return [];
+
+        return _db.Tenants
+            .Where(t => ids.Contains(t.Id))
+            .Select(t => new { t.Id, t.Name })
+            .ToList()
+            .ToDictionary(t => t.Id, t => t.Name);
+    }
+
+    private static string? MergePlanCatalog(
+        string? conditions,
+        string? code,
+        bool isInternational,
+        string? marketCountryCode,
+        string ownerTeacherName)
+    {
+        JsonObject node;
+        try
+        {
+            node = string.IsNullOrWhiteSpace(conditions)
+                ? new JsonObject()
+                : JsonNode.Parse(conditions) as JsonObject ?? new JsonObject();
+        }
+        catch (JsonException)
+        {
+            node = new JsonObject();
+        }
+
+        node["ownerTeacherName"] = ownerTeacherName;
+        if (!string.IsNullOrWhiteSpace(code))
+            node["code"] = code.Trim();
+        node["isInternational"] = isInternational;
+        if (isInternational && !string.IsNullOrWhiteSpace(marketCountryCode))
+            node["marketCountryCode"] = marketCountryCode.Trim().ToUpperInvariant();
+        else
+            node.Remove("marketCountryCode");
+
+        return node.ToJsonString(ScheduleJson);
+    }
+
+    private static (string? Code, bool IsInternational, string? MarketCountryCode, string? OwnerTeacherName)
+        ParsePlanCatalog(string? conditions)
+    {
+        if (string.IsNullOrWhiteSpace(conditions))
+            return (null, false, null, null);
+
+        try
+        {
+            using var doc = JsonDocument.Parse(conditions);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object)
+                return (null, false, null, null);
+
+            var root = doc.RootElement;
+            string? code = root.TryGetProperty("code", out var c) && c.ValueKind == JsonValueKind.String
+                ? c.GetString()
+                : null;
+            var intl = root.TryGetProperty("isInternational", out var i) && i.ValueKind == JsonValueKind.True;
+            string? market = root.TryGetProperty("marketCountryCode", out var m) && m.ValueKind == JsonValueKind.String
+                ? m.GetString()
+                : null;
+            string? owner = root.TryGetProperty("ownerTeacherName", out var o) && o.ValueKind == JsonValueKind.String
+                ? o.GetString()
+                : null;
+            return (code, intl, market, owner);
+        }
+        catch (JsonException)
+        {
+            return (null, false, null, null);
+        }
+    }
+
+    private static SubscriptionOfferingDto MapToDto(
+        SubscriptionOffering o,
+        int activeSubscribers = 0,
+        string? ownerTeacherName = null)
     {
         var monthlyUnit = ToMonthlyAmount(o.Price, o.DurationDays, o.Frequency, o.Conditions);
+        var catalog = ParsePlanCatalog(o.Conditions);
         return new(
             o.Id,
             o.Title,
@@ -411,7 +511,11 @@ public class SubscriptionOfferingService : ISubscriptionOfferingService
             TryParseSchedule(o.Conditions),
             activeSubscribers,
             Math.Round(monthlyUnit * activeSubscribers, 2),
-            o.MaxCapacity);
+            o.MaxCapacity,
+            catalog.Code,
+            catalog.IsInternational,
+            catalog.MarketCountryCode,
+            string.IsNullOrWhiteSpace(catalog.OwnerTeacherName) ? ownerTeacherName : catalog.OwnerTeacherName);
     }
 
     /// <summary>Normalise le prix de l'offre en revenu mensuel récurrent (MRR unitaire).</summary>
