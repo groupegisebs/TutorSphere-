@@ -24,6 +24,7 @@ public interface IExpertMeetingService
     Task StartAsync(string userId, Guid meetingId, bool asPlatformAdmin, Guid? actAsGroupId, CancellationToken ct = default);
     Task EndForAllAsync(string userId, Guid meetingId, CancellationToken ct = default);
     Task AdmitAsync(string userId, Guid meetingId, Guid participantId, bool admit, CancellationToken ct = default);
+    Task RespondAsync(string userId, Guid meetingId, MeetingParticipantStatus response, CancellationToken ct = default);
     Task SetParticipantRoleAsync(string userId, Guid meetingId, Guid participantId, MeetingParticipantRole role, CancellationToken ct = default);
     Task RemoveParticipantAsync(string userId, Guid meetingId, Guid participantId, CancellationToken ct = default);
     Task LockAsync(string userId, Guid meetingId, bool locked, CancellationToken ct = default);
@@ -88,18 +89,44 @@ public class ExpertMeetingService(
         }
 
         var rows = q.OrderByDescending(m => m.StartAtUtc ?? m.CreatedAt).Take(200).ToList();
+        var ids = rows.Select(m => m.Id).ToList();
+        var parts = db.MeetingParticipants.Where(p => ids.Contains(p.MeetingId)).ToList();
+        var groupNames = db.ExpertGroups.Select(g => new { g.Id, g.Name }).ToList()
+            .ToDictionary(g => g.Id, g => g.Name);
+        var links = db.MeetingGroups.Where(g => ids.Contains(g.MeetingId)).ToList();
+        // Un même utilisateur revient sur beaucoup de réunions : une seule résolution par personne.
+        var names = new Dictionary<string, string>(StringComparer.Ordinal);
+
         var result = new List<MeetingListItemDto>(rows.Count);
         foreach (var m in rows)
         {
-            var org = await contacts.GetAsync(m.OrganizerUserId, ct);
+            var mine = parts.Where(p => p.MeetingId == m.Id).ToList();
+            var groupId = m.OrganizerGroupId ?? links.FirstOrDefault(l => l.MeetingId == m.Id)?.ExpertGroupId;
+            var preview = new List<string>(4);
+            foreach (var p in mine.Where(p => p.UserId is not null).Take(4))
+                preview.Add(await ResolveNameAsync(p.UserId!, names, ct));
+
             result.Add(new MeetingListItemDto(
                 m.Id, m.Title, m.Status, m.Visibility, m.StartAtUtc, m.EndAtUtc, m.TimeZoneId,
-                org?.DisplayName ?? "Organisateur",
-                db.MeetingParticipants.Count(p => p.MeetingId == m.Id),
+                await ResolveNameAsync(m.OrganizerUserId, names, ct),
+                mine.Count,
                 m.AiEnabled,
-                m.OrganizerUserId == userId));
+                m.OrganizerUserId == userId,
+                groupId,
+                groupId is Guid gid2 && groupNames.TryGetValue(gid2, out var gname) ? gname : null,
+                mine.FirstOrDefault(p => p.UserId == userId)?.Status,
+                preview));
         }
         return result;
+    }
+
+    private async Task<string> ResolveNameAsync(string userId, Dictionary<string, string> cache, CancellationToken ct)
+    {
+        if (cache.TryGetValue(userId, out var known)) return known;
+        var c = await contacts.GetAsync(userId, ct);
+        var name = c?.DisplayName ?? "Participant";
+        cache[userId] = name;
+        return name;
     }
 
     public async Task<MeetingDetailDto> GetAsync(
@@ -401,6 +428,25 @@ public class ExpertMeetingService(
         p.Status = admit ? MeetingParticipantStatus.Accepted : MeetingParticipantStatus.Denied;
         await db.SaveChangesAsync(ct);
         Audit(meetingId, userId, admit ? "admitted" : "denied", participantId.ToString());
+    }
+
+    /// <summary>Réponse de l'invité à sa convocation : accepte, hésite ou décline.</summary>
+    public async Task RespondAsync(string userId, Guid meetingId, MeetingParticipantStatus response, CancellationToken ct = default)
+    {
+        if (response is not (MeetingParticipantStatus.Accepted
+            or MeetingParticipantStatus.Tentative or MeetingParticipantStatus.Declined))
+            throw new InvalidOperationException("Réponse non prise en charge.");
+        var meeting = db.Meetings.FirstOrDefault(m => m.Id == meetingId)
+            ?? throw new InvalidOperationException("Réunion introuvable.");
+        if (meeting.Status is MeetingStatus.Cancelled or MeetingStatus.Ended)
+            throw new InvalidOperationException("Cette réunion est clôturée.");
+        var p = db.MeetingParticipants.FirstOrDefault(x => x.MeetingId == meetingId && x.UserId == userId)
+            ?? throw new InvalidOperationException("Vous n’êtes pas invité à cette réunion.");
+        if (p.Status is MeetingParticipantStatus.Removed or MeetingParticipantStatus.Denied)
+            throw new InvalidOperationException("Votre participation a été retirée.");
+        p.Status = response;
+        await db.SaveChangesAsync(ct);
+        Audit(meetingId, userId, "response", response.ToString());
     }
 
     public async Task SetParticipantRoleAsync(string userId, Guid meetingId, Guid participantId, MeetingParticipantRole role, CancellationToken ct = default)

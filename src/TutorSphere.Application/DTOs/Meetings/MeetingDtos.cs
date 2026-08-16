@@ -13,7 +13,13 @@ public record MeetingListItemDto(
     string OrganizerName,
     int ParticipantCount,
     bool AiEnabled,
-    bool IsOrganizer);
+    bool IsOrganizer,
+    Guid? GroupId = null,
+    string? GroupName = null,
+    /// <summary>Réponse du destinataire à l'invitation : null s'il n'est pas participant nommé.</summary>
+    MeetingParticipantStatus? MyStatus = null,
+    /// <summary>Premiers participants, pour la pile d'avatars de la liste.</summary>
+    IReadOnlyList<string>? ParticipantPreview = null);
 
 public record MeetingDetailDto(
     Guid Id,
@@ -172,6 +178,8 @@ public record SetAiConsentRequest(bool Consented);
 public record ReviewDecisionRequest(bool Accepted);
 public record MeetingGroupOptionDto(Guid Id, string Name, string? Country);
 public record AdmitParticipantRequest(bool Admit);
+/// <summary>accept | tentative | decline</summary>
+public record RespondToMeetingRequest(string? Response);
 public record SetParticipantRoleRequest(MeetingParticipantRole Role);
 public record LockMeetingRequest(bool Locked);
 public record ToggleRecordingRequest(bool Recording);

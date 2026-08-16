@@ -124,6 +124,27 @@ public class MeetingsController(
         catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
     }
 
+    /// <summary>Réponse de l'invité : accept, tentative ou decline.</summary>
+    [HttpPost("{id:guid}/respond")]
+    public async Task<IActionResult> Respond(Guid id, [FromBody] RespondToMeetingRequest? body, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        var status = (body?.Response ?? "").Trim().ToLowerInvariant() switch
+        {
+            "accept" or "accepted" => MeetingParticipantStatus.Accepted,
+            "tentative" or "maybe" => MeetingParticipantStatus.Tentative,
+            "decline" or "declined" => MeetingParticipantStatus.Declined,
+            _ => (MeetingParticipantStatus?)null
+        };
+        if (status is null) return BadRequest(new { error = "Réponse attendue : accept, tentative ou decline." });
+        try
+        {
+            await meetings.RespondAsync(UserId, id, status.Value, ct);
+            return NoContent();
+        }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
     [HttpPost("{id:guid}/participants/{participantId:guid}/role")]
     public async Task<IActionResult> Role(Guid id, Guid participantId, [FromBody] SetParticipantRoleRequest? body, CancellationToken ct)
     {

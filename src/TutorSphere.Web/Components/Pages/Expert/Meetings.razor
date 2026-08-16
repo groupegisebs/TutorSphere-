@@ -1,92 +1,460 @@
 @page "/expert/meetings"
 @layout ExpertLayout
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
+@implements IDisposable
 @inject AuthService Auth
 @inject ApiClient Api
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
-<PageTitle>Réunions — TutorSphere</PageTitle>
+<PageTitle>Mes réunions — TutorSphere</PageTitle>
+
+@* HeadContent can miss HeadOutlet with InteractiveServer(prerender:false); keep body <link> too. *@
+<HeadContent>
+    <link rel="stylesheet" href="css/meetings-list.css?v=mtl-1" />
+</HeadContent>
+<link rel="stylesheet" href="css/meetings-list.css?v=mtl-1" />
 
 <AuthorizeView Roles="Expert,GroupManager,SuperAdmin,PlatformAdmin">
     <Authorized>
-        <div class="cc-toolbar">
-            <div class="ex-page-head">
-                <span class="ex-page-icon"><i class="bi bi-camera-video"></i></span>
-                <div>
-                    <h1 class="cc-page-title">Réunions</h1>
-                    <p class="cc-page-sub">Planifiez et tenez les réunions du groupe d’experts directement dans TutorSphere.</p>
+        @* Pile d'avatars : trois visages puis le reste en compteur. *@
+        @{
+            RenderFragment<Item> stack = m =>
+            @<span class="mtl-stack">
+                @foreach (var name in (m.ParticipantPreview ?? []).Take(3))
+                {
+                    <span class="mtl-av" style="background:@AvatarBg(name)" title="@name">@Initials(name)</span>
+                }
+                @if (RestCount(m) > 0)
+                {
+                    <span class="mtl-av mtl-av-rest">+@RestCount(m)</span>
+                }
+            </span>;
+        }
+        <div class="mtl">
+            <div class="mtl-head">
+                <span class="mtl-head-ic"><i class="bi bi-calendar2-week"></i></span>
+                <div class="mtl-head-txt">
+                    <h1>Mes réunions</h1>
+                    <p>Retrouvez les réunions que vous organisez ou auxquelles vous êtes invité.</p>
+                </div>
+                <div class="mtl-head-act">
+                    <button type="button" class="mtl-btn mtl-btn-outline @(_view == "calendar" ? "is-on" : "")"
+                            @onclick='() => SetView("calendar")'>
+                        <i class="bi bi-calendar3"></i> Calendrier
+                    </button>
+                    <div class="mtl-split">
+                        <a class="mtl-btn mtl-btn-primary" href="/expert/meetings/create">
+                            <i class="bi bi-plus-lg"></i> Créer une réunion
+                        </a>
+                        <button type="button" class="mtl-btn mtl-btn-primary mtl-split-more"
+                                title="Plus d’options" @onclick="() => _createMenu = !_createMenu">
+                            <i class="bi bi-chevron-down"></i>
+                        </button>
+                        @if (_createMenu)
+                        {
+                            <div class="mtl-pop mtl-pop-right">
+                                <a href="/expert/meetings/create" @onclick="() => _createMenu = false">
+                                    <i class="bi bi-calendar-plus"></i> Planifier une réunion
+                                </a>
+                                <button type="button" @onclick='() => SetView("calendar")'>
+                                    <i class="bi bi-calendar3"></i> Voir le calendrier
+                                </button>
+                                <button type="button" @onclick="ReloadAsync">
+                                    <i class="bi bi-arrow-clockwise"></i> Actualiser la liste
+                                </button>
+                            </div>
+                        }
+                    </div>
                 </div>
             </div>
-            <a class="cc-btn cc-btn-primary" href="/expert/meetings/create"><i class="bi bi-plus-lg"></i> Créer une réunion</a>
-        </div>
 
-        @if (!string.IsNullOrEmpty(_error))
-        {
-            <div class="alert alert-danger">@_error</div>
-        }
+            <div class="mtl-kpis">
+                <button type="button" class="mtl-kpi @(_tab == "upcoming" ? "is-on" : "")" @onclick='() => SetTab("upcoming")'>
+                    <span class="mtl-kpi-ic is-violet"><i class="bi bi-calendar2-week"></i></span>
+                    <span class="mtl-kpi-txt"><span class="mtl-kpi-lbl">À venir</span><strong>@CountUpcoming</strong></span>
+                </button>
+                <button type="button" class="mtl-kpi @(_tab == "invitations" ? "is-on" : "")" @onclick='() => SetTab("invitations")'>
+                    <span class="mtl-kpi-ic is-amber"><i class="bi bi-envelope"></i></span>
+                    <span class="mtl-kpi-txt"><span class="mtl-kpi-lbl">Invitations</span><strong>@CountInvites</strong></span>
+                </button>
+                <button type="button" class="mtl-kpi" @onclick='() => SetTab("upcoming")'>
+                    <span class="mtl-kpi-ic is-green"><i class="bi bi-play-circle"></i></span>
+                    <span class="mtl-kpi-txt"><span class="mtl-kpi-lbl">En cours</span><strong>@CountLive</strong></span>
+                </button>
+                <button type="button" class="mtl-kpi @(_tab == "ended" ? "is-on" : "")" @onclick='() => SetTab("ended")'>
+                    <span class="mtl-kpi-ic is-slate"><i class="bi bi-check2-circle"></i></span>
+                    <span class="mtl-kpi-txt"><span class="mtl-kpi-lbl">Terminées</span><strong>@CountEnded</strong></span>
+                </button>
+            </div>
 
-        <div class="cc-card">
-            @if (_loading)
-            {
-                <div class="cc-empty"><span class="spinner-border"></span></div>
-            }
-            else if (_items.Count == 0)
-            {
-                <p class="text-muted mb-0">Aucune réunion pour le moment. Créez la première pour votre groupe.</p>
-            }
-            else
-            {
-                <table class="cc-table">
-                    <thead>
-                        <tr>
-                            <th>Titre</th>
-                            <th>Statut</th>
-                            <th>Début</th>
-                            <th>Organisateur</th>
-                            <th>Participants</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var m in _items)
+            <div class="mtl-bar">
+                <div class="mtl-tabs">
+                    <button type="button" class="@(_tab == "upcoming" ? "is-on" : "")" @onclick='() => SetTab("upcoming")'>À venir</button>
+                    <button type="button" class="@(_tab == "invitations" ? "is-on" : "")" @onclick='() => SetTab("invitations")'>Invitations</button>
+                    <button type="button" class="@(_tab == "ended" ? "is-on" : "")" @onclick='() => SetTab("ended")'>Terminées</button>
+                    <button type="button" class="@(_tab == "all" ? "is-on" : "")" @onclick='() => SetTab("all")'>Toutes</button>
+                </div>
+                <div class="mtl-bar-tools">
+                    <div class="mtl-search">
+                        <i class="bi bi-search"></i>
+                        <input placeholder="Rechercher une réunion" @bind="_search" @bind:event="oninput" />
+                    </div>
+                    <select class="mtl-select" @bind="_group">
+                        <option value="">Tous les groupes</option>
+                        @foreach (var g in Groups)
                         {
-                            <tr>
-                                <td>
-                                    <strong>@m.Title</strong>
-                                    @if (m.AiEnabled) { <span class="mtg-pill mtg-pill-ai">IA</span> }
-                                </td>
-                                <td><span class="mtg-status mtg-status-@((int)m.Status)">@StatusFr(m.Status)</span></td>
-                                <td>@(m.StartAtUtc?.ToLocalTime().ToString("g") ?? "—")</td>
-                                <td>@m.OrganizerName</td>
-                                <td>@m.ParticipantCount</td>
-                                <td class="text-end">
-                                    @* La salle reste joignable tant que la réunion n'est pas annulée, terminée comprise. *@
-                                    @if (m.Status != 4)
-                                    {
-                                        <a class="cc-btn cc-btn-sm @(m.Status is 1 or 2 ? "cc-btn-primary" : "")"
-                                           href="@($"/expert/meetings/{m.Id}/room")">
-                                            @(m.Status == 3 ? "Rouvrir la salle" : "Rejoindre")
-                                        </a>
-                                    }
-                                    @if (m.Status == 3)
-                                    {
-                                        <a class="cc-btn cc-btn-sm" href="@($"/expert/meetings/{m.Id}/minutes")">Compte rendu</a>
-                                    }
-                                    @if (m.IsOrganizer && m.Status != 4)
-                                    {
-                                        <button type="button" class="cc-btn cc-btn-sm" @onclick="() => OpenCodeAsync(m)">Code d’accès</button>
-                                    }
-                                    @if (m.Status is 0 or 1 && m.IsOrganizer)
-                                    {
-                                        <button type="button" class="cc-btn cc-btn-sm" @onclick="() => CancelAsync(m.Id)">Annuler</button>
-                                    }
-                                </td>
-                            </tr>
+                            <option value="@g.Id">@g.Name</option>
                         }
-                    </tbody>
-                </table>
+                    </select>
+                    <div class="mtl-toggle">
+                        <button type="button" class="@(_view == "list" ? "is-on" : "")" @onclick='() => SetView("list")'>
+                            <i class="bi bi-list-ul"></i> Liste
+                        </button>
+                        <button type="button" class="@(_view == "calendar" ? "is-on" : "")" @onclick='() => SetView("calendar")'>
+                            <i class="bi bi-calendar3"></i> Calendrier
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <div class="mtl-alert"><i class="bi bi-exclamation-triangle"></i> @_error</div>
             }
+
+            <div class="mtl-body">
+                <div class="mtl-main">
+                    @if (_loading)
+                    {
+                        <div class="mtl-load"><span class="spinner-border"></span></div>
+                    }
+                    else if (_view == "calendar")
+                    {
+                        @* ----- Vue calendrier (mois) ----- *@
+                        <div class="mtl-cal">
+                            <div class="mtl-cal-top">
+                                <button type="button" class="mtl-icon-btn" @onclick="() => _month = _month.AddMonths(-1)">
+                                    <i class="bi bi-chevron-left"></i>
+                                </button>
+                                <strong>@(Capitalize(_month.ToString("MMMM yyyy", Fr)))</strong>
+                                <button type="button" class="mtl-icon-btn" @onclick="() => _month = _month.AddMonths(1)">
+                                    <i class="bi bi-chevron-right"></i>
+                                </button>
+                                <button type="button" class="mtl-btn mtl-btn-ghost" @onclick="GoToday">Aujourd’hui</button>
+                            </div>
+                            <div class="mtl-cal-grid">
+                                @foreach (var d in new[] { "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim" })
+                                {
+                                    <div class="mtl-cal-dow">@d</div>
+                                }
+                                @foreach (var day in MonthDays)
+                                {
+                                    var slot = OnDay(day).ToList();
+                                    <div class="mtl-cal-cell @(day.Month == _month.Month ? "" : "is-out") @(day == DateTime.Today ? "is-today" : "")">
+                                        <span class="mtl-cal-num">@day.Day</span>
+                                        @foreach (var m in slot.Take(3))
+                                        {
+                                            <button type="button" class="mtl-cal-chip is-s@(m.Status)" @onclick="() => OpenDetailsAsync(m)">
+                                                <span>@(LocalStart(m)?.ToString("HH:mm"))</span> @m.Title
+                                            </button>
+                                        }
+                                        @if (slot.Count > 3)
+                                        {
+                                            <span class="mtl-cal-more">+@(slot.Count - 3) autres</span>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        @* ----- Réunions en cours, mises en avant ----- *@
+                        @foreach (var m in LiveHighlights)
+                        {
+                            <div class="mtl-live">
+                                <div class="mtl-live-id">
+                                    <span class="mtl-flag"><span class="mtl-blink"></span> EN COURS MAINTENANT</span>
+                                    <div class="mtl-live-row">
+                                        <span class="mtl-ic is-green"><i class="bi bi-camera-video-fill"></i></span>
+                                        <div>
+                                            <h3>@m.Title</h3>
+                                            <p class="mtl-meta">
+                                                <i class="bi bi-people"></i> @GroupLabel(m)
+                                                <span class="mtl-sep">•</span>
+                                                <i class="bi bi-person"></i> @m.OrganizerName
+                                            </p>
+                                            <p class="mtl-meta">
+                                                <i class="bi bi-clock"></i> @WhenLabel(m)
+                                                <span class="mtl-chip">En ligne</span>
+                                                @if (m.AiEnabled)
+                                                {
+                                                    <span class="mtl-chip is-ai">IA</span>
+                                                }
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="mtl-col">
+                                    <span class="mtl-col-lbl">Participants</span>
+                                    @stack(m)
+                                    <span class="mtl-col-sub">@m.ParticipantCount participants</span>
+                                </div>
+                                <div class="mtl-col">
+                                    <span class="mtl-col-lbl">Votre rôle</span>
+                                    <span class="mtl-badge @RoleCls(m)">@RoleLabel(m)</span>
+                                </div>
+                                <div class="mtl-live-act">
+                                    <a class="mtl-btn mtl-btn-join" href="@($"/expert/meetings/{m.Id}/room")">
+                                        <i class="bi bi-camera-video-fill"></i> Rejoindre maintenant
+                                    </a>
+                                    <button type="button" class="mtl-btn mtl-btn-ghost" @onclick="() => OpenDetailsAsync(m)">
+                                        <i class="bi bi-info-circle"></i> Détails
+                                    </button>
+                                </div>
+                            </div>
+                        }
+
+                        @if (!Sections.Any() && !LiveHighlights.Any())
+                        {
+                            <div class="mtl-empty">
+                                <span class="mtl-ic is-violet"><i class="bi bi-calendar2-x"></i></span>
+                                <strong>Aucune réunion à afficher</strong>
+                                <p>Changez d’onglet ou créez la première réunion de votre groupe.</p>
+                                <a class="mtl-btn mtl-btn-primary" href="/expert/meetings/create">
+                                    <i class="bi bi-plus-lg"></i> Créer une réunion
+                                </a>
+                            </div>
+                        }
+
+                        @* ----- Lignes groupées par échéance ----- *@
+                        @foreach (var section in Sections)
+                        {
+                            <h2 class="mtl-sec">@section.Label</h2>
+                            @foreach (var m in section.Items)
+                            {
+                                <div class="mtl-row @(IsPending(m) ? "is-pending" : "") @(m.Status == 4 ? "is-cancelled" : "")">
+                                    <div class="mtl-when">
+                                        @if (LocalStart(m) is DateTime s)
+                                        {
+                                            @if (section.ShowDate)
+                                            {
+                                                <span class="mtl-when-dow">@(Capitalize(s.ToString("dddd", Fr)))</span>
+                                                <span class="mtl-when-day">@s.ToString("d MMM", Fr)</span>
+                                                <span class="mtl-when-hh">@TimeRange(m)</span>
+                                            }
+                                            else
+                                            {
+                                                <strong>@s.ToString("HH:mm")</strong>
+                                                <span>@(LocalEnd(m)?.ToString("HH:mm") ?? "")</span>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            <span class="mtl-when-dow">Sans</span>
+                                            <span class="mtl-when-day">date</span>
+                                        }
+                                    </div>
+                                    <span class="mtl-ic @StatusIcCls(m)"><i class="bi bi-camera-video"></i></span>
+                                    <div class="mtl-row-id">
+                                        <strong>@m.Title</strong>
+                                        <p class="mtl-meta">
+                                            <i class="bi bi-people"></i> @GroupLabel(m)
+                                            <span class="mtl-sep">•</span>
+                                            <i class="bi bi-person"></i> @m.OrganizerName
+                                        </p>
+                                        <div class="mtl-row-chips">
+                                            <span class="mtl-chip">En ligne</span>
+                                            @if (m.Status == 0)
+                                            {
+                                                <span class="mtl-chip is-draft">Brouillon</span>
+                                            }
+                                            @if (m.Status == 4)
+                                            {
+                                                <span class="mtl-chip is-off">Annulée</span>
+                                            }
+                                            @if (m.AiEnabled)
+                                            {
+                                                <span class="mtl-chip is-ai">IA</span>
+                                            }
+                                        </div>
+                                    </div>
+                                    <div class="mtl-col">
+                                        <span class="mtl-col-lbl">Votre rôle</span>
+                                        <span class="mtl-badge @RoleCls(m)">@RoleLabel(m)</span>
+                                        @if (IsPending(m))
+                                        {
+                                            <span class="mtl-col-sub">Vous êtes invité</span>
+                                        }
+                                    </div>
+                                    <div class="mtl-col">
+                                        <span class="mtl-col-lbl">Participants</span>
+                                        @stack(m)
+                                        <span class="mtl-col-sub">@m.ParticipantCount participants</span>
+                                    </div>
+                                    <div class="mtl-row-act">
+                                        @if (IsPending(m))
+                                        {
+                                            <button type="button" class="mtl-btn mtl-btn-primary mtl-btn-sm" disabled="@(_busy == m.Id)"
+                                                    @onclick='() => RespondAsync(m, "accept")'>
+                                                <i class="bi bi-check2"></i> Accepter
+                                            </button>
+                                            <button type="button" class="mtl-btn mtl-btn-outline mtl-btn-sm" disabled="@(_busy == m.Id)"
+                                                    @onclick='() => RespondAsync(m, "tentative")'>
+                                                <i class="bi bi-question-circle"></i> Peut-être
+                                            </button>
+                                            <button type="button" class="mtl-btn mtl-btn-danger mtl-btn-sm" disabled="@(_busy == m.Id)"
+                                                    @onclick='() => RespondAsync(m, "decline")'>
+                                                <i class="bi bi-x-lg"></i> Refuser
+                                            </button>
+                                        }
+                                        else if (m.Status == 2)
+                                        {
+                                            <a class="mtl-btn mtl-btn-join mtl-btn-sm" href="@($"/expert/meetings/{m.Id}/room")">
+                                                <i class="bi bi-camera-video-fill"></i> Rejoindre
+                                            </a>
+                                        }
+                                        else if (m.Status == 3)
+                                        {
+                                            <a class="mtl-btn mtl-btn-ghost mtl-btn-sm" href="@($"/expert/meetings/{m.Id}/minutes")">
+                                                <i class="bi bi-journal-text"></i> Notes / Agenda
+                                            </a>
+                                        }
+                                        else if (m.Status == 4)
+                                        {
+                                            <span class="mtl-pill is-off"><i class="bi bi-slash-circle"></i> Réunion annulée</span>
+                                        }
+                                        else if (StartsIn(m) is TimeSpan wait && wait.TotalHours <= 24)
+                                        {
+                                            <span class="mtl-pill"><i class="bi bi-clock"></i> Disponible dans @Countdown(wait)</span>
+                                        }
+                                        else if (StartsIn(m) is not null)
+                                        {
+                                            @* Trop tôt pour rejoindre : on oriente vers la préparation. *@
+                                            <a class="mtl-btn mtl-btn-ghost mtl-btn-sm" href="@($"/expert/meetings/{m.Id}/minutes")">
+                                                <i class="bi bi-journal-text"></i> Notes / Agenda
+                                            </a>
+                                        }
+                                        else
+                                        {
+                                            <a class="mtl-btn mtl-btn-outline mtl-btn-sm" href="@($"/expert/meetings/{m.Id}/room")">
+                                                <i class="bi bi-box-arrow-in-right"></i> Ouvrir la salle
+                                            </a>
+                                        }
+                                    </div>
+                                    <div class="mtl-kebab">
+                                        <button type="button" class="mtl-icon-btn" title="Plus d’actions"
+                                                @onclick="() => _menu = _menu == m.Id ? null : m.Id">
+                                            <i class="bi bi-three-dots-vertical"></i>
+                                        </button>
+                                        @if (_menu == m.Id)
+                                        {
+                                            <div class="mtl-pop mtl-pop-right">
+                                                <button type="button" @onclick="() => OpenDetailsAsync(m)">
+                                                    <i class="bi bi-info-circle"></i> Détails
+                                                </button>
+                                                @if (m.Status != 4)
+                                                {
+                                                    <a href="@($"/expert/meetings/{m.Id}/room")">
+                                                        <i class="bi bi-box-arrow-in-right"></i>
+                                                        @(m.Status == 3 ? "Rouvrir la salle" : "Rejoindre la salle")
+                                                    </a>
+                                                    <button type="button" @onclick="() => CopyLinkAsync(m)">
+                                                        <i class="bi bi-link-45deg"></i> Copier le lien
+                                                    </button>
+                                                }
+                                                @if (m.IsOrganizer && m.Status != 4)
+                                                {
+                                                    <button type="button" @onclick="() => OpenDetailsAsync(m)">
+                                                        <i class="bi bi-key"></i> Code d’accès
+                                                    </button>
+                                                }
+                                                @if (m.Status == 3)
+                                                {
+                                                    <a href="@($"/expert/meetings/{m.Id}/minutes")">
+                                                        <i class="bi bi-journal-text"></i> Compte rendu
+                                                    </a>
+                                                }
+                                                @if (m.IsOrganizer && m.Status is 0 or 1)
+                                                {
+                                                    <button type="button" class="is-danger" @onclick="() => CancelAsync(m)">
+                                                        <i class="bi bi-x-circle"></i> Annuler la réunion
+                                                    </button>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        }
+                    }
+
+                    <p class="mtl-note">
+                        <i class="bi bi-info-circle"></i>
+                        Les réunions affichées correspondent à vos invitations et à vos groupes.
+                        Seuls les utilisateurs autorisés peuvent créer ou annuler une réunion.
+                    </p>
+                </div>
+
+                <aside class="mtl-aside">
+                    @if (Pending.FirstOrDefault() is Item inv)
+                    {
+                        <section class="mtl-card">
+                            <header class="mtl-card-top">
+                                <span>Invitation en attente</span>
+                                <span class="mtl-count">@CountInvites</span>
+                            </header>
+                            <div class="mtl-inv">
+                                <div class="mtl-inv-head">
+                                    <span class="mtl-ic is-amber"><i class="bi bi-envelope-paper"></i></span>
+                                    <strong>@inv.Title</strong>
+                                </div>
+                                <p class="mtl-meta"><i class="bi bi-clock"></i> @WhenLabel(inv)</p>
+                                <p class="mtl-meta"><i class="bi bi-people"></i> @GroupLabel(inv)</p>
+                                <p class="mtl-meta"><i class="bi bi-person"></i> @inv.OrganizerName</p>
+                                <span class="mtl-badge is-wait">Réponse attendue</span>
+                            </div>
+                            <div class="mtl-inv-act">
+                                <button type="button" class="mtl-btn mtl-btn-primary mtl-btn-sm" disabled="@(_busy == inv.Id)"
+                                        @onclick='() => RespondAsync(inv, "accept")'>Accepter</button>
+                                <button type="button" class="mtl-btn mtl-btn-outline mtl-btn-sm" disabled="@(_busy == inv.Id)"
+                                        @onclick='() => RespondAsync(inv, "tentative")'>Peut-être</button>
+                                <button type="button" class="mtl-btn mtl-btn-danger-outline mtl-btn-sm" disabled="@(_busy == inv.Id)"
+                                        @onclick='() => RespondAsync(inv, "decline")'>Refuser</button>
+                            </div>
+                            <button type="button" class="mtl-link" @onclick='() => SetTab("invitations")'>
+                                Voir toutes les invitations <i class="bi bi-chevron-right"></i>
+                            </button>
+                        </section>
+                    }
+
+                    @if (NextMeeting is Item next)
+                    {
+                        <section class="mtl-card">
+                            <header class="mtl-card-top">
+                                <span><i class="bi bi-clock-history"></i> Prochaine réunion</span>
+                            </header>
+                            <strong class="mtl-next-title">@next.Title</strong>
+                            <p class="mtl-meta"><i class="bi bi-clock"></i> @WhenLabel(next)</p>
+                            <p class="mtl-meta"><i class="bi bi-people"></i> @GroupLabel(next)</p>
+                            @if (StartsIn(next) is TimeSpan wait)
+                            {
+                                <span class="mtl-col-lbl">Débute dans</span>
+                                <strong class="mtl-next-count">@Countdown(wait)</strong>
+                            }
+                            else
+                            {
+                                <span class="mtl-badge is-live">La salle est ouverte</span>
+                            }
+                            <button type="button" class="mtl-btn mtl-btn-outline mtl-btn-block"
+                                    @onclick="() => OpenDetailsAsync(next)">
+                                Voir les détails
+                            </button>
+                        </section>
+                    }
+                </aside>
+            </div>
         </div>
     </Authorized>
     <NotAuthorized>
@@ -94,120 +462,387 @@
     </NotAuthorized>
 </AuthorizeView>
 
-@if (_codeMeetingId is not null)
+@if (_menu is not null || _createMenu)
 {
-    <div class="ts-modal-backdrop" @onclick="CloseCode">
-        <div class="ts-modal" @onclick:stopPropagation="true">
-            <div class="ts-modal-header">
-                <h2>Code d’accès — @_codeTitle</h2>
-                <button class="ts-modal-close" @onclick="CloseCode"><i class="bi bi-x-lg"></i></button>
-            </div>
-            <div class="ts-modal-body">
-                @if (!string.IsNullOrEmpty(_codeError))
-                {
-                    <div class="alert alert-danger">@_codeError</div>
-                }
-                <p class="text-muted">
-                    Le lien ci-dessous porte déjà le code : un clic suffit pour entrer. Il reste valable tant que la
-                    réunion n’est pas annulée, y compris après sa clôture.
-                </p>
-                <label class="form-label">Lien de la salle</label>
-                <div class="mtg-code-row">
-                    <input class="form-control" readonly value="@RoomLink" />
-                    <button type="button" class="cc-btn" @onclick="CopyRoomLinkAsync">
-                        <i class="bi bi-link-45deg"></i> @(_linkCopied ? "Copié" : "Copier")
-                    </button>
-                </div>
-                <hr />
-                <label class="form-label">Code de la réunion</label>
-                <input class="form-control mtg-code-input" maxlength="16" autocomplete="off" @bind="_codeInput" />
-                <p class="text-muted small mt-1">4 à 16 lettres ou chiffres. Laissez vide et régénérez pour un nouveau code tiré au hasard.</p>
-                @if (_codeGuests.Count > 0)
-                {
-                    <hr />
-                    <label class="form-label">Codes d’invitation des invités externes</label>
-                    <p class="text-muted small">
-                        Chaque invité reçoit son propre code dans son invitation et le saisit une seule fois.
-                        Renvoyer une invitation attribue un nouveau code.
+    <div class="mtl-veil" @onclick="CloseMenus"></div>
+}
+
+@if (_open is Item sel)
+{
+    <div class="mtl-modal-back" @onclick="CloseDetails">
+        <div class="mtl-modal" @onclick:stopPropagation="true">
+            <header class="mtl-modal-top">
+                <div>
+                    <h2>@sel.Title</h2>
+                    <p class="mtl-meta">
+                        <span class="mtl-badge @StatusCls(sel.Status)">@StatusFr(sel.Status)</span>
+                        <span class="mtl-sep">•</span> @WhenLabel(sel)
                     </p>
-                    <ul class="list-unstyled mb-0">
-                        @foreach (var g in _codeGuests)
+                </div>
+                <button type="button" class="mtl-icon-btn" @onclick="CloseDetails"><i class="bi bi-x-lg"></i></button>
+            </header>
+            <div class="mtl-modal-body">
+                @if (!string.IsNullOrEmpty(_openError))
+                {
+                    <div class="mtl-alert">@_openError</div>
+                }
+                <dl class="mtl-facts">
+                    <dt>Organisateur</dt>
+                    <dd>@sel.OrganizerName</dd>
+                    <dt>Groupe</dt>
+                    <dd>@GroupLabel(sel)</dd>
+                    <dt>Votre rôle</dt>
+                    <dd><span class="mtl-badge @RoleCls(sel)">@RoleLabel(sel)</span></dd>
+                    <dt>Participants</dt>
+                    <dd>@sel.ParticipantCount</dd>
+                </dl>
+
+                @if (!string.IsNullOrWhiteSpace(_openData?.Agenda))
+                {
+                    <label class="mtl-lbl">Ordre du jour</label>
+                    <p class="mtl-agenda">@_openData!.Agenda</p>
+                }
+
+                @if (sel.Status != 4)
+                {
+                    <label class="mtl-lbl">Lien de la salle</label>
+                    <p class="mtl-hint">
+                        Le lien porte déjà le code : un clic suffit pour entrer. Il reste valable tant que la réunion
+                        n’est pas annulée, y compris après sa clôture.
+                    </p>
+                    <div class="mtl-copy-row">
+                        <input readonly value="@RoomLink(sel)" />
+                        <button type="button" class="mtl-btn mtl-btn-outline mtl-btn-sm" @onclick="() => CopyRoomLinkAsync(sel)">
+                            <i class="bi bi-link-45deg"></i> @(_copied ? "Copié" : "Copier")
+                        </button>
+                    </div>
+                }
+
+                @if (sel.IsOrganizer && sel.Status != 4)
+                {
+                    <label class="mtl-lbl">Code de la réunion</label>
+                    <div class="mtl-copy-row">
+                        <input class="mtl-code" maxlength="16" autocomplete="off" @bind="_codeInput" />
+                        <button type="button" class="mtl-btn mtl-btn-outline mtl-btn-sm" disabled="@_codeBusy"
+                                @onclick="RegenerateCodeAsync">Régénérer</button>
+                        <button type="button" class="mtl-btn mtl-btn-primary mtl-btn-sm" disabled="@_codeBusy"
+                                @onclick="SaveCodeAsync">Enregistrer</button>
+                    </div>
+                    <p class="mtl-hint">4 à 16 lettres ou chiffres. Videz le champ puis régénérez pour un nouveau tirage.</p>
+
+                    @if (_openGuests.Count > 0)
+                    {
+                        <label class="mtl-lbl">Codes des invités externes</label>
+                        <p class="mtl-hint">
+                            Chaque invité reçoit son propre code dans son invitation et le saisit une seule fois.
+                            Renvoyer une invitation attribue un nouveau code.
+                        </p>
+                        <ul class="mtl-guests">
+                            @foreach (var g in _openGuests)
+                            {
+                                <li>
+                                    <span>@g.FullName <em>@g.Email</em></span>
+                                    <strong class="mtl-code">@(g.AccessCode ?? "—")</strong>
+                                </li>
+                            }
+                        </ul>
+                    }
+                }
+
+                @if (_openData?.Participants is { Count: > 0 } people)
+                {
+                    <label class="mtl-lbl">Invités</label>
+                    <ul class="mtl-people">
+                        @foreach (var p in people)
                         {
-                            <li class="d-flex justify-content-between align-items-center gap-2 py-1">
-                                <span>@g.FullName <span class="text-muted small">@g.Email</span></span>
-                                <strong class="mtg-code-input">@(g.AccessCode ?? "—")</strong>
+                            <li>
+                                <span class="mtl-av mtl-av-sm" style="background:@AvatarBg(p.DisplayName)">@Initials(p.DisplayName)</span>
+                                <span class="mtl-people-id">
+                                    <strong>@p.DisplayName</strong>
+                                    <em>@(p.RoleLabel ?? RoleName(p.Role))</em>
+                                </span>
+                                <span class="mtl-badge @PartCls(p.Status)">@PartFr(p.Status)</span>
                             </li>
                         }
                     </ul>
                 }
+                else if (_openLoading)
+                {
+                    <div class="mtl-load"><span class="spinner-border spinner-border-sm"></span></div>
+                }
             </div>
-            <div class="ts-modal-footer">
-                <button type="button" class="cc-btn" disabled="@_codeBusy" @onclick="RegenerateCodeAsync">Régénérer</button>
-                <button type="button" class="cc-btn cc-btn-primary" disabled="@_codeBusy" @onclick="SaveCodeAsync">Enregistrer</button>
-            </div>
+            <footer class="mtl-modal-foot">
+                @if (IsPending(sel))
+                {
+                    <button type="button" class="mtl-btn mtl-btn-danger-outline mtl-btn-sm"
+                            @onclick='() => RespondAsync(sel, "decline")'>Refuser</button>
+                    <button type="button" class="mtl-btn mtl-btn-outline mtl-btn-sm"
+                            @onclick='() => RespondAsync(sel, "tentative")'>Peut-être</button>
+                    <button type="button" class="mtl-btn mtl-btn-primary mtl-btn-sm"
+                            @onclick='() => RespondAsync(sel, "accept")'>Accepter</button>
+                }
+                @if (sel.Status == 3)
+                {
+                    <a class="mtl-btn mtl-btn-ghost mtl-btn-sm" href="@($"/expert/meetings/{sel.Id}/minutes")">
+                        <i class="bi bi-journal-text"></i> Compte rendu
+                    </a>
+                }
+                @if (sel.Status != 4)
+                {
+                    <a class="mtl-btn @(sel.Status == 2 ? "mtl-btn-join" : "mtl-btn-primary") mtl-btn-sm"
+                       href="@($"/expert/meetings/{sel.Id}/room")">
+                        <i class="bi bi-camera-video-fill"></i> @(sel.Status == 2 ? "Rejoindre maintenant" : "Ouvrir la salle")
+                    </a>
+                }
+            </footer>
         </div>
     </div>
 }
 
+@if (_toast is not null)
+{
+    <div class="mtl-toast"><i class="bi bi-check2-circle"></i> @_toast</div>
+}
+
 @code {
+    private static readonly System.Globalization.CultureInfo Fr = new("fr-FR");
+
     private readonly List<Item> _items = [];
     private bool _loading = true;
-    private string? _error;
-    private Guid? _codeMeetingId;
-    private string _codeTitle = "";
+    private string? _error, _toast;
+    private string _tab = "upcoming";
+    private string _view = "list";
+    private string _search = "";
+    private string _group = "";
+    private bool _createMenu;
+    private Guid? _menu, _busy;
+    private DateTime _month = new(DateTime.Today.Year, DateTime.Today.Month, 1);
+    private System.Threading.Timer? _tick;
+
+    private Item? _open;
+    private Detail? _openData;
+    private bool _openLoading, _copied, _codeBusy;
+    private string? _openError;
     private string _codeInput = "";
-    private string? _codeError;
-    private bool _codeBusy, _linkCopied;
-    private readonly List<GuestCode> _codeGuests = [];
-
-    /// <summary>Lien de la salle avec le code : le destinataire n'a rien à saisir.</summary>
-    private string RoomLink
-    {
-        get
-        {
-            if (_codeMeetingId is not Guid id) return "";
-            var url = $"{Nav.BaseUri.TrimEnd('/')}/expert/meetings/{id}/room";
-            return string.IsNullOrWhiteSpace(_codeInput) ? url : $"{url}?code={Uri.EscapeDataString(_codeInput.Trim())}";
-        }
-    }
-
-    private async Task CopyRoomLinkAsync()
-    {
-        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", RoomLink); }
-        catch { _codeError = "Copie impossible : sélectionnez le lien et copiez-le à la main."; return; }
-        _linkCopied = true;
-    }
+    private readonly List<GuestCode> _openGuests = [];
 
     protected override async Task OnInitializedAsync()
     {
         await Auth.EnsureSessionRestoredAsync();
+        await ReloadAsync();
+        // Les compteurs « Débute dans … » restent justes sans intervention de l'utilisateur.
+        _tick = new System.Threading.Timer(_ => InvokeAsync(StateHasChanged), null, 30_000, 30_000);
+    }
+
+    public void Dispose() => _tick?.Dispose();
+
+    private async Task ReloadAsync()
+    {
+        _createMenu = false;
+        _loading = _items.Count == 0;
         try
         {
+            var rows = await Api.GetAsync<List<Item>>("api/expert/meetings") ?? [];
             _items.Clear();
-            _items.AddRange(await Api.GetAsync<List<Item>>("api/expert/meetings") ?? []);
+            _items.AddRange(rows);
+            _error = null;
         }
         catch (Exception ex) { _error = ex.Message; }
         finally { _loading = false; }
     }
 
-    private async Task OpenCodeAsync(Item m)
+    // ---------- filtres ----------
+
+    private void SetTab(string tab)
     {
-        _codeMeetingId = m.Id;
-        _codeTitle = m.Title;
-        _codeError = null;
-        _codeInput = "";
-        _linkCopied = false;
-        _codeGuests.Clear();
-        var detail = await Api.GetAsync<CodeDetail>($"api/expert/meetings/{m.Id}");
-        _codeInput = detail?.AccessCode ?? "";
-        if (detail?.ExternalGuests is { Count: > 0 } guests)
-            _codeGuests.AddRange(guests.Where(g => !g.Revoked));
+        _tab = tab;
+        _view = "list";
+        CloseMenus();
     }
 
-    private void CloseCode()
+    private void SetView(string view)
     {
-        _codeMeetingId = null;
-        _codeError = null;
+        _view = view;
+        CloseMenus();
+    }
+
+    private void CloseMenus()
+    {
+        _menu = null;
+        _createMenu = false;
+    }
+
+    private void GoToday() => _month = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+
+    private IEnumerable<(string Id, string Name)> Groups => _items
+        .Where(m => m.GroupId is not null && !string.IsNullOrWhiteSpace(m.GroupName))
+        .Select(m => (Id: m.GroupId!.Value.ToString(), Name: m.GroupName!))
+        .Distinct()
+        .OrderBy(g => g.Name, StringComparer.CurrentCultureIgnoreCase);
+
+    private IEnumerable<Item> Filtered => _items.Where(m =>
+        (string.IsNullOrWhiteSpace(_search)
+            || m.Title.Contains(_search, StringComparison.CurrentCultureIgnoreCase)
+            || m.OrganizerName.Contains(_search, StringComparison.CurrentCultureIgnoreCase)
+            || (m.GroupName ?? "").Contains(_search, StringComparison.CurrentCultureIgnoreCase))
+        && (string.IsNullOrEmpty(_group) || m.GroupId?.ToString() == _group)
+        && InTab(m));
+
+    private bool InTab(Item m) => _tab switch
+    {
+        "upcoming" => m.Status is 0 or 1 or 2,
+        "invitations" => IsPending(m),
+        "ended" => m.Status is 3 or 4,
+        _ => true
+    };
+
+    private IEnumerable<Item> Pending => _items
+        .Where(IsPending)
+        .OrderBy(m => LocalStart(m) ?? DateTime.MaxValue);
+
+    private IEnumerable<Item> LiveHighlights => _tab is "upcoming" or "all"
+        ? Filtered.Where(m => m.Status == 2).OrderBy(m => LocalStart(m) ?? DateTime.MaxValue)
+        : Enumerable.Empty<Item>();
+
+    private Item? NextMeeting => _items
+        .Where(m => m.Status is 1 or 2)
+        .Where(m => (LocalEnd(m) ?? LocalStart(m) ?? DateTime.MaxValue) >= DateTime.Now)
+        .OrderBy(m => LocalStart(m) ?? DateTime.MaxValue)
+        .FirstOrDefault();
+
+    private int CountUpcoming => _items.Count(m => m.Status is 0 or 1);
+    private int CountInvites => _items.Count(IsPending);
+    private int CountLive => _items.Count(m => m.Status == 2);
+    private int CountEnded => _items.Count(m => m.Status == 3);
+
+    /// <summary>Regroupe les lignes par échéance, comme un agenda.</summary>
+    private IEnumerable<Section> Sections
+    {
+        get
+        {
+            var live = LiveHighlights.Select(m => m.Id).ToHashSet();
+            var buckets = new List<Section>
+            {
+                new("Aujourd’hui", false), new("Demain", false), new("Cette semaine", true),
+                new("Plus tard", true), new("Sans date", false), new("Passées", true)
+            };
+            var today = DateTime.Today;
+            foreach (var m in Filtered.Where(m => !live.Contains(m.Id)))
+            {
+                var start = LocalStart(m);
+                var index = start is null ? 4
+                    : start.Value.Date == today ? 0
+                    : start.Value.Date == today.AddDays(1) ? 1
+                    : start.Value.Date < today ? 5
+                    : start.Value.Date <= today.AddDays(7) ? 2
+                    : 3;
+                buckets[index].Items.Add(m);
+            }
+            foreach (var b in buckets)
+            {
+                if (b.Label == "Passées")
+                    b.Items.Sort((a, c) => (LocalStart(c) ?? DateTime.MinValue).CompareTo(LocalStart(a) ?? DateTime.MinValue));
+                else
+                    b.Items.Sort((a, c) => (LocalStart(a) ?? DateTime.MaxValue).CompareTo(LocalStart(c) ?? DateTime.MaxValue));
+            }
+            return buckets.Where(b => b.Items.Count > 0);
+        }
+    }
+
+    private IEnumerable<DateTime> MonthDays
+    {
+        get
+        {
+            var first = new DateTime(_month.Year, _month.Month, 1);
+            var start = first.AddDays(-(((int)first.DayOfWeek + 6) % 7));
+            return Enumerable.Range(0, 42).Select(i => start.AddDays(i));
+        }
+    }
+
+    private IEnumerable<Item> OnDay(DateTime day) => Filtered
+        .Where(m => LocalStart(m)?.Date == day.Date)
+        .OrderBy(m => LocalStart(m));
+
+    // ---------- actions ----------
+
+    private async Task RespondAsync(Item m, string response)
+    {
+        CloseMenus();
+        _busy = m.Id;
+        try
+        {
+            var r = await Api.PostWithErrorAsync<object>(
+                $"api/expert/meetings/{m.Id}/respond", new { response });
+            if (r.Error is not null) { _error = r.Error; return; }
+            m.MyStatus = response switch { "accept" => 1, "tentative" => 9, _ => 2 };
+            _error = null;
+            await ToastAsync(response switch
+            {
+                "accept" => "Participation confirmée.",
+                "tentative" => "Réponse « peut-être » enregistrée.",
+                _ => "Invitation refusée."
+            });
+        }
+        finally { _busy = null; }
+    }
+
+    private async Task CancelAsync(Item m)
+    {
+        CloseMenus();
+        var r = await Api.PostWithErrorAsync<object>($"api/expert/meetings/{m.Id}/cancel", new { });
+        if (r.Error is not null) { _error = r.Error; return; }
+        m.Status = 4;
+        await ToastAsync("Réunion annulée.");
+    }
+
+    private async Task CopyLinkAsync(Item m)
+    {
+        CloseMenus();
+        // Le lien ne sert à rien sans le code : on le récupère pour l'embarquer dans l'URL.
+        string? code = null;
+        try { code = (await Api.GetAsync<Detail>($"api/expert/meetings/{m.Id}"))?.AccessCode; }
+        catch { /* code indisponible pour ce rôle : lien nu */ }
+        var url = $"{Nav.BaseUri.TrimEnd('/')}/expert/meetings/{m.Id}/room";
+        if (!string.IsNullOrWhiteSpace(code)) url += $"?code={Uri.EscapeDataString(code)}";
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", url); }
+        catch { _error = "Copie impossible : ouvrez les détails et copiez le lien à la main."; return; }
+        await ToastAsync("Lien de la salle copié.");
+    }
+
+    private async Task ToastAsync(string message)
+    {
+        _toast = message;
+        StateHasChanged();
+        await Task.Delay(2600);
+        if (_toast == message) { _toast = null; StateHasChanged(); }
+    }
+
+    private async Task OpenDetailsAsync(Item m)
+    {
+        CloseMenus();
+        _open = m;
+        _openData = null;
+        _openError = null;
+        _openGuests.Clear();
+        _codeInput = "";
+        _copied = false;
+        _openLoading = true;
+        try
+        {
+            _openData = await Api.GetAsync<Detail>($"api/expert/meetings/{m.Id}");
+            _codeInput = _openData?.AccessCode ?? "";
+            if (_openData?.ExternalGuests is { Count: > 0 } guests)
+                _openGuests.AddRange(guests.Where(g => !g.Revoked));
+        }
+        catch (Exception ex) { _openError = ex.Message; }
+        finally { _openLoading = false; }
+    }
+
+    private void CloseDetails()
+    {
+        _open = null;
+        _openData = null;
+        _openError = null;
     }
 
     private Task SaveCodeAsync() => ApplyCodeAsync(_codeInput);
@@ -215,26 +850,120 @@
 
     private async Task ApplyCodeAsync(string? code)
     {
-        if (_codeMeetingId is not Guid id) return;
-        _codeError = null;
-        _linkCopied = false;
+        if (_open is not Item m) return;
+        _openError = null;
+        _copied = false;
         _codeBusy = true;
         try
         {
-            var r = await Api.PostWithErrorAsync<CodeDetail>(
-                $"api/expert/meetings/{id}/access-code", new { code });
-            if (r.Error is not null) { _codeError = r.Error; return; }
+            var r = await Api.PostWithErrorAsync<Detail>($"api/expert/meetings/{m.Id}/access-code", new { code });
+            if (r.Error is not null) { _openError = r.Error; return; }
             _codeInput = r.Value?.Code ?? _codeInput;
         }
         finally { _codeBusy = false; }
     }
 
-    private async Task CancelAsync(Guid id)
+    /// <summary>Lien de la salle avec le code : le destinataire n'a rien à saisir.</summary>
+    private string RoomLink(Item m)
     {
-        var r = await Api.PostWithErrorAsync<object>($"api/expert/meetings/{id}/cancel", new { });
-        if (r.Error is not null) { _error = r.Error; return; }
-        await OnInitializedAsync();
+        var url = $"{Nav.BaseUri.TrimEnd('/')}/expert/meetings/{m.Id}/room";
+        return string.IsNullOrWhiteSpace(_codeInput) || _open?.Id != m.Id
+            ? url
+            : $"{url}?code={Uri.EscapeDataString(_codeInput.Trim())}";
     }
+
+    private async Task CopyRoomLinkAsync(Item m)
+    {
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", RoomLink(m)); }
+        catch { _openError = "Copie impossible : sélectionnez le lien et copiez-le à la main."; return; }
+        _copied = true;
+    }
+
+    // ---------- présentation ----------
+
+    private static DateTime? LocalStart(Item m) => m.StartAtUtc is { } s
+        ? DateTime.SpecifyKind(s, DateTimeKind.Utc).ToLocalTime() : null;
+
+    private static DateTime? LocalEnd(Item m) => m.EndAtUtc is { } e
+        ? DateTime.SpecifyKind(e, DateTimeKind.Utc).ToLocalTime() : null;
+
+    private static TimeSpan? StartsIn(Item m) =>
+        LocalStart(m) is DateTime s && s > DateTime.Now ? s - DateTime.Now : null;
+
+    private static string Countdown(TimeSpan span)
+    {
+        if (span.TotalMinutes < 1) return "moins d’une minute";
+        if (span.TotalMinutes < 60) return $"{(int)span.TotalMinutes} min";
+        if (span.TotalHours < 24)
+            return span.Minutes == 0 ? $"{(int)span.TotalHours} h" : $"{(int)span.TotalHours} h {span.Minutes:00} min";
+        var days = (int)Math.Round(span.TotalDays);
+        return days <= 1 ? "1 jour" : $"{days} jours";
+    }
+
+    private static string DayLabel(DateTime local)
+    {
+        var d = local.Date;
+        if (d == DateTime.Today) return "Aujourd’hui";
+        if (d == DateTime.Today.AddDays(1)) return "Demain";
+        if (d == DateTime.Today.AddDays(-1)) return "Hier";
+        return Capitalize(local.ToString("dddd d MMMM", Fr));
+    }
+
+    private static string TimeRange(Item m)
+    {
+        if (LocalStart(m) is not DateTime s) return "Horaire à confirmer";
+        return LocalEnd(m) is DateTime e
+            ? $"{s.ToString("HH:mm")} – {e.ToString("HH:mm")}"
+            : s.ToString("HH:mm");
+    }
+
+    private static string WhenLabel(Item m) =>
+        LocalStart(m) is DateTime s ? $"{DayLabel(s)} • {TimeRange(m)}" : "Date à confirmer";
+
+    private static string Capitalize(string value) =>
+        string.IsNullOrEmpty(value) ? value : char.ToUpper(value[0], Fr) + value[1..];
+
+    private string GroupLabel(Item m) =>
+        string.IsNullOrWhiteSpace(m.GroupName) ? "Réunion inter-groupes" : $"Groupe {m.GroupName}";
+
+    /// <summary>Invitation non encore honorée : le destinataire doit répondre.</summary>
+    private static bool IsPending(Item m) => !m.IsOrganizer && m.MyStatus == 0 && m.Status is 0 or 1 or 2;
+
+    private static string RoleLabel(Item m)
+    {
+        if (m.IsOrganizer) return "Organisateur";
+        return m.MyStatus switch
+        {
+            1 => "Confirmé",
+            9 => "Peut-être",
+            2 => "Refusé",
+            0 => "Réponse attendue",
+            4 => "En salle",
+            null => "Membre du groupe",
+            _ => "Invité"
+        };
+    }
+
+    private static string RoleCls(Item m)
+    {
+        if (m.IsOrganizer) return "is-org";
+        return m.MyStatus switch
+        {
+            1 or 4 => "is-ok",
+            9 => "is-maybe",
+            2 => "is-no",
+            0 => "is-wait",
+            _ => "is-info"
+        };
+    }
+
+    private static string StatusIcCls(Item m) => m.Status switch
+    {
+        2 => "is-green",
+        3 => "is-slate",
+        4 => "is-red",
+        _ => "is-violet"
+    };
 
     private static string StatusFr(int s) => s switch
     {
@@ -246,12 +975,89 @@
         _ => "—"
     };
 
-    /// <summary>Le détail expose le code en clair uniquement aux organisateurs et modérateurs.</summary>
-    private sealed class CodeDetail
+    private static string StatusCls(int s) => s switch
     {
+        2 => "is-live",
+        3 => "is-info",
+        4 => "is-no",
+        _ => "is-org"
+    };
+
+    private static string PartFr(int s) => s switch
+    {
+        0 => "Invité",
+        1 => "Confirmé",
+        2 => "Refusé",
+        3 => "En attente",
+        4 => "En salle",
+        5 => "Sorti",
+        6 => "Refusé à l’entrée",
+        7 => "Retiré",
+        8 => "Absent",
+        9 => "Peut-être",
+        _ => "—"
+    };
+
+    private static string PartCls(int s) => s switch
+    {
+        1 or 4 => "is-ok",
+        2 or 6 or 7 => "is-no",
+        9 => "is-maybe",
+        0 or 3 => "is-wait",
+        _ => "is-info"
+    };
+
+    private static string RoleName(int role) => role switch
+    {
+        0 => "Organisateur",
+        1 => "Modérateur",
+        2 => "Participant",
+        3 => "Invité externe",
+        _ => "Participant"
+    };
+
+    private static string Initials(string? name)
+    {
+        var parts = (name ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) return "?";
+        var text = parts.Length == 1 ? parts[0][..1] : $"{parts[0][0]}{parts[^1][0]}";
+        return text.ToUpperInvariant();
+    }
+
+    private static string AvatarBg(string? name)
+    {
+        string[] palette = ["#5b5bd6", "#0f9d78", "#d97706", "#db2777", "#0891b2", "#7c3aed"];
+        var hash = 0;
+        foreach (var c in name ?? "") hash = (hash * 31 + c) & 0x7fffffff;
+        return palette[hash % palette.Length];
+    }
+
+    /// <summary>Participants masqués derrière la pile d'avatars.</summary>
+    private static int RestCount(Item m) =>
+        m.ParticipantCount - Math.Min(3, m.ParticipantPreview?.Count ?? 0);
+
+    private sealed class Section(string label, bool showDate)
+    {
+        public string Label { get; } = label;
+        public bool ShowDate { get; } = showDate;
+        public List<Item> Items { get; } = [];
+    }
+
+    private sealed class Detail
+    {
+        public string? Agenda { get; set; }
         public string? AccessCode { get; set; }
         public string? Code { get; set; }
+        public List<Person>? Participants { get; set; }
         public List<GuestCode>? ExternalGuests { get; set; }
+    }
+
+    private sealed class Person
+    {
+        public string DisplayName { get; set; } = "";
+        public string? RoleLabel { get; set; }
+        public int Role { get; set; }
+        public int Status { get; set; }
     }
 
     private sealed class GuestCode
@@ -275,5 +1081,9 @@
         public int ParticipantCount { get; set; }
         public bool AiEnabled { get; set; }
         public bool IsOrganizer { get; set; }
+        public Guid? GroupId { get; set; }
+        public string? GroupName { get; set; }
+        public int? MyStatus { get; set; }
+        public List<string>? ParticipantPreview { get; set; }
     }
 }

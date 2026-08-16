@@ -37,7 +37,9 @@ public enum MeetingParticipantStatus
     Left = 5,
     Denied = 6,
     Removed = 7,
-    Absent = 8
+    Absent = 8,
+    /// <summary>« Peut-être » : l'invité ne s'engage pas mais reste attendu.</summary>
+    Tentative = 9
 }
 
 public enum MeetingInvitationKind
