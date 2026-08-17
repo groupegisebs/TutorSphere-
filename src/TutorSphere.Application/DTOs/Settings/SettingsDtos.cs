@@ -10,6 +10,25 @@ public record CalendarFeedDto(
     string? WebcalUrl,
     string Instructions);
 
+/// <summary>
+/// État du canal WhatsApp d'un compte. Le numéro n'est renvoyé que masqué : l'écran de réglages
+/// n'a pas besoin du numéro complet pour confirmer à la personne lequel est enregistré.
+/// </summary>
+public record WhatsAppChannelDto(
+    string Status,
+    string? PhoneMasked,
+    bool LessonReminders,
+    DateTime? VerifiedAt,
+    DateTime? ConsentAt,
+    DateTime? CodeExpiresAt,
+    int RemainingAttempts);
+
+public record StartWhatsAppEnrollmentRequest(string Phone);
+
+public record ConfirmWhatsAppEnrollmentRequest(string Code);
+
+public record UpdateWhatsAppPreferencesRequest(bool LessonReminders);
+
 public record UserProfileDto(
     string Email,
     string FirstName,

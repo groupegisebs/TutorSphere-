@@ -20,6 +20,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     public DbSet<Student> StudentsSet => Set<Student>();
     public DbSet<ParentProfile> ParentProfilesSet => Set<ParentProfile>();
     public DbSet<ParentSupportRequest> ParentSupportRequestsSet => Set<ParentSupportRequest>();
+    public DbSet<WhatsAppEnrollment> WhatsAppEnrollmentsSet => Set<WhatsAppEnrollment>();
     public DbSet<SubscriptionOffering> SubscriptionOfferingsSet => Set<SubscriptionOffering>();
     public DbSet<StudentSubscription> StudentSubscriptionsSet => Set<StudentSubscription>();
     public DbSet<Lesson> LessonsSet => Set<Lesson>();
@@ -653,6 +654,18 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
                 .OnDelete(DeleteBehavior.Restrict);
             e.HasOne(p => p.ReferredByParent).WithMany().HasForeignKey(p => p.ReferredByParentProfileId)
                 .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        builder.Entity<WhatsAppEnrollment>(e =>
+        {
+            e.Property(w => w.UserId).HasMaxLength(450).IsRequired();
+            e.Property(w => w.PhoneE164).HasMaxLength(20).IsRequired();
+            e.Property(w => w.Language).HasMaxLength(16).IsRequired();
+            e.Property(w => w.VerificationCodeHash).HasMaxLength(500);
+            e.Property(w => w.ConsentSource).HasMaxLength(50);
+            // Un seul canal par compte : le numéro notifié doit être sans ambiguïté.
+            e.HasIndex(w => w.UserId).IsUnique();
+            e.HasIndex(w => w.PhoneE164);
         });
 
         builder.Entity<ParentSupportRequest>(e =>

@@ -50,6 +50,81 @@
     </div>
 </div>
 
+<div class="card ts-card mb-4">
+    <div class="card-body">
+        <h2 class="h5 mb-3"><i class="bi bi-whatsapp text-success me-2"></i>Rappels sur WhatsApp</h2>
+        <p class="text-muted small">
+            En complément du courriel, recevez les rappels de cours sur WhatsApp. Les messages
+            ne contiennent jamais de note, de montant ni d'information confidentielle : le détail
+            reste dans TutorSphere, après connexion.
+        </p>
+
+        @if (!string.IsNullOrEmpty(_waError))
+        {
+            <div class="alert alert-danger py-2">@_waError</div>
+        }
+        @if (!string.IsNullOrEmpty(_waMessage))
+        {
+            <div class="alert alert-success py-2">@_waMessage</div>
+        }
+
+        @if (_channel?.Status == "Active")
+        {
+            <dl class="row mb-3">
+                <dt class="col-sm-4">Numéro vérifié</dt>
+                <dd class="col-sm-8">@_channel.PhoneMasked</dd>
+            </dl>
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" id="wa-reminders"
+                       checked="@_channel.LessonReminders" @onchange="ToggleWhatsAppRemindersAsync" />
+                <label class="form-check-label" for="wa-reminders">Recevoir les rappels de cours sur WhatsApp</label>
+            </div>
+            <button class="btn btn-outline-danger btn-sm" @onclick="DisableWhatsAppAsync" disabled="@_waBusy">
+                <i class="bi bi-x-circle me-1"></i>Retirer mon numéro
+            </button>
+        }
+        else if (_channel?.Status == "PendingVerification")
+        {
+            <p class="mb-2">
+                Un code à six chiffres a été envoyé au <strong>@_channel.PhoneMasked</strong> sur WhatsApp.
+                Saisissez-le pour activer le canal.
+            </p>
+            <div class="row g-2 align-items-end">
+                <div class="col-sm-4">
+                    <label class="form-label" for="wa-code">Code reçu</label>
+                    <input id="wa-code" class="form-control" maxlength="6" inputmode="numeric"
+                           placeholder="123456" @bind="_waCode" />
+                </div>
+                <div class="col-sm-8">
+                    <button class="btn btn-success" @onclick="ConfirmWhatsAppAsync" disabled="@_waBusy">
+                        @if (_waBusy) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                        Confirmer
+                    </button>
+                    <button class="btn btn-link" @onclick="RestartWhatsApp" disabled="@_waBusy">
+                        Changer de numéro
+                    </button>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="row g-2 align-items-end">
+                <div class="col-sm-5">
+                    <label class="form-label" for="wa-phone">Numéro WhatsApp</label>
+                    <input id="wa-phone" class="form-control" placeholder="+1 418 576 3462" @bind="_waPhone" />
+                    <div class="form-text">Format international recommandé.</div>
+                </div>
+                <div class="col-sm-7">
+                    <button class="btn btn-success" @onclick="StartWhatsAppAsync" disabled="@_waBusy">
+                        @if (_waBusy) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                        <i class="bi bi-whatsapp me-1"></i>Recevoir un code de vérification
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
 <div class="card ts-card">
     <div class="card-body">
         <h2 class="h5 mb-3">Sécurité</h2>
@@ -65,13 +140,124 @@
     private bool _saving, _saved;
     private string? _error;
 
+    private WhatsAppChannelDto? _channel;
+    private string _waPhone = string.Empty;
+    private string _waCode = string.Empty;
+    private bool _waBusy;
+    private string? _waError, _waMessage;
+
     private record NotificationPreferencesDto(bool EmailLessonReminders);
+
+    private record WhatsAppChannelDto(
+        string Status,
+        string? PhoneMasked,
+        bool LessonReminders,
+        DateTime? VerifiedAt,
+        DateTime? ConsentAt,
+        DateTime? CodeExpiresAt,
+        int RemainingAttempts);
 
     protected override async Task OnInitializedAsync()
     {
         var prefs = await Api.GetAsync<NotificationPreferencesDto>("api/me/notification-preferences");
         if (prefs is not null)
             _emailLessonReminders = prefs.EmailLessonReminders;
+
+        _channel = await Api.GetAsync<WhatsAppChannelDto>("api/me/whatsapp");
+    }
+
+    private async Task StartWhatsAppAsync()
+    {
+        _waBusy = true;
+        _waError = _waMessage = null;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<WhatsAppChannelDto>(
+                "api/me/whatsapp/start", new { phone = _waPhone });
+            if (result.Error is not null)
+            {
+                _waError = result.Error;
+                return;
+            }
+
+            _channel = result.Value;
+            _waCode = string.Empty;
+            _waMessage = "Code envoyé sur WhatsApp.";
+        }
+        finally
+        {
+            _waBusy = false;
+        }
+    }
+
+    private async Task ConfirmWhatsAppAsync()
+    {
+        _waBusy = true;
+        _waError = _waMessage = null;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<WhatsAppChannelDto>(
+                "api/me/whatsapp/confirm", new { code = _waCode });
+            if (result.Error is not null)
+            {
+                _waError = result.Error;
+                // Le nombre de tentatives restantes vient du serveur : on rafraîchit l'état affiché.
+                _channel = await Api.GetAsync<WhatsAppChannelDto>("api/me/whatsapp");
+                return;
+            }
+
+            _channel = result.Value;
+            _waMessage = "Numéro vérifié : les rappels partiront aussi sur WhatsApp.";
+        }
+        finally
+        {
+            _waBusy = false;
+        }
+    }
+
+    private async Task ToggleWhatsAppRemindersAsync(ChangeEventArgs e)
+    {
+        var enabled = e.Value is bool value && value;
+        _waError = _waMessage = null;
+
+        var result = await Api.PutWithErrorAsync<WhatsAppChannelDto>(
+            "api/me/whatsapp/preferences", new { lessonReminders = enabled });
+        if (result.Error is not null)
+        {
+            _waError = result.Error;
+            return;
+        }
+
+        _channel = result.Value;
+    }
+
+    private async Task DisableWhatsAppAsync()
+    {
+        _waBusy = true;
+        _waError = _waMessage = null;
+        try
+        {
+            var result = await Api.DeleteWithErrorAsync("api/me/whatsapp");
+            if (result.Error is not null)
+            {
+                _waError = result.Error;
+                return;
+            }
+
+            _channel = await Api.GetAsync<WhatsAppChannelDto>("api/me/whatsapp");
+            _waMessage = "Numéro retiré. Plus aucun message WhatsApp ne vous sera envoyé.";
+        }
+        finally
+        {
+            _waBusy = false;
+        }
+    }
+
+    private void RestartWhatsApp()
+    {
+        _channel = _channel is null ? null : _channel with { Status = "None" };
+        _waCode = string.Empty;
+        _waError = _waMessage = null;
     }
 
     private async Task SaveAsync()

@@ -39,6 +39,7 @@ public class LessonReminderService : BackgroundService
         using var scope = _services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         var email = scope.ServiceProvider.GetRequiredService<IEmailService>();
+        var whatsApp = scope.ServiceProvider.GetRequiredService<IWhatsAppNotifier>();
         var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
 
         var now = DateTime.UtcNow;
@@ -114,6 +115,19 @@ public class LessonReminderService : BackgroundService
                         {
                             await email.SendLessonReminderAsync(
                                 parent.Email,
+                                parent.FirstName,
+                                tutorName,
+                                subject,
+                                lesson.StartTime,
+                                ct);
+                        }
+
+                        // Canal WhatsApp : s'ajoute au courriel, qui reste la trace écrite. Le service
+                        // ne fait rien si le parent n'a pas de numéro vérifié.
+                        if (parent is not null && !string.IsNullOrWhiteSpace(parent.UserId))
+                        {
+                            await whatsApp.SendLessonReminderAsync(
+                                parent.UserId,
                                 parent.FirstName,
                                 tutorName,
                                 subject,

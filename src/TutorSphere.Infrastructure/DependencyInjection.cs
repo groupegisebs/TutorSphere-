@@ -14,6 +14,7 @@ using TutorSphere.Infrastructure.MultiTenancy;
 using TutorSphere.Infrastructure.Persistence;
 using TutorSphere.Infrastructure.Services;
 using TutorSphere.Infrastructure.PayGateway;
+using TutorSphere.Infrastructure.WhatsApp;
 
 namespace TutorSphere.Infrastructure;
 
@@ -56,6 +57,10 @@ public static class DependencyInjection
         services.Configure<MailGatewaySettings>(configuration.GetSection(MailGatewaySettings.SectionName));
         services.AddHttpClient<MailGatewayClient>();
         services.AddScoped<IEmailService, EmailService>();
+        services.Configure<WhatsAppChannelOptions>(configuration.GetSection(WhatsAppChannelOptions.SectionName));
+        services.AddHttpClient<WhatsAppGatewayClient>();
+        services.AddScoped<IWhatsAppEnrollmentService, WhatsAppEnrollmentService>();
+        services.AddScoped<IWhatsAppNotifier, WhatsAppNotifier>();
         services.AddScoped<IAdminMailboxService, AdminMailboxService>();
         services.AddScoped<IUserContactLookup, IdentityUserContactLookup>();
         services.AddScoped<ITeacherPublicIdentityLookup, TeacherPublicIdentityLookup>();
@@ -289,7 +294,35 @@ public static class DependencyInjection
             """CREATE INDEX IF NOT EXISTS "IX_TutorPayoutsSet_ExpertGroupId" ON "TutorPayoutsSet" ("ExpertGroupId");""");
         await db.Database.ExecuteSqlRawAsync(
             """CREATE INDEX IF NOT EXISTS "IX_TutorPayoutsSet_InvoiceNumber" ON "TutorPayoutsSet" ("InvoiceNumber");""");
-        logger.LogInformation("Coverage, document metadata, and payout invoice schema columns are present.");
+
+        // Canal WhatsApp : sans cette table, l'écran de réglages parent renvoie 500.
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            CREATE TABLE IF NOT EXISTS "WhatsAppEnrollmentsSet" (
+                "Id" uuid NOT NULL,
+                "UserId" character varying(450) NOT NULL,
+                "PhoneE164" character varying(20) NOT NULL,
+                "Language" character varying(16) NOT NULL,
+                "Status" integer NOT NULL,
+                "VerificationCodeHash" character varying(500),
+                "VerificationSentAt" timestamp with time zone,
+                "VerificationExpiresAt" timestamp with time zone,
+                "VerificationAttempts" integer NOT NULL,
+                "VerifiedAt" timestamp with time zone,
+                "ConsentAt" timestamp with time zone,
+                "ConsentSource" character varying(50),
+                "OptOutAt" timestamp with time zone,
+                "LessonReminders" boolean NOT NULL,
+                "CreatedAt" timestamp with time zone NOT NULL,
+                "UpdatedAt" timestamp with time zone,
+                CONSTRAINT "PK_WhatsAppEnrollmentsSet" PRIMARY KEY ("Id")
+            );
+            """);
+        await db.Database.ExecuteSqlRawAsync(
+            """CREATE UNIQUE INDEX IF NOT EXISTS "IX_WhatsAppEnrollmentsSet_UserId" ON "WhatsAppEnrollmentsSet" ("UserId");""");
+        await db.Database.ExecuteSqlRawAsync(
+            """CREATE INDEX IF NOT EXISTS "IX_WhatsAppEnrollmentsSet_PhoneE164" ON "WhatsAppEnrollmentsSet" ("PhoneE164");""");
+        logger.LogInformation("Coverage, document metadata, payout invoice, and WhatsApp channel schema are present.");
     }
 
     /// <summary>
