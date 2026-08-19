@@ -70,9 +70,13 @@
             </NavLink>
         </div>
         <div class="nav-item">
-            <NavLink class="nav-link" href="parent/payments">
+            <NavLink class="@(_pendingPayments > 0 ? "nav-link nav-link--pay-alert" : "nav-link")" href="parent/payments">
                 <i class="bi bi-credit-card" aria-hidden="true"></i>
                 <span>@L["Nav_Payments"]</span>
+                @if (_pendingPayments > 0)
+                {
+                    <span class="sidebar-badge" title="@($"{_pendingPayments} paiement(s) en attente")">@_pendingPayments</span>
+                }
             </NavLink>
         </div>
         <div class="nav-item">
@@ -111,6 +115,7 @@
 
 @code {
     private int _unreadMessages;
+    private int _pendingPayments;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -120,6 +125,7 @@
         await AuthSvc.EnsureSessionRestoredAsync(forceJs: true);
         await ParentProfile.EnsureLoadedAsync();
         _unreadMessages = ParentProfile.UnreadMessagesCount;
+        _pendingPayments = ParentProfile.PendingPaymentsCount;
         StateHasChanged();
     }
 }

@@ -34,7 +34,7 @@
                     <button type="button" class="dropdown-item" @onclick="() => OpenUnavailabilityModal()">
                         <i class="bi bi-slash-circle me-2" aria-hidden="true"></i>Indisponibilité
                     </button>
-                    <button type="button" class="dropdown-item" @onclick="GoToOfferCreation">
+                    <button type="button" class="dropdown-item" @onclick="() => OpenOfferModal()">
                         <i class="bi bi-mortarboard me-2" aria-hidden="true"></i>Cours (nouvelle offre)
                     </button>
                 </div>
@@ -398,6 +398,15 @@
     </div>
 }
 
+@if (_showOfferModal)
+{
+    <TutorOfferCreateModal PrefillDate="_offerPrefillDate"
+                           PrefillStart="_offerPrefillStart"
+                           PrefillEnd="_offerPrefillEnd"
+                           OnClose="CloseOfferModal"
+                           OnSaved="OnOfferSavedAsync" />
+}
+
 @if (_showUnavailModal)
 {
     <div class="ts-modal-backdrop" @onclick="CloseUnavailabilityModal">
@@ -460,6 +469,10 @@
 
     private bool _showLessonModal;
     private bool _showUnavailModal;
+    private bool _showOfferModal;
+    private DateTime? _offerPrefillDate;
+    private TimeOnly? _offerPrefillStart;
+    private TimeOnly? _offerPrefillEnd;
     private bool _showAddMenu;
     private bool _saving;
     private string? _formError;
@@ -655,6 +668,10 @@
     [SupplyParameterFromQuery(Name = "availability")]
     public string? AvailabilityRequest { get; set; }
 
+    /// <summary>« ?createOffer=1 » ouvre le formulaire complet d'offre.</summary>
+    [SupplyParameterFromQuery(Name = "createOffer")]
+    public string? CreateOfferRequest { get; set; }
+
     protected override async Task OnInitializedAsync()
     {
         GoToToday();
@@ -676,6 +693,8 @@
 
         if (!string.IsNullOrEmpty(AvailabilityRequest))
             OpenUnavailabilityModal();
+        if (!string.IsNullOrEmpty(CreateOfferRequest))
+            OpenOfferModal();
     }
 
     private async Task LoadPlanSubjectsAsync()
@@ -899,10 +918,28 @@
 
     private void ToggleAddMenu() => _showAddMenu = !_showAddMenu;
 
-    private void GoToOfferCreation()
+    private void OpenOfferModal(DateTime? date = null, TimeOnly? start = null, TimeOnly? end = null)
     {
         _showAddMenu = false;
-        Navigation.NavigateTo("tutor/offers/create");
+        _bannerSuccess = null;
+        _offerPrefillDate = date ?? FocusDate.Date;
+        _offerPrefillStart = start;
+        _offerPrefillEnd = end;
+        _showOfferModal = true;
+    }
+
+    private void CloseOfferModal()
+    {
+        _showOfferModal = false;
+        _offerPrefillDate = null;
+        _offerPrefillStart = _offerPrefillEnd = null;
+    }
+
+    private async Task OnOfferSavedAsync()
+    {
+        _showOfferModal = false;
+        _bannerSuccess = "Offre créée. Les plages apparaissent dans le calendrier.";
+        await LoadCalendarDataAsync();
     }
 
     /// <summary>Clic sur une case vide : bloque l'heure choisie, les séances venant des offres.</summary>

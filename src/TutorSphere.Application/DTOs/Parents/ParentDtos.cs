@@ -8,7 +8,10 @@ public record ParentDto(
     string? Phone,
     int ChildrenCount,
     int UnreadMessagesCount = 0,
-    string? Country = null);
+    string? Country = null,
+    int PendingPaymentsCount = 0,
+    decimal PendingPaymentsAmount = 0,
+    string? PendingPaymentsCurrency = null);
 
 /// <summary>
 /// Vue enseignant d'un parent : identité et enfants inscrits à ses cours, sans coordonnées.

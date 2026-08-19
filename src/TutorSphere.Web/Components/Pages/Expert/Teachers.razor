@@ -265,9 +265,17 @@
             @if (_selectedTenantId is Guid selected)
             {
                 var selectedTeacher = _directory.FirstOrDefault(x => x.TenantId == selected);
-                <div class="cc-card mb-3">
-                    <div class="d-flex justify-content-between align-items-start">
-                        <h2 class="cc-card-title mb-0">@(selectedTeacher?.DisplayName ?? "—")</h2>
+                <div class="ex-gm-modal-back" @onclick="CloseDetail"></div>
+                <div class="cc-card ex-gm-modal ex-teacher-profile-modal" role="dialog" aria-modal="true"
+                     aria-labelledby="teacher-profile-title" @onclick:stopPropagation="true">
+                    <div class="ex-teacher-profile-head">
+                        <div>
+                            <h2 id="teacher-profile-title" class="cc-card-title mb-0">@(selectedTeacher?.DisplayName ?? "—")</h2>
+                            @if (!string.IsNullOrWhiteSpace(selectedTeacher?.OwnerEmail))
+                            {
+                                <p class="small text-muted mb-0">@selectedTeacher.OwnerEmail</p>
+                            }
+                        </div>
                         <button type="button" class="cc-btn btn-sm" @onclick="CloseDetail">
                             <i class="bi bi-x-lg"></i> @L["ExpertTeachers_Close"]
                         </button>
@@ -275,11 +283,11 @@
 
                     @if (_detailLoading)
                     {
-                        <div class="cc-empty py-3"><span class="spinner-border spinner-border-sm"></span></div>
+                        <div class="ex-teacher-profile-body cc-empty py-3"><span class="spinner-border spinner-border-sm"></span></div>
                     }
                     else
                     {
-                        <div class="row g-3 mt-2">
+                        <div class="ex-teacher-profile-body row g-3">
                             <div class="col-12">
                                 <div class="cc-card border mb-0">
                                     <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
@@ -909,8 +917,6 @@
 
     private async Task SelectTeacherAsync(Guid tenantId)
     {
-        if (_selectedTenantId == tenantId) { CloseDetail(); return; }
-
         _selectedTenantId = tenantId;
         _detailLoading = true;
         _remarkError = null;
@@ -1467,12 +1473,7 @@
     private async Task OpenProfileAsync(TeacherDirectoryItem t)
     {
         _menuId = null;
-        if (t.ApprovalStatus == 1)
-        {
-            await SelectTeacherAsync(t.TenantId);
-            return;
-        }
-        Navigation.NavigateTo($"expert/teachers/{t.TenantId}");
+        await SelectTeacherAsync(t.TenantId);
     }
 
     private async Task ExportCsvAsync()

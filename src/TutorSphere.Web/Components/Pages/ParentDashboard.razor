@@ -35,6 +35,18 @@
                                         OnReject="id => RespondCoverageAsync(id, false)" />
         }
 
+        @if (_pendingPaymentsCount > 0)
+        {
+            <a class="pd-pay-alert" href="/parent/payments">
+                <span class="pd-pay-alert-icon"><i class="bi bi-exclamation-circle-fill" aria-hidden="true"></i></span>
+                <span>
+                    <strong>@_pendingPaymentsCount paiement@(_pendingPaymentsCount > 1 ? "s" : "") en attente</strong>
+                    <span>@_pendingPaymentDisplay — régularisez pour débloquer les cours.</span>
+                </span>
+                <span class="pd-pay-alert-cta">Voir les paiements <i class="bi bi-arrow-right"></i></span>
+            </a>
+        }
+
         <section class="pd-section">
             <div class="pd-section-head">
                 <h2>@L["Parent_MyChildren_Title"]</h2>
@@ -107,17 +119,19 @@
                     <span class="pd-kpi-hint">@L["ParentDashboard_AllSubjects"]</span>
                 </div>
             </article>
-            <article class="pd-kpi">
-                <div class="pd-kpi-icon pd-kpi-icon--blue"><i class="bi bi-wallet2" aria-hidden="true"></i></div>
+            <a class="pd-kpi @(_pendingPaymentsCount > 0 ? "pd-kpi--alert" : null)" href="/parent/payments">
+                <div class="pd-kpi-icon @(_pendingPaymentsCount > 0 ? "pd-kpi-icon--alert" : "pd-kpi-icon--blue")">
+                    <i class="bi @(_pendingPaymentsCount > 0 ? "bi-exclamation-circle-fill" : "bi-wallet2")" aria-hidden="true"></i>
+                </div>
                 <div class="pd-kpi-text">
-                    <span class="pd-kpi-label">@L["ParentDashboard_NextPayment"]</span>
+                    <span class="pd-kpi-label">@(_pendingPaymentsCount > 0 ? "Paiement en attente" : L["ParentDashboard_NextPayment"])</span>
                     <strong class="pd-kpi-value">@_nextPaymentDisplay</strong>
                     @if (!string.IsNullOrEmpty(_subscriptionPlan))
                     {
                         <span class="pd-kpi-hint">@_subscriptionPlan</span>
                     }
                 </div>
-            </article>
+            </a>
         </div>
 
         <div class="pd-board">
@@ -380,6 +394,8 @@
     private string _progressAvgDisplay = "—";
     private string _nextPaymentDisplay = "—";
     private string? _subscriptionPlan;
+    private int _pendingPaymentsCount;
+    private string _pendingPaymentDisplay = "";
     private string _featuredChildName = "";
     private string _monthLabel = "";
     private List<ParentDashboardChildDto> _children = [];
@@ -427,7 +443,19 @@
                     ? $"{avgPct:0}%"
                     : FormatGrade(_dashboard.AverageGrade);
 
-                if (_dashboard.ActiveSubscription is not null)
+                _pendingPaymentsCount = _dashboard.PendingPaymentsCount;
+                if (_pendingPaymentsCount > 0)
+                {
+                    var currency = string.IsNullOrWhiteSpace(_dashboard.PendingPaymentsCurrency)
+                        ? ""
+                        : _dashboard.PendingPaymentsCurrency.ToUpperInvariant();
+                    _pendingPaymentDisplay = $"{_dashboard.PendingPaymentsAmount:N0} {currency}".Trim();
+                    _nextPaymentDisplay = _pendingPaymentDisplay;
+                    _subscriptionPlan = _pendingPaymentsCount > 1
+                        ? $"{_pendingPaymentsCount} factures en attente"
+                        : "À régler maintenant";
+                }
+                else if (_dashboard.ActiveSubscription is not null)
                 {
                     _nextPaymentDisplay = _dashboard.ActiveSubscription.EndDate.ToLocalTime().ToString("d MMMM yyyy");
                     _subscriptionPlan = _dashboard.ActiveSubscription.PlanName;

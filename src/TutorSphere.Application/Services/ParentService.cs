@@ -162,7 +162,8 @@ public class ParentService : IParentService
         if (parent is null) return Task.FromResult<ParentDto?>(null);
         var count = _db.StudentsForAnyTenant.Count(s => s.ParentProfileId == parent.Id);
         var unread = _db.Messages.Count(m => m.RecipientUserId == userId && !m.IsRead);
-        return Task.FromResult<ParentDto?>(MapToDto(parent, count, unread));
+        var pending = SummarizePendingPayments(parent.Id);
+        return Task.FromResult<ParentDto?>(MapToDto(parent, count, unread, pending.Count, pending.Amount, pending.Currency));
     }
 
     public async Task<ParentDto> CreateAsync(CreateParentRequest request, CancellationToken ct = default)
@@ -205,7 +206,8 @@ public class ParentService : IParentService
         await _db.SaveChangesAsync(ct);
         var count = _db.StudentsForAnyTenant.Count(s => s.ParentProfileId == parent.Id);
         var unread = _db.Messages.Count(m => m.RecipientUserId == userId && !m.IsRead);
-        return MapToDto(parent, count, unread);
+        var pending = SummarizePendingPayments(parent.Id);
+        return MapToDto(parent, count, unread, pending.Count, pending.Amount, pending.Currency);
     }
 
     private static void ApplyParentUpdate(ParentProfile parent, UpdateParentRequest request)
@@ -368,7 +370,8 @@ public class ParentService : IParentService
 
         var childIds = children.Select(c => c.Id).ToList();
         var unread = _db.Messages.Count(m => m.RecipientUserId == userId && !m.IsRead);
-        var parentDto = MapToDto(parent, children.Count, unread);
+        var pending = SummarizePendingPayments(parent.Id);
+        var parentDto = MapToDto(parent, children.Count, unread, pending.Count, pending.Amount, pending.Currency);
 
         if (childIds.Count == 0)
         {
@@ -385,7 +388,10 @@ public class ParentService : IParentService
                 [],
                 null,
                 [],
-                BuildEmptyWeekCalendar()));
+                BuildEmptyWeekCalendar(),
+                pending.Count,
+                pending.Amount,
+                pending.Currency));
         }
 
         var attendances = _db.LessonAttendances
@@ -541,7 +547,10 @@ public class ParentService : IParentService
             recentMessages,
             recentPayment,
             recentDocuments,
-            weekCalendar));
+            weekCalendar,
+            pending.Count,
+            pending.Amount,
+            pending.Currency));
     }
 
     public Task<IReadOnlyList<LessonDto>> GetLessonsForUserAsync(
@@ -1958,7 +1967,13 @@ public class ParentService : IParentService
         return _tenantContext.TenantId.Value;
     }
 
-    private static ParentDto MapToDto(ParentProfile p, int childrenCount, int unreadMessagesCount = 0) => new(
+    private static ParentDto MapToDto(
+        ParentProfile p,
+        int childrenCount,
+        int unreadMessagesCount = 0,
+        int pendingPaymentsCount = 0,
+        decimal pendingPaymentsAmount = 0,
+        string? pendingPaymentsCurrency = null) => new(
         p.Id,
         p.FirstName,
         p.LastName,
@@ -1966,7 +1981,39 @@ public class ParentService : IParentService
         p.Phone,
         childrenCount,
         unreadMessagesCount,
-        p.Country);
+        p.Country,
+        pendingPaymentsCount,
+        pendingPaymentsAmount,
+        pendingPaymentsCurrency);
+
+    private (int Count, decimal Amount, string? Currency) SummarizePendingPayments(Guid parentId)
+    {
+        var childIds = _db.StudentsForAnyTenant
+            .Where(s => s.ParentProfileId == parentId)
+            .Select(s => s.Id)
+            .ToList();
+        if (childIds.Count == 0)
+            return (0, 0, null);
+
+        var subscriptionIds = _db.StudentSubscriptionsForAnyTenant
+            .Where(s => childIds.Contains(s.StudentId))
+            .Select(s => s.Id)
+            .ToList();
+        if (subscriptionIds.Count == 0)
+            return (0, 0, null);
+
+        var pending = _db.PaymentsForAnyTenant
+            .Where(p => p.SubscriptionId.HasValue
+                        && subscriptionIds.Contains(p.SubscriptionId.Value)
+                        && p.Status == PaymentStatus.Pending)
+            .Select(p => new { p.Amount, p.Currency })
+            .ToList();
+
+        if (pending.Count == 0)
+            return (0, 0, null);
+
+        return (pending.Count, pending.Sum(p => p.Amount), pending[0].Currency);
+    }
 
     private static StudentDto MapStudentToDto(Student s) => new(
         s.Id,

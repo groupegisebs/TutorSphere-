@@ -14,6 +14,9 @@ public sealed class ParentProfileState
     public string? PhotoUrl { get; private set; }
     public string? Country { get; private set; }
     public int UnreadMessagesCount { get; private set; }
+    public int PendingPaymentsCount { get; private set; }
+    public decimal PendingPaymentsAmount { get; private set; }
+    public string? PendingPaymentsCurrency { get; private set; }
 
     public ParentProfileState(ApiClient api, AuthService auth)
     {
@@ -62,6 +65,9 @@ public sealed class ParentProfileState
             PhotoUrl = profile.PhotoUrl;
             Country = profile.Country;
             UnreadMessagesCount = profile.UnreadMessagesCount;
+            PendingPaymentsCount = profile.PendingPaymentsCount;
+            PendingPaymentsAmount = profile.PendingPaymentsAmount;
+            PendingPaymentsCurrency = profile.PendingPaymentsCurrency;
         }
         else if (!string.IsNullOrWhiteSpace(_auth.UserName))
         {
@@ -83,5 +89,8 @@ public sealed class ParentProfileState
         int ChildrenCount,
         int UnreadMessagesCount = 0,
         string? PhotoUrl = null,
-        string? Country = null);
+        string? Country = null,
+        int PendingPaymentsCount = 0,
+        decimal PendingPaymentsAmount = 0,
+        string? PendingPaymentsCurrency = null);
 }

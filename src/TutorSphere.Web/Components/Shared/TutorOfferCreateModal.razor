@@ -1,0 +1,424 @@
+@inject IStringLocalizer<SharedResources> L
+@inject ApiClient Api
+@inject AuthService Auth
+
+<div class="ts-modal-backdrop" @onclick="Close">
+    <div class="ts-modal ts-modal-xl" role="dialog" aria-modal="true" aria-labelledby="cal-offer-title"
+         @onclick:stopPropagation="true">
+        <div class="ts-modal-header">
+            <h2 id="cal-offer-title">@L["CreateOffer_Title"]</h2>
+            <button type="button" class="ts-modal-close" @onclick="Close" aria-label="@L["Common_Cancel"]">
+                <i class="bi bi-x-lg"></i>
+            </button>
+        </div>
+        <div class="ts-modal-body">
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <div class="alert alert-danger py-2">@_error</div>
+            }
+            <p class="text-muted small mb-3">Renseignez le cours, le tarif et les plages hebdomadaires. Les créneaux s'affichent ensuite dans le calendrier.</p>
+
+            <div class="row g-3">
+                <div class="col-12">
+                    <label class="form-label">@L["CreateOffer_TitleLabel"] <span class="text-danger">*</span></label>
+                    <input class="form-control" @bind="_title" placeholder="@L["CreateOffer_TitlePlaceholder"]" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">@L["Common_Subject"]</label>
+                    @if (_subjects.Count > 0)
+                    {
+                        <select class="form-select" @bind="_subject">
+                            <option value="">@L["Lessons_PickSubject"]</option>
+                            @foreach (var s in _subjects)
+                            {
+                                <option value="@s.Name">
+                                    @(string.IsNullOrWhiteSpace(s.Cycle) ? s.Name : $"{s.Name} ({s.Cycle})")
+                                </option>
+                            }
+                        </select>
+                    }
+                    else
+                    {
+                        <input class="form-control" @bind="_subject" placeholder="Mathématiques, Français…" />
+                    }
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">@L["CreateOffer_SpecificLevels"]</label>
+                    <select class="form-select" @bind="_level">
+                        <option>Tous niveaux</option>
+                        <option>Primaire</option>
+                        <option>Collège</option>
+                        <option>Lycée</option>
+                        <option>Université</option>
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">@L["Offers_Mode"]</label>
+                    <select class="form-select" @bind="_mode">
+                        <option value="En ligne">@L["Offers_Online"]</option>
+                        <option value="Présentiel">@L["Offers_InPerson"]</option>
+                        <option value="Hybride">@L["Offers_Hybrid"]</option>
+                    </select>
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">@L["Lessons_MaxStudents"]</label>
+                    <input type="number" min="1" max="100" class="form-control" @bind="_maxCapacity" />
+                </div>
+                <div class="col-12">
+                    <label class="form-label">@L["Lessons_Description"]</label>
+                    <textarea class="form-control" rows="2" @bind="_description"
+                              placeholder="@L["CreateOffer_DescriptionPlaceholder"]"></textarea>
+                </div>
+
+                <div class="col-12">
+                    <label class="form-label">@L["Expert_OfferBillingMode"] <span class="text-danger">*</span></label>
+                    <div class="ex-billing-toggle" role="group">
+                        <button type="button" class="ex-billing-option @(_billing == "hourly" ? "active" : null)"
+                                @onclick='() => _billing = "hourly"'>
+                            <i class="bi bi-clock-history" aria-hidden="true"></i>
+                            <strong>@L["Billing_Hourly"]</strong>
+                            <span>/ @L["CreateOffer_PerHour"]</span>
+                        </button>
+                        <button type="button" class="ex-billing-option @(_billing == "monthly" ? "active" : null)"
+                                @onclick='() => _billing = "monthly"'>
+                            <i class="bi bi-calendar-month" aria-hidden="true"></i>
+                            <strong>@L["Billing_Monthly"]</strong>
+                            <span>/ @L["CreateOffer_PerMonth"]</span>
+                        </button>
+                    </div>
+                </div>
+
+                @if (_billing == "hourly")
+                {
+                    <div class="col-md-4">
+                        <label class="form-label">@L["Expert_OfferHourlyRate"] <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <input type="number" min="0" step="0.01" class="form-control" @bind="_price" />
+                            <span class="input-group-text">@_currency / h</span>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="col-md-4">
+                        <label class="form-label">@L["Expert_OfferMonthlyRate"] <span class="text-danger">*</span></label>
+                        <div class="input-group">
+                            <input type="number" min="0" step="0.01" class="form-control" @bind="_price" />
+                            <span class="input-group-text">@_currency / mois</span>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">@L["Expert_OfferHoursPerWeek"] <span class="text-danger">*</span></label>
+                        <input type="number" min="0.5" step="0.5" class="form-control" @bind="_hoursPerWeek" />
+                        <div class="form-text">@L["Expert_OfferHoursPerWeekHint"]</div>
+                    </div>
+                }
+
+                <div class="col-md-4">
+                    <label class="form-label">@L["CreateOffer_SessionDuration"]</label>
+                    <select class="form-select" @bind="_sessionMin">
+                        <option value="30">30</option>
+                        <option value="45">45</option>
+                        <option value="60">60</option>
+                        <option value="90">90</option>
+                        <option value="120">120</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">@L["Common_Currency"]</label>
+                    <select class="form-select" @bind="_currency">
+                        <option>CAD</option>
+                        <option>USD</option>
+                        <option>EUR</option>
+                        <option>XAF</option>
+                        <option>XOF</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">@L["TeacherApply_TimeZone"]</label>
+                    <select class="form-select" @bind="_timeZone">
+                        @foreach (var tz in TimeZoneCatalog.All)
+                        {
+                            <option value="@tz.Id">@tz.Id (@TimeZoneCatalog.UtcOffsetLabel(tz.Id))</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="col-12">
+                    <label class="form-label">@L["Expert_OfferSlotsTitle"] <span class="text-danger">*</span></label>
+                    <p class="small text-muted mb-2">@L["Expert_OfferSlotsHint"]</p>
+                    <div class="cal-offer-avail">
+                        <div class="cal-offer-avail-cols">
+                            <span>@L["TeacherApply_Day"]</span>
+                            <span>@L["TeacherApply_Ranges"]</span>
+                        </div>
+                        @foreach (var day in _days)
+                        {
+                            <div class="cal-offer-avail-day @(day.Enabled ? "is-on" : null)">
+                                <label class="cal-offer-avail-check">
+                                    <input type="checkbox" checked="@day.Enabled"
+                                           @onchange="e => ToggleDay(day, e)" />
+                                    <span>@DayLabel(day.Name)</span>
+                                </label>
+                                <div class="cal-offer-avail-ranges">
+                                    @if (!day.Enabled)
+                                    {
+                                        <span class="cal-offer-avail-off">@L["TeacherApply_Unavailable"]</span>
+                                    }
+                                    else
+                                    {
+                                        @for (var i = 0; i < day.Ranges.Count; i++)
+                                        {
+                                            var idx = i;
+                                            var range = day.Ranges[idx];
+                                            <div class="cal-offer-avail-range">
+                                                <span>@L["TeacherApply_From"]</span>
+                                                <input type="time" class="form-control form-control-sm"
+                                                       value="@range.Start"
+                                                       @onchange="e => SetRange(day, idx, true, e.Value?.ToString())" />
+                                                <span>@L["TeacherApply_To"]</span>
+                                                <input type="time" class="form-control form-control-sm"
+                                                       value="@range.End"
+                                                       @onchange="e => SetRange(day, idx, false, e.Value?.ToString())" />
+                                                <button type="button" class="cal-offer-avail-del" title="@L["TeacherApply_RemoveRange"]"
+                                                        @onclick="() => RemoveRange(day, idx)">
+                                                    <i class="bi bi-trash"></i>
+                                                </button>
+                                            </div>
+                                        }
+                                        <button type="button" class="cal-offer-avail-add" @onclick="() => AddRange(day)">
+                                            + @L["TeacherApply_AddRange"]
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="ts-modal-footer">
+            <button type="button" class="btn btn-outline-secondary" @onclick="Close" disabled="@_saving">@L["Common_Cancel"]</button>
+            <button type="button" class="btn btn-primary" @onclick="SaveAsync" disabled="@_saving">
+                @if (_saving) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                @L["Offers_CreateOffer"]
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public DateTime? PrefillDate { get; set; }
+    [Parameter] public TimeOnly? PrefillStart { get; set; }
+    [Parameter] public TimeOnly? PrefillEnd { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnSaved { get; set; }
+
+    private static readonly string[] DayNames =
+        ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
+
+    private readonly List<DaySchedule> _days = DayNames.Select(n => new DaySchedule { Name = n }).ToList();
+    private readonly List<PlanSubjectDto> _subjects = [];
+
+    private string _title = "";
+    private string? _subject;
+    private string _level = "Tous niveaux";
+    private string _mode = "En ligne";
+    private string? _description;
+    private string _billing = "hourly";
+    private decimal _price;
+    private decimal _hoursPerWeek = 2;
+    private int _sessionMin = 60;
+    private string _currency = "CAD";
+    private string _timeZone = "America/Montreal";
+    private int _maxCapacity = 20;
+    private bool _saving;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { await Auth.EnsureSessionRestoredAsync(); } catch { }
+
+        var subjects = await Api.GetWithErrorAsync<List<PlanSubjectDto>>("api/tutor/plan-subjects");
+        if (subjects.Value is not null)
+            _subjects.AddRange(subjects.Value);
+
+        if (Auth.TenantId is Guid tenantId)
+        {
+            try
+            {
+                var profile = await Api.GetAsync<TutorProfileDto>($"api/tenants/{tenantId}/profile");
+                if (profile is not null)
+                {
+                    if (!string.IsNullOrWhiteSpace(profile.Currency))
+                        _currency = profile.Currency;
+                    _timeZone = TimeZoneCatalog.DefaultForCountry(profile.Country);
+                }
+            }
+            catch { /* devise / fuseau par défaut */ }
+        }
+
+        ApplyPrefill();
+    }
+
+    private void ApplyPrefill()
+    {
+        var date = PrefillDate ?? DateTime.Today;
+        var start = PrefillStart ?? new TimeOnly(17, 0);
+        var end = PrefillEnd ?? start.AddMinutes(_sessionMin > 0 ? _sessionMin : 60);
+        var dayName = AvailabilityWindows.DayLabelFr(date.DayOfWeek);
+        var day = _days.FirstOrDefault(d => d.Name == dayName);
+        if (day is null) return;
+        day.Enabled = true;
+        day.Ranges.Clear();
+        day.Ranges.Add(new TimeRange { Start = start.ToString("HH:mm"), End = end.ToString("HH:mm") });
+    }
+
+    private string DayLabel(string name) => name switch
+    {
+        "Lundi" => L["Day_Monday"],
+        "Mardi" => L["Day_Tuesday"],
+        "Mercredi" => L["Day_Wednesday"],
+        "Jeudi" => L["Day_Thursday"],
+        "Vendredi" => L["Day_Friday"],
+        "Samedi" => L["Day_Saturday"],
+        "Dimanche" => L["Day_Sunday"],
+        _ => name
+    };
+
+    private void ToggleDay(DaySchedule day, ChangeEventArgs e)
+    {
+        day.Enabled = e.Value is bool b ? b : string.Equals(e.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+        if (day.Enabled && day.Ranges.Count == 0)
+            day.Ranges.Add(new TimeRange());
+    }
+
+    private void AddRange(DaySchedule day) => day.Ranges.Add(new TimeRange());
+
+    private void RemoveRange(DaySchedule day, int index)
+    {
+        if (index < 0 || index >= day.Ranges.Count) return;
+        day.Ranges.RemoveAt(index);
+        if (day.Ranges.Count == 0)
+            day.Ranges.Add(new TimeRange());
+    }
+
+    private static void SetRange(DaySchedule day, int index, bool start, string? value)
+    {
+        if (index < 0 || index >= day.Ranges.Count) return;
+        if (start) day.Ranges[index].Start = string.IsNullOrWhiteSpace(value) ? "17:00" : value!;
+        else day.Ranges[index].End = string.IsNullOrWhiteSpace(value) ? "18:00" : value!;
+    }
+
+    private Task Close() => OnClose.InvokeAsync();
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_title))
+        {
+            _error = L["CreateOffer_TitleRequired"];
+            return;
+        }
+        if (_price <= 0)
+        {
+            _error = L["CreateOffer_RateRequired"];
+            return;
+        }
+        if (_billing == "monthly" && _hoursPerWeek <= 0)
+        {
+            _error = L["Expert_OfferHoursPerWeekRequired"];
+            return;
+        }
+
+        var slots = _days
+            .Where(d => d.Enabled)
+            .SelectMany(d => d.Ranges
+                .Where(r => !string.IsNullOrWhiteSpace(r.Start) && !string.IsNullOrWhiteSpace(r.End))
+                .Select(r => new { day = d.Name, time = r.Start, endTime = r.End, valid = IsRangeValid(r) }))
+            .ToList();
+        if (slots.Count == 0)
+        {
+            _error = L["Expert_OfferSlotsRequired"];
+            return;
+        }
+        if (slots.Any(s => !s.valid))
+        {
+            _error = L["Offers_DaysRequiredError"];
+            return;
+        }
+
+        var isMonthly = _billing == "monthly";
+        var sessionMin = _sessionMin > 0 ? _sessionMin : 60;
+        var sessionsPerWeek = isMonthly
+            ? Math.Max(1, (int)Math.Ceiling((double)_hoursPerWeek * 60 / sessionMin))
+            : slots.Count;
+        var sessionCount = Math.Max(1, sessionsPerWeek * 4);
+
+        _saving = true;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<object>("api/subscription-offerings", new
+            {
+                title = _title.Trim(),
+                description = string.IsNullOrWhiteSpace(_description) ? null : _description.Trim(),
+                subject = string.IsNullOrWhiteSpace(_subject) ? _title.Trim() : _subject.Trim(),
+                price = _price,
+                currency = _currency,
+                durationDays = isMonthly ? 30 : 7,
+                sessionCount,
+                frequency = isMonthly
+                    ? $"{_hoursPerWeek:0.##} h/semaine · forfait mensuel"
+                    : $"Taux horaire · {sessionMin} min",
+                mode = _mode,
+                maxCapacity = Math.Clamp(_maxCapacity, 1, 100),
+                schedule = new
+                {
+                    billingPeriod = isMonthly ? "mois" : "semaine",
+                    cadence = "weekly",
+                    sessionDurationMin = sessionMin,
+                    level = _level == "Tous niveaux" ? (string?)null : _level,
+                    cancellationPolicy = (string?)null,
+                    slots = slots.Select(s => new { s.day, s.time, s.endTime }),
+                    billingMode = isMonthly ? "monthly" : "hourly",
+                    hourlyRate = isMonthly ? (decimal?)null : _price,
+                    sessionRate = (decimal?)null,
+                    hoursPerWeek = isMonthly ? _hoursPerWeek : (decimal?)null,
+                    timeZone = _timeZone
+                }
+            });
+            if (!result.IsSuccess)
+            {
+                _error = result.Error ?? L["CreateOffer_PublishFailed"];
+                return;
+            }
+
+            await OnSaved.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally { _saving = false; }
+    }
+
+    private static bool IsRangeValid(TimeRange r)
+        => TimeOnly.TryParse(r.Start, out var start)
+           && TimeOnly.TryParse(r.End, out var end)
+           && end > start;
+
+    private sealed class DaySchedule
+    {
+        public string Name { get; set; } = "";
+        public bool Enabled { get; set; }
+        public List<TimeRange> Ranges { get; } = [new()];
+    }
+
+    private sealed class TimeRange
+    {
+        public string Start { get; set; } = "17:00";
+        public string End { get; set; } = "18:00";
+    }
+
+    private sealed record PlanSubjectDto(string Name, string? Cycle);
+}

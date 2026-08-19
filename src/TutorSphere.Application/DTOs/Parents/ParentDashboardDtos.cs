@@ -13,7 +13,10 @@ public record ParentDashboardDto(
     IReadOnlyList<ParentDashboardMessageDto> RecentMessages,
     ParentDashboardPaymentDto? RecentPayment,
     IReadOnlyList<ParentDashboardDocumentDto> RecentDocuments,
-    IReadOnlyList<ParentDashboardCalendarDayDto> WeekCalendar);
+    IReadOnlyList<ParentDashboardCalendarDayDto> WeekCalendar,
+    int PendingPaymentsCount = 0,
+    decimal PendingPaymentsAmount = 0,
+    string? PendingPaymentsCurrency = null);
 
 public record ParentDashboardChildDto(
     Guid Id,
