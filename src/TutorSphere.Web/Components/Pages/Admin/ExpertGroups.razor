@@ -247,7 +247,9 @@
 
                         <div class="mb-3">
                             <label class="form-label cc-label-light" for="delete-confirm" style="color:#f3f4f6">
-                                Recopiez le nom du groupe pour confirmer
+                                Recopiez le nom du groupe pour confirmer :
+                                @* pre-wrap rend visibles les espaces doubles que le nom peut contenir. *@
+                                <code style="white-space:pre-wrap">@_deleteTarget.Name</code>
                             </label>
                             <input id="delete-confirm" class="form-control" placeholder="@_deleteTarget.Name"
                                    autocomplete="off" @bind="_deleteConfirmName" @bind:event="oninput" />
@@ -836,7 +838,18 @@
     /// <summary>Le nom recopié doit correspondre : l'API applique la même règle de son côté.</summary>
     private bool DeleteConfirmed =>
         _deleteTarget is not null
-        && string.Equals(_deleteConfirmName.Trim(), _deleteTarget.Name.Trim(), StringComparison.OrdinalIgnoreCase);
+        && string.Equals(
+            NormalizeGroupName(_deleteConfirmName),
+            NormalizeGroupName(_deleteTarget.Name),
+            StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Réduit les suites d'espaces à un seul. Un nom saisi avec deux espaces s'affiche comme s'il
+    /// n'en avait qu'un — le HTML les fusionne — et la confirmation devenait alors impossible à
+    /// réussir : on comparait un nom invisible.
+    /// </summary>
+    private static string NormalizeGroupName(string? value) =>
+        string.Join(' ', (value ?? string.Empty).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 
     private async Task ConfirmDeleteAsync()
     {

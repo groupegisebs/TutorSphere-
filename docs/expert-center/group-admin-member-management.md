@@ -13,10 +13,10 @@ Documentation utilisateur (HTML) :
 
 ## Nourrir le groupe en enseignants
 
-Menu **Ajouter des enseignants** (`/expert/approvals`) :
+Menu **Enseignants** :
 
-1. **Créer** — compte immédiat  
-2. **Inviter** — lien e-mail de candidature  
-3. **Dossiers en revue** — validation  
+1. **Créer** — compte immédiat, bouton « Ajouter un enseignant » de la page *Enseignants* (`/expert/teachers`)
+2. **Inviter** — lien e-mail de candidature, onglet *Lien unique* des **Approbations** (`/expert/approvals`)
+3. **Dossiers en revue** — validation, onglet *À examiner* des **Approbations**
 
-≠ **Admissions** (membres Experts, Responsable uniquement).
+≠ **Admissions** (membres Experts, menu *Gestion du groupe*).

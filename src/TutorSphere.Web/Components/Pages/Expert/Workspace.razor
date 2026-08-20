@@ -1,3 +1,4 @@
+@page "/expert/workspace"
 @page "/expert/workspace/{Module}"
 @page "/expert/interviews"
 @page "/expert/renewals"
@@ -18,9 +19,22 @@
     <Authorized>
         <div class="cc-toolbar">
             <div>
-                <h1 class="cc-page-title">@PageTitleText</h1>
+                <h1 class="cc-page-title">Espace de travail</h1>
                 <p class="cc-page-sub">@PageSubtitle</p>
             </div>
+        </div>
+
+        @* Un onglet par module : ces écrans partagent le même formulaire et la même liste, les
+           empiler dans la barre latérale ne renseignait personne. *@
+        <div class="cc-tabs mb-3" role="tablist">
+            @foreach (var (key, label) in TabModules)
+            {
+                var moduleKey = key;
+                <button type="button" class="cc-tab @(key == _moduleKey ? "active" : null)"
+                        @onclick="() => SelectModuleAsync(moduleKey)">
+                    @label
+                </button>
+            }
         </div>
 
         @if (!string.IsNullOrEmpty(_error))
@@ -153,13 +167,48 @@
         await ReloadAsync();
     }
 
+    /// <summary>
+    /// Modules offerts en onglets. Démonstrations et Réunions en sont absents : ils ont chacun un
+    /// écran dédié, plus riche que ce formulaire générique, et gardent leur entrée de menu.
+    /// </summary>
+    private static readonly (string Key, string Label)[] TabModules =
+    [
+        ("interviews", "Entretiens"),
+        ("renewals", "Réévaluations"),
+        ("observations", "Observations"),
+        ("library", "Bibliothèque"),
+        ("training", "Formations"),
+        ("decisions", "Décisions"),
+        ("incidents", "Incidents")
+    ];
+
+    /// <summary>
+    /// Changement d'onglet sans navigation : l'écran est le même, seul le type d'élément change.
+    /// Les anciennes adresses (/expert/interviews, /expert/renewals…) restent servies par le routage.
+    /// </summary>
+    private async Task SelectModuleAsync(string key)
+    {
+        if (key == _moduleKey) return;
+        _moduleKey = key;
+        _error = null;
+        if (!TryMapModule(key, out _itemType))
+        {
+            _error = $"Module inconnu : « {key} ».";
+            return;
+        }
+        await ReloadAsync();
+    }
+
     private string ResolveModuleKey()
     {
         if (!string.IsNullOrWhiteSpace(Module))
             return Module.Trim().ToLowerInvariant();
-        var rel = Nav.ToBaseRelativePath(Nav.Uri).TrimEnd('/');
+        var rel = Nav.ToBaseRelativePath(Nav.Uri).Split('?', '#')[0].TrimEnd('/');
         var segment = rel.Split('/', StringSplitOptions.RemoveEmptyEntries).LastOrDefault() ?? "";
-        return segment.Equals("workspace", StringComparison.OrdinalIgnoreCase) ? "" : segment.ToLowerInvariant();
+        // /expert/workspace sans module : on ouvre le premier onglet plutôt qu'une page en erreur.
+        return segment.Equals("workspace", StringComparison.OrdinalIgnoreCase)
+            ? TabModules[0].Key
+            : segment.ToLowerInvariant();
     }
 
     private static bool TryMapModule(string key, out int type) => key switch

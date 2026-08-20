@@ -823,10 +823,16 @@ public class AuthService : IAuthService, ITeacherLoginIssuer
         if (password.Length < 8 || !password.Any(char.IsDigit) || password.All(char.IsLetterOrDigit))
             password = TeacherLoginProvisioning.GenerateTemporaryPassword();
 
-        // Pays enseignant = pays du groupe d'experts (non modifiable à la création).
-        var country = ProfileVisibility.NormalizeCode(group.CountryCode);
+        // Pays de résidence de l'enseignant : celui transmis par le formulaire, le pays du groupe
+        // à défaut. Un groupe national peut recruter un enseignant installé ailleurs, et un groupe
+        // international n'a par nature aucun pays à imposer.
+        var country = ProfileVisibility.NormalizeCode(request.Country);
         if (country.Length != 2)
-            country = group.IsInternational ? "" : country;
+        {
+            country = ProfileVisibility.NormalizeCode(group.CountryCode);
+            if (country.Length != 2)
+                country = "";
+        }
 
         var visibleCsv = ProfileVisibility.ToCsv(request.VisibleCountryCodes, country);
 

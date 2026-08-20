@@ -115,16 +115,24 @@
                 "expert/approvals" => new[] { "Enseignants", "Approbations" },
                 "expert/teachers" => new[] { "Enseignants" },
                 _ when path.StartsWith("expert/teachers/") => new[] { "Enseignants", "Dossier" },
-                "expert/my-tasks" => new[] { "Enseignants", "Mes tâches" },
-                "expert/interviews" => new[] { "Enseignants", "Entretiens" },
                 "expert/demonstrations" => new[] { "Enseignants", "Démonstrations" },
-                "expert/renewals" => new[] { "Enseignants", "Réévaluations" },
+                "expert/contracts" => new[] { "Enseignants", "Contrats" },
+                "expert/lesson-coverage" => new[] { "Enseignants", "Remplacements" },
                 "expert/documents" => new[] { "Enseignants", "Documents" },
                 "expert/disciplines" => new[] { "Enseignants", "Disciplines" },
                 "group-admin/members" or "expert/members" => new[] { "Gestion du groupe", "Membres" },
-                "expert/admissions" => new[] { "Admissions des Experts" },
+                "expert/admissions" => new[] { "Gestion du groupe", "Admissions" },
                 "expert/offers" => new[] { "Gestion du groupe", "Offres du groupe" },
+                "expert/teacher-payouts" => new[] { "Gestion du groupe", "Factures enseignants" },
                 "group-admin/tasks" => new[] { "Gestion du groupe", "Tâches & délégations" },
+                "expert/my-tasks" => new[] { "Gestion du groupe", "Mes tâches" },
+                // Entretiens et réévaluations sont devenus des onglets de l'espace de travail :
+                // leurs anciennes adresses gardent donc le même fil d'Ariane que celui-ci.
+                "expert/interviews" or "expert/renewals" or "expert/observations"
+                    or "expert/library" or "expert/training" or "expert/decisions"
+                    or "expert/incidents" => new[] { "Gestion du groupe", "Espace de travail" },
+                _ when path == "expert/workspace" || path.StartsWith("expert/workspace/")
+                    => new[] { "Gestion du groupe", "Espace de travail" },
                 "expert/messages" => new[] { "Communication", "Messagerie du groupe" },
                 "expert/meetings/create" => new[] { "Réunions", "Créer une réunion" },
                 _ when path.StartsWith("expert/meetings/") && path.EndsWith("/minutes") => new[] { "Réunions", "Compte rendu" },

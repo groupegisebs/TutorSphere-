@@ -36,14 +36,25 @@
             </NavLink>
         </CollapsibleNavSection>
 
+        @* Une entrée par écran, et une seule : « Ajouter des enseignants » est le bouton principal
+           de la page Enseignants, et « Inscriptions élèves » n'était qu'une ancre vers le tableau
+           de bord, badge compris. *@
         <CollapsibleNavSection Title="Enseignants" Icon="bi-mortarboard" SectionKey="enseignants" DefaultOpen="false">
-            <NavLink class="cc-nav-link" href="expert/teachers/add" Match="NavLinkMatch.Prefix">
-                <i class="bi bi-person-plus" aria-hidden="true"></i>
-                <span>Ajouter des enseignants</span>
-            </NavLink>
             <NavLink class="cc-nav-link" href="expert/teachers" Match="NavLinkMatch.All">
                 <i class="bi bi-mortarboard" aria-hidden="true"></i>
                 <span>Enseignants</span>
+            </NavLink>
+            <NavLink class="cc-nav-link" href="expert/approvals" Match="NavLinkMatch.Prefix">
+                <i class="bi bi-inbox" aria-hidden="true"></i>
+                <span>Approbations</span>
+                @if (_approvalCount > 0)
+                {
+                    <span class="ex-nav-badge">@_approvalCount</span>
+                }
+            </NavLink>
+            <NavLink class="cc-nav-link" href="expert/demonstrations" Match="NavLinkMatch.Prefix">
+                <i class="bi bi-easel" aria-hidden="true"></i>
+                <span>Démonstrations</span>
             </NavLink>
             @if (_isManager)
             {
@@ -60,41 +71,6 @@
                 <i class="bi bi-file-earmark-text" aria-hidden="true"></i>
                 <span>Documents</span>
             </NavLink>
-            <a class="cc-nav-link" href="expert/dashboard#expert-enrollments">
-                <i class="bi bi-person-plus" aria-hidden="true"></i>
-                <span>Inscriptions élèves</span>
-                @if (_pendingEnrollments > 0)
-                {
-                    <span class="ex-nav-badge">@_pendingEnrollments</span>
-                }
-            </a>
-            <NavLink class="cc-nav-link" href="expert/approvals" Match="NavLinkMatch.Prefix">
-                <i class="bi bi-inbox" aria-hidden="true"></i>
-                <span>Approbations</span>
-                @if (_approvalCount > 0)
-                {
-                    <span class="ex-nav-badge">@_approvalCount</span>
-                }
-            </NavLink>
-            @if (!_isManager)
-            {
-                <NavLink class="cc-nav-link" href="expert/my-tasks" Match="NavLinkMatch.Prefix">
-                    <i class="bi bi-clipboard-check" aria-hidden="true"></i>
-                    <span>Mes tâches</span>
-                </NavLink>
-            }
-            <NavLink class="cc-nav-link" href="expert/interviews" Match="NavLinkMatch.Prefix">
-                <i class="bi bi-camera-video" aria-hidden="true"></i>
-                <span>Entretiens</span>
-            </NavLink>
-            <NavLink class="cc-nav-link" href="expert/demonstrations" Match="NavLinkMatch.Prefix">
-                <i class="bi bi-easel" aria-hidden="true"></i>
-                <span>Démonstrations</span>
-            </NavLink>
-            <NavLink class="cc-nav-link" href="expert/renewals" Match="NavLinkMatch.Prefix">
-                <i class="bi bi-arrow-repeat" aria-hidden="true"></i>
-                <span>Réévaluations</span>
-            </NavLink>
             @if (!_isManager && Modules.Disciplines)
             {
                 <NavLink class="cc-nav-link" href="expert/disciplines" Match="NavLinkMatch.Prefix">
@@ -104,17 +80,29 @@
             }
         </CollapsibleNavSection>
 
-        @if (_isManager)
-        {
-            <CollapsibleNavSection Title="Gestion du groupe" Icon="bi-diagram-3" SectionKey="gestion" DefaultOpen="false">
+        @* Section unique pour les deux rôles : Membres, Admissions et les tâches changent de page
+           selon les droits, pas de section, pour qu'un écran se désigne toujours par le même chemin. *@
+        <CollapsibleNavSection Title="Gestion du groupe" Icon="bi-diagram-3" SectionKey="gestion" DefaultOpen="false">
+            @if (_isManager)
+            {
                 <NavLink class="cc-nav-link" href="group-admin/members" Match="NavLinkMatch.Prefix">
                     <i class="bi bi-people" aria-hidden="true"></i>
                     <span>Membres</span>
                 </NavLink>
-                <NavLink class="cc-nav-link" href="expert/admissions" Match="NavLinkMatch.Prefix">
-                    <i class="bi bi-person-check" aria-hidden="true"></i>
-                    <span>Admissions</span>
+            }
+            else
+            {
+                <NavLink class="cc-nav-link" href="expert/members" Match="NavLinkMatch.All">
+                    <i class="bi bi-people" aria-hidden="true"></i>
+                    <span>Membres</span>
                 </NavLink>
+            }
+            <NavLink class="cc-nav-link" href="expert/admissions" Match="NavLinkMatch.Prefix">
+                <i class="bi bi-person-check" aria-hidden="true"></i>
+                <span>Admissions</span>
+            </NavLink>
+            @if (_isManager)
+            {
                 <NavLink class="cc-nav-link" href="expert/offers" Match="NavLinkMatch.Prefix">
                     <i class="bi bi-tags" aria-hidden="true"></i>
                     <span>Offres du groupe</span>
@@ -127,21 +115,23 @@
                     <i class="bi bi-list-check" aria-hidden="true"></i>
                     <span>Tâches &amp; délégations</span>
                 </NavLink>
-            </CollapsibleNavSection>
-        }
-
-        <CollapsibleNavSection Title="Communication" Icon="bi-chat-dots" SectionKey="communication" DefaultOpen="false">
-            @if (!_isManager)
+            }
+            else
             {
-                <NavLink class="cc-nav-link" href="expert/members" Match="NavLinkMatch.All">
-                    <i class="bi bi-people" aria-hidden="true"></i>
-                    <span>Membres</span>
-                </NavLink>
-                <NavLink class="cc-nav-link" href="expert/admissions" Match="NavLinkMatch.Prefix">
-                    <i class="bi bi-person-check" aria-hidden="true"></i>
-                    <span>Votes d'admission</span>
+                <NavLink class="cc-nav-link" href="expert/my-tasks" Match="NavLinkMatch.Prefix">
+                    <i class="bi bi-clipboard-check" aria-hidden="true"></i>
+                    <span>Mes tâches</span>
                 </NavLink>
             }
+            @* Entretiens, réévaluations, observations, bibliothèque, formations, décisions et
+               incidents partagent un même écran : ils sont des onglets, pas des rubriques. *@
+            <NavLink class="cc-nav-link" href="expert/workspace" Match="NavLinkMatch.Prefix">
+                <i class="bi bi-kanban" aria-hidden="true"></i>
+                <span>Espace de travail</span>
+            </NavLink>
+        </CollapsibleNavSection>
+
+        <CollapsibleNavSection Title="Communication" Icon="bi-chat-dots" SectionKey="communication" DefaultOpen="false">
             <NavLink class="cc-nav-link" href="expert/messages" Match="NavLinkMatch.Prefix">
                 <i class="bi bi-envelope" aria-hidden="true"></i>
                 <span>Messagerie du groupe</span>

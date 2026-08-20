@@ -212,7 +212,7 @@ public class ExpertGroupsController : ControllerBase
                 return Forbid();
 
             var impact = await _groups.GetDeletionImpactAsync(id, ct);
-            if (!string.Equals(confirm?.Trim(), impact.Name.Trim(), StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(NormalizeName(confirm), NormalizeName(impact.Name), StringComparison.OrdinalIgnoreCase))
                 return BadRequest(new { error = $"Confirmation invalide : recopiez le nom du groupe « {impact.Name} »." });
 
             var previous = await _managers.GetActiveManagerAsync(id, ct);
@@ -424,6 +424,13 @@ public class ExpertGroupsController : ControllerBase
 
         return g with { LogoUrl = null };
     }
+
+    /// <summary>
+    /// Compare les noms à espaces normalisés : un nom enregistré avec deux espaces consécutifs
+    /// s'affiche avec un seul dans une page, et l'utilisateur ne peut pas recopier l'invisible.
+    /// </summary>
+    private static string NormalizeName(string? value) =>
+        string.Join(' ', (value ?? string.Empty).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 
     private async Task TryCompensateCreateAsync(Guid groupId, CancellationToken ct)
     {

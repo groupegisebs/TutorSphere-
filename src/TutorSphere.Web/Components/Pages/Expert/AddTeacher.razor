@@ -82,8 +82,29 @@
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Pays de résidence</label>
-                                <input class="form-control" value="@CountryDisplay" disabled readonly />
-                                <div class="form-text">Identique au pays du groupe.</div>
+                                @* Verrouillé le temps du chargement : le pays du groupe arrive ensuite
+                                   et écraserait un choix fait trop tôt. *@
+                                <CountrySelect Value="@_country" ValueChanged="OnTeacherCountryChanged"
+                                               Disabled="@(!_groupLoaded)"
+                                               Placeholder="@(_groupLoaded ? "Sélectionner un pays…" : "Chargement…")" />
+                                <div class="form-text">
+                                    @if (_groupInternational)
+                                    {
+                                        <span>Groupe international : choisissez le pays où réside l'enseignant.</span>
+                                    }
+                                    else if (!string.IsNullOrWhiteSpace(_groupCountry)
+                                             && !string.Equals(_country, _groupCountry, StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        <span class="text-warning-emphasis">
+                                            Hors du pays du groupe (@(CountryCatalog.Find(_groupCountry)?.Name ?? _groupCountry)) —
+                                            l'indicatif, la devise et le fuseau suivent le pays choisi.
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span>Par défaut le pays du groupe. Modifiable si l'enseignant réside ailleurs.</span>
+                                    }
+                                </div>
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label">Ville <span class="text-danger">*</span></label>
@@ -653,6 +674,9 @@
     private string _language = "fr";
     private string _schoolName = "";
     private string _country = "";
+
+    /// <summary>Pays du groupe, conservé comme repère d'affichage une fois la résidence modifiable.</summary>
+    private string _groupCountry = "";
     private bool _groupInternational;
     private bool _groupLoaded;
     private List<string> _visible = [];
@@ -694,18 +718,31 @@
     private string? _photoDataUrl;
     private readonly Dictionary<string, DaySchedule> _avail = Days.ToDictionary(d => d, _ => new DaySchedule());
 
-    private string CountryDisplay
+    /// <summary>
+    /// Le pays du groupe sert de valeur par défaut et de repère à l'écran, mais ne contraint plus
+    /// la résidence : un groupe national peut recruter un enseignant installé ailleurs.
+    /// </summary>
+    private async Task OnTeacherCountryChanged(string? code)
     {
-        get
-        {
-            if (!_groupLoaded) return "Chargement…";
-            if (string.IsNullOrWhiteSpace(_schoolName))
-                return "Pays du groupe indisponible";
-            if (_groupInternational || string.IsNullOrWhiteSpace(_country))
-                return "🌐 International";
-            var info = CountryCatalog.Find(_country);
-            return info is null ? _country : $"{info.Flag} {info.Name}";
-        }
+        var iso = CountryCatalog.Find(code)?.Code;
+        if (string.IsNullOrWhiteSpace(iso) || string.Equals(iso, _country, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        var previous = _country;
+        _country = iso;
+
+        // La visibilité n'est réalignée que si elle suivait encore le pays précédent : un choix
+        // explicite de l'utilisateur à l'étape professionnelle ne doit pas être écrasé.
+        if (_visible.Count == 0 || (_visible.Count == 1 && string.Equals(_visible[0], previous, StringComparison.OrdinalIgnoreCase)))
+            _visible = [iso];
+
+        // Devise et fuseau découlent du pays de résidence : ils suivent, sauf si une offre du
+        // catalogue impose déjà sa devise.
+        if (!_catalogLocked)
+            _currency = GroupOfferCurrencyRules.ResolveCurrency(iso);
+        _timeZone = TimeZoneCatalog.DefaultForCountry(iso);
+
+        await Task.CompletedTask;
     }
 
     private string PhoneAddon
@@ -1474,6 +1511,7 @@
     {
         _groupInternational = isInternational;
         var iso = ResolveGroupCountryCode(countryCode);
+        _groupCountry = isInternational ? "" : iso ?? "";
         if (!string.IsNullOrWhiteSpace(iso) && !isInternational)
         {
             _country = iso;
