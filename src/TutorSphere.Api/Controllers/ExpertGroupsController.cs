@@ -129,6 +129,17 @@ public class ExpertGroupsController : ControllerBase
                 await TryCompensateCreateAsync(id, ct);
             return BadRequest(new { error = ex.Message });
         }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException ex)
+        {
+            if (createdId is Guid id)
+                await TryCompensateCreateAsync(id, ct);
+            _logger.LogError(ex, "Échec création groupe d'experts : contrainte base de données.");
+            return BadRequest(new
+            {
+                error = "Création refusée par la base : un autre groupe occupe déjà ce territoire " +
+                        "(pays ou créneau international)."
+            });
+        }
     }
 
     [HttpPut("{id:guid}")]
@@ -146,6 +157,19 @@ public class ExpertGroupsController : ControllerBase
         catch (InvalidOperationException ex)
         {
             return BadRequest(new { error = ex.Message });
+        }
+        catch (Microsoft.EntityFrameworkCore.DbUpdateException ex)
+        {
+            // Index d'unicité du territoire : la base refuse ce que le contrôle applicatif a laissé
+            // passer, faute d'être au même niveau que le modèle. Sans ce filet, l'écran n'affiche
+            // qu'un 500 sans indice.
+            _logger.LogError(ex, "Échec mise à jour groupe d'experts {GroupId} : contrainte base de données.", id);
+            return BadRequest(new
+            {
+                error = "Enregistrement refusé par la base : un autre groupe occupe déjà ce territoire " +
+                        "(pays ou créneau international). Archivez ou changez le pays de l'autre groupe, " +
+                        "puis réessayez."
+            });
         }
     }
 
