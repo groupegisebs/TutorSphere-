@@ -102,9 +102,9 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    background: transparent;
     border: 0;
-    padding: 0.4rem 0.7rem;
+    /* Fond et espacement définis plus bas avec le bandeau : les fixer ici, avec une spécificité
+       plus forte, annulerait la mise en forme des en-têtes. */
 }
 .cc-shell.cc-shell--expert .cc-nav-link {
     display: flex;
@@ -308,43 +308,56 @@ html body .cc-shell.cc-shell--expert .ex-kpi-grid .ex-kpi[data-tone="rose"] { ba
     padding: 0.65rem 0.7rem 1.1rem;
 }
 
+/* En-têtes de section : bandeau ardoise plein, texte blanc. Le gris pâle sur fond blanc se
+   confondait avec les liens et ne séparait plus les rubriques. Teinte neutre volontaire : la
+   couleur d'accent passe au vert sur le module Groupe, elle ne peut pas servir de fond commun. */
 .cc-shell--expert .cc-nav-section-toggle {
-    color: #64748b;
+    color: #ffffff;
+    background: linear-gradient(180deg, #334155 0%, #1e293b 100%);
     pointer-events: auto !important;
     cursor: pointer;
     gap: 0.5rem;
     text-align: left;
     position: relative;
     z-index: 2;
+    border-radius: 10px;
+    padding: 0.45rem 0.7rem;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
 }
 .cc-shell--expert .cc-nav-section-toggle:hover {
-    color: #0f172a;
-    background: #f8fafc;
+    color: #ffffff;
+    background: linear-gradient(180deg, #3f4d61 0%, #263449 100%);
     border-radius: 10px;
 }
 .cc-shell--expert .cc-nav-section-icon {
     display: inline-flex !important;
     font-size: 0.95rem;
     width: 1.1rem;
-    color: var(--cc-primary);
+    /* Sur le bandeau sombre, l'accent bleu et surtout le vert du module Groupe passeraient mal. */
+    color: rgba(255, 255, 255, 0.85);
     flex-shrink: 0;
 }
 .cc-shell--expert .cc-nav-section-chevron {
     display: inline-flex !important;
     margin-left: auto;
     font-size: 0.75rem;
-    color: #94a3b8;
+    color: rgba(255, 255, 255, 0.7);
 }
 .cc-shell--expert .cc-nav-section-toggle .cc-nav-section-label {
     flex: 1;
 }
 
 .cc-shell--expert .cc-nav-section-label {
-    font-size: 0.68rem;
-    letter-spacing: 0.1em;
+    font-size: 0.7rem;
+    letter-spacing: 0.09em;
     font-weight: 700;
-    color: #94a3b8;
+    color: #ffffff;
     text-transform: uppercase;
+}
+
+/* Le bandeau tient lieu de séparateur : un peu d'air en dessous des liens qu'il coiffe. */
+.cc-shell--expert .cc-nav-section-body {
+    padding: 0.3rem 0 0.15rem;
 }
 
 .cc-shell--expert .cc-nav-link {
