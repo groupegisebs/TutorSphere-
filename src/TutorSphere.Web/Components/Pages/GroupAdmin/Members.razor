@@ -384,10 +384,28 @@
                 <div class="cc-card ex-gm-modal">
                     <h2 class="cc-card-title">Inviter un membre</h2>
                     <p class="small text-muted">Cela invite un Expert dans le groupe, pas un enseignant.</p>
+                    @* L'erreur s'affichait en haut de la page, derrière le modal : invisible au
+                       moment où l'utilisateur clique. *@
+                    @if (!string.IsNullOrEmpty(_inviteError))
+                    {
+                        <div class="alert alert-danger py-2">@_inviteError</div>
+                    }
                     <div class="row g-2">
-                        <div class="col-md-6"><label class="form-label">E-mail *</label><input class="form-control" type="email" @bind="_invEmail" /></div>
-                        <div class="col-md-3"><label class="form-label">Prénom *</label><input class="form-control" @bind="_invFirst" /></div>
-                        <div class="col-md-3"><label class="form-label">Nom *</label><input class="form-control" @bind="_invLast" /></div>
+                        <div class="col-md-6">
+                            <label class="form-label">E-mail *</label>
+                            <input class="form-control @(_invMissing.Contains("email") ? "is-invalid" : null)"
+                                   type="email" @bind="_invEmail" @bind:after='() => _invMissing.Remove("email")' />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Prénom *</label>
+                            <input class="form-control @(_invMissing.Contains("first") ? "is-invalid" : null)"
+                                   @bind="_invFirst" @bind:after='() => _invMissing.Remove("first")' />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Nom *</label>
+                            <input class="form-control @(_invMissing.Contains("last") ? "is-invalid" : null)"
+                                   @bind="_invLast" @bind:after='() => _invMissing.Remove("last")' />
+                        </div>
                         <div class="col-md-4"><label class="form-label">Téléphone</label><input class="form-control" @bind="_invPhone" /></div>
                         <div class="col-md-4"><label class="form-label">Spécialité</label><input class="form-control" @bind="_invSpec" /></div>
                         <div class="col-md-4">
@@ -617,8 +635,13 @@
                 <div class="cc-card ex-gm-modal">
                     <h2 class="cc-card-title">Suspendre ce membre ?</h2>
                     <p>Le membre ne pourra plus effectuer de nouvelles actions dans le groupe jusqu’à sa réactivation. L’historique est conservé.</p>
+                    @if (!string.IsNullOrEmpty(_suspendError))
+                    {
+                        <div class="alert alert-danger py-2">@_suspendError</div>
+                    }
                     <label class="form-label">Motif de la suspension *</label>
-                    <textarea class="form-control" rows="3" @bind="_suspendReason"></textarea>
+                    <textarea class="form-control @(_suspendError is not null ? "is-invalid" : null)" rows="3"
+                              @bind="_suspendReason" @bind:after="() => _suspendError = null"></textarea>
                     <div class="d-flex gap-2 mt-3">
                         <button type="button" class="cc-btn" @onclick="() => _suspendTarget = null">Annuler</button>
                         <button type="button" class="ex-btn-danger" disabled="@_busy" @onclick="SuspendAsync">Suspendre le membre</button>
@@ -741,6 +764,10 @@
     private RemovalDto? _removeCheck;
     private readonly HashSet<string> _permSet = new(StringComparer.Ordinal);
     private string _suspendReason = "";
+    private string? _suspendError;
+    /// <summary>Erreurs affichées dans le modal d'invitation, non en haut de la page qu'il recouvre.</summary>
+    private string? _inviteError;
+    private readonly HashSet<string> _invMissing = new(StringComparer.Ordinal);
     private string _invEmail = "";
     private string _invFirst = "";
     private string _invLast = "";
@@ -1045,8 +1072,29 @@
 
     private async Task InviteAsync()
     {
+        _error = _success = _inviteError = null;
+
+        // Les trois champs marqués d'une étoile, vérifiés avant l'appel : le serveur les refusait
+        // déjà, mais son message atterrissait derrière le modal.
+        _invMissing.Clear();
+        if (string.IsNullOrWhiteSpace(_invEmail)) _invMissing.Add("email");
+        if (string.IsNullOrWhiteSpace(_invFirst)) _invMissing.Add("first");
+        if (string.IsNullOrWhiteSpace(_invLast)) _invMissing.Add("last");
+        if (_invMissing.Count > 0)
+        {
+            _inviteError = _invMissing.Count == 1
+                ? "Un champ obligatoire est vide : complétez-le pour envoyer l'invitation."
+                : "Des champs obligatoires sont vides : complétez-les pour envoyer l'invitation.";
+            return;
+        }
+        if (!IsEmail(_invEmail.Trim()))
+        {
+            _invMissing.Add("email");
+            _inviteError = "Cette adresse e-mail n'est pas valide.";
+            return;
+        }
+
         _busy = true;
-        _error = _success = null;
         try
         {
             var result = await Api.PostWithErrorAsync<object>("api/expert/membership/invites", new
@@ -1059,14 +1107,29 @@
                 intendedRole = _invRole,
                 personalMessage = NullIfBlank(_invMsg)
             });
-            if (result.Error is not null) { _error = result.Error; return; }
+            if (result.Error is not null) { _inviteError = result.Error; return; }
             _success = "Invitation envoyée.";
             _showInvite = false;
             _invEmail = _invFirst = _invLast = _invPhone = _invSpec = _invMsg = "";
             await LoadAsync();
         }
-        catch (Exception ex) { _error = ex.Message; }
+        catch (Exception ex) { _inviteError = ex.Message; }
         finally { _busy = false; }
+    }
+
+    /// <summary>
+    /// Contrôle sommaire : une arobase entourée de texte, un point dans le domaine. Il s'agit
+    /// d'attraper la faute de frappe avant l'aller-retour réseau.
+    /// </summary>
+    private static bool IsEmail(string value)
+    {
+        var at = value.IndexOf('@');
+        return at > 0
+            && at < value.Length - 1
+            && value.IndexOf('@', at + 1) < 0
+            && value.LastIndexOf('.') > at + 1
+            && !value.EndsWith('.')
+            && !value.Any(char.IsWhiteSpace);
     }
 
     private Task TrySaveRoleAsync()
@@ -1194,17 +1257,26 @@
     private async Task SuspendAsync()
     {
         if (_suspendTarget?.UserId is null) return;
+        _suspendError = null;
+        // Le motif est consigné dans l'historique du membre : sans lui, la suspension serait
+        // inexplicable six mois plus tard. Le serveur le refuse déjà, on le dit dans le modal.
+        if (string.IsNullOrWhiteSpace(_suspendReason))
+        {
+            _suspendError = "Le motif de la suspension est obligatoire.";
+            return;
+        }
+
         _busy = true;
         try
         {
             var r = await Api.PostWithErrorAsync<object>($"api/expert/membership/members/{_suspendTarget.UserId}/suspend", new { reason = _suspendReason });
-            if (r.Error is not null) { _error = r.Error; return; }
+            if (r.Error is not null) { _suspendError = r.Error; return; }
             _success = "Membre suspendu.";
             _suspendTarget = null;
             _selected = null;
             await LoadAsync();
         }
-        catch (Exception ex) { _error = ex.Message; }
+        catch (Exception ex) { _suspendError = ex.Message; }
         finally { _busy = false; }
     }
 

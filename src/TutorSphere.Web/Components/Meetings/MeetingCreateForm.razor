@@ -20,8 +20,13 @@
         <div class="mtg-create-main">
             <section class="cc-card mtg-section">
                 <h2 class="cc-card-title">Informations générales</h2>
-                <label class="form-label">Titre de la réunion</label>
-                <input class="form-control" @bind="Title" maxlength="200" />
+                <label class="form-label">Titre de la réunion <span class="mtg-req">*</span></label>
+                <input class="form-control @(TitleError is not null ? "is-invalid" : null)" @bind="Title"
+                       maxlength="200" @bind:after="() => TitleError = null" />
+                @if (TitleError is not null)
+                {
+                    <p class="mtg-field-error">@TitleError</p>
+                }
                 <label class="form-label mt-3">Description</label>
                 <textarea class="form-control" rows="3" maxlength="500" @bind="Description"></textarea>
                 <div class="mtg-counter">@(Description?.Length ?? 0)/500</div>
@@ -141,9 +146,15 @@
                 {
                     <div class="mtg-guest-row">
                         <input class="form-control" placeholder="Nom" @bind="GuestName" />
-                        <input class="form-control" placeholder="Courriel" @bind="GuestEmail" />
+                        <input class="form-control @(GuestError is not null ? "is-invalid" : null)"
+                               placeholder="Courriel *" @bind="GuestEmail"
+                               @bind:after="() => GuestError = null" />
                         <button type="button" class="cc-btn cc-btn-primary" @onclick="AddGuest">Ajouter</button>
                     </div>
+                    @if (GuestError is not null)
+                    {
+                        <p class="mtg-field-error">@GuestError</p>
+                    }
                 }
                 @foreach (var g in ExternalGuests)
                 {
@@ -240,6 +251,8 @@
     internal bool ShowGuest;
     internal string GuestName { get; set; } = "";
     internal string GuestEmail { get; set; } = "";
+    internal string? GuestError;
+    internal string? TitleError;
     internal string? Error;
     internal bool Busy;
     internal bool IsPlatform;
@@ -332,10 +345,42 @@
 
     private void AddGuest()
     {
-        if (string.IsNullOrWhiteSpace(GuestEmail)) return;
+        // L'invité était ignoré sans un mot quand le courriel manquait : le bouton semblait mort.
+        GuestError = null;
+        if (string.IsNullOrWhiteSpace(GuestEmail))
+        {
+            GuestError = "Le courriel de l'invité est obligatoire : c'est par là que part son lien.";
+            return;
+        }
+        if (!IsEmail(GuestEmail.Trim()))
+        {
+            GuestError = "Ce courriel n'est pas valide.";
+            return;
+        }
+        if (ExternalGuests.Any(g => string.Equals(g.Email, GuestEmail.Trim(), StringComparison.OrdinalIgnoreCase)))
+        {
+            GuestError = "Cet invité est déjà dans la liste.";
+            return;
+        }
+
         ExternalGuests.Add(new Guest { FullName = GuestName, Email = GuestEmail.Trim() });
         GuestName = GuestEmail = "";
         ShowGuest = false;
+    }
+
+    /// <summary>
+    /// Contrôle sommaire : une arobase entourée de texte, un point dans le domaine. Il s'agit
+    /// d'attraper la faute de frappe avant l'envoi, pas de garantir que l'adresse existe.
+    /// </summary>
+    private static bool IsEmail(string value)
+    {
+        var at = value.IndexOf('@');
+        return at > 0
+            && at < value.Length - 1
+            && value.IndexOf('@', at + 1) < 0
+            && value.LastIndexOf('.') > at + 1
+            && !value.EndsWith('.')
+            && !value.Any(char.IsWhiteSpace);
     }
 
     private Task SaveDraft() => SaveAsync("draft");
@@ -345,6 +390,24 @@
     private async Task SaveAsync(string mode)
     {
         Error = null;
+        TitleError = null;
+
+        // Contrôles avant l'appel : le serveur refusait déjà ces cas, mais son message arrivait
+        // en haut de page sans désigner le champ à corriger.
+        if (string.IsNullOrWhiteSpace(Title))
+        {
+            TitleError = "Le titre est obligatoire.";
+            Error = "Le titre de la réunion est obligatoire.";
+            return;
+        }
+        // Une seule date pour les deux heures : une fin antérieure au début n'est pas une réunion
+        // à cheval sur minuit, c'est une saisie inversée, et elle serait enregistrée telle quelle.
+        if (EndTime <= StartTime)
+        {
+            Error = "L'heure de fin doit suivre l'heure de début.";
+            return;
+        }
+
         Busy = true;
         try
         {

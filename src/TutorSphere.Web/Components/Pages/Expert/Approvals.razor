@@ -99,8 +99,9 @@
                     }
                     <div class="row g-2 align-items-end">
                         <div class="col-md-4">
-                            <label class="form-label">E-mail</label>
-                            <input class="form-control" type="email" @bind="_inviteEmail" />
+                            <label class="form-label">E-mail <span class="ex-req">*</span></label>
+                            <input class="form-control @(_inviteEmailInvalid ? "is-invalid" : null)" type="email"
+                                   @bind="_inviteEmail" @bind:after="() => _inviteEmailInvalid = false" />
                         </div>
                         <div class="col-md-3">
                             <label class="form-label">Prénom</label>
@@ -130,74 +131,32 @@
         }
         else
         {
-            <div class="ex-teachers-kpi">
-                <button type="button" class="ex-kpi @(_boardTab == "exam" ? "is-on" : null)" data-tone="amber" @onclick='() => SetBoard("exam")'>
-                    <i class="bi bi-hourglass-split ex-kpi-icon"></i>
-                    <div>
-                        <div class="ex-kpi-label">En attente d’examen</div>
-                        <div class="ex-kpi-value">@PendingCount</div>
-                        <div class="ex-kpi-hint">Dossiers à examiner</div>
-                    </div>
-                </button>
-                <button type="button" class="ex-kpi @(_boardTab == "talk" ? "is-on" : null)" data-tone="sky" @onclick='() => SetBoard("talk")'>
-                    <i class="bi bi-camera-video ex-kpi-icon"></i>
-                    <div>
-                        <div class="ex-kpi-label">Entretiens programmés</div>
-                        <div class="ex-kpi-value">@InterviewCount</div>
-                        <div class="ex-kpi-hint">À venir</div>
-                    </div>
-                </button>
-                <button type="button" class="ex-kpi @(_boardTab == "eval" ? "is-on" : null)" data-tone="violet" @onclick='() => SetBoard("eval")'>
-                    <i class="bi bi-mortarboard ex-kpi-icon"></i>
-                    <div>
-                        <div class="ex-kpi-label">En évaluation</div>
-                        <div class="ex-kpi-value">@ReviewCount</div>
-                        <div class="ex-kpi-hint">Évaluations en cours</div>
-                    </div>
-                </button>
-                <button type="button" class="ex-kpi @(_boardTab == "link" ? "is-on" : null)" data-tone="violet" @onclick='() => SetBoard("link")'>
-                    <i class="bi bi-link-45deg ex-kpi-icon"></i>
-                    <div>
-                        <div class="ex-kpi-label">Via lien unique</div>
-                        <div class="ex-kpi-value">@ViaLinkPendingCount</div>
-                        <div class="ex-kpi-hint">Inscriptions à examiner</div>
-                    </div>
-                </button>
-                <button type="button" class="ex-kpi" data-tone="emerald" @onclick='() => SetBoard("done")'>
-                    <i class="bi bi-check-circle ex-kpi-icon"></i>
-                    <div>
-                        <div class="ex-kpi-label">Approuvés ce mois</div>
-                        <div class="ex-kpi-value">@ApprovedMonth</div>
-                        <div class="ex-kpi-hint">Enseignants approuvés</div>
-                    </div>
-                </button>
-                <button type="button" class="ex-kpi" data-tone="rose" @onclick='() => SetBoard("done")'>
-                    <i class="bi bi-x-circle ex-kpi-icon"></i>
-                    <div>
-                        <div class="ex-kpi-label">Refusés ce mois</div>
-                        <div class="ex-kpi-value">@RejectedMonth</div>
-                        <div class="ex-kpi-hint">Dossiers refusés</div>
-                    </div>
-                </button>
-            </div>
-
             <div class="ex-approve-layout @(_selected is not null ? "has-drawer" : null)">
                 <div>
-                    <div class="cc-tabs mb-3" role="tablist">
-                        <button type="button" class="cc-tab @(_boardTab == "exam" ? "active" : null)" @onclick='() => SetBoard("exam")'>
-                            À examiner (@PendingCount)
-                        </button>
-                        <button type="button" class="cc-tab @(_boardTab == "talk" ? "active" : null)" @onclick='() => SetBoard("talk")'>
-                            Entretiens programmés (@InterviewCount)
-                        </button>
-                        <button type="button" class="cc-tab @(_boardTab == "eval" ? "active" : null)" @onclick='() => SetBoard("eval")'>
-                            En évaluation (@ReviewCount)
-                        </button>
-                        <button type="button" class="cc-tab @(_boardTab == "link" ? "active" : null)" @onclick='() => SetBoard("link")'>
-                            Lien unique (@ViaLinkPendingCount)
-                        </button>
-                        <button type="button" class="cc-tab @(_boardTab == "done" ? "active" : null)" @onclick='() => SetBoard("done")'>
-                            Décisions récentes
+                    @* Les onglets portent déjà les compteurs : le bandeau de six cartes qui les
+                       répétait a été retiré. Seuls les deux chiffres du mois, absents des onglets,
+                       restent, en texte, à droite de la barre. *@
+                    <div class="ex-tabbar mb-3">
+                        <div class="cc-tabs" role="tablist">
+                            <button type="button" class="cc-tab @(_boardTab == "exam" ? "active" : null)" @onclick='() => SetBoard("exam")'>
+                                À examiner (@PendingCount)
+                            </button>
+                            <button type="button" class="cc-tab @(_boardTab == "talk" ? "active" : null)" @onclick='() => SetBoard("talk")'>
+                                Entretiens programmés (@InterviewCount)
+                            </button>
+                            <button type="button" class="cc-tab @(_boardTab == "eval" ? "active" : null)" @onclick='() => SetBoard("eval")'>
+                                En évaluation (@ReviewCount)
+                            </button>
+                            <button type="button" class="cc-tab @(_boardTab == "link" ? "active" : null)" @onclick='() => SetBoard("link")'>
+                                Lien unique (@ViaLinkPendingCount)
+                            </button>
+                            <button type="button" class="cc-tab @(_boardTab == "done" ? "active" : null)" @onclick='() => SetBoard("done")'>
+                                Décisions récentes
+                            </button>
+                        </div>
+                        <button type="button" class="ex-tabbar-note" @onclick='() => SetBoard("done")'>
+                            Ce mois : <strong>@ApprovedMonth</strong> approuvé@(ApprovedMonth > 1 ? "s" : "")
+                            · <strong>@RejectedMonth</strong> refusé@(RejectedMonth > 1 ? "s" : "")
                         </button>
                     </div>
 
@@ -592,6 +551,7 @@
     private bool _showInterview;
     private bool _detailLoading;
     private bool _inviteBusy;
+    private bool _inviteEmailInvalid;
     private bool _assignBusy;
     private bool _isManager;
     private int _track;
@@ -954,8 +914,19 @@
 
     private async Task InviteAsync()
     {
-        _inviteBusy = true;
         _inviteError = _inviteSuccess = null;
+        // Contrôle avant l'appel : sans lui, une adresse vide partait au serveur et revenait en
+        // « Adresse e-mail invalide », sans désigner le champ fautif.
+        _inviteEmailInvalid = string.IsNullOrWhiteSpace(_inviteEmail) || !IsEmail(_inviteEmail);
+        if (_inviteEmailInvalid)
+        {
+            _inviteError = string.IsNullOrWhiteSpace(_inviteEmail)
+                ? "L'adresse e-mail est obligatoire pour envoyer une invitation."
+                : "Cette adresse e-mail n'est pas valide.";
+            return;
+        }
+
+        _inviteBusy = true;
         try
         {
             var result = await Api.PostWithErrorAsync<object>("api/expert/invite-application", new
@@ -976,6 +947,22 @@
     private async Task ReloadInvitesAsync()
     {
         _invites = await Api.GetAsync<List<InviteItem>>("api/expert/invitations") ?? _invites;
+    }
+
+    /// <summary>
+    /// Contrôle volontairement sommaire : une arobase entourée de texte et un point dans le
+    /// domaine. Il s'agit d'attraper la faute de frappe avant l'aller-retour réseau, pas de
+    /// valider l'adresse — seul l'envoi du courriel le fera.
+    /// </summary>
+    private static bool IsEmail(string value)
+    {
+        var at = value.IndexOf('@');
+        return at > 0
+            && at < value.Length - 1
+            && value.IndexOf('@', at + 1) < 0
+            && value.LastIndexOf('.') > at + 1
+            && !value.EndsWith('.')
+            && !value.Any(char.IsWhiteSpace);
     }
 
     private static bool CanDecide(int status) => status is 0 or 3 or 4 or 5;
