@@ -308,56 +308,55 @@ html body .cc-shell.cc-shell--expert .ex-kpi-grid .ex-kpi[data-tone="rose"] { ba
     padding: 0.65rem 0.7rem 1.1rem;
 }
 
-/* En-têtes de section : bandeau ardoise plein, texte blanc. Le gris pâle sur fond blanc se
-   confondait avec les liens et ne séparait plus les rubriques. Teinte neutre volontaire : la
-   couleur d'accent passe au vert sur le module Groupe, elle ne peut pas servir de fond commun. */
+/* En-têtes de section : petites capitales sur fond clair. Ce sont des étiquettes de rubrique,
+   pas des éléments cliquables au même titre que les liens ; la graisse et l'interlettrage les
+   séparent, un aplat de couleur les ferait passer devant les liens qu'ils coiffent. */
 .cc-shell--expert .cc-nav-section-toggle {
-    color: #ffffff;
-    background: linear-gradient(180deg, #334155 0%, #1e293b 100%);
+    color: #94a3b8;
+    background: transparent;
     pointer-events: auto !important;
     cursor: pointer;
     gap: 0.5rem;
     text-align: left;
     position: relative;
     z-index: 2;
-    border-radius: 10px;
-    padding: 0.45rem 0.7rem;
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12);
+    border-radius: 8px;
+    padding: 0.5rem 0.7rem 0.3rem;
 }
 .cc-shell--expert .cc-nav-section-toggle:hover {
-    color: #ffffff;
-    background: linear-gradient(180deg, #3f4d61 0%, #263449 100%);
-    border-radius: 10px;
+    color: var(--cc-primary);
+    background: transparent;
 }
 .cc-shell--expert .cc-nav-section-icon {
     display: inline-flex !important;
-    font-size: 0.95rem;
+    font-size: 0.9rem;
     width: 1.1rem;
-    /* Sur le bandeau sombre, l'accent bleu et surtout le vert du module Groupe passeraient mal. */
-    color: rgba(255, 255, 255, 0.85);
+    color: var(--cc-primary);
+    opacity: 0.85;
     flex-shrink: 0;
 }
 .cc-shell--expert .cc-nav-section-chevron {
     display: inline-flex !important;
     margin-left: auto;
-    font-size: 0.75rem;
-    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.7rem;
+    color: #cbd5e1;
 }
+.cc-shell--expert .cc-nav-section-toggle:hover .cc-nav-section-chevron { color: #94a3b8; }
 .cc-shell--expert .cc-nav-section-toggle .cc-nav-section-label {
     flex: 1;
 }
 
 .cc-shell--expert .cc-nav-section-label {
-    font-size: 0.7rem;
-    letter-spacing: 0.09em;
+    font-size: 0.66rem;
+    letter-spacing: 0.1em;
     font-weight: 700;
-    color: #ffffff;
+    color: #94a3b8;
     text-transform: uppercase;
 }
+.cc-shell--expert .cc-nav-section-toggle:hover .cc-nav-section-label { color: var(--cc-primary); }
 
-/* Le bandeau tient lieu de séparateur : un peu d'air en dessous des liens qu'il coiffe. */
 .cc-shell--expert .cc-nav-section-body {
-    padding: 0.3rem 0 0.15rem;
+    padding: 0 0 0.35rem;
 }
 
 .cc-shell--expert .cc-nav-link {
@@ -1425,6 +1424,40 @@ html body .cc-shell.cc-shell--expert .ex-kpi-grid .ex-kpi[data-tone="rose"] { ba
     gap: 0.85rem;
     margin-bottom: 1.15rem;
 }
+
+/* Compteurs-filtres en texte seul : aucun aplat, aucune bordure de carte. Le filtre actif se
+   signale par la couleur d'accent et un trait sous le libellé, comme un onglet. */
+.cc-shell--expert .ex-tally-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.1rem 1.5rem;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #e2e8f0;
+}
+.cc-shell--expert button.ex-tally {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.35rem;
+    padding: 0.2rem 0;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    background: transparent;
+    font: inherit;
+    cursor: pointer;
+    color: #64748b;
+}
+.cc-shell--expert button.ex-tally:hover { color: var(--cc-primary); }
+.cc-shell--expert .ex-tally-label { font-size: 0.8rem; font-weight: 500; }
+.cc-shell--expert .ex-tally-val { font-size: 0.95rem; font-weight: 700; color: #0f172a; }
+.cc-shell--expert button.ex-tally:hover .ex-tally-val { color: var(--cc-primary); }
+.cc-shell--expert button.ex-tally.is-on {
+    color: var(--cc-primary);
+    border-bottom-color: var(--cc-primary);
+}
+.cc-shell--expert button.ex-tally.is-on .ex-tally-label { font-weight: 650; }
+.cc-shell--expert button.ex-tally.is-on .ex-tally-val { color: var(--cc-primary); }
 
 .cc-shell--expert .ex-filter-bar {
     display: grid;
@@ -3107,12 +3140,15 @@ html[dir="rtl"] .expert-join-message { border-radius: 12px 0 0 12px; }
     white-space: nowrap;
 }
 
+/* Trois rangées : les priorités face à la santé du groupe, puis la bande d'indicateurs sur
+   toute la largeur, puis le détail à gauche et les raccourcis à droite. */
 .ex-dash-grid {
     display: grid;
     grid-template-columns: minmax(0, 1.9fr) minmax(0, 1fr);
     gap: 1rem;
-    align-items: start;
+    align-content: start;
 }
+.ex-dash-kpis { grid-column: 1 / -1; }
 .ex-dash-main,
 .ex-dash-side {
     display: flex;
@@ -3122,6 +3158,7 @@ html[dir="rtl"] .expert-join-message { border-radius: 12px 0 0 12px; }
 }
 @media (max-width: 1200px) {
     .ex-dash-grid { grid-template-columns: 1fr; }
+    .ex-dash-kpis { grid-column: auto; }
 }
 
 .ex-dash-card {
@@ -3141,11 +3178,25 @@ html[dir="rtl"] .expert-join-message { border-radius: 12px 0 0 12px; }
 }
 .ex-dash-card-head h2 {
     margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
     font-size: 0.98rem;
     font-weight: 700;
     color: #0f172a;
 }
-.ex-dash-card-head h2 i { color: var(--cc-primary, #2563eb); }
+.ex-dash-head-icon {
+    width: 30px;
+    height: 30px;
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 9px;
+    background: #dcfce7;
+    color: #15803d;
+    font-size: 0.9rem;
+}
 .ex-dash-card-meta { font-size: 0.78rem; color: #64748b; }
 .ex-dash-card-foot { margin-top: 0.85rem; }
 .ex-dash-card-foot--split { display: flex; gap: 0.5rem; }
@@ -3209,16 +3260,23 @@ html[dir="rtl"] .expert-join-message { border-radius: 12px 0 0 12px; }
 .ex-dash-tile--danger { border-color: #fecaca; background: #fffafa; }
 .ex-dash-tile--danger .ex-dash-tile-icon { background: #fee2e2; color: #b91c1c; }
 
-/* Bandeau d'indicateurs : chiffre d'abord, libellé ensuite, toute la carte cliquable. */
+/* Bandeau d'indicateurs : pictogramme à gauche, chiffre puis libellé à droite, toute la
+   carte cliquable. */
 .ex-dash-kpis {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: 0.7rem;
+}
+@media (max-width: 1400px) {
+    .ex-dash-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+    .ex-dash-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 .ex-dash-kpi {
     display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
+    align-items: center;
+    gap: 0.6rem;
     padding: 0.75rem 0.8rem;
     background: #fff;
     border: 1px solid #e2e8f0;
@@ -3231,17 +3289,18 @@ html[dir="rtl"] .expert-join-message { border-radius: 12px 0 0 12px; }
     transform: translateY(-1px);
     box-shadow: 0 6px 18px rgba(15, 23, 42, 0.09);
 }
-.ex-dash-kpi-val { font-size: 1.35rem; font-weight: 750; color: #0f172a; line-height: 1.1; }
-.ex-dash-kpi-label { font-size: 0.75rem; color: #64748b; line-height: 1.25; }
+.ex-dash-kpi-body { display: flex; flex-direction: column; min-width: 0; }
+.ex-dash-kpi-val { font-size: 1.3rem; font-weight: 750; color: #0f172a; line-height: 1.1; }
+.ex-dash-kpi-label { font-size: 0.74rem; color: #64748b; line-height: 1.25; }
 .ex-dash-kpi-icon {
-    width: 30px;
-    height: 30px;
+    width: 34px;
+    height: 34px;
+    flex: none;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    border-radius: 9px;
-    font-size: 0.95rem;
-    margin-bottom: 0.3rem;
+    border-radius: 10px;
+    font-size: 1rem;
 }
 .ex-dash-kpi-icon--green { background: #dcfce7; color: #15803d; }
 .ex-dash-kpi-icon--blue { background: #e0f2fe; color: #0369a1; }
@@ -3368,12 +3427,16 @@ html[dir="rtl"] .expert-join-message { border-radius: 12px 0 0 12px; }
 .ex-dash-feed-when { font-size: 0.75rem; color: #94a3b8; white-space: nowrap; }
 
 /* Anneau de santé : un conic-gradient piloté par --ex-dash-pct, sans bibliothèque de graphiques. */
-.ex-dash-health { display: flex; align-items: center; gap: 1rem; }
+.ex-dash-health { display: flex; align-items: center; gap: 1.1rem; }
+/* La carte partage sa rangée avec les priorités, plus hautes : l'anneau se centre dans la
+   hauteur restante au lieu de laisser un vide sous lui. */
+.ex-dash-card--health { display: flex; flex-direction: column; }
+.ex-dash-card--health .ex-dash-health { flex: 1 1 auto; }
 .ex-dash-ring {
     --ex-dash-pct: 0;
     --ex-dash-ring-color: #16a34a;
-    width: 96px;
-    height: 96px;
+    width: 104px;
+    height: 104px;
     flex: none;
     border-radius: 50%;
     display: grid;
@@ -3382,13 +3445,13 @@ html[dir="rtl"] .expert-join-message { border-radius: 12px 0 0 12px; }
         conic-gradient(var(--ex-dash-ring-color) calc(var(--ex-dash-pct) * 1%), #eef2f7 0);
 }
 .ex-dash-ring-val {
-    width: 74px;
-    height: 74px;
+    width: 80px;
+    height: 80px;
     border-radius: 50%;
     background: #fff;
     display: grid;
     place-items: center;
-    font-size: 1.25rem;
+    font-size: 1.4rem;
     font-weight: 750;
     color: #0f172a;
 }
@@ -3422,8 +3485,8 @@ html[dir="rtl"] .expert-join-message { border-radius: 12px 0 0 12px; }
 .ex-dash-quick { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
 .ex-dash-quick a {
     display: flex;
-    flex-direction: column;
-    gap: 0.3rem;
+    align-items: center;
+    gap: 0.55rem;
     padding: 0.7rem 0.75rem;
     border: 1px solid #e2e8f0;
     border-radius: 12px;
@@ -3435,10 +3498,9 @@ html[dir="rtl"] .expert-join-message { border-radius: 12px 0 0 12px; }
     line-height: 1.25;
 }
 .ex-dash-quick a:hover { border-color: var(--cc-border-strong, #cbd5e1); background: #f8fafc; }
-.ex-dash-quick .ex-dash-kpi-icon { margin-bottom: 0; }
 
-.ex-dash-team { display: flex; flex-direction: column; gap: 0.8rem; }
-.ex-dash-team-stats { display: flex; gap: 0.9rem; flex-wrap: wrap; }
+.ex-dash-team { display: flex; align-items: center; gap: 0.9rem; flex-wrap: wrap; }
+.ex-dash-team-stats { display: flex; gap: 0.9rem; flex-wrap: wrap; flex: 1; }
 .ex-dash-team-stats > div { display: flex; flex-direction: column; min-width: 68px; }
 .ex-dash-team-stats strong { font-size: 1.05rem; font-weight: 750; color: #0f172a; }
 .ex-dash-team-stats span { font-size: 0.72rem; color: #64748b; line-height: 1.2; }

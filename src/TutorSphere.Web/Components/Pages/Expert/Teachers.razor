@@ -64,54 +64,39 @@
         }
         else
         {
-            <div class="ex-teachers-kpi">
-                <button type="button" class="ex-kpi @(_statusFilter == "" ? "is-on" : null)" @onclick='() => SetStatusFilter("")'>
-                    <i class="bi bi-people ex-kpi-icon" aria-hidden="true"></i>
-                    <div>
-                        <div class="ex-kpi-label">Total enseignants</div>
-                        <div class="ex-kpi-value">@_directory.Count</div>
-                        <div class="ex-kpi-hint">Tous statuts confondus</div>
-                    </div>
+            @* Compteurs en texte seul : ce sont des filtres, pas des indicateurs à mettre en
+               vitrine. Six cartes colorées prenaient le tiers de l'écran avant d'arriver à la
+               liste, qui est l'objet de la page. *@
+            <div class="ex-tally-row" role="group" aria-label="Filtrer par statut">
+                <button type="button" class="ex-tally @(_statusFilter == "" ? "is-on" : null)"
+                        @onclick='() => SetStatusFilter("")'>
+                    <span class="ex-tally-label">Total</span>
+                    <span class="ex-tally-val">@_directory.Count</span>
                 </button>
-                <button type="button" class="ex-kpi @(_statusFilter == "approved" ? "is-on" : null)" data-tone="emerald" @onclick='() => SetStatusFilter("approved")'>
-                    <i class="bi bi-check-circle ex-kpi-icon" aria-hidden="true"></i>
-                    <div>
-                        <div class="ex-kpi-label">Approuvés</div>
-                        <div class="ex-kpi-value">@CountStatus("approved")</div>
-                        <div class="ex-kpi-hint">Enseignants actifs</div>
-                    </div>
+                <button type="button" class="ex-tally @(_statusFilter == "approved" ? "is-on" : null)"
+                        @onclick='() => SetStatusFilter("approved")'>
+                    <span class="ex-tally-label">Approuvés</span>
+                    <span class="ex-tally-val">@CountStatus("approved")</span>
                 </button>
-                <button type="button" class="ex-kpi @(_statusFilter == "pending" ? "is-on" : null)" data-tone="amber" @onclick='() => SetStatusFilter("pending")'>
-                    <i class="bi bi-clock-history ex-kpi-icon" aria-hidden="true"></i>
-                    <div>
-                        <div class="ex-kpi-label">En attente d'approbation</div>
-                        <div class="ex-kpi-value">@CountStatus("pending")</div>
-                        <div class="ex-kpi-hint">En cours d'évaluation</div>
-                    </div>
+                <button type="button" class="ex-tally @(_statusFilter == "pending" ? "is-on" : null)"
+                        @onclick='() => SetStatusFilter("pending")'>
+                    <span class="ex-tally-label">En attente</span>
+                    <span class="ex-tally-val">@CountStatus("pending")</span>
                 </button>
-                <button type="button" class="ex-kpi @(_statusFilter == "via-link" ? "is-on" : null)" data-tone="violet" @onclick='() => SetStatusFilter("via-link")'>
-                    <i class="bi bi-link-45deg ex-kpi-icon" aria-hidden="true"></i>
-                    <div>
-                        <div class="ex-kpi-label">Via lien unique</div>
-                        <div class="ex-kpi-value">@ViaLinkPendingCount</div>
-                        <div class="ex-kpi-hint">Inscriptions à examiner</div>
-                    </div>
+                <button type="button" class="ex-tally @(_statusFilter == "via-link" ? "is-on" : null)"
+                        @onclick='() => SetStatusFilter("via-link")'>
+                    <span class="ex-tally-label">Via lien unique</span>
+                    <span class="ex-tally-val">@ViaLinkPendingCount</span>
                 </button>
-                <button type="button" class="ex-kpi @(_statusFilter == "review" ? "is-on" : null)" data-tone="violet" @onclick='() => SetStatusFilter("review")'>
-                    <i class="bi bi-mortarboard ex-kpi-icon" aria-hidden="true"></i>
-                    <div>
-                        <div class="ex-kpi-label">En évaluation</div>
-                        <div class="ex-kpi-value">@CountStatus("review")</div>
-                        <div class="ex-kpi-hint">Évaluations en cours</div>
-                    </div>
+                <button type="button" class="ex-tally @(_statusFilter == "review" ? "is-on" : null)"
+                        @onclick='() => SetStatusFilter("review")'>
+                    <span class="ex-tally-label">En évaluation</span>
+                    <span class="ex-tally-val">@CountStatus("review")</span>
                 </button>
-                <button type="button" class="ex-kpi @(_statusFilter == "suspended" ? "is-on" : null)" data-tone="rose" @onclick='() => SetStatusFilter("suspended")'>
-                    <i class="bi bi-x-circle ex-kpi-icon" aria-hidden="true"></i>
-                    <div>
-                        <div class="ex-kpi-label">Suspendus</div>
-                        <div class="ex-kpi-value">@CountStatus("suspended")</div>
-                        <div class="ex-kpi-hint">Accès restreint</div>
-                    </div>
+                <button type="button" class="ex-tally @(_statusFilter == "suspended" ? "is-on" : null)"
+                        @onclick='() => SetStatusFilter("suspended")'>
+                    <span class="ex-tally-label">Suspendus</span>
+                    <span class="ex-tally-val">@CountStatus("suspended")</span>
                 </button>
             </div>
 

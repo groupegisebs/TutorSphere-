@@ -77,54 +77,109 @@
         else if (_summary is not null)
         {
             <div class="ex-dash-grid">
-                <div class="ex-dash-main">
-
-                    <section class="ex-dash-card">
-                        <div class="ex-dash-card-head">
-                            <h2>À traiter maintenant</h2>
-                            <span class="ex-dash-count @(ActionCount > 0 ? null : "ex-dash-count--ok")">
-                                @(ActionCount > 0 ? $"{ActionCount} action{(ActionCount > 1 ? "s" : "")}" : "Rien en attente")
-                            </span>
-                        </div>
-                        <div class="ex-dash-tiles">
-                            @foreach (var tile in PriorityTiles)
-                            {
-                                <div class="ex-dash-tile ex-dash-tile--@tile.Tone">
-                                    <span class="ex-dash-tile-icon"><i class="bi @tile.Icon" aria-hidden="true"></i></span>
-                                    <strong class="ex-dash-tile-title">@tile.Title</strong>
-                                    <span class="ex-dash-tile-sub">@tile.Sub</span>
-                                    @if (tile.ActionLabel is not null)
-                                    {
-                                        @if (tile.ScrollTo is not null)
-                                        {
-                                            <button type="button" class="btn btn-sm btn-outline-secondary"
-                                                    @onclick="() => ScrollToAsync(tile.ScrollTo)">
-                                                @tile.ActionLabel
-                                            </button>
-                                        }
-                                        else
-                                        {
-                                            <a class="btn btn-sm btn-outline-secondary" href="@tile.Href">@tile.ActionLabel</a>
-                                        }
-                                    }
-                                </div>
-                            }
-                        </div>
-                    </section>
-
-                    <div class="ex-dash-kpis">
-                        @foreach (var kpi in Kpis)
+                <section class="ex-dash-card">
+                    <div class="ex-dash-card-head">
+                        <h2>À traiter maintenant</h2>
+                        <span class="ex-dash-count @(ActionCount > 0 ? null : "ex-dash-count--ok")">
+                            @(ActionCount > 0 ? $"{ActionCount} action{(ActionCount > 1 ? "s" : "")}" : "Rien en attente")
+                        </span>
+                    </div>
+                    <div class="ex-dash-tiles">
+                        @foreach (var tile in PriorityTiles)
                         {
-                            <a class="ex-dash-kpi" href="@kpi.Href">
-                                <span class="ex-dash-kpi-icon ex-dash-kpi-icon--@kpi.Tone">
-                                    <i class="bi @kpi.Icon" aria-hidden="true"></i>
-                                </span>
-                                <span class="ex-dash-kpi-val">@kpi.Value</span>
-                                <span class="ex-dash-kpi-label">@kpi.Label</span>
-                            </a>
+                            <div class="ex-dash-tile ex-dash-tile--@tile.Tone">
+                                <span class="ex-dash-tile-icon"><i class="bi @tile.Icon" aria-hidden="true"></i></span>
+                                <strong class="ex-dash-tile-title">@tile.Title</strong>
+                                <span class="ex-dash-tile-sub">@tile.Sub</span>
+                                @if (tile.ActionLabel is not null)
+                                {
+                                    @if (tile.ScrollTo is not null)
+                                    {
+                                        <button type="button" class="btn btn-sm btn-outline-secondary"
+                                                @onclick="() => ScrollToAsync(tile.ScrollTo)">
+                                            @tile.ActionLabel
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <a class="btn btn-sm btn-outline-secondary" href="@tile.Href">@tile.ActionLabel</a>
+                                    }
+                                }
+                            </div>
                         }
                     </div>
+                </section>
 
+                <section class="ex-dash-card ex-dash-card--health">
+                    <div class="ex-dash-card-head">
+                        <h2>
+                            <span class="ex-dash-head-icon"><i class="bi bi-heart-pulse" aria-hidden="true"></i></span>
+                            Santé du groupe
+                        </h2>
+                    </div>
+                    <div class="ex-dash-health">
+                        @* Anneau en conic-gradient : pas de dépendance à une bibliothèque de graphiques
+                           pour une valeur unique. *@
+                        <div class="ex-dash-ring ex-dash-ring--@HealthTone" style="--ex-dash-pct:@HealthScore">
+                            <span class="ex-dash-ring-val">@HealthScore<small>%</small></span>
+                        </div>
+                        <div class="ex-dash-health-body">
+                            <strong>@HealthLabel</strong>
+                            <span class="@(WatchPoints > 0 ? "ex-dash-health-warn" : null)">
+                                @(WatchPoints > 0
+                                    ? $"{WatchPoints} point{(WatchPoints > 1 ? "s" : "")} à surveiller"
+                                    : "Aucun point de vigilance")
+                            </span>
+                        </div>
+                    </div>
+                    @if (_summary.Alerts.Count > 0)
+                    {
+                        <div class="ex-dash-card-foot">
+                            <button type="button" class="ex-dash-link ex-dash-link--btn" @onclick="() => _showDiagnostic = !_showDiagnostic">
+                                @(_showDiagnostic ? "Masquer le diagnostic" : "Voir le diagnostic")
+                                <i class="bi @(_showDiagnostic ? "bi-chevron-up" : "bi-arrow-right")" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                        @if (_showDiagnostic)
+                        {
+                            <ul class="ex-dash-alerts">
+                                @foreach (var alert in _summary.Alerts)
+                                {
+                                    <li class="ex-dash-alert ex-dash-alert--@AlertTone(alert.Severity)">
+                                        <span class="ex-dash-alert-dot" aria-hidden="true"></span>
+                                        <span>@alert.Message</span>
+                                        @if (!string.IsNullOrWhiteSpace(alert.ActionUrl) || alert.Code == "pending_enrollments")
+                                        {
+                                            <button type="button" class="btn btn-sm btn-outline-secondary"
+                                                    @onclick="() => OpenAlertAsync(alert)">
+                                                Ouvrir
+                                            </button>
+                                        }
+                                    </li>
+                                }
+                            </ul>
+                        }
+                    }
+                </section>
+
+                @* La bande traverse les deux colonnes : ces six chiffres décrivent le groupe entier,
+                   pas la colonne de gauche. *@
+                <div class="ex-dash-kpis">
+                    @foreach (var kpi in Kpis)
+                    {
+                        <a class="ex-dash-kpi" href="@kpi.Href">
+                            <span class="ex-dash-kpi-icon ex-dash-kpi-icon--@kpi.Tone">
+                                <i class="bi @kpi.Icon" aria-hidden="true"></i>
+                            </span>
+                            <span class="ex-dash-kpi-body">
+                                <span class="ex-dash-kpi-val">@kpi.Value</span>
+                                <span class="ex-dash-kpi-label">@kpi.Label</span>
+                            </span>
+                        </a>
+                    }
+                </div>
+
+                <div class="ex-dash-main">
                     @if (_enrollments.Count > 0 || !string.IsNullOrEmpty(_enrollBanner) || !string.IsNullOrEmpty(_enrollError))
                     {
                         <section class="ex-dash-card" id="expert-enrollments">
@@ -294,53 +349,6 @@
                 </div>
 
                 <aside class="ex-dash-side">
-
-                    <section class="ex-dash-card">
-                        <div class="ex-dash-card-head">
-                            <h2><i class="bi bi-heart-pulse me-1" aria-hidden="true"></i>Santé du groupe</h2>
-                        </div>
-                        <div class="ex-dash-health">
-                            @* Anneau en conic-gradient : pas de dépendance à une bibliothèque de graphiques
-                               pour une valeur unique. *@
-                            <div class="ex-dash-ring ex-dash-ring--@HealthTone" style="--ex-dash-pct:@HealthScore">
-                                <span class="ex-dash-ring-val">@HealthScore<small>%</small></span>
-                            </div>
-                            <div class="ex-dash-health-body">
-                                <strong>@HealthLabel</strong>
-                                <span class="@(WatchPoints > 0 ? "ex-dash-health-warn" : null)">
-                                    @(WatchPoints > 0
-                                        ? $"{WatchPoints} point{(WatchPoints > 1 ? "s" : "")} à surveiller"
-                                        : "Aucun point de vigilance")
-                                </span>
-                            </div>
-                        </div>
-                        @if (_summary.Alerts.Count > 0)
-                        {
-                            <button type="button" class="ex-dash-link ex-dash-link--btn" @onclick="() => _showDiagnostic = !_showDiagnostic">
-                                @(_showDiagnostic ? "Masquer le diagnostic" : "Voir le diagnostic")
-                                <i class="bi @(_showDiagnostic ? "bi-chevron-up" : "bi-arrow-right")" aria-hidden="true"></i>
-                            </button>
-                            @if (_showDiagnostic)
-                            {
-                                <ul class="ex-dash-alerts">
-                                    @foreach (var alert in _summary.Alerts)
-                                    {
-                                        <li class="ex-dash-alert ex-dash-alert--@AlertTone(alert.Severity)">
-                                            <span class="ex-dash-alert-dot" aria-hidden="true"></span>
-                                            <span>@alert.Message</span>
-                                            @if (!string.IsNullOrWhiteSpace(alert.ActionUrl) || alert.Code == "pending_enrollments")
-                                            {
-                                                <button type="button" class="btn btn-sm btn-outline-secondary"
-                                                        @onclick="() => OpenAlertAsync(alert)">
-                                                    Ouvrir
-                                                </button>
-                                            }
-                                        </li>
-                                    }
-                                </ul>
-                            }
-                        }
-                    </section>
 
                     <section class="ex-dash-card">
                         <div class="ex-dash-card-head">
