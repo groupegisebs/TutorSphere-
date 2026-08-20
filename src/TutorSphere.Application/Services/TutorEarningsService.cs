@@ -1,4 +1,5 @@
 using System.Text.Json;
+using TutorSphere.Application.Common;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.TutorEarnings;
 using TutorSphere.Application.DTOs.TutorPayouts;
@@ -67,7 +68,8 @@ public class TutorEarningsService : ITutorEarningsService
             snapshot.Currency,
             snapshot.SessionsHeld,
             recent,
-            eligibility);
+            eligibility,
+            snapshot.OtherCurrencies);
     }
 
     public Task<IReadOnlyList<TutorPayoutDto>> ListPayoutsAsync(CancellationToken ct = default)
@@ -358,21 +360,36 @@ public class TutorEarningsService : ITutorEarningsService
     private EarningsSnapshot ComputeSnapshotForTenant(Guid tenantId)
     {
         // Query filters already scope to current tenant when set; for webhook use ForAnyTenant + explicit filter.
-        var completedPayments = (_tenantContext.HasTenant && _tenantContext.TenantId == tenantId
+        var allCompleted = (_tenantContext.HasTenant && _tenantContext.TenantId == tenantId
                 ? _db.Payments
                 : _db.PaymentsForAnyTenant.Where(p => p.TenantId == tenantId))
             .Where(p => p.Status == PaymentStatus.Completed)
             .ToList();
 
+        // Le solde versable est tenu dans la seule devise de la politique de versement : seuils,
+        // délai de rétention et décaissement sont tous exprimés en CAD. Additionner des francs CFA
+        // à des dollars gonflerait le montant réclamable au lieu de le convertir.
+        var currency = TutorPayoutPolicy.PolicyCurrency;
+        var completedPayments = allCompleted
+            .Where(p => MoneyTotals.NormalizeCurrency(p.Currency) == currency)
+            .ToList();
+        var otherCurrencies = MoneyTotals.Group(
+            allCompleted.Where(p => MoneyTotals.NormalizeCurrency(p.Currency) != currency),
+            p => p.TutorAmount,
+            p => p.Currency);
+
         var collected = completedPayments.Sum(p => p.TutorAmount);
         var inbound = _db.LessonCoverageAssignments
-            .Where(c => c.SubstituteTenantId == tenantId && c.TransferredTutorAmount != null)
+            .Where(c => c.SubstituteTenantId == tenantId
+                        && c.TransferredTutorAmount != null
+                        && c.TransferCurrency == currency)
             .Sum(c => (decimal?)c.TransferredTutorAmount) ?? 0m;
         var outbound = _db.LessonCoverageAssignments
-            .Where(c => c.OriginalTenantId == tenantId && c.TransferredTutorAmount != null)
+            .Where(c => c.OriginalTenantId == tenantId
+                        && c.TransferredTutorAmount != null
+                        && c.TransferCurrency == currency)
             .Sum(c => (decimal?)c.TransferredTutorAmount) ?? 0m;
         collected = decimal.Round(collected - outbound + inbound, 2, MidpointRounding.AwayFromZero);
-        var currency = TutorPayoutPolicy.PolicyCurrency;
 
         var subscriptionIds = completedPayments
             .Where(p => p.SubscriptionId.HasValue)
@@ -420,17 +437,21 @@ public class TutorEarningsService : ITutorEarningsService
         held = Math.Min(held, collected);
         var released = decimal.Round(collected - held, 2, MidpointRounding.AwayFromZero);
 
+        // Même devise que l'encaissé : un retrait libellé autrement se retrancherait sinon d'un
+        // solde qui ne l'a jamais contenu.
         var withdrawn = (_tenantContext.HasTenant && _tenantContext.TenantId == tenantId
                 ? _db.TutorPayouts
                 : _db.TutorPayoutsForAnyTenant.Where(p => p.TenantId == tenantId))
-            .Where(p => p.Status == TutorPayoutStatus.Pending
-                        || p.Status == TutorPayoutStatus.Processing
-                        || p.Status == TutorPayoutStatus.Completed)
+            .Where(p => (p.Status == TutorPayoutStatus.Pending
+                         || p.Status == TutorPayoutStatus.Processing
+                         || p.Status == TutorPayoutStatus.Completed)
+                        && p.Currency == currency)
             .Sum(p => (decimal?)p.Amount) ?? 0m;
 
         var available = decimal.Round(Math.Max(0m, released - withdrawn), 2, MidpointRounding.AwayFromZero);
 
-        return new EarningsSnapshot(collected, held, released, withdrawn, available, currency, sessionsHeld);
+        return new EarningsSnapshot(
+            collected, held, released, withdrawn, available, currency, sessionsHeld, otherCurrencies);
     }
 
     private static string? ResolveDestinationToken(TutorPayoutAccount account) =>
@@ -500,6 +521,10 @@ public class TutorEarningsService : ITutorEarningsService
             p.ExpertGroupId);
     }
 
+    /// <param name="OtherCurrencies">
+    /// Gains encaissés dans une autre devise que celle des versements. Exposés à part pour que
+    /// l'enseignant les voie, sans qu'ils entrent dans le montant réclamable.
+    /// </param>
     private sealed record EarningsSnapshot(
         decimal Collected,
         decimal Held,
@@ -507,5 +532,6 @@ public class TutorEarningsService : ITutorEarningsService
         decimal Withdrawn,
         decimal Available,
         string Currency,
-        int SessionsHeld);
+        int SessionsHeld,
+        IReadOnlyList<MoneyTotal> OtherCurrencies);
 }

@@ -25,16 +25,18 @@
         }
         else
         {
+            @* Les factures de la plateforme couvrent plusieurs pays : un total par devise, et pas
+               de « $ » collé à des montants en francs CFA ou en euros. *@
             <div class="row g-3 mb-4">
                 <div class="col-6 col-lg-3">
                     <div class="ts-kpi-card ts-kpi-card--success">
-                        <span class="ts-kpi-val">@_totalRevenue.ToString("N0") $</span>
+                        <span class="ts-kpi-val">@FormatByCurrency(TotalRevenue)</span>
                         <span class="ts-kpi-label">Revenu total (payé)</span>
                     </div>
                 </div>
                 <div class="col-6 col-lg-3">
                     <div class="ts-kpi-card ts-kpi-card--warning">
-                        <span class="ts-kpi-val">@_pending.ToString("N0") $</span>
+                        <span class="ts-kpi-val">@FormatByCurrency(PendingRevenue)</span>
                         <span class="ts-kpi-label">En attente</span>
                     </div>
                 </div>
@@ -119,8 +121,14 @@
     private string _search = "", _statusFilter = "";
     private List<InvoiceDto> _invoices = [];
 
-    private decimal _totalRevenue => _invoices.Where(i => i.Status == "paid").Sum(i => i.Amount);
-    private decimal _pending      => _invoices.Where(i => i.Status == "open").Sum(i => i.Amount);
+    private IReadOnlyList<MoneyTotal> TotalRevenue => TotalsFor("paid");
+    private IReadOnlyList<MoneyTotal> PendingRevenue => TotalsFor("open");
+
+    private IReadOnlyList<MoneyTotal> TotalsFor(string status) =>
+        MoneyTotals.Group(_invoices.Where(i => i.Status == status), i => i.Amount, i => i.Currency);
+
+    private static string FormatByCurrency(IReadOnlyList<MoneyTotal> totals) =>
+        totals.Count == 0 ? "—" : MoneyTotals.Format(totals);
 
     private IEnumerable<InvoiceDto> FilteredInvoices => _invoices
         .Where(i => string.IsNullOrEmpty(_search) ||

@@ -100,19 +100,20 @@
 <div class="row g-3 mb-4">
     <div class="col-6 col-lg-3">
         <div class="ts-kpi-card ts-kpi-card--success">
-            <span class="ts-kpi-val">@CollectedThisMonth.ToString("N0") $</span>
+            @* Totaux par devise : le « $ » codé en dur libellait toutes les factures en dollars. *@
+            <span class="ts-kpi-val">@FormatByCurrency(CollectedThisMonth)</span>
             <span class="ts-kpi-label">@L["Payments_CollectedThisMonth"]</span>
         </div>
     </div>
     <div class="col-6 col-lg-3">
         <div class="ts-kpi-card ts-kpi-card--warning">
-            <span class="ts-kpi-val">@_payments.Where(p => IsPending(p.Status)).Sum(p => p.Amount).ToString("N0") $</span>
+            <span class="ts-kpi-val">@FormatByCurrency(TotalsWhere(IsPending))</span>
             <span class="ts-kpi-label">@L["Payments_Pending"]</span>
         </div>
     </div>
     <div class="col-6 col-lg-3">
         <div class="ts-kpi-card ts-kpi-card--danger">
-            <span class="ts-kpi-val">@_payments.Where(p => IsFailed(p.Status)).Sum(p => p.Amount).ToString("N0") $</span>
+            <span class="ts-kpi-val">@FormatByCurrency(TotalsWhere(IsFailed))</span>
             <span class="ts-kpi-label">@L["Payments_FailedLate"]</span>
         </div>
     </div>
@@ -168,7 +169,7 @@
                         <small class="text-muted">@p.Student</small>
                     </td>
                     <td>@p.OfferName</td>
-                    <td class="fw-semibold @(IsRefunded(p.Status) ? "text-danger" : "")">@p.Amount.ToString("N0") $</td>
+                    <td class="fw-semibold @(IsRefunded(p.Status) ? "text-danger" : "")">@p.Amount.ToString("N0") @p.Currency</td>
                     <td><span class="ts-badge ts-badge-neutral">@DisplayMethod(p.Method)</span></td>
                     <td><span class="ts-badge @PaymentBadge(p.Status)">@DisplayStatus(p.Status)</span></td>
                     <td>
@@ -255,9 +256,16 @@
     private static bool IsRefunded(string s) =>
         s is "refunded" or "Remboursé" or "Refunded";
 
-    private decimal CollectedThisMonth => _payments
-        .Where(p => IsPaid(p.Status) && IsSameMonth(p.Date, DateTime.Today))
-        .Sum(p => p.Amount);
+    private IReadOnlyList<MoneyTotal> CollectedThisMonth => MoneyTotals.Group(
+        _payments.Where(p => IsPaid(p.Status) && IsSameMonth(p.Date, DateTime.Today)),
+        p => p.Amount,
+        p => p.Currency);
+
+    private IReadOnlyList<MoneyTotal> TotalsWhere(Func<string, bool> statusMatches) =>
+        MoneyTotals.Group(_payments.Where(p => statusMatches(p.Status)), p => p.Amount, p => p.Currency);
+
+    private static string FormatByCurrency(IReadOnlyList<MoneyTotal> totals) =>
+        totals.Count == 0 ? "—" : MoneyTotals.Format(totals);
 
     private static bool IsSameMonth(DateTime date, DateTime reference) =>
         date.Year == reference.Year && date.Month == reference.Month;
@@ -342,6 +350,7 @@
                     Student = "—",
                     OfferName = string.Format(L["Payments_InvoiceNumber"].Value, inv.InvoiceNumber),
                     Amount = inv.Amount,
+                    Currency = MoneyTotals.NormalizeCurrency(inv.Currency),
                     Method = "—",
                     Status = MapStatus(inv.Status)
                 });
@@ -462,6 +471,7 @@
             Student = "—",
             OfferName = string.IsNullOrWhiteSpace(_invOffer) ? inv.InvoiceNumber : _invOffer,
             Amount = inv.Amount,
+            Currency = MoneyTotals.NormalizeCurrency(inv.Currency),
             Method = _invMethod,
             Status = MapStatus(inv.Status)
         });
@@ -478,8 +488,9 @@
 
     private async Task ExportCsvAsync()
     {
-        var lines = new List<string> { "Date;Parent;Offre;Montant;Statut" };
-        lines.AddRange(_payments.Select(p => $"{p.Date:yyyy-MM-dd};{p.Parent};{p.OfferName};{p.Amount};{p.Status}"));
+        var lines = new List<string> { "Date;Parent;Offre;Montant;Devise;Statut" };
+        lines.AddRange(_payments.Select(p =>
+            $"{p.Date:yyyy-MM-dd};{p.Parent};{p.OfferName};{p.Amount};{p.Currency};{p.Status}"));
         var bytes = System.Text.Encoding.UTF8.GetBytes(string.Join("\n", lines));
         await JS.InvokeVoidAsync("downloadFileFromBase64", "paiements.csv", "text/csv;charset=utf-8", Convert.ToBase64String(bytes));
     }
@@ -497,6 +508,9 @@
         public string Student { get; set; } = "";
         public string OfferName { get; set; } = "";
         public decimal Amount { get; set; }
+
+        /// <summary>Devise de la facture : les offres d'un même enseignant peuvent en changer.</summary>
+        public string Currency { get; set; } = MoneyTotals.FallbackCurrency;
         public string Method { get; set; } = "";
         public string Status { get; set; } = "";
     }

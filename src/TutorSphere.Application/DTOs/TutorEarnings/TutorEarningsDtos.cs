@@ -1,8 +1,13 @@
+using TutorSphere.Application.Common;
 using TutorSphere.Application.DTOs.TutorPayouts;
 using TutorSphere.Domain.Enums;
 
 namespace TutorSphere.Application.DTOs.TutorEarnings;
 
+/// <param name="OtherCurrencyEarnings">
+/// Gains encaissés hors devise de versement. Ils ne sont pas réclamables tant qu'aucune conversion
+/// n'existe, mais l'enseignant doit les voir plutôt que de les chercher.
+/// </param>
 public record TutorEarningsSummaryDto(
     decimal Collected,
     decimal Held,
@@ -12,7 +17,8 @@ public record TutorEarningsSummaryDto(
     string Currency,
     int SessionsHeld,
     IReadOnlyList<TutorPayoutDto> RecentPayouts,
-    PayoutEligibilityDto? Eligibility);
+    PayoutEligibilityDto? Eligibility,
+    IReadOnlyList<MoneyTotal>? OtherCurrencyEarnings = null);
 
 public record TutorPayoutDto(
     Guid Id,

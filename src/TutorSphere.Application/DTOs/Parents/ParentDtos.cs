@@ -1,5 +1,11 @@
+using TutorSphere.Application.Common;
+
 namespace TutorSphere.Application.DTOs.Parents;
 
+/// <param name="PendingPaymentsTotals">
+/// Un total par devise plutôt qu'un montant unique : une famille peut avoir une offre en CAD et
+/// une autre en XAF, et la somme des deux ne signifierait rien.
+/// </param>
 public record ParentDto(
     Guid Id,
     string FirstName,
@@ -10,8 +16,7 @@ public record ParentDto(
     int UnreadMessagesCount = 0,
     string? Country = null,
     int PendingPaymentsCount = 0,
-    decimal PendingPaymentsAmount = 0,
-    string? PendingPaymentsCurrency = null);
+    IReadOnlyList<MoneyTotal>? PendingPaymentsTotals = null);
 
 /// <summary>
 /// Vue enseignant d'un parent : identité et enfants inscrits à ses cours, sans coordonnées.

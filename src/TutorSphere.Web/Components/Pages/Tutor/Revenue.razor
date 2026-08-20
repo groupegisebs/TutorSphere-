@@ -110,6 +110,17 @@
             @string.Format(L["Revenue_SessionsHeldFmt"].Value, _sessionsHeld)
         </p>
     }
+    @* Les gains d'une autre devise ne peuvent pas rejoindre le solde : les seuils de retrait et le
+       décaissement sont en @_currency, et aucun taux de change n'existe dans l'application. Les
+       taire les aurait fait disparaître du décompte. *@
+    @if (_otherCurrencies.Count > 0)
+    {
+        <p class="small text-muted mb-0 mt-2">
+            <i class="bi bi-info-circle me-1"></i>
+            Également encaissé hors @_currency : <strong>@MoneyTotals.Format(_otherCurrencies, "N2")</strong>.
+            Ces montants ne sont pas virables automatiquement : contactez votre groupe pour leur règlement.
+        </p>
+    }
     <p class="small text-muted mb-0 mt-2">@L["Payout_Rule100"] · @L["Payout_Rule30"] · @L["Payout_Rule10"]</p>
 </div>
 
@@ -123,7 +134,8 @@
             }
             else
             {
-                <span class="ts-kpi-val">@_monthlyRevenue.ToString("N0") $</span>
+                @* Un total par devise : le « $ » codé en dur libellait les francs CFA en dollars. *@
+                <span class="ts-kpi-val">@(_monthlyRevenue.Count == 0 ? "—" : MoneyTotals.Format(_monthlyRevenue))</span>
             }
             <span class="ts-kpi-label">@L["Payments_CollectedThisMonth"]</span>
         </div>
@@ -273,7 +285,7 @@
     private string? _payoutError;
     private string? _payoutSuccess;
 
-    private decimal _monthlyRevenue;
+    private IReadOnlyList<MoneyTotal> _monthlyRevenue = [];
     private int _activeStudents;
     private int _activeSubscriptions;
     private int _upcomingLessons;
@@ -284,6 +296,9 @@
     private decimal _collected;
     private decimal _withdrawn;
     private string _currency = "CAD";
+
+    /// <summary>Gains encaissés dans une autre devise : visibles, mais hors du solde versable.</summary>
+    private IReadOnlyList<MoneyTotal> _otherCurrencies = [];
     private int _sessionsHeld;
     private bool _canWithdraw;
     private decimal _claimableNow;
@@ -291,8 +306,8 @@
     private List<PayoutDto> _recentPayouts = [];
 
     private record DashboardDto(
-        decimal MonthlyRevenue, int ActiveStudents,
-        int ActiveSubscriptions, int UpcomingLessons, int PendingPayments);
+        int ActiveStudents, int ActiveSubscriptions, int UpcomingLessons, int PendingPayments,
+        List<MoneyTotal>? MonthlyRevenueTotals);
 
     private record PayoutDto(
         Guid Id, decimal Amount, string Currency, string Status,
@@ -310,7 +325,8 @@
     private record EarningsSummaryDto(
         decimal Collected, decimal Held, decimal Released, decimal Withdrawn,
         decimal Available, string Currency, int SessionsHeld,
-        List<PayoutDto>? RecentPayouts, EligibilityDto? Eligibility);
+        List<PayoutDto>? RecentPayouts, EligibilityDto? Eligibility,
+        List<MoneyTotal>? OtherCurrencyEarnings);
 
     protected override async Task OnInitializedAsync()
     {
@@ -320,7 +336,7 @@
             var stats = await Api.GetAsync<DashboardDto>($"api/tenants/{tenantId}/dashboard");
             if (stats is not null)
             {
-                _monthlyRevenue      = stats.MonthlyRevenue;
+                _monthlyRevenue      = stats.MonthlyRevenueTotals ?? [];
                 _activeStudents      = stats.ActiveStudents;
                 _activeSubscriptions = stats.ActiveSubscriptions;
                 _upcomingLessons     = stats.UpcomingLessons;
@@ -343,6 +359,7 @@
             _available = summary.Available;
             _currency = string.IsNullOrWhiteSpace(summary.Currency) ? "CAD" : summary.Currency;
             _sessionsHeld = summary.SessionsHeld;
+            _otherCurrencies = summary.OtherCurrencyEarnings ?? [];
             _recentPayouts = summary.RecentPayouts ?? [];
             if (summary.Eligibility is not null)
             {

@@ -446,10 +446,9 @@
                 _pendingPaymentsCount = _dashboard.PendingPaymentsCount;
                 if (_pendingPaymentsCount > 0)
                 {
-                    var currency = string.IsNullOrWhiteSpace(_dashboard.PendingPaymentsCurrency)
-                        ? ""
-                        : _dashboard.PendingPaymentsCurrency.ToUpperInvariant();
-                    _pendingPaymentDisplay = $"{_dashboard.PendingPaymentsAmount:N0} {currency}".Trim();
+                    // Un total par devise : additionner des offres en CAD et en XAF donnerait un
+                    // montant faux, affiché dans la devise du premier paiement.
+                    _pendingPaymentDisplay = MoneyTotals.Format(_dashboard.PendingPaymentsTotals ?? []);
                     _nextPaymentDisplay = _pendingPaymentDisplay;
                     _subscriptionPlan = _pendingPaymentsCount > 1
                         ? $"{_pendingPaymentsCount} factures en attente"

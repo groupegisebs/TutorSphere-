@@ -141,9 +141,11 @@ public class TenantService : ITenantService
         var now = DateTime.UtcNow;
         var monthStart = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        var revenue = _db.Payments
+        var monthPayments = _db.Payments
             .Where(p => p.TenantId == tenantId && p.Status == PaymentStatus.Completed && p.CompletedAt >= monthStart)
-            .Sum(p => (decimal?)p.TutorAmount) ?? 0m;
+            .Select(p => new { p.TutorAmount, p.Currency })
+            .ToList();
+        var revenue = MoneyTotals.Group(monthPayments, p => p.TutorAmount, p => p.Currency);
 
         var activeStudents = _db.Students.Count(s => s.TenantId == tenantId && s.IsActive);
         var activeSubscriptions = _db.StudentSubscriptions.Count(s =>
@@ -153,7 +155,7 @@ public class TenantService : ITenantService
             p.TenantId == tenantId && p.Status == PaymentStatus.Pending);
 
         return Task.FromResult(new TenantDashboardDto(
-            revenue, activeStudents, activeSubscriptions, upcomingLessons, pendingPayments));
+            activeStudents, activeSubscriptions, upcomingLessons, pendingPayments, revenue));
     }
 
     public Task<TutorProfileDto?> GetProfileAsync(Guid tenantId, CancellationToken ct = default)

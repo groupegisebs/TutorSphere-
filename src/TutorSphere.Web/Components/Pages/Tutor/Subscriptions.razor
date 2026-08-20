@@ -45,15 +45,17 @@
                     <span class="ts-kpi-label">@L["TutorSubs_StatusPending"]</span>
                 </div>
     </div>
+    @* Chaque plan a sa devise : additionner les abonnements actifs et coller l'étiquette du
+       premier plan donnait un montant faux dans une devise arbitraire. *@
     <div class="col-6 col-lg-3">
         <div class="ts-kpi-card">
-            <span class="ts-kpi-val">@_subs.Where(s => IsActiveStatus(s.Status)).Sum(s => s.Amount).ToString("N0") @DisplayCurrencyLabel</span>
+            <span class="ts-kpi-val">@FormatByCurrency(ActiveTotals)</span>
             <span class="ts-kpi-label">@L["TutorSubs_MRR"]</span>
         </div>
     </div>
     <div class="col-6 col-lg-3">
         <div class="ts-kpi-card">
-            <span class="ts-kpi-val">@AvgActiveAmount().ToString("N0") @DisplayCurrencyLabel</span>
+            <span class="ts-kpi-val">@FormatByCurrency(AverageActiveTotals)</span>
             <span class="ts-kpi-label">@L["TutorSubs_AvgAmount"]</span>
         </div>
     </div>
@@ -218,7 +220,8 @@
                             <small class="text-muted">@(string.IsNullOrWhiteSpace(s.ParentName) ? "—" : s.ParentName)</small>
                         </td>
                         <td><span class="ts-badge ts-badge-neutral">@s.PlanName</span></td>
-                        <td class="fw-semibold">@s.Amount.ToString("N2") @DisplayCurrencyLabel</td>
+                        @* La devise de l'abonnement lui-même, non celle du premier plan de la liste. *@
+                        <td class="fw-semibold">@s.Amount.ToString("N2") @GroupOfferCurrencyRules.FormatCurrencyLabel(s.Currency)</td>
                         <td>@s.ExpiresAt.ToString("dd/MM/yyyy")
                             @if (s.ExpiresAt <= DateTime.Today.AddDays(14) && IsActiveStatus(s.Status))
                             {
@@ -293,18 +296,25 @@
     private bool IsInternational => string.Equals(_scope, "international", StringComparison.OrdinalIgnoreCase);
     private string PreviewCurrencyLabel => GroupOfferCurrencyRules.FormatCurrencyLabel(
         GroupOfferCurrencyRules.ResolveOfferCurrency(IsInternational, _marketCountry, _teacherCountry));
-    private string DisplayCurrencyLabel => _plans.Count > 0
-        ? GroupOfferCurrencyRules.FormatCurrencyLabel(_plans[0].Currency)
-        : PreviewCurrencyLabel;
 
     private static bool IsActiveStatus(string status) =>
         status is "Active" or "Actif";
 
-    private decimal AvgActiveAmount()
-    {
-        var active = _subs.Where(s => IsActiveStatus(s.Status)).ToList();
-        return active.Count > 0 ? Math.Round(active.Average(s => s.Amount), 0) : 0;
-    }
+    private IReadOnlyList<MoneyTotal> ActiveTotals =>
+        MoneyTotals.Group(
+            _subs.Where(s => IsActiveStatus(s.Status)),
+            s => s.Amount,
+            s => s.Currency);
+
+    /// <summary>Moyenne calculée devise par devise, le nombre d'abonnements servant de diviseur.</summary>
+    private IReadOnlyList<MoneyTotal> AverageActiveTotals =>
+        [.. ActiveTotals.Select(t => t with
+        {
+            Amount = t.Count > 0 ? decimal.Round(t.Amount / t.Count, 0, MidpointRounding.AwayFromZero) : 0m
+        })];
+
+    private static string FormatByCurrency(IReadOnlyList<MoneyTotal> totals) =>
+        totals.Count == 0 ? "—" : MoneyTotals.Format(totals);
 
     private static string SubBadge(string s) => s switch {
         "Active" or "Actif" => "ts-badge-success",
@@ -435,6 +445,7 @@
         ParentName = s.ParentName ?? "",
         PlanName = s.OfferingTitle,
         Amount = s.Price,
+        Currency = MoneyTotals.NormalizeCurrency(s.Currency),
         ExpiresAt = s.EndDate.Kind == DateTimeKind.Utc ? s.EndDate.ToLocalTime().Date : s.EndDate.Date,
         Status = s.Status
     };
@@ -622,7 +633,8 @@
         string OfferingTitle,
         decimal Price,
         string Status,
-        DateTime EndDate);
+        DateTime EndDate,
+        string? Currency = null);
 
     private class PlanVM
     {
@@ -644,6 +656,9 @@
         public string ParentName { get; set; } = "";
         public string PlanName { get; set; } = "";
         public decimal Amount { get; set; }
+
+        /// <summary>Devise de l'offre souscrite : elle varie d'un plan à l'autre.</summary>
+        public string Currency { get; set; } = MoneyTotals.FallbackCurrency;
         public DateTime ExpiresAt { get; set; }
         public string Status { get; set; } = "Active";
     }

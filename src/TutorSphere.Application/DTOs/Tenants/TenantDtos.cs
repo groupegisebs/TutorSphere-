@@ -24,12 +24,16 @@ public record TenantDto(
     string Currency,
     string Language);
 
+/// <param name="MonthlyRevenueTotals">
+/// Recette du mois, un total par devise. Un enseignant peut vendre une offre locale en XAF et une
+/// offre internationale en CAD : un montant scalaire unique mélangerait les deux.
+/// </param>
 public record TenantDashboardDto(
-    decimal MonthlyRevenue,
     int ActiveStudents,
     int ActiveSubscriptions,
     int UpcomingLessons,
-    int PendingPayments);
+    int PendingPayments,
+    IReadOnlyList<Common.MoneyTotal> MonthlyRevenueTotals);
 
 public record TutorProfileDto(
     Guid Id,

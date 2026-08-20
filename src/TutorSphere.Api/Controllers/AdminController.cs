@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using System.Security.Claims;
+using TutorSphere.Application.Common;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.Admin;
 using TutorSphere.Application.DTOs.PlatformPromo;
@@ -875,33 +876,39 @@ public class AdminController : ControllerBase
             .Select(p => new { p.Amount, p.Currency, At = p.CompletedAt ?? p.CreatedAt })
             .ToListAsync(ct);
 
-        var monthRevenue = monthPayments.Sum(p => p.Amount) + monthLicenses.Sum(p => p.Amount);
-        var monthCurrency = monthPayments.Select(p => p.Currency)
-            .Concat(monthLicenses.Select(p => p.Currency))
-            .GroupBy(c => c)
-            .OrderByDescending(g => g.Count())
-            .Select(g => g.Key)
-            .FirstOrDefault() ?? "CAD";
+        // Abonnements en CAD, XAF ou EUR et licences en USD : un total unique additionnerait des
+        // devises sans rapport. Chaque devise garde donc sa ligne, et sa propre répartition.
+        List<MoneyTotal> monthRevenue = [.. MoneyTotals.Group(
+            monthPayments.Select(p => (p.Amount, p.Currency))
+                .Concat(monthLicenses.Select(p => (p.Amount, p.Currency))),
+            x => x.Amount,
+            x => x.Currency)];
 
-        var subRevenue = monthPayments.Where(p => p.SubscriptionId != null).Sum(p => p.Amount);
-        var licenseRevenue = monthLicenses.Sum(p => p.Amount);
-        var otherRevenue = monthPayments.Where(p => p.SubscriptionId == null).Sum(p => p.Amount);
-        var paymentBreakdown = new List<AdminPaymentSliceDto>();
-        if (monthRevenue > 0)
-        {
-            void AddSlice(string label, decimal amount)
+        var slicesByCurrency = new[]
             {
-                if (amount <= 0) return;
-                paymentBreakdown.Add(new AdminPaymentSliceDto(
-                    label,
-                    amount,
-                    Math.Round(amount * 100m / monthRevenue, 1)));
+                ("Abonnements", monthPayments.Where(p => p.SubscriptionId != null)
+                    .Select(p => (p.Amount, p.Currency))),
+                ("Licences plateforme", monthLicenses.Select(p => (p.Amount, p.Currency))),
+                ("Autres", monthPayments.Where(p => p.SubscriptionId == null)
+                    .Select(p => (p.Amount, p.Currency)))
             }
+            .SelectMany(entry => MoneyTotals
+                .Group(entry.Item2, x => x.Amount, x => x.Currency)
+                .Select(total => (entry.Item1, Total: total)))
+            .Where(x => x.Total.Amount > 0)
+            .ToList();
 
-            AddSlice("Abonnements", subRevenue);
-            AddSlice("Licences plateforme", licenseRevenue);
-            AddSlice("Autres", otherRevenue);
-        }
+        // Le pourcentage se lit dans sa devise : « 60 % des CAD », non « 60 % de tout ».
+        var totalByCurrency = monthRevenue.ToDictionary(t => t.Currency, t => t.Amount);
+        var paymentBreakdown = slicesByCurrency
+            .Select(x => new AdminPaymentSliceDto(
+                x.Item1,
+                x.Total.Amount,
+                totalByCurrency.TryGetValue(x.Total.Currency, out var currencyTotal) && currencyTotal > 0
+                    ? Math.Round(x.Total.Amount * 100m / currencyTotal, 1)
+                    : 0m,
+                x.Total.Currency))
+            .ToList();
 
         var schoolCreated = await _db.Tenants.AsNoTracking()
             .Where(t => t.CreatedAt >= day30)
@@ -970,7 +977,6 @@ public class AdminController : ControllerBase
             topSchools,
             recentUsers,
             monthRevenue,
-            monthCurrency,
             liveLessons,
             activeSubscriptions,
             dailySignups,
@@ -1168,8 +1174,7 @@ public sealed record AdminStatsDto(
     List<AdminCountryStatDto> Countries,
     List<AdminTopSchoolDto> TopSchools,
     List<AdminRecentUserDto> RecentUsers,
-    decimal MonthRevenue = 0,
-    string MonthCurrency = "CAD",
+    List<MoneyTotal>? MonthRevenueTotals = null,
     int LiveLessons = 0,
     int ActiveSubscriptions = 0,
     List<AdminDailyCountDto>? DailySignups = null,
@@ -1177,7 +1182,9 @@ public sealed record AdminStatsDto(
     List<AdminActivityItemDto>? RecentActivity = null);
 
 public sealed record AdminDailyCountDto(DateTime Date, int Count);
-public sealed record AdminPaymentSliceDto(string Label, decimal Amount, decimal Percent);
+
+/// <summary>Part d'une catégorie de recette, dans une devise donnée. Le pourcentage porte sur cette devise seule.</summary>
+public sealed record AdminPaymentSliceDto(string Label, decimal Amount, decimal Percent, string Currency);
 public sealed record AdminActivityItemDto(string Title, string Detail, DateTime At, string Color);
 public sealed record AdminHealthCheckDto(string Name, bool Ok, string Detail, string Latency);
 public sealed record AdminHealthDto(bool Healthy, DateTime CheckedAt, List<AdminHealthCheckDto> Checks);

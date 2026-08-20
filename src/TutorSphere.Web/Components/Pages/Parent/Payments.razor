@@ -28,16 +28,18 @@
 }
 else
 {
+    @* Un compteur par devise : les enfants peuvent suivre des offres de pays différents, et le
+       symbole « $ » codé en dur affichait des francs CFA comme des dollars. *@
     <div class="row g-3 mb-4">
         <div class="col-6 col-lg-3">
             <div class="ts-kpi-card ts-kpi-card--success">
-                <span class="ts-kpi-val">@PaidTotal.ToString("N2") $</span>
+                <span class="ts-kpi-val">@FormatTotals(PaidTotals)</span>
                 <span class="ts-kpi-label">Total payé</span>
             </div>
         </div>
         <div class="col-6 col-lg-3">
             <div class="ts-kpi-card ts-kpi-card--warning">
-                <span class="ts-kpi-val">@PendingTotal.ToString("N2") $</span>
+                <span class="ts-kpi-val">@FormatTotals(PendingTotals)</span>
                 <span class="ts-kpi-label">En attente</span>
             </div>
         </div>
@@ -123,11 +125,19 @@ else
     private Guid? _downloadingId;
     private List<ParentPaymentVm> _payments = [];
 
-    private decimal PaidTotal =>
-        _payments.Where(p => p.Status is "Completed").Sum(p => p.Amount);
+    private IReadOnlyList<MoneyTotal> PaidTotals => TotalsFor("Completed");
 
-    private decimal PendingTotal =>
-        _payments.Where(p => p.Status is "Pending").Sum(p => p.Amount);
+    private IReadOnlyList<MoneyTotal> PendingTotals => TotalsFor("Pending");
+
+    private IReadOnlyList<MoneyTotal> TotalsFor(string status) =>
+        MoneyTotals.Group(
+            _payments.Where(p => p.Status == status),
+            p => p.Amount,
+            p => p.Currency);
+
+    /// <summary>Le tiret cadratin plutôt qu'un zéro : aucun paiement n'est pas un montant nul.</summary>
+    private static string FormatTotals(IReadOnlyList<MoneyTotal> totals) =>
+        totals.Count == 0 ? "—" : MoneyTotals.Format(totals, "N2");
 
     private static string StatusLabel(string status) => status switch
     {

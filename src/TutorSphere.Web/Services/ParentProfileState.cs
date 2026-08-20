@@ -1,3 +1,5 @@
+using TutorSphere.Application.Common;
+
 namespace TutorSphere.Web.Services;
 
 /// <summary>
@@ -15,8 +17,12 @@ public sealed class ParentProfileState
     public string? Country { get; private set; }
     public int UnreadMessagesCount { get; private set; }
     public int PendingPaymentsCount { get; private set; }
-    public decimal PendingPaymentsAmount { get; private set; }
-    public string? PendingPaymentsCurrency { get; private set; }
+
+    /// <summary>Un total par devise : les offres d'une même famille peuvent être libellées différemment.</summary>
+    public IReadOnlyList<MoneyTotal> PendingPaymentsTotals { get; private set; } = [];
+
+    /// <summary>Rendu prêt à afficher, par exemple « 120 CAD + 45 000 XAF ».</summary>
+    public string PendingPaymentsDisplay => MoneyTotals.Format(PendingPaymentsTotals);
 
     public ParentProfileState(ApiClient api, AuthService auth)
     {
@@ -66,8 +72,7 @@ public sealed class ParentProfileState
             Country = profile.Country;
             UnreadMessagesCount = profile.UnreadMessagesCount;
             PendingPaymentsCount = profile.PendingPaymentsCount;
-            PendingPaymentsAmount = profile.PendingPaymentsAmount;
-            PendingPaymentsCurrency = profile.PendingPaymentsCurrency;
+            PendingPaymentsTotals = profile.PendingPaymentsTotals ?? [];
         }
         else if (!string.IsNullOrWhiteSpace(_auth.UserName))
         {
@@ -91,6 +96,5 @@ public sealed class ParentProfileState
         string? PhotoUrl = null,
         string? Country = null,
         int PendingPaymentsCount = 0,
-        decimal PendingPaymentsAmount = 0,
-        string? PendingPaymentsCurrency = null);
+        IReadOnlyList<MoneyTotal>? PendingPaymentsTotals = null);
 }

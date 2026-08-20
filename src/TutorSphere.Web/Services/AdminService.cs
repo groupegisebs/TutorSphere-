@@ -1,3 +1,5 @@
+using TutorSphere.Application.Common;
+
 namespace TutorSphere.Web.Services;
 
 public sealed class AdminService
@@ -462,16 +464,20 @@ public sealed record AdminStats(
     List<AdminCountryStat>? Countries = null,
     List<AdminTopSchool>? TopSchools = null,
     List<AdminRecentUser>? RecentUsers = null,
-    decimal MonthRevenue = 0,
-    string MonthCurrency = "CAD",
+    List<MoneyTotal>? MonthRevenueTotals = null,
     int LiveLessons = 0,
     int ActiveSubscriptions = 0,
     List<AdminDailyCount>? DailySignups = null,
     List<AdminPaymentSlice>? PaymentBreakdown = null,
-    List<AdminActivityItem>? RecentActivity = null);
+    List<AdminActivityItem>? RecentActivity = null)
+{
+    /// <summary>Recette du mois, une ligne par devise (« 1 200 CAD + 450 000 XAF »).</summary>
+    public string MonthRevenueDisplay =>
+        MonthRevenueTotals is { Count: > 0 } totals ? MoneyTotals.Format(totals) : "—";
+}
 
 public sealed record AdminDailyCount(DateTime Date, int Count);
-public sealed record AdminPaymentSlice(string Label, decimal Amount, decimal Percent);
+public sealed record AdminPaymentSlice(string Label, decimal Amount, decimal Percent, string Currency = "CAD");
 public sealed record AdminActivityItem(string Title, string Detail, DateTime At, string Color);
 public sealed record AdminHealthCheck(string Name, bool Ok, string Detail, string Latency);
 public sealed record AdminHealth(bool Healthy, DateTime CheckedAt, List<AdminHealthCheck> Checks);

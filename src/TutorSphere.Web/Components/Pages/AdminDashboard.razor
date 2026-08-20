@@ -151,7 +151,8 @@
                     <div class="cc-mini-stat">
                         <div class="cc-mini-stat-label">Revenu (ce mois)</div>
                         <div class="cc-mini-stat-row">
-                            <span class="cc-mini-stat-value money">@_stats.MonthRevenue.ToString("N0") @_stats.MonthCurrency</span>
+                            @* Une ligne par devise : abonnements et licences ne sont pas libellés pareil. *@
+                            <span class="cc-mini-stat-value money">@_stats.MonthRevenueDisplay</span>
                         </div>
                     </div>
                 </div>
@@ -234,16 +235,18 @@
                         <div class="cc-donut-wrap">
                             <div class="cc-donut">
                                 <div class="cc-donut-center">
-                                    <strong>@_stats.MonthRevenue.ToString("N0") @_stats.MonthCurrency</strong>
+                                    <strong>@_stats.MonthRevenueDisplay</strong>
                                     Total
                                 </div>
                             </div>
+                            @* Le pourcentage porte sur sa devise : additionner les parts de devises
+                               différentes ferait un camembert qui ne boucle pas à 100 %. *@
                             <ul class="cc-legend">
                                 @foreach (var s in slices)
                                 {
                                     <li>
                                         <span class="cc-dot" style="background:@SliceColor(s.Label);"></span>
-                                        @s.Label @s.Percent.ToString("0.#")% · @s.Amount.ToString("N0")
+                                        @s.Label @s.Percent.ToString("0.#")% · @s.Amount.ToString("N0") @s.Currency
                                     </li>
                                 }
                             </ul>

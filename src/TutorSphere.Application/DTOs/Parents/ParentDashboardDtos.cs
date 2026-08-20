@@ -1,3 +1,5 @@
+using TutorSphere.Application.Common;
+
 namespace TutorSphere.Application.DTOs.Parents;
 
 public record ParentDashboardDto(
@@ -15,8 +17,7 @@ public record ParentDashboardDto(
     IReadOnlyList<ParentDashboardDocumentDto> RecentDocuments,
     IReadOnlyList<ParentDashboardCalendarDayDto> WeekCalendar,
     int PendingPaymentsCount = 0,
-    decimal PendingPaymentsAmount = 0,
-    string? PendingPaymentsCurrency = null);
+    IReadOnlyList<MoneyTotal>? PendingPaymentsTotals = null);
 
 public record ParentDashboardChildDto(
     Guid Id,
