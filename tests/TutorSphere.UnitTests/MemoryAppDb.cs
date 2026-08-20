@@ -96,6 +96,9 @@ internal sealed class MemoryAppDb : IApplicationDbContext
     IQueryable<MeetingActionItem> IApplicationDbContext.MeetingActionItems => None<MeetingActionItem>();
     IQueryable<MeetingNotification> IApplicationDbContext.MeetingNotifications => None<MeetingNotification>();
     IQueryable<MeetingAuditLog> IApplicationDbContext.MeetingAuditLogs => None<MeetingAuditLog>();
+    IQueryable<TeacherContract> IApplicationDbContext.TeacherContracts => None<TeacherContract>();
+    IQueryable<TeacherContractSectionDecision> IApplicationDbContext.TeacherContractSectionDecisions => None<TeacherContractSectionDecision>();
+    IQueryable<TeacherContractAuditEvent> IApplicationDbContext.TeacherContractAuditEvents => None<TeacherContractAuditEvent>();
 
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) => Task.FromResult(0);
 
