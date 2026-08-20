@@ -1,0 +1,155 @@
+@using TutorSphere.Application.DTOs.ExpertApproval
+@inject ApiClient Api
+@inject IJSRuntime JS
+
+<div class="ex-invite-link">
+    <p class="small text-muted mb-3">
+        Générez un lien unique et partagez-le (WhatsApp, SMS, e-mail).
+        Plusieurs enseignants peuvent s’inscrire tant que le lien n’est pas expiré.
+    </p>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="alert alert-danger py-2">@_error</div>
+    }
+    @if (!string.IsNullOrEmpty(_copied))
+    {
+        <div class="alert alert-success py-2">@_copied</div>
+    }
+
+    <label class="form-label">Message personnel (optionnel)</label>
+    <textarea class="form-control mb-3" rows="2" @bind="_personal"
+              placeholder="Une phrase d’accueil, le nom de l’établissement, une date de rentrée…"></textarea>
+
+    @if (_link is null)
+    {
+        <button type="button" class="cc-btn cc-btn-primary" disabled="@_busy" @onclick="() => GenerateAsync(rotate: true)">
+            @if (_busy) { <span class="spinner-border spinner-border-sm me-1"></span> }
+            <i class="bi bi-link-45deg"></i> Générer un lien unique
+        </button>
+    }
+    else
+    {
+        <div class="ex-invite-link-box mb-3">
+            <div class="d-flex justify-content-between flex-wrap gap-2 mb-2">
+                <strong>Lien d’inscription</strong>
+                <span class="small text-muted">Valable jusqu’au @_link.ExpiresAt.ToLocalTime().ToString("dd/MM/yyyy")</span>
+            </div>
+            <div class="input-group mb-3">
+                <input class="form-control" readonly value="@_link.ApplyUrl" />
+                <button type="button" class="cc-btn" @onclick="CopyLinkAsync">
+                    <i class="bi bi-clipboard"></i> Copier
+                </button>
+            </div>
+
+            <label class="form-label">Message à partager</label>
+            <textarea class="form-control mb-2" rows="10" readonly>@_link.ShareMessage</textarea>
+            <div class="d-flex flex-wrap gap-2">
+                <button type="button" class="cc-btn cc-btn-primary" @onclick="CopyMessageAsync">
+                    <i class="bi bi-clipboard-check"></i> Copier le message
+                </button>
+                <a class="cc-btn" href="@WhatsAppHref" target="_blank" rel="noopener">
+                    <i class="bi bi-whatsapp"></i> WhatsApp
+                </a>
+                <a class="cc-btn" href="@MailtoHref">
+                    <i class="bi bi-envelope"></i> E-mail
+                </a>
+            </div>
+        </div>
+        <button type="button" class="cc-btn" disabled="@_busy" @onclick="() => GenerateAsync(rotate: true)">
+            @if (_busy) { <span class="spinner-border spinner-border-sm me-1"></span> }
+            Générer un nouveau lien
+        </button>
+        <p class="form-text mb-0">Un nouveau lien remplace l’ancien. Les enseignants déjà inscrits ne sont pas concernés.</p>
+    }
+</div>
+
+@code {
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private bool _busy;
+    private string _personal = "";
+    private string? _error;
+    private string? _copied;
+    private TeacherInviteLinkResponse? _link;
+
+    private string WhatsAppHref =>
+        _link is null ? "#" : "https://wa.me/?text=" + Uri.EscapeDataString(_link.ShareMessage);
+
+    private string MailtoHref
+    {
+        get
+        {
+            if (_link is null) return "#";
+            var subject = Uri.EscapeDataString("Invitation à rejoindre TutorSphere en tant qu’enseignant");
+            var body = Uri.EscapeDataString(_link.ShareMessage);
+            return $"mailto:?subject={subject}&body={body}";
+        }
+    }
+
+    protected override async Task OnInitializedAsync() => await LoadExistingAsync();
+
+    private async Task LoadExistingAsync()
+    {
+        var result = await Api.GetWithErrorAsync<TeacherInviteLinkResponse>("api/expert/invite-link");
+        if (result.Value is not null)
+        {
+            _link = result.Value;
+            if (string.IsNullOrWhiteSpace(_personal) && !string.IsNullOrWhiteSpace(_link.PersonalMessage))
+                _personal = _link.PersonalMessage;
+        }
+    }
+
+    private async Task GenerateAsync(bool rotate)
+    {
+        _busy = true;
+        _error = _copied = null;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<TeacherInviteLinkResponse>("api/expert/invite-link", new
+            {
+                personalMessage = string.IsNullOrWhiteSpace(_personal) ? null : _personal.Trim(),
+                rotate
+            });
+            if (result.Error is not null)
+            {
+                _error = result.Error;
+                return;
+            }
+            _link = result.Value;
+            if (_link is not null)
+                _copied = _link.IsNew ? "Lien unique créé. Copiez le message et partagez-le." : "Lien actuel prêt à partager.";
+            if (OnChanged.HasDelegate)
+                await OnChanged.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally { _busy = false; }
+    }
+
+    private Task CopyLinkAsync() =>
+        _link is null
+            ? Task.CompletedTask
+            : CopyAsync(_link.ApplyUrl, "Lien copié.");
+
+    private Task CopyMessageAsync() =>
+        _link is null
+            ? Task.CompletedTask
+            : CopyAsync(_link.ShareMessage, "Message copié — vous pouvez le coller dans WhatsApp, SMS ou e-mail.");
+
+    private async Task CopyAsync(string text, string ok)
+    {
+        _error = null;
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+            _copied = ok;
+        }
+        catch
+        {
+            _error = "Impossible de copier automatiquement. Sélectionnez le texte et copiez-le.";
+        }
+    }
+}

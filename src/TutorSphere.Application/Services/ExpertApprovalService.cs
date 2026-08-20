@@ -72,6 +72,17 @@ public interface IExpertApprovalService
         CancellationToken ct = default,
         bool asPlatformAdmin = false,
         Guid? actAsGroupId = null);
+    Task<TeacherInviteLinkResponse> CreateTeacherInviteLinkAsync(
+        string expertUserId,
+        CreateTeacherInviteLinkRequest request,
+        CancellationToken ct = default,
+        bool asPlatformAdmin = false,
+        Guid? actAsGroupId = null);
+    Task<TeacherInviteLinkResponse?> GetActiveTeacherInviteLinkAsync(
+        string expertUserId,
+        CancellationToken ct = default,
+        bool asPlatformAdmin = false,
+        Guid? actAsGroupId = null);
     Task<IReadOnlyList<TeacherApplicationInviteDto>> ListInvitesForExpertAsync(string expertUserId, CancellationToken ct = default);
     Task MarkInviteAcceptedAsync(string email, Guid tenantId, string? inviteToken = null, CancellationToken ct = default);
     Task SyncInviteStatusForTenantAsync(Guid tenantId, CancellationToken ct = default);
@@ -735,6 +746,158 @@ public class ExpertApprovalService(
             ct);
     }
 
+    public Task<TeacherInviteLinkResponse> CreateTeacherInviteLinkAsync(
+        string expertUserId,
+        CreateTeacherInviteLinkRequest request,
+        CancellationToken ct = default,
+        bool asPlatformAdmin = false,
+        Guid? actAsGroupId = null)
+        => UpsertOpenInviteLinkAsync(expertUserId, request, rotate: request.Rotate, ct, asPlatformAdmin, actAsGroupId);
+
+    public Task<TeacherInviteLinkResponse?> GetActiveTeacherInviteLinkAsync(
+        string expertUserId,
+        CancellationToken ct = default,
+        bool asPlatformAdmin = false,
+        Guid? actAsGroupId = null)
+        => TryGetOpenInviteLinkAsync(expertUserId, ct, asPlatformAdmin, actAsGroupId);
+
+    private async Task<(Guid GroupId, string GroupName, string ExpertName)> ResolveInviteGroupAsync(
+        string expertUserId,
+        bool asPlatformAdmin,
+        Guid? actAsGroupId,
+        CancellationToken ct)
+    {
+        Guid membership;
+        if (asPlatformAdmin && actAsGroupId is Guid actGid)
+        {
+            membership = actGid;
+        }
+        else
+        {
+            membership = db.ExpertGroupMembers
+                .Where(m => m.UserId == expertUserId && m.Status == ExpertMembershipStatus.Active)
+                .Select(m => m.ExpertGroupId)
+                .FirstOrDefault();
+        }
+        if (membership == Guid.Empty)
+            throw new InvalidOperationException("Vous n'êtes membre d'aucun groupe d'experts.");
+
+        var group = db.ExpertGroups.FirstOrDefault(g => g.Id == membership && g.IsActive)
+            ?? db.ExpertGroups.FirstOrDefault(g => g.Id == membership)
+            ?? throw new InvalidOperationException("Groupe d'experts introuvable.");
+
+        var expertContact = await contacts.GetAsync(expertUserId, ct);
+        var expertName = string.IsNullOrWhiteSpace(expertContact?.DisplayName)
+            ? "un expert TutorSphere"
+            : expertContact!.Value.DisplayName;
+        return (group.Id, group.Name, expertName);
+    }
+
+    private async Task<TeacherInviteLinkResponse?> TryGetOpenInviteLinkAsync(
+        string expertUserId,
+        CancellationToken ct,
+        bool asPlatformAdmin,
+        Guid? actAsGroupId)
+    {
+        var (groupId, groupName, expertName) = await ResolveInviteGroupAsync(
+            expertUserId, asPlatformAdmin, actAsGroupId, ct);
+        var now = DateTime.UtcNow;
+        var invite = db.TeacherApplicationInvites
+            .Where(i => i.ExpertGroupId == groupId
+                        && i.Email == ""
+                        && i.Status == TeacherApplicationInviteStatus.Sent
+                        && (i.ExpiresAt == null || i.ExpiresAt > now))
+            .OrderByDescending(i => i.SentAt)
+            .FirstOrDefault();
+        if (invite is null)
+            return null;
+        return BuildLinkResponse(invite, groupName, expertName, isNew: false);
+    }
+
+    private async Task<TeacherInviteLinkResponse> UpsertOpenInviteLinkAsync(
+        string expertUserId,
+        CreateTeacherInviteLinkRequest request,
+        bool rotate,
+        CancellationToken ct,
+        bool asPlatformAdmin,
+        Guid? actAsGroupId)
+    {
+        var (groupId, groupName, expertName) = await ResolveInviteGroupAsync(
+            expertUserId, asPlatformAdmin, actAsGroupId, ct);
+
+        var now = DateTime.UtcNow;
+        var personal = string.IsNullOrWhiteSpace(request.PersonalMessage)
+            ? null
+            : request.PersonalMessage.Trim();
+
+        var existing = db.TeacherApplicationInvites
+            .Where(i => i.ExpertGroupId == groupId
+                        && i.Email == ""
+                        && i.Status == TeacherApplicationInviteStatus.Sent
+                        && (i.ExpiresAt == null || i.ExpiresAt > now))
+            .OrderByDescending(i => i.SentAt)
+            .FirstOrDefault();
+
+        if (existing is not null && !rotate)
+        {
+            if (personal is not null)
+            {
+                existing.PersonalMessage = personal;
+                existing.UpdatedAt = now;
+                await db.SaveChangesAsync(ct);
+            }
+            return BuildLinkResponse(existing, groupName, expertName, isNew: false);
+        }
+
+        if (existing is not null)
+        {
+            existing.Status = TeacherApplicationInviteStatus.Expired;
+            existing.ExpiresAt = now;
+            existing.UpdatedAt = now;
+        }
+
+        var invite = new TeacherApplicationInvite
+        {
+            Email = "",
+            PersonalMessage = personal,
+            InvitedByUserId = expertUserId,
+            ExpertGroupId = groupId,
+            Token = Guid.NewGuid().ToString("N"),
+            SentAt = now,
+            ExpiresAt = now.AddDays(30),
+            Status = TeacherApplicationInviteStatus.Sent
+        };
+        db.Add(invite);
+        await db.SaveChangesAsync(ct);
+        return BuildLinkResponse(invite, groupName, expertName, isNew: true);
+    }
+
+    private TeacherInviteLinkResponse BuildLinkResponse(
+        TeacherApplicationInvite invite,
+        string groupName,
+        string expertName,
+        bool isNew)
+    {
+        var applyUrl = $"{urls.WebBaseUrl.TrimEnd('/')}/tutor/apply?invite={Uri.EscapeDataString(invite.Token)}";
+        var note = string.IsNullOrWhiteSpace(invite.PersonalMessage)
+            ? ""
+            : $"\n{invite.PersonalMessage.Trim()}\n";
+        var share =
+            $"Bonjour,\n\n" +
+            $"Le groupe d’experts « {groupName} » vous invite à rejoindre TutorSphere en tant qu’enseignant.\n" +
+            $"Créez votre profil (matières, disponibilités, tarifs) — c’est simple et cela ne prend que quelques minutes.{note}\n" +
+            $"👉 Lien d’inscription unique :\n{applyUrl}\n\n" +
+            $"Nous serons ravis de vous accueillir.\n" +
+            $"{expertName} — {groupName}";
+        return new TeacherInviteLinkResponse(
+            invite.Id,
+            applyUrl,
+            share,
+            invite.ExpiresAt ?? DateTime.UtcNow.AddDays(30),
+            isNew,
+            invite.PersonalMessage);
+    }
+
     public async Task<IReadOnlyList<TeacherApplicationInviteDto>> ListInvitesForExpertAsync(
         string expertUserId,
         CancellationToken ct = default)
@@ -779,7 +942,7 @@ public class ExpertApprovalService(
             var inviter = await contacts.GetAsync(invite.InvitedByUserId, ct);
             result.Add(new TeacherApplicationInviteDto(
                 invite.Id,
-                invite.Email,
+                string.IsNullOrWhiteSpace(invite.Email) ? "Lien unique" : invite.Email,
                 invite.FirstName,
                 invite.Status,
                 invite.SentAt,
@@ -821,6 +984,10 @@ public class ExpertApprovalService(
         }
 
         if (invite is null)
+            return;
+
+        // Lien ouvert (sans e-mail) : reste valable jusqu'à expiration, plusieurs inscriptions.
+        if (string.IsNullOrWhiteSpace(invite.Email))
             return;
 
         invite.AcceptedTenantId = tenantId;

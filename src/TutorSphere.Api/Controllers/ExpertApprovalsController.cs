@@ -330,6 +330,48 @@ public class ExpertApprovalsController : ControllerBase
         }
     }
 
+    [HttpGet("invite-link")]
+    public async Task<ActionResult<TeacherInviteLinkResponse>> GetInviteLink(CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+
+        try
+        {
+            var asPlatform = _groupAccess.IsPlatformAdmin(User) && ActAsGroupId.HasValue;
+            var link = await _approvals.GetActiveTeacherInviteLinkAsync(
+                UserId, ct, asPlatformAdmin: asPlatform, actAsGroupId: ActAsGroupId);
+            return link is null ? NotFound() : Ok(link);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("invite-link")]
+    public async Task<ActionResult<TeacherInviteLinkResponse>> CreateInviteLink(
+        [FromBody] CreateTeacherInviteLinkRequest? request,
+        CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+
+        try
+        {
+            var asPlatform = _groupAccess.IsPlatformAdmin(User) && ActAsGroupId.HasValue;
+            var link = await _approvals.CreateTeacherInviteLinkAsync(
+                UserId,
+                request ?? new CreateTeacherInviteLinkRequest(),
+                ct,
+                asPlatformAdmin: asPlatform,
+                actAsGroupId: ActAsGroupId);
+            return Ok(link);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
+        }
+    }
+
     [HttpPost("register-teacher")]
     public async Task<ActionResult<RegisterTeacherByExpertResponse>> RegisterTeacher(
         [FromBody] RegisterTeacherByExpertRequest? request,

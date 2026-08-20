@@ -140,6 +140,18 @@ public record InviteTeacherApplicationRequest(
     string? FirstName = null,
     string? PersonalMessage = null);
 
+public record CreateTeacherInviteLinkRequest(
+    string? PersonalMessage = null,
+    bool Rotate = true);
+
+public record TeacherInviteLinkResponse(
+    Guid InviteId,
+    string ApplyUrl,
+    string ShareMessage,
+    DateTime ExpiresAt,
+    bool IsNew,
+    string? PersonalMessage = null);
+
 /// <summary>Création directe d'un compte enseignant par un expert / admin de groupe.</summary>
 public record RegisterTeacherByExpertRequest(
     /// <summary>E-mail réel de l'enseignant (optionnel) — reçoit les identifiants s'il est renseigné.</summary>

@@ -29,7 +29,7 @@
                     <i class="bi bi-journal-text"></i> Guide d’utilisation
                 </button>
                 <button type="button" class="cc-btn" @onclick="() => _showInvite = !_showInvite">
-                    <i class="bi bi-envelope"></i> Inviter par e-mail
+                    <i class="bi bi-person-plus"></i> Inviter des enseignants
                 </button>
             </div>
         </div>
@@ -63,35 +63,50 @@
         @if (_showInvite)
         {
             <div class="cc-card mb-3">
-                <h2 class="cc-card-title">Invitation par e-mail</h2>
-                <p class="small text-muted">L’enseignant rejoint la file d’approbation après inscription.</p>
-                @if (!string.IsNullOrEmpty(_inviteError))
-                {
-                    <div class="alert alert-danger py-2">@_inviteError</div>
-                }
-                @if (!string.IsNullOrEmpty(_inviteSuccess))
-                {
-                    <div class="alert alert-success py-2">@_inviteSuccess</div>
-                }
-                <div class="row g-2 align-items-end">
-                    <div class="col-md-4">
-                        <label class="form-label">E-mail</label>
-                        <input class="form-control" type="email" @bind="_inviteEmail" />
-                    </div>
-                    <div class="col-md-3">
-                        <label class="form-label">Prénom</label>
-                        <input class="form-control" @bind="_inviteFirstName" />
-                    </div>
-                    <div class="col-md-5">
-                        <label class="form-label">Message</label>
-                        <input class="form-control" @bind="_inviteMessage" />
-                    </div>
-                    <div class="col-12">
-                        <button type="button" class="cc-btn cc-btn-primary" disabled="@_inviteBusy" @onclick="InviteAsync">
-                            Envoyer l’invitation
-                        </button>
-                    </div>
+                <h2 class="cc-card-title">Inviter des enseignants</h2>
+                <div class="ex-invite-tabs mb-3">
+                    <button type="button" class="@(_inviteMode == "email" ? "is-on" : null)" @onclick='() => _inviteMode = "email"'>
+                        <i class="bi bi-envelope"></i> Par e-mail
+                    </button>
+                    <button type="button" class="@(_inviteMode == "link" ? "is-on" : null)" @onclick='() => _inviteMode = "link"'>
+                        <i class="bi bi-link-45deg"></i> Lien unique
+                    </button>
                 </div>
+                @if (_inviteMode == "email")
+                {
+                    <p class="small text-muted">L’enseignant rejoint la file d’approbation après inscription.</p>
+                    @if (!string.IsNullOrEmpty(_inviteError))
+                    {
+                        <div class="alert alert-danger py-2">@_inviteError</div>
+                    }
+                    @if (!string.IsNullOrEmpty(_inviteSuccess))
+                    {
+                        <div class="alert alert-success py-2">@_inviteSuccess</div>
+                    }
+                    <div class="row g-2 align-items-end">
+                        <div class="col-md-4">
+                            <label class="form-label">E-mail</label>
+                            <input class="form-control" type="email" @bind="_inviteEmail" />
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Prénom</label>
+                            <input class="form-control" @bind="_inviteFirstName" />
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label">Message</label>
+                            <input class="form-control" @bind="_inviteMessage" />
+                        </div>
+                        <div class="col-12">
+                            <button type="button" class="cc-btn cc-btn-primary" disabled="@_inviteBusy" @onclick="InviteAsync">
+                                Envoyer l’invitation
+                            </button>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <TeacherInviteLinkPanel OnChanged="ReloadInvitesAsync" />
+                }
             </div>
         }
 
@@ -538,6 +553,7 @@
     private bool _loading = true;
     private bool _busy;
     private bool _showInvite;
+    private string _inviteMode = "email";
     private bool _showGuide;
     private bool _showReject;
     private bool _showInterview;
@@ -684,7 +700,10 @@
                 return;
             }
             if (q.TryGetValue("tab", out tab) && string.Equals(tab.ToString(), "invite", StringComparison.OrdinalIgnoreCase))
+            {
                 _showInvite = true;
+                _inviteMode = "email";
+            }
         }
         catch { }
     }
@@ -915,6 +934,11 @@
         }
         catch (Exception ex) { _inviteError = ex.Message; }
         finally { _inviteBusy = false; }
+    }
+
+    private async Task ReloadInvitesAsync()
+    {
+        _invites = await Api.GetAsync<List<InviteItem>>("api/expert/invitations") ?? _invites;
     }
 
     private static bool CanDecide(int status) => status is 0 or 3 or 4 or 5;

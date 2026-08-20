@@ -1167,7 +1167,7 @@ public class AuthService : IAuthService, ITeacherLoginIssuer
         return new TeacherInviteInfoResponse(
             group.Id,
             group.Name,
-            invite.Email,
+            string.IsNullOrWhiteSpace(invite.Email) ? null : invite.Email,
             firstName,
             invite.PersonalMessage,
             group.ContactName,
@@ -1211,6 +1211,9 @@ public class AuthService : IAuthService, ITeacherLoginIssuer
         }
 
         if (invite is null)
+            return;
+
+        if (string.IsNullOrWhiteSpace(invite.Email))
             return;
 
         invite.AcceptedTenantId = tenantId;

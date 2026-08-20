@@ -53,7 +53,14 @@
                     <strong>@GroupLabel</strong>.
                 </p>
                 <p class="expert-join-meta">
-                    <span><i class="bi bi-envelope"></i> @_invite.Email</span>
+                    @if (!string.IsNullOrWhiteSpace(_invite.Email))
+                    {
+                        <span><i class="bi bi-envelope"></i> @_invite.Email</span>
+                    }
+                    else
+                    {
+                        <span><i class="bi bi-link-45deg"></i> Invitation du groupe</span>
+                    }
                     @if (_invite.ExpiresAt is DateTime exp)
                     {
                         <span><i class="bi bi-hourglass-split"></i> @L["ExpertJoin_Expires", exp.ToLocalTime().ToString("d")]</span>
@@ -103,8 +110,15 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label" for="ta-email">@L["Label_Email"] <span class="text-danger">*</span></label>
-                            <input id="ta-email" class="form-control" value="@_invite.Email" disabled readonly />
-                            <div class="form-text">@L["TeacherApply_EmailLocked"]</div>
+                            @if (EmailLocked)
+                            {
+                                <input id="ta-email" class="form-control" value="@_invite.Email" disabled readonly />
+                                <div class="form-text">@L["TeacherApply_EmailLocked"]</div>
+                            }
+                            else
+                            {
+                                <input id="ta-email" class="form-control" type="email" @bind="_email" autocomplete="email" />
+                            }
                         </div>
                         <div class="col-md-6">
                             <label class="form-label" for="ta-phone">@L["TeacherApply_Phone"]</label>
@@ -430,7 +444,7 @@
                         <dt>@L["Label_FirstName"] / @L["Label_LastName"]</dt>
                         <dd>@_firstName @_lastName</dd>
                         <dt>@L["Label_Email"]</dt>
-                        <dd>@_invite.Email</dd>
+                        <dd>@ApplyEmail</dd>
                         <dt>@L["Expert_RegisterCity"]</dt>
                         <dd>@_city · @CountryDisplay</dd>
                         <dt>@L["TeacherApply_Slug"]</dt>
@@ -481,6 +495,7 @@
 
     private string _firstName = "";
     private string _lastName = "";
+    private string _email = "";
     private DateTime? _birthDate;
     private string? _phone;
     private string _city = "";
@@ -517,6 +532,10 @@
         : string.IsNullOrWhiteSpace(_invite.GroupCountryCode)
             ? _invite.ExpertGroupName
             : $"{_invite.ExpertGroupName} ({_invite.GroupCountryCode})";
+
+    private bool EmailLocked => !string.IsNullOrWhiteSpace(_invite?.Email);
+
+    private string ApplyEmail => EmailLocked ? _invite!.Email!.Trim() : _email.Trim();
 
     private string CountryDisplay
     {
@@ -614,6 +633,7 @@
             {
                 _firstName = _invite.FirstName ?? "";
                 _lastName = _invite.LastName ?? "";
+                _email = _invite.Email ?? "";
                 _city = _invite.City ?? "";
                 _presentation = _invite.Presentation;
                 _language = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName;
@@ -659,6 +679,11 @@
                 || string.IsNullOrWhiteSpace(_city))
             {
                 _error = L["TeacherApply_NeedIdentity"];
+                return;
+            }
+            if (!EmailLocked && (string.IsNullOrWhiteSpace(_email) || !_email.Contains('@', StringComparison.Ordinal)))
+            {
+                _error = "Indiquez une adresse e-mail valide.";
                 return;
             }
         }
@@ -733,7 +758,7 @@
                 Slug: _slug.Trim().ToLowerInvariant(),
                 FirstName: _firstName.Trim(),
                 LastName: _lastName.Trim(),
-                Email: _invite.Email!.Trim(),
+                Email: ApplyEmail,
                 Password: "",
                 City: _city.Trim(),
                 Country: _invite.GroupCountryCode,
