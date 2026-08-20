@@ -162,17 +162,26 @@ public record InviteTeacherApplicationRequest(
     string? FirstName = null,
     string? PersonalMessage = null);
 
+/// <param name="Language">
+/// Langue du message à partager. Le destinataire d'un lien partageable est inconnu du système :
+/// c'est l'expert qui choisit, faute de préférence enregistrée.
+/// </param>
 public record CreateTeacherInviteLinkRequest(
     string? PersonalMessage = null,
-    bool Rotate = true);
+    bool Rotate = true,
+    string? Language = null);
 
+/// <param name="Language">Langue effective du <paramref name="ShareMessage"/>, normalisée.</param>
+/// <param name="EmailSubject">Objet prêt à l'emploi pour un envoi par courriel, dans la même langue.</param>
 public record TeacherInviteLinkResponse(
     Guid InviteId,
     string ApplyUrl,
     string ShareMessage,
     DateTime ExpiresAt,
     bool IsNew,
-    string? PersonalMessage = null);
+    string? PersonalMessage = null,
+    string Language = "fr",
+    string EmailSubject = "");
 
 /// <summary>Création directe d'un compte enseignant par un expert / admin de groupe.</summary>
 public record RegisterTeacherByExpertRequest(

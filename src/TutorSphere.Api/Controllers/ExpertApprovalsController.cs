@@ -330,8 +330,14 @@ public class ExpertApprovalsController : ControllerBase
         }
     }
 
+    /// <param name="language">
+    /// Langue du message à partager. Changer de langue ne doit pas faire tourner le jeton : le
+    /// lien déjà diffusé resterait valable, mais l'expert croirait avoir gardé le même.
+    /// </param>
     [HttpGet("invite-link")]
-    public async Task<ActionResult<TeacherInviteLinkResponse>> GetInviteLink(CancellationToken ct)
+    public async Task<ActionResult<TeacherInviteLinkResponse>> GetInviteLink(
+        CancellationToken ct,
+        [FromQuery] string? language = null)
     {
         if (UserId is null) return Unauthorized();
 
@@ -339,7 +345,7 @@ public class ExpertApprovalsController : ControllerBase
         {
             var asPlatform = _groupAccess.IsPlatformAdmin(User) && ActAsGroupId.HasValue;
             var link = await _approvals.GetActiveTeacherInviteLinkAsync(
-                UserId, ct, asPlatformAdmin: asPlatform, actAsGroupId: ActAsGroupId);
+                UserId, ct, asPlatformAdmin: asPlatform, actAsGroupId: ActAsGroupId, language: language);
             return link is null ? NotFound() : Ok(link);
         }
         catch (InvalidOperationException ex)

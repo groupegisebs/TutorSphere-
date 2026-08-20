@@ -1,3 +1,4 @@
+@using TutorSphere.Application.Common
 @using TutorSphere.Application.DTOs.ExpertApproval
 @inject ApiClient Api
 @inject IJSRuntime JS
@@ -42,10 +43,25 @@
                 </button>
             </div>
 
-            <label class="form-label">Message à partager</label>
+            <div class="d-flex justify-content-between align-items-end flex-wrap gap-2 mb-1">
+                <label class="form-label mb-0" for="invite-share-lang">Message à partager</label>
+                @* La langue du destinataire est inconnue : c'est l'expert qui la choisit, et le
+                   lien reste le même d'une langue à l'autre. *@
+                <div class="d-flex align-items-center gap-2">
+                    <label class="small text-muted mb-0" for="invite-share-lang">Langue</label>
+                    <select id="invite-share-lang" class="form-select form-select-sm ex-invite-lang"
+                            value="@_language" @onchange="OnLanguageChangedAsync" disabled="@_busy">
+                        @* « code » comme nom de variable heurterait la directive Razor @code. *@
+                        @foreach (var lang in SupportedLanguageCodes.All)
+                        {
+                            <option value="@lang">@TeacherInviteShareMessage.LanguageLabel(lang)</option>
+                        }
+                    </select>
+                </div>
+            </div>
             @* Le message d'invitation compte une trentaine de lignes : dix laissaient croire
                qu'il était tronqué. *@
-            <textarea class="form-control mb-2" rows="18" readonly>@_link.ShareMessage</textarea>
+            <textarea class="form-control mb-2" rows="18" readonly dir="@TextDirection">@_link.ShareMessage</textarea>
             <div class="d-flex flex-wrap gap-2">
                 <button type="button" class="cc-btn cc-btn-primary" @onclick="CopyMessageAsync">
                     <i class="bi bi-clipboard-check"></i> Copier le message
@@ -71,9 +87,13 @@
 
     private bool _busy;
     private string _personal = "";
+    private string _language = SupportedLanguageCodes.Default;
     private string? _error;
     private string? _copied;
     private TeacherInviteLinkResponse? _link;
+
+    /// <summary>L'arabe se lit de droite à gauche : sans cela l'aperçu est illisible.</summary>
+    private string TextDirection => _language == SupportedLanguageCodes.Arabic ? "rtl" : "ltr";
 
     private string WhatsAppHref =>
         _link is null ? "#" : "https://wa.me/?text=" + Uri.EscapeDataString(_link.ShareMessage);
@@ -83,7 +103,10 @@
         get
         {
             if (_link is null) return "#";
-            var subject = Uri.EscapeDataString("Invitation à rejoindre TutorSphere en tant qu’enseignant");
+            var subject = Uri.EscapeDataString(
+                string.IsNullOrWhiteSpace(_link.EmailSubject)
+                    ? TeacherInviteShareMessage.Subject(_language)
+                    : _link.EmailSubject);
             var body = Uri.EscapeDataString(_link.ShareMessage);
             return $"mailto:?subject={subject}&body={body}";
         }
@@ -93,13 +116,38 @@
 
     private async Task LoadExistingAsync()
     {
-        var result = await Api.GetWithErrorAsync<TeacherInviteLinkResponse>("api/expert/invite-link");
+        var url = $"api/expert/invite-link?language={Uri.EscapeDataString(_language)}";
+        var result = await Api.GetWithErrorAsync<TeacherInviteLinkResponse>(url);
         if (result.Value is not null)
         {
             _link = result.Value;
+            if (!string.IsNullOrWhiteSpace(_link.Language))
+                _language = _link.Language;
             if (string.IsNullOrWhiteSpace(_personal) && !string.IsNullOrWhiteSpace(_link.PersonalMessage))
                 _personal = _link.PersonalMessage;
         }
+    }
+
+    /// <summary>
+    /// Change la langue du message sans toucher au jeton : le lien déjà diffusé reste valable.
+    /// </summary>
+    private async Task OnLanguageChangedAsync(ChangeEventArgs e)
+    {
+        var picked = e.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(picked) || picked == _language)
+            return;
+
+        _language = SupportedLanguageCodes.Normalize(picked);
+        _error = _copied = null;
+        if (_link is null)
+            return;
+
+        _busy = true;
+        try
+        {
+            await LoadExistingAsync();
+        }
+        finally { _busy = false; }
     }
 
     private async Task GenerateAsync(bool rotate)
@@ -111,7 +159,8 @@
             var result = await Api.PostWithErrorAsync<TeacherInviteLinkResponse>("api/expert/invite-link", new
             {
                 personalMessage = string.IsNullOrWhiteSpace(_personal) ? null : _personal.Trim(),
-                rotate
+                rotate,
+                language = _language
             });
             if (result.Error is not null)
             {
@@ -120,7 +169,11 @@
             }
             _link = result.Value;
             if (_link is not null)
+            {
+                if (!string.IsNullOrWhiteSpace(_link.Language))
+                    _language = _link.Language;
                 _copied = _link.IsNew ? "Lien unique créé. Copiez le message et partagez-le." : "Lien actuel prêt à partager.";
+            }
             if (OnChanged.HasDelegate)
                 await OnChanged.InvokeAsync();
         }

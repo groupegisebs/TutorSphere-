@@ -82,7 +82,8 @@ public interface IExpertApprovalService
         string expertUserId,
         CancellationToken ct = default,
         bool asPlatformAdmin = false,
-        Guid? actAsGroupId = null);
+        Guid? actAsGroupId = null,
+        string? language = null);
     Task<IReadOnlyList<TeacherApplicationInviteDto>> ListInvitesForExpertAsync(string expertUserId, CancellationToken ct = default);
     Task MarkInviteAcceptedAsync(string email, Guid tenantId, string? inviteToken = null, CancellationToken ct = default);
     Task SyncInviteStatusForTenantAsync(Guid tenantId, CancellationToken ct = default);
@@ -766,8 +767,9 @@ public class ExpertApprovalService(
         string expertUserId,
         CancellationToken ct = default,
         bool asPlatformAdmin = false,
-        Guid? actAsGroupId = null)
-        => TryGetOpenInviteLinkAsync(expertUserId, ct, asPlatformAdmin, actAsGroupId);
+        Guid? actAsGroupId = null,
+        string? language = null)
+        => TryGetOpenInviteLinkAsync(expertUserId, ct, asPlatformAdmin, actAsGroupId, language);
 
     private async Task<(Guid GroupId, string GroupName, string ExpertName, bool IsManager)> ResolveInviteGroupAsync(
         string expertUserId,
@@ -809,7 +811,8 @@ public class ExpertApprovalService(
         string expertUserId,
         CancellationToken ct,
         bool asPlatformAdmin,
-        Guid? actAsGroupId)
+        Guid? actAsGroupId,
+        string? language = null)
     {
         var (groupId, groupName, expertName, isManager) = await ResolveInviteGroupAsync(
             expertUserId, asPlatformAdmin, actAsGroupId, ct);
@@ -823,7 +826,7 @@ public class ExpertApprovalService(
             .FirstOrDefault();
         if (invite is null)
             return null;
-        return BuildLinkResponse(invite, groupName, expertName, isNew: false, isManager);
+        return BuildLinkResponse(invite, groupName, expertName, isNew: false, isManager, language);
     }
 
     private async Task<TeacherInviteLinkResponse> UpsertOpenInviteLinkAsync(
@@ -858,7 +861,7 @@ public class ExpertApprovalService(
                 existing.UpdatedAt = now;
                 await db.SaveChangesAsync(ct);
             }
-            return BuildLinkResponse(existing, groupName, expertName, isNew: false, isManager);
+            return BuildLinkResponse(existing, groupName, expertName, isNew: false, isManager, request.Language);
         }
 
         if (existing is not null)
@@ -881,7 +884,7 @@ public class ExpertApprovalService(
         };
         db.Add(invite);
         await db.SaveChangesAsync(ct);
-        return BuildLinkResponse(invite, groupName, expertName, isNew: true, isManager);
+        return BuildLinkResponse(invite, groupName, expertName, isNew: true, isManager, request.Language);
     }
 
     private TeacherInviteLinkResponse BuildLinkResponse(
@@ -889,59 +892,23 @@ public class ExpertApprovalService(
         string groupName,
         string expertName,
         bool isNew,
-        bool isManager = false)
+        bool isManager = false,
+        string? language = null)
     {
         var applyUrl = $"{urls.WebBaseUrl.TrimEnd('/')}/tutor/apply?invite={Uri.EscapeDataString(invite.Token)}";
         var expires = invite.ExpiresAt ?? DateTime.UtcNow.AddDays(30);
-        // Paragraphe à part : la phrase d'accueil de l'expert ne doit pas se fondre dans le corps
-        // institutionnel, où elle se lisait comme une coquille.
-        var note = string.IsNullOrWhiteSpace(invite.PersonalMessage)
-            ? ""
-            : $"{invite.PersonalMessage.Trim()}\n\n";
-        // Ce lien est réutilisable jusqu'à son expiration : le présenter comme personnel et
-        // incessible serait faux, plusieurs enseignants peuvent s'inscrire avec le même.
-        var share =
-            $"Bonjour,\n\n" +
-            $"Le groupe d’experts {groupName} a le plaisir de vous inviter à rejoindre TutorSphere " +
-            $"en qualité d’enseignant.\n\n" +
-            $"TutorSphere est une plateforme de soutien scolaire en ligne développée par " +
-            $"Groupe GISEBS Inc., une entreprise canadienne spécialisée dans les technologies et " +
-            $"les solutions numériques appliquées notamment à l’éducation.\n\n" +
-            $"Notre mission est simple : permettre aux enfants, où qu’ils se trouvent, d’accéder à " +
-            $"des enseignants qualifiés capables de les accompagner à distance, de leur expliquer " +
-            $"les notions difficiles et de les aider à progresser avec confiance.\n\n" +
-            $"En rejoignant TutorSphere, vous pourrez :\n\n" +
-            $"• transmettre vos connaissances à des élèves au Canada, aux États-Unis et ailleurs dans le monde ;\n" +
-            $"• enseigner à distance depuis votre domicile ;\n" +
-            $"• présenter vos matières et les niveaux que vous maîtrisez ;\n" +
-            $"• choisir vos disponibilités ;\n" +
-            $"• définir vos tarifs selon les conditions applicables ;\n" +
-            $"• participer à une communauté d’enseignants engagés pour la réussite des enfants.\n\n" +
-            $"Votre expérience et vos compétences pédagogiques peuvent véritablement contribuer au " +
-            $"parcours scolaire d’un enfant.\n\n" +
-            $"La création de votre profil est simple, sécurisée et ne prend que quelques minutes.\n\n" +
-            $"👉 Créez votre profil enseignant à partir de ce lien :\n\n" +
-            $"{applyUrl}\n\n" +
-            $"Ce lien vous est adressé par le groupe d’experts {groupName} et reste valable jusqu’au " +
-            $"{expires:dd/MM/yyyy}. Merci de le réserver aux enseignants à qui cette invitation " +
-            $"est destinée.\n\n" +
-            note +
-            $"Votre candidature sera étudiée par le groupe d’experts {groupName}. Une fois votre " +
-            $"profil approuvé, vous pourrez accéder à votre espace enseignant et commencer à " +
-            $"proposer vos services sur TutorSphere.\n\n" +
-            $"Nous serions honorés de vous compter parmi les enseignants qui contribuent à rendre " +
-            $"l’accompagnement scolaire plus accessible aux enfants.\n\n" +
-            $"Cordialement,\n\n" +
-            $"{expertName}\n" +
-            $"{(isManager ? "Responsable du groupe d’experts" : "Groupe d’experts")} {groupName}\n" +
-            $"TutorSphere — Groupe GISEBS Inc.";
+        var lang = SupportedLanguageCodes.Normalize(language);
+        var share = TeacherInviteShareMessage.Build(
+            lang, groupName, expertName, isManager, applyUrl, expires, invite.PersonalMessage);
         return new TeacherInviteLinkResponse(
             invite.Id,
             applyUrl,
             share,
             expires,
             isNew,
-            invite.PersonalMessage);
+            invite.PersonalMessage,
+            lang,
+            TeacherInviteShareMessage.Subject(lang));
     }
 
     public async Task<IReadOnlyList<TeacherApplicationInviteDto>> ListInvitesForExpertAsync(
