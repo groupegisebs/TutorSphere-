@@ -583,8 +583,16 @@ public class ExpertApprovalService(
             .Select(g => new { g.Key, Count = g.Count() })
             .ToDictionary(x => x.Key, x => x.Count);
 
-        var now = DateTime.UtcNow;
-        var result = new List<ExpertApprovalQueueItemDto>();
+            var now = DateTime.UtcNow;
+            var viaLink = db.ExpertGovernanceEvents
+                .Where(e => e.EventType == ExpertGovernanceEventType.TeacherRegisteredViaInviteLink
+                            && e.RelatedTenantId != null
+                            && e.ExpertGroupId != null
+                            && groupIds.Contains(e.ExpertGroupId.Value))
+                .Select(e => e.RelatedTenantId!.Value)
+                .ToHashSet();
+
+            var result = new List<ExpertApprovalQueueItemDto>();
         foreach (var t in tenants)
         {
             var suggested = t.ApprovedByExpertGroupId is Guid bound && groupIds.Contains(bound)
@@ -619,7 +627,7 @@ public class ExpertApprovalService(
             result.Add(new ExpertApprovalQueueItemDto(
                 t.Id, t.Name, t.Slug, t.Country, t.City, t.ExpertApprovalStatus, t.CreatedAt, age,
                 null, null, docs, complete, t.ReviewPriority, t.ReviewAssignedToUserId, null,
-                t.ReviewRequestNotes));
+                t.ReviewRequestNotes, viaLink.Contains(t.Id)));
         }
 
         return Task.FromResult<IReadOnlyList<ExpertApprovalQueueItemDto>>(result);

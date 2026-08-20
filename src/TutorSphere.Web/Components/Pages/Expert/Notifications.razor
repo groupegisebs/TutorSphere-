@@ -52,8 +52,16 @@
                         {
                             <tr class="@(n.ReadAtUtc is null ? "table-active" : null)">
                                 <td class="text-nowrap">@n.CreatedAt.ToLocalTime().ToString("dd MMM yyyy HH:mm")</td>
-                                <td><span class="cc-pill cc-pill-type">@EventTypeLabel(n.EventType)</span></td>
-                                <td>@n.Summary</td>
+                                <td><span class="cc-pill @(n.EventType == 31 ? "ex-via-link-pill" : "cc-pill-type")">@EventTypeLabel(n.EventType)</span></td>
+                                <td>
+                                    @n.Summary
+                                    @if (n.RelatedTenantId is Guid tid)
+                                    {
+                                        <div class="mt-1">
+                                            <a href="@($"expert/teachers/{tid}")">Voir le dossier</a>
+                                        </div>
+                                    }
+                                </td>
                                 <td>
                                     @if (n.ReadAtUtc is not null)
                                     {
@@ -138,6 +146,8 @@
         22 => "Réactivation",
         23 => "Retrait",
         24 => "Permissions",
+        30 => "Réunion",
+        31 => "Lien unique",
         _ => t.ToString()
     };
 

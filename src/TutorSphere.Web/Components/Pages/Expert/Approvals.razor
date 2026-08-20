@@ -60,6 +60,20 @@
             }
         </div>
 
+        @if (!_loading && ViaLinkPendingCount > 0)
+        {
+            <div class="ex-via-link-banner mb-3" role="status">
+                <div>
+                    <i class="bi bi-link-45deg" aria-hidden="true"></i>
+                    <strong>@ViaLinkPendingCount inscription@(ViaLinkPendingCount > 1 ? "s" : "") via le lien d’invitation unique</strong>
+                    <span>à examiner — ces dossiers apparaissent aussi dans « À examiner ».</span>
+                </div>
+                <button type="button" class="cc-btn cc-btn-primary" @onclick='() => SetBoard("link")'>
+                    Voir les dossiers
+                </button>
+            </div>
+        }
+
         @if (_showInvite)
         {
             <div class="cc-card mb-3">
@@ -141,6 +155,14 @@
                         <div class="ex-kpi-hint">Évaluations en cours</div>
                     </div>
                 </button>
+                <button type="button" class="ex-kpi @(_boardTab == "link" ? "is-on" : null)" data-tone="violet" @onclick='() => SetBoard("link")'>
+                    <i class="bi bi-link-45deg ex-kpi-icon"></i>
+                    <div>
+                        <div class="ex-kpi-label">Via lien unique</div>
+                        <div class="ex-kpi-value">@ViaLinkPendingCount</div>
+                        <div class="ex-kpi-hint">Inscriptions à examiner</div>
+                    </div>
+                </button>
                 <button type="button" class="ex-kpi" data-tone="emerald" @onclick='() => SetBoard("done")'>
                     <i class="bi bi-check-circle ex-kpi-icon"></i>
                     <div>
@@ -170,6 +192,9 @@
                         </button>
                         <button type="button" class="cc-tab @(_boardTab == "eval" ? "active" : null)" @onclick='() => SetBoard("eval")'>
                             En évaluation (@ReviewCount)
+                        </button>
+                        <button type="button" class="cc-tab @(_boardTab == "link" ? "active" : null)" @onclick='() => SetBoard("link")'>
+                            Lien unique (@ViaLinkPendingCount)
                         </button>
                         <button type="button" class="cc-tab @(_boardTab == "done" ? "active" : null)" @onclick='() => SetBoard("done")'>
                             Décisions récentes
@@ -224,7 +249,7 @@
                         {
                             <div class="cc-empty py-4">
                                 <i class="bi bi-inbox"></i>
-                                <p>Aucun dossier dans cet onglet.</p>
+                                <p>@(_boardTab == "link" ? "Aucune inscription via le lien unique pour le moment." : "Aucun dossier dans cet onglet.")</p>
                             </div>
                         }
                         else
@@ -244,7 +269,7 @@
                                 <tbody>
                                     @foreach (var row in Paged)
                                     {
-                                        <tr class="@(_selected?.TenantId == row.TenantId ? "table-active" : "")"
+                                        <tr class="@($"{(_selected?.TenantId == row.TenantId ? "table-active" : "")}{(row.ViaInviteLink ? " ex-via-link-row" : "")}")"
                                             @onclick="() => SelectRowAsync(row)" style="cursor:pointer">
                                             <td>
                                                 <div class="ex-teacher-id">
@@ -258,6 +283,10 @@
                                                     }
                                                     <div>
                                                         <strong>@row.Name</strong>
+                                                        @if (row.ViaInviteLink)
+                                                        {
+                                                            <span class="ex-via-link-pill"><i class="bi bi-link-45deg"></i> Lien unique</span>
+                                                        }
                                                         <span>@(row.Email ?? "—")</span>
                                                         @if (!string.IsNullOrWhiteSpace(row.InvitedBy))
                                                         {
@@ -356,6 +385,10 @@
                             <span class="ex-teacher-avatar">@Initials(sel.Name)</span>
                             <div>
                                 <strong>@sel.Name</strong>
+                                @if (sel.ViaInviteLink)
+                                {
+                                    <span class="ex-via-link-pill"><i class="bi bi-link-45deg"></i> Inscrit via le lien unique</span>
+                                }
                                 <span>@(sel.Email ?? "—")</span>
                             </div>
                         </div>
@@ -601,6 +634,7 @@
     private int PendingCount => _queue.Count(q => q.ApprovalStatus == 0);
     private int ReviewCount => _queue.Count(q => q.ApprovalStatus is 3 or 4 or 5);
     private int InterviewCount => _talks.Count(t => t.Status is 0 or 1);
+    private int ViaLinkPendingCount => _queue.Count(q => q.JoinedViaInviteLink && q.ApprovalStatus is 0 or 3 or 4 or 5);
     private int ApprovedMonth => _decisions.Count(d => d.ApprovalStatus == 1);
     private int RejectedMonth => _decisions.Count(d => d.ApprovalStatus == 2);
     private string _trackLabel => _track switch
@@ -644,7 +678,8 @@
                     q.CreatedAt,
                     dir?.LogoUrl,
                     q.ReviewAssignedToName,
-                    q.ReviewRequestNotes);
+                    q.ReviewRequestNotes,
+                    q.JoinedViaInviteLink);
             });
 
             return _boardTab switch
@@ -669,13 +704,15 @@
                             t.ScheduledAtUtc ?? t.CreatedAt,
                             dir?.LogoUrl,
                             q?.ReviewAssignedToName,
-                            q?.ReviewRequestNotes);
+                            q?.ReviewRequestNotes,
+                            q?.JoinedViaInviteLink ?? false);
                     }).ToList(),
                 "eval" => FromQueue(_queue.Where(q => q.ApprovalStatus is 3 or 4 or 5)).ToList(),
+                "link" => FromQueue(_queue.Where(q => q.JoinedViaInviteLink && q.ApprovalStatus is 0 or 3 or 4 or 5)).ToList(),
                 "done" => _decisions.Select(d =>
                 {
                     var dir = _directory.FirstOrDefault(x => x.TenantId == d.TenantId);
-                    return new RowVm(d.TenantId, d.DisplayName, d.OwnerEmail, null, dir?.Subjects ?? [], dir?.Levels ?? [], dir?.YearsExperience, d.ApprovalStatus, d.DecisionAt ?? DateTime.UtcNow, dir?.LogoUrl, null, d.Notes);
+                    return new RowVm(d.TenantId, d.DisplayName, d.OwnerEmail, null, dir?.Subjects ?? [], dir?.Levels ?? [], dir?.YearsExperience, d.ApprovalStatus, d.DecisionAt ?? DateTime.UtcNow, dir?.LogoUrl, null, d.Notes, dir?.JoinedViaInviteLink ?? false);
                 }).ToList(),
                 _ => FromQueue(_queue.Where(q => q.ApprovalStatus == 0)).ToList()
             };
@@ -1019,16 +1056,17 @@
     private sealed record RowVm(
         Guid TenantId, string Name, string? Email, string? InvitedBy,
         List<string> Subjects, List<string> Levels, int? Years, int Status, DateTime Date,
-        string? LogoUrl, string? AssignedTo, string? Notes);
+        string? LogoUrl, string? AssignedTo, string? Notes, bool ViaInviteLink = false);
     private sealed record QueueItem(
         Guid TenantId, string SchoolName, string Slug, string? Country, string? City,
         int ApprovalStatus, DateTime CreatedAt, int AgeDays, string? OwnerEmail, string? OwnerName,
         int DocumentCount, bool IsComplete, int ReviewPriority, string? ReviewAssignedToUserId,
-        string? ReviewAssignedToName, string? ReviewRequestNotes);
+        string? ReviewAssignedToName, string? ReviewRequestNotes, bool JoinedViaInviteLink = false);
     private sealed record DirItem(
         Guid TenantId, string DisplayName, string? OwnerEmail, string? LogoUrl,
         List<string>? Subjects, List<string>? Levels, int? YearsExperience, int ApprovalStatus,
-        DateTime CreatedAt, string Slug, bool IsPublicProfile);
+        DateTime CreatedAt, string Slug, bool IsPublicProfile, string? City = null, string? Country = null,
+        bool JoinedViaInviteLink = false);
     private sealed record DecisionItem(Guid TenantId, string DisplayName, string? OwnerEmail, int ApprovalStatus, DateTime? DecisionAt, string? Notes);
     private sealed record TalkItem(Guid Id, int ItemType, int Status, string Title, Guid? RelatedTeacherTenantId, DateTime? ScheduledAtUtc, DateTime CreatedAt, string? PayloadJson = null);
     private sealed record InviteItem(Guid Id, string Email, string? FirstName, int Status, DateTime SentAt, Guid? AcceptedTenantId, string? InvitedByName);

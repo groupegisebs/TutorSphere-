@@ -37,6 +37,20 @@
             </div>
         </div>
 
+        @if (!_loading && ViaLinkPendingCount > 0)
+        {
+            <div class="ex-via-link-banner mb-3" role="status">
+                <div>
+                    <i class="bi bi-link-45deg" aria-hidden="true"></i>
+                    <strong>@ViaLinkPendingCount inscription@(ViaLinkPendingCount > 1 ? "s" : "") via le lien d’invitation unique</strong>
+                    <span>en attente d’examen.</span>
+                </div>
+                <button type="button" class="cc-btn cc-btn-primary" @onclick='() => SetStatusFilter("via-link")'>
+                    Voir
+                </button>
+            </div>
+        }
+
         @if (_loading)
         {
             <div class="cc-empty"><span class="spinner-border"></span></div>
@@ -72,6 +86,14 @@
                         <div class="ex-kpi-hint">En cours d'évaluation</div>
                     </div>
                 </button>
+                <button type="button" class="ex-kpi @(_statusFilter == "via-link" ? "is-on" : null)" data-tone="violet" @onclick='() => SetStatusFilter("via-link")'>
+                    <i class="bi bi-link-45deg ex-kpi-icon" aria-hidden="true"></i>
+                    <div>
+                        <div class="ex-kpi-label">Via lien unique</div>
+                        <div class="ex-kpi-value">@ViaLinkPendingCount</div>
+                        <div class="ex-kpi-hint">Inscriptions à examiner</div>
+                    </div>
+                </button>
                 <button type="button" class="ex-kpi @(_statusFilter == "review" ? "is-on" : null)" data-tone="violet" @onclick='() => SetStatusFilter("review")'>
                     <i class="bi bi-mortarboard ex-kpi-icon" aria-hidden="true"></i>
                     <div>
@@ -102,6 +124,7 @@
                         <option value="">Tous les statuts</option>
                         <option value="approved">Approuvé</option>
                         <option value="pending">En attente</option>
+                        <option value="via-link">Via lien unique</option>
                         <option value="review">En évaluation</option>
                         <option value="suspended">Suspendu</option>
                     </select>
@@ -163,7 +186,7 @@
                         <tbody>
                             @foreach (var t in Paged)
                             {
-                                <tr class="@(_selectedTenantId == t.TenantId ? "table-active" : "")">
+                                <tr class="@($"{(_selectedTenantId == t.TenantId ? "table-active" : "")}{(t.JoinedViaInviteLink ? " ex-via-link-row" : "")}")">
                                     <td>
                                         <div class="ex-teacher-id">
                                             @if (!string.IsNullOrWhiteSpace(t.LogoUrl))
@@ -176,6 +199,10 @@
                                             }
                                             <div>
                                                 <strong>@t.DisplayName</strong>
+                                                @if (t.JoinedViaInviteLink)
+                                                {
+                                                    <span class="ex-via-link-pill"><i class="bi bi-link-45deg"></i> Lien unique</span>
+                                                }
                                                 <span>@(t.OwnerEmail ?? "—")</span>
                                             </div>
                                         </div>
@@ -271,6 +298,10 @@
                     <div class="ex-teacher-profile-head">
                         <div>
                             <h2 id="teacher-profile-title" class="cc-card-title mb-0">@(selectedTeacher?.DisplayName ?? "—")</h2>
+                            @if (selectedTeacher?.JoinedViaInviteLink == true)
+                            {
+                                <span class="ex-via-link-pill"><i class="bi bi-link-45deg"></i> Inscrit via le lien unique</span>
+                            }
                             @if (!string.IsNullOrWhiteSpace(selectedTeacher?.OwnerEmail))
                             {
                                 <p class="small text-muted mb-0">@selectedTeacher.OwnerEmail</p>
@@ -1438,6 +1469,7 @@
     private IEnumerable<TeacherDirectoryItem> Paged => _filtered.Skip((_page - 1) * _pageSize).Take(_pageSize);
 
     private int CountStatus(string bucket) => _directory.Count(t => MatchesBucket(t.ApprovalStatus, bucket));
+    private int ViaLinkPendingCount => _directory.Count(t => t.JoinedViaInviteLink && t.ApprovalStatus is 0 or 3 or 4 or 5);
 
     private void SetStatusFilter(string bucket)
     {
@@ -1465,7 +1497,9 @@
                 t.DisplayName.Contains(s, StringComparison.OrdinalIgnoreCase)
                 || (t.OwnerEmail?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false));
         }
-        if (!string.IsNullOrWhiteSpace(_statusFilter))
+        if (_statusFilter == "via-link")
+            q = q.Where(t => t.JoinedViaInviteLink && t.ApprovalStatus is 0 or 3 or 4 or 5);
+        else if (!string.IsNullOrWhiteSpace(_statusFilter))
             q = q.Where(t => MatchesBucket(t.ApprovalStatus, _statusFilter));
         if (!string.IsNullOrWhiteSpace(_subjectFilter))
             q = q.Where(t => (t.Subjects ?? []).Any(x => string.Equals(x, _subjectFilter, StringComparison.OrdinalIgnoreCase)));
@@ -1583,7 +1617,8 @@
         string Slug,
         bool IsPublicProfile,
         string? City,
-        string? Country);
+        string? Country,
+        bool JoinedViaInviteLink = false);
 
     private sealed record MonitoredTeacherItem(
         Guid TenantId,

@@ -12,11 +12,25 @@ public interface IExpertReviewNotificationService
     /// Idempotent via <see cref="Tenant.ExpertReviewNotifiedAt"/>.
     /// </summary>
     Task NotifyExpertsIfNeededAsync(Guid tenantId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Notifie le responsable du groupe (e-mail + notification interne) qu'un compte
+    /// a été créé via le lien d'invitation unique.
+    /// </summary>
+    Task NotifyGroupInviteLinkSignupAsync(
+        Guid tenantId,
+        Guid openInviteId,
+        string teacherUserId,
+        string teacherEmail,
+        string teacherName,
+        CancellationToken ct = default);
 }
 
 public sealed class ExpertReviewNotificationService(
     IApplicationDbContext db,
     IExpertGroupService expertGroups,
+    IExpertGroupManagerService managers,
+    IExpertGovernanceAuditService audit,
     IEmailService email,
     IUserContactLookup contacts,
     IAppUrlProvider urls,
@@ -102,6 +116,90 @@ public sealed class ExpertReviewNotificationService(
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Échec notification experts pour fiche {TenantId}.", tenantId);
+        }
+    }
+
+    public async Task NotifyGroupInviteLinkSignupAsync(
+        Guid tenantId,
+        Guid openInviteId,
+        string teacherUserId,
+        string teacherEmail,
+        string teacherName,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            var tenant = db.Tenants.FirstOrDefault(t => t.Id == tenantId);
+            if (tenant is null)
+                return;
+
+            var groupId = tenant.ApprovedByExpertGroupId;
+            if (groupId is not Guid gid)
+                return;
+
+            var group = db.ExpertGroups.FirstOrDefault(g => g.Id == gid);
+            var displayName = string.IsNullOrWhiteSpace(teacherName) ? tenant.Name : teacherName.Trim();
+            var emailAddr = (teacherEmail ?? "").Trim();
+            var summary =
+                $"Nouveau compte via le lien d’invitation unique : {displayName}" +
+                (string.IsNullOrWhiteSpace(emailAddr) ? "" : $" ({emailAddr})") +
+                ". Dossier à examiner.";
+
+            await audit.RecordAsync(
+                ExpertGovernanceEventType.TeacherRegisteredViaInviteLink,
+                string.IsNullOrWhiteSpace(teacherUserId) ? "system" : teacherUserId,
+                summary,
+                expertGroupId: gid,
+                relatedTenantId: tenantId,
+                relatedEntityId: openInviteId,
+                isNotification: true,
+                ct: ct);
+
+            var recipientIds = new HashSet<string>(StringComparer.Ordinal);
+            var mandate = managers.GetActiveMandate(gid);
+            if (mandate is not null)
+                recipientIds.Add(mandate.UserId);
+
+            var openInvite = db.TeacherApplicationInvites.FirstOrDefault(i => i.Id == openInviteId);
+            if (openInvite is not null && !string.IsNullOrWhiteSpace(openInvite.InvitedByUserId))
+                recipientIds.Add(openInvite.InvitedByUserId);
+
+            if (recipientIds.Count == 0)
+            {
+                foreach (var id in db.ExpertGroupMembers
+                    .Where(m => m.ExpertGroupId == gid && m.Status == ExpertMembershipStatus.Active)
+                    .Select(m => m.UserId))
+                    recipientIds.Add(id);
+            }
+
+            var reviewUrl = $"{urls.WebBaseUrl.TrimEnd('/')}/expert/approvals";
+            var sent = 0;
+            foreach (var userId in recipientIds)
+            {
+                var contact = await contacts.GetAsync(userId, ct);
+                if (contact is null || string.IsNullOrWhiteSpace(contact.Value.Email))
+                    continue;
+
+                var firstName = contact.Value.DisplayName.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries)
+                    .FirstOrDefault() ?? contact.Value.DisplayName;
+
+                await email.SendExpertTeacherPendingReviewAsync(
+                    contact.Value.Email,
+                    firstName,
+                    $"{displayName} — inscription via lien unique",
+                    string.IsNullOrWhiteSpace(emailAddr) ? "Lien d’invitation unique" : emailAddr,
+                    reviewUrl,
+                    ct);
+                sent++;
+            }
+
+            logger.LogInformation(
+                "Notification lien unique ({Sent}) pour {TenantId} ({Teacher}) → groupe {Group}.",
+                sent, tenantId, displayName, group?.Name);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Échec notification lien unique pour fiche {TenantId}.", tenantId);
         }
     }
 }

@@ -55,7 +55,8 @@ public record ExpertApprovalQueueItemDto(
     int ReviewPriority,
     string? ReviewAssignedToUserId,
     string? ReviewAssignedToName,
-    string? ReviewRequestNotes);
+    string? ReviewRequestNotes,
+    bool JoinedViaInviteLink = false);
 
 public record TeacherDecisionItemDto(
     Guid TenantId,

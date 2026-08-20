@@ -531,6 +531,7 @@ public class AuthService : IAuthService, ITeacherLoginIssuer
             TeacherConductPolicyVersion = TeacherConductPolicy.CurrentVersion,
             TeacherConductAcceptedAt = DateTime.UtcNow,
             ExpertApprovalStatus = ExpertApprovalStatus.Pending,
+            ReviewPriority = string.IsNullOrWhiteSpace(invite.Email) ? 1 : 0,
             ApprovedByExpertGroupId = invite.ExpertGroupId
         };
 
@@ -538,6 +539,7 @@ public class AuthService : IAuthService, ITeacherLoginIssuer
         await _db.SaveChangesAsync(ct);
 
         await MarkInviteAcceptedIfAnyAsync(request.Email, tenant.Id, request.InviteToken, ct);
+        await RecordOpenInviteSignupAsync(invite, tenant, user.Id, request.Email, request.FirstName, request.LastName, ct);
 
         user.TenantId = tenant.Id;
         user.TimeZone = timeZone;
@@ -570,6 +572,59 @@ public class AuthService : IAuthService, ITeacherLoginIssuer
         await _expertNotify.NotifyExpertsIfNeededAsync(tenant.Id, ct);
 
         return new RegisterSchoolResponse(tenant.Id, tenant.Slug, user.Email!);
+    }
+
+    private async Task RecordOpenInviteSignupAsync(
+        TeacherApplicationInvite openInvite,
+        Tenant tenant,
+        string teacherUserId,
+        string email,
+        string firstName,
+        string lastName,
+        CancellationToken ct)
+    {
+        if (!string.IsNullOrWhiteSpace(openInvite.Email))
+            return;
+
+        var normalized = (email ?? "").Trim().ToLowerInvariant();
+        var already = _db.TeacherApplicationInvites.Any(i =>
+            i.AcceptedTenantId == tenant.Id
+            && i.ExpertGroupId == openInvite.ExpertGroupId
+            && i.Status == TeacherApplicationInviteStatus.Registered);
+        if (!already)
+        {
+            _db.Add(new TeacherApplicationInvite
+            {
+                Email = normalized,
+                FirstName = string.IsNullOrWhiteSpace(firstName) ? null : firstName.Trim(),
+                PersonalMessage = openInvite.PersonalMessage,
+                InvitedByUserId = openInvite.InvitedByUserId,
+                ExpertGroupId = openInvite.ExpertGroupId,
+                Token = Guid.NewGuid().ToString("N"),
+                SentAt = DateTime.UtcNow,
+                ExpiresAt = openInvite.ExpiresAt,
+                Status = TeacherApplicationInviteStatus.Registered,
+                AcceptedTenantId = tenant.Id,
+                AcceptedAt = DateTime.UtcNow
+            });
+            await _db.SaveChangesAsync(ct);
+        }
+        else
+        {
+            return;
+        }
+
+        var teacherName = $"{firstName} {lastName}".Trim();
+        if (string.IsNullOrWhiteSpace(teacherName))
+            teacherName = tenant.Name;
+
+        await _expertNotify.NotifyGroupInviteLinkSignupAsync(
+            tenant.Id,
+            openInvite.Id,
+            teacherUserId,
+            normalized,
+            teacherName,
+            ct);
     }
 
     private async Task<RegisterSchoolResponse> UpdateExistingTeacherFromInviteAsync(
@@ -648,6 +703,8 @@ public class AuthService : IAuthService, ITeacherLoginIssuer
         tenant.ReviewRequestNotes = null;
         tenant.IsPublicProfile = false;
         tenant.ExpertReviewNotifiedAt = null;
+        if (string.IsNullOrWhiteSpace(invite.Email))
+            tenant.ReviewPriority = 1;
         if (tenant.Status is TenantStatus.Suspended or TenantStatus.Rejected)
             tenant.Status = TenantStatus.PendingValidation;
         tenant.UpdatedAt = DateTime.UtcNow;
@@ -663,6 +720,7 @@ public class AuthService : IAuthService, ITeacherLoginIssuer
 
         ReplaceTeacherAvailabilities(tenant.Id, request.Availabilities, request.InitialOffering?.Schedule);
         await MarkInviteAcceptedIfAnyAsync(request.Email, tenant.Id, request.InviteToken, ct);
+        await RecordOpenInviteSignupAsync(invite, tenant, user.Id, request.Email, request.FirstName, request.LastName, ct);
         await _db.SaveChangesAsync(ct);
 
         var offering = await TryCreateInitialOfferingAsync(

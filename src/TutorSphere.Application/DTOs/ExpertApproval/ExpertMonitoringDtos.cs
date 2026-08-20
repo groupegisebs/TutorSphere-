@@ -30,7 +30,8 @@ public record TeacherDirectoryItemDto(
     string Slug,
     bool IsPublicProfile,
     string? City,
-    string? Country);
+    string? Country,
+    bool JoinedViaInviteLink = false);
 
 /// <summary>Support de cours unifié (devoir ou document) pour la revue qualité par un expert.</summary>
 public record TeacherMaterialItemDto(

@@ -153,6 +153,12 @@ public class ExpertMonitoringService(
             ? new Dictionary<Guid, Discipline>()
             : db.Disciplines.Where(d => disciplineIds.Contains(d.Id)).ToList().ToDictionary(d => d.Id);
 
+        var viaLink = db.ExpertGovernanceEvents
+            .Where(e => e.EventType == ExpertGovernanceEventType.TeacherRegisteredViaInviteLink
+                        && e.RelatedTenantId != null)
+            .Select(e => e.RelatedTenantId!.Value)
+            .ToHashSet();
+
         var result = new List<TeacherDirectoryItemDto>(tenants.Count);
         foreach (var t in tenants.OrderBy(x => x.Name))
         {
@@ -208,7 +214,8 @@ public class ExpertMonitoringService(
                 t.Slug,
                 t.IsPublicProfile,
                 t.City,
-                t.Country));
+                t.Country,
+                viaLink.Contains(t.Id)));
         }
 
         return result;
