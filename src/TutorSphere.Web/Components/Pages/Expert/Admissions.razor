@@ -122,7 +122,7 @@
                                     <div class="flex-grow-1">
                                         <div class="d-flex justify-content-between align-items-start gap-2">
                                             <strong>@inv.FirstName @inv.LastName</strong>
-                                            <button type="button" class="cc-btn btn-sm" @onclick="() => ToggleProfile(inv.Id)">Voir le profil</button>
+                                            <button type="button" class="cc-btn btn-sm" @onclick="() => OpenProfile(inv)">Voir le profil</button>
                                         </div>
                                         <div class="small text-muted">@inv.Email</div>
                                         <div class="small">@(inv.Specialty ?? "—") · @(inv.IntendedRole ?? "—")</div>
@@ -130,14 +130,6 @@
                                         <span class="cc-pill @StatusPill(inv.Status)">@StatusLabel(inv.Status)</span>
                                     </div>
                                 </div>
-                                @if (_openProfileId == inv.Id)
-                                {
-                                    <p class="small mt-2 mb-1">@(string.IsNullOrWhiteSpace(inv.Presentation) ? "Aucun résumé de profil." : inv.Presentation)</p>
-                                    @if (!string.IsNullOrWhiteSpace(inv.Justification))
-                                    {
-                                        <p class="small text-muted mb-1">@inv.Justification</p>
-                                    }
-                                }
                                 <VoteProgress Approve="inv.ApprovalCount" Reject="inv.RejectCount"
                                               Abstain="inv.AbstainCount" Eligible="inv.EligibleVoterCount"
                                               Required="inv.RequiredApprovalCount" />
@@ -292,7 +284,7 @@
                                         <td><span class="cc-pill @StatusPill(inv.Status)">@StatusLabel(inv.Status)</span></td>
                                         <td class="text-end">
                                             <div class="ex-row-actions">
-                                                <button type="button" class="ex-adm-see" @onclick="() => ToggleProfile(inv.Id)">Voir</button>
+                                                <button type="button" class="ex-adm-see" @onclick="() => OpenProfile(inv)">Voir</button>
                                                 <div class="ex-more">
                                                     <button type="button" class="ex-more-btn" aria-label="Plus d'actions"
                                                             @onclick="() => ToggleMenu(inv.Id)" @onclick:stopPropagation="true">
@@ -301,7 +293,7 @@
                                                     @if (_menuId == inv.Id)
                                                     {
                                                         <div class="ex-more-menu">
-                                                            <button type="button" @onclick="() => ToggleProfile(inv.Id)">Voir le profil</button>
+                                                            <button type="button" @onclick="() => OpenProfile(inv)">Voir le profil</button>
                                                             @if (inv.Status is 2 or 7)
                                                             {
                                                                 <button type="button" @onclick="() => VoteAsync(inv.Id, 0)">Approuver</button>
@@ -313,32 +305,6 @@
                                             </div>
                                         </td>
                                     </tr>
-                                    @if (_openProfileId == inv.Id)
-                                    {
-                                        @* « Voir » ouvrait le détail sans que rien ne s'affiche dans le tableau. *@
-                                        <tr class="ex-adm-detail">
-                                            <td colspan="6">
-                                                <div class="ex-adm-detail-grid">
-                                                    <div>
-                                                        <span class="ex-adm-detail-lbl">Présentation</span>
-                                                        <p class="mb-0">@(string.IsNullOrWhiteSpace(inv.Presentation) ? "Aucun résumé de profil." : inv.Presentation)</p>
-                                                    </div>
-                                                    <div>
-                                                        <span class="ex-adm-detail-lbl">Justification de l'invitation</span>
-                                                        <p class="mb-0">@(string.IsNullOrWhiteSpace(inv.Justification) ? "—" : inv.Justification)</p>
-                                                    </div>
-                                                    <div>
-                                                        <span class="ex-adm-detail-lbl">Invité par</span>
-                                                        <p class="mb-0">@(string.IsNullOrWhiteSpace(inv.InvitedByName) ? "—" : inv.InvitedByName)</p>
-                                                    </div>
-                                                    <div>
-                                                        <span class="ex-adm-detail-lbl">Téléphone</span>
-                                                        <p class="mb-0">@(string.IsNullOrWhiteSpace(inv.Phone) ? "—" : inv.Phone)</p>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    }
                                 }
                             </tbody>
                         </table>
@@ -353,8 +319,8 @@
                                 <button type="button" class="cc-btn btn-sm" disabled="@(_page <= 1)" @onclick="PrevPage">‹</button>
                                 @for (var i = 1; i <= PageCount; i++)
                                 {
-                                    var p = i;
-                                    <button type="button" class="ex-page-n @(_page == p ? "is-on" : null)" @onclick="() => GoPage(p)">@p</button>
+                                    var n = i;
+                                    <button type="button" class="ex-page-n @(_page == n ? "is-on" : null)" @onclick="() => GoPage(n)">@n</button>
                                 }
                                 <button type="button" class="cc-btn btn-sm" disabled="@(_page >= PageCount)" @onclick="NextPage">›</button>
                                 <button type="button" class="cc-btn btn-sm" disabled="@(_page >= PageCount)" @onclick="LastPage">»</button>
@@ -362,6 +328,141 @@
                         </div>
                     </div>
                 }
+            </div>
+        }
+
+        @if (_profile is { } p)
+        {
+            <div class="ex-gm-modal-back" @onclick="CloseProfile"></div>
+            <div class="cc-card ex-gm-modal ex-adm-profile" role="dialog" aria-modal="true" aria-labelledby="adm-profile-title">
+                <div class="ex-adm-profile-head">
+                    <span class="ex-avatar ex-adm-profile-av">@Initials(p.FirstName, p.LastName)</span>
+                    <div class="flex-grow-1">
+                        <h2 class="cc-card-title mb-0" id="adm-profile-title">@p.FirstName @p.LastName</h2>
+                        <div class="small text-muted">@p.Email</div>
+                        <div class="mt-1 d-flex align-items-center gap-2 flex-wrap">
+                            <span class="cc-pill @StatusPill(p.Status)">@StatusLabel(p.Status)</span>
+                            @if (p.MyVote is int mine)
+                            {
+                                <span class="small text-muted">Votre vote : @VoteLabel(mine)</span>
+                            }
+                        </div>
+                    </div>
+                    <button type="button" class="ex-adm-icon" aria-label="Fermer" @onclick="CloseProfile">
+                        <i class="bi bi-x-lg" aria-hidden="true"></i>
+                    </button>
+                </div>
+
+                <p class="ex-adm-legend">Identité</p>
+                <div class="ex-adm-detail-grid">
+                    <div>
+                        <span class="ex-adm-detail-lbl">Téléphone</span>
+                        <p class="mb-0">@Or(p.Phone)</p>
+                    </div>
+                    <div>
+                        <span class="ex-adm-detail-lbl">Spécialité</span>
+                        <p class="mb-0">@Or(p.Specialty)</p>
+                    </div>
+                    <div>
+                        <span class="ex-adm-detail-lbl">Fonction envisagée</span>
+                        <p class="mb-0">@Or(p.IntendedRole)</p>
+                    </div>
+                    <div>
+                        <span class="ex-adm-detail-lbl">Groupe</span>
+                        <p class="mb-0">@Or(p.GroupName)</p>
+                    </div>
+                </div>
+
+                <p class="ex-adm-legend">Présentation du candidat</p>
+                @* Ce texte est rédigé par le candidat lui-même au moment de sa candidature :
+                   il est absent tant qu'il n'a pas répondu à l'invitation. *@
+                <p class="ex-adm-text">
+                    @(string.IsNullOrWhiteSpace(p.Presentation)
+                        ? "Le candidat n'a pas encore soumis sa présentation."
+                        : p.Presentation)
+                </p>
+
+                <p class="ex-adm-legend">Motif de l'invitation</p>
+                <p class="ex-adm-text">@(string.IsNullOrWhiteSpace(p.Justification) ? "Aucune justification enregistrée." : p.Justification)</p>
+
+                <p class="ex-adm-legend">Suivi</p>
+                <div class="ex-adm-detail-grid">
+                    <div>
+                        <span class="ex-adm-detail-lbl">Invité par</span>
+                        <p class="mb-0">@Or(p.InvitedByName)</p>
+                    </div>
+                    <div>
+                        <span class="ex-adm-detail-lbl">Invitation envoyée</span>
+                        <p class="mb-0">@Date(p.SentAtUtc)</p>
+                    </div>
+                    <div>
+                        <span class="ex-adm-detail-lbl">Invitation expire</span>
+                        <p class="mb-0">@Date(p.InviteExpiresAtUtc)</p>
+                    </div>
+                    <div>
+                        <span class="ex-adm-detail-lbl">Vote ouvert</span>
+                        <p class="mb-0">@Date(p.VoteOpenedAtUtc)</p>
+                    </div>
+                    <div>
+                        <span class="ex-adm-detail-lbl">Vote expire</span>
+                        <p class="mb-0">@Date(p.VoteExpiresAtUtc)</p>
+                    </div>
+                    <div>
+                        <span class="ex-adm-detail-lbl">Décision</span>
+                        <p class="mb-0">@Date(p.DecisionAtUtc)</p>
+                    </div>
+                </div>
+
+                <p class="ex-adm-legend">Vote du groupe</p>
+                <VoteProgress Approve="p.ApprovalCount" Reject="p.RejectCount"
+                              Abstain="p.AbstainCount" Eligible="p.EligibleVoterCount"
+                              Required="p.RequiredApprovalCount" />
+                @if (p.Votes is { Count: > 0 })
+                {
+                    <ul class="ex-adm-votes">
+                        @foreach (var v in p.Votes)
+                        {
+                            <li>
+                                <span class="ex-adm-vote-ch @VoteTone(v.Choice)">@VoteLabel(v.Choice)</span>
+                                <div>
+                                    <strong>@Or(v.VoterName)</strong>
+                                    <span class="ex-adm-vote-at">@Date(v.VotedAtUtc)</span>
+                                    @if (!string.IsNullOrWhiteSpace(v.Comment))
+                                    {
+                                        <p class="mb-0">@v.Comment</p>
+                                    }
+                                </div>
+                            </li>
+                        }
+                    </ul>
+                }
+                else
+                {
+                    <p class="small text-muted mb-0 mt-2">Aucun vote enregistré pour l'instant.</p>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(p.AdminNotes))
+                {
+                    <p class="ex-adm-legend">Note de l'administration</p>
+                    <p class="ex-adm-text">@p.AdminNotes</p>
+                }
+
+                <div class="ex-adm-form-foot">
+                    <span class="ex-adm-note">
+                        <i class="bi bi-people" aria-hidden="true"></i>
+                        @p.ApprovalCount approbation@(p.ApprovalCount > 1 ? "s" : "") sur @p.RequiredApprovalCount requise@(p.RequiredApprovalCount > 1 ? "s" : "")
+                    </span>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="cc-btn" @onclick="CloseProfile">Fermer</button>
+                        @if (p.Status is 2 or 7)
+                        {
+                            <button type="button" class="cc-btn cc-btn-danger-text" disabled="@_busy"
+                                    @onclick="() => AskReject(p)">Refuser</button>
+                            <button type="button" class="cc-btn cc-btn-success" disabled="@_busy"
+                                    @onclick="() => VoteFromProfileAsync(p.Id)">Approuver</button>
+                        }
+                    </div>
+                </div>
             </div>
         }
 
@@ -460,10 +561,13 @@
 
         @if (_rejectTarget is not null)
         {
-            <div class="cc-card mt-3">
+            @* En bas de page, cette confirmation restait hors de l'écran quand on refusait
+               depuis le tableau : elle doit venir devant. *@
+            <div class="ex-gm-modal-back" @onclick="() => _rejectTarget = null"></div>
+            <div class="cc-card ex-gm-modal" role="dialog" aria-modal="true">
                 <h2 class="cc-card-title">Refuser @_rejectTarget.FirstName @_rejectTarget.LastName ?</h2>
                 <p class="small text-muted">Cette action est enregistrée. Le candidat sera informé selon les règles du groupe.</p>
-                <div class="d-flex gap-2">
+                <div class="d-flex justify-content-end gap-2">
                     <button type="button" class="cc-btn" @onclick="() => _rejectTarget = null">Annuler</button>
                     <button type="button" class="cc-btn cc-btn-primary" disabled="@_busy"
                             @onclick="ConfirmRejectAsync">Confirmer le refus</button>
@@ -508,7 +612,7 @@
     private int _page = 1;
     private int _pageSize = 10;
     private Guid? _menuId;
-    private Guid? _openProfileId;
+    private InviteItem? _profile;
     private readonly HashSet<string> _missing = new(StringComparer.Ordinal);
     private ElementReference _emailInput;
 
@@ -577,11 +681,40 @@
     private void LastPage() => _page = PageCount;
     private void GoPage(int p) => _page = p;
     private void ToggleMenu(Guid id) => _menuId = _menuId == id ? null : id;
-    private void ToggleProfile(Guid id)
+
+    private void OpenProfile(InviteItem inv)
     {
-        _openProfileId = _openProfileId == id ? null : id;
+        _profile = inv;
         _menuId = null;
     }
+
+    private void CloseProfile() => _profile = null;
+
+    /// <summary>Approbation depuis la fiche : le vote fermé, la liste rechargée dit le nouvel état.</summary>
+    private async Task VoteFromProfileAsync(Guid id)
+    {
+        _profile = null;
+        await VoteAsync(id, 0);
+    }
+
+    private static string Or(string? value) => string.IsNullOrWhiteSpace(value) ? "—" : value;
+    private static string Date(DateTime? value) =>
+        value is null ? "—" : value.Value.ToLocalTime().ToString("dd MMM yyyy, HH:mm");
+
+    private static string VoteLabel(int choice) => choice switch
+    {
+        0 => "Approuvé",
+        1 => "Refusé",
+        2 => "Abstention",
+        _ => "—"
+    };
+
+    private static string VoteTone(int choice) => choice switch
+    {
+        0 => "is-yes",
+        1 => "is-no",
+        _ => "is-abs"
+    };
     private void ResetPage() => _page = 1;
     private void SetStatus(string status)
     {
@@ -742,7 +875,12 @@
         finally { _busy = false; }
     }
 
-    private void AskReject(InviteItem inv) => _rejectTarget = inv;
+    private void AskReject(InviteItem inv)
+    {
+        _rejectTarget = inv;
+        _profile = null;
+        _menuId = null;
+    }
 
     private async Task ConfirmRejectAsync()
     {
@@ -792,6 +930,14 @@
 
     private sealed record MeContext(bool IsGroupManager, Guid? GroupId, string? GroupName, bool IsPlatformActAs = false);
 
+    /// <param name="Choice">0 approuve, 1 refuse, 2 s'abstient.</param>
+    private sealed record VoteRow(
+        string VoterUserId,
+        string? VoterName,
+        int Choice,
+        string? Comment,
+        DateTime VotedAtUtc);
+
     private sealed record InviteItem(
         Guid Id,
         Guid ExpertGroupId,
@@ -817,7 +963,7 @@
         int RejectCount,
         int AbstainCount,
         int? MyVote,
-        object? Votes,
+        IReadOnlyList<VoteRow>? Votes,
         string? CandidateUserId,
         DateTime? DecisionAtUtc,
         string? AdminNotes);
