@@ -509,13 +509,13 @@ namespace TutorSphere.Infrastructure.Migrations
 
                     b.HasIndex("CountryCode")
                         .IsUnique()
-                        .HasFilter("\"IsInternational\" = FALSE AND \"CountryCode\" IS NOT NULL");
+                        .HasFilter("\"IsInternational\" = FALSE AND \"CountryCode\" IS NOT NULL AND \"IsActive\" = TRUE");
 
                     b.HasIndex("GroupManagerMembershipId");
 
                     b.HasIndex("IsInternational")
                         .IsUnique()
-                        .HasFilter("\"IsInternational\" = TRUE");
+                        .HasFilter("\"IsInternational\" = TRUE AND \"IsActive\" = TRUE");
 
                     b.ToTable("ExpertGroupsSet");
                 });

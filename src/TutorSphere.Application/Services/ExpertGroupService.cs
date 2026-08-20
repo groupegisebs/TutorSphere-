@@ -89,16 +89,16 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
 
         if (isInternational)
         {
-            if (db.ExpertGroups.Any(g => g.IsInternational))
-                throw new InvalidOperationException("Un groupe international existe déjà.");
+            if (InternationalSlotTaken())
+                throw new InvalidOperationException("Un groupe international actif existe déjà.");
             country = null;
         }
         else
         {
             if (string.IsNullOrWhiteSpace(country))
                 throw new InvalidOperationException("Le code pays est requis pour un groupe national.");
-            if (db.ExpertGroups.Any(g => !g.IsInternational && g.CountryCode == country))
-                throw new InvalidOperationException($"Un groupe existe déjà pour le pays {country}.");
+            if (NationalSlotTaken(country))
+                throw new InvalidOperationException($"Un groupe national actif existe déjà pour le pays {country}.");
         }
 
         var hasManagerHint = !string.IsNullOrWhiteSpace(request.ManagerUserId)
@@ -173,18 +173,12 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
             var country = NormalizeCountry(request.CountryCode);
             if (country is null)
                 throw new InvalidOperationException("Le code pays est requis pour un groupe national.");
-            if (country != entity.CountryCode
-                && db.ExpertGroups.Any(g => g.Id != id && !g.IsInternational && g.CountryCode == country))
-            {
-                throw new InvalidOperationException(
-                    $"Un groupe national existe déjà pour le pays {country}.");
-            }
-
             entity.CountryCode = country;
         }
 
         if (request.IsActive)
         {
+            EnsureActiveTerritoryAvailable(entity, id);
             entity.LifecycleStatus = ExpertGroupLifecycleStatus.Active;
         }
         else if (wasActive || entity.LifecycleStatus == ExpertGroupLifecycleStatus.Active)
@@ -478,6 +472,35 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
             PrimaryColor: g.PrimaryColor,
             SecondaryColor: g.SecondaryColor,
             CanHardDelete: canHardDelete);
+
+    private bool NationalSlotTaken(string country, Guid? exceptId = null) =>
+        db.ExpertGroups.Any(g =>
+            g.IsActive
+            && !g.IsInternational
+            && g.CountryCode == country
+            && (exceptId == null || g.Id != exceptId));
+
+    private bool InternationalSlotTaken(Guid? exceptId = null) =>
+        db.ExpertGroups.Any(g =>
+            g.IsActive
+            && g.IsInternational
+            && (exceptId == null || g.Id != exceptId));
+
+    private void EnsureActiveTerritoryAvailable(ExpertGroup entity, Guid exceptId)
+    {
+        if (entity.IsInternational)
+        {
+            if (InternationalSlotTaken(exceptId))
+                throw new InvalidOperationException("Un groupe international actif existe déjà.");
+            return;
+        }
+
+        var country = entity.CountryCode;
+        if (string.IsNullOrWhiteSpace(country))
+            throw new InvalidOperationException("Le code pays est requis pour un groupe national.");
+        if (NationalSlotTaken(country, exceptId))
+            throw new InvalidOperationException($"Un groupe national actif existe déjà pour le pays {country}.");
+    }
 
     private static string? NormalizeCountry(string? code)
     {

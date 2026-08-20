@@ -5,8 +5,9 @@ namespace TutorSphere.Domain.Entities;
 
 /// <summary>
 /// Groupe d'experts éducatifs chargé de valider les fiches enseignants.
-/// Règle produit : au plus un groupe par code pays, et exactement au plus un groupe international
-/// (<see cref="IsInternational"/> = true, <see cref="CountryCode"/> null).
+/// Règle produit : au plus un groupe <em>actif</em> par code pays, et au plus un groupe
+/// international actif (<see cref="IsInternational"/> = true, <see cref="CountryCode"/> null).
+/// Un groupe inactif (brouillon, suspendu, archivé) n’occupe pas le créneau.
 /// Routage revue : pays de l'enseignant → groupe pays ; sinon groupe international.
 /// Administré par un <see cref="ExpertGroupManagerMandate"/> (Responsable du groupe).
 /// </summary>

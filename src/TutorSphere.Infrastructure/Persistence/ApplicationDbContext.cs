@@ -299,13 +299,14 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             e.HasIndex(g => g.CountryCode);
             e.HasIndex(g => g.ActiveManagerMandateId);
             e.HasIndex(g => g.GroupManagerMembershipId);
-            // Unicité logique : un international + un par pays (appliquée aussi en service).
+            // Unicité : un international actif, un national actif par pays.
+            // Les groupes inactifs (brouillon, suspendu, archivé) ne bloquent plus le créneau.
             e.HasIndex(g => g.CountryCode)
                 .IsUnique()
-                .HasFilter("\"IsInternational\" = FALSE AND \"CountryCode\" IS NOT NULL");
+                .HasFilter("\"IsInternational\" = FALSE AND \"CountryCode\" IS NOT NULL AND \"IsActive\" = TRUE");
             e.HasIndex(g => g.IsInternational)
                 .IsUnique()
-                .HasFilter("\"IsInternational\" = TRUE");
+                .HasFilter("\"IsInternational\" = TRUE AND \"IsActive\" = TRUE");
         });
 
         builder.Entity<ExpertGroupMember>(e =>
