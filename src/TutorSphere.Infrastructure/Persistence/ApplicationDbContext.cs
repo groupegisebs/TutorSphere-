@@ -79,6 +79,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     public DbSet<MeetingActionItem> MeetingActionItemsSet => Set<MeetingActionItem>();
     public DbSet<MeetingNotification> MeetingNotificationsSet => Set<MeetingNotification>();
     public DbSet<MeetingAuditLog> MeetingAuditLogsSet => Set<MeetingAuditLog>();
+    public DbSet<TeacherContract> TeacherContractsSet => Set<TeacherContract>();
+    public DbSet<TeacherContractSectionDecision> TeacherContractSectionDecisionsSet => Set<TeacherContractSectionDecision>();
+    public DbSet<TeacherContractAuditEvent> TeacherContractAuditEventsSet => Set<TeacherContractAuditEvent>();
 
     IQueryable<Tenant> IApplicationDbContext.Tenants => TenantsSet;
     IQueryable<TenantBranding> IApplicationDbContext.TenantBrandings => TenantBrandingsSet;
@@ -178,6 +181,11 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     IQueryable<MeetingActionItem> IApplicationDbContext.MeetingActionItems => MeetingActionItemsSet;
     IQueryable<MeetingNotification> IApplicationDbContext.MeetingNotifications => MeetingNotificationsSet;
     IQueryable<MeetingAuditLog> IApplicationDbContext.MeetingAuditLogs => MeetingAuditLogsSet;
+    IQueryable<TeacherContract> IApplicationDbContext.TeacherContracts => TeacherContractsSet;
+    IQueryable<TeacherContractSectionDecision> IApplicationDbContext.TeacherContractSectionDecisions =>
+        TeacherContractSectionDecisionsSet;
+    IQueryable<TeacherContractAuditEvent> IApplicationDbContext.TeacherContractAuditEvents =>
+        TeacherContractAuditEventsSet;
 
     public new void Add<T>(T entity) where T : class => Set<T>().Add(entity);
     public new void Remove<T>(T entity) where T : class => Set<T>().Remove(entity);
@@ -857,6 +865,55 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             e.Property(u => u.LastName).HasMaxLength(100);
             e.Property(u => u.CalendarFeedToken).HasMaxLength(128);
             e.HasIndex(u => u.CalendarFeedToken);
+        });
+
+        builder.Entity<TeacherContract>(e =>
+        {
+            e.Property(c => c.ContractNumber).HasMaxLength(40).IsRequired();
+            e.HasIndex(c => c.ContractNumber).IsUnique();
+            e.Property(c => c.Version).HasMaxLength(32).IsRequired();
+            e.Property(c => c.Language).HasMaxLength(16).IsRequired();
+            e.Property(c => c.TeacherUserId).HasMaxLength(450).IsRequired();
+            e.Property(c => c.CreatedByUserId).HasMaxLength(450).IsRequired();
+            e.Property(c => c.PlaceholdersJson).HasColumnType("text").IsRequired();
+            e.Property(c => c.SignToken).HasMaxLength(64).IsRequired();
+            e.HasIndex(c => c.SignToken).IsUnique();
+            e.HasIndex(c => c.ExpertGroupId);
+            e.HasIndex(c => c.TenantId);
+            e.HasIndex(c => c.Status);
+            e.Property(c => c.RefusedSectionKey).HasMaxLength(64);
+            e.Property(c => c.RefusalComment).HasMaxLength(2000);
+            e.Property(c => c.TeacherTypedName).HasMaxLength(200);
+            e.Property(c => c.SignaturePngBase64).HasColumnType("text");
+            e.Property(c => c.TeacherIp).HasMaxLength(64);
+            e.Property(c => c.TeacherUserAgent).HasMaxLength(400);
+            e.Property(c => c.PdfUrl).HasMaxLength(500);
+            e.Property(c => c.DocumentHash).HasMaxLength(128);
+            e.Property(c => c.VerificationCode).HasMaxLength(32);
+            e.HasOne(c => c.Tenant).WithMany().HasForeignKey(c => c.TenantId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(c => c.ExpertGroup).WithMany().HasForeignKey(c => c.ExpertGroupId).OnDelete(DeleteBehavior.Restrict);
+            e.HasMany(c => c.SectionDecisions).WithOne(s => s.Contract).HasForeignKey(s => s.ContractId)
+                .OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(c => c.AuditEvents).WithOne(a => a.Contract).HasForeignKey(a => a.ContractId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<TeacherContractSectionDecision>(e =>
+        {
+            e.Property(s => s.SectionKey).HasMaxLength(64).IsRequired();
+            e.Property(s => s.Comment).HasMaxLength(2000);
+            e.HasIndex(s => new { s.ContractId, s.SectionKey }).IsUnique();
+        });
+
+        builder.Entity<TeacherContractAuditEvent>(e =>
+        {
+            e.Property(a => a.ActorUserId).HasMaxLength(450);
+            e.Property(a => a.IpAddress).HasMaxLength(64);
+            e.Property(a => a.UserAgent).HasMaxLength(400);
+            e.Property(a => a.Summary).HasMaxLength(500).IsRequired();
+            e.Property(a => a.DetailsJson).HasColumnType("text");
+            e.HasIndex(a => a.ContractId);
+            e.HasIndex(a => a.CreatedAt);
         });
 
         ApplyTenantFilters(builder);

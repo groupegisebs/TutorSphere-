@@ -89,6 +89,14 @@
     }
 </div>
 
+@if (_pendingContract)
+{
+    <div class="alert alert-warning d-flex align-items-center justify-content-between flex-wrap gap-2 mt-3" role="status">
+        <span><i class="bi bi-pen me-1"></i> Un contrat de collaboration vous a été envoyé. Il doit être lu, approuvé section par section, puis signé.</span>
+        <a class="btn btn-primary btn-sm" href="tutor/contracts">Ouvrir le contrat</a>
+    </div>
+}
+
 <div class="th-kpis">
     <div class="th-kpi">
         <div class="th-kpi-icon th-kpi-icon--violet"><i class="bi bi-calendar2-week" aria-hidden="true"></i></div>
@@ -384,6 +392,7 @@
     private decimal _licenseWithholdRemaining;
     private string? _payoutMethod;
     private int? _approvalStatus;
+    private bool _pendingContract;
 
     private bool IsJoinable =>
         _nextSession is not null
@@ -505,6 +514,7 @@
         await LoadMessagesAsync();
         await LoadMoneyAsync();
         await LoadAccountStatusAsync();
+        await LoadPendingContractAsync();
 
         _loading = false;
     }
@@ -687,6 +697,19 @@
             _approvalStatus = status?.Status;
         }
         catch { /* pastille masquée */ }
+    }
+
+    private async Task LoadPendingContractAsync()
+    {
+        try
+        {
+            var list = await Api.GetAsync<List<TutorSphere.Application.DTOs.Contracts.TeacherContractListItemDto>>("api/tutor/contracts") ?? [];
+            _pendingContract = list.Any(c =>
+                c.Status is TutorSphere.Domain.Enums.TeacherContractStatus.Sent
+                    or TutorSphere.Domain.Enums.TeacherContractStatus.Viewed
+                    or TutorSphere.Domain.Enums.TeacherContractStatus.AwaitingSignature);
+        }
+        catch { /* pas de bannière */ }
     }
 
     private async Task JoinClassroomAsync(SessionItem session)

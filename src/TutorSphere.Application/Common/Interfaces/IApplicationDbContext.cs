@@ -96,6 +96,9 @@ public interface IApplicationDbContext
     IQueryable<MeetingActionItem> MeetingActionItems { get; }
     IQueryable<MeetingNotification> MeetingNotifications { get; }
     IQueryable<MeetingAuditLog> MeetingAuditLogs { get; }
+    IQueryable<TeacherContract> TeacherContracts { get; }
+    IQueryable<TeacherContractSectionDecision> TeacherContractSectionDecisions { get; }
+    IQueryable<TeacherContractAuditEvent> TeacherContractAuditEvents { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     void Add<T>(T entity) where T : class;

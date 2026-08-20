@@ -1,0 +1,328 @@
+@page "/contract/sign/{Token}"
+@layout LoginLayout
+@rendermode InteractiveServer
+@using TutorSphere.Application.DTOs.Contracts
+@using TutorSphere.Domain.Enums
+@inject HttpClient Http
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+<PageTitle>Signature du contrat — TutorSphere</PageTitle>
+
+<div class="contract-sign-page">
+    <header class="contract-sign-brand">
+        <img src="images/tutorsphere-logo-full.png" alt="TutorSphere" />
+        <span>Contrat de collaboration enseignant</span>
+    </header>
+
+    @if (!string.IsNullOrEmpty(_error) && _view is null && !_refused && !_signed)
+    {
+        <div class="alert alert-danger">@_error</div>
+        <p class="text-muted">Si le lien a expiré, demandez un nouveau lien à l’administrateur de votre groupe.</p>
+    }
+    else if (_loading)
+    {
+        <div class="text-center py-5"><span class="spinner-border"></span></div>
+    }
+    else if (_signed)
+    {
+        <div class="contract-sign-done">
+            <i class="bi bi-check-circle-fill"></i>
+            <h1>Contrat signé</h1>
+            <p>Le document définitif a été généré. Une copie est disponible dans votre espace enseignant.</p>
+            <p class="small text-muted">N° @_signedNumber · Empreinte @_signedHash</p>
+            <a class="btn btn-primary" href="/login/tuteur">Ouvrir l’espace enseignant</a>
+        </div>
+    }
+    else if (_refused)
+    {
+        <div class="contract-sign-done contract-sign-done--refused">
+            <i class="bi bi-x-circle-fill"></i>
+            <h1>Contrat refusé</h1>
+            <p>Vous avez refusé une clause obligatoire. Le contrat est marqué comme refusé. Un administrateur pourra vous envoyer une nouvelle version.</p>
+        </div>
+    }
+    else if (_view is not null)
+    {
+        <div class="contract-sign-meta">
+            <h1>Contrat @_view.ContractNumber</h1>
+            <p>Version @_view.Version · Langue @_view.Language · @_view.GroupName</p>
+            @if (_view.TokenExpiresAt is DateTime exp)
+            {
+                <p class="small">Lien valable jusqu’au @exp.ToLocalTime().ToString("g")</p>
+            }
+            <p>Lisez chaque section, puis approuvez-la. Si vous refusez une section, le contrat entier sera refusé.</p>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger">@_error</div>
+        }
+
+        <div class="contract-progress">
+            @_acceptedCount / @_view.Sections.Count sections acceptées
+        </div>
+
+        @foreach (var section in _view.Sections)
+        {
+            var open = _openKey == section.Key;
+            <article class="contract-section @(section.Accepted == true ? "is-accepted" : null)">
+                <button type="button" class="contract-section-head" @onclick="() => ToggleSectionAsync(section)">
+                    <span>
+                        <strong>@section.Title</strong>
+                        @if (section.Accepted == true)
+                        {
+                            <span class="contract-pill contract-pill--ok">Acceptée</span>
+                        }
+                        else if (section.Opened)
+                        {
+                            <span class="contract-pill">Consultée</span>
+                        }
+                    </span>
+                    <i class="bi @(open ? "bi-chevron-up" : "bi-chevron-down")"></i>
+                </button>
+                @if (open)
+                {
+                    <div class="contract-section-body">
+                        @foreach (var para in SplitBody(section.Body))
+                        {
+                            <p>@para</p>
+                        }
+                        @if (section.Accepted != true && _view.Status != TeacherContractStatus.Refused)
+                        {
+                            <div class="contract-section-actions">
+                                <button type="button" class="btn btn-primary" disabled="@_busy" @onclick="() => AcceptAsync(section)">
+                                    J’approuve cette section
+                                </button>
+                                <button type="button" class="btn btn-outline-danger" disabled="@_busy" @onclick="() => BeginRefuse(section)">
+                                    Je refuse cette section
+                                </button>
+                            </div>
+                        }
+                    </div>
+                }
+            </article>
+        }
+
+        @if (_view.AllSectionsAccepted && _view.Status != TeacherContractStatus.Refused)
+        {
+            <section class="contract-sign-final">
+                <h2>Confirmation d’identité et signature</h2>
+                <p>Saisissez votre nom et prénom tels qu’ils figurent au contrat : <strong>@_view.IdentityFullNameHint</strong></p>
+                <label class="form-label">Nom et prénom</label>
+                <input class="form-control mb-3" @bind="_typedName" />
+                <label class="form-label">Signature électronique</label>
+                <canvas id="ts-sign-pad" class="contract-sign-canvas"></canvas>
+                <div class="mb-3">
+                    <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="ClearPadAsync">Effacer</button>
+                </div>
+                <label class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" @bind="_consent" />
+                    <span class="form-check-label">J’ai lu, compris et accepté toutes les conditions du présent contrat, et je confirme définitivement mon consentement.</span>
+                </label>
+                <button type="button" class="btn btn-primary" disabled="@_busy" @onclick="CompleteAsync">
+                    Signer le contrat
+                </button>
+            </section>
+        }
+    }
+</div>
+
+@if (_refuseSection is not null)
+{
+    <div class="contract-modal-backdrop">
+        <div class="contract-modal">
+            <h3>Refuser cette section ?</h3>
+            <p>Si vous refusez « @_refuseSection.Title », le contrat entier sera marqué comme <strong>refusé</strong>. Cette action est définitive pour ce lien.</p>
+            <label class="form-label">Commentaire (optionnel)</label>
+            <textarea class="form-control mb-3" rows="3" @bind="_refuseComment"></textarea>
+            <div class="d-flex gap-2 justify-content-end">
+                <button type="button" class="btn btn-outline-secondary" @onclick="() => _refuseSection = null">Annuler</button>
+                <button type="button" class="btn btn-danger" disabled="@_busy" @onclick="ConfirmRefuseAsync">Confirmer le refus</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public string Token { get; set; } = "";
+
+    private TeacherContractSignViewDto? _view;
+    private string? _error;
+    private bool _loading = true;
+    private bool _busy;
+    private bool _signed;
+    private bool _refused;
+    private string? _signedNumber;
+    private string? _signedHash;
+    private string? _openKey;
+    private string _typedName = "";
+    private bool _consent;
+    private TeacherContractSectionDto? _refuseSection;
+    private string? _refuseComment;
+    private bool _padReady;
+
+    private int _acceptedCount => _view?.Sections.Count(s => s.Accepted == true) ?? 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_view?.AllSectionsAccepted == true && !_signed && !_refused && !_padReady)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("tsContractSign.init", "ts-sign-pad");
+                _padReady = true;
+            }
+            catch { }
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            var resp = await Http.GetAsync($"api/contracts/sign/{Uri.EscapeDataString(Token)}");
+            if (!resp.IsSuccessStatusCode)
+            {
+                _error = await ReadErrorAsync(resp) ?? "Lien invalide ou expiré.";
+                _view = null;
+                return;
+            }
+            _view = await resp.Content.ReadFromJsonAsync<TeacherContractSignViewDto>();
+            if (_view?.Status == TeacherContractStatus.Refused)
+                _refused = true;
+            if (_view?.Status == TeacherContractStatus.Signed)
+            {
+                _signed = true;
+                _signedNumber = _view.ContractNumber;
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task ToggleSectionAsync(TeacherContractSectionDto section)
+    {
+        if (_openKey == section.Key)
+        {
+            _openKey = null;
+            return;
+        }
+        _openKey = section.Key;
+        try
+        {
+            await Http.PostAsync($"api/contracts/sign/{Uri.EscapeDataString(Token)}/sections/{Uri.EscapeDataString(section.Key)}/open", null);
+            await LoadAsync();
+            _openKey = section.Key;
+        }
+        catch { }
+    }
+
+    private async Task AcceptAsync(TeacherContractSectionDto section)
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync(
+                $"api/contracts/sign/{Uri.EscapeDataString(Token)}/sections/{Uri.EscapeDataString(section.Key)}/decide",
+                new { accept = true });
+            if (!resp.IsSuccessStatusCode)
+            {
+                _error = await ReadErrorAsync(resp);
+                return;
+            }
+            await LoadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private void BeginRefuse(TeacherContractSectionDto section)
+    {
+        _refuseSection = section;
+        _refuseComment = "";
+    }
+
+    private async Task ConfirmRefuseAsync()
+    {
+        if (_refuseSection is null) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync(
+                $"api/contracts/sign/{Uri.EscapeDataString(Token)}/sections/{Uri.EscapeDataString(_refuseSection.Key)}/decide",
+                new { accept = false, comment = _refuseComment });
+            if (!resp.IsSuccessStatusCode)
+            {
+                _error = await ReadErrorAsync(resp);
+                return;
+            }
+            _refuseSection = null;
+            _refused = true;
+            _view = null;
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task CompleteAsync()
+    {
+        _busy = true;
+        _error = null;
+        try
+        {
+            var png = await JS.InvokeAsync<string>("tsContractSign.toDataUrl", "ts-sign-pad");
+            if (string.IsNullOrWhiteSpace(png))
+            {
+                _error = "Apposez votre signature électronique.";
+                return;
+            }
+            var resp = await Http.PostAsJsonAsync(
+                $"api/contracts/sign/{Uri.EscapeDataString(Token)}/complete",
+                new { typedFullName = _typedName, signaturePngBase64 = png, finalConsent = _consent });
+            if (!resp.IsSuccessStatusCode)
+            {
+                _error = await ReadErrorAsync(resp);
+                return;
+            }
+            var detail = await resp.Content.ReadFromJsonAsync<TeacherContractDetailDto>();
+            _signed = true;
+            _signedNumber = detail?.ContractNumber;
+            _signedHash = detail?.DocumentHash;
+            _view = null;
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task ClearPadAsync()
+    {
+        try { await JS.InvokeVoidAsync("tsContractSign.clear", "ts-sign-pad"); } catch { }
+    }
+
+    private static IEnumerable<string> SplitBody(string body) =>
+        (body ?? "").Split("\n\n", StringSplitOptions.RemoveEmptyEntries);
+
+    private static async Task<string?> ReadErrorAsync(HttpResponseMessage resp)
+    {
+        try
+        {
+            var json = await resp.Content.ReadFromJsonAsync<Dictionary<string, string>>();
+            if (json is not null && json.TryGetValue("error", out var e)) return e;
+        }
+        catch { }
+        return "La requête a échoué.";
+    }
+}

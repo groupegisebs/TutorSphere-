@@ -1,0 +1,155 @@
+@page "/tutor/contracts"
+@layout TutorLayout
+@rendermode InteractiveServer
+@using TutorSphere.Application.DTOs.Contracts
+@using TutorSphere.Domain.Enums
+@inject AuthService Auth
+@inject ApiClient Api
+@inject IJSRuntime JS
+
+<PageTitle>Mes contrats — TutorSphere</PageTitle>
+
+<div class="th-head">
+    <div>
+        <h1 class="th-greeting">Mes contrats</h1>
+        <p class="th-subtitle">Consultez et téléchargez vos contrats de collaboration. Les documents signés ne sont pas modifiables.</p>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-danger">@_error</div>
+}
+
+@if (_pending.Count > 0)
+{
+    <div class="alert alert-warning">
+        <strong>Action requise.</strong> Vous avez un contrat en attente de signature.
+        @foreach (var p in _pending)
+        {
+            <div class="mt-2">
+                <a class="btn btn-primary btn-sm" href="@p.SignUrl">Ouvrir le contrat @p.ContractNumber</a>
+            </div>
+        }
+    </div>
+}
+
+@if (_loading)
+{
+    <span class="spinner-border"></span>
+}
+else if (_list.Count == 0)
+{
+    <p class="text-muted">Aucun contrat pour le moment.</p>
+}
+else
+{
+    <div class="th-card">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>N°</th>
+                    <th>Groupe</th>
+                    <th>Statut</th>
+                    <th>Signé</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in _list)
+                {
+                    <tr>
+                        <td>@row.ContractNumber</td>
+                        <td>@row.GroupName</td>
+                        <td>@StatusLabel(row.Status)</td>
+                        <td>@(row.SignedAt?.ToLocalTime().ToString("g") ?? "—")</td>
+                        <td class="text-end">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => OpenAsync(row.Id)">Détail</button>
+                            @if (row.CanDownload)
+                            {
+                                <button type="button" class="btn btn-sm btn-primary" @onclick="() => DownloadAsync(row.Id, row.ContractNumber)">Télécharger</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@if (_detail is not null)
+{
+    <div class="th-card mt-3">
+        <div class="d-flex justify-content-between">
+            <h2>@_detail.ContractNumber</h2>
+            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => _detail = null">Fermer</button>
+        </div>
+        <p>@StatusLabel(_detail.Status) · @_detail.GroupName</p>
+        @if (!string.IsNullOrWhiteSpace(_detail.DocumentHash))
+        {
+            <p class="small text-break">Empreinte : @_detail.DocumentHash</p>
+        }
+        @if (!string.IsNullOrWhiteSpace(_detail.SignUrl) && _detail.Status is TeacherContractStatus.Sent or TeacherContractStatus.Viewed or TeacherContractStatus.AwaitingSignature)
+        {
+            <a class="btn btn-primary" href="@_detail.SignUrl">Continuer la signature</a>
+        }
+        @foreach (var s in _detail.Sections)
+        {
+            <details class="mb-2">
+                <summary>@s.Title</summary>
+                <div class="small white-space-pre-wrap">@s.Body</div>
+            </details>
+        }
+    </div>
+}
+
+@code {
+    private List<TeacherContractListItemDto> _list = [];
+    private TeacherContractDetailDto? _detail;
+    private List<TeacherContractDetailDto> _pending = [];
+    private bool _loading = true;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.EnsureSessionRestoredAsync(forceJs: true);
+        var result = await Api.GetWithErrorAsync<List<TeacherContractListItemDto>>("api/tutor/contracts");
+        _error = result.Error;
+        _list = result.Value ?? [];
+        foreach (var row in _list.Where(c => c.Status is TeacherContractStatus.Sent or TeacherContractStatus.Viewed or TeacherContractStatus.AwaitingSignature))
+        {
+            var d = await Api.GetAsync<TeacherContractDetailDto>($"api/tutor/contracts/{row.Id}");
+            if (d is not null && !string.IsNullOrWhiteSpace(d.SignUrl))
+                _pending.Add(d);
+        }
+        _loading = false;
+    }
+
+    private async Task OpenAsync(Guid id)
+    {
+        var result = await Api.GetWithErrorAsync<TeacherContractDetailDto>($"api/tutor/contracts/{id}");
+        _error = result.Error;
+        _detail = result.Value;
+    }
+
+    private async Task DownloadAsync(Guid id, string number)
+    {
+        var result = await Api.GetBytesWithErrorAsync($"api/tutor/contracts/{id}/pdf");
+        if (result.Value is null) { _error = result.Error; return; }
+        await JS.InvokeVoidAsync("downloadFileFromBase64", $"{number}.pdf", "application/pdf", Convert.ToBase64String(result.Value));
+    }
+
+    private static string StatusLabel(TeacherContractStatus s) => s switch
+    {
+        TeacherContractStatus.Draft => "Brouillon",
+        TeacherContractStatus.Sent => "Envoyé",
+        TeacherContractStatus.Viewed => "Consulté",
+        TeacherContractStatus.AwaitingSignature => "En attente de signature",
+        TeacherContractStatus.Signed => "Signé",
+        TeacherContractStatus.Expired => "Expiré",
+        TeacherContractStatus.Refused => "Refusé",
+        TeacherContractStatus.Cancelled => "Annulé",
+        TeacherContractStatus.Replaced => "Remplacé par une nouvelle version",
+        _ => s.ToString()
+    };
+}

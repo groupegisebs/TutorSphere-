@@ -266,4 +266,14 @@ public interface IEmailService
         string? accessCode = null, CancellationToken ct = default);
 
     Task SendMeetingMinutesAsync(string to, string recipientName, string title, string minutesUrl, CancellationToken ct = default);
+
+    /// <summary>Lien sécurisé de signature du contrat enseignant (valable 14 jours).</summary>
+    Task SendTeacherContractSignAsync(
+        string to,
+        string firstName,
+        string groupName,
+        string contractNumber,
+        string signUrl,
+        DateTime expiresAtUtc,
+        CancellationToken ct = default);
 }

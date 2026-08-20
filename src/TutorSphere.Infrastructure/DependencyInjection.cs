@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using TutorSphere.Application;
 using TutorSphere.Application.Common.Interfaces;
+using TutorSphere.Application.Services;
 using TutorSphere.Domain.Entities;
 using TutorSphere.Domain.Enums;
 using TutorSphere.Infrastructure.Email;
@@ -57,6 +58,7 @@ public static class DependencyInjection
         services.Configure<MailGatewaySettings>(configuration.GetSection(MailGatewaySettings.SectionName));
         services.AddHttpClient<MailGatewayClient>();
         services.AddScoped<IEmailService, EmailService>();
+        services.AddScoped<ITeacherContractPdfWriter, TeacherContractPdfWriter>();
         services.Configure<WhatsAppChannelOptions>(configuration.GetSection(WhatsAppChannelOptions.SectionName));
         services.AddHttpClient<WhatsAppGatewayClient>();
         services.AddScoped<IWhatsAppEnrollmentService, WhatsAppEnrollmentService>();
@@ -322,7 +324,92 @@ public static class DependencyInjection
             """CREATE UNIQUE INDEX IF NOT EXISTS "IX_WhatsAppEnrollmentsSet_UserId" ON "WhatsAppEnrollmentsSet" ("UserId");""");
         await db.Database.ExecuteSqlRawAsync(
             """CREATE INDEX IF NOT EXISTS "IX_WhatsAppEnrollmentsSet_PhoneE164" ON "WhatsAppEnrollmentsSet" ("PhoneE164");""");
-        logger.LogInformation("Coverage, document metadata, payout invoice, and WhatsApp channel schema are present.");
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            CREATE TABLE IF NOT EXISTS "TeacherContractsSet" (
+                "Id" uuid NOT NULL,
+                "ContractNumber" character varying(40) NOT NULL,
+                "Version" character varying(32) NOT NULL,
+                "Language" character varying(16) NOT NULL,
+                "Status" integer NOT NULL,
+                "TenantId" uuid NOT NULL,
+                "ExpertGroupId" uuid NOT NULL,
+                "TeacherUserId" character varying(450) NOT NULL,
+                "CreatedByUserId" character varying(450) NOT NULL,
+                "PlaceholdersJson" text NOT NULL,
+                "SignToken" character varying(64) NOT NULL,
+                "TokenExpiresAt" timestamp with time zone,
+                "TokenInvalidatedAt" timestamp with time zone,
+                "SentAt" timestamp with time zone,
+                "ViewedAt" timestamp with time zone,
+                "SignedAt" timestamp with time zone,
+                "RefusedAt" timestamp with time zone,
+                "CancelledAt" timestamp with time zone,
+                "ExpiredAt" timestamp with time zone,
+                "RefusedSectionKey" character varying(64),
+                "RefusalComment" character varying(2000),
+                "TeacherTypedName" character varying(200),
+                "SignaturePngBase64" text,
+                "TeacherIp" character varying(64),
+                "TeacherUserAgent" character varying(400),
+                "PdfUrl" character varying(500),
+                "DocumentHash" character varying(128),
+                "VerificationCode" character varying(32),
+                "ReplacedByContractId" uuid,
+                "ReplacesContractId" uuid,
+                "CreatedAt" timestamp with time zone NOT NULL,
+                "UpdatedAt" timestamp with time zone,
+                CONSTRAINT "PK_TeacherContractsSet" PRIMARY KEY ("Id")
+            );
+            """);
+        await db.Database.ExecuteSqlRawAsync(
+            """CREATE UNIQUE INDEX IF NOT EXISTS "IX_TeacherContractsSet_ContractNumber" ON "TeacherContractsSet" ("ContractNumber");""");
+        await db.Database.ExecuteSqlRawAsync(
+            """CREATE UNIQUE INDEX IF NOT EXISTS "IX_TeacherContractsSet_SignToken" ON "TeacherContractsSet" ("SignToken");""");
+        await db.Database.ExecuteSqlRawAsync(
+            """CREATE INDEX IF NOT EXISTS "IX_TeacherContractsSet_ExpertGroupId" ON "TeacherContractsSet" ("ExpertGroupId");""");
+        await db.Database.ExecuteSqlRawAsync(
+            """CREATE INDEX IF NOT EXISTS "IX_TeacherContractsSet_TenantId" ON "TeacherContractsSet" ("TenantId");""");
+        await db.Database.ExecuteSqlRawAsync(
+            """CREATE INDEX IF NOT EXISTS "IX_TeacherContractsSet_Status" ON "TeacherContractsSet" ("Status");""");
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            CREATE TABLE IF NOT EXISTS "TeacherContractSectionDecisionsSet" (
+                "Id" uuid NOT NULL,
+                "ContractId" uuid NOT NULL,
+                "SectionKey" character varying(64) NOT NULL,
+                "Accepted" boolean,
+                "OpenedAt" timestamp with time zone,
+                "DecidedAt" timestamp with time zone,
+                "Comment" character varying(2000),
+                "CreatedAt" timestamp with time zone NOT NULL,
+                "UpdatedAt" timestamp with time zone,
+                CONSTRAINT "PK_TeacherContractSectionDecisionsSet" PRIMARY KEY ("Id")
+            );
+            """);
+        await db.Database.ExecuteSqlRawAsync(
+            """CREATE UNIQUE INDEX IF NOT EXISTS "IX_TeacherContractSectionDecisionsSet_ContractId_SectionKey" ON "TeacherContractSectionDecisionsSet" ("ContractId", "SectionKey");""");
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            CREATE TABLE IF NOT EXISTS "TeacherContractAuditEventsSet" (
+                "Id" uuid NOT NULL,
+                "ContractId" uuid NOT NULL,
+                "Action" integer NOT NULL,
+                "ActorUserId" character varying(450),
+                "IpAddress" character varying(64),
+                "UserAgent" character varying(400),
+                "Summary" character varying(500) NOT NULL,
+                "DetailsJson" text,
+                "CreatedAt" timestamp with time zone NOT NULL,
+                "UpdatedAt" timestamp with time zone,
+                CONSTRAINT "PK_TeacherContractAuditEventsSet" PRIMARY KEY ("Id")
+            );
+            """);
+        await db.Database.ExecuteSqlRawAsync(
+            """CREATE INDEX IF NOT EXISTS "IX_TeacherContractAuditEventsSet_ContractId" ON "TeacherContractAuditEventsSet" ("ContractId");""");
+        await db.Database.ExecuteSqlRawAsync(
+            """CREATE INDEX IF NOT EXISTS "IX_TeacherContractAuditEventsSet_CreatedAt" ON "TeacherContractAuditEventsSet" ("CreatedAt");""");
+        logger.LogInformation("Coverage, document metadata, payout invoice, WhatsApp channel, and teacher contracts schema are present.");
     }
 
     /// <summary>

@@ -54,5 +54,8 @@ public enum ExpertGovernanceEventType
     MeetingCancelled = 28,
     MeetingStarted = 29,
     MeetingEnded = 30,
-    TeacherRegisteredViaInviteLink = 31
+    TeacherRegisteredViaInviteLink = 31,
+    TeacherContractSent = 32,
+    TeacherContractSigned = 33,
+    TeacherContractRefused = 34
 }

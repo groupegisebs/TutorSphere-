@@ -1,0 +1,78 @@
+@page "/contract/verify/{ContractNumber}"
+@layout LoginLayout
+@rendermode InteractiveServer
+@using TutorSphere.Application.DTOs.Contracts
+@using TutorSphere.Domain.Enums
+@inject HttpClient Http
+
+<PageTitle>Vérification du contrat — TutorSphere</PageTitle>
+
+<div class="contract-sign-page">
+    <header class="contract-sign-brand">
+        <img src="images/tutorsphere-logo-full.png" alt="TutorSphere" />
+        <span>Vérification d’authenticité</span>
+    </header>
+
+    @if (_loading)
+    {
+        <div class="text-center py-5"><span class="spinner-border"></span></div>
+    }
+    else if (_dto is null)
+    {
+        <div class="alert alert-warning">Aucun contrat trouvé pour ce numéro.</div>
+    }
+    else
+    {
+        <div class="contract-verify-card">
+            <h1>@_dto.ContractNumber</h1>
+            <p>Version @_dto.Version · Langue @_dto.Language</p>
+            <p><strong>Statut :</strong> @StatusLabel(_dto.Status)</p>
+            @if (_dto.SignedAt is DateTime at)
+            {
+                <p><strong>Signé le :</strong> @at.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") UTC</p>
+            }
+            <p><strong>Référence :</strong> @(_dto.VerificationCode ?? "—")</p>
+            <p class="small text-break"><strong>Empreinte SHA-256 :</strong> @(_dto.DocumentHash ?? "—")</p>
+            @if (_dto.Authentic)
+            {
+                <div class="alert alert-success mb-0">Document authentique enregistré par TutorSphere.</div>
+            }
+            else
+            {
+                <div class="alert alert-secondary mb-0">Ce contrat n’est pas (encore) un original signé.</div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string ContractNumber { get; set; } = "";
+    private TeacherContractVerifyDto? _dto;
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var resp = await Http.GetAsync($"api/contracts/verify/{Uri.EscapeDataString(ContractNumber)}");
+            if (resp.IsSuccessStatusCode)
+                _dto = await resp.Content.ReadFromJsonAsync<TeacherContractVerifyDto>();
+        }
+        catch { }
+        finally { _loading = false; }
+    }
+
+    private static string StatusLabel(TeacherContractStatus s) => s switch
+    {
+        TeacherContractStatus.Draft => "Brouillon",
+        TeacherContractStatus.Sent => "Envoyé",
+        TeacherContractStatus.Viewed => "Consulté",
+        TeacherContractStatus.AwaitingSignature => "En attente de signature",
+        TeacherContractStatus.Signed => "Signé",
+        TeacherContractStatus.Expired => "Expiré",
+        TeacherContractStatus.Refused => "Refusé",
+        TeacherContractStatus.Cancelled => "Annulé",
+        TeacherContractStatus.Replaced => "Remplacé par une nouvelle version",
+        _ => s.ToString()
+    };
+}

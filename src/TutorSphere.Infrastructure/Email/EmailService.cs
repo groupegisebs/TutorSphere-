@@ -66,6 +66,7 @@ internal static class EmailTemplates
     public const string MeetingGuestCode = "MEETING_GUEST_CODE";
     public const string MeetingReminder = "MEETING_REMINDER";
     public const string MeetingMinutes = "MEETING_MINUTES";
+    public const string TeacherContractSign = "TEACHER_CONTRACT_SIGN";
 }
 
 public class EmailService : IEmailService
@@ -604,6 +605,23 @@ public class EmailService : IEmailService
             ["RecipientName"] = Fallback(recipientName, "Membre du groupe"),
             ["Title"] = Fallback(title, "Réunion TutorSphere"),
             ["MinutesUrl"] = minutesUrl
+        }, ct);
+
+    public Task SendTeacherContractSignAsync(
+        string to,
+        string firstName,
+        string groupName,
+        string contractNumber,
+        string signUrl,
+        DateTime expiresAtUtc,
+        CancellationToken ct = default) =>
+        SendAsync(to, EmailTemplates.TeacherContractSign, new Dictionary<string, string>
+        {
+            ["FirstName"] = Fallback(firstName, "enseignant"),
+            ["GroupName"] = Fallback(groupName, "TutorSphere"),
+            ["ContractNumber"] = contractNumber,
+            ["SignUrl"] = signUrl,
+            ["ExpiresAt"] = expiresAtUtc.ToString("f", CultureInfo.GetCultureInfo("fr-FR"))
         }, ct);
 
     public async Task SendLessonCoverageProposedAsync(

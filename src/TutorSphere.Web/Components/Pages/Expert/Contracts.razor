@@ -1,0 +1,294 @@
+@page "/expert/contracts"
+@layout ExpertLayout
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Microsoft.AspNetCore.WebUtilities
+@using TutorSphere.Application.DTOs.Contracts
+@using TutorSphere.Domain.Enums
+@inject AuthService Auth
+@inject ApiClient Api
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+<PageTitle>Contrats enseignants — TutorSphere</PageTitle>
+
+<AuthorizeView Roles="GroupManager,SuperAdmin,PlatformAdmin">
+    <Authorized>
+        <div class="cc-toolbar">
+            <div>
+                <h1 class="cc-page-title">Contrats enseignants</h1>
+                <p class="cc-page-sub">Envoyez un contrat électronique dans la langue de l’enseignant, suivez la signature et téléchargez l’original signé.</p>
+            </div>
+            <button type="button" class="cc-btn cc-btn-primary" @onclick="BeginSend">
+                <i class="bi bi-send"></i> Envoyer un contrat
+            </button>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger">@_error</div>
+        }
+        @if (!string.IsNullOrEmpty(_info))
+        {
+            <div class="alert alert-success">@_info</div>
+        }
+
+        @if (_showSend)
+        {
+            <div class="cc-card mb-3">
+                <h2 class="cc-card-title">Nouveau contrat</h2>
+                <label class="form-label">Enseignant</label>
+                <select class="form-select mb-3" @bind="_sendTenantId">
+                    <option value="">Choisir…</option>
+                    @foreach (var t in _teachers)
+                    {
+                        <option value="@t.TenantId">@t.Name @(string.IsNullOrWhiteSpace(t.Email) ? "" : $"({t.Email})")</option>
+                    }
+                </select>
+                <label class="form-label">Langue du contrat</label>
+                <select class="form-select mb-3" @bind="_sendLanguage">
+                    <option value="fr">Français</option>
+                    <option value="en">English</option>
+                </select>
+                <div class="row">
+                    @foreach (var v in _variables)
+                    {
+                        <div class="col-md-6 mb-2">
+                            <label class="form-label">@v.Label</label>
+                            <input class="form-control" value="@v.Value" @onchange="e => SetVar(v.Key, e.Value?.ToString())" />
+                        </div>
+                    }
+                </div>
+                <div class="d-flex gap-2 mt-2">
+                    <button type="button" class="cc-btn cc-btn-primary" disabled="@_busy" @onclick="SendAsync">Envoyer le lien (14 jours)</button>
+                    <button type="button" class="cc-btn" @onclick="() => _showSend = false">Annuler</button>
+                </div>
+            </div>
+        }
+
+        <div class="cc-card">
+            @if (_loading)
+            {
+                <span class="spinner-border"></span>
+            }
+            else if (_list.Count == 0)
+            {
+                <p class="text-muted mb-0">Aucun contrat pour le moment.</p>
+            }
+            else
+            {
+                <table class="cc-table">
+                    <thead>
+                        <tr>
+                            <th>N°</th>
+                            <th>Enseignant</th>
+                            <th>Statut</th>
+                            <th>Envoyé</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in _list)
+                        {
+                            <tr>
+                                <td>
+                                    <strong>@row.ContractNumber</strong>
+                                    <div class="small text-muted">v @row.Version · @row.Language</div>
+                                </td>
+                                <td>
+                                    @row.TeacherName
+                                    <div class="small text-muted">@row.TeacherEmail</div>
+                                </td>
+                                <td><span class="contract-pill">@StatusLabel(row.Status)</span></td>
+                                <td>@(row.SentAt?.ToLocalTime().ToString("g") ?? "—")</td>
+                                <td class="text-end text-nowrap">
+                                    <button type="button" class="cc-btn btn-sm" @onclick="() => OpenAsync(row.Id)">Détail</button>
+                                    @if (row.CanDownload)
+                                    {
+                                        <button type="button" class="cc-btn btn-sm" disabled="@_busy" @onclick="() => DownloadAsync(row.Id, row.ContractNumber)">PDF</button>
+                                    }
+                                    @if (row.Status is TeacherContractStatus.Sent or TeacherContractStatus.Viewed or TeacherContractStatus.AwaitingSignature or TeacherContractStatus.Expired or TeacherContractStatus.Refused)
+                                    {
+                                        <button type="button" class="cc-btn btn-sm" disabled="@_busy" @onclick="() => ResendAsync(row.Id)">Renvoyer</button>
+                                    }
+                                    @if (row.Status is TeacherContractStatus.Sent or TeacherContractStatus.Viewed or TeacherContractStatus.AwaitingSignature)
+                                    {
+                                        <button type="button" class="cc-btn btn-sm" disabled="@_busy" @onclick="() => CancelAsync(row.Id)">Annuler</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+
+        @if (_detail is not null)
+        {
+            <div class="cc-card mt-3">
+                <div class="d-flex justify-content-between">
+                    <h2 class="cc-card-title">@_detail.ContractNumber — @StatusLabel(_detail.Status)</h2>
+                    <button type="button" class="cc-btn btn-sm" @onclick="() => _detail = null">Fermer</button>
+                </div>
+                <p>@_detail.TeacherName · @_detail.GroupName</p>
+                @if (!string.IsNullOrWhiteSpace(_detail.DocumentHash))
+                {
+                    <p class="small text-break">Empreinte : @_detail.DocumentHash</p>
+                }
+                @if (!string.IsNullOrWhiteSpace(_detail.VerificationUrl))
+                {
+                    <p class="small"><a href="@_detail.VerificationUrl" target="_blank">Vérifier l’authenticité</a></p>
+                }
+                @if (!string.IsNullOrWhiteSpace(_detail.RefusalComment))
+                {
+                    <div class="alert alert-warning">Refus : @_detail.RefusalComment</div>
+                }
+                <h3 class="h6">Journal d’audit</h3>
+                <ul class="small">
+                    @foreach (var a in _detail.Audit)
+                    {
+                        <li>@a.At.ToLocalTime().ToString("g") — @a.Summary</li>
+                    }
+                </ul>
+            </div>
+        }
+    </Authorized>
+    <NotAuthorized>
+        <div class="alert alert-warning">Réservé à l’administrateur du groupe.</div>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private List<TeacherContractListItemDto> _list = [];
+    private List<TeacherContractTeacherOptionDto> _teachers = [];
+    private List<TeacherContractVariableDto> _variables = [];
+    private TeacherContractDetailDto? _detail;
+    private bool _loading = true;
+    private bool _busy;
+    private bool _showSend;
+    private string? _error;
+    private string? _info;
+    private string _sendTenantId = "";
+    private string _sendLanguage = "fr";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.EnsureSessionRestoredAsync(forceJs: true);
+        var uri = Nav.ToAbsoluteUri(Nav.Uri);
+        if (QueryHelpers.ParseQuery(uri.Query).TryGetValue("tenant", out var tenant) && Guid.TryParse(tenant, out var tid))
+        {
+            _sendTenantId = tid.ToString();
+            _showSend = true;
+        }
+        await LoadAsync();
+        await LoadFormAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            var result = await Api.GetWithErrorAsync<List<TeacherContractListItemDto>>("api/expert/contracts");
+            _error = result.Error;
+            _list = result.Value ?? [];
+        }
+        finally { _loading = false; }
+    }
+
+    private async Task LoadFormAsync()
+    {
+        _teachers = await Api.GetAsync<List<TeacherContractTeacherOptionDto>>("api/expert/contracts/teachers") ?? [];
+        var tpl = await Api.GetAsync<TeacherContractTemplateDto>("api/expert/contracts/template");
+        _variables = tpl?.Variables.Select(v => new TeacherContractVariableDto(v.Key, v.Label, v.Value)).ToList() ?? [];
+    }
+
+    private void BeginSend()
+    {
+        _showSend = true;
+        _info = null;
+    }
+
+    private void SetVar(string key, string? value)
+    {
+        _variables = _variables.Select(v => v.Key == key ? v with { Value = value ?? "" } : v).ToList();
+    }
+
+    private async Task SendAsync()
+    {
+        if (!Guid.TryParse(_sendTenantId, out var tenantId))
+        {
+            _error = "Choisissez un enseignant.";
+            return;
+        }
+        _busy = true;
+        _error = null;
+        try
+        {
+            var vars = _variables.ToDictionary(v => v.Key, v => v.Value);
+            var result = await Api.PostWithErrorAsync<TeacherContractListItemDto>("api/expert/contracts",
+                new SendTeacherContractRequest(tenantId, _sendLanguage, vars));
+            if (result.Error is not null) { _error = result.Error; return; }
+            _info = $"Contrat {result.Value?.ContractNumber} envoyé.";
+            _showSend = false;
+            await LoadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task OpenAsync(Guid id)
+    {
+        var result = await Api.GetWithErrorAsync<TeacherContractDetailDto>($"api/expert/contracts/{id}");
+        _error = result.Error;
+        _detail = result.Value;
+    }
+
+    private async Task CancelAsync(Guid id)
+    {
+        _busy = true;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<object>($"api/expert/contracts/{id}/cancel", new { });
+            _error = result.Error;
+            if (result.Error is null) { _info = "Contrat annulé."; await LoadAsync(); }
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task ResendAsync(Guid id)
+    {
+        _busy = true;
+        try
+        {
+            var result = await Api.PostWithErrorAsync<TeacherContractListItemDto>($"api/expert/contracts/{id}/resend", new { });
+            _error = result.Error;
+            if (result.Error is null) { _info = $"Nouveau lien envoyé ({result.Value?.ContractNumber})."; await LoadAsync(); }
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task DownloadAsync(Guid id, string number)
+    {
+        _busy = true;
+        try
+        {
+            var result = await Api.GetBytesWithErrorAsync($"api/expert/contracts/{id}/pdf");
+            if (result.Error is not null || result.Value is null) { _error = result.Error ?? "Téléchargement impossible."; return; }
+            await JS.InvokeVoidAsync("downloadFileFromBase64", $"{number}.pdf", "application/pdf", Convert.ToBase64String(result.Value));
+        }
+        finally { _busy = false; }
+    }
+
+    private static string StatusLabel(TeacherContractStatus s) => s switch
+    {
+        TeacherContractStatus.Draft => "Brouillon",
+        TeacherContractStatus.Sent => "Envoyé",
+        TeacherContractStatus.Viewed => "Consulté",
+        TeacherContractStatus.AwaitingSignature => "En attente de signature",
+        TeacherContractStatus.Signed => "Signé",
+        TeacherContractStatus.Expired => "Expiré",
+        TeacherContractStatus.Refused => "Refusé",
+        TeacherContractStatus.Cancelled => "Annulé",
+        TeacherContractStatus.Replaced => "Remplacé par une nouvelle version",
+        _ => s.ToString()
+    };
+}
