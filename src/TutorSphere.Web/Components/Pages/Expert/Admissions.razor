@@ -24,8 +24,7 @@
             </div>
             @if (_canInvite)
             {
-                @* Le formulaire est déjà sur la page : le bouton y conduit au lieu d'ouvrir un doublon. *@
-                <button type="button" class="cc-btn cc-btn-primary" @onclick="FocusInviteAsync">
+                <button type="button" class="cc-btn cc-btn-primary" @onclick="OpenInvite">
                     <i class="bi bi-plus-lg" aria-hidden="true"></i> Inviter un expert
                 </button>
             }
@@ -82,83 +81,8 @@
                 </div>
             </div>
 
-            <div class="ex-admissions-grid">
-                @if (_canInvite)
-                {
-                    <div class="cc-card">
-                        <h2 class="cc-card-title">Inviter un expert</h2>
-                        <p class="small text-muted mb-3">
-                            Invitez un membre du groupe d'experts. Pour ajouter un enseignant, utilisez le module « Enseignants ».
-                        </p>
-
-                        <p class="ex-adm-legend">Coordonnées</p>
-                        <div class="row g-2">
-                            <div class="col-md-6">
-                                <label class="form-label" for="adm-email">E-mail <span class="ex-req">*</span></label>
-                                <input id="adm-email" class="form-control @(_missing.Contains("email") ? "is-invalid" : null)"
-                                       type="email" @bind="_email" @bind:after='() => _missing.Remove("email")'
-                                       @ref="_emailInput" />
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label" for="adm-first">Prénom <span class="ex-req">*</span></label>
-                                <input id="adm-first" class="form-control @(_missing.Contains("first") ? "is-invalid" : null)"
-                                       @bind="_firstName" @bind:after='() => _missing.Remove("first")' />
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label" for="adm-last">Nom <span class="ex-req">*</span></label>
-                                <input id="adm-last" class="form-control @(_missing.Contains("last") ? "is-invalid" : null)"
-                                       @bind="_lastName" @bind:after='() => _missing.Remove("last")' />
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label" for="adm-phone">Téléphone</label>
-                                <input id="adm-phone" class="form-control" @bind="_phone" />
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label" for="adm-spec">Spécialité</label>
-                                <input id="adm-spec" class="form-control" @bind="_specialty" />
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label" for="adm-role">Fonction envisagée</label>
-                                <select id="adm-role" class="form-select" @bind="_role">
-                                    <option value="">— Choisir —</option>
-                                    <option>Évaluateur</option>
-                                    <option>Mentor pédagogique</option>
-                                    <option>Coordinateur</option>
-                                    <option>Expert matière</option>
-                                    <option>Autre</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <p class="ex-adm-legend">Motif de l'invitation</p>
-                        <div class="row g-2">
-                            <div class="col-12">
-                                <label class="form-label" for="adm-just">Justification <span class="ex-req">*</span></label>
-                                <textarea id="adm-just" rows="3"
-                                          class="form-control @(_missing.Contains("just") ? "is-invalid" : null)"
-                                          @bind="_justification" @bind:after='() => _missing.Remove("just")'
-                                          placeholder="Expliquez pourquoi cette personne est invitée à rejoindre le groupe."></textarea>
-                            </div>
-                            <div class="col-12">
-                                <label class="form-label" for="adm-msg">Message personnel</label>
-                                <textarea id="adm-msg" class="form-control" rows="2" @bind="_message"
-                                          placeholder="Ajoutez un message qui sera inclus dans l'e-mail d'invitation."></textarea>
-                            </div>
-                        </div>
-
-                        <div class="ex-adm-form-foot">
-                            @* Durée réelle du jeton d'invitation, définie côté service. *@
-                            <span class="ex-adm-note">
-                                <i class="bi bi-shield-lock" aria-hidden="true"></i>
-                                Un lien sécurisé valable @InviteValidityDays jours sera envoyé.
-                            </span>
-                            <button type="button" class="cc-btn cc-btn-primary" disabled="@_busy" @onclick="InviteAsync">
-                                <i class="bi bi-send" aria-hidden="true"></i> Envoyer l’invitation
-                            </button>
-                        </div>
-                    </div>
-                }
-                else
+            <div class="ex-adm-grid">
+                @if (!_canInvite)
                 {
                     <div class="cc-card">
                         <h2 class="cc-card-title">Votre rôle</h2>
@@ -170,7 +94,6 @@
                     </div>
                 }
 
-                <div class="ex-adm-side">
                 <div class="cc-card">
                     <div class="ex-pending-title">
                         <h2 class="cc-card-title">À examiner</h2>
@@ -271,7 +194,6 @@
                             « Enseignants ».
                         </p>
                     }
-                </div>
                 </div>
             </div>
 
@@ -443,6 +365,99 @@
             </div>
         }
 
+        @if (_showInvite)
+        {
+            <div class="ex-gm-modal-back" @onclick="CloseInvite"></div>
+            <div class="cc-card ex-gm-modal ex-adm-modal" role="dialog" aria-modal="true" aria-labelledby="adm-modal-title">
+                <div class="ex-adm-modal-head">
+                    <div>
+                        <h2 class="cc-card-title mb-0" id="adm-modal-title">Inviter un expert</h2>
+                        <p class="small text-muted mb-0">
+                            Invitez un membre du groupe d'experts. Pour ajouter un enseignant, utilisez le module « Enseignants ».
+                        </p>
+                    </div>
+                    <button type="button" class="ex-adm-icon" aria-label="Fermer" @onclick="CloseInvite">
+                        <i class="bi bi-x-lg" aria-hidden="true"></i>
+                    </button>
+                </div>
+
+                @* L'alerte de la page passerait derrière le voile : elle doit vivre dans la modale. *@
+                @if (!string.IsNullOrEmpty(_inviteError))
+                {
+                    <div class="alert alert-danger py-2">@_inviteError</div>
+                }
+
+                <p class="ex-adm-legend">Coordonnées</p>
+                <div class="row g-2">
+                    <div class="col-md-6">
+                        <label class="form-label" for="adm-email">E-mail <span class="ex-req">*</span></label>
+                        <input id="adm-email" class="form-control @(_missing.Contains("email") ? "is-invalid" : null)"
+                               type="email" @bind="_email" @bind:after='() => _missing.Remove("email")'
+                               @ref="_emailInput" />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label" for="adm-first">Prénom <span class="ex-req">*</span></label>
+                        <input id="adm-first" class="form-control @(_missing.Contains("first") ? "is-invalid" : null)"
+                               @bind="_firstName" @bind:after='() => _missing.Remove("first")' />
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label" for="adm-last">Nom <span class="ex-req">*</span></label>
+                        <input id="adm-last" class="form-control @(_missing.Contains("last") ? "is-invalid" : null)"
+                               @bind="_lastName" @bind:after='() => _missing.Remove("last")' />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label" for="adm-phone">Téléphone</label>
+                        <input id="adm-phone" class="form-control" @bind="_phone" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label" for="adm-spec">Spécialité</label>
+                        <input id="adm-spec" class="form-control" @bind="_specialty" />
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label" for="adm-role">Fonction envisagée</label>
+                        <select id="adm-role" class="form-select" @bind="_role">
+                            <option value="">— Choisir —</option>
+                            <option>Évaluateur</option>
+                            <option>Mentor pédagogique</option>
+                            <option>Coordinateur</option>
+                            <option>Expert matière</option>
+                            <option>Autre</option>
+                        </select>
+                    </div>
+                </div>
+
+                <p class="ex-adm-legend">Motif de l'invitation</p>
+                <div class="row g-2">
+                    <div class="col-12">
+                        <label class="form-label" for="adm-just">Justification <span class="ex-req">*</span></label>
+                        <textarea id="adm-just" rows="3"
+                                  class="form-control @(_missing.Contains("just") ? "is-invalid" : null)"
+                                  @bind="_justification" @bind:after='() => _missing.Remove("just")'
+                                  placeholder="Expliquez pourquoi cette personne est invitée à rejoindre le groupe."></textarea>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label" for="adm-msg">Message personnel</label>
+                        <textarea id="adm-msg" class="form-control" rows="2" @bind="_message"
+                                  placeholder="Ajoutez un message qui sera inclus dans l'e-mail d'invitation."></textarea>
+                    </div>
+                </div>
+
+                <div class="ex-adm-form-foot">
+                    @* Durée réelle du jeton d'invitation, définie côté service. *@
+                    <span class="ex-adm-note">
+                        <i class="bi bi-shield-lock" aria-hidden="true"></i>
+                        Un lien sécurisé valable @InviteValidityDays jours sera envoyé.
+                    </span>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="cc-btn" disabled="@_busy" @onclick="CloseInvite">Annuler</button>
+                        <button type="button" class="cc-btn cc-btn-primary" disabled="@_busy" @onclick="InviteAsync">
+                            <i class="bi bi-send" aria-hidden="true"></i> Envoyer l’invitation
+                        </button>
+                    </div>
+                </div>
+            </div>
+        }
+
         @if (_rejectTarget is not null)
         {
             <div class="cc-card mt-3">
@@ -484,6 +499,9 @@
     private string _statusFilter = "";
     private InviteItem? _rejectTarget;
     private bool _showGuide;
+    private bool _showInvite;
+    private bool _focusInvite;
+    private string? _inviteError;
     private bool _showDates;
     private DateTime? _from;
     private DateTime? _to;
@@ -576,9 +594,27 @@
         _page = 1;
     }
 
-    /// <summary>Le formulaire est déjà affiché : on y amène le curseur plutôt que d'ouvrir un doublon.</summary>
-    private async Task FocusInviteAsync()
+    private void OpenInvite()
     {
+        _inviteError = null;
+        _success = null;
+        _missing.Clear();
+        _showInvite = true;
+        _focusInvite = true;
+    }
+
+    private void CloseInvite()
+    {
+        _showInvite = false;
+        _inviteError = null;
+        _missing.Clear();
+    }
+
+    /// <summary>Le premier champ prend le curseur : la modale s'ouvre prête à la saisie.</summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_focusInvite) return;
+        _focusInvite = false;
         try { await _emailInput.FocusAsync(); } catch { }
     }
 
@@ -644,12 +680,12 @@
     {
         if (!_canInvite)
         {
-            _error = "Seul le Responsable du groupe peut inviter un membre Expert.";
+            _inviteError = "Seul le Responsable du groupe peut inviter un membre Expert.";
             return;
         }
 
         _busy = true;
-        _error = _success = null;
+        _inviteError = _error = _success = null;
         try
         {
             // Un envoi refusé sans indication laissait chercher le champ manquant.
@@ -660,13 +696,13 @@
             if (string.IsNullOrWhiteSpace(_justification)) _missing.Add("just");
             if (_missing.Count > 0)
             {
-                _error = "Complétez les champs obligatoires signalés en rouge.";
+                _inviteError = "Complétez les champs obligatoires signalés en rouge.";
                 return;
             }
             if (!IsEmail(_email))
             {
                 _missing.Add("email");
-                _error = "Cette adresse e-mail n'est pas valide.";
+                _inviteError = "Cette adresse e-mail n'est pas valide.";
                 return;
             }
             var result = await Api.PostWithErrorAsync<InviteItem>("api/expert/membership/invites", new
@@ -680,13 +716,14 @@
                 justification = _justification,
                 personalMessage = string.IsNullOrWhiteSpace(_message) ? null : _message
             });
-            if (result.Error is not null) { _error = result.Error; return; }
+            if (result.Error is not null) { _inviteError = result.Error; return; }
             _success = "Invitation envoyée avec succès.";
             _missing.Clear();
             _email = _firstName = _lastName = _phone = _specialty = _role = _justification = _message = "";
+            _showInvite = false;
             await LoadAsync();
         }
-        catch (Exception ex) { _error = ex.Message; }
+        catch (Exception ex) { _inviteError = ex.Message; }
         finally { _busy = false; }
     }
 
