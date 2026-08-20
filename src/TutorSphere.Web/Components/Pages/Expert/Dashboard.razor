@@ -13,37 +13,61 @@
 
 <AuthorizeView Roles="Expert,GroupManager,SuperAdmin,PlatformAdmin">
     <Authorized>
-        <div class="th-head">
-            <div>
-                <h1 class="th-greeting">Tableau de bord</h1>
-                <p class="th-subtitle">
-                    @if (_summary is not null)
-                    {
-                        <text>@_summary.GroupName@(string.IsNullOrWhiteSpace(_summary.CountryCode) ? "" : $" · {_summary.CountryCode}") — pilotage pédagogique du groupe.</text>
-                    }
-                    else
-                    {
-                        <text>Pilotage pédagogique de votre groupe d'experts.</text>
-                    }
-                </p>
+        <div class="ex-dash-head">
+            <div class="ex-dash-hello-wrap">
+                <h1 class="ex-dash-hello">Bonjour @FirstName <span aria-hidden="true">👋</span></h1>
+                <p class="ex-dash-sub">Voici les priorités de @GroupLabel aujourd'hui.</p>
             </div>
-            <div class="th-head-actions">
+            <div class="ex-dash-head-actions">
                 <a class="btn btn-primary" href="expert/teachers/add">
-                    <i class="bi bi-person-plus me-1" aria-hidden="true"></i>@L["Expert_TeachersNav"]
+                    <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>Ajouter un enseignant
                 </a>
                 <a class="btn btn-outline-secondary" href="expert/admissions">
                     <i class="bi bi-person-check me-1" aria-hidden="true"></i>Admissions Experts
                 </a>
+                <div class="ex-dash-more-wrap">
+                    <button type="button" class="ex-dash-more" aria-label="Autres actions"
+                            aria-expanded="@_moreOpen" @onclick="ToggleMore" @onclick:stopPropagation="true">
+                        <i class="bi bi-three-dots" aria-hidden="true"></i>
+                    </button>
+                    @if (_moreOpen)
+                    {
+                        <div class="ex-dash-more-menu" @onclick:stopPropagation="true">
+                            @if (_isManager)
+                            {
+                                <a href="expert/meetings/create" @onclick="CloseMore">
+                                    <i class="bi bi-camera-video" aria-hidden="true"></i>Créer une réunion
+                                </a>
+                            }
+                            <a href="expert/disciplines" @onclick="CloseMore">
+                                <i class="bi bi-book" aria-hidden="true"></i>Gérer les disciplines
+                            </a>
+                            <a href="expert/reports" @onclick="CloseMore">
+                                <i class="bi bi-graph-up" aria-hidden="true"></i>Rapports
+                            </a>
+                            <a href="expert/activity" @onclick="CloseMore">
+                                <i class="bi bi-clock-history" aria-hidden="true"></i>Journal d'activité
+                            </a>
+                        </div>
+                    }
+                </div>
+                @* Date du jour, sans sélecteur : rien sur cet écran ne se lit à une autre date. *@
+                <span class="ex-dash-date">
+                    <i class="bi bi-calendar3" aria-hidden="true"></i>Aujourd'hui · @DateTime.Now.ToString("d MMM")
+                </span>
             </div>
         </div>
 
+        @if (_moreOpen)
+        {
+            <div class="ex-dash-more-backdrop" @onclick="CloseMore"></div>
+        }
+
         @if (_loading)
         {
-            <div class="th-hero">
-                <div class="th-hero-main">
-                    <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
-                    <span class="text-muted">@L["Common_Loading"]</span>
-                </div>
+            <div class="ex-dash-card ex-dash-loading">
+                <span class="spinner-border spinner-border-sm text-primary" role="status"></span>
+                <span class="text-muted">@L["Common_Loading"]</span>
             </div>
         }
         else if (!string.IsNullOrEmpty(_error))
@@ -52,222 +76,78 @@
         }
         else if (_summary is not null)
         {
-            <div class="th-hero">
-                <div class="th-hero-main">
-                    <div class="th-hero-icon"><i class="bi bi-folder2-open" aria-hidden="true"></i></div>
-                    <div>
-                        <span class="th-badge @(ReviewQueue > 0 ? null : "th-badge--muted")">Dossiers enseignants</span>
-                        <h2 class="th-hero-title">
-                            @(ReviewQueue > 0
-                                ? $"{ReviewQueue} dossier(s) à traiter"
-                                : "Aucun dossier en attente")
-                        </h2>
-                        <p class="th-hero-text">
-                            @(ReviewQueue > 0
-                                ? $"{_summary.TeachersPending} en attente · {_summary.TeachersUnderReview} en revue · {_summary.TeachersChangesRequested} à corriger."
-                                : "Les dossiers du groupe sont à jour.")
-                        </p>
-                    </div>
-                </div>
-                <div class="th-hero-actions">
-                    @if (_summary.NextPendingTenantId is Guid nextTid)
-                    {
-                        <a class="btn btn-primary" href="@($"expert/teachers/{nextTid}")">Revoir le prochain dossier</a>
-                    }
-                    else
-                    {
-                        <a class="btn btn-primary" href="expert/approvals?tab=queue">Ouvrir les dossiers en revue</a>
-                    }
-                    <a class="btn btn-outline-secondary" href="expert/teachers">Enseignants approuvés</a>
-                </div>
-            </div>
+            <div class="ex-dash-grid">
+                <div class="ex-dash-main">
 
-            <div class="th-kpis">
-                <div class="th-kpi">
-                    <div class="th-kpi-icon th-kpi-icon--amber"><i class="bi bi-person-plus" aria-hidden="true"></i></div>
-                    <div class="th-kpi-body">
-                        <span class="th-kpi-label">Inscriptions à valider</span>
-                        <span class="th-kpi-val">@_summary.PendingTeacherEnrollments</span>
-                        @if (_enrollments.Count > 0)
-                        {
-                            <button type="button" class="th-link th-link--btn" @onclick="ScrollToEnrollmentsAsync">
-                                Voir <i class="bi bi-arrow-right" aria-hidden="true"></i>
-                            </button>
-                        }
-                    </div>
-                </div>
-                <div class="th-kpi">
-                    <div class="th-kpi-icon th-kpi-icon--amber"><i class="bi bi-hourglass-split" aria-hidden="true"></i></div>
-                    <div class="th-kpi-body">
-                        <span class="th-kpi-label">En attente</span>
-                        <span class="th-kpi-val">@_summary.TeachersPending</span>
-                        @if (_summary.TeachersPending > 0)
-                        {
-                            <a class="th-link" href="expert/approvals?tab=queue">Voir <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
-                        }
-                    </div>
-                </div>
-                <div class="th-kpi">
-                    <div class="th-kpi-icon th-kpi-icon--sky"><i class="bi bi-eye" aria-hidden="true"></i></div>
-                    <div class="th-kpi-body">
-                        <span class="th-kpi-label">En revue</span>
-                        <span class="th-kpi-val">@_summary.TeachersUnderReview</span>
-                        @if (_summary.TeachersUnderReview > 0)
-                        {
-                            <a class="th-link" href="expert/approvals?tab=queue">Voir <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
-                        }
-                    </div>
-                </div>
-                <div class="th-kpi">
-                    <div class="th-kpi-icon th-kpi-icon--rose"><i class="bi bi-pencil-square" aria-hidden="true"></i></div>
-                    <div class="th-kpi-body">
-                        <span class="th-kpi-label">Modifications</span>
-                        <span class="th-kpi-val">@_summary.TeachersChangesRequested</span>
-                        @if (_summary.TeachersChangesRequested > 0)
-                        {
-                            <a class="th-link" href="expert/approvals?tab=queue">Voir <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
-                        }
-                    </div>
-                </div>
-                <div class="th-kpi">
-                    <div class="th-kpi-icon th-kpi-icon--green"><i class="bi bi-check2-circle" aria-hidden="true"></i></div>
-                    <div class="th-kpi-body">
-                        <span class="th-kpi-label">Approuvés</span>
-                        <span class="th-kpi-val">@_summary.TeachersApproved</span>
-                        @if (_summary.TeachersApproved > 0)
-                        {
-                            <a class="th-link" href="expert/teachers">Voir <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
-                        }
-                    </div>
-                </div>
-                <div class="th-kpi">
-                    <div class="th-kpi-icon th-kpi-icon--violet"><i class="bi bi-hand-thumbs-up" aria-hidden="true"></i></div>
-                    <div class="th-kpi-body">
-                        <span class="th-kpi-label">Votes ouverts</span>
-                        <span class="th-kpi-val">@_summary.ExpertVotesOpen</span>
-                        @if (_summary.ExpertVotesOpen > 0)
-                        {
-                            <a class="th-link" href="expert/admissions">Voir <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
-                        }
-                    </div>
-                </div>
-                <div class="th-kpi">
-                    <div class="th-kpi-icon th-kpi-icon--mint"><i class="bi bi-people" aria-hidden="true"></i></div>
-                    <div class="th-kpi-body">
-                        <span class="th-kpi-label">Membres actifs</span>
-                        <span class="th-kpi-val">@_summary.ActiveGroupMembers</span>
-                        <a class="th-link" href="expert/members">Voir <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
-                    </div>
-                </div>
-            </div>
-
-            <div class="th-grid">
-                @if (_isManager)
-                {
-                    <section class="th-card th-card--full" id="expert-meetings">
-                        <div class="th-card-head">
-                            <h2><i class="bi bi-camera-video me-2" aria-hidden="true"></i>Réunions</h2>
-                            <a class="th-link" href="expert/meetings">Voir tout <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
+                    <section class="ex-dash-card">
+                        <div class="ex-dash-card-head">
+                            <h2>À traiter maintenant</h2>
+                            <span class="ex-dash-count @(ActionCount > 0 ? null : "ex-dash-count--ok")">
+                                @(ActionCount > 0 ? $"{ActionCount} action{(ActionCount > 1 ? "s" : "")}" : "Rien en attente")
+                            </span>
                         </div>
-                        <div class="th-card-body">
-                            @if (_meetings.Count == 0)
+                        <div class="ex-dash-tiles">
+                            @foreach (var tile in PriorityTiles)
                             {
-                                <div class="th-msg-empty">
-                                    <span class="th-msg-empty-icon"><i class="bi bi-calendar-plus" aria-hidden="true"></i></span>
-                                    <div>
-                                        <strong>Aucune réunion programmée</strong>
-                                        <span class="th-setup-text">Planifiez une rencontre avec les membres du groupe.</span>
-                                    </div>
+                                <div class="ex-dash-tile ex-dash-tile--@tile.Tone">
+                                    <span class="ex-dash-tile-icon"><i class="bi @tile.Icon" aria-hidden="true"></i></span>
+                                    <strong class="ex-dash-tile-title">@tile.Title</strong>
+                                    <span class="ex-dash-tile-sub">@tile.Sub</span>
+                                    @if (tile.ActionLabel is not null)
+                                    {
+                                        @if (tile.ScrollTo is not null)
+                                        {
+                                            <button type="button" class="btn btn-sm btn-outline-secondary"
+                                                    @onclick="() => ScrollToAsync(tile.ScrollTo)">
+                                                @tile.ActionLabel
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <a class="btn btn-sm btn-outline-secondary" href="@tile.Href">@tile.ActionLabel</a>
+                                        }
+                                    }
                                 </div>
                             }
-                            else
-                            {
-                                <ul class="th-people">
-                                    @foreach (var m in PagedMeetings)
-                                    {
-                                        <li class="th-person">
-                                            <span class="th-kpi-icon th-kpi-icon--violet"><i class="bi bi-camera-video" aria-hidden="true"></i></span>
-                                            <div class="th-person-body">
-                                                <strong>@m.Title</strong>
-                                                <span>@StatusFr(m.Status) · @(m.StartAtUtc?.ToLocalTime().ToString("g") ?? "Brouillon")</span>
-                                            </div>
-                                            @if (m.Status is 1 or 2)
-                                            {
-                                                <a class="btn btn-sm btn-primary" href="@($"expert/meetings/{m.Id}/room")">Rejoindre</a>
-                                            }
-                                            else if (m.Status == 3)
-                                            {
-                                                <a class="btn btn-sm btn-outline-secondary" href="@($"expert/meetings/{m.Id}/minutes")">Compte rendu</a>
-                                            }
-                                        </li>
-                                    }
-                                </ul>
-
-                                @if (MeetingPageCount > 1)
-                                {
-                                    <div class="th-mini-pager">
-                                        <span>@MeetingFrom à @MeetingTo sur @_meetings.Count réunions</span>
-                                        <div class="th-mini-pager-nav">
-                                            <button type="button" class="btn btn-sm btn-outline-secondary"
-                                                    disabled="@(_meetingPage <= 1)" aria-label="Page précédente"
-                                                    @onclick="() => GoMeetingPage(_meetingPage - 1)">
-                                                <i class="bi bi-chevron-left" aria-hidden="true"></i>
-                                            </button>
-                                            <span>@_meetingPage / @MeetingPageCount</span>
-                                            <button type="button" class="btn btn-sm btn-outline-secondary"
-                                                    disabled="@(_meetingPage >= MeetingPageCount)" aria-label="Page suivante"
-                                                    @onclick="() => GoMeetingPage(_meetingPage + 1)">
-                                                <i class="bi bi-chevron-right" aria-hidden="true"></i>
-                                            </button>
-                                        </div>
-                                    </div>
-                                }
-                            }
-                        </div>
-                        <div class="th-card-foot th-card-foot--actions">
-                            <a class="btn btn-sm btn-primary" href="expert/meetings/create">
-                                <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>Créer une réunion
-                            </a>
-                            <a class="btn btn-sm btn-outline-secondary" href="expert/meetings">Toutes les réunions</a>
                         </div>
                     </section>
-                }
 
-                <section class="th-card th-card--half" id="expert-enrollments">
-                    <div class="th-card-head">
-                        <h2>Inscriptions en attente de l'enseignant</h2>
-                        <span class="th-card-meta">@_enrollments.Count demande(s)</span>
+                    <div class="ex-dash-kpis">
+                        @foreach (var kpi in Kpis)
+                        {
+                            <a class="ex-dash-kpi" href="@kpi.Href">
+                                <span class="ex-dash-kpi-icon ex-dash-kpi-icon--@kpi.Tone">
+                                    <i class="bi @kpi.Icon" aria-hidden="true"></i>
+                                </span>
+                                <span class="ex-dash-kpi-val">@kpi.Value</span>
+                                <span class="ex-dash-kpi-label">@kpi.Label</span>
+                            </a>
+                        }
                     </div>
-                    <div class="th-card-body">
-                        @if (!string.IsNullOrEmpty(_enrollError))
-                        {
-                            <div class="alert alert-danger py-2 px-3">@_enrollError</div>
-                        }
-                        @if (!string.IsNullOrEmpty(_enrollBanner))
-                        {
-                            <div class="alert alert-success py-2 px-3">@_enrollBanner</div>
-                        }
-                        @if (_enrollments.Count == 0)
-                        {
-                            <div class="th-msg-empty">
-                                <span class="th-msg-empty-icon"><i class="bi bi-person-check" aria-hidden="true"></i></span>
-                                <div>
-                                    <strong>Aucune demande en attente</strong>
-                                    <span class="th-setup-text">
-                                        Les souscriptions à valider par un enseignant du groupe apparaîtront ici.
-                                        Vous pouvez les accepter à sa place.
-                                    </span>
-                                </div>
+
+                    @if (_enrollments.Count > 0 || !string.IsNullOrEmpty(_enrollBanner) || !string.IsNullOrEmpty(_enrollError))
+                    {
+                        <section class="ex-dash-card" id="expert-enrollments">
+                            <div class="ex-dash-card-head">
+                                <h2>Inscriptions en attente de l'enseignant</h2>
+                                <span class="ex-dash-card-meta">@_enrollments.Count demande(s)</span>
                             </div>
-                        }
-                        else
-                        {
-                            <ul class="th-people">
+                            @if (!string.IsNullOrEmpty(_enrollError))
+                            {
+                                <div class="alert alert-danger py-2 px-3">@_enrollError</div>
+                            }
+                            @if (!string.IsNullOrEmpty(_enrollBanner))
+                            {
+                                <div class="alert alert-success py-2 px-3">@_enrollBanner</div>
+                            }
+                            <ul class="ex-dash-list">
                                 @foreach (var item in _enrollments)
                                 {
-                                    <li class="th-person th-person--wrap">
-                                        <span class="th-avatar th-avatar--@HueOf(item.StudentName)">@InitialsOf(item.StudentName)</span>
-                                        <div class="th-person-body">
+                                    <li class="ex-dash-row">
+                                        <span class="ex-dash-av" style="background:@AvatarBg(item.StudentName)">
+                                            @Initials(item.StudentName)
+                                        </span>
+                                        <div class="ex-dash-row-body">
                                             <strong>
                                                 @item.StudentName
                                                 @if (!string.IsNullOrWhiteSpace(item.ParentName))
@@ -276,12 +156,12 @@
                                                 }
                                             </strong>
                                             <span>
-                                                Cours « @item.OfferingTitle » chez @item.TeacherName
+                                                « @item.OfferingTitle » chez @item.TeacherName
                                                 · @item.Price.ToString("N2") @item.Currency
                                                 · @item.RequestedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
                                             </span>
                                         </div>
-                                        <div class="th-person-actions">
+                                        <div class="ex-dash-row-act">
                                             <button type="button" class="btn btn-sm btn-primary"
                                                     disabled="@(_busyEnrollmentId == item.Id)"
                                                     @onclick="() => DecideEnrollmentAsync(item.Id, true)">
@@ -296,172 +176,283 @@
                                     </li>
                                 }
                             </ul>
-                        }
-                    </div>
-                </section>
+                        </section>
+                    }
 
-                <section class="th-card th-card--half">
-                    <div class="th-card-head">
-                        <h2>Actions rapides</h2>
-                        <span class="th-card-meta">Raccourcis</span>
-                    </div>
-                    <div class="th-card-body">
-                        <ul class="th-quick">
-                            <li>
-                                <a href="@(_summary.NextPendingTenantId is Guid tid ? $"expert/teachers/{tid}" : "expert/approvals?tab=queue")">
-                                    <span class="th-kpi-icon th-kpi-icon--violet"><i class="bi bi-inbox" aria-hidden="true"></i></span>
-                                    <span class="th-quick-label">
-                                        @(_summary.NextPendingTenantId is not null ? "Revoir le prochain dossier" : "Ouvrir les dossiers en revue")
-                                    </span>
-                                    <i class="bi bi-arrow-right" aria-hidden="true"></i>
-                                </a>
-                            </li>
-                            <li>
-                                <a href="expert/teachers/add">
-                                    <span class="th-kpi-icon th-kpi-icon--green"><i class="bi bi-person-plus" aria-hidden="true"></i></span>
-                                    <span class="th-quick-label">@L["Expert_PathCreateTitle"]</span>
-                                    <i class="bi bi-arrow-right" aria-hidden="true"></i>
-                                </a>
-                            </li>
-                            <li>
-                                <a href="expert/approvals?tab=invite">
-                                    <span class="th-kpi-icon th-kpi-icon--sky"><i class="bi bi-envelope" aria-hidden="true"></i></span>
-                                    <span class="th-quick-label">@L["Expert_PathInviteTitle"]</span>
-                                    <i class="bi bi-arrow-right" aria-hidden="true"></i>
-                                </a>
-                            </li>
-                            <li>
-                                <a href="expert/admissions">
-                                    <span class="th-kpi-icon th-kpi-icon--pink"><i class="bi bi-person-check" aria-hidden="true"></i></span>
-                                    <span class="th-quick-label">
-                                        @(_summary.NextOpenExpertVoteId is not null ? "Voter sur une candidature" : "Admissions Experts")
-                                    </span>
-                                    <i class="bi bi-arrow-right" aria-hidden="true"></i>
-                                </a>
-                            </li>
-                            <li>
-                                <a href="expert/disciplines">
-                                    <span class="th-kpi-icon th-kpi-icon--amber"><i class="bi bi-book" aria-hidden="true"></i></span>
-                                    <span class="th-quick-label">Gérer les disciplines</span>
-                                    <i class="bi bi-arrow-right" aria-hidden="true"></i>
-                                </a>
-                            </li>
-                            <li>
-                                <a href="expert/teachers">
-                                    <span class="th-kpi-icon th-kpi-icon--mint"><i class="bi bi-mortarboard" aria-hidden="true"></i></span>
-                                    <span class="th-quick-label">Enseignants approuvés</span>
-                                    <i class="bi bi-arrow-right" aria-hidden="true"></i>
-                                </a>
-                            </li>
-                            @if (_isManager)
-                            {
-                                <li>
-                                    <a href="expert/meetings/create">
-                                        <span class="th-kpi-icon th-kpi-icon--violet"><i class="bi bi-camera-video" aria-hidden="true"></i></span>
-                                        <span class="th-quick-label">Créer une réunion</span>
-                                        <i class="bi bi-arrow-right" aria-hidden="true"></i>
-                                    </a>
-                                </li>
-                                <li>
-                                    <a href="expert/meetings">
-                                        <span class="th-kpi-icon th-kpi-icon--sky"><i class="bi bi-calendar-event" aria-hidden="true"></i></span>
-                                        <span class="th-quick-label">Réunions du groupe</span>
-                                        <i class="bi bi-arrow-right" aria-hidden="true"></i>
-                                    </a>
-                                </li>
-                            }
-                        </ul>
-                    </div>
-                </section>
-
-                <section class="th-card th-card--half">
-                    <div class="th-card-head">
-                        <h2>Alertes</h2>
-                        <span class="th-card-meta">@_summary.Alerts.Count signalement(s)</span>
-                    </div>
-                    <div class="th-card-body">
-                        @if (_summary.Alerts.Count == 0)
+                    <section class="ex-dash-card">
+                        <div class="ex-dash-card-head">
+                            <h2>Agenda et réunions</h2>
+                            <a class="ex-dash-link" href="expert/meetings">
+                                Voir toutes <i class="bi bi-arrow-right" aria-hidden="true"></i>
+                            </a>
+                        </div>
+                        <div class="ex-dash-tabs" role="tablist">
+                            <button type="button" role="tab" aria-selected="@(!_meetingsPast)"
+                                    class="ex-dash-tab @(!_meetingsPast ? "active" : null)"
+                                    @onclick="() => _meetingsPast = false">
+                                À venir
+                            </button>
+                            <button type="button" role="tab" aria-selected="@_meetingsPast"
+                                    class="ex-dash-tab @(_meetingsPast ? "active" : null)"
+                                    @onclick="() => _meetingsPast = true">
+                                Terminées
+                            </button>
+                        </div>
+                        @if (VisibleMeetings.Count == 0)
                         {
-                            <div class="th-msg-empty">
-                                <span class="th-msg-empty-icon"><i class="bi bi-shield-check" aria-hidden="true"></i></span>
+                            <div class="ex-dash-empty">
+                                <i class="bi bi-calendar-plus" aria-hidden="true"></i>
                                 <div>
-                                    <strong>Tout est calme</strong>
-                                    <span class="th-setup-text">Aucune alerte pour le moment.</span>
+                                    <strong>@(_meetingsPast ? "Aucune réunion terminée" : "Aucune réunion programmée")</strong>
+                                    <span>@(_meetingsPast
+                                        ? "Les comptes rendus apparaîtront ici."
+                                        : "Planifiez une rencontre avec les membres du groupe.")</span>
                                 </div>
                             </div>
                         }
                         else
                         {
-                            <ul class="th-alerts">
-                                @foreach (var alert in _summary.Alerts)
+                            <ul class="ex-dash-list">
+                                @foreach (var m in VisibleMeetings)
                                 {
-                                    <li class="th-alert th-alert--@AlertTone(alert.Severity)">
-                                        <span class="th-alert-dot" aria-hidden="true"></span>
-                                        <span class="th-alert-msg">@alert.Message</span>
-                                        @if (!string.IsNullOrWhiteSpace(alert.ActionUrl) || alert.Code == "pending_enrollments")
-                                        {
-                                            <button type="button" class="btn btn-sm btn-outline-secondary"
-                                                    @onclick="() => OpenAlertAsync(alert)">
-                                                Ouvrir
-                                            </button>
-                                        }
+                                    <li class="ex-dash-row">
+                                        <span class="ex-dash-row-icon"><i class="bi bi-calendar-event" aria-hidden="true"></i></span>
+                                        <div class="ex-dash-row-body">
+                                            <strong>@m.Title</strong>
+                                            <span>@MeetingWhen(m)</span>
+                                        </div>
+                                        <span class="ex-dash-stack">
+                                            @foreach (var name in (m.ParticipantPreview ?? []).Take(3))
+                                            {
+                                                <span class="ex-dash-av ex-dash-av--sm" style="background:@AvatarBg(name)"
+                                                      title="@name">@Initials(name)</span>
+                                            }
+                                            @if (HiddenParticipants(m) > 0)
+                                            {
+                                                <span class="ex-dash-av ex-dash-av--sm ex-dash-av--rest">+@HiddenParticipants(m)</span>
+                                            }
+                                        </span>
+                                        <span class="ex-dash-chip ex-dash-chip--@MeetingTone(m.Status)">@StatusFr(m.Status)</span>
+                                        <div class="ex-dash-row-act">
+                                            @if (m.Status is 1 or 2)
+                                            {
+                                                <a class="btn btn-sm btn-primary" href="@($"expert/meetings/{m.Id}/room")">Rejoindre</a>
+                                            }
+                                            else if (m.Status == 3)
+                                            {
+                                                <a class="btn btn-sm btn-outline-secondary"
+                                                   href="@($"expert/meetings/{m.Id}/minutes")">Compte rendu</a>
+                                            }
+                                        </div>
                                     </li>
                                 }
                             </ul>
                         }
-                    </div>
-                </section>
+                        @if (_isManager)
+                        {
+                            <div class="ex-dash-card-foot">
+                                <a class="btn btn-sm btn-outline-secondary" href="expert/meetings/create">
+                                    <i class="bi bi-plus-lg me-1" aria-hidden="true"></i>Créer une réunion
+                                </a>
+                            </div>
+                        }
+                    </section>
 
-                <section class="th-card th-card--half">
-                    <div class="th-card-head">
-                        <h2>Indicateurs du groupe</h2>
-                    </div>
-                    <div class="th-card-body">
-                        <div class="th-stats">
-                            <div class="th-stat">
-                                <span class="th-stat-val">@_summary.TeacherInvitesSent</span>
-                                <span class="th-stat-lbl">Invitations enseignants</span>
-                            </div>
-                            <div class="th-stat">
-                                <span class="th-stat-val">@_summary.ExpertInvitesPending</span>
-                                <span class="th-stat-lbl">Invitations Expert en attente</span>
-                            </div>
-                            <div class="th-stat">
-                                <span class="th-stat-val">@_summary.DisciplinesWithoutTeacher</span>
-                                <span class="th-stat-lbl">Disciplines sans enseignant</span>
-                            </div>
-                            <div class="th-stat">
-                                <span class="th-stat-val">@_summary.TeachersInactive</span>
-                                <span class="th-stat-lbl">Inactifs (45 j)</span>
-                            </div>
-                            <div class="th-stat">
-                                <span class="th-stat-val">@_summary.UnreadRemarksForTeachers</span>
-                                <span class="th-stat-lbl">Remarques non lues</span>
-                            </div>
-                            <div class="th-stat">
-                                <span class="th-stat-val">@_summary.CancelledLessonsRecent</span>
-                                <span class="th-stat-lbl">Cours annulés (30 j)</span>
-                            </div>
-                            @if (_summary.TeachersSuspended > 0)
-                            {
-                                <div class="th-stat">
-                                    <span class="th-stat-val">@_summary.TeachersSuspended</span>
-                                    <span class="th-stat-lbl">Suspendus</span>
-                                </div>
-                            }
+                    <section class="ex-dash-card">
+                        <div class="ex-dash-card-head">
+                            <h2>Activité récente</h2>
                         </div>
-                    </div>
-                </section>
+                        @if (_activity.Count == 0)
+                        {
+                            <div class="ex-dash-empty">
+                                <i class="bi bi-clock-history" aria-hidden="true"></i>
+                                <div>
+                                    <strong>Aucune activité enregistrée</strong>
+                                    <span>Les décisions et les envois du groupe s'inscriront ici.</span>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <ul class="ex-dash-feed">
+                                @foreach (var e in _activity)
+                                {
+                                    <li>
+                                        <span class="ex-dash-feed-icon"><i class="bi @EventIcon(e.EventType)" aria-hidden="true"></i></span>
+                                        <span class="ex-dash-feed-text">@e.Summary</span>
+                                        <span class="ex-dash-feed-when">@Ago(e.CreatedAt)</span>
+                                    </li>
+                                }
+                            </ul>
+                            <div class="ex-dash-card-foot">
+                                <a class="ex-dash-link" href="expert/activity">
+                                    Voir le journal complet <i class="bi bi-arrow-right" aria-hidden="true"></i>
+                                </a>
+                            </div>
+                        }
+                    </section>
+                </div>
 
+                <aside class="ex-dash-side">
+
+                    <section class="ex-dash-card">
+                        <div class="ex-dash-card-head">
+                            <h2><i class="bi bi-heart-pulse me-1" aria-hidden="true"></i>Santé du groupe</h2>
+                        </div>
+                        <div class="ex-dash-health">
+                            @* Anneau en conic-gradient : pas de dépendance à une bibliothèque de graphiques
+                               pour une valeur unique. *@
+                            <div class="ex-dash-ring ex-dash-ring--@HealthTone" style="--ex-dash-pct:@HealthScore">
+                                <span class="ex-dash-ring-val">@HealthScore<small>%</small></span>
+                            </div>
+                            <div class="ex-dash-health-body">
+                                <strong>@HealthLabel</strong>
+                                <span class="@(WatchPoints > 0 ? "ex-dash-health-warn" : null)">
+                                    @(WatchPoints > 0
+                                        ? $"{WatchPoints} point{(WatchPoints > 1 ? "s" : "")} à surveiller"
+                                        : "Aucun point de vigilance")
+                                </span>
+                            </div>
+                        </div>
+                        @if (_summary.Alerts.Count > 0)
+                        {
+                            <button type="button" class="ex-dash-link ex-dash-link--btn" @onclick="() => _showDiagnostic = !_showDiagnostic">
+                                @(_showDiagnostic ? "Masquer le diagnostic" : "Voir le diagnostic")
+                                <i class="bi @(_showDiagnostic ? "bi-chevron-up" : "bi-arrow-right")" aria-hidden="true"></i>
+                            </button>
+                            @if (_showDiagnostic)
+                            {
+                                <ul class="ex-dash-alerts">
+                                    @foreach (var alert in _summary.Alerts)
+                                    {
+                                        <li class="ex-dash-alert ex-dash-alert--@AlertTone(alert.Severity)">
+                                            <span class="ex-dash-alert-dot" aria-hidden="true"></span>
+                                            <span>@alert.Message</span>
+                                            @if (!string.IsNullOrWhiteSpace(alert.ActionUrl) || alert.Code == "pending_enrollments")
+                                            {
+                                                <button type="button" class="btn btn-sm btn-outline-secondary"
+                                                        @onclick="() => OpenAlertAsync(alert)">
+                                                    Ouvrir
+                                                </button>
+                                            }
+                                        </li>
+                                    }
+                                </ul>
+                            }
+                        }
+                    </section>
+
+                    <section class="ex-dash-card">
+                        <div class="ex-dash-card-head">
+                            <h2>Actions rapides</h2>
+                        </div>
+                        <div class="ex-dash-quick">
+                            <a href="expert/approvals?tab=invite">
+                                <span class="ex-dash-kpi-icon ex-dash-kpi-icon--blue">
+                                    <i class="bi bi-person-plus" aria-hidden="true"></i>
+                                </span>
+                                Inviter un enseignant
+                            </a>
+                            <a href="@NextFileHref">
+                                <span class="ex-dash-kpi-icon ex-dash-kpi-icon--amber">
+                                    <i class="bi bi-folder2-open" aria-hidden="true"></i>
+                                </span>
+                                Ouvrir les dossiers
+                            </a>
+                            @if (_isManager)
+                            {
+                                <a href="expert/meetings/create">
+                                    <span class="ex-dash-kpi-icon ex-dash-kpi-icon--violet">
+                                        <i class="bi bi-camera-video" aria-hidden="true"></i>
+                                    </span>
+                                    Créer une réunion
+                                </a>
+                            }
+                            else
+                            {
+                                <a href="expert/my-tasks">
+                                    <span class="ex-dash-kpi-icon ex-dash-kpi-icon--violet">
+                                        <i class="bi bi-clipboard-check" aria-hidden="true"></i>
+                                    </span>
+                                    Mes tâches
+                                </a>
+                            }
+                            <a href="expert/disciplines">
+                                <span class="ex-dash-kpi-icon ex-dash-kpi-icon--green">
+                                    <i class="bi bi-book" aria-hidden="true"></i>
+                                </span>
+                                Gérer les disciplines
+                            </a>
+                        </div>
+                    </section>
+
+                    <section class="ex-dash-card">
+                        <div class="ex-dash-card-head">
+                            <h2>Équipe du groupe</h2>
+                        </div>
+                        <div class="ex-dash-team">
+                            <span class="ex-dash-stack">
+                                @foreach (var name in _memberNames.Take(4))
+                                {
+                                    <span class="ex-dash-av" style="background:@AvatarBg(name)" title="@name">@Initials(name)</span>
+                                }
+                                @if (_memberNames.Count > 4)
+                                {
+                                    <span class="ex-dash-av ex-dash-av--rest">+@(_memberNames.Count - 4)</span>
+                                }
+                                @if (_memberNames.Count == 0)
+                                {
+                                    <span class="ex-dash-av ex-dash-av--rest"><i class="bi bi-people" aria-hidden="true"></i></span>
+                                }
+                            </span>
+                            <div class="ex-dash-team-stats">
+                                <div>
+                                    <strong>@_summary.ActiveGroupMembers</strong>
+                                    <span>membre@(_summary.ActiveGroupMembers > 1 ? "s" : "") actif@(_summary.ActiveGroupMembers > 1 ? "s" : "")</span>
+                                </div>
+                                <div>
+                                    <strong>@_summary.TeachersApproved</strong>
+                                    <span>enseignants approuvés</span>
+                                </div>
+                                <div>
+                                    <strong>@_summary.TeachersInactive</strong>
+                                    <span>inactifs depuis 45 j</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="ex-dash-card-foot ex-dash-card-foot--split">
+                            <a class="btn btn-sm btn-outline-secondary" href="@TeamHref">Voir l'équipe</a>
+                            <a class="btn btn-sm btn-outline-secondary" href="expert/admissions">Admissions</a>
+                        </div>
+                    </section>
+
+                    <section class="ex-dash-card">
+                        <div class="ex-dash-card-head">
+                            <h2>Couverture pédagogique</h2>
+                        </div>
+                        <div class="ex-dash-coverage @(_summary.DisciplinesWithoutTeacher > 0 ? "ex-dash-coverage--warn" : null)">
+                            <i class="bi @(_summary.DisciplinesWithoutTeacher > 0 ? "bi-exclamation-triangle-fill" : "bi-check-circle-fill")"
+                               aria-hidden="true"></i>
+                            <span>
+                                @(_summary.DisciplinesWithoutTeacher > 0
+                                    ? $"{_summary.DisciplinesWithoutTeacher} discipline(s) sans enseignant affecté"
+                                    : "Toutes les disciplines sont couvertes")
+                            </span>
+                        </div>
+                        <div class="ex-dash-card-foot">
+                            <a class="ex-dash-link" href="expert/disciplines">
+                                Voir les disciplines <i class="bi bi-arrow-right" aria-hidden="true"></i>
+                            </a>
+                        </div>
+                    </section>
+                </aside>
             </div>
         }
     </Authorized>
     <NotAuthorized>
-        <div class="th-card">
-            <div class="th-card-body">
-                <p>@L["Expert_LoginRequired"]</p>
-                <a class="btn btn-primary" href="/login/expert">@L["Nav_Login"]</a>
-            </div>
+        <div class="ex-dash-card">
+            <p>@L["Expert_LoginRequired"]</p>
+            <a class="btn btn-primary" href="/login/expert">@L["Nav_Login"]</a>
         </div>
     </NotAuthorized>
 </AuthorizeView>
@@ -470,26 +461,158 @@
     private bool _loading = true;
     private string? _error;
     private bool _isManager;
+    private bool _moreOpen;
+    private bool _meetingsPast;
+    private bool _showDiagnostic;
     private DashboardSummary? _summary;
     private readonly List<MeetingItem> _meetings = [];
-    private const int MeetingPageSize = 5;
-    private int _meetingPage = 1;
+    private List<GovernanceEvent> _activity = [];
+    private List<string> _memberNames = [];
     private List<ExpertPendingEnrollmentDto> _enrollments = [];
     private Guid? _busyEnrollmentId;
     private string? _enrollError;
     private string? _enrollBanner;
 
+    private const int ActivityTake = 6;
+    private const int MeetingsShown = 4;
+
+    private string FirstName =>
+        (Auth.UserName ?? Auth.UserEmail ?? "").Split([' ', '@'], StringSplitOptions.RemoveEmptyEntries)
+            .FirstOrDefault() ?? "";
+
+    private string GroupLabel => _summary is null
+        ? "votre groupe"
+        : string.IsNullOrWhiteSpace(_summary.CountryCode)
+            ? _summary.GroupName
+            : $"{_summary.GroupName} ({_summary.CountryCode})";
+
     private int ReviewQueue => _summary is null
         ? 0
         : _summary.TeachersPending + _summary.TeachersUnderReview + _summary.TeachersChangesRequested;
 
-    private int MeetingPageCount => Math.Max(1, (int)Math.Ceiling(_meetings.Count / (double)MeetingPageSize));
-    private int MeetingFrom => _meetings.Count == 0 ? 0 : ((_meetingPage - 1) * MeetingPageSize) + 1;
-    private int MeetingTo => Math.Min(_meetings.Count, _meetingPage * MeetingPageSize);
-    private IEnumerable<MeetingItem> PagedMeetings =>
-        _meetings.Skip((_meetingPage - 1) * MeetingPageSize).Take(MeetingPageSize);
+    private string NextFileHref => _summary?.NextPendingTenantId is Guid tid
+        ? $"expert/teachers/{tid}"
+        : "expert/approvals?tab=queue";
 
-    private void GoMeetingPage(int page) => _meetingPage = Math.Clamp(page, 1, MeetingPageCount);
+    private string TeamHref => _isManager ? "group-admin/members" : "expert/members";
+
+    /// <summary>
+    /// Réunions du volet : à venir (brouillon, programmée, en cours) ou terminées, les plus proches
+    /// d'abord. La liste complète reste sur l'écran Réunions.
+    /// </summary>
+    private List<MeetingItem> VisibleMeetings =>
+        [.. _meetings
+            .Where(m => _meetingsPast ? m.Status == 3 : m.Status is 0 or 1 or 2)
+            .OrderBy(m => _meetingsPast ? DateTime.MaxValue.Ticks : (m.StartAtUtc?.Ticks ?? long.MaxValue))
+            .ThenByDescending(m => m.StartAtUtc ?? DateTime.MinValue)
+            .Take(MeetingsShown)];
+
+    private sealed record PriorityTile(
+        string Tone, string Icon, string Title, string Sub, string? ActionLabel, string? Href, string? ScrollTo);
+
+    /// <summary>
+    /// Points qui demandent une décision, du plus bloquant au moins urgent. Le dossier enseignant
+    /// figure toujours en premier, même à zéro : c'est la mission du groupe, et son état « rien à
+    /// faire » vaut d'être affirmé.
+    /// </summary>
+    private List<PriorityTile> Priorities
+    {
+        get
+        {
+            var s = _summary!;
+            var list = new List<PriorityTile>
+            {
+                ReviewQueue > 0
+                    ? new("danger", "bi-folder2-open",
+                        $"{ReviewQueue} dossier{(ReviewQueue > 1 ? "s" : "")} enseignant à traiter",
+                        $"{s.TeachersPending} en attente · {s.TeachersUnderReview} en revue · {s.TeachersChangesRequested} à corriger",
+                        "Ouvrir", NextFileHref, null)
+                    : new("ok", "bi-check-circle", "Aucun dossier", "enseignant en attente", null, null, null)
+            };
+
+            if (s.PendingTeacherEnrollments > 0)
+                list.Add(new("warn", "bi-person-check",
+                    $"{s.PendingTeacherEnrollments} inscription{(s.PendingTeacherEnrollments > 1 ? "s" : "")} élève",
+                    "en attente de l'enseignant", "Traiter", null, "expert-enrollments"));
+
+            if (s.UnreadRemarksForTeachers > 0)
+                list.Add(new("warn", "bi-exclamation-triangle",
+                    $"{s.UnreadRemarksForTeachers} remarque{(s.UnreadRemarksForTeachers > 1 ? "s" : "")} non lue{(s.UnreadRemarksForTeachers > 1 ? "s" : "")}",
+                    "par les enseignants", "Ouvrir", "expert/teachers", null));
+
+            if (s.TeachersInactive > 0)
+                list.Add(new("danger", "bi-person-dash",
+                    $"{s.TeachersInactive} enseignant{(s.TeachersInactive > 1 ? "s" : "")} inactif{(s.TeachersInactive > 1 ? "s" : "")}",
+                    "depuis 45 jours", "Voir", "expert/teachers", null));
+
+            if (s.ExpertVotesOpen > 0)
+                list.Add(new("warn", "bi-hand-thumbs-up",
+                    $"{s.ExpertVotesOpen} vote{(s.ExpertVotesOpen > 1 ? "s" : "")} ouvert{(s.ExpertVotesOpen > 1 ? "s" : "")}",
+                    "sur des candidatures Expert", "Voter", "expert/admissions", null));
+
+            if (s.DisciplinesWithoutTeacher > 0)
+                list.Add(new("warn", "bi-book",
+                    $"{s.DisciplinesWithoutTeacher} discipline{(s.DisciplinesWithoutTeacher > 1 ? "s" : "")} sans enseignant",
+                    "affecté dans le groupe", "Ouvrir", "expert/disciplines", null));
+
+            return list;
+        }
+    }
+
+    /// <summary>Trois tuiles au plus : au-delà, la carte cesse de désigner une priorité.</summary>
+    private List<PriorityTile> PriorityTiles => [.. Priorities.Take(3)];
+
+    private int ActionCount => Priorities.Count(t => t.Tone != "ok");
+
+    private sealed record Kpi(string Icon, string Tone, int Value, string Label, string Href);
+
+    private List<Kpi> Kpis =>
+    [
+        new("bi-mortarboard", "green", _summary!.TeachersApproved, "Enseignants approuvés", "expert/teachers"),
+        new("bi-people", "blue", _summary.ActiveGroupMembers,
+            _summary.ActiveGroupMembers > 1 ? "Membres actifs" : "Membre actif", TeamHref),
+        new("bi-send", "violet", _summary.TeacherInvitesSent, "Invitations envoyées", "expert/approvals?tab=invite"),
+        new("bi-person-check", "amber", _summary.ExpertInvitesPending, "Admissions en attente", "expert/admissions"),
+        new("bi-hand-thumbs-up", "pink", _summary.ExpertVotesOpen, "Votes ouverts", "expert/admissions"),
+        new("bi-calendar-x", "rose", _summary.CancelledLessonsRecent, "Cours annulés (30 j)", "expert/reports")
+    ];
+
+    private sealed record Penalty(string Label, int Points);
+
+    /// <summary>
+    /// Retenues appliquées au score de santé. Le poids traduit ce qu'un point coûte au groupe :
+    /// un dossier qui dort ou un enseignant sans activité pèsent davantage qu'un cours annulé.
+    /// Chaque catégorie est plafonnée, sinon un seul indicateur ferait tomber le score à zéro.
+    /// </summary>
+    private List<Penalty> HealthPenalties
+    {
+        get
+        {
+            var s = _summary!;
+            List<Penalty> all =
+            [
+                new("Dossiers à traiter", Math.Min(20, ReviewQueue * 4)),
+                new("Enseignants inactifs", Math.Min(18, s.TeachersInactive * 3)),
+                new("Disciplines sans enseignant", Math.Min(12, s.DisciplinesWithoutTeacher * 4)),
+                new("Inscriptions élèves en attente", Math.Min(12, s.PendingTeacherEnrollments * 3)),
+                new("Remarques non lues", Math.Min(10, s.UnreadRemarksForTeachers * 2)),
+                new("Votes ouverts", Math.Min(8, s.ExpertVotesOpen * 2)),
+                new("Cours annulés (30 j)", Math.Min(6, s.CancelledLessonsRecent)),
+                new("Groupe sous-doté", s.ActiveGroupMembers < 2 ? 10 : 0)
+            ];
+            return [.. all.Where(p => p.Points > 0)];
+        }
+    }
+
+    private int HealthScore => Math.Clamp(100 - HealthPenalties.Sum(p => p.Points), 5, 100);
+
+    private int WatchPoints => HealthPenalties.Count;
+
+    private string HealthTone => HealthScore >= 85 ? "ok" : HealthScore >= 65 ? "warn" : "danger";
+
+    private string HealthLabel => HealthScore >= 85
+        ? "Bon fonctionnement"
+        : HealthScore >= 65 ? "Fonctionnement correct" : "Attention requise";
 
     protected override async Task OnInitializedAsync()
     {
@@ -507,21 +630,37 @@
             if (_summary is null)
                 _error = "Impossible de charger le tableau de bord.";
 
+            // Chaque volet est facultatif : un endpoint indisponible masque sa carte, il ne doit pas
+            // emporter le tableau de bord entier.
             try
             {
                 _enrollments = await Api.GetAsync<List<ExpertPendingEnrollmentDto>>("api/expert/enrollments/pending") ?? [];
             }
-            catch
-            {
-                _enrollments = [];
-            }
+            catch { _enrollments = []; }
 
-            if (_isManager)
+            try
             {
-                // Toutes les réunions vivantes : la carte les parcourt cinq par cinq.
                 var list = await Api.GetAsync<List<MeetingItem>>("api/expert/meetings") ?? [];
-                _meetings.AddRange(list.Where(m => m.Status is not 4));
+                _meetings.AddRange(list.Where(m => m.Status != 4));
             }
+            catch { /* réunions indisponibles pour ce rôle */ }
+
+            try
+            {
+                _activity = await Api.GetAsync<List<GovernanceEvent>>($"api/expert/activity?take={ActivityTake}") ?? [];
+            }
+            catch { _activity = []; }
+
+            try
+            {
+                var members = await Api.GetAsync<List<MemberItem>>("api/expert/membership/members") ?? [];
+                // Statut 0 = actif : les membres suspendus ou retirés ne comptent pas dans l'équipe,
+                // sinon la pile d'avatars contredirait le compteur de membres actifs.
+                _memberNames = [.. members
+                    .Where(m => m.Status == 0 && !string.IsNullOrWhiteSpace(m.FullName))
+                    .Select(m => m.FullName)];
+            }
+            catch { _memberNames = []; }
         }
         catch (Exception ex)
         {
@@ -530,9 +669,13 @@
         finally { _loading = false; }
     }
 
-    private async Task ScrollToEnrollmentsAsync()
+    private void ToggleMore() => _moreOpen = !_moreOpen;
+    private void CloseMore() => _moreOpen = false;
+
+    private async Task ScrollToAsync(string? elementId)
     {
-        try { await JS.InvokeVoidAsync("tsScrollToId", "expert-enrollments"); }
+        if (string.IsNullOrEmpty(elementId)) return;
+        try { await JS.InvokeVoidAsync("tsScrollToId", elementId); }
         catch { /* la carte est déjà visible */ }
     }
 
@@ -544,7 +687,7 @@
 
         if (enrollments)
         {
-            await ScrollToEnrollmentsAsync();
+            await ScrollToAsync("expert-enrollments");
             return;
         }
 
@@ -585,20 +728,17 @@
     private static string AlertTone(string? severity) => severity?.ToLowerInvariant() switch
     {
         "danger" => "danger",
-        "warning" => "warning",
+        "warning" => "warn",
         _ => "info"
     };
 
-    private static int HueOf(string? value) =>
-        string.IsNullOrEmpty(value) ? 0 : Math.Abs(value.Sum(c => c)) % 5;
-
-    private static string InitialsOf(string? name) =>
-        string.IsNullOrWhiteSpace(name)
-            ? "?"
-            : string.Concat(name
-                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
-                .Take(2)
-                .Select(p => char.ToUpperInvariant(p[0])));
+    private static string MeetingTone(int status) => status switch
+    {
+        2 => "live",
+        1 => "next",
+        3 => "done",
+        _ => "draft"
+    };
 
     private static string StatusFr(int s) => s switch
     {
@@ -609,14 +749,87 @@
         _ => "—"
     };
 
+    private static string MeetingWhen(MeetingItem m)
+    {
+        if (m.StartAtUtc is not DateTime utc) return "Date à fixer";
+        var local = utc.ToLocalTime();
+        var day = local.Date == DateTime.Today
+            ? "Aujourd'hui"
+            : local.Date == DateTime.Today.AddDays(1)
+                ? "Demain"
+                : local.ToString("d MMMM");
+        return $"{day}, {local:HH:mm}";
+    }
+
+    /// <summary>Participants au-delà des trois visages affichés.</summary>
+    private static int HiddenParticipants(MeetingItem m) =>
+        m.ParticipantCount - Math.Min(3, m.ParticipantPreview?.Count ?? 0);
+
+    /// <summary>Ancienneté en clair : sur un tableau de bord, « il y a 2 h » se lit mieux qu'une date.</summary>
+    private static string Ago(DateTime createdAtUtc)
+    {
+        var span = DateTime.UtcNow - createdAtUtc;
+        if (span < TimeSpan.FromMinutes(1)) return "à l'instant";
+        if (span < TimeSpan.FromHours(1)) return $"il y a {(int)span.TotalMinutes} min";
+        if (span < TimeSpan.FromDays(1)) return $"il y a {(int)span.TotalHours} h";
+        if (span < TimeSpan.FromDays(2)) return "hier";
+        if (span < TimeSpan.FromDays(30)) return $"il y a {(int)span.TotalDays} j";
+        return createdAtUtc.ToLocalTime().ToString("d MMM yyyy");
+    }
+
+    /// <summary>
+    /// Une icône par famille d'événement plutôt qu'une par type : trente-cinq pictogrammes
+    /// différents ne se lisent plus.
+    /// </summary>
+    private static string EventIcon(int eventType) => eventType switch
+    {
+        2 => "bi-check-circle",
+        3 => "bi-x-circle",
+        0 or 1 or 4 => "bi-folder2-open",
+        5 => "bi-send",
+        6 or 7 => "bi-hand-thumbs-up",
+        8 or 9 or 19 or 20 or 21 => "bi-person-badge",
+        10 or 11 or 12 => "bi-clipboard-check",
+        14 => "bi-chat-left-text",
+        15 or 16 => "bi-tags",
+        17 or 18 => "bi-envelope",
+        _ => "bi-record-circle"
+    };
+
+    private static string Initials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "?";
+        var parts = name.Split([' ', '@'], StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2
+            ? $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[^1][0])}"
+            : parts[0][..Math.Min(2, parts[0].Length)].ToUpperInvariant();
+    }
+
+    /// <summary>Couleur stable déduite du nom : le même membre garde son pastille d'un écran à l'autre.</summary>
+    private static string AvatarBg(string? name)
+    {
+        string[] palette = ["#5b5bd6", "#0f9d78", "#d97706", "#db2777", "#0891b2", "#7c3aed"];
+        var hash = 0;
+        foreach (var c in name ?? "") hash = ((hash * 31) + c) & 0x7fffffff;
+        return palette[hash % palette.Length];
+    }
+
     private sealed record MeContext(bool IsGroupManager, Guid? GroupId, string? GroupName);
+
     private sealed class MeetingItem
     {
         public Guid Id { get; set; }
         public string Title { get; set; } = "";
         public int Status { get; set; }
         public DateTime? StartAtUtc { get; set; }
+        public int ParticipantCount { get; set; }
+        public List<string>? ParticipantPreview { get; set; }
     }
+
+    private sealed record GovernanceEvent(
+        Guid Id, int EventType, string? ActorName, string Summary, DateTime CreatedAt);
+
+    private sealed record MemberItem(Guid Id, string FullName, int Status);
 
     private sealed record DashboardAlert(string Severity, string Code, string Message, string? ActionUrl);
 
