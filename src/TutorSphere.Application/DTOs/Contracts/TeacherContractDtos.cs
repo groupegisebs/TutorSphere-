@@ -75,7 +75,8 @@ public record TeacherContractSignViewDto(
     DateTime? TokenExpiresAt,
     IReadOnlyList<TeacherContractSectionDto> Sections,
     bool AllSectionsAccepted,
-    string IdentityFullNameHint);
+    string IdentityFullNameHint,
+    string? GroupLogoUrl = null);
 
 public record DecideContractSectionRequest(bool Accept, string? Comment = null);
 

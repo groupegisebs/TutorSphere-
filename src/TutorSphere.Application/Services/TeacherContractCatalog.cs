@@ -1,11 +1,12 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using TutorSphere.Application.Common;
 
 namespace TutorSphere.Application.Services;
 
 public sealed record TeacherContractSectionDef(string Key, string Title, string Body);
 
-public static class TeacherContractCatalog
+public static partial class TeacherContractCatalog
 {
     public const string CurrentVersion = "2026.1";
 
@@ -49,7 +50,30 @@ public static class TeacherContractCatalog
         ["COMPETENT_COURT_LOCATION"] = "Tribunaux compétents"
     };
 
-    public static Dictionary<string, string> DefaultVariables() => new(StringComparer.Ordinal)
+    public static IReadOnlyList<TeacherContractSectionDef> Sections(string language) =>
+        SupportedLanguageCodes.Normalize(language) switch
+        {
+            SupportedLanguageCodes.English => EnglishSections(),
+            SupportedLanguageCodes.Spanish => SpanishSections(),
+            SupportedLanguageCodes.German => GermanSections(),
+            SupportedLanguageCodes.Portuguese => PortugueseSections(),
+            SupportedLanguageCodes.MandarinChinese => ChineseSections(),
+            SupportedLanguageCodes.Arabic => ArabicSections(),
+            _ => FrenchSections()
+        };
+
+    public static Dictionary<string, string> DefaultVariables(string? language = null)
+    {
+        var lang = SupportedLanguageCodes.Normalize(language);
+        var values = FrenchDefaultVariables();
+        if (lang == SupportedLanguageCodes.French)
+            return values;
+        foreach (var (k, v) in LocalizedDefaultOverrides(lang))
+            values[k] = v;
+        return values;
+    }
+
+    private static Dictionary<string, string> FrenchDefaultVariables() => new(StringComparer.Ordinal)
     {
         ["GROUP_LEGAL_FORM"] = "—",
         ["GROUP_REGISTRATION_NUMBER"] = "—",
@@ -76,12 +100,6 @@ public static class TeacherContractCatalog
         ["GOVERNING_JURISDICTION"] = "la province ou le pays du siège du Groupe",
         ["COMPETENT_COURT_LOCATION"] = "le ressort du siège du Groupe"
     };
-
-    public static IReadOnlyList<TeacherContractSectionDef> Sections(string language)
-    {
-        _ = language;
-        return FrenchSections();
-    }
 
     public static string Fill(string template, IReadOnlyDictionary<string, string> values)
     {

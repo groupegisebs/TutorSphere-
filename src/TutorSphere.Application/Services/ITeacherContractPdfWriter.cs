@@ -26,4 +26,6 @@ public sealed class TeacherContractPdfModel
     public string? SignaturePngBase64 { get; init; }
     public string? GroupSignatoryName { get; init; }
     public string? GroupSignatoryRole { get; init; }
+    public string? GroupLogoUrl { get; init; }
+    public TeacherContractPdfChrome Chrome { get; init; } = TeacherContractPdfChrome.French;
 }

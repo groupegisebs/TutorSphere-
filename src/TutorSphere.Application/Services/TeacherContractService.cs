@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using TutorSphere.Application.Common;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.Contracts;
 using TutorSphere.Domain.Entities;
@@ -102,10 +103,9 @@ public sealed class TeacherContractService(
         var teacher = await contacts.GetAsync(tenant.OwnerUserId, ct);
         var manager = await managers.GetActiveManagerAsync(groupId, ct);
         var managerContact = manager is null ? null : await contacts.GetAsync(manager.UserId, ct);
-        var placeholders = MergePlaceholders(request.Variables, tenant, group, teacher, managerContact);
-        var language = string.IsNullOrWhiteSpace(request.Language)
-            ? (string.IsNullOrWhiteSpace(tenant.Language) ? "fr" : tenant.Language.Trim())
-            : request.Language.Trim();
+        var language = SupportedLanguageCodes.Normalize(
+            string.IsNullOrWhiteSpace(request.Language) ? tenant.Language : request.Language);
+        var placeholders = MergePlaceholders(request.Variables, tenant, group, teacher, managerContact, language);
         placeholders["CONTRACT_LANGUAGE"] = language;
 
         var now = DateTime.UtcNow;
@@ -355,7 +355,11 @@ public sealed class TeacherContractService(
             .Select(s => (s.Title, TeacherContractCatalog.Fill(s.Body, values)))
             .ToList();
 
-        var pendingHash = "en cours de calcul";
+        var groupLogoUrl = db.ExpertGroups
+            .Where(g => g.Id == contract.ExpertGroupId)
+            .Select(g => g.LogoUrl)
+            .FirstOrDefault();
+        var pendingHash = TeacherContractCatalog.PendingHashNotice(contract.Language);
         var (relativePath, hash) = await pdf.WriteSignedPdfAsync(new TeacherContractPdfModel
         {
             ContractNumber = contract.ContractNumber,
@@ -370,7 +374,9 @@ public sealed class TeacherContractService(
             Sections = sections,
             SignaturePngBase64 = request.SignaturePngBase64,
             GroupSignatoryName = values.GetValueOrDefault("GROUP_SIGNATORY_NAME"),
-            GroupSignatoryRole = values.GetValueOrDefault("GROUP_SIGNATORY_ROLE")
+            GroupSignatoryRole = values.GetValueOrDefault("GROUP_SIGNATORY_ROLE"),
+            GroupLogoUrl = groupLogoUrl,
+            Chrome = TeacherContractCatalog.PdfChrome(contract.Language)
         }, ct);
 
         contract.PdfUrl = relativePath;
@@ -561,9 +567,10 @@ public sealed class TeacherContractService(
         Tenant tenant,
         ExpertGroup group,
         (string Email, string DisplayName)? teacher,
-        (string Email, string DisplayName)? manager)
+        (string Email, string DisplayName)? manager,
+        string language)
     {
-        var values = TeacherContractCatalog.DefaultVariables();
+        var values = TeacherContractCatalog.DefaultVariables(language);
         if (incoming is not null)
         {
             foreach (var (k, v) in incoming)
@@ -580,7 +587,7 @@ public sealed class TeacherContractService(
         values["TEACHER_SUBJECTS"] = values.GetValueOrDefault("TEACHER_SUBJECTS") ?? "Selon le profil TutorSphere";
         values["TEACHER_LEVELS"] = values.GetValueOrDefault("TEACHER_LEVELS") ?? "Selon le profil TutorSphere";
         values["CONTRACT_VERSION"] = TeacherContractCatalog.CurrentVersion;
-        values["CONTRACT_LANGUAGE"] = string.IsNullOrWhiteSpace(tenant.Language) ? "fr" : tenant.Language;
+        values["CONTRACT_LANGUAGE"] = language;
         values["CURRENCY"] = string.IsNullOrWhiteSpace(tenant.Currency) ? values["CURRENCY"] : tenant.Currency;
         return values;
     }
@@ -663,9 +670,10 @@ public sealed class TeacherContractService(
     private TeacherContractSignViewDto MapSign(TeacherContract contract)
     {
         var d = MapDetail(contract);
+        var logo = db.ExpertGroups.Where(g => g.Id == contract.ExpertGroupId).Select(g => g.LogoUrl).FirstOrDefault();
         return new TeacherContractSignViewDto(
             d.Id, d.ContractNumber, d.Version, d.Language, d.Status, d.GroupName, d.TeacherName,
-            d.TokenExpiresAt, d.Sections, d.AllSectionsAccepted, d.TeacherName);
+            d.TokenExpiresAt, d.Sections, d.AllSectionsAccepted, d.TeacherName, logo);
     }
 
     private void AddAudit(

@@ -2,15 +2,17 @@
 @layout LoginLayout
 @rendermode InteractiveServer
 @using TutorSphere.Application.DTOs.Contracts
+@using TutorSphere.Application.Services
 @using TutorSphere.Domain.Enums
 @inject HttpClient Http
 
-<PageTitle>Vérification du contrat — TutorSphere</PageTitle>
+<PageTitle>@Chrome.Badge — TutorSphere</PageTitle>
 
-<div class="contract-sign-page">
+<div class="contract-sign-page" lang="@_language" dir="@(_language == "ar" ? "rtl" : "ltr")">
     <header class="contract-sign-brand">
         <img src="images/tutorsphere-logo-full.png" alt="TutorSphere" />
-        <span>Vérification d’authenticité</span>
+        <img src="images/gisebs-logo.png" alt="GISEBS Inc." class="gisebs-mark" />
+        <span>@Chrome.Badge</span>
     </header>
 
     @if (_loading)
@@ -19,27 +21,27 @@
     }
     else if (_dto is null)
     {
-        <div class="alert alert-warning">Aucun contrat trouvé pour ce numéro.</div>
+        <div class="alert alert-warning">@Chrome.NotFound</div>
     }
     else
     {
         <div class="contract-verify-card">
             <h1>@_dto.ContractNumber</h1>
-            <p>Version @_dto.Version · Langue @_dto.Language</p>
-            <p><strong>Statut :</strong> @StatusLabel(_dto.Status)</p>
+            <p>@_dto.Version · @_dto.Language</p>
+            <p><strong>@Chrome.Status :</strong> @TeacherContractCatalog.ContractStatusLabel(_language, _dto.Status)</p>
             @if (_dto.SignedAt is DateTime at)
             {
-                <p><strong>Signé le :</strong> @at.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") UTC</p>
+                <p><strong>@Chrome.SignedAt :</strong> @at.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss") UTC</p>
             }
-            <p><strong>Référence :</strong> @(_dto.VerificationCode ?? "—")</p>
-            <p class="small text-break"><strong>Empreinte SHA-256 :</strong> @(_dto.DocumentHash ?? "—")</p>
+            <p><strong>@Chrome.Reference :</strong> @(_dto.VerificationCode ?? "—")</p>
+            <p class="small text-break"><strong>@Chrome.Hash :</strong> @(_dto.DocumentHash ?? "—")</p>
             @if (_dto.Authentic)
             {
-                <div class="alert alert-success mb-0">Document authentique enregistré par TutorSphere.</div>
+                <div class="alert alert-success mb-0">@Chrome.Authentic</div>
             }
             else
             {
-                <div class="alert alert-secondary mb-0">Ce contrat n’est pas (encore) un original signé.</div>
+                <div class="alert alert-secondary mb-0">@Chrome.NotYetSigned</div>
             }
         </div>
     }
@@ -49,6 +51,9 @@
     [Parameter] public string ContractNumber { get; set; } = "";
     private TeacherContractVerifyDto? _dto;
     private bool _loading = true;
+    private string _language = "fr";
+
+    private TeacherContractVerifyChrome Chrome => TeacherContractCatalog.VerifyChrome(_language);
 
     protected override async Task OnInitializedAsync()
     {
@@ -56,23 +61,13 @@
         {
             var resp = await Http.GetAsync($"api/contracts/verify/{Uri.EscapeDataString(ContractNumber)}");
             if (resp.IsSuccessStatusCode)
+            {
                 _dto = await resp.Content.ReadFromJsonAsync<TeacherContractVerifyDto>();
+                if (_dto is not null)
+                    _language = _dto.Language;
+            }
         }
         catch { }
         finally { _loading = false; }
     }
-
-    private static string StatusLabel(TeacherContractStatus s) => s switch
-    {
-        TeacherContractStatus.Draft => "Brouillon",
-        TeacherContractStatus.Sent => "Envoyé",
-        TeacherContractStatus.Viewed => "Consulté",
-        TeacherContractStatus.AwaitingSignature => "En attente de signature",
-        TeacherContractStatus.Signed => "Signé",
-        TeacherContractStatus.Expired => "Expiré",
-        TeacherContractStatus.Refused => "Refusé",
-        TeacherContractStatus.Cancelled => "Annulé",
-        TeacherContractStatus.Replaced => "Remplacé par une nouvelle version",
-        _ => s.ToString()
-    };
 }

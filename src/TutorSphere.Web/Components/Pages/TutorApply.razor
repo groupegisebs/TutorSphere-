@@ -13,11 +13,12 @@
 @using TutorSphere.Web.Common
 @inject NavigationManager Navigation
 @inject HttpClient Http
+@inject IConfiguration Config
 @inject IStringLocalizer<SharedResources> L
 
 <ApplyRequestCulture />
 
-<PageTitle>@L["TeacherApply_Title"] — TutorSphere</PageTitle>
+<PageTitle>@(_onForm ? L["TeacherApply_FormTitle"] : L["TeacherApply_TitleJoin"]) — TutorSphere</PageTitle>
 
 <div class="expert-join-page teacher-apply-page">
     <div class="expert-join-shell">
@@ -44,37 +45,36 @@
         {
             <div class="text-center py-5"><span class="spinner-border"></span></div>
         }
-        else if (_invite is not null)
+        else if (_invite is not null && !_onForm)
         {
-            <div class="expert-join-hero">
-                <h1>@L["TeacherApply_Title"]</h1>
-                <p class="expert-join-lead">
-                    @(_invite.InviterName ?? L["TeacherApply_AGroup"]) @L["TeacherApply_InvitesYou"]
-                    <strong>@GroupLabel</strong>.
-                </p>
-                <p class="expert-join-meta">
-                    @if (!string.IsNullOrWhiteSpace(_invite.Email))
+            <section class="ta-land-hero">
+                <div class="ta-land-hero-icon" aria-hidden="true">
+                    @if (!string.IsNullOrWhiteSpace(GroupLogoUrl))
                     {
-                        <span><i class="bi bi-envelope"></i> @_invite.Email</span>
+                        <img src="@GroupLogoUrl" alt="" />
                     }
                     else
                     {
-                        <span><i class="bi bi-link-45deg"></i> Invitation du groupe</span>
+                        <i class="bi bi-building"></i>
                     }
-                    @if (_invite.ExpiresAt is DateTime exp)
-                    {
-                        <span><i class="bi bi-hourglass-split"></i> @L["ExpertJoin_Expires", exp.ToLocalTime().ToString("d")]</span>
-                    }
-                </p>
-            </div>
-
-            @if (_invite.IsProfileUpdate)
-            {
-                <div class="alert alert-info">
-                    <i class="bi bi-info-circle me-1"></i>
-                    @L["TeacherApply_ExistingAccountBanner"]
                 </div>
-            }
+                <div>
+                    <h1>@L["TeacherApply_TitleJoin"]</h1>
+                    <p class="expert-join-lead">
+                        @(_invite.InviterName ?? L["TeacherApply_AGroup"]) @L["TeacherApply_InvitesYou"]
+                        <strong>@GroupLabel</strong>.
+                    </p>
+                    <p class="ta-land-tagline">@L["TeacherApply_LandTagline"]</p>
+                    <p class="ta-land-chips">
+                        <span class="ta-chip ta-chip-ok"><i class="bi bi-shield-check"></i> @L["TeacherApply_Verified"]</span>
+                        @if (_invite.ExpiresAt is DateTime exp)
+                        {
+                            <span class="ta-chip"><i class="bi bi-calendar3"></i> @L["ExpertJoin_Expires", exp.ToLocalTime().ToString("d")]</span>
+                        }
+                    </p>
+                    <p class="ta-land-privacy"><i class="bi bi-lock"></i> @L["TeacherApply_PrivacyLine"]</p>
+                </div>
+            </section>
 
             @if (!string.IsNullOrWhiteSpace(_invite.PersonalMessage))
             {
@@ -84,6 +84,77 @@
                 </blockquote>
             }
 
+            <section class="ta-land-why">
+                <h2>@L["TeacherApply_WhyTitle"]</h2>
+                <div class="ta-land-why-grid">
+                    <article>
+                        <span class="ta-why-icon"><i class="bi bi-globe2"></i></span>
+                        <h3>@L["TeacherApply_Why1Title"]</h3>
+                        <p>@L["TeacherApply_Why1Body"]</p>
+                    </article>
+                    <article>
+                        <span class="ta-why-icon"><i class="bi bi-wallet2"></i></span>
+                        <h3>@L["TeacherApply_Why2Title"]</h3>
+                        <p>@L["TeacherApply_Why2Body"]</p>
+                    </article>
+                    <article>
+                        <span class="ta-why-icon"><i class="bi bi-house-door"></i></span>
+                        <h3>@L["TeacherApply_Why3Title"]</h3>
+                        <p>@L["TeacherApply_Why3Body"]</p>
+                    </article>
+                </div>
+                <p class="ta-land-why-foot"><i class="bi bi-shield-check"></i> @L["TeacherApply_WhyFooter"]</p>
+            </section>
+
+            <section class="ta-land-cta">
+                <h2>@L["TeacherApply_ReadyTitle"]</h2>
+                <p>@L["TeacherApply_ReadyLead"]</p>
+                <button type="button" class="btn ta-land-subscribe" @onclick="BeginForm">
+                    @L["TeacherApply_Subscribe"] <i class="bi bi-arrow-right"></i>
+                </button>
+                <p class="ta-land-meta">
+                    <i class="bi bi-clock"></i>
+                    @L["TeacherApply_FreeMeta"] · @L["TeacherApply_DurationMeta"] · @L["TeacherApply_NoCommit"]
+                </p>
+                <p class="ta-land-privacy"><i class="bi bi-lock"></i> @L["TeacherApply_Confidential"]</p>
+                <a class="ta-land-support" href="mailto:support@tutorsphere.com">
+                    <i class="bi bi-question-circle"></i> @L["TeacherApply_ContactSupport"]
+                </a>
+            </section>
+        }
+        else if (_invite is not null)
+        {
+            @if (IsOpenInvite)
+            {
+                <button type="button" class="ta-back-intro" @onclick="BackToIntro">
+                    <i class="bi bi-arrow-left"></i> @L["TeacherApply_BackToIntro"]
+                </button>
+            }
+            <header class="ta-form-hero">
+                <h1>@L["TeacherApply_FormTitle"]</h1>
+                <p>@L["TeacherApply_FormLead"]</p>
+                <p class="ta-land-chips">
+                    <span class="ta-chip ta-chip-ok"><i class="bi bi-shield-check"></i> @L["TeacherApply_Verified"]</span>
+                    <span class="ta-chip">@GroupLabel</span>
+                    @if (_invite.ExpiresAt is DateTime exp)
+                    {
+                        <span class="ta-chip"><i class="bi bi-calendar3"></i> @L["ExpertJoin_Expires", exp.ToLocalTime().ToString("d")]</span>
+                    }
+                </p>
+                <p class="ta-form-meta">
+                    @L["TeacherApply_FreeMeta"] · @L["TeacherApply_DurationMeta"] · @L["TeacherApply_Confidential"]
+                </p>
+            </header>
+
+            @if (_invite.IsProfileUpdate)
+            {
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle me-1"></i>
+                    @L["TeacherApply_ExistingAccountBanner"]
+                </div>
+            }
+
+            <div class="ta-form-layout">
             <div class="teacher-apply-wizard expert-join-card">
                 <StepIndicator Steps="@_steps" CurrentStep="@_step" Subtitles="@_stepHints" />
 
@@ -105,7 +176,7 @@
                             <input id="ta-ln" class="form-control" @bind="_lastName" @bind:event="oninput" @bind:after="OnNameChanged" autocomplete="family-name" />
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label" for="ta-dob">@L["TeacherApply_BirthDate"]</label>
+                            <label class="form-label" for="ta-dob">@L["TeacherApply_BirthDate"] <span class="text-muted">(@L["Label_Optional"])</span></label>
                             <input id="ta-dob" type="date" class="form-control" @bind="_birthDate" />
                         </div>
                         <div class="col-md-6">
@@ -128,9 +199,17 @@
                             </div>
                         </div>
                         <div class="col-md-6">
-                            <label class="form-label">@L["TeacherApply_Country"]</label>
-                            <input class="form-control" value="@CountryDisplay" disabled readonly />
-                            <div class="form-text">@L["TeacherApply_CountryHint"]</div>
+                            <label class="form-label">@L["TeacherApply_Country"] @if (CanSelectCountry) { <span class="text-danger">*</span> }</label>
+                            @if (CanSelectCountry)
+                            {
+                                <CountrySelect Value="@_country" ValueChanged="OnCountryChanged" Placeholder="@L["TeacherApply_Country"]" />
+                                <div class="form-text">@L["TeacherApply_CountryHintOpen"]</div>
+                            }
+                            else
+                            {
+                                <input class="form-control" value="@CountryDisplay" disabled readonly />
+                                <div class="form-text">@L["TeacherApply_CountryHint"]</div>
+                            }
                         </div>
                         <div class="col-md-6">
                             <label class="form-label" for="ta-city">@L["Expert_RegisterCity"] <span class="text-danger">*</span></label>
@@ -475,6 +554,40 @@
                     }
                 </div>
             </div>
+
+            <aside class="ta-form-aside">
+                <div class="ta-aside-card ta-aside-photo">
+                    <div class="ta-teacher-photo">
+                        @if (!string.IsNullOrWhiteSpace(_photoDataUrl))
+                        {
+                            <img src="@_photoDataUrl" alt="@L["TeacherApply_PhotoAside"]" />
+                        }
+                        else
+                        {
+                            <div class="ta-teacher-photo-placeholder" aria-hidden="true">
+                                <i class="bi bi-person-badge"></i>
+                                <span>@L["TeacherApply_PhotoAside"]</span>
+                            </div>
+                        }
+                    </div>
+                    <h2>@L["TeacherApply_HelpTitle"]</h2>
+                    <p>@L["TeacherApply_HelpBody"]</p>
+                    <a class="btn ta-aside-help-btn" href="mailto:support@tutorsphere.com">
+                        <i class="bi bi-envelope"></i> @L["TeacherApply_HelpCta"]
+                    </a>
+                </div>
+                <div class="ta-aside-card ta-aside-secure">
+                    <i class="bi bi-shield-lock"></i>
+                    <div>
+                        <strong>@L["TeacherApply_SecureTitle"]</strong>
+                        <span>@L["TeacherApply_SecureBody"]</span>
+                    </div>
+                </div>
+                <blockquote class="ta-aside-quote">
+                    <p>@L["TeacherApply_Quote"]</p>
+                </blockquote>
+            </aside>
+            </div>
         }
     </div>
 </div>
@@ -485,6 +598,7 @@
     private List<string> _stepHints = [];
     private static readonly string[] Days = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
 
+    private bool _onForm;
     private string? _token;
     private bool _loading = true;
     private bool _busy;
@@ -497,6 +611,7 @@
     private string _lastName = "";
     private string _email = "";
     private DateTime? _birthDate;
+    private string? _country;
     private string? _phone;
     private string _city = "";
     private string? _address;
@@ -533,19 +648,47 @@
             ? _invite.ExpertGroupName
             : $"{_invite.ExpertGroupName} ({_invite.GroupCountryCode})";
 
+    private string GroupLogoUrl => MediaUrlHelper.Resolve(_invite?.GroupLogoUrl, Config, Navigation);
+
+    private void BeginForm()
+    {
+        _error = null;
+        _onForm = true;
+        _step = 1;
+    }
+
+    private void BackToIntro()
+    {
+        _error = null;
+        _onForm = false;
+    }
+
     private bool EmailLocked => !string.IsNullOrWhiteSpace(_invite?.Email);
 
+    /// <summary>Lien d’invitation unique (sans e-mail destinataire).</summary>
+    private bool IsOpenInvite => _invite is not null && string.IsNullOrWhiteSpace(_invite.Email);
+
+    private bool CanSelectCountry => IsOpenInvite || _invite?.GroupIsInternational == true;
+
     private string ApplyEmail => EmailLocked ? _invite!.Email!.Trim() : _email.Trim();
+
+    private string ResidenceCountryCode =>
+        !string.IsNullOrWhiteSpace(_country)
+            ? _country!
+            : (_invite?.GroupCountryCode ?? "");
+
+    private DateTime? EffectiveBirthDate =>
+        _birthDate is DateTime d && d.Year >= 1900 ? d.Date : null;
 
     private string CountryDisplay
     {
         get
         {
-            if (_invite is null) return "";
-            if (_invite.GroupIsInternational || string.IsNullOrWhiteSpace(_invite.GroupCountryCode))
-                return "🌐 International";
-            var info = CountryCatalog.Find(_invite.GroupCountryCode);
-            return info is null ? _invite.GroupCountryCode : $"{info.Flag} {info.Name}";
+            var code = ResidenceCountryCode;
+            if (string.IsNullOrWhiteSpace(code))
+                return CanSelectCountry ? "" : "🌐 International";
+            var info = CountryCatalog.Find(code);
+            return info is null ? code : $"{info.Flag} {info.Name}";
         }
     }
 
@@ -553,7 +696,7 @@
     {
         get
         {
-            var code = _invite?.GroupCountryCode;
+            var code = ResidenceCountryCode;
             var flag = CountryCatalog.Find(code)?.Flag ?? "🌐";
             var dial = CountryCatalog.DialPrefix(code);
             return string.IsNullOrWhiteSpace(dial) ? flag : $"{flag} {dial}";
@@ -561,7 +704,7 @@
     }
 
     private string PhonePlaceholder =>
-        CountryCatalog.DialPrefix(_invite?.GroupCountryCode) is { Length: > 0 } dial
+        CountryCatalog.DialPrefix(ResidenceCountryCode) is { Length: > 0 } dial
             ? $"{dial} …"
             : "Numéro de téléphone";
 
@@ -638,10 +781,13 @@
                 _presentation = _invite.Presentation;
                 _language = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName;
                 if (_language == "zh") _language = "zh-Hans";
+                _country = string.IsNullOrWhiteSpace(_invite.GroupCountryCode)
+                    ? null
+                    : _invite.GroupCountryCode;
                 _timeZone = string.IsNullOrWhiteSpace(_invite.TimeZone)
-                    ? TimeZoneCatalog.DefaultForCountry(_invite.GroupCountryCode)
+                    ? TimeZoneCatalog.DefaultForCountry(ResidenceCountryCode)
                     : _invite.TimeZone;
-                _currency = GroupOfferCurrencyRules.ResolveCurrency(_invite.GroupCountryCode);
+                _currency = GroupOfferCurrencyRules.ResolveCurrency(ResidenceCountryCode);
                 if (_invite.IsProfileUpdate && !string.IsNullOrWhiteSpace(_invite.ExistingSlug))
                 {
                     _slug = _invite.ExistingSlug;
@@ -650,6 +796,7 @@
                 }
                 else if (!string.IsNullOrWhiteSpace(_firstName))
                     await OnNameChanged();
+                _onForm = !IsOpenInvite || _invite.IsProfileUpdate;
             }
         }
         catch (Exception ex)
@@ -663,6 +810,11 @@
     {
         if (_step == 1)
         {
+            if (IsOpenInvite)
+            {
+                BackToIntro();
+                return;
+            }
             Navigation.NavigateTo("/");
             return;
         }
@@ -679,6 +831,11 @@
                 || string.IsNullOrWhiteSpace(_city))
             {
                 _error = L["TeacherApply_NeedIdentity"];
+                return;
+            }
+            if (CanSelectCountry && CountryCatalog.Find(_country) is null)
+            {
+                _error = L["TeacherApply_NeedCountry"];
                 return;
             }
             if (!EmailLocked && (string.IsNullOrWhiteSpace(_email) || !_email.Contains('@', StringComparison.Ordinal)))
@@ -761,7 +918,7 @@
                 Email: ApplyEmail,
                 Password: "",
                 City: _city.Trim(),
-                Country: _invite.GroupCountryCode,
+                Country: ResidenceCountryCode,
                 PreferredLanguage: _language,
                 AcceptedTeacherConductPolicy: true,
                 TeacherConductPolicyVersion: TeacherConductPolicy.CurrentVersion,
@@ -769,7 +926,7 @@
                 Phone: ComposePhone(),
                 Address: string.IsNullOrWhiteSpace(_address) ? null : _address.Trim(),
                 PostalCode: string.IsNullOrWhiteSpace(_postal) ? null : _postal.Trim(),
-                DateOfBirth: _birthDate,
+                DateOfBirth: EffectiveBirthDate,
                 Presentation: _presentation,
                 TimeZone: _timeZone,
                 Availabilities: ranges,
@@ -818,10 +975,18 @@
         if (string.IsNullOrWhiteSpace(_phone))
             return null;
         var local = _phone.Trim();
-        var dial = CountryCatalog.DialPrefix(_invite?.GroupCountryCode);
+        var dial = CountryCatalog.DialPrefix(ResidenceCountryCode);
         if (string.IsNullOrWhiteSpace(dial) || local.StartsWith('+'))
             return local;
         return $"{dial} {local}";
+    }
+
+    private void OnCountryChanged(string? code)
+    {
+        _country = code;
+        _timeZone = TimeZoneCatalog.DefaultForCountry(code);
+        if (SelectedOffer is null || string.IsNullOrWhiteSpace(SelectedOffer.Currency))
+            _currency = GroupOfferCurrencyRules.ResolveCurrency(code);
     }
 
     private void OnOfferChanged()

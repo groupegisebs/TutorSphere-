@@ -2,6 +2,7 @@
 @layout AdminLayout
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using TutorSphere.Application.DTOs.Contracts
+@using TutorSphere.Application.Services
 @using TutorSphere.Domain.Enums
 @inject AuthService Auth
 @inject ApiClient Api
@@ -34,10 +35,12 @@
                         <option value="@t.TenantId">@t.Name — @(t.GroupName ?? "sans groupe")</option>
                     }
                 </select>
-                <label class="form-label">Langue</label>
-                <select class="form-select mb-3" @bind="_sendLanguage">
-                    <option value="fr">Français</option>
-                    <option value="en">English</option>
+                <label class="form-label">Langue du contrat</label>
+                <select class="form-select mb-3" value="@_sendLanguage" @onchange="OnSendLanguageChanged">
+                    @foreach (var opt in TeacherContractCatalog.LanguageOptions)
+                    {
+                        <option value="@opt.Code">@opt.Label</option>
+                    }
                 </select>
                 <div class="row">
                     @foreach (var v in _variables)
@@ -123,6 +126,13 @@
 
     private void SetVar(string key, string? value) =>
         _variables = _variables.Select(v => v.Key == key ? v with { Value = value ?? "" } : v).ToList();
+
+    private void OnSendLanguageChanged(ChangeEventArgs e)
+    {
+        _sendLanguage = e.Value?.ToString() ?? "fr";
+        var defaults = TeacherContractCatalog.DefaultVariables(_sendLanguage);
+        _variables = _variables.Select(v => v with { Value = defaults.GetValueOrDefault(v.Key) ?? v.Value }).ToList();
+    }
 
     private async Task SendAsync()
     {

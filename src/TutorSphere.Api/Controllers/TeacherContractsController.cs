@@ -22,11 +22,11 @@ public class TeacherContractsController(
         Request.Headers.UserAgent.ToString());
 
     [HttpGet("expert/contracts/template")]
-    [Authorize(Roles = $"{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
+    [Authorize(Roles = $"{UserRoles.Expert},{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
     public ActionResult<TeacherContractTemplateDto> ExpertTemplate() => Ok(contracts.GetTemplate());
 
     [HttpGet("expert/contracts/teachers")]
-    [Authorize(Roles = $"{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
+    [Authorize(Roles = $"{UserRoles.Expert},{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
     public async Task<ActionResult<IReadOnlyList<TeacherContractTeacherOptionDto>>> ExpertTeachers(CancellationToken ct)
     {
         if (UserId is null) return Unauthorized();
@@ -38,7 +38,7 @@ public class TeacherContractsController(
     }
 
     [HttpGet("expert/contracts")]
-    [Authorize(Roles = $"{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
+    [Authorize(Roles = $"{UserRoles.Expert},{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
     public async Task<ActionResult<IReadOnlyList<TeacherContractListItemDto>>> ExpertList(CancellationToken ct)
     {
         if (UserId is null) return Unauthorized();
@@ -47,7 +47,7 @@ public class TeacherContractsController(
     }
 
     [HttpPost("expert/contracts")]
-    [Authorize(Roles = $"{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
+    [Authorize(Roles = $"{UserRoles.Expert},{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
     public async Task<ActionResult<TeacherContractListItemDto>> ExpertSend(
         [FromBody] SendTeacherContractRequest request, CancellationToken ct)
     {
@@ -57,7 +57,7 @@ public class TeacherContractsController(
     }
 
     [HttpGet("expert/contracts/{id:guid}")]
-    [Authorize(Roles = $"{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
+    [Authorize(Roles = $"{UserRoles.Expert},{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
     public async Task<ActionResult<TeacherContractDetailDto>> ExpertGet(Guid id, CancellationToken ct)
     {
         if (UserId is null) return Unauthorized();
@@ -66,7 +66,7 @@ public class TeacherContractsController(
     }
 
     [HttpPost("expert/contracts/{id:guid}/cancel")]
-    [Authorize(Roles = $"{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
+    [Authorize(Roles = $"{UserRoles.Expert},{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
     public async Task<IActionResult> ExpertCancel(Guid id, CancellationToken ct)
     {
         if (UserId is null) return Unauthorized();
@@ -79,7 +79,7 @@ public class TeacherContractsController(
     }
 
     [HttpPost("expert/contracts/{id:guid}/resend")]
-    [Authorize(Roles = $"{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
+    [Authorize(Roles = $"{UserRoles.Expert},{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
     public async Task<ActionResult<TeacherContractListItemDto>> ExpertResend(Guid id, CancellationToken ct)
     {
         if (UserId is null) return Unauthorized();
@@ -88,7 +88,7 @@ public class TeacherContractsController(
     }
 
     [HttpGet("expert/contracts/{id:guid}/pdf")]
-    [Authorize(Roles = $"{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
+    [Authorize(Roles = $"{UserRoles.Expert},{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
     public Task<IActionResult> ExpertPdf(Guid id, CancellationToken ct) => PdfAsync(id, AsPlatformActAs, ActAsGroupId, ct);
 
     [HttpGet("admin/contracts/template")]

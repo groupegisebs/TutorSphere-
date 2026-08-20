@@ -3,6 +3,7 @@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using Microsoft.AspNetCore.WebUtilities
 @using TutorSphere.Application.DTOs.Contracts
+@using TutorSphere.Application.Services
 @using TutorSphere.Domain.Enums
 @inject AuthService Auth
 @inject ApiClient Api
@@ -11,7 +12,7 @@
 
 <PageTitle>Contrats enseignants — TutorSphere</PageTitle>
 
-<AuthorizeView Roles="GroupManager,SuperAdmin,PlatformAdmin">
+<AuthorizeView Roles="Expert,GroupManager,SuperAdmin,PlatformAdmin">
     <Authorized>
         <div class="cc-toolbar">
             <div>
@@ -45,9 +46,11 @@
                     }
                 </select>
                 <label class="form-label">Langue du contrat</label>
-                <select class="form-select mb-3" @bind="_sendLanguage">
-                    <option value="fr">Français</option>
-                    <option value="en">English</option>
+                <select class="form-select mb-3" value="@_sendLanguage" @onchange="OnSendLanguageChanged">
+                    @foreach (var opt in TeacherContractCatalog.LanguageOptions)
+                    {
+                        <option value="@opt.Code">@opt.Label</option>
+                    }
                 </select>
                 <div class="row">
                     @foreach (var v in _variables)
@@ -206,6 +209,13 @@
     {
         _showSend = true;
         _info = null;
+    }
+
+    private void OnSendLanguageChanged(ChangeEventArgs e)
+    {
+        _sendLanguage = e.Value?.ToString() ?? "fr";
+        var defaults = TeacherContractCatalog.DefaultVariables(_sendLanguage);
+        _variables = _variables.Select(v => v with { Value = defaults.GetValueOrDefault(v.Key) ?? v.Value }).ToList();
     }
 
     private void SetVar(string key, string? value)
