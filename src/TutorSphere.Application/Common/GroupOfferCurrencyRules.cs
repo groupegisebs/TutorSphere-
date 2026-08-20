@@ -77,4 +77,69 @@ public static class GroupOfferCurrencyRules
             market = NormalizeCountryCode(marketCountryCode);
         return ResolveCurrency(string.IsNullOrEmpty(market) ? groupCountryCode : market);
     }
+
+    /// <summary>Devise de repli quand les pays visés n'ont pas de devise commune.</summary>
+    public const string MixedZoneCurrency = "USD";
+
+    /// <summary>
+    /// Devise d'une offre valable dans plusieurs pays. Un seul pays garde la devise de ce pays ;
+    /// un ensemble homogène garde sa devise commune (toute l'Europe reste en euro) ; dès que les
+    /// devises diffèrent — pays de continents différents, ou Canada et États-Unis — l'offre bascule
+    /// en USD. Aucun taux de change n'existe dans l'application : une offre affichée dans une devise
+    /// est encaissée dans cette devise, il faut donc en choisir une seule.
+    /// </summary>
+    /// <param name="fallbackCountryCode">Pays du groupe, utilisé quand aucun pays n'est visé.</param>
+    public static string ResolveCurrencyForCountries(
+        IEnumerable<string?>? countryCodes,
+        string? fallbackCountryCode = null)
+    {
+        var currencies = NormalizeCountryCodes(countryCodes)
+            .Select(ResolveCurrency)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return currencies.Count switch
+        {
+            0 => ResolveCurrency(fallbackCountryCode),
+            1 => currencies[0],
+            _ => MixedZoneCurrency
+        };
+    }
+
+    /// <summary>Codes ISO normalisés, sans doublon ni vide, dans l'ordre de saisie.</summary>
+    public static IReadOnlyList<string> NormalizeCountryCodes(IEnumerable<string?>? countryCodes)
+    {
+        if (countryCodes is null)
+            return [];
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var result = new List<string>();
+        foreach (var raw in countryCodes)
+        {
+            var code = NormalizeCountryCode(raw);
+            if (code.Length == 2 && seen.Add(code))
+                result.Add(code);
+        }
+        return result;
+    }
+
+    /// <summary>Lit la colonne CSV des pays visés.</summary>
+    public static IReadOnlyList<string> ParseCountryCsv(string? csv) =>
+        string.IsNullOrWhiteSpace(csv)
+            ? []
+            : NormalizeCountryCodes(csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+
+    /// <summary>Écrit la colonne CSV des pays visés, <c>null</c> si la liste est vide.</summary>
+    public static string? ToCountryCsv(IEnumerable<string?>? countryCodes)
+    {
+        var codes = NormalizeCountryCodes(countryCodes);
+        return codes.Count == 0 ? null : string.Join(',', codes);
+    }
+
+    /// <summary>Vrai si tous les pays visés appartiennent à la zone Europe.</summary>
+    public static bool AreAllEuropean(IEnumerable<string?>? countryCodes)
+    {
+        var codes = NormalizeCountryCodes(countryCodes);
+        return codes.Count > 0 && codes.All(EuropeanCountries.Contains);
+    }
 }

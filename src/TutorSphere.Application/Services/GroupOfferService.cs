@@ -101,7 +101,8 @@ public class GroupOfferService(
             throw new InvalidOperationException(
                 "Seul le Responsable du groupe (ou un admin plateforme en mode suppléant) peut créer une offre.");
 
-        var (isInternational, marketCode, currency) = ResolveScope(group, request.IsInternational, request.MarketCountryCode);
+        var scope = ResolveScope(group, request.IsInternational, request.MarketCountryCode, request.MarketCountryCodes);
+        var (storedCycle, levelsCsv) = ResolveSchooling(request.SchoolCycle, request.Levels);
 
         var offer = new GroupOffer
         {
@@ -110,14 +111,17 @@ public class GroupOfferService(
             Name = request.Name.Trim(),
             Code = string.IsNullOrWhiteSpace(request.Code) ? null : request.Code.Trim(),
             ShortDescription = string.IsNullOrWhiteSpace(request.ShortDescription) ? null : request.ShortDescription.Trim(),
+            SchoolCycle = storedCycle,
+            LevelsCsv = levelsCsv,
             PricingModel = request.PricingModel,
-            Currency = currency,
+            Currency = scope.Currency,
             FixedPrice = request.FixedPrice ?? request.RecommendedPrice,
             MinimumPrice = request.MinimumPrice,
             RecommendedPrice = request.RecommendedPrice ?? request.FixedPrice,
             MaximumPrice = request.MaximumPrice,
-            IsInternational = isInternational,
-            MarketCountryCode = marketCode,
+            IsInternational = scope.IsInternational,
+            MarketCountryCode = scope.MarketCountryCode,
+            VisibleCountryCodes = GroupOfferCurrencyRules.ToCountryCsv(scope.MarketCountryCodes),
             Status = GroupOfferStatus.Draft,
             CreatedByUserId = userId
         };
@@ -166,20 +170,24 @@ public class GroupOfferService(
         var group = db.ExpertGroups.FirstOrDefault(g => g.Id == offer.ExpertGroupId)
             ?? throw new InvalidOperationException("Groupe introuvable.");
 
-        var (isInternational, marketCode, currency) = ResolveScope(group, request.IsInternational, request.MarketCountryCode);
+        var scope = ResolveScope(group, request.IsInternational, request.MarketCountryCode, request.MarketCountryCodes);
+        var (storedCycle, levelsCsv) = ResolveSchooling(request.SchoolCycle, request.Levels);
 
         offer.Name = request.Name.Trim();
         offer.Code = string.IsNullOrWhiteSpace(request.Code) ? null : request.Code.Trim();
         offer.ShortDescription = string.IsNullOrWhiteSpace(request.ShortDescription) ? null : request.ShortDescription.Trim();
         offer.DisciplineId = request.DisciplineId;
+        offer.SchoolCycle = storedCycle;
+        offer.LevelsCsv = levelsCsv;
         offer.PricingModel = request.PricingModel;
-        offer.Currency = currency;
+        offer.Currency = scope.Currency;
         offer.FixedPrice = request.FixedPrice ?? request.RecommendedPrice;
         offer.MinimumPrice = request.MinimumPrice;
         offer.RecommendedPrice = request.RecommendedPrice ?? request.FixedPrice;
         offer.MaximumPrice = request.MaximumPrice;
-        offer.IsInternational = isInternational;
-        offer.MarketCountryCode = marketCode;
+        offer.IsInternational = scope.IsInternational;
+        offer.MarketCountryCode = scope.MarketCountryCode;
+        offer.VisibleCountryCodes = GroupOfferCurrencyRules.ToCountryCsv(scope.MarketCountryCodes);
         offer.UpdatedAt = DateTime.UtcNow;
 
         await db.SaveChangesAsync(ct);
@@ -455,27 +463,62 @@ public class GroupOfferService(
                 "Seul le Responsable du groupe (ou un admin plateforme en mode suppléant) peut gérer cette offre.");
     }
 
-    private static (bool IsInternational, string? MarketCountryCode, string Currency) ResolveScope(
+    private sealed record OfferScope(
+        bool IsInternational,
+        string? MarketCountryCode,
+        IReadOnlyList<string> MarketCountryCodes,
+        string Currency);
+
+    /// <summary>
+    /// Portée et devise d'une offre. Une offre locale ne vise que le pays du groupe ; une offre
+    /// internationale vise une liste de pays, dont la devise commune fait la devise de l'offre —
+    /// USD dès que ces devises diffèrent, faute de taux de change dans l'application.
+    /// </summary>
+    private static OfferScope ResolveScope(
         ExpertGroup group,
         bool isInternational,
-        string? marketCountryCode)
+        string? marketCountryCode,
+        IReadOnlyList<string>? marketCountryCodes)
     {
         if (isInternational)
         {
-            var market = GroupOfferCurrencyRules.NormalizeCountryCode(marketCountryCode);
-            if (string.IsNullOrEmpty(market))
+            // Le champ au singulier reste accepté : les appelants qui n'envoient qu'un pays
+            // (formulaire d'ajout d'enseignant) doivent continuer de fonctionner.
+            var codes = GroupOfferCurrencyRules.NormalizeCountryCodes(
+                (marketCountryCodes ?? []).Concat([marketCountryCode]));
+            if (codes.Count == 0)
                 throw new InvalidOperationException(
-                    "Une offre internationale nécessite un pays de marché (Europe, Canada, USA, Cameroun, Afrique…).");
-            return (true, market, GroupOfferCurrencyRules.ResolveCurrency(market));
+                    "Une offre internationale nécessite au moins un pays où elle est valable.");
+
+            return new OfferScope(
+                true,
+                codes[0],
+                codes,
+                GroupOfferCurrencyRules.ResolveCurrencyForCountries(codes));
         }
 
         var localCountry = GroupOfferCurrencyRules.NormalizeCountryCode(group.CountryCode);
         if (string.IsNullOrEmpty(localCountry) && group.IsInternational)
             throw new InvalidOperationException(
-                "Pour une offre locale sur un groupe international, choisissez plutôt « Internationale » avec un pays de marché.");
+                "Pour une offre locale sur un groupe international, choisissez plutôt « Internationale » avec au moins un pays.");
 
-        return (false, string.IsNullOrEmpty(localCountry) ? null : localCountry,
+        return new OfferScope(
+            false,
+            string.IsNullOrEmpty(localCountry) ? null : localCountry,
+            string.IsNullOrEmpty(localCountry) ? [] : [localCountry],
             GroupOfferCurrencyRules.ResolveCurrency(localCountry));
+    }
+
+    /// <summary>
+    /// Cycle et niveaux retenus. Les niveaux étrangers au cycle sont écartés ici plutôt qu'affichés
+    /// plus tard : « Université » sur un cycle primaire ne veut rien dire pour un parent.
+    /// </summary>
+    private static (string? StoredCycle, string? LevelsCsv) ResolveSchooling(
+        SchoolCycle? cycle,
+        IReadOnlyList<string>? levels)
+    {
+        var kept = SchoolLevelCatalog.LevelsWithinCycle(levels, cycle);
+        return (SchoolLevelCatalog.ToStoredCycle(cycle), SchoolLevelCatalog.ToLevelCsv(kept));
     }
 
     private int CountAssignments(Guid offerId) =>
@@ -511,8 +554,20 @@ public class GroupOfferService(
             .ToList();
     }
 
-    private static GroupOfferListItemDto ToDto(GroupOffer o, int assignedCount) => new(
-        o.Id, o.ExpertGroupId, o.Name, o.Code, o.Status, o.PricingModel,
-        o.Currency, o.RecommendedPrice ?? o.FixedPrice, o.CreatedAt, o.PublishedAtUtc,
-        o.ShortDescription, o.IsInternational, o.MarketCountryCode, assignedCount);
+    private static GroupOfferListItemDto ToDto(GroupOffer o, int assignedCount)
+    {
+        // Les offres créées avant la sélection multi-pays n'ont que le pays au singulier : on le
+        // reprend, sinon leur ligne s'afficherait sans aucun pays.
+        var countries = GroupOfferCurrencyRules.ParseCountryCsv(o.VisibleCountryCodes);
+        if (countries.Count == 0 && !string.IsNullOrWhiteSpace(o.MarketCountryCode))
+            countries = GroupOfferCurrencyRules.NormalizeCountryCodes([o.MarketCountryCode]);
+
+        return new(
+            o.Id, o.ExpertGroupId, o.Name, o.Code, o.Status, o.PricingModel,
+            o.Currency, o.RecommendedPrice ?? o.FixedPrice, o.CreatedAt, o.PublishedAtUtc,
+            o.ShortDescription, o.IsInternational, o.MarketCountryCode, assignedCount,
+            countries,
+            SchoolLevelCatalog.ParseCycle(o.SchoolCycle),
+            SchoolLevelCatalog.ParseLevelCsv(o.LevelsCsv));
+    }
 }

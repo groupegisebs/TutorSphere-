@@ -49,6 +49,13 @@ public record TransferGroupManagerRequest(
 
 public record SuspendGroupManagerRequest(string? Reason = null);
 
+/// <param name="MarketCountryCode">
+/// Premier pays visé. Conservé pour les lecteurs existants ; la liste complète est dans
+/// <paramref name="MarketCountryCodes"/>.
+/// </param>
+/// <param name="MarketCountryCodes">Tous les pays où l'offre est valable.</param>
+/// <param name="SchoolCycle">Cycle scolaire visé, <c>null</c> si l'offre ne se limite à aucun.</param>
+/// <param name="Levels">Codes de niveau du catalogue <c>SchoolLevelCatalog</c>.</param>
 public record GroupOfferListItemDto(
     Guid Id,
     Guid ExpertGroupId,
@@ -63,8 +70,14 @@ public record GroupOfferListItemDto(
     string? ShortDescription = null,
     bool IsInternational = false,
     string? MarketCountryCode = null,
-    int AssignedTeacherCount = 0);
+    int AssignedTeacherCount = 0,
+    IReadOnlyList<string>? MarketCountryCodes = null,
+    SchoolCycle? SchoolCycle = null,
+    IReadOnlyList<string>? Levels = null);
 
+/// <param name="MarketCountryCodes">
+/// Pays où l'offre est valable. La devise s'en déduit et n'est jamais reprise du client.
+/// </param>
 public record CreateGroupOfferRequest(
     string Name,
     string? Code = null,
@@ -77,7 +90,10 @@ public record CreateGroupOfferRequest(
     decimal? RecommendedPrice = null,
     decimal? MaximumPrice = null,
     bool IsInternational = false,
-    string? MarketCountryCode = null);
+    string? MarketCountryCode = null,
+    IReadOnlyList<string>? MarketCountryCodes = null,
+    SchoolCycle? SchoolCycle = null,
+    IReadOnlyList<string>? Levels = null);
 
 public record UpdateGroupOfferRequest(
     string Name,
@@ -91,7 +107,10 @@ public record UpdateGroupOfferRequest(
     decimal? RecommendedPrice = null,
     decimal? MaximumPrice = null,
     bool IsInternational = false,
-    string? MarketCountryCode = null);
+    string? MarketCountryCode = null,
+    IReadOnlyList<string>? MarketCountryCodes = null,
+    SchoolCycle? SchoolCycle = null,
+    IReadOnlyList<string>? Levels = null);
 
 public record GroupOffersCatalogDto(
     Guid ExpertGroupId,

@@ -1,4 +1,5 @@
 @page "/expert/offers"
+@using TutorSphere.Domain.Enums
 @layout ExpertLayout
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject AuthService Auth
@@ -89,13 +90,45 @@
                     @if (IsInternational)
                     {
                         <div class="col-md-4">
-                            <label class="form-label">Pays de marché *</label>
-                            <CountrySelect Value="@_marketCountry" ValueChanged="OnMarketCountryChanged" Placeholder="Pays cible" />
+                            <label class="form-label">Pays où l'offre est valable *</label>
+                            <CountryMultiSelect Values="_marketCountries" ValuesChanged="OnMarketCountriesChanged"
+                                                Placeholder="Pays cibles" />
                         </div>
                     }
                     <div class="col-md-4">
                         <label class="form-label">Devise (automatique)</label>
                         <input class="form-control" value="@PreviewCurrencyLabel" disabled readonly />
+                        <div class="form-text">@CurrencyReason</div>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Cycle scolaire</label>
+                        <select class="form-select" @bind="_cycle" @bind:after="OnCycleChanged">
+                            <option value="">Tous cycles</option>
+                            @foreach (var c in SchoolLevelCatalog.Cycles)
+                            {
+                                <option value="@((int)c)">@SchoolLevelCatalog.CycleLabel(c)</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="col-md-8">
+                        <label class="form-label">Niveaux scolaires</label>
+                        @* Cases à cocher plutôt qu'une liste déroulante : une offre couvre souvent
+                           collège et lycée, et la sélection doit rester visible. *@
+                        <div class="off-levels">
+                            @foreach (var lvl in SchoolLevelCatalog.LevelsForCycle(SelectedCycle))
+                            {
+                                <label class="off-level @(_levels.Contains(lvl.Code) ? "is-on" : null)">
+                                    <input type="checkbox" checked="@_levels.Contains(lvl.Code)"
+                                           @onchange="e => ToggleLevel(lvl.Code, e)" />
+                                    @lvl.Label
+                                </label>
+                            }
+                        </div>
+                        <div class="form-text">
+                            @(_levels.Count == 0
+                                ? "Aucun niveau coché : l'offre s'adresse à tous les niveaux du cycle."
+                                : SchoolLevelCatalog.FormatLevels(_levels))
+                        </div>
                     </div>
                     <div class="col-12">
                         <label class="form-label">Description courte</label>
@@ -112,7 +145,10 @@
                     }
                 </div>
                 <p class="small text-muted mt-2 mb-0">
-                    Devise internationale : Europe → EUR · Canada → $CAD · USA → $USD · Cameroun / Afrique → XAF.
+                    Devise : un seul pays → sa devise (Europe → EUR · Canada → $CAD · USA → $USD ·
+                    Cameroun / Afrique → XAF). Plusieurs pays d'une même zone → la devise commune.
+                    Dès que les devises diffèrent (continents différents, ou Canada et USA) → $USD,
+                    faute de taux de change dans l'application.
                 </p>
                 </div>
             </div>
@@ -134,6 +170,7 @@
                         <tr>
                             <th>Nom</th>
                             <th>Portée</th>
+                            <th>Public visé</th>
                             <th>Statut</th>
                             <th>Enseignants</th>
                             <th>Prix</th>
@@ -150,9 +187,25 @@
                                 </td>
                                 <td>
                                     @(o.IsInternational ? "Internationale" : "Locale")
-                                    @if (!string.IsNullOrWhiteSpace(o.MarketCountryCode))
+                                    @* Tous les pays, non le seul premier : une offre valable dans huit
+                                       pays ne doit pas s'afficher comme si elle n'en visait qu'un. *@
+                                    @if (CountryList(o) is { Length: > 0 } countries)
                                     {
-                                        <span class="small text-muted">· @o.MarketCountryCode</span>
+                                        <div class="small text-muted">@countries</div>
+                                    }
+                                </td>
+                                <td class="small">
+                                    @if (o.SchoolCycle is int cyc)
+                                    {
+                                        <div>@SchoolLevelCatalog.CycleLabel((SchoolCycle)cyc)</div>
+                                    }
+                                    @if (SchoolLevelCatalog.FormatLevels(o.Levels) is { Length: > 0 } lvls)
+                                    {
+                                        <div class="text-muted">@lvls</div>
+                                    }
+                                    @if (o.SchoolCycle is null && (o.Levels is null || o.Levels.Count == 0))
+                                    {
+                                        <span class="text-muted">Tous publics</span>
                                     }
                                 </td>
                                 <td>@StatusName(o.Status)</td>
@@ -257,6 +310,16 @@
         border: 1px solid #e2e8f0; color: #5831E0; background: #f8fafc;
     }
     .off-toggle:hover .off-toggle-ic { background: #f4efff; border-color: #d8ccff; }
+
+    /* Niveaux : cases à cocher en pastilles, la sélection reste lisible d'un coup d'œil. */
+    .off-levels { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+    .off-level {
+        display: inline-flex; align-items: center; gap: 0.35rem;
+        padding: 0.35rem 0.6rem; border: 1px solid #e2e8f0; border-radius: 999px;
+        background: #fff; font-size: 0.82rem; font-weight: 600; color: #475569; cursor: pointer;
+    }
+    .off-level input { margin: 0; }
+    .off-level.is-on { border-color: #5831E0; background: #f4efff; color: #3b1fa8; }
 </style>
 
 @code {
@@ -271,7 +334,9 @@
     private string? _short;
     private decimal? _price;
     private string _scope = "local";
-    private string? _marketCountry;
+    private List<string> _marketCountries = [];
+    private string _cycle = "";
+    private readonly HashSet<string> _levels = new(StringComparer.Ordinal);
     private Guid? _editId;
     private string _groupCurrency = "XAF";
     private string? _groupCountryCode;
@@ -283,10 +348,42 @@
 
     private bool IsInternational => string.Equals(_scope, "international", StringComparison.OrdinalIgnoreCase);
     private string _groupCurrencyLabel => GroupOfferCurrencyRules.FormatCurrencyLabel(_groupCurrency);
-    private string PreviewCurrencyLabel => GroupOfferCurrencyRules.FormatCurrencyLabel(
-        IsInternational
-            ? GroupOfferCurrencyRules.ResolveCurrency(_marketCountry)
-            : GroupOfferCurrencyRules.ResolveCurrency(_groupCountryCode));
+
+    private SchoolCycle? SelectedCycle =>
+        int.TryParse(_cycle, out var v) && Enum.IsDefined(typeof(SchoolCycle), v) ? (SchoolCycle)v : null;
+
+    /// <summary>Devise calculée comme côté serveur, pour que l'aperçu ne mente pas.</summary>
+    private string PreviewCurrency => IsInternational
+        ? GroupOfferCurrencyRules.ResolveCurrencyForCountries(_marketCountries, _groupCountryCode)
+        : GroupOfferCurrencyRules.ResolveCurrency(_groupCountryCode);
+
+    private string PreviewCurrencyLabel => GroupOfferCurrencyRules.FormatCurrencyLabel(PreviewCurrency);
+
+    /// <summary>Explique la devise retenue : sans cela le passage en USD paraît arbitraire.</summary>
+    private string CurrencyReason
+    {
+        get
+        {
+            if (!IsInternational)
+                return "Offre locale : devise du pays du groupe.";
+            if (_marketCountries.Count == 0)
+                return "Choisissez au moins un pays.";
+            if (_marketCountries.Count == 1)
+                return "Un seul pays : sa devise.";
+            if (PreviewCurrency == GroupOfferCurrencyRules.MixedZoneCurrency
+                && !GroupOfferCurrencyRules.AreAllEuropean(_marketCountries))
+                return $"{_marketCountries.Count} pays de devises différentes : bascule en $USD.";
+            return $"{_marketCountries.Count} pays d'une même zone monétaire.";
+        }
+    }
+
+    private static string CountryList(OfferItem o)
+    {
+        var codes = o.MarketCountryCodes is { Count: > 0 }
+            ? o.MarketCountryCodes
+            : (string.IsNullOrWhiteSpace(o.MarketCountryCode) ? [] : new List<string> { o.MarketCountryCode });
+        return string.Join(" · ", codes);
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -309,14 +406,28 @@
     private Task OnScopeChanged()
     {
         if (!IsInternational)
-            _marketCountry = null;
+            _marketCountries = [];
         return Task.CompletedTask;
     }
 
-    private Task OnMarketCountryChanged(string? code)
+    private void OnMarketCountriesChanged(IReadOnlyList<string> codes) => _marketCountries = [.. codes];
+
+    /// <summary>
+    /// Changer de cycle écarte les niveaux d'un autre cycle : le serveur les refuserait de toute
+    /// façon, autant que l'écran le montre tout de suite.
+    /// </summary>
+    private void OnCycleChanged()
     {
-        _marketCountry = code;
-        return Task.CompletedTask;
+        var allowed = SchoolLevelCatalog.LevelsForCycle(SelectedCycle).Select(l => l.Code).ToHashSet(StringComparer.Ordinal);
+        _levels.RemoveWhere(code => !allowed.Contains(code));
+    }
+
+    private void ToggleLevel(string code, ChangeEventArgs e)
+    {
+        if (e.Value is true)
+            _levels.Add(code);
+        else
+            _levels.Remove(code);
     }
 
     private async Task ReloadAsync()
@@ -351,7 +462,13 @@
         _short = o.ShortDescription;
         _price = o.RecommendedPrice;
         _scope = o.IsInternational ? "international" : "local";
-        _marketCountry = o.MarketCountryCode;
+        _marketCountries = o.MarketCountryCodes is { Count: > 0 }
+            ? [.. o.MarketCountryCodes]
+            : (string.IsNullOrWhiteSpace(o.MarketCountryCode) ? [] : [o.MarketCountryCode]);
+        _cycle = o.SchoolCycle?.ToString() ?? "";
+        _levels.Clear();
+        foreach (var lvl in o.Levels ?? [])
+            _levels.Add(lvl);
         _info = null;
         _error = null;
     }
@@ -368,7 +485,9 @@
         _code = _short = null;
         _price = null;
         _scope = "local";
-        _marketCountry = null;
+        _marketCountries = [];
+        _cycle = "";
+        _levels.Clear();
     }
 
     private async Task SaveAsync()
@@ -390,9 +509,9 @@
                 return;
             }
 
-            if (IsInternational && string.IsNullOrWhiteSpace(_marketCountry))
+            if (IsInternational && _marketCountries.Count == 0)
             {
-                _error = "Sélectionnez un pays de marché pour une offre internationale.";
+                _error = "Sélectionnez au moins un pays où l'offre est valable.";
                 return;
             }
 
@@ -405,7 +524,10 @@
                 fixedPrice = _price,
                 recommendedPrice = _price,
                 isInternational = IsInternational,
-                marketCountryCode = IsInternational ? _marketCountry : null
+                marketCountryCode = IsInternational ? _marketCountries.FirstOrDefault() : null,
+                marketCountryCodes = IsInternational ? _marketCountries : null,
+                schoolCycle = SelectedCycle is SchoolCycle c ? (int?)c : null,
+                levels = _levels.Count == 0 ? null : _levels.ToList()
             };
 
             if (_editId is Guid id)
@@ -564,7 +686,10 @@
         string? ShortDescription = null,
         bool IsInternational = false,
         string? MarketCountryCode = null,
-        int AssignedTeacherCount = 0);
+        int AssignedTeacherCount = 0,
+        List<string>? MarketCountryCodes = null,
+        int? SchoolCycle = null,
+        List<string>? Levels = null);
 
     private sealed record AssignableTeacher(
         Guid TenantId,

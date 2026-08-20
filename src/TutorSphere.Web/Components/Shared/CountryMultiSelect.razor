@@ -1,0 +1,83 @@
+@using TutorSphere.Web.Common
+
+<div class="country-select country-select--multi @(Disabled ? "country-select--disabled" : null) @(_isOpen ? "country-select--open" : null)">
+    <button type="button"
+            class="country-select-control"
+            disabled="@Disabled"
+            @onclick="ToggleDropdown"
+            @onclick:stopPropagation="true">
+        @if (Selected.Count == 0)
+        {
+            <span class="country-select-placeholder">@Placeholder</span>
+        }
+        else
+        {
+            <span class="country-select-name">@SummaryText</span>
+        }
+        <i class="bi bi-chevron-down country-select-chevron" aria-hidden="true"></i>
+    </button>
+
+    @if (_isOpen && !Disabled)
+    {
+        <div class="country-select-backdrop" @onclick="CloseDropdown" @onclick:stopPropagation="true"></div>
+        <div class="country-select-panel" @onclick:stopPropagation="true">
+            <input class="form-control form-control-sm country-select-search"
+                   placeholder="@SearchPlaceholder"
+                   value="@_search"
+                   @oninput="OnSearchInput"
+                   @ref="_searchInput" />
+            <div class="country-select-list">
+                @if (_filtered.Count == 0)
+                {
+                    <div class="country-select-empty">@EmptyText</div>
+                }
+                else
+                {
+                    @* Le panneau reste ouvert : on coche plusieurs pays d'affilée. *@
+                    @foreach (var c in _filtered)
+                    {
+                        var picked = IsPicked(c.Code);
+                        <button type="button"
+                                class="country-select-item @(picked ? "country-select-item--active" : null)"
+                                @onmousedown:preventDefault
+                                @onclick="() => ToggleCountryAsync(c)"
+                                @onclick:stopPropagation="true">
+                            <span class="country-select-flag" aria-hidden="true">@c.Flag</span>
+                            <span class="country-select-name">@c.Name</span>
+                            <span class="country-select-code">@c.Code</span>
+                            <i class="bi @(picked ? "bi-check-square-fill" : "bi-square") country-select-check"
+                               aria-hidden="true"></i>
+                        </button>
+                    }
+                }
+            </div>
+            @if (Selected.Count > 0)
+            {
+                <div class="country-select-panel-foot">
+                    <span>@SummaryText</span>
+                    <button type="button" class="country-select-clear" @onclick="ClearAsync">Tout retirer</button>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@if (Selected.Count > 0)
+{
+    <div class="country-chips">
+        @foreach (var c in Selected)
+        {
+            <span class="country-chip">
+                <span aria-hidden="true">@c.Flag</span>
+                @c.Name
+                @if (!Disabled)
+                {
+                    <button type="button" class="country-chip-x" title="Retirer @c.Name"
+                            @onclick="() => ToggleCountryAsync(c)">
+                        <i class="bi bi-x" aria-hidden="true"></i>
+                    </button>
+                }
+            </span>
+        }
+    </div>
+}
