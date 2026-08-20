@@ -26,6 +26,28 @@ public record ExpertGroupDto(
     string? SecondaryColor = null,
     bool CanHardDelete = true);
 
+/// <summary>
+/// Ce qu'une suppression de groupe emporterait. Sert à écrire la confirmation : l'administrateur
+/// doit voir ce qu'il détruit avant de valider, et non après.
+/// </summary>
+/// <param name="Detached">
+/// Rattachements simplement dénoués : les écoles approuvées, les candidatures orientées et les
+/// remarques survivent au groupe, elles perdent seulement la référence.
+/// </param>
+public record ExpertGroupDeletionImpactDto(
+    Guid Id,
+    string Name,
+    bool IsActive,
+    ExpertGroupLifecycleStatus LifecycleStatus,
+    IReadOnlyList<ExpertGroupDeletionItemDto> Deleted,
+    IReadOnlyList<ExpertGroupDeletionItemDto> Detached)
+{
+    public int TotalDeleted => Deleted.Sum(d => d.Count);
+    public bool IsEmpty => TotalDeleted == 0 && Detached.Sum(d => d.Count) == 0;
+}
+
+public record ExpertGroupDeletionItemDto(string Label, int Count);
+
 public record ExpertGroupMemberDto(
     Guid Id,
     Guid ExpertGroupId,

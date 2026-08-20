@@ -173,12 +173,57 @@ public class ExpertGroupsController : ControllerBase
         }
     }
 
-    [HttpDelete("{id:guid}")]
-    public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
+    /// <summary>Inventaire de ce qu'une suppression emporterait, pour alimenter la confirmation.</summary>
+    [HttpGet("{id:guid}/deletion-impact")]
+    public async Task<ActionResult<ExpertGroupDeletionImpactDto>> DeletionImpact(Guid id, CancellationToken ct)
     {
         try
         {
-            await _groups.DeleteAsync(id, ct);
+            return Ok(await _groups.GetDeletionImpactAsync(id, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return NotFound(new { error = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Suppression définitive. Sans <paramref name="cascade"/>, seuls les groupes sans rattachement
+    /// partent. Avec, tout ce que liste l'inventaire est détruit, ce qui exige de recopier le nom
+    /// du groupe dans <paramref name="confirm"/> : une suppression de cette portée ne doit pas
+    /// pouvoir tenir dans un clic.
+    /// </summary>
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> Delete(
+        Guid id,
+        CancellationToken ct,
+        [FromQuery] bool cascade = false,
+        [FromQuery] string? confirm = null)
+    {
+        try
+        {
+            if (!cascade)
+            {
+                await _groups.DeleteAsync(id, ct);
+                return NoContent();
+            }
+
+            if (!User.IsInRole(UserRoles.SuperAdmin))
+                return Forbid();
+
+            var impact = await _groups.GetDeletionImpactAsync(id, ct);
+            if (!string.Equals(confirm?.Trim(), impact.Name.Trim(), StringComparison.OrdinalIgnoreCase))
+                return BadRequest(new { error = $"Confirmation invalide : recopiez le nom du groupe « {impact.Name} »." });
+
+            var previous = await _managers.GetActiveManagerAsync(id, ct);
+            await _groups.DeleteCascadeAsync(id, ct);
+            if (previous is not null)
+                await _identity.RemoveGroupManagerRoleAsync(previous.UserId, ct);
+
+            _logger.LogWarning(
+                "Groupe d'experts {GroupId} « {Name} » supprimé en cascade par {AdminUserId} ({Total} enregistrements liés).",
+                id, impact.Name, AdminUserId, impact.TotalDeleted);
+
             return NoContent();
         }
         catch (InvalidOperationException ex)
@@ -190,7 +235,10 @@ public class ExpertGroupsController : ControllerBase
             _logger.LogError(ex, "Échec suppression groupe d'experts {GroupId} : contrainte base de données.", id);
             return BadRequest(new
             {
-                error = "Impossible de supprimer ce groupe : des données y sont encore liées. Utilisez Archiver."
+                error = cascade
+                    ? "Suppression refusée par la base : des données inattendues restent liées à ce groupe. " +
+                      "Utilisez Archiver et signalez le cas."
+                    : "Impossible de supprimer ce groupe : des données y sont encore liées. Utilisez Archiver."
             });
         }
     }

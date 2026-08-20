@@ -17,6 +17,17 @@ public interface IExpertGroupService
     Task<ExpertGroupDto> SetBannerUrlAsync(Guid id, string? bannerUrl, CancellationToken ct = default);
     Task<ExpertGroupDto> SetBrandColorsAsync(Guid id, string? primaryColor, string? secondaryColor, CancellationToken ct = default);
     Task DeleteAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>
+    /// Suppression définitive, y compris les données rattachées. Réservée aux cas où l'archivage
+    /// ne convient pas : un groupe créé par erreur, un doublon. L'appelant doit avoir montré
+    /// <see cref="GetDeletionImpactAsync"/> à l'utilisateur avant d'appeler ceci.
+    /// </summary>
+    Task DeleteCascadeAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>Inventaire de ce que la suppression détruirait, pour écrire la confirmation.</summary>
+    Task<ExpertGroupDeletionImpactDto> GetDeletionImpactAsync(Guid id, CancellationToken ct = default);
+
     Task ArchiveAsync(Guid id, CancellationToken ct = default);
     Task<bool> CanHardDeleteAsync(Guid id, CancellationToken ct = default);
     Task<IReadOnlyList<ExpertGroupMemberDto>> ListMembersAsync(Guid groupId, CancellationToken ct = default);
@@ -256,6 +267,120 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
         var mandates = db.ExpertGroupManagerMandates.Where(m => m.ExpertGroupId == id).ToList();
         foreach (var m in mandates)
             db.Remove(m);
+
+        db.Remove(entity);
+        await db.SaveChangesAsync(ct);
+    }
+
+    public Task<ExpertGroupDeletionImpactDto> GetDeletionImpactAsync(Guid id, CancellationToken ct = default)
+    {
+        var group = db.ExpertGroups.FirstOrDefault(g => g.Id == id)
+            ?? throw new InvalidOperationException("Groupe d'experts introuvable.");
+
+        List<ExpertGroupDeletionItemDto> deleted =
+        [
+            new("Membres du groupe", db.ExpertGroupMembers.Count(m => m.ExpertGroupId == id)),
+            new("Mandats de Responsable", db.ExpertGroupManagerMandates.Count(m => m.ExpertGroupId == id)),
+            new("Rôles définis", db.ExpertGroupDefinedRoles.Count(r => r.ExpertGroupId == id)),
+            new("Offres de groupe", db.GroupOffers.Count(o => o.ExpertGroupId == id)),
+            new("Conversations avec l'administration", db.GroupAdminConversations.Count(c => c.ExpertGroupId == id)),
+            new("Disciplines et services associés", db.Disciplines.Count(d => d.ExpertGroupId == id)),
+            new("Invitations d'enseignants", db.TeacherApplicationInvites.Count(i => i.ExpertGroupId == id)),
+            new("Invitations d'experts et votes", db.ExpertMembershipInvites.Count(i => i.ExpertGroupId == id)),
+            new("Tâches déléguées", db.ExpertDelegatedTasks.Count(t => t.ExpertGroupId == id)),
+            new("Éléments d'espace de travail", db.ExpertWorkspaceItems.Count(w => w.ExpertGroupId == id)),
+            new("Événements de gouvernance", db.ExpertGovernanceEvents.Count(e => e.ExpertGroupId == id)),
+            new("Contrats d'enseignants", db.TeacherContracts.Count(c => c.ExpertGroupId == id)),
+            new("Rattachements à des réunions", db.MeetingGroups.Count(m => m.ExpertGroupId == id)),
+            new("Remplacements de cours", db.LessonCoverageAssignments.Count(c => c.ExpertGroupId == id))
+        ];
+
+        List<ExpertGroupDeletionItemDto> detached =
+        [
+            new("Écoles approuvées par ce groupe", db.Tenants.Count(t => t.ApprovedByExpertGroupId == id)),
+            new("Réunions organisées", db.Meetings.Count(m => m.OrganizerGroupId == id)),
+            new("Candidatures orientées vers ce groupe", db.TeacherInterestRequests.Count(r => r.RoutedExpertGroupId == id)),
+            new("Remarques d'experts", db.ExpertRemarksForAnyTenant.Count(r => r.ExpertGroupId == id))
+        ];
+
+        return Task.FromResult(new ExpertGroupDeletionImpactDto(
+            group.Id,
+            group.Name,
+            group.IsActive,
+            group.LifecycleStatus,
+            [.. deleted.Where(d => d.Count > 0)],
+            [.. detached.Where(d => d.Count > 0)]));
+    }
+
+    public async Task DeleteCascadeAsync(Guid id, CancellationToken ct = default)
+    {
+        var entity = db.ExpertGroups.FirstOrDefault(g => g.Id == id)
+            ?? throw new InvalidOperationException("Groupe d'experts introuvable.");
+
+        // Les rattachements sont dénoués avant les suppressions : une école ou une réunion ne
+        // disparaît pas avec le groupe qui l'a approuvée ou organisée.
+        foreach (var tenant in db.Tenants.Where(t => t.ApprovedByExpertGroupId == id).ToList())
+            tenant.ApprovedByExpertGroupId = null;
+        foreach (var meeting in db.Meetings.Where(m => m.OrganizerGroupId == id).ToList())
+            meeting.OrganizerGroupId = null;
+        foreach (var request in db.TeacherInterestRequests.Where(r => r.RoutedExpertGroupId == id).ToList())
+            request.RoutedExpertGroupId = null;
+        foreach (var remark in db.ExpertRemarksForAnyTenant.Where(r => r.ExpertGroupId == id).ToList())
+            remark.ExpertGroupId = null;
+
+        // Suppressions explicites plutôt que cascade de la base : l'ordre reste lisible, et le
+        // comportement est le même quel que soit le fournisseur derrière le contexte.
+        var contractIds = db.TeacherContracts.Where(c => c.ExpertGroupId == id).Select(c => c.Id).ToList();
+        if (contractIds.Count > 0)
+        {
+            db.RemoveRange(db.TeacherContractSectionDecisions.Where(s => contractIds.Contains(s.ContractId)).ToList());
+            db.RemoveRange(db.TeacherContractAuditEvents.Where(a => contractIds.Contains(a.ContractId)).ToList());
+            db.RemoveRange(db.TeacherContracts.Where(c => contractIds.Contains(c.Id)).ToList());
+        }
+
+        var offerIds = db.GroupOffers.Where(o => o.ExpertGroupId == id).Select(o => o.Id).ToList();
+        if (offerIds.Count > 0)
+        {
+            db.RemoveRange(db.GroupOfferTeachers.Where(t => offerIds.Contains(t.GroupOfferId)).ToList());
+            db.RemoveRange(db.GroupOffers.Where(o => offerIds.Contains(o.Id)).ToList());
+        }
+
+        var conversationIds = db.GroupAdminConversations.Where(c => c.ExpertGroupId == id).Select(c => c.Id).ToList();
+        if (conversationIds.Count > 0)
+        {
+            db.RemoveRange(db.GroupAdminMessages.Where(m => conversationIds.Contains(m.ConversationId)).ToList());
+            db.RemoveRange(db.GroupAdminConversations.Where(c => conversationIds.Contains(c.Id)).ToList());
+        }
+
+        var disciplineIds = db.Disciplines.Where(d => d.ExpertGroupId == id).Select(d => d.Id).ToList();
+        if (disciplineIds.Count > 0)
+        {
+            db.RemoveRange(db.DisciplineServiceItems.Where(s => disciplineIds.Contains(s.DisciplineId)).ToList());
+            db.RemoveRange(db.TeacherDisciplineAssignments.Where(a => disciplineIds.Contains(a.DisciplineId)).ToList());
+            db.RemoveRange(db.Disciplines.Where(d => disciplineIds.Contains(d.Id)).ToList());
+        }
+
+        var inviteIds = db.ExpertMembershipInvites.Where(i => i.ExpertGroupId == id).Select(i => i.Id).ToList();
+        if (inviteIds.Count > 0)
+        {
+            db.RemoveRange(db.ExpertMembershipVotes.Where(v => inviteIds.Contains(v.InviteId)).ToList());
+            db.RemoveRange(db.ExpertMembershipInvites.Where(i => inviteIds.Contains(i.Id)).ToList());
+        }
+
+        db.RemoveRange(db.TeacherApplicationInvites.Where(i => i.ExpertGroupId == id).ToList());
+        db.RemoveRange(db.ExpertDelegatedTasks.Where(t => t.ExpertGroupId == id).ToList());
+        db.RemoveRange(db.ExpertWorkspaceItems.Where(w => w.ExpertGroupId == id).ToList());
+        db.RemoveRange(db.ExpertGovernanceEvents.Where(e => e.ExpertGroupId == id).ToList());
+        db.RemoveRange(db.MeetingGroups.Where(m => m.ExpertGroupId == id).ToList());
+        db.RemoveRange(db.LessonCoverageAssignments.Where(c => c.ExpertGroupId == id).ToList());
+        db.RemoveRange(db.ExpertGroupDefinedRoles.Where(r => r.ExpertGroupId == id).ToList());
+
+        // Le pointeur dénormalisé du groupe référence un mandat et une adhésion : il doit tomber
+        // avant eux, sinon la contrainte du mandat vers l'adhésion bloque la suppression.
+        entity.ActiveManagerMandateId = null;
+        entity.GroupManagerMembershipId = null;
+        db.RemoveRange(db.ExpertGroupManagerMandates.Where(m => m.ExpertGroupId == id).ToList());
+        db.RemoveRange(db.ExpertGroupMembers.Where(m => m.ExpertGroupId == id).ToList());
 
         db.Remove(entity);
         await db.SaveChangesAsync(ct);

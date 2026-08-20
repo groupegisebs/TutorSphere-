@@ -113,6 +113,14 @@ public sealed class AdminService
     public async Task<ApiResult<bool>> DeleteExpertGroupAsync(Guid id)
         => await _api.DeleteWithErrorAsync($"api/admin/expert-groups/{id}");
 
+    public async Task<ExpertGroupDeletionImpact?> GetExpertGroupDeletionImpactAsync(Guid id)
+        => await _api.GetAsync<ExpertGroupDeletionImpact>($"api/admin/expert-groups/{id}/deletion-impact");
+
+    /// <summary>Le nom recopié par l'administrateur est renvoyé tel quel : l'API refuse s'il diffère.</summary>
+    public async Task<ApiResult<bool>> DeleteExpertGroupCascadeAsync(Guid id, string confirmName)
+        => await _api.DeleteWithErrorAsync(
+            $"api/admin/expert-groups/{id}?cascade=true&confirm={Uri.EscapeDataString(confirmName)}");
+
     public Task<ApiResult<object>> ArchiveExpertGroupAsync(Guid id)
         => _api.PostWithErrorAsync<object>($"api/admin/expert-groups/{id}/archive", new { });
 
@@ -269,6 +277,19 @@ public sealed record ExpertGroupItem(
     string? ManagerPhone = null,
     string? ManagerUserId = null,
     bool CanHardDelete = true);
+
+public sealed record ExpertGroupDeletionImpact(
+    Guid Id,
+    string Name,
+    bool IsActive,
+    int LifecycleStatus,
+    List<ExpertGroupDeletionEntry> Deleted,
+    List<ExpertGroupDeletionEntry> Detached)
+{
+    public int TotalDeleted => Deleted.Sum(d => d.Count);
+}
+
+public sealed record ExpertGroupDeletionEntry(string Label, int Count);
 
 public sealed record ExpertMemberItem(
     Guid Id,

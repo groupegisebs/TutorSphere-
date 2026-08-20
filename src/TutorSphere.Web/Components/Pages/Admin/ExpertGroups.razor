@@ -194,6 +194,79 @@
             </div>
         }
 
+        @if (_deleteTarget is not null)
+        {
+            <div class="cc-card mb-3 border-danger">
+                <div class="cc-card-header">
+                    <h2 class="cc-card-title mb-0 text-danger">
+                        <i class="bi bi-exclamation-octagon me-1"></i>Supprimer « @_deleteTarget.Name »
+                    </h2>
+                    <button type="button" class="cc-btn" @onclick="CloseDelete"><i class="bi bi-x-lg"></i></button>
+                </div>
+                <div class="p-3">
+                    @if (_deleteImpactLoading)
+                    {
+                        <div class="text-center py-3"><span class="spinner-border"></span></div>
+                    }
+                    else
+                    {
+                        <p style="color:#f3f4f6">
+                            La suppression est définitive : le groupe et tout ce qui lui appartient
+                            disparaissent de la base, sans possibilité de retour. Si vous souhaitez
+                            seulement le retirer de la circulation, fermez cette fenêtre et utilisez
+                            <strong>Archiver</strong> : l'historique est alors conservé.
+                        </p>
+
+                        @if (_deleteImpact is null || _deleteImpact.Deleted.Count == 0)
+                        {
+                            <p style="color:#d1d5db">Aucune donnée n'est rattachée à ce groupe.</p>
+                        }
+                        else
+                        {
+                            <p class="mb-1" style="color:#f3f4f6">Seront supprimés définitivement :</p>
+                            <ul style="color:#f3f4f6">
+                                @foreach (var item in _deleteImpact.Deleted)
+                                {
+                                    <li><strong>@item.Count</strong> — @item.Label</li>
+                                }
+                            </ul>
+                        }
+
+                        @if (_deleteImpact is not null && _deleteImpact.Detached.Count > 0)
+                        {
+                            <p class="mb-1" style="color:#f3f4f6">
+                                Conservés, mais détachés du groupe :
+                            </p>
+                            <ul style="color:#d1d5db">
+                                @foreach (var item in _deleteImpact.Detached)
+                                {
+                                    <li><strong>@item.Count</strong> — @item.Label</li>
+                                }
+                            </ul>
+                        }
+
+                        <div class="mb-3">
+                            <label class="form-label cc-label-light" for="delete-confirm" style="color:#f3f4f6">
+                                Recopiez le nom du groupe pour confirmer
+                            </label>
+                            <input id="delete-confirm" class="form-control" placeholder="@_deleteTarget.Name"
+                                   autocomplete="off" @bind="_deleteConfirmName" @bind:event="oninput" />
+                        </div>
+
+                        <div class="d-flex gap-2 justify-content-end">
+                            <button type="button" class="cc-btn" @onclick="CloseDelete">Annuler</button>
+                            <button type="button" class="cc-btn cc-btn-danger"
+                                    disabled="@(_deleteBusy || !DeleteConfirmed)"
+                                    @onclick="ConfirmDeleteAsync">
+                                @if (_deleteBusy) { <span class="spinner-border spinner-border-sm me-1"></span> }
+                                Supprimer définitivement
+                            </button>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+
         @if (_loading)
         {
             <div class="cc-empty"><span class="spinner-border"></span></div>
@@ -317,14 +390,13 @@
                                             <button type="button" class="cc-btn btn-sm" @onclick="() => ToggleActiveAsync(g)">
                                                 @(g.IsActive ? "Désactiver" : "Activer")
                                             </button>
-                                            @if (g.CanHardDelete)
-                                            {
-                                                <button type="button" class="cc-btn btn-sm" @onclick="() => DeleteAsync(g)">Supprimer</button>
-                                            }
-                                            else
-                                            {
-                                                <button type="button" class="cc-btn btn-sm" @onclick="() => ArchiveAsync(g)">Archiver</button>
-                                            }
+                                            <button type="button" class="cc-btn btn-sm" @onclick="() => ArchiveAsync(g)">Archiver</button>
+                                            <AuthorizeView Roles="SuperAdmin" Context="deleteAuth">
+                                                <Authorized>
+                                                    <button type="button" class="cc-btn btn-sm cc-btn-danger"
+                                                            @onclick="() => OpenDeleteAsync(g)">Supprimer</button>
+                                                </Authorized>
+                                            </AuthorizeView>
                                         </div>
                                     </td>
                                 </tr>
@@ -332,6 +404,89 @@
                         </tbody>
                     </table>
                 </div>
+            </div>
+
+            @* Les groupes hors service restaient invisibles : impossible de rattraper un doublon
+               ou un brouillon créé par erreur sans passer par la base. *@
+            <div class="cc-card mt-3">
+                <div class="cc-card-header">
+                    <h2 class="cc-card-title mb-0">
+                        Groupes inactifs et archivés
+                        <span class="cc-pill ms-2">@InactiveGroups.Count</span>
+                    </h2>
+                </div>
+                @if (InactiveGroups.Count == 0)
+                {
+                    <p class="text-muted mb-0 p-3">Aucun groupe inactif.</p>
+                }
+                else
+                {
+                    <div class="cc-table-wrap">
+                        <table class="cc-table">
+                            <thead>
+                                <tr>
+                                    <th>Groupe</th>
+                                    <th>Portée</th>
+                                    <th>Membres</th>
+                                    <th>Statut</th>
+                                    <th>Créé le</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var g in InactiveGroups)
+                                {
+                                    <tr>
+                                        <td>
+                                            <div class="cc-user-cell">
+                                                <span class="cc-rank-icon"><i class="bi bi-archive"></i></span>
+                                                <strong>@g.Name</strong>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            @if (g.IsInternational)
+                                            {
+                                                <span class="cc-pill cc-pill-type">International</span>
+                                            }
+                                            else if (!string.IsNullOrWhiteSpace(g.CountryCode))
+                                            {
+                                                <span class="cc-pill">
+                                                    <span aria-hidden="true">@CountryCatalog.FlagEmoji(g.CountryCode)</span>
+                                                    @(CountryCatalog.Find(g.CountryCode)?.Name ?? g.CountryCode)
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                <span class="cc-pill">—</span>
+                                            }
+                                        </td>
+                                        <td>@g.MemberCount</td>
+                                        <td>
+                                            <span class="cc-pill cc-pill-bad">@LifecycleLabel(g)</span>
+                                        </td>
+                                        <td>@g.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy")</td>
+                                        <td class="text-end">
+                                            <div class="d-flex flex-wrap gap-1 justify-content-end">
+                                                <a class="cc-btn btn-sm" href="@($"admin/expert-groups/{g.Id}")">Membres</a>
+                                                <button type="button" class="cc-btn btn-sm" @onclick="() => OpenEdit(g)">Modifier</button>
+                                                @if (g.LifecycleStatus != 3)
+                                                {
+                                                    <button type="button" class="cc-btn btn-sm" @onclick="() => ToggleActiveAsync(g)">Activer</button>
+                                                }
+                                                <AuthorizeView Roles="SuperAdmin" Context="deleteInactiveAuth">
+                                                    <Authorized>
+                                                        <button type="button" class="cc-btn btn-sm cc-btn-danger"
+                                                                @onclick="() => OpenDeleteAsync(g)">Supprimer</button>
+                                                    </Authorized>
+                                                </AuthorizeView>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
             </div>
         }
         </div>
@@ -342,12 +497,33 @@
     private List<ExpertGroupItem> _groups = [];
     private List<ExpertGroupItem> ActiveGroups =>
         _groups.Where(g => g.IsActive && g.LifecycleStatus != 3).ToList();
+
+    /// <summary>Tout ce que le tableau principal écarte : brouillons, suspendus, archivés.</summary>
+    private List<ExpertGroupItem> InactiveGroups =>
+        _groups.Where(g => !g.IsActive || g.LifecycleStatus == 3)
+            .OrderBy(g => g.LifecycleStatus)
+            .ThenBy(g => g.Name)
+            .ToList();
+
+    private static string LifecycleLabel(ExpertGroupItem g) => g.LifecycleStatus switch
+    {
+        0 => "Brouillon",
+        2 => "Suspendu",
+        3 => "Archivé",
+        _ => g.IsActive ? "Actif" : "Inactif"
+    };
     private ExpertGroupItem? _historyGroup;
     private List<MandateHistoryItem> _mandateHistory = [];
     private bool _loading = true;
     private bool _showForm;
     private bool _saving;
     private bool _actAsBusy;
+
+    private ExpertGroupItem? _deleteTarget;
+    private ExpertGroupDeletionImpact? _deleteImpact;
+    private bool _deleteImpactLoading;
+    private bool _deleteBusy;
+    private string _deleteConfirmName = string.Empty;
     private Guid? _editId;
     private string? _flash;
     private string? _error;
@@ -627,22 +803,70 @@
         await ReloadAsync();
     }
 
-    private async Task DeleteAsync(ExpertGroupItem g)
+    private async Task OpenDeleteAsync(ExpertGroupItem g)
     {
-        var confirmed = await JS.InvokeAsync<bool>(
-            "confirm", $"Supprimer définitivement le groupe « {g.Name} » ? Cette action est irréversible.");
-        if (!confirmed) return;
+        _error = null;
+        _flash = null;
+        _deleteTarget = g;
+        _deleteConfirmName = string.Empty;
+        _deleteImpact = null;
+        _deleteImpactLoading = true;
+
+        try
+        {
+            _deleteImpact = await AdminSvc.GetExpertGroupDeletionImpactAsync(g.Id);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _deleteImpactLoading = false;
+        }
+    }
+
+    private void CloseDelete()
+    {
+        _deleteTarget = null;
+        _deleteImpact = null;
+        _deleteConfirmName = string.Empty;
+    }
+
+    /// <summary>Le nom recopié doit correspondre : l'API applique la même règle de son côté.</summary>
+    private bool DeleteConfirmed =>
+        _deleteTarget is not null
+        && string.Equals(_deleteConfirmName.Trim(), _deleteTarget.Name.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    private async Task ConfirmDeleteAsync()
+    {
+        if (_deleteTarget is null || !DeleteConfirmed) return;
 
         _error = null;
         _flash = null;
-        var result = await AdminSvc.DeleteExpertGroupAsync(g.Id);
-        if (!result.IsSuccess)
+        _deleteBusy = true;
+        try
         {
-            _error = result.Error ?? "Suppression impossible.";
-            return;
+            var name = _deleteTarget.Name;
+            var result = await AdminSvc.DeleteExpertGroupCascadeAsync(_deleteTarget.Id, _deleteConfirmName.Trim());
+            if (!result.IsSuccess)
+            {
+                _error = result.Error ?? "Suppression impossible.";
+                return;
+            }
+
+            CloseDelete();
+            _flash = $"Groupe « {name} » supprimé avec ses données rattachées.";
+            await ReloadAsync();
         }
-        _flash = "Groupe supprimé.";
-        await ReloadAsync();
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _deleteBusy = false;
+        }
     }
 
     private sealed record LogoUploadResult(string? LogoUrl);
