@@ -11,7 +11,7 @@ namespace TutorSphere.Application.Services;
 
 public interface ITeacherContractService
 {
-    TeacherContractTemplateDto GetTemplate();
+    TeacherContractTemplateDto GetTemplate(string? language = null);
     Task<IReadOnlyList<TeacherContractTeacherOptionDto>> ListTeacherOptionsAsync(
         string actorUserId, bool asPlatformAdmin, Guid? actAsGroupId, CancellationToken ct = default);
     Task<TeacherContractListItemDto> CreateAndSendAsync(
@@ -49,9 +49,10 @@ public sealed class TeacherContractService(
     ITeacherContractPdfWriter pdf,
     ILogger<TeacherContractService> logger) : ITeacherContractService
 {
-    public TeacherContractTemplateDto GetTemplate()
+    public TeacherContractTemplateDto GetTemplate(string? language = null)
     {
-        var defaults = TeacherContractCatalog.DefaultVariables();
+        var lang = SupportedLanguageCodes.Normalize(language);
+        var defaults = TeacherContractCatalog.DefaultVariables(lang);
         var vars = TeacherContractCatalog.VariableKeys.Select(k =>
             new TeacherContractVariableDto(
                 k,
@@ -158,6 +159,7 @@ public sealed class TeacherContractService(
                 contract.ContractNumber,
                 signUrl,
                 contract.TokenExpiresAt!.Value,
+                language,
                 ct);
         }
 
@@ -607,7 +609,8 @@ public sealed class TeacherContractService(
                 t.Id,
                 teacher?.DisplayName ?? t.Name,
                 teacher?.Email,
-                gn));
+                gn,
+                SupportedLanguageCodes.Normalize(t.Language)));
         }
         return result;
     }

@@ -275,5 +275,6 @@ public interface IEmailService
         string contractNumber,
         string signUrl,
         DateTime expiresAtUtc,
+        string? language = null,
         CancellationToken ct = default);
 }

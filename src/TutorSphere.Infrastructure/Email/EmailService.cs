@@ -614,15 +614,20 @@ public class EmailService : IEmailService
         string contractNumber,
         string signUrl,
         DateTime expiresAtUtc,
-        CancellationToken ct = default) =>
-        SendAsync(to, EmailTemplates.TeacherContractSign, new Dictionary<string, string>
+        string? language = null,
+        CancellationToken ct = default)
+    {
+        var lang = SupportedLanguageCodes.Normalize(language);
+        var culture = SupportedLanguageCodes.GetCulture(lang);
+        return SendAsync(to, EmailTemplates.TeacherContractSign, new Dictionary<string, string>
         {
             ["FirstName"] = Fallback(firstName, "enseignant"),
             ["GroupName"] = Fallback(groupName, "TutorSphere"),
             ["ContractNumber"] = contractNumber,
             ["SignUrl"] = signUrl,
-            ["ExpiresAt"] = expiresAtUtc.ToString("f", CultureInfo.GetCultureInfo("fr-FR"))
-        }, ct);
+            ["ExpiresAt"] = expiresAtUtc.ToString("f", culture)
+        }, ct, lang);
+    }
 
     public async Task SendLessonCoverageProposedAsync(
         string to,

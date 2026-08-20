@@ -43,4 +43,16 @@ public static class SupportedLanguageCodes
 
     public static IList<CultureInfo> Cultures =>
         All.Select(c => CultureInfo.GetCultureInfo(c)).ToList();
+
+    public static CultureInfo GetCulture(string? code)
+    {
+        try
+        {
+            return CultureInfo.GetCultureInfo(Normalize(code));
+        }
+        catch (CultureNotFoundException)
+        {
+            return CultureInfo.GetCultureInfo(French);
+        }
+    }
 }

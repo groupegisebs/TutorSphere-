@@ -14,7 +14,8 @@ public record TeacherContractTeacherOptionDto(
     Guid TenantId,
     string Name,
     string? Email,
-    string? GroupName);
+    string? GroupName,
+    string Language = "fr");
 
 public record SendTeacherContractRequest(
     Guid TenantId,

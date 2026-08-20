@@ -1,18 +1,21 @@
 @page "/tutor/contracts"
 @layout TutorLayout
 @rendermode InteractiveServer
+@using System.Globalization
+@using TutorSphere.Application.Common
 @using TutorSphere.Application.DTOs.Contracts
+@using TutorSphere.Application.Services
 @using TutorSphere.Domain.Enums
 @inject AuthService Auth
 @inject ApiClient Api
 @inject IJSRuntime JS
 
-<PageTitle>Mes contrats — TutorSphere</PageTitle>
+<PageTitle>@Ui.Title — TutorSphere</PageTitle>
 
 <div class="th-head">
     <div>
-        <h1 class="th-greeting">Mes contrats</h1>
-        <p class="th-subtitle">Consultez et téléchargez vos contrats de collaboration. Les documents signés ne sont pas modifiables.</p>
+        <h1 class="th-greeting">@Ui.Title</h1>
+        <p class="th-subtitle">@Ui.Subtitle</p>
     </div>
 </div>
 
@@ -24,11 +27,11 @@
 @if (_pending.Count > 0)
 {
     <div class="alert alert-warning">
-        <strong>Action requise.</strong> Vous avez un contrat en attente de signature.
+        <strong>@Ui.ActionRequired</strong>
         @foreach (var p in _pending)
         {
             <div class="mt-2">
-                <a class="btn btn-primary btn-sm" href="@p.SignUrl">Ouvrir le contrat @p.ContractNumber</a>
+                <a class="btn btn-primary btn-sm" href="@p.SignUrl">@Ui.OpenContract @p.ContractNumber</a>
             </div>
         }
     </div>
@@ -40,7 +43,7 @@
 }
 else if (_list.Count == 0)
 {
-    <p class="text-muted">Aucun contrat pour le moment.</p>
+    <p class="text-muted">@Ui.Empty</p>
 }
 else
 {
@@ -48,10 +51,10 @@ else
         <table class="table">
             <thead>
                 <tr>
-                    <th>N°</th>
-                    <th>Groupe</th>
-                    <th>Statut</th>
-                    <th>Signé</th>
+                    <th>@Ui.Number</th>
+                    <th>@Ui.Group</th>
+                    <th>@Ui.Status</th>
+                    <th>@Ui.Signed</th>
                     <th></th>
                 </tr>
             </thead>
@@ -64,10 +67,10 @@ else
                         <td>@StatusLabel(row.Status)</td>
                         <td>@(row.SignedAt?.ToLocalTime().ToString("g") ?? "—")</td>
                         <td class="text-end">
-                            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => OpenAsync(row.Id)">Détail</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => OpenAsync(row.Id)">@Ui.Detail</button>
                             @if (row.CanDownload)
                             {
-                                <button type="button" class="btn btn-sm btn-primary" @onclick="() => DownloadAsync(row.Id, row.ContractNumber)">Télécharger</button>
+                                <button type="button" class="btn btn-sm btn-primary" @onclick="() => DownloadAsync(row.Id, row.ContractNumber)">@Ui.Download</button>
                             }
                         </td>
                     </tr>
@@ -82,16 +85,16 @@ else
     <div class="th-card mt-3">
         <div class="d-flex justify-content-between">
             <h2>@_detail.ContractNumber</h2>
-            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => _detail = null">Fermer</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" @onclick="() => _detail = null">@Ui.Close</button>
         </div>
         <p>@StatusLabel(_detail.Status) · @_detail.GroupName</p>
         @if (!string.IsNullOrWhiteSpace(_detail.DocumentHash))
         {
-            <p class="small text-break">Empreinte : @_detail.DocumentHash</p>
+            <p class="small text-break">@Ui.Hash : @_detail.DocumentHash</p>
         }
         @if (!string.IsNullOrWhiteSpace(_detail.SignUrl) && _detail.Status is TeacherContractStatus.Sent or TeacherContractStatus.Viewed or TeacherContractStatus.AwaitingSignature)
         {
-            <a class="btn btn-primary" href="@_detail.SignUrl">Continuer la signature</a>
+            <a class="btn btn-primary" href="@_detail.SignUrl">@Ui.ContinueSign</a>
         }
         @foreach (var s in _detail.Sections)
         {
@@ -109,6 +112,9 @@ else
     private List<TeacherContractDetailDto> _pending = [];
     private bool _loading = true;
     private string? _error;
+
+    private static string UiLang => SupportedLanguageCodes.Normalize(CultureInfo.CurrentUICulture.Name);
+    private static TeacherContractWorkspaceChrome Ui => TeacherContractCatalog.WorkspaceChrome(UiLang);
 
     protected override async Task OnInitializedAsync()
     {
@@ -139,17 +145,6 @@ else
         await JS.InvokeVoidAsync("downloadFileFromBase64", $"{number}.pdf", "application/pdf", Convert.ToBase64String(result.Value));
     }
 
-    private static string StatusLabel(TeacherContractStatus s) => s switch
-    {
-        TeacherContractStatus.Draft => "Brouillon",
-        TeacherContractStatus.Sent => "Envoyé",
-        TeacherContractStatus.Viewed => "Consulté",
-        TeacherContractStatus.AwaitingSignature => "En attente de signature",
-        TeacherContractStatus.Signed => "Signé",
-        TeacherContractStatus.Expired => "Expiré",
-        TeacherContractStatus.Refused => "Refusé",
-        TeacherContractStatus.Cancelled => "Annulé",
-        TeacherContractStatus.Replaced => "Remplacé par une nouvelle version",
-        _ => s.ToString()
-    };
+    private static string StatusLabel(TeacherContractStatus s) =>
+        TeacherContractCatalog.ContractStatusLabel(UiLang, s);
 }

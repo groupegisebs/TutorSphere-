@@ -2,6 +2,7 @@
 @layout ExpertLayout
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using Microsoft.AspNetCore.WebUtilities
+@using TutorSphere.Application.Common
 @using TutorSphere.Application.DTOs.Contracts
 @using TutorSphere.Application.Services
 @using TutorSphere.Domain.Enums
@@ -38,7 +39,7 @@
             <div class="cc-card mb-3">
                 <h2 class="cc-card-title">Nouveau contrat</h2>
                 <label class="form-label">Enseignant</label>
-                <select class="form-select mb-3" @bind="_sendTenantId">
+                <select class="form-select mb-3" value="@_sendTenantId" @onchange="OnTeacherChanged">
                     <option value="">Choisir…</option>
                     @foreach (var t in _teachers)
                     {
@@ -184,6 +185,7 @@
         }
         await LoadAsync();
         await LoadFormAsync();
+        ApplyTeacherLanguage();
     }
 
     private async Task LoadAsync()
@@ -211,9 +213,31 @@
         _info = null;
     }
 
+    private void OnTeacherChanged(ChangeEventArgs e)
+    {
+        _sendTenantId = e.Value?.ToString() ?? "";
+        ApplyTeacherLanguage();
+    }
+
+    private void ApplyTeacherLanguage()
+    {
+        if (!Guid.TryParse(_sendTenantId, out var id)) return;
+        var teacher = _teachers.FirstOrDefault(t => t.TenantId == id);
+        if (string.IsNullOrWhiteSpace(teacher?.Language)) return;
+        var lang = SupportedLanguageCodes.Normalize(teacher.Language);
+        if (lang == _sendLanguage) return;
+        _sendLanguage = lang;
+        ApplyLanguageDefaults();
+    }
+
     private void OnSendLanguageChanged(ChangeEventArgs e)
     {
         _sendLanguage = e.Value?.ToString() ?? "fr";
+        ApplyLanguageDefaults();
+    }
+
+    private void ApplyLanguageDefaults()
+    {
         var defaults = TeacherContractCatalog.DefaultVariables(_sendLanguage);
         _variables = _variables.Select(v => v with { Value = defaults.GetValueOrDefault(v.Key) ?? v.Value }).ToList();
     }

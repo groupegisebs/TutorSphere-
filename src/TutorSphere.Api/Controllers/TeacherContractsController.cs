@@ -23,7 +23,8 @@ public class TeacherContractsController(
 
     [HttpGet("expert/contracts/template")]
     [Authorize(Roles = $"{UserRoles.Expert},{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
-    public ActionResult<TeacherContractTemplateDto> ExpertTemplate() => Ok(contracts.GetTemplate());
+    public ActionResult<TeacherContractTemplateDto> ExpertTemplate([FromQuery] string? language)
+        => Ok(contracts.GetTemplate(language));
 
     [HttpGet("expert/contracts/teachers")]
     [Authorize(Roles = $"{UserRoles.Expert},{UserRoles.GroupManager},{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
@@ -93,7 +94,8 @@ public class TeacherContractsController(
 
     [HttpGet("admin/contracts/template")]
     [Authorize(Roles = $"{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
-    public ActionResult<TeacherContractTemplateDto> AdminTemplate() => Ok(contracts.GetTemplate());
+    public ActionResult<TeacherContractTemplateDto> AdminTemplate([FromQuery] string? language)
+        => Ok(contracts.GetTemplate(language));
 
     [HttpGet("admin/contracts/teachers")]
     [Authorize(Roles = $"{UserRoles.SuperAdmin},{UserRoles.PlatformAdmin}")]
