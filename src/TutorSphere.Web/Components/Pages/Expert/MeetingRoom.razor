@@ -109,6 +109,10 @@ else if (_detail is not null)
                         <div class="mtg-pop mtg-pop-end">
                             <button type="button" @onclick='() => OpenTab("notes")'><i class="bi bi-journal-text"></i> Notes partagées</button>
                             <button type="button" @onclick="ShareBoardAsync"><i class="bi bi-easel"></i> Partager le tableau blanc</button>
+                            @if (_sharing)
+                            {
+                                <button type="button" class="is-danger" @onclick="StopShareAsync"><i class="bi bi-stop-circle"></i> Arrêter le partage</button>
+                            }
                             @if (_isOrganizer)
                             {
                                 <button type="button" @onclick="ToggleRecAsync">
@@ -154,6 +158,16 @@ else if (_detail is not null)
                     <button type="button" class="mtg-media-retry" @onclick="RetryMediaAsync">Réessayer</button>
                 }
                 <button type="button" @onclick="() => _mediaError = null">×</button>
+            </div>
+        }
+        @if (_sharing)
+        {
+            <div class="mtg-share-bar">
+                <i class="bi @(_sharingBoard ? "bi-easel" : "bi-display")"></i>
+                @(_sharingBoard ? "Vous partagez le tableau blanc." : "Vous partagez votre écran.")
+                <button type="button" @onclick="StopShareAsync">
+                    <i class="bi bi-stop-circle"></i> Arrêter le partage
+                </button>
             </div>
         }
         @* Sans geste de l'utilisateur, le navigateur coupe le son des participants sans rien dire :
@@ -202,7 +216,14 @@ else if (_detail is not null)
                                 <div class="mtg-pop mtg-pop-up mtg-pop-end">
                                     <button type="button" @onclick="ToggleMic"><i class="bi bi-mic"></i> @(_mic ? "Couper mon micro" : "Activer mon micro")</button>
                                     <button type="button" @onclick="ToggleCam"><i class="bi bi-camera-video"></i> @(_cam ? "Couper ma caméra" : "Activer ma caméra")</button>
-                                    <button type="button" @onclick="ShareAsync"><i class="bi bi-display"></i> Partager mon écran</button>
+                                    @if (_sharing)
+                                    {
+                                        <button type="button" class="is-danger" @onclick="StopShareAsync"><i class="bi bi-stop-circle"></i> Arrêter le partage</button>
+                                    }
+                                    else
+                                    {
+                                        <button type="button" @onclick="ShareAsync"><i class="bi bi-display"></i> Partager mon écran</button>
+                                    }
                                 </div>
                             }
                         </div>
@@ -296,9 +317,9 @@ else if (_detail is not null)
                                 </div>
                             }
                         </div>
-                        <button type="button" class="mtg-dock-btn" @onclick="ShareAsync">
-                            <span class="mtg-dock-ic"><i class="bi bi-display"></i></span>
-                            <span class="mtg-dock-lb">Partager</span>
+                        <button type="button" class="mtg-dock-btn @(_sharing ? "is-on" : "")" @onclick="ToggleShareAsync">
+                            <span class="mtg-dock-ic"><i class="bi @(_sharing ? "bi-stop-circle-fill" : "bi-display")"></i></span>
+                            <span class="mtg-dock-lb">@(_sharing ? "Arrêter" : "Partager")</span>
                         </button>
                         <button type="button" class="mtg-dock-btn" @onclick='() => OpenTab("chat")'>
                             <span class="mtg-dock-ic">
@@ -328,6 +349,10 @@ else if (_detail is not null)
                                 <div class="mtg-pop mtg-pop-up">
                                     <button type="button" @onclick='() => OpenTab("notes")'><i class="bi bi-journal-text"></i> Notes partagées</button>
                                     <button type="button" @onclick="ShareBoardAsync"><i class="bi bi-easel"></i> Tableau blanc</button>
+                                    @if (_sharing)
+                                    {
+                                        <button type="button" class="is-danger" @onclick="StopShareAsync"><i class="bi bi-stop-circle"></i> Arrêter le partage</button>
+                                    }
                                     <button type="button" @onclick='() => OpenTab("ai")'><i class="bi bi-stars"></i> Assistant IA</button>
                                     @if (_isOrganizer)
                                     {
@@ -670,6 +695,8 @@ else if (_detail is not null)
     private bool _mic = true, _cam, _hand, _recording, _waiting, _aiPrompt, _consentAsk, _allConsented, _isOrganizer;
     private bool _codeGate, _gateBusy;
     private bool _sharing, _blur, _invite, _copied, _waitBusy;
+    /// <summary>Distingue le tableau blanc de l'écran, pour nommer le partage en cours.</summary>
+    private bool _sharingBoard;
     private int _unread;
     private string? _menu;
     private string _search = "";
@@ -992,6 +1019,7 @@ else if (_detail is not null)
     public async Task OnScreenShareEnded(string kind)
     {
         _sharing = false;
+        _sharingBoard = false;
         Toast("Partage terminé");
         await RefreshTracksAsync(force: true);
         await Rt.BroadcastMediaAsync(Id, _mic, _cam);
@@ -1242,10 +1270,32 @@ else if (_detail is not null)
             return;
         }
         _sharing = true;
+        _sharingBoard = false;
         Toast("Partage d’écran");
         // Le flux d'écran remplace la piste caméra : il faut renégocier pour que les pairs le voient.
         await RefreshTracksAsync(force: true);
         await Rt.BroadcastMediaAsync(Id, _mic, true);
+    }
+
+    /// <summary>
+    /// Bascule du bouton « Partager ». Arrêter depuis la barre du navigateur restait possible, mais
+    /// n'existait pas dans la réunion : l'écran continuait d'être diffusé faute de commande.
+    /// </summary>
+    private Task ToggleShareAsync() => _sharing ? StopShareAsync() : ShareAsync();
+
+    /// <summary>Rend la caméra aux pairs et rétablit l'aperçu local.</summary>
+    private async Task StopShareAsync()
+    {
+        _menu = null;
+        try { await JS.InvokeVoidAsync("classroomMedia.stopScreenShare", _localVideo); } catch { }
+        _sharing = false;
+        _sharingBoard = false;
+        Toast("Partage arrêté");
+        // La piste d'écran laisse place à la caméra : sans renégociation les pairs gardent l'écran figé.
+        await RefreshTracksAsync(force: true);
+        await Rt.BroadcastMediaAsync(Id, _mic, _cam);
+        _needRtcRemount = true;
+        await InvokeAsync(StateHasChanged);
     }
     private async Task SendChat()
     {
@@ -1413,6 +1463,7 @@ else if (_detail is not null)
             return;
         }
         _sharing = true;
+        _sharingBoard = true;
         Toast("Tableau blanc partagé");
         await RefreshTracksAsync(force: true);
         await Rt.BroadcastMediaAsync(Id, _mic, true);
