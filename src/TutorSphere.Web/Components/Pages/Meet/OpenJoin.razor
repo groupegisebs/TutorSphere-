@@ -1,0 +1,140 @@
+@page "/meet/salle/{Token}"
+@layout LoginLayout
+@rendermode InteractiveServer
+@inject HttpClient Http
+@inject NavigationManager Nav
+
+<PageTitle>Rejoindre la réunion — TutorSphere</PageTitle>
+
+<div class="login-admin-page login-theme-admin">
+    <div class="login-admin-inner" style="max-width:520px">
+        <h1>Rejoindre la réunion</h1>
+        @if (!string.IsNullOrEmpty(_error)) { <div class="alert alert-danger">@_error</div> }
+        @if (_loading)
+        {
+            <span class="spinner-border"></span>
+        }
+        else if (_preview is not null)
+        {
+            <p class="login-subtitle"><strong>@_preview.Title</strong><br />Organisateur : @_preview.OrganizerName</p>
+            @if (_preview.StartAtUtc is DateTime start)
+            {
+                <p class="small">Début prévu : @start.ToLocalTime().ToString("dddd d MMMM, HH:mm")</p>
+            }
+            @if (_preview.RecordingEnabled) { <p class="small">Un enregistrement pourra être réalisé.</p> }
+            @if (_preview.AiEnabled) { <p class="small">Un assistant IA pourra analyser la discussion avec votre consentement.</p> }
+            <div class="mb-3">
+                <label class="form-label">Votre nom <span class="mtg-req">*</span></label>
+                <input class="form-control @(_nameError is not null ? "is-invalid" : null)" maxlength="80"
+                       placeholder="Prénom et nom" @bind="_name" @bind:after="() => _nameError = null"
+                       @onkeyup="OnKeyUp" />
+                @if (_nameError is not null)
+                {
+                    <p class="mtg-field-error">@_nameError</p>
+                }
+                <div class="form-text">C’est ce nom que verront les autres participants.</div>
+            </div>
+            <button class="btn btn-primary w-100" type="button" disabled="@_busy" @onclick="EnterAsync">
+                @if (_busy) { <span class="spinner-border spinner-border-sm me-2"></span> }
+                Rejoindre la réunion
+            </button>
+            <p class="small text-muted mt-3">
+                Aucun compte n’est nécessaire. L’organisateur vous ouvrira la salle : gardez cette
+                page ouverte. Ce lien ne donne accès à rien d’autre sur TutorSphere.
+            </p>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Token { get; set; } = "";
+
+    /// <summary>Nom éventuellement porté par le lien : l'invité n'a plus qu'à confirmer.</summary>
+    [SupplyParameterFromQuery(Name = "name")] public string? NameFromLink { get; set; }
+
+    private Preview? _preview;
+    private string? _error, _nameError;
+    private bool _loading = true, _busy;
+    private string _name = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _preview = await Http.GetFromJsonAsync<Preview>($"api/meetings/open/{Uri.EscapeDataString(Token)}");
+        }
+        catch
+        {
+            _error = "Ce lien de réunion n’est plus valable. Demandez-en un nouveau à l’organisateur.";
+        }
+        if (!string.IsNullOrWhiteSpace(NameFromLink)) _name = NameFromLink.Trim();
+        _loading = false;
+    }
+
+    private async Task OnKeyUp(KeyboardEventArgs e)
+    {
+        if (e.Key is "Enter" && !_busy) await EnterAsync();
+    }
+
+    private async Task EnterAsync()
+    {
+        _error = null;
+        _nameError = null;
+        if (string.IsNullOrWhiteSpace(_name))
+        {
+            _nameError = "Indiquez votre nom : l’organisateur doit savoir qui il fait entrer.";
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var resp = await Http.PostAsJsonAsync(
+                $"api/meetings/open/{Uri.EscapeDataString(Token)}/enter", new { displayName = _name });
+            var body = await resp.Content.ReadAsStringAsync();
+            if (!resp.IsSuccessStatusCode)
+            {
+                _error = Extract(body) ?? "Impossible d’entrer.";
+                return;
+            }
+            var result = System.Text.Json.JsonSerializer.Deserialize<Enter>(
+                body, new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+            if (result is null) { _error = "Réponse invalide."; return; }
+            // Le jeton personnel remplace le lien partagé : c'est lui qui identifie l'invité en salle.
+            var url = $"/expert/meetings/{result.MeetingId}/room"
+                + $"?guest={Uri.EscapeDataString(result.GuestToken)}"
+                + $"&name={Uri.EscapeDataString(result.DisplayName)}";
+            Nav.NavigateTo(result.Waiting ? url + "&wait=1" : url);
+        }
+        finally { _busy = false; }
+    }
+
+    private static string? Extract(string json)
+    {
+        try
+        {
+            using var d = System.Text.Json.JsonDocument.Parse(json);
+            if (d.RootElement.TryGetProperty("error", out var e)) return e.GetString();
+        }
+        catch { }
+        return null;
+    }
+
+    private sealed class Preview
+    {
+        public Guid MeetingId { get; set; }
+        public string Title { get; set; } = "";
+        public DateTime? StartAtUtc { get; set; }
+        public string OrganizerName { get; set; } = "";
+        public bool RecordingEnabled { get; set; }
+        public bool AiEnabled { get; set; }
+    }
+
+    private sealed class Enter
+    {
+        public Guid MeetingId { get; set; }
+        public string DisplayName { get; set; } = "";
+        public string GuestToken { get; set; } = "";
+        public bool Waiting { get; set; }
+    }
+}

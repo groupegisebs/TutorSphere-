@@ -278,6 +278,16 @@
                                             {
                                                 <span class="mtl-chip is-ai">IA</span>
                                             }
+                                            @if (m.OpenJoinEnabled)
+                                            {
+                                                <span class="mtl-chip" title="Lien partageable, sans invitation nommée">
+                                                    <i class="bi bi-link-45deg"></i> Libre
+                                                    @if (m.MaxParticipants is int cap)
+                                                    {
+                                                        <text> · @cap max</text>
+                                                    }
+                                                </span>
+                                            }
                                         </div>
                                     </div>
                                     <div class="mtl-col">
@@ -363,6 +373,12 @@
                                                     <button type="button" @onclick="() => CopyLinkAsync(m)">
                                                         <i class="bi bi-link-45deg"></i> Copier le lien
                                                     </button>
+                                                    @if (!string.IsNullOrWhiteSpace(m.OpenJoinUrl))
+                                                    {
+                                                        <button type="button" @onclick="() => CopyOpenLinkAsync(m)">
+                                                            <i class="bi bi-people"></i> Copier le lien libre
+                                                        </button>
+                                                    }
                                                 }
                                                 @if (m.IsOrganizer && m.Status != 4)
                                                 {
@@ -809,6 +825,16 @@
         await ToastAsync("Lien de la salle copié.");
     }
 
+    /// <summary>Lien de la réunion libre : rien à y ajouter, l'invité n'a qu'à donner son nom.</summary>
+    private async Task CopyOpenLinkAsync(Item m)
+    {
+        CloseMenus();
+        if (string.IsNullOrWhiteSpace(m.OpenJoinUrl)) return;
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", m.OpenJoinUrl); }
+        catch { _error = "Copie impossible : ouvrez les détails et copiez le lien à la main."; return; }
+        await ToastAsync("Lien de la réunion libre copié.");
+    }
+
     private async Task ToastAsync(string message)
     {
         _toast = message;
@@ -1085,5 +1111,8 @@
         public string? GroupName { get; set; }
         public int? MyStatus { get; set; }
         public List<string>? ParticipantPreview { get; set; }
+        public bool OpenJoinEnabled { get; set; }
+        public string? OpenJoinUrl { get; set; }
+        public int? MaxParticipants { get; set; }
     }
 }

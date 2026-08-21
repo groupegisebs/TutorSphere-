@@ -184,6 +184,17 @@ public class MeetingsController(
         catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
     }
 
+    /// <summary>Ouvre, ferme ou renouvelle le lien d'une réunion libre.</summary>
+    [HttpPost("{id:guid}/open-join")]
+    public async Task<ActionResult<MeetingOpenJoinDto>> SetOpenJoin(
+        Guid id, [FromBody] SetMeetingOpenJoinRequest? body, CancellationToken ct)
+    {
+        if (UserId is null) return Unauthorized();
+        if (body is null) return BadRequest(new { error = "Requête invalide." });
+        try { return Ok(await meetings.SetOpenJoinAsync(UserId, id, body, ct)); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
     /// <summary>Contrôle le code saisi par un membre avant d'ouvrir la salle.</summary>
     [HttpPost("{id:guid}/verify-code")]
     public async Task<IActionResult> VerifyAccessCode(
@@ -401,5 +412,31 @@ public class MeetingGuestController(IExpertMeetingService meetings) : Controller
                 return Accepted(new { error = ex.Message, codeSent = true });
             return BadRequest(new { error = ex.Message });
         }
+    }
+}
+
+/// <summary>
+/// Réunion libre : le lien tient lieu d'invitation. L'invité n'a pas de compte, il donne son nom
+/// et patiente en salle d'attente jusqu'à ce que l'organisateur l'admette.
+/// </summary>
+[ApiController]
+[Route("api/meetings/open")]
+[AllowAnonymous]
+public class MeetingOpenJoinController(IExpertMeetingService meetings) : ControllerBase
+{
+    [HttpGet("{token}")]
+    public async Task<ActionResult<OpenMeetingPreviewDto>> Preview(string token, CancellationToken ct)
+    {
+        try { return Ok(await meetings.PreviewOpenAsync(token, ct)); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
+    }
+
+    [HttpPost("{token}/enter")]
+    public async Task<ActionResult<OpenMeetingEnterResult>> Enter(
+        string token, [FromBody] OpenMeetingEnterRequest? request, CancellationToken ct)
+    {
+        if (request is null) return BadRequest(new { error = "Requête invalide." });
+        try { return Ok(await meetings.EnterOpenAsync(token, request, ct)); }
+        catch (InvalidOperationException ex) { return BadRequest(new { error = ex.Message }); }
     }
 }

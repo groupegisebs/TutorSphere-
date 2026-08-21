@@ -37,6 +37,13 @@ public interface IExpertMeetingService
     Task AppendTranscriptAsync(Guid meetingId, string chunk, CancellationToken ct = default);
     Task<GuestPreviewDto> PreviewGuestAsync(string token, CancellationToken ct = default);
     Task<GuestEnterResult> EnterGuestAsync(GuestEnterRequest request, CancellationToken ct = default);
+    /// <summary>Réunion libre : ouvre, ferme ou renouvelle le lien partageable.</summary>
+    Task<MeetingOpenJoinDto> SetOpenJoinAsync(
+        string userId, Guid meetingId, SetMeetingOpenJoinRequest request, CancellationToken ct = default);
+    Task<OpenMeetingPreviewDto> PreviewOpenAsync(string openToken, CancellationToken ct = default);
+    /// <summary>Crée un invité anonyme à partir du seul nom saisi et renvoie son jeton personnel.</summary>
+    Task<OpenMeetingEnterResult> EnterOpenAsync(
+        string openToken, OpenMeetingEnterRequest request, CancellationToken ct = default);
     Task RevokeGuestAsync(string userId, Guid meetingId, Guid guestId, CancellationToken ct = default);
     Task ResendGuestAsync(string userId, Guid meetingId, Guid guestId, CancellationToken ct = default);
     Task<string> SetAccessCodeAsync(string userId, Guid meetingId, string? code, CancellationToken ct = default);
@@ -119,7 +126,11 @@ public class ExpertMeetingService(
                 groupId,
                 groupId is Guid gid2 && groupNames.TryGetValue(gid2, out var gname) ? gname : null,
                 mine.FirstOrDefault(p => p.UserId == userId)?.Status,
-                preview));
+                preview,
+                m.OpenJoinEnabled,
+                // Le lien vaut invitation : il ne descend qu'à l'organisateur et aux modérateurs.
+                IsModerator(userId, m, asPlatformAdmin) ? OpenJoinUrl(m) : null,
+                m.MaxParticipants));
         }
         return result;
     }
@@ -212,6 +223,15 @@ public class ExpertMeetingService(
             LiveStartedAtUtc = status == MeetingStatus.Live ? DateTime.UtcNow : null
         };
         ApplyAccessCode(meeting, request.AccessCode);
+        if (request.OpenJoin)
+        {
+            // Le lien circule librement : la salle d'attente n'est pas négociable, sans quoi
+            // n'importe qui entrerait sans que l'organisateur l'ait vu.
+            meeting.OpenJoinEnabled = true;
+            meeting.OpenJoinToken = NewToken();
+            meeting.WaitingRoomEnabled = true;
+            meeting.MaxParticipants = NormalizeCapacity(request.MaxParticipants);
+        }
         if (request.AiEnabled)
         {
             if (!HasPerm(userId, scope.PrimaryGroupId, asPlatformAdmin, GroupMemberPermissionCatalog.MeetingsEnableAi))
@@ -633,6 +653,128 @@ public class ExpertMeetingService(
         return new GuestEnterResult(meeting.Id, guest.FullName, meeting.WaitingRoomEnabled);
     }
 
+    public async Task<MeetingOpenJoinDto> SetOpenJoinAsync(
+        string userId, Guid meetingId, SetMeetingOpenJoinRequest request, CancellationToken ct = default)
+    {
+        var meeting = RequireModerator(userId, meetingId);
+        if (!request.Enabled)
+        {
+            // Fermer, c'est invalider le lien : le rouvrir plus tard en donnera un autre.
+            meeting.OpenJoinEnabled = false;
+            meeting.OpenJoinToken = null;
+        }
+        else
+        {
+            meeting.OpenJoinEnabled = true;
+            if (request.Rotate || string.IsNullOrWhiteSpace(meeting.OpenJoinToken))
+                meeting.OpenJoinToken = NewToken();
+            meeting.WaitingRoomEnabled = true;
+            meeting.MaxParticipants = NormalizeCapacity(request.MaxParticipants);
+        }
+        meeting.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        Audit(meetingId, userId, "open-join", request.Enabled ? (request.Rotate ? "rotated" : "enabled") : "disabled");
+        return new MeetingOpenJoinDto(meeting.OpenJoinEnabled, OpenJoinUrl(meeting), meeting.MaxParticipants);
+    }
+
+    public async Task<OpenMeetingPreviewDto> PreviewOpenAsync(string openToken, CancellationToken ct = default)
+    {
+        var meeting = FindOpenMeeting(openToken);
+        var org = await contacts.GetAsync(meeting.OrganizerUserId, ct);
+        return new OpenMeetingPreviewDto(
+            meeting.Id, meeting.Title, meeting.StartAtUtc, org?.DisplayName ?? "Organisateur",
+            meeting.RecordingEnabled, meeting.AiActivatedByOrganizer);
+    }
+
+    public async Task<OpenMeetingEnterResult> EnterOpenAsync(
+        string openToken, OpenMeetingEnterRequest request, CancellationToken ct = default)
+    {
+        var meeting = FindOpenMeeting(openToken);
+        var name = TrimOrNull(request.DisplayName, 80);
+        if (name is null)
+            throw new InvalidOperationException("Indiquez votre nom pour rejoindre la réunion.");
+        EnsureOpenJoinNotFlooded(meeting);
+
+        // Chaque arrivant reçoit son propre jeton : le lien partagé ne doit jamais servir
+        // d'identité, sinon deux invités seraient le même participant aux yeux de la salle.
+        var token = NewToken();
+        var guest = new MeetingExternalGuest
+        {
+            MeetingId = meeting.Id,
+            FullName = name,
+            // Aucune adresse à demander : la réunion libre ne repose sur aucun courriel.
+            Email = "",
+            TokenHash = Hash(token),
+            // Rien à vérifier : le lien lui-même est le justificatif, l'organisateur tranche ensuite.
+            VerifiedAtUtc = DateTime.UtcNow,
+            TokenExpiresAtUtc = (meeting.EndAtUtc ?? DateTime.UtcNow).AddHours(12)
+        };
+        db.Add(guest);
+        db.Add(new MeetingParticipant
+        {
+            MeetingId = meeting.Id,
+            ExternalGuestId = guest.Id,
+            Role = MeetingParticipantRole.ExternalGuest,
+            // L'organisateur peut avoir coupé le filtrage en séance : la fiche doit dire la même
+            // chose que la salle, sinon la liste des présents contredit ce que voit l'organisateur.
+            Status = meeting.WaitingRoomEnabled
+                ? MeetingParticipantStatus.Waiting
+                : MeetingParticipantStatus.Accepted
+        });
+        // L'arrivant n'a pas de compte : la trace porte son nom déclaré, pas un identifiant.
+        Audit(meeting.Id, "", "open-join-entry", name);
+        await db.SaveChangesAsync(ct);
+        return new OpenMeetingEnterResult(meeting.Id, name, token, meeting.WaitingRoomEnabled);
+    }
+
+    /// <summary>
+    /// Réunion joignable par son lien libre. Les réunions terminées, annulées ou verrouillées
+    /// refusent l'entrée : un lien partagé survit toujours à la séance.
+    /// </summary>
+    private Meeting FindOpenMeeting(string? openToken)
+    {
+        var token = openToken?.Trim();
+        if (string.IsNullOrWhiteSpace(token))
+            throw new InvalidOperationException("Lien de réunion manquant.");
+        var meeting = db.Meetings.FirstOrDefault(m => m.OpenJoinToken == token && m.OpenJoinEnabled)
+            ?? throw new InvalidOperationException("Ce lien de réunion n’est plus valable.");
+        if (meeting.Status is MeetingStatus.Cancelled)
+            throw new InvalidOperationException("Cette réunion a été annulée.");
+        if (meeting.Status is MeetingStatus.Ended)
+            throw new InvalidOperationException("Cette réunion est terminée.");
+        if (meeting.Locked)
+            throw new InvalidOperationException("La réunion est verrouillée par l’organisateur.");
+        return meeting;
+    }
+
+    /// <summary>
+    /// L'entrée libre est ouverte à tout le monde, sans compte ni jeton préalable : rien n'empêche
+    /// un script d'appeler l'endpoint en boucle. On borne donc les arrivées récentes, largement
+    /// au-dessus d'un usage normal, pour que la file d'attente et la table restent exploitables.
+    /// </summary>
+    private void EnsureOpenJoinNotFlooded(Meeting meeting)
+    {
+        var since = DateTime.UtcNow.AddMinutes(-15);
+        var ceiling = meeting.MaxParticipants is int cap ? Math.Max(cap * 3, 30) : 150;
+        var recent = db.MeetingExternalGuests
+            .Count(g => g.MeetingId == meeting.Id && g.Email == "" && g.CreatedAt >= since);
+        if (recent >= ceiling)
+            throw new InvalidOperationException(
+                "Trop de demandes d’entrée sur cette réunion. Patientez quelques minutes avant de réessayer.");
+    }
+
+    private string? OpenJoinUrl(Meeting meeting) =>
+        meeting.OpenJoinEnabled && !string.IsNullOrWhiteSpace(meeting.OpenJoinToken)
+            ? $"{urls.WebBaseUrl.TrimEnd('/')}/meet/salle/{Uri.EscapeDataString(meeting.OpenJoinToken)}"
+            : null;
+
+    /// <summary>
+    /// Plafond de participants. Une place suffit à peine à l'organisateur : en dessous de deux,
+    /// la salle n'a pas de sens. Au-delà de 100, le maillage pair-à-pair ne tient pas.
+    /// </summary>
+    private static int? NormalizeCapacity(int? requested) =>
+        requested is null or <= 0 ? null : Math.Clamp(requested.Value, 2, 100);
+
     public async Task RevokeGuestAsync(string userId, Guid meetingId, Guid guestId, CancellationToken ct = default)
     {
         RequireModerator(userId, meetingId);
@@ -695,7 +837,8 @@ public class ExpertMeetingService(
             if (guest.VerifiedAtUtc is null)
                 throw new InvalidOperationException("Vérifiez votre invitation avant d’entrer.");
             return Task.FromResult(new MeetingJoinContext(
-                "ExternalGuest", meeting.WaitingRoomEnabled, guest.FullName));
+                "ExternalGuest", meeting.WaitingRoomEnabled, guest.FullName,
+                meeting.OpenJoinEnabled, meeting.MaxParticipants));
         }
         if (string.IsNullOrWhiteSpace(userId))
             throw new InvalidOperationException("Authentification requise.");
@@ -708,10 +851,13 @@ public class ExpertMeetingService(
         EnsureAccessCodeMatches(meeting, accessCode);
 
         if (isOrganizer || participant?.Role is MeetingParticipantRole.Organizer)
-            return Task.FromResult(new MeetingJoinContext("Organizer", false, null));
+            return Task.FromResult(new MeetingJoinContext(
+                "Organizer", false, null, meeting.OpenJoinEnabled, meeting.MaxParticipants));
         if (participant?.Role is MeetingParticipantRole.CoOrganizer)
-            return Task.FromResult(new MeetingJoinContext("CoOrganizer", false, null));
-        return Task.FromResult(new MeetingJoinContext("Participant", meeting.WaitingRoomEnabled, null));
+            return Task.FromResult(new MeetingJoinContext(
+                "CoOrganizer", false, null, meeting.OpenJoinEnabled, meeting.MaxParticipants));
+        return Task.FromResult(new MeetingJoinContext(
+            "Participant", meeting.WaitingRoomEnabled, null, meeting.OpenJoinEnabled, meeting.MaxParticipants));
     }
 
     /// <summary>Ouvre ou ferme la salle d'attente en cours de séance : n'affecte que les arrivées suivantes.</summary>
@@ -1113,7 +1259,11 @@ public class ExpertMeetingService(
             meeting.Locked, meeting.Language, rec, groupIds, partDtos, guests,
             PermissionsFor(userId, meeting.OrganizerGroupId, asPlatformAdmin),
             meeting.AccessCodeHash is not null,
-            canSeeCode ? meeting.AccessCode : null);
+            canSeeCode ? meeting.AccessCode : null,
+            meeting.OpenJoinEnabled,
+            // Le lien libre vaut invitation : seul un modérateur décide à qui il est transmis.
+            canSeeCode ? OpenJoinUrl(meeting) : null,
+            meeting.MaxParticipants);
     }
 
     /// <summary>

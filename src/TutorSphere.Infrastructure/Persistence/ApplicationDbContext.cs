@@ -709,8 +709,11 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             e.Property(m => m.TimeZoneId).HasMaxLength(80);
             e.Property(m => m.AccessCode).HasMaxLength(16);
             e.Property(m => m.AccessCodeHash).HasMaxLength(128);
+            e.Property(m => m.OpenJoinToken).HasMaxLength(128);
             e.Property(m => m.Language).HasMaxLength(16);
             e.Property(m => m.RetentionPolicy).HasMaxLength(80);
+            // Le jeton identifie la réunion à lui seul : deux réunions ne peuvent pas le partager.
+            e.HasIndex(m => m.OpenJoinToken).IsUnique();
             e.HasIndex(m => m.OrganizerUserId);
             e.HasIndex(m => m.OrganizerGroupId);
             e.HasIndex(m => m.Status);

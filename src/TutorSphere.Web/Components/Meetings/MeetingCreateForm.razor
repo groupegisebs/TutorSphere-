@@ -1,6 +1,40 @@
 @inject AuthService Auth
 @inject ApiClient Api
 @inject NavigationManager Nav
+@inject IJSRuntime JS
+
+@* Les styles du formulaire vivent dans expert-space.css, que le gabarit Admin ne charge pas :
+   le lien est porté par le composant pour qu'il s'affiche pareil partout où il est hébergé. *@
+<link rel="stylesheet" href="css/expert-space.css?v=charte-light-33" />
+
+@if (OpenLink is not null)
+{
+    <div class="mtg-openlink-back">
+        <div class="mtg-openlink">
+            <h2 class="cc-card-title"><i class="bi bi-link-45deg"></i> Réunion libre créée</h2>
+            <p class="mtg-hint">
+                Partagez ce lien à qui vous voulez : courriel, WhatsApp, groupe de discussion.
+                Les invités saisiront simplement leur nom, sans compte, et attendront que vous
+                les fassiez entrer.
+            </p>
+            <div class="mtg-code-row">
+                <input class="form-control" readonly value="@OpenLink" />
+                <button type="button" class="cc-btn cc-btn-primary" @onclick="CopyOpenLink">
+                    <i class="bi @(LinkCopied ? "bi-check2" : "bi-clipboard")"></i> @(LinkCopied ? "Copié" : "Copier")
+                </button>
+            </div>
+            <p class="mtg-hint">
+                @(MaxParticipants is int cap
+                    ? $"Salle limitée à {cap} personnes, vous compris."
+                    : "Aucune limite de participants.")
+                Vous seul pourrez admettre les arrivants.
+            </p>
+            <div class="mtg-openlink-foot">
+                <button type="button" class="cc-btn cc-btn-primary" @onclick="CloseOpenLink">Terminer</button>
+            </div>
+        </div>
+    </div>
+}
 
 <div class="mtg-create">
     <div class="ex-page-head mb-3">
@@ -166,8 +200,35 @@
 
         <aside class="mtg-create-side">
             <section class="cc-card mtg-section">
+                <h2 class="cc-card-title">Réunion libre</h2>
+                <label class="mtg-switch">
+                    <input type="checkbox" @bind="OpenJoin" />
+                    <span>Ouvrir un lien partageable</span>
+                </label>
+                <p class="mtg-hint">
+                    Aucune invitation nommée : un lien unique suffit. L’invité saisit son nom,
+                    sans compte ni code, puis attend votre autorisation pour entrer.
+                </p>
+                @if (OpenJoin)
+                {
+                    <label class="form-label mt-2">Nombre maximum de participants</label>
+                    <input class="form-control" type="number" min="2" max="100" @bind="MaxParticipants" />
+                    <p class="mtg-hint">
+                        Vous compris. Laissez vide pour ne pas limiter. Au-delà d’une trentaine de
+                        caméras, la qualité se dégrade.
+                    </p>
+                }
+            </section>
+            <section class="cc-card mtg-section">
                 <h2 class="cc-card-title">Options de la réunion</h2>
-                <label class="mtg-switch"><input type="checkbox" @bind="WaitingRoom" /><span>Salle d’attente</span></label>
+                <label class="mtg-switch">
+                    <input type="checkbox" @bind="WaitingRoom" disabled="@OpenJoin" />
+                    <span>Salle d’attente</span>
+                </label>
+                @if (OpenJoin)
+                {
+                    <p class="mtg-hint">Imposée par la réunion libre : le lien peut circuler n’importe où.</p>
+                }
                 <label class="mtg-switch"><input type="checkbox" @bind="AllowMic" /><span>Autoriser les micros</span></label>
                 <label class="mtg-switch"><input type="checkbox" @bind="AllowCamera" /><span>Autoriser les caméras</span></label>
                 <label class="mtg-switch"><input type="checkbox" @bind="AllowShare" /><span>Autoriser le partage d’écran</span></label>
@@ -234,6 +295,20 @@
     internal bool Recurring;
     internal int RecurrenceFrequency { get; set; } = 2;
     internal bool WaitingRoom = true;
+    private bool _openJoin;
+    /// <summary>Réunion libre : la salle d'attente devient obligatoire, le serveur l'imposera aussi.</summary>
+    internal bool OpenJoin
+    {
+        get => _openJoin;
+        set
+        {
+            _openJoin = value;
+            if (value) WaitingRoom = true;
+        }
+    }
+    internal int? MaxParticipants { get; set; } = 25;
+    internal string? OpenLink;
+    internal bool LinkCopied;
     internal bool AllowMic = true;
     internal bool AllowCamera = true;
     internal bool AllowShare = true;
@@ -440,17 +515,46 @@
                 remind1h = Remind1h,
                 remind10m = Remind10m,
                 sendEmailInvites = SendEmail && mode != "draft",
-                saveMode = mode
+                saveMode = mode,
+                openJoin = OpenJoin,
+                maxParticipants = OpenJoin ? MaxParticipants : null
             };
             var r = await Api.PostWithErrorAsync<Created>("api/expert/meetings", body);
             if (r.Error is not null) { Error = r.Error; return; }
             if (r.Value is null) { Error = "Création impossible."; return; }
             if (mode == "start")
+            {
                 Nav.NavigateTo($"{RoomPrefix}/{r.Value.Id}/room");
-            else
-                Nav.NavigateTo(CancelHref);
+                return;
+            }
+            // Le lien est le seul moyen d'accès : quitter la page sans le montrer obligerait
+            // l'organisateur à rouvrir la réunion pour le retrouver.
+            if (OpenJoin && !string.IsNullOrWhiteSpace(r.Value.OpenJoinUrl))
+            {
+                OpenLink = r.Value.OpenJoinUrl;
+                LinkCopied = false;
+                return;
+            }
+            Nav.NavigateTo(CancelHref);
         }
         finally { Busy = false; }
+    }
+
+    private async Task CopyOpenLink()
+    {
+        if (string.IsNullOrWhiteSpace(OpenLink)) return;
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", OpenLink);
+            LinkCopied = true;
+        }
+        catch { LinkCopied = false; }
+    }
+
+    private void CloseOpenLink()
+    {
+        OpenLink = null;
+        Nav.NavigateTo(CancelHref);
     }
 
     private DateTime? ToUtc(DateTime date, TimeOnly time)
@@ -487,5 +591,9 @@
     }
     internal sealed class Guest { public string FullName { get; set; } = ""; public string Email { get; set; } = ""; }
     internal sealed class PageDto { public List<Person> Items { get; set; } = []; public int Total { get; set; } }
-    internal sealed class Created { public Guid Id { get; set; } }
+    internal sealed class Created
+    {
+        public Guid Id { get; set; }
+        public string? OpenJoinUrl { get; set; }
+    }
 }

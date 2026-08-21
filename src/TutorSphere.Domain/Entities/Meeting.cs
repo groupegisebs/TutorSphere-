@@ -20,6 +20,18 @@ public class Meeting : BaseEntity
     /// <summary>Code d'accès en clair : il doit être rappelé à l'organisateur et dans les invitations.</summary>
     public string? AccessCode { get; set; }
     public string? AccessCodeHash { get; set; }
+    /// <summary>
+    /// Réunion libre : un lien unique remplace les invitations nommées. L'invité saisit son nom,
+    /// sans compte, et attend d'être admis par l'organisateur.
+    /// </summary>
+    public bool OpenJoinEnabled { get; set; }
+    /// <summary>
+    /// Jeton du lien partageable, conservé en clair : contrairement à un jeton d'invitation envoyé
+    /// une seule fois par courriel, l'organisateur doit pouvoir réafficher ce lien à tout moment.
+    /// </summary>
+    public string? OpenJoinToken { get; set; }
+    /// <summary>Places de la salle, organisateur compris. <c>null</c> : aucune limite.</summary>
+    public int? MaxParticipants { get; set; }
     public bool AllowMic { get; set; } = true;
     public bool AllowCamera { get; set; } = true;
     public bool AllowScreenShare { get; set; } = true;

@@ -32,6 +32,33 @@
         }
     </div>
 }
+else if (_replaced)
+{
+    <div class="mtg-wait">
+        <button type="button" class="mtg-back" @onclick="GoBack">
+            <i class="bi bi-arrow-left"></i> Retour
+        </button>
+        <h1>Session reprise ailleurs</h1>
+        <p>Vous avez rejoint cette réunion depuis un autre onglet ou un autre appareil.</p>
+        <p class="mtg-gate-hint">
+            Cet onglet a libéré votre micro et votre caméra : deux sessions ouvertes en même temps
+            renvoient votre voix en écho. Continuez sur l’autre onglet, ou revenez ici.
+        </p>
+        <button class="cc-btn cc-btn-primary" type="button" @onclick="RetryJoinAsync">Reprendre ici</button>
+    </div>
+}
+else if (_roomFull)
+{
+    <div class="mtg-wait">
+        <button type="button" class="mtg-back" @onclick="GoBack">
+            <i class="bi bi-arrow-left"></i> Retour
+        </button>
+        <h1>Salle complète</h1>
+        <p>@(_error ?? "La réunion a atteint son nombre maximum de participants.")</p>
+        <p>Réessayez dans quelques minutes : une place se libérera peut-être.</p>
+        <button class="cc-btn cc-btn-primary" type="button" @onclick="RetryJoinAsync">Réessayer</button>
+    </div>
+}
 else if (_waiting)
 {
     <div class="mtg-wait">
@@ -40,6 +67,7 @@ else if (_waiting)
         </button>
         <h1>Salle d’attente</h1>
         <p>L’organisateur va bientôt vous faire entrer.</p>
+        <p class="mtg-gate-hint">Gardez cette page ouverte : vous entrerez dès qu’il vous admettra.</p>
     </div>
 }
 else if (_detail is null && !string.IsNullOrEmpty(_error))
@@ -178,6 +206,17 @@ else if (_detail is not null)
                 <i class="bi bi-volume-mute"></i> Le navigateur bloque le son des participants.
                 <button type="button" class="mtg-media-retry" @onclick="EnableAudioAsync">Activer le son</button>
                 <button type="button" @onclick="() => _audioBlocked = false">×</button>
+            </div>
+        }
+        @* Sans réduction d'écho, le son des autres repart dans le micro : chacun s'entend
+           revenir avec le retard du réseau, et seul un casque y met fin. *@
+        @if (_echoRisk)
+        {
+            <div class="mtg-media-warn">
+                <i class="bi bi-headphones"></i>
+                Ce micro n’a pas de réduction d’écho : utilisez un casque, sinon les autres
+                s’entendront parler en différé.
+                <button type="button" @onclick="() => _echoRisk = false">×</button>
             </div>
         }
 
@@ -437,7 +476,8 @@ else if (_detail is not null)
                             <button type="button" class="mtg-btn-primary" @onclick="OpenInvite"><i class="bi bi-plus-lg"></i> Inviter</button>
                         </div>
 
-                        @* Toute personne déjà dans la salle peut faire entrer les arrivants. *@
+                        @* Réunion sur invitation : toute personne déjà dans la salle peut faire entrer
+                           les arrivants. Réunion libre : le lien a pu circuler, l'organisateur seul décide. *@
                         @if (!_waiting)
                         {
                             <div class="mtg-wait-head">
@@ -449,7 +489,7 @@ else if (_detail is not null)
                                     }
                                 </h5>
                                 <div class="mtg-wait-tools">
-                                    @if (_waitingList.Count > 1)
+                                    @if (_waitingList.Count > 1 && CanAdmit)
                                     {
                                         <button type="button" class="mtg-btn-mini" disabled="@_waitBusy" @onclick="AdmitAllAsync">Tout admettre</button>
                                     }
@@ -476,6 +516,12 @@ else if (_detail is not null)
                                         : "Personne n’attend. Les personnes qui cliquent sur leur lien d’invitation apparaîtront ici avant d’entrer.")
                                 </p>
                             }
+                            else if (!CanAdmit)
+                            {
+                                <p class="mtg-empty mtg-empty-sm">
+                                    Réunion libre : seul l’organisateur peut faire entrer les personnes en attente.
+                                </p>
+                            }
                             @foreach (var w in _waitingList)
                             {
                                 <div class="mtg-prow is-waiting">
@@ -484,8 +530,11 @@ else if (_detail is not null)
                                         @w.DisplayName
                                         <span class="mtg-badge @RoleCls(w.Role)">@RoleLabel(w.Role)</span>
                                     </span>
-                                    <button type="button" class="mtg-btn-mini is-admit" @onclick="() => AdmitAsync(w.ConnectionId)">Admettre</button>
-                                    <button type="button" class="mtg-btn-mini is-danger" @onclick="() => DenyAsync(w.ConnectionId)">Refuser</button>
+                                    @if (CanAdmit)
+                                    {
+                                        <button type="button" class="mtg-btn-mini is-admit" @onclick="() => AdmitAsync(w.ConnectionId)">Admettre</button>
+                                        <button type="button" class="mtg-btn-mini is-danger" @onclick="() => DenyAsync(w.ConnectionId)">Refuser</button>
+                                    }
                                 </div>
                             }
                         }
@@ -659,20 +708,55 @@ else if (_detail is not null)
             <div class="mtg-modal-back" @onclick="() => _invite = false">
                 <div class="mtg-modal" @onclick:stopPropagation="true">
                     <h3>Inviter à cette réunion</h3>
-                    <p class="mtg-hint">Le lien contient déjà le code : le destinataire n’a qu’à cliquer pour entrer.</p>
-                    <label class="mtg-lbl">Lien d’invitation</label>
-                    <input class="mtg-input" readonly value="@InviteLink" />
-                    @if (!string.IsNullOrEmpty(_detail.AccessCode))
+                    @if (_detail.OpenJoinEnabled && !string.IsNullOrWhiteSpace(_detail.OpenJoinUrl))
                     {
-                        <label class="mtg-lbl">Code de la réunion</label>
-                        <p class="mtg-modal-code">@_detail.AccessCode</p>
+                        <p class="mtg-hint">
+                            Réunion libre : ce lien s’adresse à tout le monde, même sans compte
+                            TutorSphere. L’invité saisit son nom et vous l’admettez depuis la salle
+                            d’attente.
+                            @if (_detail.MaxParticipants is int cap)
+                            {
+                                <text> Salle limitée à @cap personnes, vous compris.</text>
+                            }
+                        </p>
+                        <label class="mtg-lbl">Lien à partager</label>
+                        <input class="mtg-input" readonly value="@_detail.OpenJoinUrl" />
+                        <div class="mtg-modal-actions">
+                            <button type="button" class="mtg-btn-ghost" @onclick="() => _invite = false">Fermer</button>
+                            <button type="button" class="mtg-btn-primary" @onclick="CopyOpenLinkAsync">
+                                <i class="bi bi-link-45deg"></i> @(_copied ? "Lien copié" : "Copier le lien")
+                            </button>
+                        </div>
+                        <label class="mtg-lbl mt-3">Lien réservé aux membres invités</label>
+                        <input class="mtg-input" readonly value="@InviteLink" />
                     }
-                    <div class="mtg-modal-actions">
-                        <button type="button" class="mtg-btn-ghost" @onclick="() => _invite = false">Fermer</button>
-                        <button type="button" class="mtg-btn-primary" @onclick="CopyInviteAsync">
-                            <i class="bi bi-link-45deg"></i> @(_copied ? "Lien copié" : "Copier le lien")
-                        </button>
-                    </div>
+                    else
+                    {
+                        <p class="mtg-hint">Le lien contient déjà le code : le destinataire n’a qu’à cliquer pour entrer.</p>
+                        <label class="mtg-lbl">Lien d’invitation</label>
+                        <input class="mtg-input" readonly value="@InviteLink" />
+                        @if (!string.IsNullOrEmpty(_detail.AccessCode))
+                        {
+                            <label class="mtg-lbl">Code de la réunion</label>
+                            <p class="mtg-modal-code">@_detail.AccessCode</p>
+                        }
+                        <div class="mtg-modal-actions">
+                            <button type="button" class="mtg-btn-ghost" @onclick="() => _invite = false">Fermer</button>
+                            <button type="button" class="mtg-btn-primary" @onclick="CopyInviteAsync">
+                                <i class="bi bi-link-45deg"></i> @(_copied ? "Lien copié" : "Copier le lien")
+                            </button>
+                        </div>
+                        @if (_isOrganizer)
+                        {
+                            <p class="mtg-hint mt-3">
+                                Besoin d’accueillir des personnes sans compte ? Ouvrez un lien libre :
+                                elles n’auront qu’à donner leur nom, et vous seul les ferez entrer.
+                            </p>
+                            <button type="button" class="mtg-btn-ghost" disabled="@_openingLink" @onclick="OpenFreeLinkAsync">
+                                <i class="bi bi-people"></i> Ouvrir un lien libre
+                            </button>
+                        }
+                    }
                 </div>
             </div>
         }
@@ -694,7 +778,13 @@ else if (_detail is not null)
     private string _tab = "people";
     private bool _mic = true, _cam, _hand, _recording, _waiting, _aiPrompt, _consentAsk, _allConsented, _isOrganizer;
     private bool _codeGate, _gateBusy;
-    private bool _sharing, _blur, _invite, _copied, _waitBusy;
+    private bool _sharing, _blur, _invite, _copied, _waitBusy, _openingLink;
+    /// <summary>Salle pleine : l'arrivant est resté dehors, il faut le lui dire sans détour.</summary>
+    private bool _roomFull;
+    /// <summary>Cette session a cédé la place à un autre onglet du même participant.</summary>
+    private bool _replaced;
+    /// <summary>Micro sans réduction d'écho : le locuteur s'entendra revenir sans casque.</summary>
+    private bool _echoRisk;
     /// <summary>Distingue le tableau blanc de l'écran, pour nommer le partage en cours.</summary>
     private bool _sharingBoard;
     private int _unread;
@@ -821,6 +911,23 @@ else if (_detail is not null)
         finally { _gateBusy = false; }
     }
 
+    /// <summary>
+    /// Refus pour salle pleine : seule l'entrée est rejouée. Session reprise ailleurs : le média
+    /// et les connexions ont été fermés, un rechargement complet repart d'un état propre.
+    /// </summary>
+    private async Task RetryJoinAsync()
+    {
+        if (_replaced)
+        {
+            Nav.NavigateTo(Nav.Uri, forceLoad: true);
+            return;
+        }
+        _roomFull = false;
+        _error = null;
+        var role = _isOrganizer ? "Organizer" : string.IsNullOrEmpty(GuestToken) ? "Participant" : "ExternalGuest";
+        await Rt.JoinAsync(Id, _selfName, role, _mic, _cam, GuestToken, _code);
+    }
+
     private async Task EnterRoomAsync()
     {
         _selfName = GuestName ?? Auth.UserName ?? "Participant";
@@ -937,6 +1044,35 @@ else if (_detail is not null)
         Rt.WaitingRoom += _id => { _ = InvokeAsync(() => { _waiting = true; StateHasChanged(); }); };
         Rt.Admitted += _id => { _ = InvokeAsync(() => { _waiting = false; StateHasChanged(); }); };
         Rt.Denied += _id => { _ = InvokeAsync(() => Nav.NavigateTo("/expert/meetings")); };
+        // Session doublée : il faut libérer micro et caméra ici, sinon les deux onglets captent
+        // le son et le locuteur s'entend revenir avec le retard du réseau.
+        Rt.SessionReplaced += _id => _ = InvokeAsync(async () =>
+        {
+            _replaced = true;
+            _inRoom = false;
+            try { await JS.InvokeVoidAsync("classroomMedia.stop", _localVideo); } catch { }
+            try { await JS.InvokeVoidAsync("classroomRtc.stop"); } catch { }
+            _timer?.Stop();
+            StateHasChanged();
+        });
+        // Refusé faute de place : l'invité anonyme n'a nulle part où retourner dans l'application,
+        // on lui laisse la page avec l'explication plutôt qu'une redirection muette.
+        Rt.MeetingFull += (_id, max) => _ = InvokeAsync(() =>
+        {
+            _roomFull = true;
+            _waiting = false;
+            _error = max is int cap
+                ? $"La réunion est complète : {cap} participants au maximum."
+                : "La réunion est complète.";
+            StateHasChanged();
+        });
+        Rt.RoomFull += (_id, max, who) => _ = InvokeAsync(() =>
+        {
+            Toast(max is int cap
+                ? $"Salle pleine ({cap} places) : {who} ne peut pas entrer."
+                : $"Salle pleine : {who} ne peut pas entrer.");
+            StateHasChanged();
+        });
         Rt.Kicked += _id => { _ = InvokeAsync(() => Nav.NavigateTo("/expert/meetings")); };
         Rt.Caption += (id, name, text) => _ = InvokeAsync(() => { _caption = $"{name} : {text}"; StateHasChanged(); });
         // Micro coupé par l'organisateur : sans réémission de l'état, sa liste continuait
@@ -1104,6 +1240,7 @@ else if (_detail is not null)
             await RefreshTracksAsync();
             await Rt.BroadcastMediaAsync(Id, _mic, _cam);
             await UnlockAudioAsync();
+            await CheckEchoRiskAsync();
             await LoadDeviceLabelsAsync();
             // Une négociation en cours au moment du getUserMedia ignore la republication : on repasse.
             _ = RepublishSoonAsync();
@@ -1116,6 +1253,29 @@ else if (_detail is not null)
             _mediaError = Short(ex.Message);
             await InvokeAsync(StateHasChanged);
         }
+    }
+
+    /// <summary>
+    /// Le navigateur n'a pas toujours de réduction d'écho à offrir (micro Bluetooth, pilote
+    /// exotique). Sans elle, le son des autres ressort par les haut-parleurs, revient dans le
+    /// micro et chacun s'entend parler avec un retard. Le casque est alors le seul remède.
+    /// </summary>
+    private async Task CheckEchoRiskAsync()
+    {
+        try
+        {
+            var a = await JS.InvokeAsync<AudioProcessingInfo>("classroomMedia.audioProcessing");
+            _echoRisk = a is { HasAudio: true, EchoCancellation: false };
+        }
+        catch { _echoRisk = false; }
+    }
+
+    private sealed class AudioProcessingInfo
+    {
+        public bool HasAudio { get; set; }
+        public bool? EchoCancellation { get; set; }
+        public bool? NoiseSuppression { get; set; }
+        public string? Label { get; set; }
     }
 
     /// <summary>Nom réel des périphériques : affiché dans les menus micro et caméra du dock.</summary>
@@ -1369,6 +1529,12 @@ else if (_detail is not null)
 
     private bool WaitingRoomOn => _detail?.WaitingRoomEnabled == true;
 
+    /// <summary>
+    /// Le hub applique la même règle : réunion libre, l'organisateur seul ; sur invitation,
+    /// tout participant présent. Ici, il s'agit de ne pas afficher un bouton sans effet.
+    /// </summary>
+    private bool CanAdmit => _detail?.OpenJoinEnabled != true || _isOrganizer;
+
     private async Task RefreshWaitingAsync()
     {
         await Rt.RequestWaitingListAsync(Id);
@@ -1484,6 +1650,42 @@ else if (_detail is not null)
         Toast("Lien d’invitation copié");
     }
 
+    private async Task CopyOpenLinkAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_detail?.OpenJoinUrl)) return;
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", _detail.OpenJoinUrl); }
+        catch { Toast("Copie impossible : copiez le lien à la main."); return; }
+        _copied = true;
+        Toast("Lien de la réunion libre copié");
+    }
+
+    /// <summary>Ouvre un lien libre sur une réunion qui n'en avait pas : la salle d'attente devient obligatoire.</summary>
+    private async Task OpenFreeLinkAsync()
+    {
+        _openingLink = true;
+        try
+        {
+            var r = await Api.PostWithErrorAsync<OpenJoinDto>(
+                $"api/expert/meetings/{Id}/open-join", new { enabled = true, maxParticipants = (int?)null });
+            if (r.Error is not null || r.Value is null)
+            {
+                Toast(r.Error ?? "Ouverture du lien impossible.");
+                return;
+            }
+            if (_detail is not null)
+                _detail = _detail with
+                {
+                    OpenJoinEnabled = r.Value.Enabled,
+                    OpenJoinUrl = r.Value.Url,
+                    MaxParticipants = r.Value.MaxParticipants,
+                    WaitingRoomEnabled = true
+                };
+            _copied = false;
+            Toast("Lien libre ouvert : partagez-le à qui vous voulez");
+        }
+        finally { _openingLink = false; }
+    }
+
     /// <summary>Lien prêt à l'emploi : le code voyage avec, le destinataire n'a qu'à cliquer.</summary>
     private string InviteLink
     {
@@ -1590,10 +1792,13 @@ else if (_detail is not null)
         _jsRef?.Dispose();
     }
 
+    private sealed record OpenJoinDto(bool Enabled, string? Url, int? MaxParticipants);
+
     private sealed record Detail(
         Guid Id, string Title, string? Agenda, int Status, DateTime? StartAtUtc, DateTime? EndAtUtc,
         string OrganizerUserId, string OrganizerName, bool WaitingRoomEnabled, bool AllowMic, bool AllowCamera,
         bool AllowScreenShare, bool RecordingEnabled, bool TranscriptionEnabled, bool AiEnabled,
         bool AiActivatedByOrganizer, bool Locked, string Language,
-        bool RequiresAccessCode, string? AccessCode);
+        bool RequiresAccessCode, string? AccessCode,
+        bool OpenJoinEnabled = false, string? OpenJoinUrl = null, int? MaxParticipants = null);
 }

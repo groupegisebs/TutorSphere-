@@ -50,7 +50,17 @@ public class MeetingHub(IServiceScopeFactory scopes) : Hub
         var peerRole = access.Role;
 
         var peers = PeersByMeeting.GetOrAdd(group, _ => new ConcurrentDictionary<string, MeetingPeer>(StringComparer.Ordinal));
-        var peer = new MeetingPeer(Context.ConnectionId, userId, name, peerRole, micOn, camOn, waiting, guestToken);
+        await DropStaleSessionsAsync(peers, group, meetingId, userId, guestToken);
+        // Le plafond ne s'applique pas à l'organisateur : il doit pouvoir entrer dans sa réunion
+        // même complète, sans quoi personne ne pourrait plus admettre ni clore la séance.
+        if (!waiting && !IsModeratorRole(peerRole) && IsFull(peers, access.MaxParticipants))
+        {
+            await Clients.Caller.SendAsync("MeetingFull", meetingId, access.MaxParticipants);
+            return;
+        }
+        var peer = new MeetingPeer(
+            Context.ConnectionId, userId, name, peerRole, micOn, camOn, waiting, guestToken,
+            ModeratorAdmitOnly: access.ModeratorAdmitOnly, MaxParticipants: access.MaxParticipants);
         peers[Context.ConnectionId] = peer;
 
         if (waiting)
@@ -209,12 +219,19 @@ public class MeetingHub(IServiceScopeFactory scopes) : Hub
 
     public async Task AdmitWaiting(Guid meetingId, string connectionId)
     {
-        // Toute personne déjà entrée peut faire entrer les suivantes : l'organisateur n'est pas toujours devant l'écran.
-        if (!IsInRoom()) return;
+        // Réunion sur invitation : toute personne déjà entrée peut faire entrer les suivantes,
+        // l'organisateur n'est pas toujours devant son écran. Réunion libre : le lien a pu être
+        // transmis à n'importe qui, seul l'organisateur décide alors des entrées.
+        if (!CanAdmit()) return;
         var group = GroupName(meetingId);
         if (!PeersByMeeting.TryGetValue(group, out var peers) || !peers.TryGetValue(connectionId, out var peer))
             return;
         if (!peer.Waiting) return;
+        if (IsFull(peers, peer.MaxParticipants))
+        {
+            await Clients.Caller.SendAsync("RoomFull", meetingId, peer.MaxParticipants, peer.DisplayName);
+            return;
+        }
         // Le rôle d'origine est conservé : un invité externe admis reste un invité externe.
         var admitted = peer with { Waiting = false };
         peers[connectionId] = admitted;
@@ -235,7 +252,7 @@ public class MeetingHub(IServiceScopeFactory scopes) : Hub
 
     public async Task DenyWaiting(Guid meetingId, string connectionId)
     {
-        if (!IsInRoom()) return;
+        if (!CanAdmit()) return;
         await Clients.Client(connectionId).SendAsync("Denied", meetingId);
         await RemovePeerAsync(connectionId, GroupName(meetingId), meetingId);
     }
@@ -293,14 +310,28 @@ public class MeetingHub(IServiceScopeFactory scopes) : Hub
         await Clients.Group(group).SendAsync("PollVote", meetingId, peer.DisplayName, optionIndex);
     }
 
-    /// <summary>Présent dans la salle et déjà admis : condition minimale pour agir sur la file d'attente.</summary>
-    private bool IsInRoom()
+    /// <summary>
+    /// Une même personne présente deux fois — second onglet, retour après coupure réseau dont
+    /// l'ancienne connexion n'est pas encore tombée — s'entend parler avec le retard du réseau :
+    /// sa voix sort des haut-parleurs de sa session fantôme et repart dans son micro. On ferme
+    /// donc l'ancienne session dès qu'une nouvelle arrive avec la même identité.
+    /// </summary>
+    private async Task DropStaleSessionsAsync(
+        ConcurrentDictionary<string, MeetingPeer> peers, string group, Guid meetingId,
+        string? userId, string? guestToken)
     {
-        if (!ConnectionToMeeting.TryGetValue(Context.ConnectionId, out var group)
-            || !PeersByMeeting.TryGetValue(group, out var peers)
-            || !peers.TryGetValue(Context.ConnectionId, out var peer))
-            return false;
-        return !peer.Waiting;
+        var stale = peers.Values.Where(p =>
+                p.ConnectionId != Context.ConnectionId
+                && ((!string.IsNullOrEmpty(userId) && string.Equals(p.UserId, userId, StringComparison.Ordinal))
+                    || (!string.IsNullOrEmpty(guestToken) && string.Equals(p.GuestToken, guestToken, StringComparison.Ordinal))))
+            .Select(p => p.ConnectionId)
+            .ToList();
+
+        foreach (var connectionId in stale)
+        {
+            try { await Clients.Client(connectionId).SendAsync("SessionReplaced", meetingId); } catch { }
+            await RemovePeerAsync(connectionId, group, meetingId);
+        }
     }
 
     private bool IsModerator()
@@ -309,8 +340,26 @@ public class MeetingHub(IServiceScopeFactory scopes) : Hub
             || !PeersByMeeting.TryGetValue(group, out var peers)
             || !peers.TryGetValue(Context.ConnectionId, out var peer))
             return false;
-        return peer.Role is "Organizer" or "CoOrganizer" or "Organisateur" or "Co-organisateur";
+        return IsModeratorRole(peer.Role);
     }
+
+    private static bool IsModeratorRole(string role) =>
+        role is "Organizer" or "CoOrganizer" or "Organisateur" or "Co-organisateur";
+
+    /// <summary>Droit d'ouvrir la porte : présence dans la salle, plus le rôle si la réunion l'exige.</summary>
+    private bool CanAdmit()
+    {
+        if (!ConnectionToMeeting.TryGetValue(Context.ConnectionId, out var group)
+            || !PeersByMeeting.TryGetValue(group, out var peers)
+            || !peers.TryGetValue(Context.ConnectionId, out var peer)
+            || peer.Waiting)
+            return false;
+        return !peer.ModeratorAdmitOnly || IsModeratorRole(peer.Role);
+    }
+
+    /// <summary>Salle pleine : seules les personnes réellement entrées consomment une place.</summary>
+    private static bool IsFull(ConcurrentDictionary<string, MeetingPeer> peers, int? max) =>
+        max is int cap && peers.Values.Count(p => !p.Waiting) >= cap;
 
     private async Task RemovePeerAsync(string connectionId, string group, Guid meetingId)
     {
@@ -330,6 +379,10 @@ public class MeetingHub(IServiceScopeFactory scopes) : Hub
         new(p.ConnectionId, p.UserId, p.DisplayName, p.Role, p.MicOn, p.CamOn, p.Waiting, p.HandRaised);
 }
 
+/// <param name="ModeratorAdmitOnly">
+/// Règle de la réunion, recopiée sur chaque pair : le hub ne relit pas la base à chaque admission.
+/// </param>
+/// <param name="MaxParticipants">Places de la salle, organisateur compris.</param>
 public sealed record MeetingPeer(
     string ConnectionId,
     string? UserId,
@@ -339,7 +392,9 @@ public sealed record MeetingPeer(
     bool CamOn,
     bool Waiting,
     string? GuestToken = null,
-    bool HandRaised = false);
+    bool HandRaised = false,
+    bool ModeratorAdmitOnly = false,
+    int? MaxParticipants = null);
 
 public sealed record MeetingPeerDto(
     string ConnectionId,

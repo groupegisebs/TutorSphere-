@@ -46,6 +46,12 @@ public sealed class RealtimeMeetingClient : IAsyncDisposable
     public event Action<Guid, string>? SharedNotes;
     public event Action<Guid, string, string[]>? Poll;
     public event Action<Guid, string, int>? PollVote;
+    /// <summary>Cette session a été remplacée par une nouvelle du même participant.</summary>
+    public event Action<Guid>? SessionReplaced;
+    /// <summary>La salle est complète : l'arrivant n'a pas pu entrer.</summary>
+    public event Action<Guid, int?>? MeetingFull;
+    /// <summary>Admission refusée par le plafond : la personne reste en attente.</summary>
+    public event Action<Guid, int?, string>? RoomFull;
 
     public bool IsConnected => _hub?.State == HubConnectionState.Connected;
     public string? ConnectionId => _hub?.ConnectionId;
@@ -179,6 +185,9 @@ public sealed class RealtimeMeetingClient : IAsyncDisposable
         hub.On<Guid, string>("SharedNotes", (id, notes) => SharedNotes?.Invoke(id, notes));
         hub.On<Guid, string, string[]>("Poll", (id, q, opts) => Poll?.Invoke(id, q, opts ?? []));
         hub.On<Guid, string, int>("PollVote", (id, name, i) => PollVote?.Invoke(id, name, i));
+        hub.On<Guid>("SessionReplaced", id => SessionReplaced?.Invoke(id));
+        hub.On<Guid, int?>("MeetingFull", (id, max) => MeetingFull?.Invoke(id, max));
+        hub.On<Guid, int?, string>("RoomFull", (id, max, name) => RoomFull?.Invoke(id, max, name));
     }
 
     public async ValueTask DisposeAsync()

@@ -19,13 +19,27 @@ public record MeetingListItemDto(
     /// <summary>Réponse du destinataire à l'invitation : null s'il n'est pas participant nommé.</summary>
     MeetingParticipantStatus? MyStatus = null,
     /// <summary>Premiers participants, pour la pile d'avatars de la liste.</summary>
-    IReadOnlyList<string>? ParticipantPreview = null);
+    IReadOnlyList<string>? ParticipantPreview = null,
+    bool OpenJoinEnabled = false,
+    /// <summary>Lien de la réunion libre, servi aux seuls organisateurs.</summary>
+    string? OpenJoinUrl = null,
+    int? MaxParticipants = null);
 
 /// <summary>
 /// Rôle réel d'un arrivant dans la salle, calculé par le serveur : Organizer, CoOrganizer,
 /// Participant ou ExternalGuest, et passage obligatoire ou non par la salle d'attente.
 /// </summary>
-public record MeetingJoinContext(string Role, bool Waiting, string? DisplayName);
+/// <param name="ModeratorAdmitOnly">
+/// Réunion libre : le lien circule hors de tout contrôle, seul l'organisateur décide qui entre.
+/// Sur une réunion sur invitation, tout participant déjà entré peut ouvrir la porte.
+/// </param>
+/// <param name="MaxParticipants">Places de la salle, organisateur compris. <c>null</c> : illimité.</param>
+public record MeetingJoinContext(
+    string Role,
+    bool Waiting,
+    string? DisplayName,
+    bool ModeratorAdmitOnly = false,
+    int? MaxParticipants = null);
 
 public record MeetingDetailDto(
     Guid Id,
@@ -56,7 +70,11 @@ public record MeetingDetailDto(
     IReadOnlyList<MeetingExternalGuestDto> ExternalGuests,
     IReadOnlyList<string> Permissions,
     bool RequiresAccessCode = false,
-    string? AccessCode = null);
+    string? AccessCode = null,
+    bool OpenJoinEnabled = false,
+    /// <summary>Lien à partager, réservé aux modérateurs. <c>null</c> hors réunion libre.</summary>
+    string? OpenJoinUrl = null,
+    int? MaxParticipants = null);
 
 public record MeetingParticipantDto(
     Guid Id,
@@ -107,9 +125,31 @@ public record CreateMeetingRequest(
     bool Remind1h = true,
     bool Remind10m = true,
     bool SendEmailInvites = true,
-    string SaveMode = "draft");
+    string SaveMode = "draft",
+    /// <summary>Réunion libre : lien unique partageable, sans invitation nommée.</summary>
+    bool OpenJoin = false,
+    int? MaxParticipants = null);
 
 public record ExternalGuestInput(string FullName, string Email);
+
+/// <summary>Ouverture, fermeture ou renouvellement du lien libre d'une réunion existante.</summary>
+public record SetMeetingOpenJoinRequest(bool Enabled, int? MaxParticipants = null, bool Rotate = false);
+
+public record MeetingOpenJoinDto(bool Enabled, string? Url, int? MaxParticipants);
+
+/// <summary>Ce que voit l'invité avant de saisir son nom : rien qui ne soit déjà dans le lien.</summary>
+public record OpenMeetingPreviewDto(
+    Guid MeetingId,
+    string Title,
+    DateTime? StartAtUtc,
+    string OrganizerName,
+    bool RecordingEnabled,
+    bool AiEnabled);
+
+public record OpenMeetingEnterRequest(string DisplayName);
+
+/// <param name="GuestToken">Jeton propre à cet invité, distinct du lien partagé.</param>
+public record OpenMeetingEnterResult(Guid MeetingId, string DisplayName, string GuestToken, bool Waiting);
 
 public record MeetingCandidateDto(
     string Key,

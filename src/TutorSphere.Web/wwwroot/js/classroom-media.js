@@ -18,6 +18,50 @@ window.classroomMedia = (function () {
         });
     }
 
+    /**
+     * Traitement du signal micro. La réduction d'écho est le seul rempart contre la boucle
+     * « haut-parleur d'en face → micro d'en face → votre casque » : sans elle, celui qui parle
+     * s'entend revenir avec le retard du réseau. Certains navigateurs et périphériques
+     * (Bluetooth, micros USB, Firefox sous Linux) ne l'activent pas d'office, on l'exige donc.
+     */
+    const AUDIO_CONSTRAINTS = {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+    };
+
+    /**
+     * Réapplique le traitement sur une piste déjà ouverte : un micro obtenu par un chemin de
+     * repli (ou par une contrainte ignorée) peut arriver sans réduction d'écho.
+     */
+    async function ensureAudioProcessing(mediaStream) {
+        if (!mediaStream) return;
+        var tracks = mediaStream.getAudioTracks();
+        for (var i = 0; i < tracks.length; i++) {
+            var t = tracks[i];
+            try {
+                var s = typeof t.getSettings === "function" ? t.getSettings() : {};
+                if (s.echoCancellation === true && s.noiseSuppression !== false) continue;
+                if (typeof t.applyConstraints === "function")
+                    await t.applyConstraints(AUDIO_CONSTRAINTS);
+            } catch (_) { /* périphérique sans réglage : l'appel reste possible */ }
+        }
+    }
+
+    /** État réel du traitement micro, pour prévenir l'utilisateur quand l'écho est probable. */
+    function audioProcessingState() {
+        var t = stream ? stream.getAudioTracks()[0] : null;
+        if (!t || typeof t.getSettings !== "function")
+            return { hasAudio: !!t, echoCancellation: null, noiseSuppression: null, label: t ? t.label : "" };
+        var s = t.getSettings() || {};
+        return {
+            hasAudio: true,
+            echoCancellation: s.echoCancellation === undefined ? null : !!s.echoCancellation,
+            noiseSuppression: s.noiseSuppression === undefined ? null : !!s.noiseSuppression,
+            label: t.label || ""
+        };
+    }
+
     function attach(videoEl, mediaStream, mirror) {
         if (!videoEl) return;
         videoEl.srcObject = mediaStream;
@@ -271,10 +315,10 @@ window.classroomMedia = (function () {
         var attempts = [];
 
         if (wantVideo && wantAudio) {
-            attempts.push({ video: true, audio: true });
+            attempts.push({ video: true, audio: AUDIO_CONSTRAINTS });
             attempts.push({
                 video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
-                audio: { echoCancellation: true, noiseSuppression: true }
+                audio: AUDIO_CONSTRAINTS
             });
             attempts.push({
                 video: {
@@ -283,7 +327,7 @@ window.classroomMedia = (function () {
                     height: { ideal: 1080 },
                     frameRate: { ideal: 30 }
                 },
-                audio: { echoCancellation: true, noiseSuppression: true }
+                audio: AUDIO_CONSTRAINTS
             });
         }
 
@@ -292,10 +336,8 @@ window.classroomMedia = (function () {
         }
 
         if (wantAudio) {
-            attempts.push({
-                video: false,
-                audio: { echoCancellation: true, noiseSuppression: true }
-            });
+            attempts.push({ video: false, audio: AUDIO_CONSTRAINTS });
+            // Dernier recours : micro brut. L'écho devient possible, l'appel reste faisable.
             attempts.push({ video: false, audio: true });
         }
 
@@ -307,6 +349,7 @@ window.classroomMedia = (function () {
         for (var i = 0; i < attempts.length; i++) {
             try {
                 var s = await navigator.mediaDevices.getUserMedia(attempts[i]);
+                await ensureAudioProcessing(s);
                 var track = s.getVideoTracks()[0];
                 if (track && track.getCapabilities) {
                     try {
@@ -332,6 +375,11 @@ window.classroomMedia = (function () {
 
     return {
         listDevices: listDevices,
+
+        /** Réduction d'écho et anti-bruit réellement appliqués au micro en cours. */
+        audioProcessing: function () {
+            return audioProcessingState();
+        },
 
         setEndedCallback: function (dotNetRef) {
             endedCallback = dotNetRef;
