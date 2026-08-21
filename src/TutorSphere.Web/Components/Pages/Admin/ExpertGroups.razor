@@ -278,167 +278,169 @@
         }
         else
         {
-            <div class="cc-card">
-                <div class="cc-table-wrap">
-                    <table class="cc-table">
-                        <thead>
-                            <tr>
-                                <th>Groupe</th>
-                                <th>Portée</th>
-                                <th>Responsable du groupe</th>
-                                <th>Effectifs</th>
-                                <th>Statut</th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @if (ActiveGroups.Count == 0)
+            @if (ActiveGroups.Count == 0)
+            {
+                <div class="cc-card"><p class="text-muted mb-0 p-3">Aucun groupe actif.</p></div>
+            }
+            else
+            {
+                <div class="cc-group-grid">
+                    @foreach (var g in ActiveGroups)
+                    {
+                        <article class="cc-group-card @(g.IsDefaultReviewGroup ? "is-default" : null)">
+                            <header class="cc-group-card-head">
+                                @if (!string.IsNullOrWhiteSpace(g.LogoUrl))
+                                {
+                                    <img class="cc-group-logo" src="@ResolveMediaUrl(g.LogoUrl)" alt=""
+                                         onerror="this.style.display='none'; this.nextElementSibling?.classList.remove('d-none');" />
+                                    <span class="cc-group-logo-fallback d-none"><i class="bi bi-award"></i></span>
+                                }
+                                else
+                                {
+                                    <span class="cc-group-logo-fallback"><i class="bi bi-award"></i></span>
+                                }
+                                <div class="cc-group-ident">
+                                    <h3 class="cc-group-name">@g.Name</h3>
+                                    <div class="cc-scope-cell">
+                                        @if (!string.IsNullOrWhiteSpace(g.CountryCode))
+                                        {
+                                            <span class="cc-pill">
+                                                <span aria-hidden="true">@CountryCatalog.FlagEmoji(g.CountryCode)</span>
+                                                @(CountryCatalog.Find(g.CountryCode)?.Name ?? g.CountryCode)
+                                            </span>
+                                        }
+                                        @if (g.IsInternational)
+                                        {
+                                            <span class="cc-pill cc-pill-type">International</span>
+                                        }
+                                        @if (string.IsNullOrWhiteSpace(g.CountryCode) && !g.IsInternational)
+                                        {
+                                            <span class="cc-pill">Sans rattachement</span>
+                                        }
+                                    </div>
+                                </div>
+                                <span class="cc-pill @(g.IsActive ? "cc-pill-ok" : "cc-pill-bad") cc-group-status">
+                                    @(g.LifecycleStatus == 3 ? "Archivé" : g.IsActive ? "Actif" : "Inactif")
+                                </span>
+                            </header>
+
+                            @if (g.IsDefaultReviewGroup)
                             {
-                                <tr><td colspan="6" class="text-muted">Aucun groupe actif.</td></tr>
+                                <p class="cc-group-default-note">
+                                    <i class="bi bi-inbox-fill"></i>
+                                    Reçoit les candidatures qu'aucun pays ne rattache.
+                                </p>
                             }
-                            @foreach (var g in ActiveGroups)
-                            {
-                                <tr>
-                                    <td>
-                                        <div class="cc-user-cell">
-                                            @if (!string.IsNullOrWhiteSpace(g.LogoUrl))
+
+                            <div class="cc-group-card-body">
+                                <div class="cc-group-block">
+                                    <span class="cc-group-block-title">Responsable</span>
+                                    @{
+                                        var mgrName = FirstNonEmpty(g.ManagerFullName, g.ContactName);
+                                        var mgrEmail = FirstNonEmpty(g.ManagerEmail, g.ContactEmail);
+                                        var mgrPhone = FirstNonEmpty(g.ManagerPhone, g.ContactPhone);
+                                        var hasMandate = g.ActiveManagerMandateId.HasValue
+                                            || !string.IsNullOrWhiteSpace(g.ManagerUserId);
+                                        var hasContact = !string.IsNullOrWhiteSpace(mgrName)
+                                            || !string.IsNullOrWhiteSpace(mgrEmail)
+                                            || !string.IsNullOrWhiteSpace(mgrPhone);
+                                        var displayName = !string.IsNullOrWhiteSpace(mgrName)
+                                            ? mgrName
+                                            : (!string.IsNullOrWhiteSpace(mgrEmail)
+                                                ? mgrEmail
+                                                : null);
+                                    }
+                                    @if (hasMandate || hasContact)
+                                    {
+                                        <div class="cc-manager-cell">
+                                            <strong class="cc-manager-name">@(displayName ?? "Responsable nommé")</strong>
+                                            @if (!string.IsNullOrWhiteSpace(mgrEmail) && !string.Equals(mgrEmail, displayName, StringComparison.OrdinalIgnoreCase))
                                             {
-                                                <img class="cc-group-logo-thumb" src="@ResolveMediaUrl(g.LogoUrl)" alt=""
-                                                     onerror="this.style.display='none'; this.nextElementSibling?.classList.remove('d-none');" />
-                                                <span class="cc-rank-icon d-none"><i class="bi bi-award"></i></span>
+                                                <span class="cc-manager-meta">@mgrEmail</span>
                                             }
-                                            else
+                                            @if (!string.IsNullOrWhiteSpace(mgrPhone))
                                             {
-                                                <span class="cc-rank-icon"><i class="bi bi-award"></i></span>
+                                                <span class="cc-manager-meta">@mgrPhone</span>
                                             }
-                                            <strong>@g.Name</strong>
-                                        </div>
-                                    </td>
-                                    <td>
-                                        <div class="cc-scope-cell">
-                                            @if (!string.IsNullOrWhiteSpace(g.CountryCode))
+                                            @if (!hasMandate && hasContact)
                                             {
-                                                <span class="cc-pill">
-                                                    <span aria-hidden="true">@CountryCatalog.FlagEmoji(g.CountryCode)</span>
-                                                    @(CountryCatalog.Find(g.CountryCode)?.Name ?? g.CountryCode)
-                                                </span>
-                                            }
-                                            @if (g.IsInternational)
-                                            {
-                                                <span class="cc-pill cc-pill-type">International</span>
-                                            }
-                                            @if (string.IsNullOrWhiteSpace(g.CountryCode) && !g.IsInternational)
-                                            {
-                                                <span class="cc-pill">Sans rattachement</span>
-                                            }
-                                            @if (g.IsDefaultReviewGroup)
-                                            {
-                                                <span class="cc-pill cc-pill-ok" title="Reçoit les candidatures spontanées">
-                                                    <i class="bi bi-inbox-fill"></i> Candidatures spontanées
-                                                </span>
+                                                <span class="cc-manager-hint">Contact groupe — mandat à confirmer</span>
                                             }
                                         </div>
-                                    </td>
-                                    <td>
-                                        @{
-                                            var mgrName = FirstNonEmpty(g.ManagerFullName, g.ContactName);
-                                            var mgrEmail = FirstNonEmpty(g.ManagerEmail, g.ContactEmail);
-                                            var mgrPhone = FirstNonEmpty(g.ManagerPhone, g.ContactPhone);
-                                            var hasMandate = g.ActiveManagerMandateId.HasValue
-                                                || !string.IsNullOrWhiteSpace(g.ManagerUserId);
-                                            var hasContact = !string.IsNullOrWhiteSpace(mgrName)
-                                                || !string.IsNullOrWhiteSpace(mgrEmail)
-                                                || !string.IsNullOrWhiteSpace(mgrPhone);
-                                            var displayName = !string.IsNullOrWhiteSpace(mgrName)
-                                                ? mgrName
-                                                : (!string.IsNullOrWhiteSpace(mgrEmail)
-                                                    ? mgrEmail
-                                                    : null);
-                                        }
-                                        @if (hasMandate || hasContact)
-                                        {
-                                            <div class="cc-manager-cell">
-                                                <strong class="cc-manager-name">@(displayName ?? "Responsable nommé")</strong>
-                                                @if (!string.IsNullOrWhiteSpace(mgrEmail) && !string.Equals(mgrEmail, displayName, StringComparison.OrdinalIgnoreCase))
-                                                {
-                                                    <span class="cc-manager-meta">@mgrEmail</span>
-                                                }
-                                                @if (!string.IsNullOrWhiteSpace(mgrPhone))
-                                                {
-                                                    <span class="cc-manager-meta">@mgrPhone</span>
-                                                }
-                                                @if (!hasMandate && hasContact)
-                                                {
-                                                    <span class="cc-manager-hint">Contact groupe — mandat à confirmer</span>
-                                                }
-                                            </div>
-                                        }
-                                        else
-                                        {
-                                            <div class="cc-manager-empty">Aucun Responsable</div>
-                                        }
-                                    </td>
-                                    <td>@HeadcountCell(g)</td>
-                                    <td>
-                                        <span class="cc-pill @(g.IsActive ? "cc-pill-ok" : "cc-pill-bad")">
-                                            @(g.LifecycleStatus == 3 ? "Archivé" : g.IsActive ? "Actif" : "Inactif")
-                                        </span>
-                                    </td>
-                                    <td class="text-end">
-                                        <div class="d-flex flex-wrap gap-1 justify-content-end">
-                                            <a class="cc-btn btn-sm" href="@($"admin/expert-groups/{g.Id}")">Membres</a>
-                                            <button type="button" class="cc-btn btn-sm cc-btn-primary"
-                                                    disabled="@_actAsBusy"
-                                                    @onclick="() => ActAsGroupAdminAsync(g)">
-                                                <i class="bi bi-person-gear"></i> Administrer
-                                            </button>
+                                    }
+                                    else
+                                    {
+                                        <div class="cc-manager-empty">Aucun Responsable</div>
+                                    }
+                                </div>
+                                <div class="cc-group-block">
+                                    <span class="cc-group-block-title">Effectifs</span>
+                                    @HeadcountCell(g)
+                                </div>
+                            </div>
+
+                            <footer class="cc-group-card-foot">
+                                <button type="button" class="cc-btn btn-sm cc-btn-primary"
+                                        disabled="@_actAsBusy"
+                                        @onclick="() => ActAsGroupAdminAsync(g)">
+                                    <i class="bi bi-person-gear"></i> Administrer
+                                </button>
+                                <a class="cc-btn btn-sm" href="@($"admin/expert-groups/{g.Id}")">Membres</a>
+                                <button type="button" class="cc-btn btn-sm" @onclick="() => OpenEdit(g)">Modifier</button>
+
+                                @* Huit actions de plus tiendraient mal dans une carte : elles sont
+                                   regroupées ici pour garder les trois gestes courants visibles. *@
+                                <div class="cc-group-more">
+                                    <button type="button" class="cc-btn btn-sm" title="Plus d'actions"
+                                            @onclick="() => ToggleMenu(g.Id)">
+                                        <i class="bi bi-three-dots"></i>
+                                    </button>
+                                    @if (_menuId == g.Id)
+                                    {
+                                        <div class="cc-group-menu">
                                             <AuthorizeView Roles="SuperAdmin" Context="saAuth">
                                                 <Authorized>
-                                                    <a class="cc-btn btn-sm" href="@($"admin/expert-groups/{g.Id}/manager")">Changer le responsable</a>
+                                                    <a href="@($"admin/expert-groups/{g.Id}/manager")">Changer le responsable</a>
                                                 </Authorized>
                                             </AuthorizeView>
                                             <AuthorizeView Roles="SuperAdmin" Context="defaultAuth">
                                                 <Authorized>
                                                     @if (!g.IsDefaultReviewGroup)
                                                     {
-                                                        <button type="button" class="cc-btn btn-sm"
-                                                                disabled="@_defaultBusy"
-                                                                title="Ce groupe recevra les candidatures qu'aucun pays ne rattache"
+                                                        <button type="button" disabled="@_defaultBusy"
                                                                 @onclick="() => SetDefaultReviewAsync(g, true)">
-                                                            Recevoir les candidatures
+                                                            Recevoir les candidatures spontanées
                                                         </button>
                                                     }
                                                     else
                                                     {
-                                                        <button type="button" class="cc-btn btn-sm"
-                                                                disabled="@_defaultBusy"
+                                                        <button type="button" disabled="@_defaultBusy"
                                                                 @onclick="() => SetDefaultReviewAsync(g, false)">
-                                                            Ne plus recevoir
+                                                            Ne plus recevoir les candidatures
                                                         </button>
                                                     }
                                                 </Authorized>
                                             </AuthorizeView>
-                                            <button type="button" class="cc-btn btn-sm" @onclick="() => ShowMandateHistoryAsync(g)">Historique</button>
-                                            <button type="button" class="cc-btn btn-sm" @onclick="() => ContactAsync(g)">Contacter</button>
-                                            <button type="button" class="cc-btn btn-sm" @onclick="() => OpenEdit(g)">Modifier</button>
-                                            <button type="button" class="cc-btn btn-sm" @onclick="() => ToggleActiveAsync(g)">
+                                            <button type="button" @onclick="() => ShowMandateHistoryAsync(g)">Historique des mandats</button>
+                                            <button type="button" @onclick="() => ContactAsync(g)">Contacter</button>
+                                            <button type="button" @onclick="() => ToggleActiveAsync(g)">
                                                 @(g.IsActive ? "Désactiver" : "Activer")
                                             </button>
-                                            <button type="button" class="cc-btn btn-sm" @onclick="() => ArchiveAsync(g)">Archiver</button>
+                                            <button type="button" @onclick="() => ArchiveAsync(g)">Archiver</button>
                                             <AuthorizeView Roles="SuperAdmin" Context="deleteAuth">
                                                 <Authorized>
-                                                    <button type="button" class="cc-btn btn-sm cc-btn-danger"
+                                                    <button type="button" class="is-danger"
                                                             @onclick="() => OpenDeleteAsync(g)">Supprimer</button>
                                                 </Authorized>
                                             </AuthorizeView>
                                         </div>
-                                    </td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
+                                    }
+                                </div>
+                            </footer>
+                        </article>
+                    }
                 </div>
-            </div>
+            }
 
             @* Les groupes hors service restaient invisibles : impossible de rattraper un doublon
                ou un brouillon créé par erreur sans passer par la base. *@
@@ -455,70 +457,56 @@
                 }
                 else
                 {
-                    <div class="cc-table-wrap">
-                        <table class="cc-table">
-                            <thead>
-                                <tr>
-                                    <th>Groupe</th>
-                                    <th>Portée</th>
-                                    <th>Effectifs</th>
-                                    <th>Statut</th>
-                                    <th>Créé le</th>
-                                    <th></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var g in InactiveGroups)
-                                {
-                                    <tr>
-                                        <td>
-                                            <div class="cc-user-cell">
-                                                <span class="cc-rank-icon"><i class="bi bi-archive"></i></span>
-                                                <strong>@g.Name</strong>
-                                            </div>
-                                        </td>
-                                        <td>
-                                            @if (g.IsInternational)
-                                            {
-                                                <span class="cc-pill cc-pill-type">International</span>
-                                            }
-                                            else if (!string.IsNullOrWhiteSpace(g.CountryCode))
+                    <div class="cc-group-grid cc-group-grid--muted p-3">
+                        @foreach (var g in InactiveGroups)
+                        {
+                            <article class="cc-group-card cc-group-card--muted">
+                                <header class="cc-group-card-head">
+                                    <span class="cc-group-logo-fallback"><i class="bi bi-archive"></i></span>
+                                    <div class="cc-group-ident">
+                                        <h3 class="cc-group-name">@g.Name</h3>
+                                        <div class="cc-scope-cell">
+                                            @if (!string.IsNullOrWhiteSpace(g.CountryCode))
                                             {
                                                 <span class="cc-pill">
                                                     <span aria-hidden="true">@CountryCatalog.FlagEmoji(g.CountryCode)</span>
                                                     @(CountryCatalog.Find(g.CountryCode)?.Name ?? g.CountryCode)
                                                 </span>
                                             }
-                                            else
+                                            @if (g.IsInternational)
                                             {
-                                                <span class="cc-pill">—</span>
+                                                <span class="cc-pill cc-pill-type">International</span>
                                             }
-                                        </td>
-                                        <td>@HeadcountCell(g)</td>
-                                        <td>
                                             <span class="cc-pill cc-pill-bad">@LifecycleLabel(g)</span>
-                                        </td>
-                                        <td>@g.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy")</td>
-                                        <td class="text-end">
-                                            <div class="d-flex flex-wrap gap-1 justify-content-end">
-                                                <a class="cc-btn btn-sm" href="@($"admin/expert-groups/{g.Id}")">Membres</a>
-                                                <button type="button" class="cc-btn btn-sm" @onclick="() => OpenEdit(g)">Modifier</button>
-                                                @if (g.LifecycleStatus != 3)
-                                                {
-                                                    <button type="button" class="cc-btn btn-sm" @onclick="() => ToggleActiveAsync(g)">Activer</button>
-                                                }
-                                                <AuthorizeView Roles="SuperAdmin" Context="deleteInactiveAuth">
-                                                    <Authorized>
-                                                        <button type="button" class="cc-btn btn-sm cc-btn-danger"
-                                                                @onclick="() => OpenDeleteAsync(g)">Supprimer</button>
-                                                    </Authorized>
-                                                </AuthorizeView>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                }
-                            </tbody>
-                        </table>
+                                        </div>
+                                    </div>
+                                </header>
+                                <div class="cc-group-card-body">
+                                    <div class="cc-group-block">
+                                        <span class="cc-group-block-title">Effectifs</span>
+                                        @HeadcountCell(g)
+                                    </div>
+                                    <div class="cc-group-block">
+                                        <span class="cc-group-block-title">Créé le</span>
+                                        <span class="cc-count-main">@g.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy")</span>
+                                    </div>
+                                </div>
+                                <footer class="cc-group-card-foot">
+                                    <a class="cc-btn btn-sm" href="@($"admin/expert-groups/{g.Id}")">Membres</a>
+                                    <button type="button" class="cc-btn btn-sm" @onclick="() => OpenEdit(g)">Modifier</button>
+                                    @if (g.LifecycleStatus != 3)
+                                    {
+                                        <button type="button" class="cc-btn btn-sm" @onclick="() => ToggleActiveAsync(g)">Activer</button>
+                                    }
+                                    <AuthorizeView Roles="SuperAdmin" Context="deleteInactiveAuth">
+                                        <Authorized>
+                                            <button type="button" class="cc-btn btn-sm cc-btn-danger"
+                                                    @onclick="() => OpenDeleteAsync(g)">Supprimer</button>
+                                        </Authorized>
+                                    </AuthorizeView>
+                                </footer>
+                            </article>
+                        }
                     </div>
                 }
             </div>
@@ -577,6 +565,11 @@
     private bool _saving;
     private bool _actAsBusy;
     private bool _defaultBusy;
+
+    /// <summary>Carte dont le menu d'actions secondaires est ouvert (une seule à la fois).</summary>
+    private Guid? _menuId;
+
+    private void ToggleMenu(Guid id) => _menuId = _menuId == id ? null : id;
 
     private ExpertGroupItem? _deleteTarget;
     private ExpertGroupDeletionImpact? _deleteImpact;
@@ -649,6 +642,7 @@
 
     private void OpenEdit(ExpertGroupItem g)
     {
+        _menuId = null;
         _editId = g.Id;
         _formName = g.Name;
         _formDescription = g.Description;
@@ -775,6 +769,7 @@
 
     private async Task ContactAsync(ExpertGroupItem g)
     {
+        _menuId = null;
         _error = null;
         _flash = null;
         var result = await AdminSvc.ContactExpertGroupAsync(g.Id);
@@ -813,6 +808,7 @@
 
     private async Task ShowMandateHistoryAsync(ExpertGroupItem g)
     {
+        _menuId = null;
         _error = null;
         _historyGroup = g;
         try
@@ -829,6 +825,7 @@
 
     private async Task ToggleActiveAsync(ExpertGroupItem g)
     {
+        _menuId = null;
         _error = null;
         try
         {
@@ -853,6 +850,7 @@
     /// </summary>
     private async Task SetDefaultReviewAsync(ExpertGroupItem g, bool isDefault)
     {
+        _menuId = null;
         _error = null;
         _defaultBusy = true;
         try
@@ -874,6 +872,7 @@
 
     private async Task ArchiveAsync(ExpertGroupItem g)
     {
+        _menuId = null;
         var confirmed = await JS.InvokeAsync<bool>(
             "confirm", $"Archiver le groupe « {g.Name} » ? L'historique est conservé.");
         if (!confirmed) return;
@@ -890,6 +889,7 @@
 
     private async Task OpenDeleteAsync(ExpertGroupItem g)
     {
+        _menuId = null;
         _error = null;
         _flash = null;
         _deleteTarget = g;
