@@ -126,4 +126,10 @@ public record ParentPaymentDto(
     string Status,
     DateTime CreatedAt,
     DateTime? PaidAt,
-    bool CanDownloadInvoice);
+    bool CanDownloadInvoice,
+    /// <summary>Abonnement réglé par cette ligne : permet de relancer le paiement depuis l'historique.</summary>
+    Guid? SubscriptionId = null,
+    /// <summary>Le règlement peut être lancé maintenant (règles du forfait respectées).</summary>
+    bool CanPay = false,
+    /// <summary>Pourquoi le règlement est impossible : accord de l'enseignant, fenêtre de renouvellement…</summary>
+    string? PayBlockedReason = null);

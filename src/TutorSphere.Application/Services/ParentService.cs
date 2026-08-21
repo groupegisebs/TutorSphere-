@@ -1583,6 +1583,12 @@ public class ParentService : IParentService
             invoices.TryGetValue(p.InvoiceId ?? Guid.Empty, out var invoice);
             tenants.TryGetValue(p.TenantId, out var tutor);
 
+            // Une ligne en attente doit pouvoir être réglée depuis l'historique : sans cela, un
+            // paiement abandonné en cours de route n'avait plus aucun bouton pour aboutir.
+            var (canPay, blockedReason) = p.Status == PaymentStatus.Pending
+                ? EvaluatePayability(p.SubscriptionId, subs, offerings)
+                : (false, null);
+
             return new ParentPaymentDto(
                 p.Id,
                 p.InvoiceId,
@@ -1595,8 +1601,37 @@ public class ParentService : IParentService
                 p.Status.ToString(),
                 p.CreatedAt,
                 p.CompletedAt,
-                p.Status is PaymentStatus.Completed or PaymentStatus.Pending);
+                p.Status is PaymentStatus.Completed or PaymentStatus.Pending,
+                p.SubscriptionId,
+                canPay,
+                blockedReason);
         }).ToList();
+    }
+
+    /// <summary>
+    /// Rejoue la règle de paiement du forfait pour savoir si le bouton doit être proposé. On
+    /// appelle la règle elle-même plutôt que d'en recopier les conditions : son message d'erreur
+    /// est aussi l'explication à montrer au parent.
+    /// </summary>
+    private static (bool CanPay, string? Reason) EvaluatePayability(
+        Guid? subscriptionId,
+        IReadOnlyDictionary<Guid, StudentSubscription> subs,
+        IReadOnlyDictionary<Guid, SubscriptionOffering> offerings)
+    {
+        if (subscriptionId is not Guid id
+            || !subs.TryGetValue(id, out var sub)
+            || !offerings.TryGetValue(sub.OfferingId, out var offering))
+            return (false, null);
+
+        try
+        {
+            PackPaymentProcess.EnsurePayable(sub, offering.DurationDays, DateTime.UtcNow);
+            return (true, null);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return (false, ex.Message);
+        }
     }
 
     public Task<IReadOnlyList<ConversationDto>> GetTeacherContactsForUserAsync(

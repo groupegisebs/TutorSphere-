@@ -1,9 +1,11 @@
 @page "/parent/payments"
 @layout ParentLayout
 @rendermode InteractiveServer
+@using Microsoft.AspNetCore.WebUtilities
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
 @inject IJSRuntime JS
+@inject NavigationManager Nav
 
 <PageTitle>Mes Paiements – TutorSphere</PageTitle>
 
@@ -13,6 +15,11 @@
         <p class="ts-page-subtitle">Historique de vos paiements et factures</p>
     </div>
 </div>
+
+@if (!string.IsNullOrEmpty(_banner))
+{
+    <div class="alert alert-success py-2 px-3 mb-3"><i class="bi bi-check-circle me-2"></i>@_banner</div>
+}
 
 @if (!string.IsNullOrEmpty(_error))
 {
@@ -85,7 +92,22 @@ else
                         </td>
                         <td class="fw-semibold">@p.Amount.ToString("N2") @p.Currency.ToUpper()</td>
                         <td><span class="ts-badge @statusBadge">@statusLabel</span></td>
-                        <td>
+                        <td class="text-end text-nowrap">
+                            @* Un paiement resté en attente doit pouvoir aboutir depuis ici : le
+                               parent qui a quitté la page de règlement n'avait plus aucun bouton. *@
+                            @if (p.CanPay && p.SubscriptionId.HasValue)
+                            {
+                                <button type="button" class="btn btn-primary btn-sm me-2"
+                                        @onclick="() => OpenPay(p)">
+                                    <i class="bi bi-credit-card me-1"></i>Payer
+                                </button>
+                            }
+                            else if (p.Status == "Pending" && !string.IsNullOrWhiteSpace(p.PayBlockedReason))
+                            {
+                                <span class="text-muted small me-2" title="@p.PayBlockedReason">
+                                    <i class="bi bi-hourglass-split me-1"></i>Règlement indisponible
+                                </span>
+                            }
                             @if (p.CanDownloadInvoice)
                             {
                                 <button type="button" class="ts-icon-btn" title="Télécharger la facture"
@@ -119,11 +141,26 @@ else
     </div>
 }
 
+<PaymentCheckoutModal @bind-Visible="_payModalVisible"
+                      SubscriptionId="@(_payTarget?.SubscriptionId)"
+                      Amount="@(_payTarget?.Amount ?? 0)"
+                      Currency="@(_payTarget?.Currency ?? "CAD")"
+                      ProductTitle="@_payTarget?.Description"
+                      SuccessUrl="@_paySuccessUrl"
+                      CancelUrl="@_payCancelUrl"
+                      OnPaid="OnPaidAsync"
+                      OnError="OnPayError" />
+
 @code {
     private bool _loading = true;
     private string? _error;
+    private string? _banner;
     private Guid? _downloadingId;
     private List<ParentPaymentVm> _payments = [];
+    private bool _payModalVisible;
+    private ParentPaymentVm? _payTarget;
+    private string _paySuccessUrl = "";
+    private string _payCancelUrl = "";
 
     private IReadOnlyList<MoneyTotal> PaidTotals => TotalsFor("Completed");
 
@@ -158,6 +195,27 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        // Retour de la page de règlement : le webhook peut arriver après le navigateur, on
+        // demande la confirmation côté serveur avant d'afficher la liste.
+        var query = QueryHelpers.ParseQuery(Nav.ToAbsoluteUri(Nav.Uri).Query);
+        if (query.ContainsKey("paid")
+            && query.TryGetValue("sub", out var subRaw)
+            && Guid.TryParse(subRaw, out var subId))
+        {
+            try
+            {
+                await Api.PostWithErrorAsync<object>($"api/payments/subscriptions/{subId}/confirm", new { });
+                _banner = "Paiement enregistré. Merci !";
+            }
+            catch { }
+        }
+
+        await LoadAsync();
+        _loading = false;
+    }
+
+    private async Task LoadAsync()
+    {
         try
         {
             var result = await Api.GetWithErrorAsync<List<ParentPaymentVm>>("api/parent/payments");
@@ -176,11 +234,25 @@ else
             _error = ex.Message;
             _payments = [];
         }
-        finally
-        {
-            _loading = false;
-        }
     }
+
+    private void OpenPay(ParentPaymentVm payment)
+    {
+        _error = null;
+        _payTarget = payment;
+        var baseUri = Nav.BaseUri.TrimEnd('/');
+        _paySuccessUrl = $"{baseUri}/parent/payments?paid=1&sub={payment.SubscriptionId}";
+        _payCancelUrl = $"{baseUri}/parent/payments";
+        _payModalVisible = true;
+    }
+
+    private async Task OnPaidAsync()
+    {
+        _banner = "Paiement enregistré. Merci !";
+        await LoadAsync();
+    }
+
+    private void OnPayError(string message) => _error = message;
 
     private async Task DownloadInvoiceAsync(ParentPaymentVm payment)
     {
@@ -223,5 +295,8 @@ else
         string Status,
         DateTime CreatedAt,
         DateTime? PaidAt,
-        bool CanDownloadInvoice);
+        bool CanDownloadInvoice,
+        Guid? SubscriptionId,
+        bool CanPay,
+        string? PayBlockedReason);
 }
