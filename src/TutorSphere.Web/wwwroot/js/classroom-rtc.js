@@ -453,6 +453,142 @@ window.classroomRtc = (function () {
         }
     }
 
+    /* ---------- Locuteur actif ----------
+       Sur un téléphone, montrer tout le monde à la même taille ne montre personne : il faut
+       mettre en avant celui qui parle. L'état « micro activé » ne suffit pas — micro ouvert ne
+       veut pas dire voix — on mesure donc le niveau sonore réel de chaque flux. */
+
+    var SELF_METER = "";
+    var audioCtx = null;
+    var meters = {};
+    var meterTimer = null;
+    var activeSpeaker = null;
+    var candidate = null;
+    var candidateHits = 0;
+    /** Au-dessus de ce niveau efficace, la piste porte une voix et non du bruit de fond. */
+    var SPEECH_LEVEL = 0.045;
+    /** Deux relevés concordants avant de basculer : évite le clignotement sur un rire ou un choc. */
+    var SWITCH_HITS = 2;
+
+    function ensureAudioContext() {
+        if (audioCtx) return audioCtx;
+        var Ctor = window.AudioContext || window.webkitAudioContext;
+        if (!Ctor) return null;
+        try { audioCtx = new Ctor(); } catch (_) { audioCtx = null; }
+        return audioCtx;
+    }
+
+    function dropMeter(id) {
+        var m = meters[id];
+        if (!m) return;
+        try { m.source.disconnect(); } catch (_) { }
+        try { m.analyser.disconnect(); } catch (_) { }
+        delete meters[id];
+        if (activeSpeaker === id) activeSpeaker = null;
+    }
+
+    function ensureMeter(id, stream) {
+        var track = stream ? stream.getAudioTracks().find(function (t) {
+            return t.readyState === "live";
+        }) : null;
+        if (!track) { dropMeter(id); return; }
+
+        var existing = meters[id];
+        if (existing && existing.trackId === track.id) return;
+        dropMeter(id);
+
+        var ctx = ensureAudioContext();
+        if (!ctx) return;
+        try {
+            var source = ctx.createMediaStreamSource(new MediaStream([track]));
+            var analyser = ctx.createAnalyser();
+            analyser.fftSize = 512;
+            // L'analyseur n'est relié à aucune sortie : la lecture reste celle de la balise vidéo,
+            // sinon le son sortirait deux fois et l'écho reviendrait par la fenêtre.
+            source.connect(analyser);
+            meters[id] = {
+                source: source,
+                analyser: analyser,
+                data: new Uint8Array(analyser.fftSize),
+                trackId: track.id,
+                level: 0
+            };
+        } catch (_) { /* pas de mesure possible : la mise en avant restera manuelle */ }
+    }
+
+    function levelOf(meter) {
+        meter.analyser.getByteTimeDomainData(meter.data);
+        var sum = 0;
+        for (var i = 0; i < meter.data.length; i++) {
+            var v = (meter.data[i] - 128) / 128;
+            sum += v * v;
+        }
+        var rms = Math.sqrt(sum / meter.data.length);
+        // Lissage : une syllabe isolée ne doit pas voler la vedette.
+        meter.level = meter.level * 0.6 + rms * 0.4;
+        return meter.level;
+    }
+
+    function sampleSpeakers() {
+        ensureMeter(SELF_METER, getPublishStream());
+        Object.keys(remoteStreams).forEach(function (id) {
+            ensureMeter(id, remoteStreams[id]);
+        });
+        Object.keys(meters).forEach(function (id) {
+            if (id !== SELF_METER && !remoteStreams[id]) dropMeter(id);
+        });
+
+        var bestId = null;
+        var best = 0;
+        Object.keys(meters).forEach(function (id) {
+            var level = levelOf(meters[id]);
+            if (level > best) { best = level; bestId = id; }
+        });
+
+        // Silence général : le dernier locuteur garde la vedette, l'image ne saute pas.
+        if (bestId === null || best < SPEECH_LEVEL) {
+            candidate = null;
+            candidateHits = 0;
+            return;
+        }
+        if (bestId === activeSpeaker) {
+            candidate = null;
+            candidateHits = 0;
+            return;
+        }
+        if (bestId !== candidate) {
+            candidate = bestId;
+            candidateHits = 1;
+            return;
+        }
+        if (++candidateHits < SWITCH_HITS) return;
+
+        activeSpeaker = bestId;
+        candidate = null;
+        candidateHits = 0;
+        if (dotNetRef && typeof dotNetRef.invokeMethodAsync === "function")
+            dotNetRef.invokeMethodAsync("OnRtcActiveSpeaker", activeSpeaker).catch(function () { });
+    }
+
+    function startSpeakerWatch() {
+        if (meterTimer) return;
+        meterTimer = setInterval(function () {
+            try { sampleSpeakers(); } catch (_) { }
+        }, 240);
+    }
+
+    function stopSpeakerWatch() {
+        if (meterTimer) { clearInterval(meterTimer); meterTimer = null; }
+        Object.keys(meters).forEach(dropMeter);
+        activeSpeaker = null;
+        candidate = null;
+        candidateHits = 0;
+        if (audioCtx) {
+            try { audioCtx.close(); } catch (_) { }
+            audioCtx = null;
+        }
+    }
+
     return {
         init: function (ref, opts) {
             dotNetRef = ref;
@@ -465,6 +601,7 @@ window.classroomRtc = (function () {
             Object.keys(peers).forEach(function (id) {
                 peers[id].polite = isPoliteToward(id);
             });
+            startSpeakerWatch();
         },
 
         setSelfId: function (id) {
@@ -570,6 +707,12 @@ window.classroomRtc = (function () {
 
         unlockAudio: async function () {
             syncPlaybackRouting();
+            // Le contexte d'analyse démarre suspendu tant que l'utilisateur n'a rien touché :
+            // sans reprise, aucun niveau ne remonte et personne n'est mis en avant.
+            if (audioCtx && audioCtx.state === "suspended") {
+                try { await audioCtx.resume(); } catch (_) { }
+            }
+            startSpeakerWatch();
             var blocked = false;
             var nodes = document.querySelectorAll("video[data-rtc-peer], video[data-rtc-main]");
             for (var i = 0; i < nodes.length; i++) {
@@ -726,12 +869,14 @@ window.classroomRtc = (function () {
                 delete peers[remoteId];
             }
             delete remoteStreams[remoteId];
+            dropMeter(remoteId);
             document.querySelectorAll('video[data-rtc-peer="' + remoteId + '"]').forEach(function (el) {
                 el.srcObject = null;
             });
         },
 
         stop: function () {
+            stopSpeakerWatch();
             Object.keys(peers).forEach(function (id) {
                 try { peers[id].pc.close(); } catch (_) { }
             });

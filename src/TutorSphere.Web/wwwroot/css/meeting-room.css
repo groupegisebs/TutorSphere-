@@ -161,16 +161,35 @@
     color: #a7b3c9;
     font-size: 0.76rem;
 }
+/* Scène « locuteur en avant » : la tuile mise en avant occupe toute la première rangée, les
+   autres se rangent en vignettes sur la seconde. À taille égale, sur un écran court, aucune
+   image n'était lisible et les libellés se chevauchaient. */
 .mtg-grid {
     flex: 1 1 auto;
     min-height: 0;
     display: grid;
-    grid-template-columns: minmax(0, 1.42fr) minmax(0, 1fr);
-    grid-auto-rows: minmax(0, 1fr);
+    /* Autant de colonnes que de vignettes : elles se resserrent au lieu de déborder hors de
+       l'écran ou de passer à une rangée invisible. Le compte vient du composant. */
+    grid-template-columns: repeat(var(--thumbs, 1), minmax(0, 1fr));
+    grid-template-rows: minmax(0, 1fr) auto;
     gap: 0.8rem;
+    overflow: hidden;
 }
-.mtg-grid.is-solo { grid-template-columns: minmax(0, 1fr); }
-.mtg-grid .mtg-tile.is-main { grid-column: 1; grid-row: 1 / -1; }
+.mtg-grid.is-solo {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+}
+.mtg-grid > .mtg-tile.is-spot { grid-column: 1 / -1; grid-row: 1; }
+/* Vignettes : hauteur fixe, la scène garde tout l'espace restant pour le locuteur. */
+.mtg-grid.is-spot > .mtg-tile:not(.is-spot) {
+    grid-row: 2;
+    min-height: 0;
+    height: 7.5rem;
+    /* Peu de participants : la vignette garde une proportion d'image au lieu de s'étirer. */
+    width: min(100%, 13.5rem);
+    justify-self: center;
+    cursor: pointer;
+}
 .mtg-tile {
     position: relative;
     min-height: 8.5rem;
@@ -179,10 +198,36 @@
     border-radius: 16px;
     overflow: hidden;
 }
-.mtg-tile.is-main.is-speaking {
+.mtg-tile.is-speaking {
     border-color: #7c3aed;
     box-shadow: 0 0 0 1px #7c3aed, 0 0 34px rgba(124, 58, 237, 0.28);
 }
+.mtg-tile.is-pinned { border-color: #38bdf8; }
+/* Une vignette n'a pas la place d'un rôle et d'un état micro en clair : nom court et icône. */
+.mtg-grid.is-spot > .mtg-tile:not(.is-spot) .mtg-badge,
+.mtg-grid.is-spot > .mtg-tile:not(.is-spot) .mtg-dot,
+.mtg-grid.is-spot > .mtg-tile:not(.is-spot) .mtg-tile-mic-lb,
+.mtg-grid.is-spot > .mtg-tile:not(.is-spot) .mtg-tile-role { display: none; }
+.mtg-grid.is-spot > .mtg-tile:not(.is-spot) .mtg-tile-foot {
+    left: 0.45rem; right: 0.45rem; bottom: 0.4rem;
+    max-width: none;
+    grid-auto-flow: column;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.3rem;
+}
+.mtg-grid.is-spot > .mtg-tile:not(.is-spot) .mtg-tile-id {
+    display: block;
+    font-size: 0.72rem; font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mtg-grid.is-spot > .mtg-tile:not(.is-spot) .mtg-av {
+    /* Beaucoup de participants : la vignette devient étroite, l'initiale suit au lieu de sortir. */
+    width: min(3.4rem, 62%); height: auto; aspect-ratio: 1;
+    font-size: 1.05rem;
+}
+.mtg-grid.is-spot > .mtg-tile:not(.is-spot) .mtg-av-cam { width: 1.3rem; height: 1.3rem; font-size: 0.62rem; }
+.mtg-grid.is-spot > .mtg-tile:not(.is-spot) .mtg-tile-menu { display: none; }
 .mtg-tile video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 /* Le JS pose is-hidden tant qu'aucune piste vidéo n'est publiée : l'avatar prend alors le relais. */
 .mtg-tile video.is-hidden { display: none; }
@@ -194,6 +239,10 @@
 .mtg-tile-hand {
     position: absolute; top: 0.7rem; left: 0.8rem; z-index: 2;
     color: #fbbf24; font-size: 0.95rem;
+}
+.mtg-tile-pin {
+    position: absolute; top: 0.6rem; right: 0.7rem; z-index: 2;
+    color: #38bdf8; font-size: 0.85rem;
 }
 .mtg-av {
     position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
@@ -594,9 +643,20 @@
     .mtg-dock-lb { display: none; }
 }
 @media (max-width: 900px) {
-    .mtg-room-body { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) minmax(0, 44dvh); }
-    .mtg-grid { grid-template-columns: minmax(0, 1fr); }
-    .mtg-grid .mtg-tile.is-main { grid-row: auto; }
+    /* Le panneau latéral passe dessous : il ne doit pas manger la scène, sinon les tuiles
+       n'ont plus la hauteur de leur contenu et se recouvrent. */
+    /* Replié : seuls les onglets restent, l'image prend toute la hauteur. Toucher un onglet
+       déplie, toucher l'onglet actif replie. */
+    .mtg-room-body { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }
+    .mtg-room-body.is-side-open { grid-template-rows: minmax(0, 1fr) minmax(0, 42dvh); }
+    .mtg-side:not(.is-open) > :not(.mtg-side-tabs) { display: none; }
+    /* Replié : aucun onglet ne doit paraître ouvert. */
+    .mtg-side:not(.is-open) .mtg-side-tabs button.is-on {
+        color: #7c89a6; border-bottom-color: transparent; font-weight: 500;
+    }
+    .mtg-grid { gap: 0.55rem; }
+    .mtg-tile { min-height: 0; }
+    .mtg-grid.is-spot > .mtg-tile:not(.is-spot) { height: 5.6rem; width: min(100%, 10rem); }
     .mtg-top-meeting, .mtg-timer { display: none; }
     /* Le panneau passe sous la scène : la bordure doit suivre. */
     .mtg-side { border-left: 0; border-top: 1px solid #18213a; }
@@ -613,8 +673,11 @@
 
     .mtg-stage { padding: 0.6rem 0.6rem 0.5rem; gap: 0.5rem; }
     .mtg-notice { font-size: 0.7rem; padding: 0.3rem 0.7rem; }
-    .mtg-grid { gap: 0.5rem; }
-    .mtg-tile { min-height: 5.5rem; border-radius: 12px; }
+    .mtg-grid { gap: 0.4rem; }
+    .mtg-tile { min-height: 0; border-radius: 12px; }
+    .mtg-grid.is-spot > .mtg-tile:not(.is-spot) { height: 4.4rem; width: min(100%, 8rem); border-radius: 10px; }
+    .mtg-grid.is-spot > .mtg-tile:not(.is-spot) .mtg-tile-id { font-size: 0.66rem; }
+    .mtg-grid.is-spot > .mtg-tile:not(.is-spot) .mtg-tile-foot { left: 0.3rem; right: 0.3rem; bottom: 0.25rem; }
     .mtg-av { width: 4.4rem; height: 4.4rem; font-size: 1.3rem; }
     .mtg-av-lg { width: 5.4rem; height: 5.4rem; font-size: 1.6rem; }
     .mtg-av-cam { width: 1.5rem; height: 1.5rem; font-size: 0.68rem; }

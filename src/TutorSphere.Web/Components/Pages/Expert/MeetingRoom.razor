@@ -220,14 +220,24 @@ else if (_detail is not null)
             </div>
         }
 
-        <div class="mtg-room-body">
+        @* Sur téléphone, le panneau latéral est replié par défaut (voir la feuille de style) :
+           ouvert, il ne laissait qu'une bande d'image. *@
+        <div class="mtg-room-body @(_sideOpen ? "is-side-open" : "")">
             <div class="mtg-stage">
                 <div class="mtg-notice"><i class="bi bi-info-circle"></i> @NoticeText</div>
-                <div class="mtg-grid @(_peers.Count == 0 ? "is-solo" : "")">
-                    <div class="mtg-tile is-main @(_mic ? "is-speaking" : "")">
+                @* Locuteur en grand, les autres en vignettes : à taille égale, sur un téléphone,
+                   trois tuiles se marchent dessus et plus personne n'est lisible. *@
+                <div class="mtg-grid @(_peers.Count == 0 ? "is-solo" : "is-spot")"
+                     style="--thumbs:@Math.Max(1, _peers.Count)">
+                    <div class="@TileCss(string.Empty, true)" @onclick="() => TogglePin(string.Empty)"
+                         title="@PinHint(string.Empty)">
                         @if (_mic)
                         {
                             <span class="mtg-tile-live"><i class="bi bi-volume-up-fill"></i></span>
+                        }
+                        @if (_pinned == string.Empty)
+                        {
+                            <span class="mtg-tile-pin"><i class="bi bi-pin-angle-fill"></i></span>
                         }
                         @* is-hidden au départ : le JS l'enlève dès qu'une piste vidéo est réellement publiée. *@
                         <video class="is-hidden" data-rtc-local @ref="_localVideo" autoplay playsinline muted></video>
@@ -245,7 +255,7 @@ else if (_detail is not null)
                             </span>
                             <span class="mtg-tile-mic @(_mic ? "is-on" : "")">
                                 <i class="bi @(_mic ? "bi-mic-fill" : "bi-mic-mute-fill")"></i>
-                                @(_mic ? "Micro activé" : "Micro désactivé")
+                                <span class="mtg-tile-mic-lb">@(_mic ? "Micro activé" : "Micro désactivé")</span>
                             </span>
                         </div>
                         <div class="mtg-menu-wrap mtg-tile-menu" @onclick:stopPropagation="true">
@@ -272,8 +282,13 @@ else if (_detail is not null)
                        sur la mauvaise tuile et le nouveau pair n'en reçoit aucun. *@
                     @foreach (var p in _peers)
                     {
-                        <div class="mtg-tile" @key="p.ConnectionId">
+                        <div class="@TileCss(p.ConnectionId, false)" @key="p.ConnectionId"
+                             @onclick="() => TogglePin(p.ConnectionId)" title="@PinHint(p.ConnectionId)">
                             <video class="is-hidden" data-rtc-peer="@p.ConnectionId" autoplay playsinline></video>
+                            @if (_pinned == p.ConnectionId)
+                            {
+                                <span class="mtg-tile-pin"><i class="bi bi-pin-angle-fill"></i></span>
+                            }
                             <span class="mtg-av" style="background:@AvatarBg(p.DisplayName)">
                                 @Initials(p.DisplayName)
                                 @if (!p.CamOn)
@@ -287,12 +302,14 @@ else if (_detail is not null)
                             }
                             <div class="mtg-tile-foot">
                                 <span class="mtg-tile-id">
-                                    @p.DisplayName <span class="mtg-dot">•</span> @RoleName(p.Role)
+                                    @p.DisplayName
+                                    <span class="mtg-dot">•</span>
+                                    <span class="mtg-tile-role">@RoleName(p.Role)</span>
                                     <span class="mtg-badge @RoleCls(p.Role)">@RoleLabel(p.Role)</span>
                                 </span>
                                 <span class="mtg-tile-mic @(p.MicOn ? "is-on" : "")">
                                     <i class="bi @(p.MicOn ? "bi-mic-fill" : "bi-mic-mute-fill")"></i>
-                                    @(p.MicOn ? "Micro activé" : "Micro désactivé")
+                                    <span class="mtg-tile-mic-lb">@(p.MicOn ? "Micro activé" : "Micro désactivé")</span>
                                 </span>
                             </div>
                             @if (_isOrganizer)
@@ -422,7 +439,7 @@ else if (_detail is not null)
                     </div>
                 </div>
             </div>
-            <aside class="mtg-side">
+            <aside class="mtg-side @(_sideOpen ? "is-open" : "")">
                 <div class="mtg-side-tabs">
                     <button type="button" class="@TabCls("chat")" @onclick='() => OpenTab("chat")'>
                         <i class="bi bi-chat-dots"></i><span>Discussion</span>
@@ -776,6 +793,8 @@ else if (_detail is not null)
     private string? _error;
     private string _selfName = "";
     private string _tab = "people";
+    /// <summary>Panneau latéral déplié. Sans effet sur grand écran, où il reste toujours visible.</summary>
+    private bool _sideOpen;
     private bool _mic = true, _cam, _hand, _recording, _waiting, _aiPrompt, _consentAsk, _allConsented, _isOrganizer;
     private bool _codeGate, _gateBusy;
     private bool _sharing, _blur, _invite, _copied, _waitBusy, _openingLink;
@@ -785,6 +804,10 @@ else if (_detail is not null)
     private bool _replaced;
     /// <summary>Micro sans réduction d'écho : le locuteur s'entendra revenir sans casque.</summary>
     private bool _echoRisk;
+    /// <summary>Dernier locuteur détecté par le niveau sonore. Chaîne vide : moi.</summary>
+    private string? _speaker;
+    /// <summary>Mise en avant choisie à la main : elle prime sur la détection.</summary>
+    private string? _pinned;
     /// <summary>Distingue le tableau blanc de l'écran, pour nommer le partage en cours.</summary>
     private bool _sharingBoard;
     private int _unread;
@@ -1038,6 +1061,8 @@ else if (_detail is not null)
                 foreach (var w in arrivals)
                     Toast($"{w.DisplayName} attend d’être admis");
                 _tab = "people";
+                // Panneau replié sur téléphone : quelqu'un attend, il faut le montrer.
+                _sideOpen = true;
             }
             StateHasChanged();
         });
@@ -1112,6 +1137,60 @@ else if (_detail is not null)
         _needRtcRemount = true;
         StateHasChanged();
     });
+
+    /// <summary>
+    /// Le niveau sonore a désigné un nouveau locuteur : sa tuile passe en grand, sauf si
+    /// quelqu'un a été épinglé à la main.
+    /// </summary>
+    [JSInvokable]
+    public Task OnRtcActiveSpeaker(string speakerId) => InvokeAsync(() =>
+    {
+        if (_speaker == speakerId) return;
+        _speaker = speakerId;
+        // La tuile mise en avant change de taille : les flux doivent être réaccrochés.
+        if (_pinned is null) _needRtcRemount = true;
+        StateHasChanged();
+    });
+
+    /// <summary>Tuile affichée en grand : épinglage manuel, sinon dernier locuteur.</summary>
+    private string SpotId
+    {
+        get
+        {
+            if (_pinned is not null && IsPresent(_pinned)) return _pinned;
+            if (_speaker is not null && IsPresent(_speaker)) return _speaker;
+            // Personne n'a encore parlé : un autre participant est plus utile à voir que soi.
+            return _peers.Count > 0 ? _peers[0].ConnectionId : string.Empty;
+        }
+    }
+
+    private bool IsPresent(string id) =>
+        id.Length == 0 || _peers.Any(p => p.ConnectionId == id);
+
+    private bool IsSpeaking(string id) =>
+        _speaker == id && (id.Length == 0 ? _mic : _peers.Any(p => p.ConnectionId == id && p.MicOn));
+
+    private string TileCss(string id, bool self)
+    {
+        var css = self ? "mtg-tile is-main" : "mtg-tile";
+        if (SpotId == id) css += " is-spot";
+        if (IsSpeaking(id)) css += " is-speaking";
+        if (_pinned == id) css += " is-pinned";
+        return css;
+    }
+
+    /// <summary>
+    /// Épingle ou libère une tuile. Utile quand on veut garder l'écran partagé ou le tableau
+    /// sous les yeux pendant que d'autres commentent.
+    /// </summary>
+    private void TogglePin(string id)
+    {
+        _pinned = _pinned == id ? null : id;
+        _needRtcRemount = true;
+    }
+
+    private string PinHint(string id) =>
+        _pinned == id ? "Ne plus garder au premier plan" : "Garder au premier plan";
 
     /// <summary>
     /// Relance la lecture des flux distants et retient le refus éventuel du navigateur : sans
@@ -1702,6 +1781,9 @@ else if (_detail is not null)
 
     private void OpenTab(string tab)
     {
+        // Toucher l'onglet déjà ouvert replie le panneau : sur téléphone, c'est le seul moyen de
+        // rendre toute la hauteur à l'image.
+        _sideOpen = !(_sideOpen && _tab == tab);
         _tab = tab;
         _menu = null;
         if (tab == "chat") _unread = 0;
