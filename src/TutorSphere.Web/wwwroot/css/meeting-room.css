@@ -1,7 +1,10 @@
 /* Salle de réunion TutorSphere */
 .mtg-shell {
+    /* dvh : sur mobile, 100vh ignore la barre d'adresse et rejetait la barre d'outils
+       sous le bord bas de la fenêtre. La règle vh reste pour les navigateurs anciens. */
     height: 100vh;
-    max-height: 100vh;
+    height: 100dvh;
+    max-height: 100dvh;
     overflow: hidden;
     background: #0a0f1d;
     color: #e2e8f0;
@@ -9,7 +12,7 @@
 }
 
 /* ---------- Écrans d'accès (code, salle d'attente, erreur) ---------- */
-.mtg-wait { position: relative; min-height: 100vh; display: grid; place-content: center; text-align: center; gap: 0.75rem; padding: 2rem; }
+.mtg-wait { position: relative; min-height: 100dvh; display: grid; place-content: center; text-align: center; gap: 0.75rem; padding: 2rem; }
 .mtg-gate { justify-items: center; }
 .mtg-back {
     position: absolute;
@@ -578,8 +581,47 @@
     .mtg-dock-lb { display: none; }
 }
 @media (max-width: 900px) {
-    .mtg-room-body { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) minmax(0, 44vh); }
+    .mtg-room-body { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) minmax(0, 44dvh); }
     .mtg-grid { grid-template-columns: minmax(0, 1fr); }
     .mtg-grid .mtg-tile.is-main { grid-row: auto; }
     .mtg-top-meeting, .mtg-timer { display: none; }
+    /* Le panneau passe sous la scène : la bordure doit suivre. */
+    .mtg-side { border-left: 0; border-top: 1px solid #18213a; }
+}
+
+/* ---------- Téléphone ----------
+   Une seule rangée de commandes ne tient pas dans 360 px : sans repli, « Quitter » sortait de
+   l'écran et le participant ne pouvait plus raccrocher. Les tuiles perdent aussi leur hauteur
+   minimale de bureau, qui poussait la barre d'outils sous le bord bas de la fenêtre. */
+@media (max-width: 640px) {
+    .mtg-top { flex-wrap: wrap; gap: 0.5rem 0.6rem; padding: 0.45rem 0.6rem; }
+    .mtg-top-right { flex-wrap: wrap; justify-content: flex-end; row-gap: 0.35rem; }
+    .mtg-net { display: none; }
+
+    .mtg-stage { padding: 0.6rem 0.6rem 0.5rem; gap: 0.5rem; }
+    .mtg-notice { font-size: 0.7rem; padding: 0.3rem 0.7rem; }
+    .mtg-grid { gap: 0.5rem; }
+    .mtg-tile { min-height: 5.5rem; border-radius: 12px; }
+    .mtg-av { width: 4.4rem; height: 4.4rem; font-size: 1.3rem; }
+    .mtg-av-lg { width: 5.4rem; height: 5.4rem; font-size: 1.6rem; }
+    .mtg-av-cam { width: 1.5rem; height: 1.5rem; font-size: 0.68rem; }
+    .mtg-av-lg .mtg-av-cam { width: 1.7rem; height: 1.7rem; font-size: 0.72rem; }
+    .mtg-cc { bottom: 1rem; font-size: 0.74rem; max-width: 92%; }
+
+    .mtg-dockwrap { width: 100%; }
+    .mtg-react { max-width: 100%; flex-wrap: wrap; justify-content: center; }
+    .mtg-dock {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        max-width: 100%;
+        gap: 0.3rem 0.15rem;
+        padding: 0.45rem 0.5rem;
+        border-radius: 14px;
+    }
+    .mtg-dock-btn { min-width: 2.5rem; padding: 0.1rem 0.15rem; }
+    .mtg-dock-ic { width: 2.2rem; height: 2.2rem; font-size: 0.95rem; }
+    .mtg-dock-chev { width: 1rem; }
+    .mtg-dock-end { margin-left: 0; }
+    .mtg-leave { padding: 0.5rem 0.85rem; font-size: 0.78rem; }
 }

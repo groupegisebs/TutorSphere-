@@ -13,6 +13,8 @@ window.classroomRtc = (function () {
         { urls: "stun:stun1.l.google.com:19302" }
     ];
     var remountTimer = null;
+    var remountPending = {};
+    var remountEveryone = false;
 
     function getPublishStream() {
         if (window.classroomMedia && typeof classroomMedia.getPublishStream === "function")
@@ -26,15 +28,24 @@ window.classroomRtc = (function () {
         return selfId < remoteId;
     }
 
+    /**
+     * Réaccroche les flux distants à leurs balises vidéo, au plus une fois toutes les 80 ms.
+     * Les identifiants s'accumulent dans une file : avec un minuteur unique remis à zéro à chaque
+     * appel, deux pairs arrivant dans la même fenêtre de 80 ms se remplaçaient et un seul flux
+     * était accroché — les autres tuiles restaient sur l'avatar, sans image ni son.
+     */
     function scheduleRemount(remoteId) {
-        if (remountTimer) clearTimeout(remountTimer);
+        if (remoteId) remountPending[remoteId] = true;
+        else remountEveryone = true;
+        if (remountTimer) return;
         remountTimer = setTimeout(function () {
-            if (remoteId)
-                attachToDom(remoteId, remoteStreams[remoteId]);
-            else
-                Object.keys(remoteStreams).forEach(function (id) {
-                    attachToDom(id, remoteStreams[id]);
-                });
+            remountTimer = null;
+            var ids = remountEveryone ? Object.keys(remoteStreams) : Object.keys(remountPending);
+            remountPending = {};
+            remountEveryone = false;
+            ids.forEach(function (id) {
+                attachToDom(id, remoteStreams[id]);
+            });
             remountMainIfFocused();
             syncLocalMirrors();
             syncPlaybackRouting();
@@ -204,6 +215,8 @@ window.classroomRtc = (function () {
             };
             ev.track.onmute = function () {
                 notifyRemoteMedia(remoteId, stream);
+                // L'image s'est arrêtée : repasser à l'avatar plutôt que de figer la dernière trame.
+                scheduleRemount(remoteId);
             };
         };
 
@@ -338,8 +351,11 @@ window.classroomRtc = (function () {
             scheduleRemount(remoteId);
             return;
         }
+        // muted vaut vrai tant qu'aucune donnée n'arrive : un pair sans caméra publie malgré tout
+        // un émetteur vidéo vide, et la tuile affichait alors un rectangle noir à la place de son
+        // avatar. Les transitions (replaceTrack, ICE) sont rattrapées par onunmute / onmute.
         var liveVideo = stream.getVideoTracks().some(function (t) {
-            return t.readyState === "live" && t.enabled;
+            return t.readyState === "live" && t.enabled && !t.muted;
         });
         nodes.forEach(function (el) {
             if (el.srcObject !== stream)
@@ -638,8 +654,9 @@ window.classroomRtc = (function () {
         setRemoteMediaVisible: function (remoteId, camOn) {
             if (!remoteId) return;
             var stream = remoteStreams[remoteId];
+            // Même exigence que attachToDom : un émetteur vidéo vide ne doit pas noircir la tuile.
             var hasLiveVideo = !!(stream && stream.getVideoTracks().some(function (t) {
-                return t.readyState !== "ended";
+                return t.readyState !== "ended" && !t.muted;
             }));
 
             document.querySelectorAll('video[data-rtc-peer="' + remoteId + '"]').forEach(function (el) {

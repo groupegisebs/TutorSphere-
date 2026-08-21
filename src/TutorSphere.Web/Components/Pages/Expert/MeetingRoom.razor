@@ -156,6 +156,16 @@ else if (_detail is not null)
                 <button type="button" @onclick="() => _mediaError = null">×</button>
             </div>
         }
+        @* Sans geste de l'utilisateur, le navigateur coupe le son des participants sans rien dire :
+           l'impression est celle d'une salle muette. Le bouton fournit ce geste. *@
+        @if (_audioBlocked)
+        {
+            <div class="mtg-media-warn">
+                <i class="bi bi-volume-mute"></i> Le navigateur bloque le son des participants.
+                <button type="button" class="mtg-media-retry" @onclick="EnableAudioAsync">Activer le son</button>
+                <button type="button" @onclick="() => _audioBlocked = false">×</button>
+            </div>
+        }
 
         <div class="mtg-room-body">
             <div class="mtg-stage">
@@ -197,9 +207,12 @@ else if (_detail is not null)
                             }
                         </div>
                     </div>
+                    @* @key indispensable : sans lui, Blazor réutilise la balise vidéo d'un pair pour
+                       un autre en changeant simplement data-rtc-peer. Le flux déjà accroché reste
+                       sur la mauvaise tuile et le nouveau pair n'en reçoit aucun. *@
                     @foreach (var p in _peers)
                     {
-                        <div class="mtg-tile">
+                        <div class="mtg-tile" @key="p.ConnectionId">
                             <video class="is-hidden" data-rtc-peer="@p.ConnectionId" autoplay playsinline></video>
                             <span class="mtg-av" style="background:@AvatarBg(p.DisplayName)">
                                 @Initials(p.DisplayName)
@@ -672,6 +685,10 @@ else if (_detail is not null)
     private ElementReference _localVideo;
     private string? _mediaError;
     private bool _mediaStarted, _inRoom, _scriptsReady;
+    /// <summary>Un rendu a touché les tuiles : les flux distants doivent être réaccrochés.</summary>
+    private bool _needRtcRemount;
+    /// <summary>Le navigateur refuse de jouer le son des participants faute de geste utilisateur.</summary>
+    private bool _audioBlocked;
     private int _cameraCount;
     private int _elapsed;
     private System.Timers.Timer? _timer;
@@ -856,15 +873,16 @@ else if (_detail is not null)
 
     private void BindRt()
     {
-        Rt.PeerListReceived += (id, list) => _ = InvokeAsync(() => { ReplacePeers(list); ConnectAll(); });
-        Rt.PeerJoined += (id, p) => _ = InvokeAsync(() => { Upsert(p); ConnectOne(p); StateHasChanged(); });
-        Rt.PeerLeft += (id, cid) => _ = InvokeAsync(() => { _peers.RemoveAll(x => x.ConnectionId == cid); JS.InvokeVoidAsync("classroomRtc.closePeer", cid); StateHasChanged(); });
+        Rt.PeerListReceived += (id, list) => _ = InvokeAsync(() => { ReplacePeers(list); ConnectAll(); _needRtcRemount = true; });
+        Rt.PeerJoined += (id, p) => _ = InvokeAsync(() => { Upsert(p); ConnectOne(p); _needRtcRemount = true; StateHasChanged(); });
+        Rt.PeerLeft += (id, cid) => _ = InvokeAsync(() => { _peers.RemoveAll(x => x.ConnectionId == cid); JS.InvokeVoidAsync("classroomRtc.closePeer", cid); _needRtcRemount = true; StateHasChanged(); });
         Rt.PeerMediaStateChanged += (id, cid, mic, cam) => _ = InvokeAsync(async () =>
         {
             var i = _peers.FindIndex(x => x.ConnectionId == cid);
             if (i >= 0) _peers[i] = _peers[i] with { MicOn = mic, CamOn = cam };
             try { await JS.InvokeVoidAsync("classroomRtc.setRemoteMediaVisible", cid, cam); } catch { }
             if (cam) { try { await JS.InvokeVoidAsync("classroomRtc.probeRemoteMedia", cid); } catch { } }
+            _needRtcRemount = true;
             StateHasChanged();
         });
         Rt.RtcSignalReceived += (id, from, type, payload) => _ = JS.InvokeVoidAsync("classroomRtc.handleSignal", from, type, payload);
@@ -894,7 +912,16 @@ else if (_detail is not null)
         Rt.Denied += _id => { _ = InvokeAsync(() => Nav.NavigateTo("/expert/meetings")); };
         Rt.Kicked += _id => { _ = InvokeAsync(() => Nav.NavigateTo("/expert/meetings")); };
         Rt.Caption += (id, name, text) => _ = InvokeAsync(() => { _caption = $"{name} : {text}"; StateHasChanged(); });
-        Rt.ForceMute += _id => { _ = InvokeAsync(async () => { _mic = false; try { await JS.InvokeVoidAsync("classroomMedia.setAudioEnabled", false); } catch { } }); };
+        // Micro coupé par l'organisateur : sans réémission de l'état, sa liste continuait
+        // d'afficher « micro activé » pour quelqu'un qui ne pouvait plus se faire entendre.
+        Rt.ForceMute += _id => _ = InvokeAsync(async () =>
+        {
+            _mic = false;
+            try { await JS.InvokeVoidAsync("classroomMedia.setAudioEnabled", false); } catch { }
+            await Rt.BroadcastMediaAsync(Id, _mic, _cam);
+            Toast("Votre micro a été coupé par l’organisateur");
+            StateHasChanged();
+        });
         Rt.AiEnabled += _id => { _ = InvokeAsync(() => { if (_detail is not null) _detail = _detail with { AiActivatedByOrganizer = true }; _consentAsk = !_isOrganizer; StateHasChanged(); }); };
         Rt.MeetingEnded += _id => { _ = InvokeAsync(() => Nav.NavigateTo($"/expert/meetings/{Id}/minutes")); };
         Rt.RecordingState += (id, on) => _ = InvokeAsync(() => { _recording = on; StateHasChanged(); });
@@ -906,8 +933,60 @@ else if (_detail is not null)
     }
 
     [JSInvokable] public Task OnRtcOutgoingSignal(string target, string type, string payload) => Rt.SendRtcAsync(Id, target, type, payload);
-    [JSInvokable] public Task OnRtcRemoteMedia(string remoteId, bool hasVideo, bool hasAudio) => Task.CompletedTask;
-    [JSInvokable] public Task OnRtcConnectionState(string remoteId, string state) => Task.CompletedTask;
+
+    /// <summary>
+    /// Un flux distant vient d'arriver ou de changer. On raccroche le flux à la tuile et on
+    /// débloque la lecture ; les voyants micro et caméra, eux, restent ceux annoncés par le pair :
+    /// une piste reçue existe même quand elle ne transporte rien (émetteur sans caméra).
+    /// </summary>
+    [JSInvokable]
+    public Task OnRtcRemoteMedia(string remoteId, bool hasVideo, bool hasAudio) => InvokeAsync(async () =>
+    {
+        var peer = _peers.FirstOrDefault(x => x.ConnectionId == remoteId);
+        if (peer is null) return;
+        try { await JS.InvokeVoidAsync("classroomRtc.setRemoteMediaVisible", remoteId, peer.CamOn && hasVideo); } catch { }
+        await UnlockAudioAsync();
+        _needRtcRemount = true;
+        StateHasChanged();
+    });
+
+    /// <summary>
+    /// Relance la lecture des flux distants et retient le refus éventuel du navigateur : sans
+    /// geste de l'utilisateur, la politique de lecture automatique coupe le son des participants
+    /// sans rien afficher. On le dit alors, avec un bouton pour l'autoriser.
+    /// </summary>
+    private async Task UnlockAudioAsync()
+    {
+        try
+        {
+            var r = await JS.InvokeAsync<UnlockAudioResult>("classroomRtc.unlockAudio");
+            _audioBlocked = r?.Blocked == true;
+        }
+        catch { }
+    }
+
+    private async Task EnableAudioAsync()
+    {
+        await UnlockAudioAsync();
+        if (_audioBlocked)
+            Toast("Le navigateur bloque encore le son : vérifiez l’autorisation du site");
+    }
+
+    /// <summary>Retour de classroomRtc.unlockAudio.</summary>
+    public sealed class UnlockAudioResult
+    {
+        public bool Ok { get; set; }
+        public bool Blocked { get; set; }
+    }
+
+    /// <summary>Lien rétabli après une coupure : les flux doivent être réaccrochés aux tuiles.</summary>
+    [JSInvokable]
+    public Task OnRtcConnectionState(string remoteId, string state) => InvokeAsync(() =>
+    {
+        if (state is "connected")
+            _needRtcRemount = true;
+        StateHasChanged();
+    });
 
     [JSInvokable]
     public async Task OnScreenShareEnded(string kind)
@@ -945,11 +1024,22 @@ else if (_detail is not null)
         try { await JS.InvokeVoidAsync("classroomMedia.setVideoEnabled", _cam); } catch { }
         await RefreshTracksAsync();
         await Rt.BroadcastMediaAsync(Id, _mic, _cam);
+        _needRtcRemount = true;
         StateHasChanged();
     });
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        // Après tout rendu qui a touché les tuiles : réaccrocher les flux distants aux balises
+        // vidéo et débloquer la lecture. Sans cela, un pair arrivé pendant le rendu n'a ni image
+        // ni son, et la politique de lecture automatique du navigateur garde l'audio muet.
+        if (_needRtcRemount)
+        {
+            _needRtcRemount = false;
+            try { await JS.InvokeVoidAsync("classroomRtc.remountAll"); } catch { }
+            await UnlockAudioAsync();
+        }
+
         // La salle n'est rendue qu'après le code d'accès et la salle d'attente :
         // c'est seulement là que la balise vidéo locale existe pour recevoir le flux.
         if (!_inRoom || _mediaStarted || _waiting || _detail is null || _codeGate)
@@ -985,10 +1075,11 @@ else if (_detail is not null)
             }
             await RefreshTracksAsync();
             await Rt.BroadcastMediaAsync(Id, _mic, _cam);
-            try { await JS.InvokeVoidAsync("classroomRtc.unlockAudio"); } catch { }
+            await UnlockAudioAsync();
             await LoadDeviceLabelsAsync();
             // Une négociation en cours au moment du getUserMedia ignore la republication : on repasse.
             _ = RepublishSoonAsync();
+            _needRtcRemount = true;
             await InvokeAsync(StateHasChanged);
         }
         catch (JSException ex)
@@ -1069,12 +1160,26 @@ else if (_detail is not null)
                     return;
                 }
             }
+            // setAudioEnabled répond faux quand il n'y a aucun flux (média en pause, piste
+            // libérée) : afficher « micro activé » dans ce cas laissait parler dans le vide.
+            var live = false;
+            try { live = await JS.InvokeAsync<bool>("classroomMedia.setAudioEnabled", true); } catch { }
+            if (!live)
+            {
+                var again = await InvokeMediaAsync("classroomMedia.enableMicrophone");
+                if (again is null || !again.Ok || !again.Audio)
+                {
+                    _mic = false;
+                    _mediaError = again?.Error ?? "Micro indisponible : vérifiez l'autorisation du navigateur.";
+                    await Rt.BroadcastMediaAsync(Id, _mic, _cam);
+                    return;
+                }
+            }
             _mic = true;
-            try { await JS.InvokeVoidAsync("classroomMedia.setAudioEnabled", true); } catch { }
             _mediaError = null;
             await RefreshTracksAsync();
             await Rt.BroadcastMediaAsync(Id, _mic, _cam);
-            try { await JS.InvokeVoidAsync("classroomRtc.unlockAudio"); } catch { }
+            await UnlockAudioAsync();
             return;
         }
 
