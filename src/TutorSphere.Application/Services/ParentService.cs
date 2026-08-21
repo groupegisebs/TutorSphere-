@@ -1551,6 +1551,17 @@ public class ParentService : IParentService
             .OrderByDescending(p => p.CreatedAt)
             .ToList();
 
+        // Tentatives abandonnées : seule la dernière de chaque abonnement reste à l'historique,
+        // sinon le parent voit la même somme réclamée plusieurs fois.
+        var supersededPending = payments
+            .Where(p => p.Status == PaymentStatus.Pending)
+            .GroupBy(p => p.SubscriptionId!.Value)
+            .SelectMany(g => g.OrderByDescending(p => p.CreatedAt).Skip(1))
+            .Select(p => p.Id)
+            .ToHashSet();
+        if (supersededPending.Count > 0)
+            payments = payments.Where(p => !supersededPending.Contains(p.Id)).ToList();
+
         var subs = _db.StudentSubscriptionsForAnyTenant
             .Where(s => subscriptionIds.Contains(s.Id))
             .ToDictionary(s => s.Id);
@@ -1607,6 +1618,17 @@ public class ParentService : IParentService
                 blockedReason);
         }).ToList();
     }
+
+    /// <summary>
+    /// Une ligne en attente naît à chaque ouverture de la page de règlement : trois tentatives
+    /// abandonnées pour un même abonnement affichaient trois fois la somme due, et le parent
+    /// pouvait croire devoir payer trois forfaits. Seule la dernière tentative compte.
+    /// </summary>
+    private static List<Payment> LatestPendingPerSubscription(IEnumerable<Payment> pending) =>
+        pending
+            .GroupBy(p => p.SubscriptionId!.Value)
+            .Select(g => g.OrderByDescending(p => p.CreatedAt).First())
+            .ToList();
 
     /// <summary>
     /// Rejoue la règle de paiement du forfait pour savoir si le bouton doit être proposé. On
@@ -2039,12 +2061,12 @@ public class ParentService : IParentService
         if (subscriptionIds.Count == 0)
             return (0, []);
 
-        var pending = _db.PaymentsForAnyTenant
-            .Where(p => p.SubscriptionId.HasValue
-                        && subscriptionIds.Contains(p.SubscriptionId.Value)
-                        && p.Status == PaymentStatus.Pending)
-            .Select(p => new { p.Amount, p.Currency })
-            .ToList();
+        var pending = LatestPendingPerSubscription(
+            _db.PaymentsForAnyTenant
+                .Where(p => p.SubscriptionId.HasValue
+                            && subscriptionIds.Contains(p.SubscriptionId.Value)
+                            && p.Status == PaymentStatus.Pending)
+                .ToList());
 
         if (pending.Count == 0)
             return (0, []);
