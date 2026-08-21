@@ -299,14 +299,12 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             e.HasIndex(g => g.CountryCode);
             e.HasIndex(g => g.ActiveManagerMandateId);
             e.HasIndex(g => g.GroupManagerMembershipId);
-            // Unicité : un international actif, un national actif par pays.
-            // Les groupes inactifs (brouillon, suspendu, archivé) ne bloquent plus le créneau.
-            e.HasIndex(g => g.CountryCode)
+            // Le pays n'est plus exclusif : plusieurs groupes actifs peuvent le partager, et un
+            // groupe peut n'en déclarer aucun. Seul le rôle de groupe examinateur par défaut
+            // reste unique, sinon une candidature spontanée aurait deux destinataires.
+            e.HasIndex(g => g.IsDefaultReviewGroup)
                 .IsUnique()
-                .HasFilter("\"IsInternational\" = FALSE AND \"CountryCode\" IS NOT NULL AND \"IsActive\" = TRUE");
-            e.HasIndex(g => g.IsInternational)
-                .IsUnique()
-                .HasFilter("\"IsInternational\" = TRUE AND \"IsActive\" = TRUE");
+                .HasFilter("\"IsDefaultReviewGroup\" = TRUE AND \"IsActive\" = TRUE");
         });
 
         builder.Entity<ExpertGroupMember>(e =>

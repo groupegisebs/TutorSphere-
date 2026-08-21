@@ -40,9 +40,13 @@ public interface IExpertGroupService
     Task RemoveMemberAsync(Guid groupId, string userId, CancellationToken ct = default);
 
     /// <summary>
-    /// Groupe chargé de revoir un enseignant : groupe du pays s'il existe, sinon le groupe international.
+    /// Groupe chargé de revoir un enseignant : le groupe qui revendique seul ce pays, sinon le
+    /// groupe examinateur par défaut désigné par l'administrateur plateforme.
     /// </summary>
     ExpertGroup? ResolveReviewerGroup(string? teacherCountryCode);
+
+    /// <summary>Désigne (ou libère) le groupe qui reçoit les candidatures spontanées.</summary>
+    Task<ExpertGroupDto> SetDefaultReviewGroupAsync(Guid id, bool isDefault, CancellationToken ct = default);
 }
 
 public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
@@ -55,11 +59,7 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
             .ThenBy(g => g.Name)
             .ToList();
 
-        var memberCounts = db.ExpertGroupMembers
-            .Where(m => m.Status != ExpertMembershipStatus.Removed)
-            .GroupBy(m => m.ExpertGroupId)
-            .Select(g => new { g.Key, Count = g.Count() })
-            .ToDictionary(x => x.Key, x => x.Count);
+        var counts = CountsForAll();
 
         var mandates = db.ExpertGroupManagerMandates
             .Where(m => m.Status == ExpertGroupManagerMandateStatus.Active)
@@ -73,7 +73,7 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
             .Select(g =>
             {
                 mandates.TryGetValue(g.Id, out var mandate);
-                return Map(g, memberCounts.GetValueOrDefault(g.Id), mandate, CanHardDelete(g.Id));
+                return Map(g, counts.GetValueOrDefault(g.Id, GroupCounts.Empty), mandate, CanHardDelete(g.Id));
             })
             .ToList();
         return Task.FromResult(result);
@@ -83,10 +83,9 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
     {
         var g = db.ExpertGroups.FirstOrDefault(x => x.Id == id);
         if (g is null) return Task.FromResult<ExpertGroupDto?>(null);
-        var count = db.ExpertGroupMembers.Count(m => m.ExpertGroupId == id && m.Status != ExpertMembershipStatus.Removed);
         var mandate = db.ExpertGroupManagerMandates.FirstOrDefault(m =>
             m.ExpertGroupId == id && m.Status == ExpertGroupManagerMandateStatus.Active);
-        return Task.FromResult<ExpertGroupDto?>(Map(g, count, mandate, CanHardDelete(id)));
+        return Task.FromResult<ExpertGroupDto?>(Map(g, CountsFor(id), mandate, CanHardDelete(id)));
     }
 
     public async Task<ExpertGroupDto> CreateAsync(CreateExpertGroupRequest request, CancellationToken ct = default)
@@ -95,22 +94,10 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
         if (string.IsNullOrWhiteSpace(name))
             throw new InvalidOperationException("Le nom du groupe est requis.");
 
+        // Le pays n'ouvre plus aucun droit exclusif : il reste une indication de rattachement,
+        // facultative, y compris pour un groupe qui ne se déclare pas international.
         var isInternational = request.IsInternational;
         var country = NormalizeCountry(request.CountryCode);
-
-        if (isInternational)
-        {
-            if (InternationalSlotTaken())
-                throw new InvalidOperationException("Un groupe international actif existe déjà.");
-            country = null;
-        }
-        else
-        {
-            if (string.IsNullOrWhiteSpace(country))
-                throw new InvalidOperationException("Le code pays est requis pour un groupe national.");
-            if (NationalSlotTaken(country))
-                throw new InvalidOperationException($"Un groupe national actif existe déjà pour le pays {country}.");
-        }
 
         var hasManagerHint = !string.IsNullOrWhiteSpace(request.ManagerUserId)
                              || !string.IsNullOrWhiteSpace(request.ManagerEmail);
@@ -132,7 +119,7 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
         };
         db.Add(entity);
         await db.SaveChangesAsync(ct);
-        return Map(entity, 0, null, true);
+        return Map(entity, GroupCounts.Empty, null, true);
     }
 
     public async Task<ExpertGroupDto> UpdateAsync(Guid id, UpdateExpertGroupRequest request, CancellationToken ct = default)
@@ -178,18 +165,14 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
         var wasActive = entity.IsActive;
         entity.IsActive = request.IsActive;
 
-        // Country can change for national groups only (international stays without country).
-        if (!entity.IsInternational && request.CountryCode is not null)
-        {
-            var country = NormalizeCountry(request.CountryCode);
-            if (country is null)
-                throw new InvalidOperationException("Le code pays est requis pour un groupe national.");
-            entity.CountryCode = country;
-        }
+        // Pays librement modifiable, et effaçable : "" retire le rattachement, null n'y touche pas.
+        if (request.CountryCode is not null)
+            entity.CountryCode = NormalizeCountry(request.CountryCode);
+        if (request.IsInternational is bool scope)
+            entity.IsInternational = scope;
 
         if (request.IsActive)
         {
-            EnsureActiveTerritoryAvailable(entity, id);
             entity.LifecycleStatus = ExpertGroupLifecycleStatus.Active;
         }
         else if (wasActive || entity.LifecycleStatus == ExpertGroupLifecycleStatus.Active)
@@ -198,13 +181,15 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
             entity.LifecycleStatus = ExpertGroupLifecycleStatus.Suspended;
             EndActiveMandateForGroup(entity, "Groupe désactivé (soft)");
             activeMandate = null;
+            // Un groupe hors service ne peut plus recevoir les candidatures spontanées, et
+            // conserver le rôle ferait échouer la réactivation si un autre l'a repris entre-temps.
+            entity.IsDefaultReviewGroup = false;
         }
 
         entity.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
 
-        var count = db.ExpertGroupMembers.Count(m => m.ExpertGroupId == id && m.Status != ExpertMembershipStatus.Removed);
-        return Map(entity, count, activeMandate, CanHardDelete(id));
+        return Map(entity, CountsFor(id), activeMandate, CanHardDelete(id));
     }
 
     public async Task<ExpertGroupDto> SetLogoUrlAsync(Guid id, string? logoUrl, CancellationToken ct = default)
@@ -245,10 +230,9 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
 
     private ExpertGroupDto MapCurrent(ExpertGroup entity)
     {
-        var count = db.ExpertGroupMembers.Count(m => m.ExpertGroupId == entity.Id && m.Status != ExpertMembershipStatus.Removed);
         var mandate = db.ExpertGroupManagerMandates.FirstOrDefault(m =>
             m.ExpertGroupId == entity.Id && m.Status == ExpertGroupManagerMandateStatus.Active);
-        return Map(entity, count, mandate, CanHardDelete(entity.Id));
+        return Map(entity, CountsFor(entity.Id), mandate, CanHardDelete(entity.Id));
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
@@ -395,6 +379,7 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
 
         entity.LifecycleStatus = ExpertGroupLifecycleStatus.Archived;
         entity.IsActive = false;
+        entity.IsDefaultReviewGroup = false;
         entity.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
     }
@@ -542,13 +527,57 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
         var country = NormalizeCountry(teacherCountryCode);
         if (!string.IsNullOrWhiteSpace(country))
         {
-            var national = db.ExpertGroups.FirstOrDefault(g =>
-                g.IsActive && !g.IsInternational && g.CountryCode == country);
-            if (national is not null)
-                return national;
+            // Le pays n'étant plus exclusif, plusieurs groupes peuvent le revendiquer. Un seul
+            // prétendant tranche la question ; au-delà, le pays ne désigne plus personne et la
+            // candidature revient au groupe par défaut, sinon elle serait attribuée au hasard.
+            var claimants = db.ExpertGroups
+                .Where(g => g.IsActive && g.CountryCode == country)
+                .Take(2)
+                .ToList();
+            if (claimants.Count == 1)
+                return claimants[0];
         }
 
-        return db.ExpertGroups.FirstOrDefault(g => g.IsActive && g.IsInternational);
+        return DefaultReviewGroup();
+    }
+
+    /// <summary>
+    /// Destinataire des candidatures qu'aucun pays ne rattache. Le repli sur un groupe unique
+    /// évite qu'une plateforme à un seul groupe reste bloquée faute de désignation explicite.
+    /// </summary>
+    private ExpertGroup? DefaultReviewGroup()
+    {
+        var designated = db.ExpertGroups.FirstOrDefault(g => g.IsActive && g.IsDefaultReviewGroup);
+        if (designated is not null)
+            return designated;
+
+        var actives = db.ExpertGroups.Where(g => g.IsActive).Take(2).ToList();
+        return actives.Count == 1 ? actives[0] : null;
+    }
+
+    public async Task<ExpertGroupDto> SetDefaultReviewGroupAsync(Guid id, bool isDefault, CancellationToken ct = default)
+    {
+        var entity = db.ExpertGroups.FirstOrDefault(g => g.Id == id)
+            ?? throw new InvalidOperationException("Groupe d'experts introuvable.");
+
+        if (isDefault && !entity.IsActive)
+            throw new InvalidOperationException(
+                "Seul un groupe actif peut recevoir les candidatures spontanées.");
+
+        if (isDefault)
+        {
+            // Le rôle est exclusif : la désignation retire la précédente plutôt que d'échouer.
+            foreach (var other in db.ExpertGroups.Where(g => g.IsDefaultReviewGroup && g.Id != id).ToList())
+            {
+                other.IsDefaultReviewGroup = false;
+                other.UpdatedAt = DateTime.UtcNow;
+            }
+        }
+
+        entity.IsDefaultReviewGroup = isDefault;
+        entity.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
+        return MapCurrent(entity);
     }
 
     private bool CanHardDelete(Guid id)
@@ -580,13 +609,88 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
         return true;
     }
 
+    /// <summary>
+    /// Effectifs d'un groupe. Un seul nombre ne disait rien de juste : le Responsable seul
+    /// affichait « 1 » alors que le groupe pouvait avoir des invitations en cours de vote et des
+    /// dizaines d'enseignants approuvés. Chaque population est donc comptée à part.
+    /// </summary>
+    private sealed record GroupCounts(
+        int Members,
+        int ActiveExperts,
+        int SuspendedExperts,
+        int PendingInvites,
+        int ApprovedTeachers)
+    {
+        public static readonly GroupCounts Empty = new(0, 0, 0, 0, 0);
+    }
+
+    /// <summary>Statuts d'invitation encore susceptibles d'aboutir à une adhésion.</summary>
+    private static readonly ExpertMembershipInviteStatus[] OpenInviteStatuses =
+    [
+        ExpertMembershipInviteStatus.Sent,
+        ExpertMembershipInviteStatus.AcceptedByCandidate,
+        ExpertMembershipInviteStatus.PendingMemberApproval,
+        ExpertMembershipInviteStatus.AwaitingAdminValidation
+    ];
+
+    private Dictionary<Guid, GroupCounts> CountsForAll()
+    {
+        var now = DateTime.UtcNow;
+
+        var members = db.ExpertGroupMembers
+            .Where(m => m.Status != ExpertMembershipStatus.Removed)
+            .Select(m => new { m.ExpertGroupId, m.Status })
+            .ToList()
+            .GroupBy(m => m.ExpertGroupId)
+            .ToDictionary(
+                g => g.Key,
+                g => (
+                    Total: g.Count(),
+                    Active: g.Count(m => m.Status == ExpertMembershipStatus.Active),
+                    Suspended: g.Count(m => m.Status == ExpertMembershipStatus.Suspended)));
+
+        var invites = db.ExpertMembershipInvites
+            .Where(i => OpenInviteStatuses.Contains(i.Status) && i.InviteExpiresAtUtc > now)
+            .GroupBy(i => i.ExpertGroupId)
+            .Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionary(x => x.Key, x => x.Count);
+
+        var teachers = db.Tenants
+            .Where(t => t.ApprovedByExpertGroupId != null
+                        && t.ExpertApprovalStatus == ExpertApprovalStatus.Approved)
+            .GroupBy(t => t.ApprovedByExpertGroupId!.Value)
+            .Select(g => new { g.Key, Count = g.Count() })
+            .ToDictionary(x => x.Key, x => x.Count);
+
+        var ids = members.Keys
+            .Concat(invites.Keys)
+            .Concat(teachers.Keys)
+            .Distinct();
+
+        return ids.ToDictionary(
+            id => id,
+            id =>
+            {
+                members.TryGetValue(id, out var m);
+                return new GroupCounts(
+                    m.Total,
+                    m.Active,
+                    m.Suspended,
+                    invites.GetValueOrDefault(id),
+                    teachers.GetValueOrDefault(id));
+            });
+    }
+
+    private GroupCounts CountsFor(Guid groupId) =>
+        CountsForAll().GetValueOrDefault(groupId, GroupCounts.Empty);
+
     private static ExpertGroupDto Map(
         ExpertGroup g,
-        int memberCount,
+        GroupCounts counts,
         ExpertGroupManagerMandate? mandate,
         bool canHardDelete) =>
         new(g.Id, g.Name, g.LogoUrl, g.ContactName, g.ContactEmail, g.ContactPhone,
-            g.CountryCode, g.IsInternational, g.IsActive, memberCount, g.CreatedAt,
+            g.CountryCode, g.IsInternational, g.IsActive, counts.Members, g.CreatedAt,
             g.Description, g.LifecycleStatus,
             ActiveManagerMandateId: mandate?.Id ?? g.ActiveManagerMandateId,
             ManagerPhone: mandate?.Phone ?? g.ContactPhone,
@@ -596,36 +700,12 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
             BannerUrl: g.BannerUrl,
             PrimaryColor: g.PrimaryColor,
             SecondaryColor: g.SecondaryColor,
-            CanHardDelete: canHardDelete);
-
-    private bool NationalSlotTaken(string country, Guid? exceptId = null) =>
-        db.ExpertGroups.Any(g =>
-            g.IsActive
-            && !g.IsInternational
-            && g.CountryCode == country
-            && (exceptId == null || g.Id != exceptId));
-
-    private bool InternationalSlotTaken(Guid? exceptId = null) =>
-        db.ExpertGroups.Any(g =>
-            g.IsActive
-            && g.IsInternational
-            && (exceptId == null || g.Id != exceptId));
-
-    private void EnsureActiveTerritoryAvailable(ExpertGroup entity, Guid exceptId)
-    {
-        if (entity.IsInternational)
-        {
-            if (InternationalSlotTaken(exceptId))
-                throw new InvalidOperationException("Un groupe international actif existe déjà.");
-            return;
-        }
-
-        var country = entity.CountryCode;
-        if (string.IsNullOrWhiteSpace(country))
-            throw new InvalidOperationException("Le code pays est requis pour un groupe national.");
-        if (NationalSlotTaken(country, exceptId))
-            throw new InvalidOperationException($"Un groupe national actif existe déjà pour le pays {country}.");
-    }
+            CanHardDelete: canHardDelete,
+            ActiveExpertCount: counts.ActiveExperts,
+            SuspendedExpertCount: counts.SuspendedExperts,
+            PendingExpertInviteCount: counts.PendingInvites,
+            ApprovedTeacherCount: counts.ApprovedTeachers,
+            IsDefaultReviewGroup: g.IsDefaultReviewGroup);
 
     private static string? NormalizeCountry(string? code)
     {

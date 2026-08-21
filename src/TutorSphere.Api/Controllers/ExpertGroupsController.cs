@@ -136,8 +136,8 @@ public class ExpertGroupsController : ControllerBase
             _logger.LogError(ex, "Échec création groupe d'experts : contrainte base de données.");
             return BadRequest(new
             {
-                error = "Création refusée par la base : un autre groupe occupe déjà ce territoire " +
-                        "(pays ou créneau international)."
+                error = "Création refusée par la base de données. Réessayez ; si le refus persiste, " +
+                        "signalez-le au support avec le nom du groupe."
             });
         }
     }
@@ -160,16 +160,35 @@ public class ExpertGroupsController : ControllerBase
         }
         catch (Microsoft.EntityFrameworkCore.DbUpdateException ex)
         {
-            // Index d'unicité du territoire : la base refuse ce que le contrôle applicatif a laissé
-            // passer, faute d'être au même niveau que le modèle. Sans ce filet, l'écran n'affiche
-            // qu'un 500 sans indice.
+            // Sans ce filet, une contrainte refusée par la base n'afficherait qu'un 500 sans indice.
             _logger.LogError(ex, "Échec mise à jour groupe d'experts {GroupId} : contrainte base de données.", id);
             return BadRequest(new
             {
-                error = "Enregistrement refusé par la base : un autre groupe occupe déjà ce territoire " +
-                        "(pays ou créneau international). Archivez ou changez le pays de l'autre groupe, " +
-                        "puis réessayez."
+                error = "Enregistrement refusé par la base de données. Vérifiez qu'un autre groupe " +
+                        "actif n'est pas déjà désigné pour recevoir les candidatures spontanées."
             });
+        }
+    }
+
+    /// <summary>
+    /// Désigne le groupe qui reçoit les candidatures spontanées. Depuis que le pays ne réserve plus
+    /// de territoire, c'est cette désignation qui évite qu'un dossier n'arrive nulle part.
+    /// </summary>
+    [HttpPost("{id:guid}/default-review")]
+    [Authorize(Roles = UserRoles.SuperAdmin)]
+    public async Task<ActionResult<ExpertGroupDto>> SetDefaultReview(
+        Guid id,
+        [FromBody] SetDefaultReviewGroupRequest request,
+        CancellationToken ct)
+    {
+        try
+        {
+            var updated = await _groups.SetDefaultReviewGroupAsync(id, request.IsDefault, ct);
+            return Ok(await EnrichManagerAsync(updated, ct));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { error = ex.Message });
         }
     }
 

@@ -27,7 +27,8 @@ public interface IParentMailboxService
 public sealed class ParentMailboxService(
     IApplicationDbContext db,
     ISupportInboxResolver inbox,
-    IRealTimeMessaging realtime) : IParentMailboxService
+    IRealTimeMessaging realtime,
+    IExpertGroupService groups) : IParentMailboxService
 {
     private static readonly HashSet<string> TeacherReasons = ["lessons", "homework", "results", "progress"];
     private static readonly HashSet<string> GroupReasons = ["schedule", "replacement", "quality", "organization", "complaint"];
@@ -387,11 +388,7 @@ public sealed class ParentMailboxService(
         if (tenant.ApprovedByExpertGroupId is Guid gid)
             group = db.ExpertGroups.FirstOrDefault(g => g.Id == gid && g.IsActive);
 
-        if (group is null && !string.IsNullOrWhiteSpace(tenant.Country))
-            group = db.ExpertGroups.FirstOrDefault(g =>
-                g.IsActive && g.CountryCode == tenant.Country);
-
-        group ??= db.ExpertGroups.FirstOrDefault(g => g.IsActive && g.IsInternational);
+        group ??= groups.ResolveReviewerGroup(tenant.Country);
         if (group is null)
             return null;
 

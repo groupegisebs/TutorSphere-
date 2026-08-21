@@ -257,7 +257,7 @@ Fichiers utiles :
 
 Après inscription + profil, un enseignant (`Tenant`) reste en `ExpertApprovalStatus.Pending` jusqu'à validation.
 
-**Routage de revue :** groupe du pays de l'enseignant s'il existe, sinon le **groupe international** unique (`ExpertGroup.IsInternational`).
+**Routage de revue :** le groupe qui revendique seul le pays de l'enseignant ; à défaut (aucun groupe, ou plusieurs), le **groupe examinateur par défaut** (`ExpertGroup.IsDefaultReviewGroup`), désigné par l'administrateur plateforme depuis `/admin/expert-groups`. Si aucun n'est désigné et qu'un seul groupe est actif, c'est lui.
 
 | Acteur | Routes Web | API |
 |--------|------------|-----|
@@ -265,9 +265,9 @@ Après inscription + profil, un enseignant (`Tenant`) reste en `ExpertApprovalSt
 | Expert | `/login/expert`, `/expert/dashboard`, `/expert/teachers/{tenantId}` | `api/expert/*` |
 | Enseignant | `/tutor/verification`, bannière sur `/tutor/profile` | `api/teacher-documents*` |
 
-Contraintes : un seul groupe international ; un seul groupe par `CountryCode`. Le badge « Approuvé par {groupe} » apparaît sur le profil public une fois `ExpertApprovalStatus.Approved` et le profil public activé (licence + onboarding).
+Contraintes : aucune exclusivité territoriale — `CountryCode` est facultatif et non exclusif, `IsInternational` n'est qu'une portée annoncée. Seul `IsDefaultReviewGroup` est unique parmi les groupes actifs. Le badge « Approuvé par {groupe} » apparaît sur le profil public une fois `ExpertApprovalStatus.Approved` et le profil public activé (licence + onboarding).
 
-**E-mails experts :** à l'inscription enseignant (`Pending`) et, si pas encore envoyé, au premier document téléversé — notification unique (`Tenant.ExpertReviewNotifiedAt`) aux membres du groupe responsable (pays ou international). Template Mail Gateway `EXPERT_TEACHER_PENDING` (variables : `ExpertFirstName`, `SchoolName`, `Country`, `ReviewUrl` → `/expert/teachers/{id}`). Langue = préférence de l'expert (FR/EN… côté gateway). Seed : `GiseMailSender` → `TutorSphereTemplates` / `tools/generate-tutorsphere-templates.mjs` (client `TUTORSPHERE`) — redéployer ou redémarrer Mail Sender pour appliquer le seed.
+**E-mails experts :** à l'inscription enseignant (`Pending`) et, si pas encore envoyé, au premier document téléversé — notification unique (`Tenant.ExpertReviewNotifiedAt`) aux membres du groupe examinateur. Template Mail Gateway `EXPERT_TEACHER_PENDING` (variables : `ExpertFirstName`, `SchoolName`, `Country`, `ReviewUrl` → `/expert/teachers/{id}`). Langue = préférence de l'expert (FR/EN… côté gateway). Seed : `GiseMailSender` → `TutorSphereTemplates` / `tools/generate-tutorsphere-templates.mjs` (client `TUTORSPHERE`) — redéployer ou redémarrer Mail Sender pour appliquer le seed.
 
 ## Internationalisation (i18n)
 

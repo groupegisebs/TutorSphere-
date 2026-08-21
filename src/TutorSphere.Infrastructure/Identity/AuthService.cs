@@ -483,7 +483,9 @@ public class AuthService : IAuthService, ITeacherLoginIssuer
         var country = ProfileVisibility.NormalizeCode(request.Country);
         if (country.Length != 2)
             country = ProfileVisibility.NormalizeCode(inviteGroup?.CountryCode);
-        if (country.Length != 2 && inviteGroup?.IsInternational != true)
+        // Un groupe sans pays n'en impose aucun : mieux vaut un pays vide, que l'enseignant
+        // complétera, qu'un « CA » inventé qui fausserait fuseau horaire et visibilité.
+        if (country.Length != 2 && inviteGroup is null)
             country = "CA";
 
         var timeZone = TimeZoneCatalog.Normalize(
@@ -645,7 +647,7 @@ public class AuthService : IAuthService, ITeacherLoginIssuer
             country = ProfileVisibility.NormalizeCode(inviteGroup?.CountryCode);
         if (country.Length != 2 && !string.IsNullOrWhiteSpace(tenant.Country))
             country = ProfileVisibility.NormalizeCode(tenant.Country);
-        if (country.Length != 2 && inviteGroup?.IsInternational != true)
+        if (country.Length != 2 && inviteGroup is null)
             country = "CA";
 
         var timeZone = TimeZoneCatalog.Normalize(

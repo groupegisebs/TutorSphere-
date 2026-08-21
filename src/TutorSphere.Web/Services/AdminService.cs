@@ -99,7 +99,7 @@ public sealed class AdminService
 
     public Task<ApiResult<ExpertGroupItem>> UpdateExpertGroupAsync(
         Guid id, string name, string? contactName, string? contactEmail, string? contactPhone, string? logoUrl, bool isActive,
-        string? description = null, string? countryCode = null)
+        string? description = null, string? countryCode = null, bool? isInternational = null)
         => _api.PutWithErrorAsync<ExpertGroupItem>($"api/admin/expert-groups/{id}", new
         {
             name,
@@ -109,8 +109,14 @@ public sealed class AdminService
             logoUrl,
             isActive,
             description,
-            countryCode
+            countryCode,
+            isInternational
         });
+
+    /// <summary>Désigne le groupe qui reçoit les candidatures spontanées, ou lui retire le rôle.</summary>
+    public Task<ApiResult<ExpertGroupItem>> SetDefaultReviewGroupAsync(Guid id, bool isDefault)
+        => _api.PostWithErrorAsync<ExpertGroupItem>(
+            $"api/admin/expert-groups/{id}/default-review", new { isDefault });
 
     public async Task<ApiResult<bool>> DeleteExpertGroupAsync(Guid id)
         => await _api.DeleteWithErrorAsync($"api/admin/expert-groups/{id}");
@@ -271,6 +277,11 @@ public sealed record ExpertGroupItem(
     bool IsActive,
     int MemberCount,
     DateTime CreatedAt,
+    int ActiveExpertCount = 0,
+    int SuspendedExpertCount = 0,
+    int PendingExpertInviteCount = 0,
+    int ApprovedTeacherCount = 0,
+    bool IsDefaultReviewGroup = false,
     string? Description = null,
     int LifecycleStatus = 0,
     Guid? ActiveManagerMandateId = null,

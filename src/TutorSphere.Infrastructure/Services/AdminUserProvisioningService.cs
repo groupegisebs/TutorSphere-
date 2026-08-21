@@ -214,9 +214,9 @@ public sealed class AdminUserProvisioningService(
         if (db.Tenants.Any(t => t.Slug == slug))
             throw new InvalidOperationException("Cette adresse (slug) est déjà utilisée.");
 
+        // Le pays du groupe n'est qu'une indication et peut manquer : sans lui, laisser le champ
+        // vide plutôt qu'imposer un pays arbitraire que personne n'aurait choisi.
         var country = ProfileVisibility.NormalizeCode(group.CountryCode);
-        if (country.Length != 2)
-            country = "CM";
 
         var password = TeacherLoginProvisioning.GenerateTemporaryPassword();
         var user = new ApplicationUser

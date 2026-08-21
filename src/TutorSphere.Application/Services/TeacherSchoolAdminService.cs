@@ -39,7 +39,8 @@ public interface ITeacherSchoolAdminService
 
 public sealed class TeacherSchoolAdminService(
     IApplicationDbContext db,
-    IUserContactLookup contacts) : ITeacherSchoolAdminService
+    IUserContactLookup contacts,
+    IExpertGroupService groups) : ITeacherSchoolAdminService
 {
     public async Task<TeacherSchoolRecordDto?> GetByTenantIdAsync(Guid tenantId, CancellationToken ct = default)
     {
@@ -165,16 +166,8 @@ public sealed class TeacherSchoolAdminService(
             }
             else
             {
-                // Rattacher au groupe pays (ou international) pour le badge fiche publique.
-                var home = ProfileVisibility.NormalizeCode(tenant.Country);
-                var byCountry = string.IsNullOrEmpty(home)
-                    ? null
-                    : db.ExpertGroups.FirstOrDefault(g =>
-                        g.IsActive && !g.IsInternational
-                        && g.CountryCode != null
-                        && g.CountryCode.ToUpper() == home);
-                tenant.ApprovedByExpertGroupId = byCountry?.Id
-                    ?? db.ExpertGroups.Where(g => g.IsActive && g.IsInternational).Select(g => (Guid?)g.Id).FirstOrDefault();
+                // Rattacher au groupe examinateur pour le badge fiche publique.
+                tenant.ApprovedByExpertGroupId = groups.ResolveReviewerGroup(tenant.Country)?.Id;
             }
         }
 
@@ -227,19 +220,15 @@ public sealed class TeacherSchoolAdminService(
         if (tenant.ApprovedByExpertGroupId is Guid gid && groupIds.Contains(gid))
             return;
 
-        // Dossier encore en file pour le pays du groupe de l'expert
+        // Dossier encore en file : seul le groupe désigné pour l'examiner y a accès. Comparer les
+        // pays ne tient plus, un groupe sans pays donnerait sinon accès à tous les dossiers.
         if (tenant.ExpertApprovalStatus is ExpertApprovalStatus.Pending
             or ExpertApprovalStatus.Assigned
             or ExpertApprovalStatus.UnderReview
             or ExpertApprovalStatus.ChangesRequested)
         {
-            var countries = db.ExpertGroups
-                .Where(g => groupIds.Contains(g.Id) && g.IsActive)
-                .Select(g => g.CountryCode)
-                .ToList();
-            var home = ProfileVisibility.NormalizeCode(tenant.Country);
-            if (countries.Any(c => string.IsNullOrWhiteSpace(c)
-                                   || string.Equals(ProfileVisibility.NormalizeCode(c), home, StringComparison.OrdinalIgnoreCase)))
+            var reviewer = groups.ResolveReviewerGroup(tenant.Country);
+            if (reviewer is not null && groupIds.Contains(reviewer.Id))
                 return;
         }
 

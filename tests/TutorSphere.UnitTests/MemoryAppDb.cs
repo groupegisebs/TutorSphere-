@@ -15,6 +15,7 @@ internal sealed class MemoryAppDb : IApplicationDbContext
     public List<Payment> PaymentsList { get; } = [];
     public List<LessonCoverageAssignment> CoverageList { get; } = [];
     public List<Tenant> TenantsList { get; } = [];
+    public List<ExpertGroup> ExpertGroupsList { get; } = [];
 
     public IQueryable<Student> Students => StudentsList.AsQueryable();
     public IQueryable<Student> StudentsForAnyTenant => StudentsList.AsQueryable();
@@ -55,7 +56,7 @@ internal sealed class MemoryAppDb : IApplicationDbContext
     IQueryable<PlatformLicensePayment> IApplicationDbContext.PlatformLicensePayments => None<PlatformLicensePayment>();
     IQueryable<PlatformLicensePayment> IApplicationDbContext.PlatformLicensePaymentsForAnyTenant => None<PlatformLicensePayment>();
     IQueryable<PlatformPromoCode> IApplicationDbContext.PlatformPromoCodes => None<PlatformPromoCode>();
-    IQueryable<ExpertGroup> IApplicationDbContext.ExpertGroups => None<ExpertGroup>();
+    IQueryable<ExpertGroup> IApplicationDbContext.ExpertGroups => ExpertGroupsList.AsQueryable();
     IQueryable<ExpertGroupMember> IApplicationDbContext.ExpertGroupMembers => None<ExpertGroupMember>();
     IQueryable<ExpertGroupDefinedRole> IApplicationDbContext.ExpertGroupDefinedRoles => None<ExpertGroupDefinedRole>();
     IQueryable<ExpertGroupManagerMandate> IApplicationDbContext.ExpertGroupManagerMandates => None<ExpertGroupManagerMandate>();

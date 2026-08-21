@@ -1,99 +1,65 @@
--- Diagnostic du conflit « un groupe par pays » sur les groupes d'experts.
+-- Diagnostic des groupes d'experts après le découplage pays / groupe.
+-- La règle « un groupe par pays + un seul groupe international » n'existe plus : le pays est une
+-- indication facultative et non exclusive. Seul le groupe examinateur par défaut est unique.
 -- À exécuter en lecture seule : aucune des requêtes ci-dessous ne modifie la base.
 -- Les ordres de réparation sont en fin de fichier, commentés, à n'exécuter qu'après lecture.
 --
 --   psql "$CONNECTION_STRING" -f docs/sql/diagnostic-groupes-experts.sql
 
 \echo '=== 1. Index présents sur ExpertGroupsSet ==='
--- Attendu : les deux index uniques doivent contenir « IsActive = TRUE » dans leur clause WHERE.
--- S'ils s'arrêtent à « CountryCode IS NOT NULL », la base est restée sur l'ancienne règle et
--- refuse aussi les doublons inactifs : c'est la cause du 500 à l'enregistrement.
+-- Attendu : IX_ExpertGroupsSet_CountryCode et IX_ExpertGroupsSet_IsInternational NON uniques,
+-- et un seul index unique, IX_ExpertGroupsSet_IsDefaultReviewGroup, filtré sur les groupes actifs.
+-- Un index unique restant sur CountryCode signale une base restée sur l'ancienne règle : elle
+-- refusera deux groupes actifs dans le même pays, ce qui se traduit par un 500 à l'enregistrement.
 SELECT indexname, indexdef
 FROM pg_indexes
 WHERE tablename = 'ExpertGroupsSet'
 ORDER BY indexname;
 
-\echo '=== 2. Migration d''assouplissement appliquée ? ==='
+\echo '=== 2. Migration de découplage appliquée ? ==='
 -- Une ligne attendue. Aucune ligne = la migration a échoué au démarrage et a été annulée.
 SELECT "MigrationId", "ProductVersion"
 FROM "__EFMigrationsHistory"
-WHERE "MigrationId" LIKE '%UniqueActiveExpertGroupTerritory%';
+WHERE "MigrationId" LIKE '%DecoupleExpertGroupFromCountry%';
 
 \echo '=== 3. Groupes d''experts, du plus récent au plus ancien ==='
 SELECT "Id",
        "Name",
        "CountryCode",
        "IsInternational",
+       "IsDefaultReviewGroup",
        "IsActive",
        "LifecycleStatus",
        "ContactEmail",
        "CreatedAt"
 FROM "ExpertGroupsSet"
-ORDER BY "CountryCode" NULLS FIRST, "CreatedAt";
+ORDER BY "CreatedAt" DESC;
 
-\echo '=== 4. Territoires occupés plusieurs fois ==='
--- Toute ligne ici empêche la création de l'index unique, donc bloque la migration.
-SELECT "CountryCode",
-       COUNT(*)                                      AS total,
-       COUNT(*) FILTER (WHERE "IsActive")            AS actifs,
-       string_agg("Name" || CASE WHEN "IsActive" THEN ' (actif)' ELSE ' (inactif)' END, ' | ')
+\echo '=== 4. Destinataire des candidatures spontanées ==='
+-- Exactement une ligne attendue. Aucune ligne : les candidatures qu'aucun pays ne rattache
+-- n'arrivent nulle part, sauf si un unique groupe est actif (repli implicite).
+SELECT "Id", "Name", "CountryCode"
 FROM "ExpertGroupsSet"
-WHERE NOT "IsInternational" AND "CountryCode" IS NOT NULL
+WHERE "IsDefaultReviewGroup" = TRUE AND "IsActive" = TRUE;
+
+\echo '=== 5. Pays revendiqués par plusieurs groupes actifs ==='
+-- Ce n'est plus une anomalie, mais le pays ne désigne alors plus de groupe examinateur :
+-- les candidatures de ces pays partent vers le groupe par défaut.
+SELECT "CountryCode", COUNT(*) AS groupes_actifs
+FROM "ExpertGroupsSet"
+WHERE "IsActive" = TRUE AND "CountryCode" IS NOT NULL
 GROUP BY "CountryCode"
-HAVING COUNT(*) > 1;
-
-\echo '=== 5. Créneau international ==='
-SELECT "Id", "Name", "IsActive", "LifecycleStatus"
-FROM "ExpertGroupsSet"
-WHERE "IsInternational";
-
-\echo '=== 6. Rattachements du groupe, pour savoir lequel archiver sans rien perdre ==='
--- Le groupe sans membre, sans mandat ni contrat est celui qu'on archive sans conséquence.
--- Status 2 = Removed dans ExpertMembershipStatus.
-SELECT g."Id",
-       g."Name",
-       g."CountryCode",
-       g."IsActive",
-       (SELECT COUNT(*) FROM "ExpertGroupMembersSet" m
-         WHERE m."ExpertGroupId" = g."Id" AND m."Status" <> 2)  AS membres,
-       (SELECT COUNT(*) FROM "ExpertGroupManagerMandatesSet" d
-         WHERE d."ExpertGroupId" = g."Id")                      AS mandats,
-       (SELECT COUNT(*) FROM "TeacherContractsSet" c
-         WHERE c."ExpertGroupId" = g."Id")                      AS contrats
-FROM "ExpertGroupsSet" g
-ORDER BY g."CreatedAt";
-
+HAVING COUNT(*) > 1
+ORDER BY groupes_actifs DESC;
 
 -- ---------------------------------------------------------------------------
--- RÉPARATION — à exécuter seulement après avoir lu les résultats ci-dessus.
+-- Réparation (à décommenter et adapter, une instruction à la fois)
 -- ---------------------------------------------------------------------------
---
--- Étape A. S'il reste deux groupes ACTIFS pour le même pays, l'index unique ne peut pas être
--- créé. Désactivez le doublon depuis l'écran d'administration (bouton Archiver), ou ici en
--- remplaçant l'identifiant. LifecycleStatus 2 = Suspended.
---
--- UPDATE "ExpertGroupsSet"
--- SET "IsActive" = FALSE, "LifecycleStatus" = 2, "UpdatedAt" = NOW()
--- WHERE "Id" = '00000000-0000-0000-0000-000000000000';
---
--- Étape B. Réaligner les index sur la règle « un seul groupe ACTIF par territoire ». Identique
--- au contenu de la migration UniqueActiveExpertGroupTerritory : à n'utiliser que si l'étape 2
--- ci-dessus ne renvoie aucune ligne et que l'étape A est faite.
---
--- BEGIN;
--- DROP INDEX IF EXISTS "IX_ExpertGroupsSet_CountryCode";
--- DROP INDEX IF EXISTS "IX_ExpertGroupsSet_IsInternational";
--- CREATE UNIQUE INDEX "IX_ExpertGroupsSet_CountryCode"
---     ON "ExpertGroupsSet" ("CountryCode")
---     WHERE "IsInternational" = FALSE AND "CountryCode" IS NOT NULL AND "IsActive" = TRUE;
--- CREATE UNIQUE INDEX "IX_ExpertGroupsSet_IsInternational"
---     ON "ExpertGroupsSet" ("IsInternational")
---     WHERE "IsInternational" = TRUE AND "IsActive" = TRUE;
--- COMMIT;
---
--- Étape C. Marquer la migration comme appliquée pour qu'EF ne la rejoue pas au démarrage.
--- N'exécuter qu'après un COMMIT réussi de l'étape B.
---
--- INSERT INTO "__EFMigrationsHistory" ("MigrationId", "ProductVersion")
--- VALUES ('20260820190000_UniqueActiveExpertGroupTerritory', '10.0.9')
--- ON CONFLICT DO NOTHING;
+
+-- Désigner le groupe qui reçoit les candidatures spontanées. Le rôle est exclusif :
+-- retirer l'ancien avant d'attribuer le nouveau, sinon l'index unique refuse l'écriture.
+-- UPDATE "ExpertGroupsSet" SET "IsDefaultReviewGroup" = FALSE WHERE "IsDefaultReviewGroup" = TRUE;
+-- UPDATE "ExpertGroupsSet" SET "IsDefaultReviewGroup" = TRUE  WHERE "Id" = '<GUID>';
+
+-- Retirer un pays de rattachement devenu faux (le champ est facultatif).
+-- UPDATE "ExpertGroupsSet" SET "CountryCode" = NULL WHERE "Id" = '<GUID>';

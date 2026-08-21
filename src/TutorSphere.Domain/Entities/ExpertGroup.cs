@@ -5,10 +5,10 @@ namespace TutorSphere.Domain.Entities;
 
 /// <summary>
 /// Groupe d'experts éducatifs chargé de valider les fiches enseignants.
-/// Règle produit : au plus un groupe <em>actif</em> par code pays, et au plus un groupe
-/// international actif (<see cref="IsInternational"/> = true, <see cref="CountryCode"/> null).
-/// Un groupe inactif (brouillon, suspendu, archivé) n’occupe pas le créneau.
-/// Routage revue : pays de l'enseignant → groupe pays ; sinon groupe international.
+/// Aucune exclusivité territoriale : plusieurs groupes peuvent couvrir le même pays, et un groupe
+/// peut n'en déclarer aucun. <see cref="CountryCode"/> n'est qu'une indication de rattachement.
+/// Routage revue : pays de l'enseignant si un seul groupe le revendique, sinon le groupe désigné
+/// par défaut (<see cref="IsDefaultReviewGroup"/>).
 /// Administré par un <see cref="ExpertGroupManagerMandate"/> (Responsable du groupe).
 /// </summary>
 public class ExpertGroup : BaseEntity
@@ -25,11 +25,19 @@ public class ExpertGroup : BaseEntity
     public string? ContactEmail { get; set; }
     public string? ContactPhone { get; set; }
 
-    /// <summary>ISO pays (ex. CA, FR). Null si groupe international.</summary>
+    /// <summary>
+    /// ISO pays de rattachement (ex. CA, FR), purement indicatif : facultatif, non exclusif.
+    /// </summary>
     public string? CountryCode { get; set; }
 
-    /// <summary>True = groupe international unique (CountryCode doit être null).</summary>
+    /// <summary>Portée annoncée : le groupe se déclare sans frontière particulière.</summary>
     public bool IsInternational { get; set; }
+
+    /// <summary>
+    /// Groupe qui recueille les candidatures spontanées qu'aucun pays ne permet de rattacher.
+    /// Un seul groupe actif peut porter ce rôle ; l'administrateur plateforme le désigne.
+    /// </summary>
+    public bool IsDefaultReviewGroup { get; set; }
 
     public bool IsActive { get; set; } = true;
 

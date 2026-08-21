@@ -497,10 +497,13 @@ public class GroupOfferService(
                 GroupOfferCurrencyRules.ResolveCurrencyForCountries(codes));
         }
 
+        // Le groupe n'a plus forcément de pays : sans rattachement, « locale » ne désigne aucun
+        // marché et la devise serait arbitraire. L'offre doit alors nommer ses pays elle-même.
         var localCountry = GroupOfferCurrencyRules.NormalizeCountryCode(group.CountryCode);
-        if (string.IsNullOrEmpty(localCountry) && group.IsInternational)
+        if (string.IsNullOrEmpty(localCountry))
             throw new InvalidOperationException(
-                "Pour une offre locale sur un groupe international, choisissez plutôt « Internationale » avec au moins un pays.");
+                "Ce groupe ne déclare aucun pays de rattachement : choisissez « Internationale » "
+                + "et indiquez les pays où l'offre est valable, ou renseignez le pays du groupe.");
 
         return new OfferScope(
             false,

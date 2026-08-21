@@ -668,7 +668,14 @@
     /// <summary>Lien d’invitation unique (sans e-mail destinataire).</summary>
     private bool IsOpenInvite => _invite is not null && string.IsNullOrWhiteSpace(_invite.Email);
 
-    private bool CanSelectCountry => IsOpenInvite || _invite?.GroupIsInternational == true;
+    /// <summary>
+    /// Le pays du groupe n'est plus qu'une indication : dès qu'il n'en déclare pas, c'est à
+    /// l'enseignant d'indiquer où il réside, sinon le champ resterait vide sans recours.
+    /// </summary>
+    private bool CanSelectCountry =>
+        IsOpenInvite
+        || _invite?.GroupIsInternational == true
+        || string.IsNullOrWhiteSpace(_invite?.GroupCountryCode);
 
     private string ApplyEmail => EmailLocked ? _invite!.Email!.Trim() : _email.Trim();
 

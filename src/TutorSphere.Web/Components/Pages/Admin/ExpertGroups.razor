@@ -19,7 +19,8 @@
             <div>
                 <h1 class="cc-page-title">Groupes d'experts</h1>
                 <p class="cc-page-sub">
-                    Un groupe par pays + un seul groupe international. Chaque groupe est administré par un Responsable.
+                    Autant de groupes que nécessaire, sans exclusivité de pays. Chaque groupe est administré
+                    par un Responsable ; un seul groupe reçoit les candidatures spontanées.
                 </p>
             </div>
             <AuthorizeView Roles="SuperAdmin" Context="superAdminAuth">
@@ -103,16 +104,18 @@
                         <input class="form-control" @bind="_formDescription" />
                     </div>
                     <div class="col-md-6 mb-3">
-                        <label class="form-label cc-label-light" style="color:#f3f4f6">Pays</label>
-                        <CountrySelect Value="_formCountry" ValueChanged="OnCountryChanged" Disabled="_formInternational" />
+                        <label class="form-label cc-label-light" style="color:#f3f4f6">Pays de rattachement</label>
+                        <CountrySelect Value="_formCountry" ValueChanged="OnCountryChanged" />
+                        <div class="form-text" style="color:#9ca3af">
+                            Facultatif et non exclusif : plusieurs groupes peuvent couvrir le même pays.
+                        </div>
                     </div>
                     <div class="col-12 mb-3">
                         <div class="form-check">
                             <input class="form-check-input" type="checkbox" id="intl"
                                    checked="@_formInternational"
-                                   disabled="@(_editId is not null)"
                                    @onchange="OnInternationalChanged" />
-                            <label class="form-check-label cc-label-light" for="intl" style="color:#f3f4f6">Groupe international (unique)</label>
+                            <label class="form-check-label cc-label-light" for="intl" style="color:#f3f4f6">Portée internationale</label>
                         </div>
                     </div>
 
@@ -283,7 +286,7 @@
                                 <th>Groupe</th>
                                 <th>Portée</th>
                                 <th>Responsable du groupe</th>
-                                <th>Membres</th>
+                                <th>Effectifs</th>
                                 <th>Statut</th>
                                 <th></th>
                             </tr>
@@ -312,21 +315,29 @@
                                         </div>
                                     </td>
                                     <td>
-                                        @if (g.IsInternational)
-                                        {
-                                            <span class="cc-pill cc-pill-type">International</span>
-                                        }
-                                        else if (!string.IsNullOrWhiteSpace(g.CountryCode))
-                                        {
-                                            <span class="cc-pill">
-                                                <span aria-hidden="true">@CountryCatalog.FlagEmoji(g.CountryCode)</span>
-                                                @(CountryCatalog.Find(g.CountryCode)?.Name ?? g.CountryCode)
-                                            </span>
-                                        }
-                                        else
-                                        {
-                                            <span class="cc-pill">—</span>
-                                        }
+                                        <div class="cc-scope-cell">
+                                            @if (!string.IsNullOrWhiteSpace(g.CountryCode))
+                                            {
+                                                <span class="cc-pill">
+                                                    <span aria-hidden="true">@CountryCatalog.FlagEmoji(g.CountryCode)</span>
+                                                    @(CountryCatalog.Find(g.CountryCode)?.Name ?? g.CountryCode)
+                                                </span>
+                                            }
+                                            @if (g.IsInternational)
+                                            {
+                                                <span class="cc-pill cc-pill-type">International</span>
+                                            }
+                                            @if (string.IsNullOrWhiteSpace(g.CountryCode) && !g.IsInternational)
+                                            {
+                                                <span class="cc-pill">Sans rattachement</span>
+                                            }
+                                            @if (g.IsDefaultReviewGroup)
+                                            {
+                                                <span class="cc-pill cc-pill-ok" title="Reçoit les candidatures spontanées">
+                                                    <i class="bi bi-inbox-fill"></i> Candidatures spontanées
+                                                </span>
+                                            }
+                                        </div>
                                     </td>
                                     <td>
                                         @{
@@ -367,7 +378,7 @@
                                             <div class="cc-manager-empty">Aucun Responsable</div>
                                         }
                                     </td>
-                                    <td>@g.MemberCount</td>
+                                    <td>@HeadcountCell(g)</td>
                                     <td>
                                         <span class="cc-pill @(g.IsActive ? "cc-pill-ok" : "cc-pill-bad")">
                                             @(g.LifecycleStatus == 3 ? "Archivé" : g.IsActive ? "Actif" : "Inactif")
@@ -384,6 +395,27 @@
                                             <AuthorizeView Roles="SuperAdmin" Context="saAuth">
                                                 <Authorized>
                                                     <a class="cc-btn btn-sm" href="@($"admin/expert-groups/{g.Id}/manager")">Changer le responsable</a>
+                                                </Authorized>
+                                            </AuthorizeView>
+                                            <AuthorizeView Roles="SuperAdmin" Context="defaultAuth">
+                                                <Authorized>
+                                                    @if (!g.IsDefaultReviewGroup)
+                                                    {
+                                                        <button type="button" class="cc-btn btn-sm"
+                                                                disabled="@_defaultBusy"
+                                                                title="Ce groupe recevra les candidatures qu'aucun pays ne rattache"
+                                                                @onclick="() => SetDefaultReviewAsync(g, true)">
+                                                            Recevoir les candidatures
+                                                        </button>
+                                                    }
+                                                    else
+                                                    {
+                                                        <button type="button" class="cc-btn btn-sm"
+                                                                disabled="@_defaultBusy"
+                                                                @onclick="() => SetDefaultReviewAsync(g, false)">
+                                                            Ne plus recevoir
+                                                        </button>
+                                                    }
                                                 </Authorized>
                                             </AuthorizeView>
                                             <button type="button" class="cc-btn btn-sm" @onclick="() => ShowMandateHistoryAsync(g)">Historique</button>
@@ -429,7 +461,7 @@
                                 <tr>
                                     <th>Groupe</th>
                                     <th>Portée</th>
-                                    <th>Membres</th>
+                                    <th>Effectifs</th>
                                     <th>Statut</th>
                                     <th>Créé le</th>
                                     <th></th>
@@ -462,7 +494,7 @@
                                                 <span class="cc-pill">—</span>
                                             }
                                         </td>
-                                        <td>@g.MemberCount</td>
+                                        <td>@HeadcountCell(g)</td>
                                         <td>
                                             <span class="cc-pill cc-pill-bad">@LifecycleLabel(g)</span>
                                         </td>
@@ -514,12 +546,37 @@
         3 => "Archivé",
         _ => g.IsActive ? "Actif" : "Inactif"
     };
+
+    /// <summary>
+    /// Un chiffre unique laissait croire qu'un groupe n'avait qu'une personne alors qu'il portait
+    /// des invitations en cours de vote et des enseignants approuvés. Chaque population est donc
+    /// affichée séparément.
+    /// </summary>
+    private static RenderFragment HeadcountCell(ExpertGroupItem g) =>
+        @<div class="cc-count-cell">
+            <span class="cc-count-main">
+                <strong>@g.ActiveExpertCount</strong> @Plural(g.ActiveExpertCount, "expert", "experts")
+            </span>
+            @if (g.SuspendedExpertCount > 0)
+            {
+                <span class="cc-count-meta">@g.SuspendedExpertCount @Plural(g.SuspendedExpertCount, "suspendu", "suspendus")</span>
+            }
+            @if (g.PendingExpertInviteCount > 0)
+            {
+                <span class="cc-count-meta">@g.PendingExpertInviteCount @Plural(g.PendingExpertInviteCount, "invitation en cours", "invitations en cours")</span>
+            }
+            <span class="cc-count-meta">@g.ApprovedTeacherCount @Plural(g.ApprovedTeacherCount, "enseignant approuvé", "enseignants approuvés")</span>
+        </div>;
+
+    private static string Plural(int count, string one, string many) => count > 1 ? many : one;
+
     private ExpertGroupItem? _historyGroup;
     private List<MandateHistoryItem> _mandateHistory = [];
     private bool _loading = true;
     private bool _showForm;
     private bool _saving;
     private bool _actAsBusy;
+    private bool _defaultBusy;
 
     private ExpertGroupItem? _deleteTarget;
     private ExpertGroupDeletionImpact? _deleteImpact;
@@ -584,7 +641,7 @@
         _mgrFirstName = _mgrLastName = _mgrEmail = "";
         _mgrPhone = _mgrFunction = null;
         _mgrStartDate = DateTime.Today;
-        _formInternational = !_groups.Any(g => g.IsInternational && g.IsActive && g.LifecycleStatus != 3);
+        _formInternational = false;
         _formActive = true;
         _formError = null;
         _showForm = true;
@@ -611,7 +668,6 @@
     private void OnInternationalChanged(ChangeEventArgs e)
     {
         _formInternational = e.Value is bool b && b || string.Equals(e.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
-        if (_formInternational) _formCountry = null;
     }
 
     private void OnCountryChanged(string? code)
@@ -625,9 +681,9 @@
         _formError = null;
         try
         {
-            if (!_formInternational && string.IsNullOrWhiteSpace(_formCountry))
+            if (string.IsNullOrWhiteSpace(_formName))
             {
-                _formError = "Sélectionnez un pays (ou cochez Groupe international).";
+                _formError = "Le nom du groupe est requis.";
                 return;
             }
 
@@ -663,7 +719,8 @@
             else
             {
                 var updated = await AdminSvc.UpdateExpertGroupAsync(
-                    _editId.Value, _formName, _formContactName, _formEmail, _formPhone, _formLogo, _formActive, _formDescription, _formCountry);
+                    _editId.Value, _formName, _formContactName, _formEmail, _formPhone, _formLogo, _formActive,
+                    _formDescription, _formCountry ?? "", _formInternational);
                 if (!updated.IsSuccess)
                 {
                     _formError = string.IsNullOrWhiteSpace(updated.Error) ? "Échec de mise à jour." : updated.Error;
@@ -787,6 +844,32 @@
             await ReloadAsync();
         }
         catch (Exception ex) { _error = ex.Message; }
+    }
+
+    /// <summary>
+    /// Depuis que le pays ne réserve plus de territoire, un dossier sans pays reconnu n'irait
+    /// nulle part : ce groupe est celui qui les reçoit. Le rôle est exclusif, la désignation
+    /// retire donc la précédente côté serveur.
+    /// </summary>
+    private async Task SetDefaultReviewAsync(ExpertGroupItem g, bool isDefault)
+    {
+        _error = null;
+        _defaultBusy = true;
+        try
+        {
+            var result = await AdminSvc.SetDefaultReviewGroupAsync(g.Id, isDefault);
+            if (!result.IsSuccess)
+            {
+                _error = result.Error ?? "Désignation impossible.";
+                return;
+            }
+            _flash = isDefault
+                ? $"« {g.Name} » reçoit désormais les candidatures spontanées."
+                : $"« {g.Name} » ne reçoit plus les candidatures spontanées.";
+            await ReloadAsync();
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _defaultBusy = false; }
     }
 
     private async Task ArchiveAsync(ExpertGroupItem g)
