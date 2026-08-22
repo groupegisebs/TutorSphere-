@@ -122,6 +122,11 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             throw new InvalidOperationException(
                 "Le paiement Mobile Money s'initie via l'encaissement opérateur, pas via Stripe Checkout.");
 
+        ParentPaymentMethods.EnsureAllowed(
+            ResolvePayerCountry(parent.Country, student.Country),
+            offering.Currency,
+            paymentMethod);
+
         var amount = offering.Price;
         var split = await SplitParentPaymentAsync(tenant, amount, paymentMethod, ct);
 
@@ -715,6 +720,10 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             subscription.StripeSubscriptionId = match.SubscriptionCode;
     }
 
+    private static string? ResolvePayerCountry(string? parentCountry, string? studentCountry) =>
+        ParentPaymentMethods.NormalizeIso(parentCountry)
+        ?? ParentPaymentMethods.NormalizeIso(studentCountry);
+
     private static void EnsureSubscriptionPayable(
         StudentSubscription subscription,
         SubscriptionOffering offering) =>
@@ -831,6 +840,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
 
         var successUrl = AppendQuery(request.SuccessUrl, "paymentId", licensePayment.Id.ToString("D"));
         var paymentMethod = PaymentMethodCodes.Normalize(request.PaymentMethod);
+        ParentPaymentMethods.EnsureAllowed(tenant.Country, currency, paymentMethod);
 
         IReadOnlyList<string> paymentMethodTypes = paymentMethod == PaymentMethodCodes.PayPal
             ? ["paypal"]
@@ -1069,8 +1079,8 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             .FirstOrDefaultAsync(o => o.Id == subscription.OfferingId, ct)
             ?? throw new InvalidOperationException("Offre d'abonnement introuvable.");
 
-        if (!offering.Currency.Equals("XAF", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Le paiement Mobile Money Cameroun exige une offre en XAF.");
+        if (!ParentPaymentMethods.IsAfricanCurrency(offering.Currency))
+            throw new InvalidOperationException(ParentPaymentMethods.MobileMoneyCurrencyMessage);
 
         EnsureSubscriptionPayable(subscription, offering);
 
@@ -1083,6 +1093,11 @@ internal sealed class PayGatewayService : IPaymentGatewayService
 
         var parent = await _db.ParentProfilesForAnyTenant.FirstOrDefaultAsync(p => p.Id == student.ParentProfileId, ct)
             ?? throw new InvalidOperationException("Profil parent introuvable.");
+
+        ParentPaymentMethods.EnsureAllowed(
+            ResolvePayerCountry(parent.Country, student.Country),
+            offering.Currency,
+            channel);
 
         var customer = await CreateOrGetParentCustomerAsync(parent.Id, ct);
         var amountExclusive = offering.Price;

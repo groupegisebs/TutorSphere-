@@ -6,6 +6,7 @@
 @inject ApiClient Api
 @inject IJSRuntime JS
 @inject NavigationManager Nav
+@inject ParentProfileState ParentProfile
 
 <PageTitle>Mes Paiements – TutorSphere</PageTitle>
 
@@ -146,6 +147,7 @@ else
                       Amount="@(_payTarget?.Amount ?? 0)"
                       Currency="@(_payTarget?.Currency ?? "CAD")"
                       ProductTitle="@_payTarget?.Description"
+                      PayerCountry="@ParentProfile.Country"
                       SuccessUrl="@_paySuccessUrl"
                       CancelUrl="@_payCancelUrl"
                       OnPaid="OnPaidAsync"
@@ -195,6 +197,8 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        try { await ParentProfile.EnsureLoadedAsync(); } catch { }
+
         // Retour de la page de règlement : le webhook peut arriver après le navigateur, on
         // demande la confirmation côté serveur avant d'afficher la liste.
         var query = QueryHelpers.ParseQuery(Nav.ToAbsoluteUri(Nav.Uri).Query);

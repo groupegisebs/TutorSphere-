@@ -5,6 +5,7 @@
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
 @inject NavigationManager Navigation
+@inject ParentProfileState ParentProfile
 
 <PageTitle>@L["ParentSubs_PageTitle"]</PageTitle>
 
@@ -136,6 +137,7 @@ else
                       SubscriptionId="@(_paySub?.Id)"
                       Amount="@(_paySub?.Price ?? 0)"
                       Currency="@(_paySub?.Currency ?? "CAD")"
+                      PayerCountry="@ParentProfile.Country"
                       SuccessUrl="@_paySuccessUrl"
                       CancelUrl="@_payCancelUrl"
                       OnPaid="OnPayCompletedAsync"
@@ -165,6 +167,8 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        try { await ParentProfile.EnsureLoadedAsync(); } catch { }
+
         var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
         var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
         var paidReturn = query.ContainsKey("paid");

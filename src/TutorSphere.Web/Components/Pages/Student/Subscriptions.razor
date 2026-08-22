@@ -133,6 +133,7 @@ else
                       SubscriptionId="@(_paySub?.Id)"
                       Amount="@(_paySub?.Price ?? 0)"
                       Currency="@(_paySub?.Currency ?? "CAD")"
+                      PayerCountry="@_payerCountry"
                       SuccessUrl="@_paySuccessUrl"
                       CancelUrl="@_payCancelUrl"
                       OnPaid="OnPayCompletedAsync"
@@ -149,6 +150,7 @@ else
     private SubVm? _paySub;
     private string _paySuccessUrl = "";
     private string _payCancelUrl = "";
+    private string? _payerCountry;
 
     private IEnumerable<SubVm> FilteredSubs => _subs.Where(s => MatchesTab(s.Status, _tab));
 
@@ -179,6 +181,12 @@ else
 
             var result = await Api.GetAsync<List<SubVm>>("api/students/me/subscriptions");
             _subs = result ?? [];
+            try
+            {
+                var me = await Api.GetAsync<StudentDto>("api/students/me");
+                _payerCountry = me?.Country;
+            }
+            catch { }
             _tab = PickDefaultTab();
 
             if (paidReturn || createdReturn)

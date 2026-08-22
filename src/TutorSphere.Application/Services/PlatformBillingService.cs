@@ -205,6 +205,7 @@ public class PlatformBillingService(
             options.Currency,
             renewalSoon,
             tenant.LicenseFeeWithholdingRemainingUsd,
-            tenant.LicenseAutoRenewAtSource);
+            tenant.LicenseAutoRenewAtSource,
+            tenant.Country);
     }
 }

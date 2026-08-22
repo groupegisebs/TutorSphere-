@@ -15,7 +15,8 @@ public record PlatformLicenseStatusDto(
     string Currency,
     bool RenewalSoon,
     decimal LicenseFeeWithholdingRemainingUsd = 0m,
-    bool LicenseAutoRenewAtSource = false);
+    bool LicenseAutoRenewAtSource = false,
+    string? Country = null);
 
 public record CreatePlatformLicenseCheckoutRequest(
     string SuccessUrl,

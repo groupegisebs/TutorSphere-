@@ -1,6 +1,7 @@
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
 @inject IJSRuntime JS
+@using TutorSphere.Web.Common
 
 @if (Visible)
 {
@@ -101,16 +102,19 @@
                                             <span class="pay-method-brand">Amex</span>
                                         </span>
                                     </button>
-                                    <button type="button"
-                                            class="pay-method-option @FamilyClass("paypal")"
-                                            disabled="@_busy"
-                                            role="radio"
-                                            aria-checked="@(_family == "paypal" ? "true" : "false")"
-                                            @onclick='() => SelectFamilyAsync("paypal")'>
-                                        <span class="pay-method-radio" aria-hidden="true"></span>
-                                        <span class="pay-method-icon pay-method-icon--paypal" aria-hidden="true">@PayPalIcon</span>
-                                        <span class="pay-method-label">@L["PayMethod_PayPal"]</span>
-                                    </button>
+                                    @if (ShowPayPal)
+                                    {
+                                        <button type="button"
+                                                class="pay-method-option @FamilyClass("paypal")"
+                                                disabled="@_busy"
+                                                role="radio"
+                                                aria-checked="@(_family == "paypal" ? "true" : "false")"
+                                                @onclick='() => SelectFamilyAsync("paypal")'>
+                                            <span class="pay-method-radio" aria-hidden="true"></span>
+                                            <span class="pay-method-icon pay-method-icon--paypal" aria-hidden="true">@PayPalIcon</span>
+                                            <span class="pay-method-label">@L["PayMethod_PayPal"]</span>
+                                        </button>
+                                    }
                                     @if (ShowMobileMoney)
                                     {
                                         <div class="@(_family == "momo" ? "pay-method-block is-selected" : "")">
@@ -160,8 +164,12 @@
                                                                 disabled="@_busy"
                                                                 @bind="_momoOperator"
                                                                 @bind:after="OnOperatorChanged">
-                                                            <option value="airtel">Airtel Money</option>
-                                                            <option value="wave">Wave</option>
+                                                            @foreach (var op in MomoOperators)
+                                                            {
+                                                                <option value="@op.Code" disabled="@(!op.Collectable)">
+                                                                    @op.Label@(op.Collectable ? "" : $" ({L["PayMethod_OperatorInfoOnly"]})")
+                                                                </option>
+                                                            }
                                                         </select>
                                                     </div>
                                                     <div class="mb-0">
@@ -311,12 +319,14 @@
     [Parameter] public string CancelUrl { get; set; } = "";
     [Parameter] public string? PayerName { get; set; }
     [Parameter] public string? ProductTitle { get; set; }
+    /// <summary>Pays ISO du payeur (parent / élève / enseignant). Détermine PayPal et Mobile Money.</summary>
+    [Parameter] public string? PayerCountry { get; set; }
     [Parameter] public EventCallback OnPaid { get; set; }
     [Parameter] public EventCallback<string> OnError { get; set; }
 
     private string _family = "card";
     private string _method = PaymentMethodCodes.Card;
-    private string _momoOperator = "wave";
+    private string _momoOperator = PaymentMethodCodes.MtnMomo;
     private bool _busy;
     private bool _autoRenewAtSource;
     private string? _error;
@@ -332,10 +342,16 @@
     private TaxQuoteVm? _taxQuote;
     private List<AfricaRateVm> _africaRates = [];
 
+    private bool ShowPayPal =>
+        ParentPaymentMethods.AllowsPayPal(PayerCountry, Currency);
+
     private bool ShowMobileMoney =>
-        PaymentMethodCodes.MobileMoneyCollectionEnabled
-        && (IsPlatformLicense
-            || (SubscriptionId.HasValue && Currency.Equals("XAF", StringComparison.OrdinalIgnoreCase)));
+        !IsPlatformLicense
+        && ParentPaymentMethods.AllowsMobileMoney(PayerCountry, Currency);
+
+    private IReadOnlyList<ParentPaymentMethods.Operator> MomoOperators =>
+        ParentPaymentMethods.OperatorsFor(
+            ParentPaymentMethods.NormalizeIso(PayerCountry) ?? _billingCountry);
 
     private bool ShowFxEstimate =>
         IsPlatformLicense && Currency.Equals("USD", StringComparison.OrdinalIgnoreCase);
@@ -411,7 +427,8 @@
     }
 
     private static string DialCodeFor(string countryCode) =>
-        countryCode.ToUpperInvariant() switch
+        CountryCatalog.DialPrefix(countryCode)
+        ?? countryCode.ToUpperInvariant() switch
         {
             "CI" => "+225",
             "SN" => "+221",
@@ -430,6 +447,10 @@
     private async Task OnBillingCountryChangedAsync()
     {
         _dialCode = DialCodeFor(_billingCountry);
+        var allowed = ParentPaymentMethods.OperatorsFor(_billingCountry);
+        if (!allowed.Any(o => o.Code == _momoOperator && o.Collectable))
+            _momoOperator = ParentPaymentMethods.DefaultCollectableOperator(_billingCountry);
+        ApplyOperatorToMethod();
         if (_family == "momo")
             await RefreshTaxQuoteAsync();
     }
@@ -505,7 +526,7 @@
     {
         _family = "card";
         _method = PaymentMethodCodes.Card;
-        _momoOperator = "wave";
+        _momoOperator = ParentPaymentMethods.DefaultCollectableOperator(PayerCountry);
         _error = null;
         _busy = false;
         _autoRenewAtSource = false;
@@ -517,8 +538,55 @@
         _ussdHint = null;
         _idempotencyKey = Guid.NewGuid().ToString("N");
         _taxQuote = null;
-        _dialCode = "+237";
-        _billingCountry = "CM";
+        ApplyPayerCountryDefaults();
+        _countryApplied = false;
+    }
+
+    private bool _countryApplied;
+
+    protected override void OnParametersSet()
+    {
+        if (!Visible)
+        {
+            _countryApplied = false;
+            return;
+        }
+
+        if (_countryApplied)
+            return;
+
+        _countryApplied = true;
+        ApplyPayerCountryDefaults();
+    }
+
+    private void ApplyPayerCountryDefaults()
+    {
+        var iso = ParentPaymentMethods.NormalizeIso(PayerCountry);
+        if (iso is { Length: 2 } && ParentPaymentMethods.IsAfricanPayer(iso, Currency))
+        {
+            _billingCountry = iso;
+            _dialCode = DialCodeFor(iso);
+        }
+        else if (ParentPaymentMethods.IsAfricanCurrency(Currency))
+        {
+            _billingCountry = "CM";
+            _dialCode = DialCodeFor("CM");
+        }
+
+        _momoOperator = ParentPaymentMethods.DefaultCollectableOperator(
+            ParentPaymentMethods.NormalizeIso(PayerCountry) ?? _billingCountry);
+
+        if (!ShowPayPal && _family == "paypal")
+        {
+            _family = "card";
+            _method = PaymentMethodCodes.Card;
+        }
+
+        if (!ShowMobileMoney && _family == "momo")
+        {
+            _family = "card";
+            _method = PaymentMethodCodes.Card;
+        }
     }
 
     private async Task RedeemPromoAsync()
@@ -580,6 +648,12 @@
             return;
         }
 
+        if (_family == "paypal" && !ShowPayPal)
+        {
+            _error = L["PayMethod_UnavailableInCountry"];
+            return;
+        }
+
         if (_family == "momo")
         {
             if (IsPlatformLicense)
@@ -588,7 +662,13 @@
                 return;
             }
 
-            if (_momoOperator is "airtel" or "wave")
+            if (!ShowMobileMoney)
+            {
+                _error = L["PayMethod_UnavailableInCountry"];
+                return;
+            }
+
+            if (!MomoOperators.Any(o => o.Code == _momoOperator && o.Collectable))
             {
                 _error = L["PayMethod_OperatorUnavailable"];
                 return;
