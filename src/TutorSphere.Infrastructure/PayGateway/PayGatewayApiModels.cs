@@ -14,7 +14,8 @@ internal sealed record GatewayCheckoutSessionRequest(
     string? MetadataJson,
     int? TrialDays,
     bool Embedded = false,
-    IReadOnlyList<string>? PaymentMethodTypes = null);
+    IReadOnlyList<string>? PaymentMethodTypes = null,
+    string? BillingCountry = null);
 
 internal sealed record GatewayCheckoutSessionResponse(
     string PaymentCode,

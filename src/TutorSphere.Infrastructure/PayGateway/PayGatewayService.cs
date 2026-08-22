@@ -182,7 +182,8 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             metadata,
             TrialDays: null,
             Embedded: false,
-            PaymentMethodTypes: paymentMethodTypes), ct);
+            PaymentMethodTypes: paymentMethodTypes,
+            BillingCountry: ResolvePayerCountry(parent.Country, student.Country)), ct);
 
         payment.StripePaymentIntentId = checkout.PaymentCode;
         _cachedPublishableKey ??= checkout.PublishableKey;
@@ -930,7 +931,8 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             metadata,
             TrialDays: null,
             Embedded: false,
-            PaymentMethodTypes: paymentMethodTypes), ct);
+            PaymentMethodTypes: paymentMethodTypes,
+            BillingCountry: ParentPaymentMethods.NormalizeIso(tenant.Country)), ct);
 
         licensePayment.GatewayPaymentCode = checkout.PaymentCode;
         _cachedPublishableKey ??= checkout.PublishableKey;
