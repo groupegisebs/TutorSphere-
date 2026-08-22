@@ -100,6 +100,8 @@ internal sealed class MemoryAppDb : IApplicationDbContext
     IQueryable<TeacherContract> IApplicationDbContext.TeacherContracts => None<TeacherContract>();
     IQueryable<TeacherContractSectionDecision> IApplicationDbContext.TeacherContractSectionDecisions => None<TeacherContractSectionDecision>();
     IQueryable<TeacherContractAuditEvent> IApplicationDbContext.TeacherContractAuditEvents => None<TeacherContractAuditEvent>();
+    public List<PlatformPaymentSettings> PaymentSettingsList { get; } = [];
+    IQueryable<PlatformPaymentSettings> IApplicationDbContext.PlatformPaymentSettings => PaymentSettingsList.AsQueryable();
 
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) => Task.FromResult(0);
 
@@ -112,6 +114,7 @@ internal sealed class MemoryAppDb : IApplicationDbContext
             case StudentSubscription sub: SubscriptionsList.Add(sub); break;
             case LessonCoverageAssignment coverage: CoverageList.Add(coverage); break;
             case Student student: StudentsList.Add(student); break;
+            case PlatformPaymentSettings settings: PaymentSettingsList.Add(settings); break;
             default: throw new NotSupportedException(typeof(T).Name);
         }
     }

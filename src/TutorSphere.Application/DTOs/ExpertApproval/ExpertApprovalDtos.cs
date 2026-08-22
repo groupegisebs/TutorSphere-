@@ -34,7 +34,9 @@ public record ExpertGroupDto(
     /// <summary>Enseignants dont la fiche a été approuvée par ce groupe.</summary>
     int ApprovedTeacherCount = 0,
     /// <summary>Reçoit les candidatures spontanées qu'aucun pays ne rattache.</summary>
-    bool IsDefaultReviewGroup = false);
+    bool IsDefaultReviewGroup = false,
+    /// <summary>Commission TutorSphere sur le net après frais Stripe/PayPal. Le reste (70 % par défaut) va au groupe.</summary>
+    decimal PlatformCommissionPercent = 30m);
 
 /// <summary>
 /// Ce qu'une suppression de groupe emporterait. Sert à écrire la confirmation : l'administrateur
@@ -88,7 +90,8 @@ public record CreateExpertGroupRequest(
     string? ManagerPhone = null,
     string? ManagerFunctionTitle = null,
     DateTime? ManagerMandateStartsAtUtc = null,
-    bool CreateManagerAccount = true);
+    bool CreateManagerAccount = true,
+    decimal? PlatformCommissionPercent = null);
 
 public record UpdateExpertGroupRequest(
     string Name,
@@ -100,7 +103,9 @@ public record UpdateExpertGroupRequest(
     string? Description = null,
     string? CountryCode = null,
     /// <summary>Portée annoncée du groupe ; null laisse la valeur en place.</summary>
-    bool? IsInternational = null);
+    bool? IsInternational = null,
+    /// <summary>Commission plateforme (0–100). Null laisse la valeur en place.</summary>
+    decimal? PlatformCommissionPercent = null);
 
 /// <summary>Désignation du groupe qui reçoit les candidatures spontanées.</summary>
 public record SetDefaultReviewGroupRequest(bool IsDefault);

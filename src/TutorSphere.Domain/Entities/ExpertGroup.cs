@@ -57,6 +57,12 @@ public class ExpertGroup : BaseEntity
     /// </summary>
     public TeacherApprovalTrack TeacherApprovalTrack { get; set; } = TeacherApprovalTrack.FileOnly;
 
+    /// <summary>
+    /// Part TutorSphere prélevée sur le net (après frais Stripe/PayPal). Défaut 30 %.
+    /// Le complément va au groupe (enseignants rattachés), pas à l’enseignant.
+    /// </summary>
+    public decimal PlatformCommissionPercent { get; set; } = 30m;
+
     public ICollection<ExpertGroupMember> Members { get; set; } = [];
     public ICollection<ExpertGroupManagerMandate> ManagerMandates { get; set; } = [];
     public ICollection<GroupOffer> Offers { get; set; } = [];

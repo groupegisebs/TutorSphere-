@@ -82,6 +82,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     public DbSet<TeacherContract> TeacherContractsSet => Set<TeacherContract>();
     public DbSet<TeacherContractSectionDecision> TeacherContractSectionDecisionsSet => Set<TeacherContractSectionDecision>();
     public DbSet<TeacherContractAuditEvent> TeacherContractAuditEventsSet => Set<TeacherContractAuditEvent>();
+    public DbSet<PlatformPaymentSettings> PlatformPaymentSettingsSet => Set<PlatformPaymentSettings>();
 
     IQueryable<Tenant> IApplicationDbContext.Tenants => TenantsSet;
     IQueryable<TenantBranding> IApplicationDbContext.TenantBrandings => TenantBrandingsSet;
@@ -186,6 +187,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
         TeacherContractSectionDecisionsSet;
     IQueryable<TeacherContractAuditEvent> IApplicationDbContext.TeacherContractAuditEvents =>
         TeacherContractAuditEventsSet;
+    IQueryable<PlatformPaymentSettings> IApplicationDbContext.PlatformPaymentSettings =>
+        PlatformPaymentSettingsSet;
 
     public new void Add<T>(T entity) where T : class => Set<T>().Add(entity);
     public new void Remove<T>(T entity) where T : class => Set<T>().Remove(entity);
@@ -228,10 +231,24 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
         builder.Entity<Payment>(e =>
         {
             e.Property(p => p.Amount).HasPrecision(18, 2);
+            e.Property(p => p.ProcessorFee).HasPrecision(18, 2);
             e.Property(p => p.PlatformFee).HasPrecision(18, 2);
             e.Property(p => p.TutorAmount).HasPrecision(18, 2);
+            e.Property(p => p.GroupAmount).HasPrecision(18, 2);
+            e.Property(p => p.CommissionPercent).HasPrecision(5, 2);
             e.Property(p => p.Channel).HasMaxLength(20);
             e.Property(p => p.PhoneMasked).HasMaxLength(40);
+            e.HasIndex(p => p.ExpertGroupId);
+        });
+
+        builder.Entity<PlatformPaymentSettings>(e =>
+        {
+            e.ToTable("PlatformPaymentSettingsSet");
+            e.Property(s => s.DefaultCommissionPercent).HasPrecision(5, 2);
+            e.Property(s => s.CardFeePercent).HasPrecision(5, 2);
+            e.Property(s => s.CardFeeFixed).HasPrecision(18, 2);
+            e.Property(s => s.PayPalFeePercent).HasPrecision(5, 2);
+            e.Property(s => s.PayPalFeeFixed).HasPrecision(18, 2);
         });
 
         builder.Entity<TutorPayout>(e =>
@@ -305,6 +322,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             e.HasIndex(g => g.IsDefaultReviewGroup)
                 .IsUnique()
                 .HasFilter("\"IsDefaultReviewGroup\" = TRUE AND \"IsActive\" = TRUE");
+            e.Property(g => g.PlatformCommissionPercent).HasPrecision(5, 2).HasDefaultValue(30m);
         });
 
         builder.Entity<ExpertGroupMember>(e =>

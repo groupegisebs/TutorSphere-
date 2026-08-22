@@ -99,6 +99,7 @@ public interface IApplicationDbContext
     IQueryable<TeacherContract> TeacherContracts { get; }
     IQueryable<TeacherContractSectionDecision> TeacherContractSectionDecisions { get; }
     IQueryable<TeacherContractAuditEvent> TeacherContractAuditEvents { get; }
+    IQueryable<PlatformPaymentSettings> PlatformPaymentSettings { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
     void Add<T>(T entity) where T : class;

@@ -9,8 +9,12 @@ public class Payment : BaseEntity, ITenantEntity
     public Guid? InvoiceId { get; set; }
     public Guid? SubscriptionId { get; set; }
     public decimal Amount { get; set; }
+    public decimal ProcessorFee { get; set; }
     public decimal PlatformFee { get; set; }
     public decimal TutorAmount { get; set; }
+    public decimal GroupAmount { get; set; }
+    public Guid? ExpertGroupId { get; set; }
+    public decimal CommissionPercent { get; set; }
     public string Currency { get; set; } = "CAD";
     public PaymentStatus Status { get; set; } = PaymentStatus.Pending;
     public string? StripePaymentIntentId { get; set; }

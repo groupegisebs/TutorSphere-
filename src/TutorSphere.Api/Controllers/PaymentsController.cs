@@ -205,7 +205,7 @@ public class PaymentsController : ControllerBase
         }
     }
 
-    /// <summary>Initie un paiement Orange Money WebPay / MTN MoMo Collections (Cameroun, XAF).</summary>
+    /// <summary>Initie un paiement Mobile Money. Orange Money et MTN MoMo sont désactivés.</summary>
     [HttpPost("mobile-money")]
     [Authorize(Roles = $"{UserRoles.Parent},{UserRoles.Student},{UserRoles.Tutor},{UserRoles.SuperAdmin}")]
     public async Task<ActionResult<MobileMoneyChargeResponse>> CreateMobileMoneyCharge(

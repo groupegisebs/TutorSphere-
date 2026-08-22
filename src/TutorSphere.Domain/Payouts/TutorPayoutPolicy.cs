@@ -73,11 +73,12 @@ public static class TutorPayoutPolicy
             _ => [PayoutProviderKind.PayPal]
         };
 
+    public const string DiscontinuedPayoutMessage =
+        "Orange Money et MTN MoMo ne sont plus disponibles comme comptes de versement. Choisissez Wave, M-Pesa, Airtel, Moov, TapTap Send, un compte bancaire ou PayPal.";
+
     public static IReadOnlyList<PayoutProviderKind> AfricaMobileMoneyProviders { get; } =
     [
         PayoutProviderKind.Wave,
-        PayoutProviderKind.OrangeMoney,
-        PayoutProviderKind.MtnMomo,
         PayoutProviderKind.TapTapSend,
         PayoutProviderKind.Mpesa,
         PayoutProviderKind.Moov,

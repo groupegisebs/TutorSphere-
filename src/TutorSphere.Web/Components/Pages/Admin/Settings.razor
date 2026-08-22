@@ -1,8 +1,11 @@
 @page "/admin/settings"
 @layout AdminLayout
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using TutorSphere.Application.Common
+@using TutorSphere.Application.DTOs.Payments
 @inject IStringLocalizer<SharedResources> L
 @inject AuthService Auth
+@inject AdminService AdminSvc
 @inject IJSRuntime JS
 
 <PageTitle>@L["PageTitle_AdminSettings"]</PageTitle>
@@ -21,6 +24,13 @@
             <div class="alert alert-success d-flex align-items-center gap-2 mb-4" role="alert">
                 <i class="bi bi-check-circle-fill"></i>
                 @_successMessage
+            </div>
+        }
+        @if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <div class="alert alert-danger d-flex align-items-center gap-2 mb-4" role="alert">
+                <i class="bi bi-exclamation-triangle-fill"></i>
+                @_errorMessage
             </div>
         }
 
@@ -51,6 +61,66 @@
                                 <small class="form-text text-muted">Séparez les domaines par des virgules.</small>
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                <div class="section-card mb-4">
+                    <h2 class="section-card-title p-3" style="border-bottom:1px solid var(--ts-border)">
+                        <i class="bi bi-cash-stack me-2 text-success"></i>Paiements parents
+                    </h2>
+                    <div style="padding:1.5rem">
+                        <p class="text-muted small">
+                            Sur chaque paiement parent, les frais Stripe ou PayPal sont d’abord déduits du montant brut,
+                            puis la commission TutorSphere s’applique sur le net. Le reste va au groupe d’experts
+                            (enseignant rattaché) ou à l’enseignant indépendant. La licence annuelle 10 $ reste en plus.
+                        </p>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Commission par défaut (%)</label>
+                                <input class="form-control" type="number" min="0" max="100" step="0.1"
+                                       @bind="_defaultCommission" @bind:event="oninput" />
+                                <small class="form-text text-muted">Utilisée pour les enseignants indépendants. Les groupes ont leur propre taux.</small>
+                            </div>
+                            <div class="col-md-6 d-flex align-items-end">
+                                <div class="form-text mb-2">Aperçu carte sur 10,00 $</div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Stripe — pourcentage (%)</label>
+                                <input class="form-control" type="number" min="0" max="100" step="0.01"
+                                       @bind="_cardFeePercent" @bind:event="oninput" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">Stripe — fixe ($)</label>
+                                <input class="form-control" type="number" min="0" step="0.01"
+                                       @bind="_cardFeeFixed" @bind:event="oninput" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">PayPal — pourcentage (%)</label>
+                                <input class="form-control" type="number" min="0" max="100" step="0.01"
+                                       @bind="_paypalFeePercent" @bind:event="oninput" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-semibold">PayPal — fixe ($)</label>
+                                <input class="form-control" type="number" min="0" step="0.01"
+                                       @bind="_paypalFeeFixed" @bind:event="oninput" />
+                            </div>
+                        </div>
+                        <div class="mt-3 p-3 rounded" style="background:var(--ts-surface-muted, #f8fafc); border:1px solid var(--ts-border)">
+                            <strong>Exemple 10,00 $ (carte)</strong>
+                            <ul class="small mb-0 mt-2">
+                                <li>Frais processeur : @_cardPreview.ProcessorFee.ToString("0.00") $</li>
+                                <li>Net : @_cardPreview.Net.ToString("0.00") $</li>
+                                <li>Commission TutorSphere (@_cardPreview.CommissionPercent.ToString("0.##") %) : @_cardPreview.PlatformFee.ToString("0.00") $</li>
+                                <li>Groupe / enseignant : @_cardPreview.Remainder.ToString("0.00") $</li>
+                            </ul>
+                        </div>
+                        <button class="btn btn-primary mt-3" @onclick="SavePaymentSettings" disabled="@(_savingPay || _loadingPay)">
+                            @if (_savingPay)
+                            {
+                                <span class="spinner-border spinner-border-sm me-2"></span>
+                            }
+                            Enregistrer les frais et la commission
+                        </button>
                     </div>
                 </div>
 
@@ -186,7 +256,10 @@
 
 @code {
     private bool    _saving               = false;
+    private bool    _savingPay            = false;
+    private bool    _loadingPay           = false;
     private string? _successMessage;
+    private string? _errorMessage;
     private string  _platformName         = "TutorSphere";
     private string  _supportEmail         = "support@tutorsphere.com";
     private string  _baseUrl              = "https://app.tutorsphere.gisebs.com";
@@ -196,6 +269,14 @@
     private bool    _dailyReport          = false;
     private bool    _requireMfa           = false;
     private bool    _auditLog             = true;
+    private decimal _defaultCommission    = ParentPaymentSplitCalculator.DefaultCommissionPercent;
+    private decimal _cardFeePercent       = ParentPaymentSplitCalculator.DefaultCardFeePercent;
+    private decimal _cardFeeFixed         = ParentPaymentSplitCalculator.DefaultCardFeeFixed;
+    private decimal _paypalFeePercent     = ParentPaymentSplitCalculator.DefaultPayPalFeePercent;
+    private decimal _paypalFeeFixed       = ParentPaymentSplitCalculator.DefaultPayPalFeeFixed;
+
+    private ParentPaymentSplit _cardPreview => ParentPaymentSplitCalculator.Compute(
+        10m, _cardFeePercent, _cardFeeFixed, _defaultCommission, null);
 
     protected override async Task OnInitializedAsync()
     {
@@ -222,6 +303,59 @@
             }
         }
         catch { }
+
+        await LoadPaymentSettingsAsync();
+    }
+
+    private async Task LoadPaymentSettingsAsync()
+    {
+        _loadingPay = true;
+        try
+        {
+            var settings = await AdminSvc.GetPaymentSettingsAsync();
+            if (settings is null) return;
+            _defaultCommission = settings.DefaultCommissionPercent;
+            _cardFeePercent = settings.CardFeePercent;
+            _cardFeeFixed = settings.CardFeeFixed;
+            _paypalFeePercent = settings.PayPalFeePercent;
+            _paypalFeeFixed = settings.PayPalFeeFixed;
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally { _loadingPay = false; }
+    }
+
+    private async Task SavePaymentSettings()
+    {
+        _savingPay = true;
+        _successMessage = null;
+        _errorMessage = null;
+        try
+        {
+            var result = await AdminSvc.UpdatePaymentSettingsAsync(new UpdatePlatformPaymentSettingsRequest(
+                _defaultCommission, _cardFeePercent, _cardFeeFixed, _paypalFeePercent, _paypalFeeFixed));
+            if (!result.IsSuccess || result.Value is null)
+            {
+                _errorMessage = string.IsNullOrWhiteSpace(result.Error)
+                    ? "Impossible d’enregistrer les paramètres de paiement."
+                    : result.Error;
+                return;
+            }
+
+            _defaultCommission = result.Value.DefaultCommissionPercent;
+            _cardFeePercent = result.Value.CardFeePercent;
+            _cardFeeFixed = result.Value.CardFeeFixed;
+            _paypalFeePercent = result.Value.PayPalFeePercent;
+            _paypalFeeFixed = result.Value.PayPalFeeFixed;
+            _successMessage = "Frais processeur et commission enregistrés.";
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally { _savingPay = false; }
     }
 
     private async Task SaveSettings()
@@ -254,6 +388,7 @@
         _requireMfa           = false;
         _auditLog             = true;
         _successMessage       = null;
+        _errorMessage         = null;
     }
 
     private record SettingsModel(

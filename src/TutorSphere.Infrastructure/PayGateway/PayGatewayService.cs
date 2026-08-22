@@ -14,9 +14,6 @@ namespace TutorSphere.Infrastructure.PayGateway;
 
 internal sealed class PayGatewayService : IPaymentGatewayService
 {
-    private const decimal MinCommissionPercent = 5m;
-    private const decimal MaxCommissionPercent = 15m;
-
     private readonly IApplicationDbContext _db;
     private readonly PayGatewayClient _gateway;
     private readonly PayGatewaySettings _settings;
@@ -27,6 +24,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
     private readonly IUserContactLookup _contacts;
     private readonly IEmailService _email;
     private readonly IAppUrlProvider _urls;
+    private readonly IPlatformPaymentSettingsService _paymentSettings;
     private readonly ILogger<PayGatewayService> _logger;
     private string? _cachedPublishableKey;
 
@@ -41,6 +39,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
         IUserContactLookup contacts,
         IEmailService email,
         IAppUrlProvider urls,
+        IPlatformPaymentSettingsService paymentSettings,
         ILogger<PayGatewayService> logger)
     {
         _db = db;
@@ -53,6 +52,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
         _contacts = contacts;
         _email = email;
         _urls = urls;
+        _paymentSettings = paymentSettings;
         _logger = logger;
     }
 
@@ -115,27 +115,29 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             ?? throw new InvalidOperationException("Profil parent introuvable.");
 
         var customer = await CreateOrGetParentCustomerAsync(parent.Id, ct);
-        var commissionPercent = ClampCommission(tenant.PlatformCommissionPercent);
+        var paymentMethod = PaymentMethodCodes.Normalize(request.PaymentMethod);
+        if (PaymentMethodCodes.IsDisabledCollectionChannel(paymentMethod)
+            || PaymentMethodCodes.IsMobileMoney(paymentMethod))
+            throw new InvalidOperationException(PaymentMethodCodes.MobileMoneyCollectionDisabledMessage);
+
         var amount = offering.Price;
-        var platformFee = Math.Round(amount * commissionPercent / 100m, 2, MidpointRounding.AwayFromZero);
-        var tutorAmount = amount - platformFee;
+        var split = await SplitParentPaymentAsync(tenant, amount, paymentMethod, ct);
 
         var productCode = ToProductCode(offering.Id);
         var planCode = SubscriptionPackRules.ResolvePlanCode(offering.DurationDays);
         await EnsureCatalogItemAsync(offering, productCode, planCode, ct);
-
-        var paymentMethod = PaymentMethodCodes.Normalize(request.PaymentMethod);
-        if (PaymentMethodCodes.IsMobileMoney(paymentMethod))
-            throw new InvalidOperationException(
-                "Utilisez POST /api/payments/mobile-money pour Orange Money / MTN MoMo.");
 
         var payment = new Payment
         {
             TenantId = subscription.TenantId,
             SubscriptionId = subscription.Id,
             Amount = amount,
-            PlatformFee = platformFee,
-            TutorAmount = tutorAmount,
+            ProcessorFee = split.ProcessorFee,
+            PlatformFee = split.PlatformFee,
+            TutorAmount = split.TutorAmount,
+            GroupAmount = split.GroupAmount,
+            ExpertGroupId = split.ExpertGroupId,
+            CommissionPercent = split.CommissionPercent,
             Currency = offering.Currency,
             Status = PaymentStatus.Pending
         };
@@ -149,8 +151,10 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             payment_id = payment.Id,
             subscription_id = subscription.Id,
             tenant_id = tenant.Id,
-            commission_percent = commissionPercent.ToString("0.##"),
-            payment_method = paymentMethod
+            commission_percent = split.CommissionPercent.ToString("0.##"),
+            processor_fee = split.ProcessorFee.ToString("0.##"),
+            payment_method = paymentMethod,
+            expert_group_id = split.ExpertGroupId
         });
 
         IReadOnlyList<string> paymentMethodTypes = paymentMethod == PaymentMethodCodes.PayPal
@@ -189,10 +193,12 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             checkout.SessionId,
             checkout.ClientSecret,
             amount,
-            platformFee,
-            tutorAmount,
+            split.PlatformFee,
+            split.TutorAmount,
             offering.Currency,
-            paymentMethod);
+            paymentMethod,
+            split.ProcessorFee,
+            split.GroupAmount);
     }
 
     public async Task<PaymentStatusResponse> SyncPaymentStatusAsync(Guid paymentId, CancellationToken ct = default)
@@ -715,8 +721,36 @@ internal sealed class PayGatewayService : IPaymentGatewayService
     private static string ToProductCode(Guid offeringId) =>
         $"OFF-{offeringId:N}".ToUpperInvariant();
 
-    private static decimal ClampCommission(decimal percent) =>
-        Math.Clamp(percent, MinCommissionPercent, MaxCommissionPercent);
+    private async Task<ParentPaymentSplit> SplitParentPaymentAsync(
+        Tenant tenant,
+        decimal amount,
+        string paymentMethod,
+        CancellationToken ct)
+    {
+        var settings = await _paymentSettings.GetEntityAsync(ct);
+        Guid? groupId = tenant.ApprovedByExpertGroupId;
+        var commission = settings.DefaultCommissionPercent;
+        if (groupId is Guid gid && gid != Guid.Empty)
+        {
+            var group = await _db.ExpertGroups.FirstOrDefaultAsync(g => g.Id == gid, ct);
+            if (group is not null)
+                commission = group.PlatformCommissionPercent;
+            else
+                groupId = null;
+        }
+        else
+        {
+            groupId = null;
+        }
+
+        var paypal = PaymentMethodCodes.Normalize(paymentMethod) == PaymentMethodCodes.PayPal;
+        return ParentPaymentSplitCalculator.Compute(
+            amount,
+            paypal ? settings.PayPalFeePercent : settings.CardFeePercent,
+            paypal ? settings.PayPalFeeFixed : settings.CardFeeFixed,
+            commission,
+            groupId);
+    }
 
     private static PaymentStatus MapPaymentStatus(string gatewayStatus) =>
         PackPaymentProcess.MapGatewayStatus(gatewayStatus);
@@ -1013,8 +1047,11 @@ internal sealed class PayGatewayService : IPaymentGatewayService
         CancellationToken ct = default)
     {
         var channel = PaymentMethodCodes.Normalize(request.Channel);
+        if (PaymentMethodCodes.IsDisabledCollectionChannel(channel)
+            || !PaymentMethodCodes.MobileMoneyCollectionEnabled)
+            throw new InvalidOperationException(PaymentMethodCodes.MobileMoneyCollectionDisabledMessage);
         if (!PaymentMethodCodes.IsMobileMoney(channel))
-            throw new InvalidOperationException("Canal invalide. Utilisez ORANGE ou MTN.");
+            throw new InvalidOperationException("Canal invalide. Utilisez une carte bancaire ou PayPal.");
 
         var subscription = await _db.StudentSubscriptionsForAnyTenant
             .FirstOrDefaultAsync(s => s.Id == request.SubscriptionId, ct)
@@ -1040,10 +1077,8 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             ?? throw new InvalidOperationException("Profil parent introuvable.");
 
         var customer = await CreateOrGetParentCustomerAsync(parent.Id, ct);
-        var commissionPercent = ClampCommission(tenant.PlatformCommissionPercent);
-        var amountExclusive = offering.Price; // HT catalogue (BR-002)
-        var platformFee = Math.Round(amountExclusive * commissionPercent / 100m, 2, MidpointRounding.AwayFromZero);
-        var tutorAmount = amountExclusive - platformFee;
+        var amountExclusive = offering.Price;
+        var split = await SplitParentPaymentAsync(tenant, amountExclusive, channel, ct);
         var billingCountry = string.IsNullOrWhiteSpace(request.BillingCountryCode)
             ? "CM"
             : request.BillingCountryCode.Trim().ToUpperInvariant();
@@ -1057,8 +1092,12 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             TenantId = subscription.TenantId,
             SubscriptionId = subscription.Id,
             Amount = amountExclusive, // mis à jour au TTC après charge
-            PlatformFee = platformFee,
-            TutorAmount = tutorAmount,
+            ProcessorFee = split.ProcessorFee,
+            PlatformFee = split.PlatformFee,
+            TutorAmount = split.TutorAmount,
+            GroupAmount = split.GroupAmount,
+            ExpertGroupId = split.ExpertGroupId,
+            CommissionPercent = split.CommissionPercent,
             Currency = offering.Currency,
             Status = PaymentStatus.Pending,
             Channel = channel.ToUpperInvariant()
@@ -1072,7 +1111,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             payment_id = payment.Id,
             subscription_id = subscription.Id,
             tenant_id = tenant.Id,
-            commission_percent = commissionPercent.ToString("0.##"),
+            commission_percent = split.CommissionPercent.ToString("0.##"),
             payment_method = channel,
             billing_country = billingCountry
         });

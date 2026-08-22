@@ -160,8 +160,6 @@
                                                                 disabled="@_busy"
                                                                 @bind="_momoOperator"
                                                                 @bind:after="OnOperatorChanged">
-                                                            <option value="@PaymentMethodCodes.OrangeMoney">Orange Money</option>
-                                                            <option value="@PaymentMethodCodes.MtnMomo">MTN MoMo</option>
                                                             <option value="airtel">Airtel Money</option>
                                                             <option value="wave">Wave</option>
                                                         </select>
@@ -318,7 +316,7 @@
 
     private string _family = "card";
     private string _method = PaymentMethodCodes.Card;
-    private string _momoOperator = PaymentMethodCodes.OrangeMoney;
+    private string _momoOperator = "wave";
     private bool _busy;
     private bool _autoRenewAtSource;
     private string? _error;
@@ -335,8 +333,9 @@
     private List<AfricaRateVm> _africaRates = [];
 
     private bool ShowMobileMoney =>
-        IsPlatformLicense
-        || (SubscriptionId.HasValue && Currency.Equals("XAF", StringComparison.OrdinalIgnoreCase));
+        PaymentMethodCodes.MobileMoneyCollectionEnabled
+        && (IsPlatformLicense
+            || (SubscriptionId.HasValue && Currency.Equals("XAF", StringComparison.OrdinalIgnoreCase)));
 
     private bool ShowFxEstimate =>
         IsPlatformLicense && Currency.Equals("USD", StringComparison.OrdinalIgnoreCase);
@@ -406,9 +405,9 @@
 
     private void ApplyOperatorToMethod()
     {
-        _method = _momoOperator is PaymentMethodCodes.OrangeMoney or PaymentMethodCodes.MtnMomo
-            ? _momoOperator
-            : PaymentMethodCodes.OrangeMoney;
+        _method = PaymentMethodCodes.IsDisabledCollectionChannel(_momoOperator)
+            ? PaymentMethodCodes.Card
+            : _momoOperator;
     }
 
     private static string DialCodeFor(string countryCode) =>
@@ -506,7 +505,7 @@
     {
         _family = "card";
         _method = PaymentMethodCodes.Card;
-        _momoOperator = PaymentMethodCodes.OrangeMoney;
+        _momoOperator = "wave";
         _error = null;
         _busy = false;
         _autoRenewAtSource = false;
@@ -643,6 +642,13 @@
 
     private async Task PayMobileMoneyAsync()
     {
+        if (!PaymentMethodCodes.MobileMoneyCollectionEnabled
+            || PaymentMethodCodes.IsDisabledCollectionChannel(_method))
+        {
+            _error = PaymentMethodCodes.MobileMoneyCollectionDisabledMessage;
+            return;
+        }
+
         if (!SubscriptionId.HasValue)
         {
             _error = L["PayMethod_PayUnavailable"];

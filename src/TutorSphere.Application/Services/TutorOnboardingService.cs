@@ -214,7 +214,7 @@ public class TutorOnboardingService(
         new("payouts", 5, "Revenus et visibilité",
             "Paiements, commission et profil public.",
             """
-            <p>Les parents paient vos forfaits ; TutorSphere prélève une <strong>commission</strong> (5–15 %).</p>
+            <p>Les parents paient vos forfaits. TutorSphere prélève d’abord les frais Stripe/PayPal, puis une <strong>commission</strong> (30 % par défaut, réglable par groupe d’experts). Le reste va au groupe si vous y êtes rattaché, sinon à vous. La licence annuelle 10 $ reste en plus.</p>
             <p>Configurez un compte de versement (Stripe Connect / PayPal) dans les paramètres de payout.</p>
             <p>À la fin de cette formation, votre profil devient <strong>visible par tous</strong> dans la recherche.</p>
             """,
@@ -262,7 +262,7 @@ public class TutorOnboardingService(
         new("payouts", 5, "Revenue and visibility",
             "Payouts, commission and public profile.",
             """
-            <p>Parents pay your packages; TutorSphere takes a <strong>commission</strong> (5–15%).</p>
+            <p>Parents pay your packages. TutorSphere first deducts Stripe/PayPal fees, then a <strong>commission</strong> (30% by default, configurable per expert group). The remainder goes to the group if you belong to one, otherwise to you. The 10$ annual license remains extra.</p>
             <p>Completing this training makes your school <strong>visible to everyone</strong>.</p>
             """,
             [new("When does your school become publicly visible?",

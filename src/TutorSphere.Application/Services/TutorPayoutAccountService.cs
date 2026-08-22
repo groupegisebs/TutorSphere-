@@ -76,6 +76,15 @@ public class TutorPayoutAccountService : ITutorPayoutAccountService
         if (!Enum.TryParse<PayoutProviderKind>(request.ProviderKind, ignoreCase: true, out var kind))
             throw new InvalidOperationException("Type de moyen de paiement inconnu.");
 
+        if (PayoutProviderCodes.IsDiscontinued(kind))
+        {
+            var existingKind = id is Guid accountId
+                ? _db.TutorPayoutAccounts.FirstOrDefault(a => a.Id == accountId)?.ProviderKind
+                : null;
+            if (existingKind != kind)
+                throw new InvalidOperationException(TutorPayoutPolicy.DiscontinuedPayoutMessage);
+        }
+
         ValidateAccountPayload(kind, request);
 
         var country = TutorPayoutPolicy.NormalizeCountry(request.CountryCode ?? tenant.Country);
@@ -362,6 +371,7 @@ public class TutorPayoutAccountService : ITutorPayoutAccountService
         {
             foreach (var p in TutorPayoutPolicy.AfricaMobileMoneyProviders)
             {
+                if (PayoutProviderCodes.IsDiscontinued(p)) continue;
                 catalog.Add(new PayoutProviderCatalogItemDto(
                     p.ToString(), DisplayName(p), IsRequired: false, region.ToString()));
             }
@@ -395,6 +405,7 @@ public class TutorPayoutAccountService : ITutorPayoutAccountService
             foreach (var extra in Enum.GetValues<PayoutProviderKind>())
             {
                 if (required.Contains(extra)) continue;
+                if (PayoutProviderCodes.IsDiscontinued(extra)) continue;
                 if (PayoutProviderCodes.IsMobileMoney(extra)) continue;
                 if (PayoutProviderCodes.IsInterac(extra)) continue;
                 if (extra == PayoutProviderKind.StripeConnect) continue;

@@ -115,7 +115,10 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
             CountryCode = country,
             IsInternational = isInternational,
             IsActive = false,
-            LifecycleStatus = ExpertGroupLifecycleStatus.Draft
+            LifecycleStatus = ExpertGroupLifecycleStatus.Draft,
+            PlatformCommissionPercent = request.PlatformCommissionPercent is decimal pct
+                ? ParentPaymentSplitCalculator.ClampCommission(pct)
+                : ParentPaymentSplitCalculator.DefaultCommissionPercent
         };
         db.Add(entity);
         await db.SaveChangesAsync(ct);
@@ -170,6 +173,8 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
             entity.CountryCode = NormalizeCountry(request.CountryCode);
         if (request.IsInternational is bool scope)
             entity.IsInternational = scope;
+        if (request.PlatformCommissionPercent is decimal commission)
+            entity.PlatformCommissionPercent = ParentPaymentSplitCalculator.ClampCommission(commission);
 
         if (request.IsActive)
         {
@@ -705,7 +710,8 @@ public class ExpertGroupService(IApplicationDbContext db) : IExpertGroupService
             SuspendedExpertCount: counts.SuspendedExperts,
             PendingExpertInviteCount: counts.PendingInvites,
             ApprovedTeacherCount: counts.ApprovedTeachers,
-            IsDefaultReviewGroup: g.IsDefaultReviewGroup);
+            IsDefaultReviewGroup: g.IsDefaultReviewGroup,
+            PlatformCommissionPercent: g.PlatformCommissionPercent);
 
     private static string? NormalizeCountry(string? code)
     {

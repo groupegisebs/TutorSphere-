@@ -1,4 +1,5 @@
 using TutorSphere.Application.Common;
+using TutorSphere.Application.DTOs.Payments;
 
 namespace TutorSphere.Web.Services;
 
@@ -37,6 +38,12 @@ public sealed class AdminService
 
     public async Task<AdminHealth?> GetHealthAsync()
         => await _api.GetAsync<AdminHealth>("api/admin/health");
+
+    public Task<PlatformPaymentSettingsDto?> GetPaymentSettingsAsync()
+        => _api.GetAsync<PlatformPaymentSettingsDto>("api/admin/payment-settings");
+
+    public Task<ApiResult<PlatformPaymentSettingsDto>> UpdatePaymentSettingsAsync(UpdatePlatformPaymentSettingsRequest request)
+        => _api.PutWithErrorAsync<PlatformPaymentSettingsDto>("api/admin/payment-settings", request);
 
     public async Task<List<AdminSchoolItem>> GetSchoolsAsync()
         => await _api.GetAsync<List<AdminSchoolItem>>("api/admin/schools") ?? [];
@@ -78,7 +85,8 @@ public sealed class AdminService
         string? managerLastName = null,
         string? managerPhone = null,
         string? managerFunctionTitle = null,
-        DateTime? managerMandateStartsAtUtc = null)
+        DateTime? managerMandateStartsAtUtc = null,
+        decimal? platformCommissionPercent = null)
         => _api.PostWithErrorAsync<ExpertGroupItem>("api/admin/expert-groups", new
         {
             name,
@@ -94,12 +102,14 @@ public sealed class AdminService
             managerPhone,
             managerFunctionTitle,
             managerMandateStartsAtUtc,
-            createManagerAccount = true
+            createManagerAccount = true,
+            platformCommissionPercent
         });
 
     public Task<ApiResult<ExpertGroupItem>> UpdateExpertGroupAsync(
         Guid id, string name, string? contactName, string? contactEmail, string? contactPhone, string? logoUrl, bool isActive,
-        string? description = null, string? countryCode = null, bool? isInternational = null)
+        string? description = null, string? countryCode = null, bool? isInternational = null,
+        decimal? platformCommissionPercent = null)
         => _api.PutWithErrorAsync<ExpertGroupItem>($"api/admin/expert-groups/{id}", new
         {
             name,
@@ -110,7 +120,8 @@ public sealed class AdminService
             isActive,
             description,
             countryCode,
-            isInternational
+            isInternational,
+            platformCommissionPercent
         });
 
     /// <summary>Désigne le groupe qui reçoit les candidatures spontanées, ou lui retire le rôle.</summary>
@@ -289,7 +300,8 @@ public sealed record ExpertGroupItem(
     string? ManagerEmail = null,
     string? ManagerPhone = null,
     string? ManagerUserId = null,
-    bool CanHardDelete = true);
+    bool CanHardDelete = true,
+    decimal PlatformCommissionPercent = 30m);
 
 public sealed record ExpertGroupDeletionImpact(
     Guid Id,

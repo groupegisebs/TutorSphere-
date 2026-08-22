@@ -110,6 +110,13 @@
                             Facultatif et non exclusif : plusieurs groupes peuvent couvrir le même pays.
                         </div>
                     </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label cc-label-light" style="color:#f3f4f6">Commission plateforme (%)</label>
+                        <input class="form-control" type="number" min="0" max="100" step="0.1" @bind="_formCommission" />
+                        <div class="form-text" style="color:#9ca3af">
+                            Appliquée sur le net après frais Stripe/PayPal. Le reste va au groupe (70 % si 30 %).
+                        </div>
+                    </div>
                     <div class="col-12 mb-3">
                         <div class="form-check">
                             <input class="form-check-input" type="checkbox" id="intl"
@@ -313,6 +320,7 @@
                                         {
                                             <span class="cc-pill cc-pill-type">International</span>
                                         }
+                                        <span class="cc-pill">Commission @g.PlatformCommissionPercent.ToString("0.##") %</span>
                                         @if (string.IsNullOrWhiteSpace(g.CountryCode) && !g.IsInternational)
                                         {
                                             <span class="cc-pill">Sans rattachement</span>
@@ -477,6 +485,7 @@
                                             {
                                                 <span class="cc-pill cc-pill-type">International</span>
                                             }
+                                            <span class="cc-pill">Commission @g.PlatformCommissionPercent.ToString("0.##") %</span>
                                             <span class="cc-pill cc-pill-bad">@LifecycleLabel(g)</span>
                                         </div>
                                     </div>
@@ -589,6 +598,7 @@
     private string? _formLogo;
     private bool _formInternational;
     private bool _formActive = true;
+    private decimal _formCommission = 30m;
 
     private string _mgrFirstName = "";
     private string _mgrLastName = "";
@@ -636,6 +646,7 @@
         _mgrStartDate = DateTime.Today;
         _formInternational = false;
         _formActive = true;
+        _formCommission = 30m;
         _formError = null;
         _showForm = true;
     }
@@ -653,6 +664,7 @@
         _formLogo = g.LogoUrl;
         _formInternational = g.IsInternational;
         _formActive = g.IsActive;
+        _formCommission = g.PlatformCommissionPercent;
         _formError = null;
         _showForm = true;
     }
@@ -692,7 +704,7 @@
                 var created = await AdminSvc.CreateExpertGroupAsync(
                     _formName, null, _mgrEmail, _mgrPhone, _formCountry, _formInternational,
                     _formDescription, _mgrEmail, _mgrFirstName, _mgrLastName, _mgrPhone, _mgrFunction,
-                    _mgrStartDate?.ToUniversalTime());
+                    _mgrStartDate?.ToUniversalTime(), _formCommission);
                 if (!created.IsSuccess || created.Value is null)
                 {
                     _formError = string.IsNullOrWhiteSpace(created.Error) ? "Échec de création." : created.Error;
@@ -705,6 +717,7 @@
                 _formActive = g.IsActive;
                 _formCountry = g.CountryCode;
                 _formInternational = g.IsInternational;
+                _formCommission = g.PlatformCommissionPercent;
                 _formContactName = g.ManagerFullName ?? g.ContactName;
                 _formEmail = g.ManagerEmail ?? g.ContactEmail;
                 _formPhone = g.ManagerPhone ?? g.ContactPhone;
@@ -714,7 +727,7 @@
             {
                 var updated = await AdminSvc.UpdateExpertGroupAsync(
                     _editId.Value, _formName, _formContactName, _formEmail, _formPhone, _formLogo, _formActive,
-                    _formDescription, _formCountry ?? "", _formInternational);
+                    _formDescription, _formCountry ?? "", _formInternational, _formCommission);
                 if (!updated.IsSuccess)
                 {
                     _formError = string.IsNullOrWhiteSpace(updated.Error) ? "Échec de mise à jour." : updated.Error;

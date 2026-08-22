@@ -131,7 +131,7 @@ else if (_setup is not null)
                                 <button type="button" class="payout-channel @(_form.Channel == "mobile" ? "is-on" : "")"
                                         @onclick='() => SelectChannel("mobile")'>
                                     <strong>Mobile Money</strong>
-                                    <small>Orange Money · MTN MoMo · Wave</small>
+                                    <small>Wave · M-Pesa · Airtel · Moov</small>
                                 </button>
                             }
                             <button type="button" class="payout-channel @(_form.Channel == "bank" ? "is-on" : "")"
@@ -455,7 +455,7 @@ else
         public string AccountType { get; set; } = "individual";
         public string AccountHolderName { get; set; } = "";
         public string Channel { get; set; } = "mobile";
-        public string ProviderKind { get; set; } = "OrangeMoney";
+        public string ProviderKind { get; set; } = "Wave";
         public string DialCode { get; set; } = "+225";
         public string NationalNumber { get; set; } = "";
         public string OperatorRegisteredName { get; set; } = "";
@@ -476,7 +476,9 @@ else
         : _setup!.Currency;
 
     private IEnumerable<CatalogItem> MobileOperators =>
-        _setup?.CatalogList.Where(c => IsMobileKind(c.ProviderKind)) ?? [];
+        _setup?.CatalogList.Where(c =>
+            IsMobileKind(c.ProviderKind)
+            && c.ProviderKind is not "OrangeMoney" and not "MtnMomo") ?? [];
 
     private int[] MinimumChoices => PayoutCurrency is "XOF" or "XAF"
         ? [10000, 25000, 50000, 100000]
@@ -626,7 +628,7 @@ else
         if (IsAfrica)
         {
             _form.Channel = "mobile";
-            _form.ProviderKind = MobileOperators.FirstOrDefault()?.ProviderKind ?? "OrangeMoney";
+            _form.ProviderKind = MobileOperators.FirstOrDefault()?.ProviderKind ?? "Wave";
             _form.MinimumAmount = 25000;
         }
         else if (IsCanada)
@@ -674,7 +676,7 @@ else
         _form.Channel = channel;
         _form.ProviderKind = channel switch
         {
-            "mobile" => MobileOperators.FirstOrDefault()?.ProviderKind ?? "OrangeMoney",
+            "mobile" => MobileOperators.FirstOrDefault()?.ProviderKind ?? "Wave",
             "bank" => IsCanada ? "InteracETransfer" : "BankAccount",
             "paypal" => "PayPal",
             "stripe" => "StripeConnect",

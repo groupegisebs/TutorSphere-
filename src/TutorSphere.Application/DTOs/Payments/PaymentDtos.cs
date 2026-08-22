@@ -21,6 +21,15 @@ public static class PaymentMethodCodes
         var n = Normalize(value);
         return n is OrangeMoney or MtnMomo;
     }
+
+    /// <summary>Orange Money et MTN MoMo ne sont plus proposés à l'encaissement.</summary>
+    public const bool MobileMoneyCollectionEnabled = false;
+
+    public const string MobileMoneyCollectionDisabledMessage =
+        "Orange Money et MTN MoMo ne sont plus disponibles. Utilisez une carte bancaire ou PayPal.";
+
+    public static bool IsDisabledCollectionChannel(string? value) =>
+        !MobileMoneyCollectionEnabled && IsMobileMoney(value);
 }
 
 public record PaymentGatewayConfigDto(string? PublishableKey);
@@ -90,7 +99,9 @@ public record SubscriptionCheckoutResponse(
     decimal PlatformFee,
     decimal TutorAmount,
     string Currency,
-    string PaymentMethod);
+    string PaymentMethod,
+    decimal ProcessorFee = 0,
+    decimal GroupAmount = 0);
 
 public record PaymentStatusResponse(
     Guid PaymentId,
