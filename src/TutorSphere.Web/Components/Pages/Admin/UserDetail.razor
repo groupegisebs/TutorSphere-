@@ -8,6 +8,7 @@
 @inject ApiClient Api
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
+@inject IStringLocalizer<SharedResources> L
 
 <PageTitle>Fiche utilisateur — Control Center</PageTitle>
 
@@ -132,7 +133,7 @@
                                         <div class="cc-detail-item"><label>Nom affiché</label><strong>@_teacher.SchoolName</strong></div>
                                         <div class="cc-detail-item"><label>Enseignant</label><strong>@_teacher.FirstName @_teacher.LastName</strong></div>
                                         <div class="cc-detail-item"><label>Ville / Pays</label><strong>@(_teacher.City ?? "—") / @(_teacher.Country ?? "—")</strong></div>
-                                        <div class="cc-detail-item"><label>Langue / Devise</label><strong>@_teacher.Language / @_teacher.Currency</strong></div>
+                                        <div class="cc-detail-item"><label>Langue / Devise</label><strong>@TeacherLanguageSummary / @(_teacher.Currency ?? "—")</strong></div>
                                         <div class="cc-detail-item" style="grid-column:1/-1">
                                             <label>Présentation</label>
                                             <strong>@(string.IsNullOrWhiteSpace(_teacher.Presentation) && string.IsNullOrWhiteSpace(_teacher.Description) ? "—" : (_teacher.Presentation ?? _teacher.Description))</strong>
@@ -206,9 +207,12 @@
                                             <textarea class="form-control" rows="2" @bind="_editDescription" @bind:event="oninput"
                                                       placeholder="Résumé (recherche / à propos)…"></textarea>
                                         </div>
-                                        <div class="col-md-6">
-                                            <label class="form-label">Langue</label>
-                                            <input class="form-control" @bind="_editLanguage" @bind:event="oninput" />
+                                        <div class="col-12">
+                                            <label class="form-label">Langues de communication</label>
+                                            <TeacherCommunicationLanguagePicker Selected="_editLanguages"
+                                                                               SelectedChanged="OnEditLanguagesChanged"
+                                                                               IdPrefix="admin-teacher-lang"
+                                                                               Hint="@L["TeacherApply_LanguageHint"]" />
                                         </div>
                                         <div class="col-md-6">
                                             <label class="form-label">Devise</label>
@@ -420,7 +424,12 @@
     private string? _editPresentation;
     private string? _editCity;
     private string? _editCountry;
-    private string _editLanguage = "fr";
+    private List<string> _editLanguages = [SupportedLanguageCodes.French];
+    private string TeacherLanguageSummary =>
+        _teacher is null
+            ? "—"
+            : string.Join(" · ", TeacherCommunicationLanguages.NormalizeMany(
+                _teacher.CommunicationLanguages, _teacher.Language).Select(TeacherCommunicationLanguages.Label));
     private string _editCurrency = "XAF";
 
     private List<ActiveStudentVm> _activeStudents = [];
@@ -511,7 +520,7 @@
         var city = editing ? _editCity : t.City;
         var country = editing ? _editCountry : t.Country;
         var language = editing
-            ? (string.IsNullOrWhiteSpace(_editLanguage) ? t.Language : _editLanguage)
+            ? TeacherCommunicationLanguages.Primary(_editLanguages)
             : t.Language;
         var currency = editing
             ? (string.IsNullOrWhiteSpace(_editCurrency) ? t.Currency : _editCurrency)
@@ -532,6 +541,9 @@
             City = city,
             Country = country,
             Language = language,
+            Languages = editing
+                ? _editLanguages.Select(TeacherCommunicationLanguages.Label).ToList()
+                : (baseDto?.Languages ?? Array.Empty<string>()),
             Currency = currency,
             PhotoUrl = photo.Url,
             PhotoKind = TeacherPublicPhotoResolver.ToApi(photo.Kind),
@@ -548,7 +560,6 @@
             Certifications = baseDto?.Certifications ?? Array.Empty<PublicCredentialDto>(),
             Subjects = baseDto?.Subjects ?? Array.Empty<string>(),
             Levels = baseDto?.Levels ?? Array.Empty<string>(),
-            Languages = baseDto?.Languages ?? Array.Empty<string>(),
             Availability = baseDto?.Availability ?? Array.Empty<string>(),
             Offerings = baseDto?.Offerings ?? Array.Empty<PublicOfferingDto>(),
             ExpertGroupName = t.ApprovedByExpertGroupName ?? baseDto?.ExpertGroupName,
@@ -574,13 +585,17 @@
             : _teacher.Presentation;
         _editCity = _teacher.City;
         _editCountry = _teacher.Country;
-        _editLanguage = string.IsNullOrWhiteSpace(_teacher.Language) ? "fr" : _teacher.Language;
+        _editLanguages = TeacherCommunicationLanguages.NormalizeMany(
+            _teacher.CommunicationLanguages, _teacher.Language).ToList();
         _editCurrency = string.IsNullOrWhiteSpace(_teacher.Currency) ? "XAF" : _teacher.Currency;
         _publishAfterSave = !_teacher.IsPublicProfile;
         // Brouillon : formulaire ouvert ; publié : résumé + bouton Éditer.
         if (!_teacher.IsPublicProfile)
             _editingPublicProfile = true;
     }
+
+    private void OnEditLanguagesChanged(List<string> next) =>
+        _editLanguages = next.Count == 0 ? [SupportedLanguageCodes.French] : next;
 
     private async Task StartEditPublicProfile()
     {
@@ -628,7 +643,8 @@
                 presentation = _editPresentation,
                 city = _editCity,
                 country = _editCountry,
-                language = _editLanguage,
+                language = TeacherCommunicationLanguages.Primary(_editLanguages),
+                communicationLanguages = _editLanguages,
                 currency = _editCurrency,
                 publish
             });
@@ -863,6 +879,7 @@
         string? City,
         string? Country,
         string Language,
+        IReadOnlyList<string>? CommunicationLanguages,
         string Currency,
         IReadOnlyList<string> VisibleCountryCodes,
         bool IsPublicProfile,

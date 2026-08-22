@@ -60,8 +60,13 @@ public class SearchService : ISearchService
 
         if (!string.IsNullOrWhiteSpace(filters.Language))
         {
-            var language = filters.Language.Trim().ToLowerInvariant();
-            query = query.Where(t => t.Language.ToLower() == language);
+            var language = TeacherCommunicationLanguages.TryParse(filters.Language, out var parsed)
+                ? parsed
+                : filters.Language.Trim().ToLowerInvariant();
+            query = query.Where(t =>
+                t.Language.ToLower() == language
+                || (t.CommunicationLanguagesCsv != null
+                    && t.CommunicationLanguagesCsv.ToLower().Contains(language)));
         }
 
         var tenants = query.ToList();
@@ -225,9 +230,8 @@ public class SearchService : ISearchService
                 var hasFlexible = tenantOfferings.Any(o =>
                     o.Mode is LessonMode.Online or LessonMode.Hybrid);
 
-                var languages = new List<string>();
-                if (!string.IsNullOrWhiteSpace(t.Language))
-                    languages.Add(t.Language.Trim());
+                var languages = TeacherCommunicationLanguages.PublicLabels(
+                    t.CommunicationLanguagesCsv, t.Language).ToList();
                 foreach (var lang in portfolio.Languages)
                 {
                     if (languages.All(x => !string.Equals(x, lang, StringComparison.OrdinalIgnoreCase)))

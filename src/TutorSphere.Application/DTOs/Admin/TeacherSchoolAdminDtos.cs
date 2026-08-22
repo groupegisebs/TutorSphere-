@@ -16,6 +16,7 @@ public record TeacherSchoolRecordDto(
     string? City,
     string? Country,
     string Language,
+    IReadOnlyList<string> CommunicationLanguages,
     string Currency,
     IReadOnlyList<string> VisibleCountryCodes,
     bool IsPublicProfile,
@@ -38,6 +39,7 @@ public record UpdateTeacherSchoolRecordRequest(
     string? City = null,
     string? Country = null,
     string? Language = null,
+    IReadOnlyList<string>? CommunicationLanguages = null,
     string? Currency = null,
     IReadOnlyList<string>? VisibleCountryCodes = null,
     /// <summary>Si true, publie la fiche après enregistrement (admin / expert).</summary>

@@ -118,17 +118,12 @@
                                 <label class="form-label">Code postal</label>
                                 <input class="form-control" @bind="_postal" />
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-12">
                                 <label class="form-label">Langue de communication <span class="text-danger">*</span></label>
-                                <select class="form-select" @bind="_language">
-                                    <option value="fr">Français</option>
-                                    <option value="en">English</option>
-                                    <option value="es">Español</option>
-                                    <option value="de">Deutsch</option>
-                                    <option value="pt">Português</option>
-                                    <option value="zh">中文</option>
-                                    <option value="ar">العربية</option>
-                                </select>
+                                <TeacherCommunicationLanguagePicker Selected="_languages"
+                                                                   SelectedChanged="OnLanguagesChanged"
+                                                                   IdPrefix="add-teacher-lang"
+                                                                   Hint="@L["TeacherApply_LanguageHint"]" />
                             </div>
                             <div class="col-12">
                                 <label class="form-label">Photo de profil (optionnel)</label>
@@ -171,21 +166,15 @@
                             </div>
                             <div class="col-12">
                                 <label class="form-label">Pays de visibilité du profil</label>
-                                <div class="d-flex flex-wrap gap-2 mb-2">
+                                <CountryMultiSelect Values="_visible" ValuesChanged="OnVisibleCountriesChanged"
+                                                    Placeholder="Ajouter un pays de visibilité…" />
+                                <div class="form-text">
+                                    Les parents de ces pays voient la fiche dans la recherche. Vous pouvez en choisir plusieurs.
                                     @if (_visible.Count == 0)
                                     {
-                                        <span class="badge text-bg-light border py-2 px-2">🌐 International</span>
-                                    }
-                                    @foreach (var code in _visible)
-                                    {
-                                        var info = CountryCatalog.Find(code);
-                                        <span class="badge text-bg-light border py-2 px-2">@(info?.Flag) @(info?.Name ?? code)</span>
+                                        <span>Aucun pays sélectionné = visibilité internationale.</span>
                                     }
                                 </div>
-                                @if (_catalogLocked)
-                                {
-                                    <div class="form-text">Définie par l’offre du groupe (portée et pays de marché).</div>
-                                }
                             </div>
                             <div class="col-12">
                                 <div class="form-check">
@@ -671,7 +660,8 @@
     private string _city = "";
     private string? _address;
     private string? _postal;
-    private string _language = "fr";
+    private List<string> _languages = [SupportedLanguageCodes.French];
+    private string PrimaryLanguage => TeacherCommunicationLanguages.Primary(_languages);
     private string _schoolName = "";
     private string _country = "";
 
@@ -744,6 +734,18 @@
 
         await Task.CompletedTask;
     }
+
+    private void OnVisibleCountriesChanged(IReadOnlyList<string> codes)
+    {
+        _visible = codes
+            .Where(c => !string.IsNullOrWhiteSpace(c))
+            .Select(c => c.Trim().ToUpperInvariant())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private void OnLanguagesChanged(List<string> next) =>
+        _languages = next.Count == 0 ? [SupportedLanguageCodes.French] : next;
 
     private string PhoneAddon
     {
@@ -829,7 +831,8 @@
             Location = TeacherPublicName.GeneralLocation(_city, countryName),
             City = _city,
             Country = countryName,
-            Language = _language,
+            Language = PrimaryLanguage,
+            Languages = _languages.Select(TeacherCommunicationLanguages.Label).ToList(),
             Currency = string.IsNullOrWhiteSpace(_currency) ? "XAF" : _currency,
             PhotoUrl = photo.Url,
             PhotoKind = TeacherPublicPhotoResolver.ToApi(photo.Kind),
@@ -907,6 +910,11 @@
                 || string.IsNullOrWhiteSpace(_email) || string.IsNullOrWhiteSpace(_city))
             {
                 _error = "Prénom, nom, e-mail et ville sont obligatoires.";
+                return;
+            }
+            if (_languages.Count == 0)
+            {
+                _error = L["TeacherApply_LanguageNeed"];
                 return;
             }
             if (!_email.Contains('@', StringComparison.Ordinal))
@@ -1000,6 +1008,8 @@
                 country = string.IsNullOrWhiteSpace(_country) ? null : _country,
                 visibleCountryCodes = _visible,
                 acceptedTeacherConductPolicy = true,
+                language = PrimaryLanguage,
+                communicationLanguages = _languages,
                 publishPublicProfile = _publishPublic,
                 timeZone = _timeZone,
                 availabilities = ranges.Select(r => new { day = r.Day, startTime = r.StartTime, endTime = r.EndTime }),
@@ -1043,7 +1053,8 @@
                     lastName = _lastName,
                     phone = _phone,
                     city = _city,
-                    language = _language,
+                    language = PrimaryLanguage,
+                    communicationLanguages = _languages,
                     presentation = _presentation,
                     description = string.IsNullOrWhiteSpace(schoolNotes) ? null : schoolNotes
                 });
@@ -1457,7 +1468,12 @@
         var vis = offer.IsInternational
             ? offer.MarketCountryCode
             : (string.IsNullOrWhiteSpace(offer.MarketCountryCode) ? _country : offer.MarketCountryCode);
-        _visible = string.IsNullOrWhiteSpace(vis) ? [] : [vis.Trim().ToUpperInvariant()];
+        if (!string.IsNullOrWhiteSpace(vis))
+        {
+            var iso = vis.Trim().ToUpperInvariant();
+            if (!_visible.Contains(iso, StringComparer.OrdinalIgnoreCase))
+                _visible.Add(iso);
+        }
     }
 
     private async Task<bool> EnsureNewCatalogOfferAsync()

@@ -224,7 +224,11 @@ public record RegisterTeacherByExpertRequest(
     /// <summary>Offre de service initiale (optionnelle) créée pour le profil.</summary>
     TutorSphere.Application.DTOs.SubscriptionOfferings.CreateSubscriptionOfferingRequest? InitialOffering = null,
     /// <summary>Publie immédiatement la fiche publique (recherche parents / cours).</summary>
-    bool PublishPublicProfile = false);
+    bool PublishPublicProfile = false,
+    /// <summary>Langue primaire (contrats / interface) si <see cref="CommunicationLanguages"/> est vide.</summary>
+    string? Language = null,
+    /// <summary>Langues de communication (plusieurs choix). La première sert aux contrats.</summary>
+    IReadOnlyList<string>? CommunicationLanguages = null);
 
 public record TeacherAvailabilityRangeDto(string Day, string StartTime, string EndTime);
 

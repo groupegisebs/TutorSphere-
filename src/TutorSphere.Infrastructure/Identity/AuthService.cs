@@ -447,7 +447,8 @@ public class AuthService : IAuthService, ITeacherLoginIssuer
             user.FirstName = request.FirstName.Trim();
             user.LastName = request.LastName.Trim();
             user.PhoneNumber = NormalizeOptionalPhone(request.Phone);
-            user.PreferredLanguage = SupportedLanguageCodes.Normalize(request.PreferredLanguage);
+            user.PreferredLanguage = TeacherCommunicationLanguages.Primary(
+                TeacherCommunicationLanguages.NormalizeMany(request.CommunicationLanguages, request.PreferredLanguage));
             user.EmailConfirmed = true;
             await _userManager.UpdateAsync(user);
             if (!existingRoles.Contains(UserRoles.Tutor))
@@ -462,7 +463,8 @@ public class AuthService : IAuthService, ITeacherLoginIssuer
                 FirstName = request.FirstName.Trim(),
                 LastName = request.LastName.Trim(),
                 PhoneNumber = NormalizeOptionalPhone(request.Phone),
-                PreferredLanguage = SupportedLanguageCodes.Normalize(request.PreferredLanguage),
+                PreferredLanguage = TeacherCommunicationLanguages.Primary(
+                    TeacherCommunicationLanguages.NormalizeMany(request.CommunicationLanguages, request.PreferredLanguage)),
                 EmailConfirmed = true,
                 MustChangePassword = true
             };
@@ -478,7 +480,9 @@ public class AuthService : IAuthService, ITeacherLoginIssuer
         if (_db.Tenants.Any(t => t.Slug == slug))
             throw new InvalidOperationException("Cette adresse est déjà utilisée par un autre profil.");
 
-        var language = SupportedLanguageCodes.Normalize(request.PreferredLanguage);
+        var commLanguages = TeacherCommunicationLanguages.NormalizeMany(
+            request.CommunicationLanguages, request.PreferredLanguage);
+        var language = TeacherCommunicationLanguages.Primary(commLanguages);
 
         var country = ProfileVisibility.NormalizeCode(request.Country);
         if (country.Length != 2)
@@ -526,10 +530,15 @@ public class AuthService : IAuthService, ITeacherLoginIssuer
             TimeZone = timeZone,
             Currency = currency,
             Language = language,
+            CommunicationLanguagesCsv = TeacherCommunicationLanguages.ToCsv(commLanguages),
             Status = TenantStatus.PendingValidation,
             Plan = TenantPlan.Starter,
             OwnerUserId = user.Id,
-            Branding = new TenantBranding { Presentation = presentation },
+            Branding = new TenantBranding
+            {
+                Presentation = presentation,
+                Portfolio = TeacherCommunicationLanguages.MergePortfolioLanguages(null, commLanguages)
+            },
             TeacherConductPolicyVersion = TeacherConductPolicy.CurrentVersion,
             TeacherConductAcceptedAt = DateTime.UtcNow,
             ExpertApprovalStatus = ExpertApprovalStatus.Pending,
@@ -654,8 +663,10 @@ public class AuthService : IAuthService, ITeacherLoginIssuer
             string.IsNullOrWhiteSpace(request.TimeZone)
                 ? tenant.TimeZone
                 : request.TimeZone);
-        var language = SupportedLanguageCodes.Normalize(
+        var commLanguages = TeacherCommunicationLanguages.NormalizeMany(
+            request.CommunicationLanguages,
             string.IsNullOrWhiteSpace(request.PreferredLanguage) ? tenant.Language : request.PreferredLanguage);
+        var language = TeacherCommunicationLanguages.Primary(commLanguages);
 
         GroupOffer? catalogOffer = null;
         if (request.GroupOfferId is Guid offerId && offerId != Guid.Empty)
@@ -694,6 +705,7 @@ public class AuthService : IAuthService, ITeacherLoginIssuer
         tenant.TimeZone = timeZone;
         tenant.Currency = currency;
         tenant.Language = language;
+        tenant.CommunicationLanguagesCsv = TeacherCommunicationLanguages.ToCsv(commLanguages);
         tenant.TeacherConductPolicyVersion = TeacherConductPolicy.CurrentVersion;
         tenant.TeacherConductAcceptedAt = DateTime.UtcNow;
         tenant.ExpertApprovalStatus = ExpertApprovalStatus.Pending;
@@ -713,12 +725,16 @@ public class AuthService : IAuthService, ITeacherLoginIssuer
 
         var branding = _db.TenantBrandings.FirstOrDefault(b => b.TenantId == tenant.Id);
         if (branding is null)
-            tenant.Branding = new TenantBranding { Presentation = presentation };
+        {
+            branding = new TenantBranding { Presentation = presentation };
+            tenant.Branding = branding;
+        }
         else if (!string.IsNullOrWhiteSpace(presentation))
         {
             branding.Presentation = presentation;
-            branding.UpdatedAt = DateTime.UtcNow;
         }
+
+        TeacherCommunicationLanguages.ApplyToBranding(branding, commLanguages);
 
         ReplaceTeacherAvailabilities(tenant.Id, request.Availabilities, request.InitialOffering?.Schedule);
         await MarkInviteAcceptedIfAnyAsync(request.Email, tenant.Id, request.InviteToken, ct);
@@ -847,6 +863,10 @@ public class AuthService : IAuthService, ITeacherLoginIssuer
             throw new InvalidOperationException("Cette adresse est déjà utilisée par un autre profil.");
         var slug = requestedSlug;
 
+        var commLanguages = TeacherCommunicationLanguages.NormalizeMany(
+            request.CommunicationLanguages, request.Language);
+        var primaryLanguage = TeacherCommunicationLanguages.Primary(commLanguages);
+
         var user = new ApplicationUser
         {
             UserName = loginEmail,
@@ -854,7 +874,8 @@ public class AuthService : IAuthService, ITeacherLoginIssuer
             FirstName = firstName,
             LastName = lastName,
             EmailConfirmed = true,
-            MustChangePassword = true
+            MustChangePassword = true,
+            PreferredLanguage = primaryLanguage
         };
 
         var create = await _userManager.CreateAsync(user, password);
@@ -879,7 +900,12 @@ public class AuthService : IAuthService, ITeacherLoginIssuer
             Currency = string.IsNullOrWhiteSpace(request.InitialOffering?.Currency)
                 ? GroupOfferCurrencyRules.ResolveCurrency(country)
                 : request.InitialOffering!.Currency.Trim(),
-            Branding = new TenantBranding(),
+            Language = primaryLanguage,
+            CommunicationLanguagesCsv = TeacherCommunicationLanguages.ToCsv(commLanguages),
+            Branding = new TenantBranding
+            {
+                Portfolio = TeacherCommunicationLanguages.MergePortfolioLanguages(null, commLanguages)
+            },
             ExpertApprovalStatus = ExpertApprovalStatus.Approved,
             ApprovedByExpertGroupId = group.Id,
             ApprovedByUserId = expertUserId,

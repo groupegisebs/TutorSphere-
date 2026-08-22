@@ -223,17 +223,12 @@
                             <label class="form-label" for="ta-postal">@L["TeacherApply_Postal"]</label>
                             <input id="ta-postal" class="form-control" @bind="_postal" />
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-12">
                             <label class="form-label" for="ta-lang">@L["TeacherApply_Language"] <span class="text-danger">*</span></label>
-                            <select id="ta-lang" class="form-select" @bind="_language">
-                                <option value="fr">Français</option>
-                                <option value="en">English</option>
-                                <option value="es">Español</option>
-                                <option value="de">Deutsch</option>
-                                <option value="pt">Português</option>
-                                <option value="zh-Hans">中文</option>
-                                <option value="ar">العربية</option>
-                            </select>
+                            <TeacherCommunicationLanguagePicker Selected="_languages"
+                                                               SelectedChanged="OnLanguagesChanged"
+                                                               IdPrefix="ta-lang"
+                                                               Hint="@L["TeacherApply_LanguageHint"]" />
                         </div>
                         <div class="col-12">
                             <label class="form-label">@L["TeacherApply_Photo"]</label>
@@ -616,7 +611,8 @@
     private string _city = "";
     private string? _address;
     private string? _postal;
-    private string _language = "fr";
+    private List<string> _languages = [SupportedLanguageCodes.French];
+    private string PrimaryLanguage => TeacherCommunicationLanguages.Primary(_languages);
     private string _slug = "";
     private string? _autoSlug;
     private bool? _slugAvailable;
@@ -786,8 +782,7 @@
                 _email = _invite.Email ?? "";
                 _city = _invite.City ?? "";
                 _presentation = _invite.Presentation;
-                _language = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName;
-                if (_language == "zh") _language = "zh-Hans";
+                _languages = [SupportedLanguageCodes.Normalize(CultureInfo.CurrentUICulture.TwoLetterISOLanguageName)];
                 _country = string.IsNullOrWhiteSpace(_invite.GroupCountryCode)
                     ? null
                     : _invite.GroupCountryCode;
@@ -848,6 +843,11 @@
             if (!EmailLocked && (string.IsNullOrWhiteSpace(_email) || !_email.Contains('@', StringComparison.Ordinal)))
             {
                 _error = "Indiquez une adresse e-mail valide.";
+                return;
+            }
+            if (_languages.Count == 0)
+            {
+                _error = L["TeacherApply_LanguageNeed"];
                 return;
             }
         }
@@ -926,7 +926,8 @@
                 Password: "",
                 City: _city.Trim(),
                 Country: ResidenceCountryCode,
-                PreferredLanguage: _language,
+                PreferredLanguage: PrimaryLanguage,
+                CommunicationLanguages: _languages,
                 AcceptedTeacherConductPolicy: true,
                 TeacherConductPolicyVersion: TeacherConductPolicy.CurrentVersion,
                 InviteToken: _token,
@@ -1008,6 +1009,9 @@
         if (string.IsNullOrWhiteSpace(_offerSubject))
             _offerSubject = offer.Name;
     }
+
+    private void OnLanguagesChanged(List<string> next) =>
+        _languages = next.Count == 0 ? [SupportedLanguageCodes.French] : next;
 
     private async Task OnNameChanged()
     {

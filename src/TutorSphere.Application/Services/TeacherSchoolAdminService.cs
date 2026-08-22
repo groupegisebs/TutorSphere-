@@ -1,3 +1,4 @@
+using TutorSphere.Application.Common;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.Admin;
 using TutorSphere.Domain.Common;
@@ -75,8 +76,31 @@ public sealed class TeacherSchoolAdminService(
             var c = ProfileVisibility.NormalizeCode(request.Country);
             tenant.Country = c.Length == 2 ? c : request.Country.Trim();
         }
-        if (!string.IsNullOrWhiteSpace(request.Language))
-            tenant.Language = request.Language.Trim();
+        if (request.CommunicationLanguages is not null)
+        {
+            TeacherCommunicationLanguages.ApplyToTenant(
+                tenant,
+                request.CommunicationLanguages,
+                request.Language);
+
+            var brandingForLang = db.TenantBrandings.FirstOrDefault(b => b.TenantId == tenant.Id);
+            if (brandingForLang is null)
+            {
+                brandingForLang = new TenantBranding { TenantId = tenant.Id };
+                db.Add(brandingForLang);
+            }
+
+            TeacherCommunicationLanguages.ApplyToBranding(
+                brandingForLang,
+                TeacherCommunicationLanguages.FromCsv(tenant.CommunicationLanguagesCsv, tenant.Language));
+        }
+        else if (!string.IsNullOrWhiteSpace(request.Language)
+                 && TeacherCommunicationLanguages.TryParse(request.Language, out var primary))
+        {
+            tenant.Language = primary;
+            if (string.IsNullOrWhiteSpace(tenant.CommunicationLanguagesCsv))
+                tenant.CommunicationLanguagesCsv = primary;
+        }
         if (!string.IsNullOrWhiteSpace(request.Currency))
             tenant.Currency = request.Currency.Trim();
 
@@ -282,6 +306,7 @@ public sealed class TeacherSchoolAdminService(
             tenant.City,
             tenant.Country,
             tenant.Language,
+            TeacherCommunicationLanguages.FromCsv(tenant.CommunicationLanguagesCsv, tenant.Language),
             tenant.Currency,
             visible,
             tenant.IsPublicProfile,

@@ -155,6 +155,7 @@ public class BrandingService : IBrandingService
                 t.Country,
                 t.VisibleCountryCodes,
                 t.Language,
+                t.CommunicationLanguagesCsv,
                 t.Currency,
                 t.OwnerUserId,
                 t.ApprovedByExpertGroupId
@@ -280,9 +281,8 @@ public class BrandingService : IBrandingService
         var display = TeacherPublicName.Format(names?.FirstName, names?.LastName, tenant.Name);
         var initials = TeacherPublicName.Initials(names?.FirstName, names?.LastName, tenant.Name);
         var photo = TeacherPublicPhotoResolver.Resolve(branding?.LogoUrl, approvedGroup?.LogoUrl, initials);
-        var languages = new List<string>();
-        if (!string.IsNullOrWhiteSpace(tenant.Language))
-            languages.Add(tenant.Language.Trim());
+        var languages = TeacherCommunicationLanguages.PublicLabels(
+            tenant.CommunicationLanguagesCsv, tenant.Language).ToList();
         foreach (var lang in portfolio.Languages)
         {
             if (languages.All(x => !string.Equals(x, lang, StringComparison.OrdinalIgnoreCase)))

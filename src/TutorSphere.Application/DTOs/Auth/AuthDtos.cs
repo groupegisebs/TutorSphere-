@@ -24,6 +24,8 @@ public record RegisterSchoolRequest(
     string? City = null,
     string? Country = null,
     string? PreferredLanguage = null,
+    /// <summary>Langues de communication (plusieurs choix). La première sert aux contrats et à l'interface.</summary>
+    IReadOnlyList<string>? CommunicationLanguages = null,
     bool AcceptedTeacherConductPolicy = false,
     string? TeacherConductPolicyVersion = null,
     string? InviteToken = null,

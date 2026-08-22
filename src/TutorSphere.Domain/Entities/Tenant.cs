@@ -22,9 +22,16 @@ public class Tenant : BaseEntity
     public string Currency { get; set; } = "CAD";
 
     /// <summary>
-    /// Primary language for this tenant. Supported codes: fr, en, es, de, pt, zh-Hans, ar.
+    /// Primary language for this tenant (contracts, UI, e-mails).
+    /// Supported codes: fr, en, es, de, pt, zh-Hans, ar.
     /// </summary>
     public string Language { get; set; } = "fr";
+
+    /// <summary>
+    /// Langues de communication de l'enseignant (CSV de codes ISO, ex. "fr,en,ar").
+    /// Le premier code est recopié dans <see cref="Language"/>.
+    /// </summary>
+    public string? CommunicationLanguagesCsv { get; set; }
     public TenantPlan Plan { get; set; } = TenantPlan.Starter;
     public TenantStatus Status { get; set; } = TenantStatus.PendingValidation;
     public bool IsPublicProfile { get; set; }

@@ -193,6 +193,16 @@ public static class DependencyInjection
         await db.Database.ExecuteSqlRawAsync(
             """ALTER TABLE "TenantsSet" ADD COLUMN IF NOT EXISTS "LicenseAutoRenewAtSource" boolean NOT NULL DEFAULT false;""");
         await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "TenantsSet" ADD COLUMN IF NOT EXISTS "CommunicationLanguagesCsv" character varying(128);""");
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            UPDATE "TenantsSet"
+            SET "CommunicationLanguagesCsv" = "Language"
+            WHERE "CommunicationLanguagesCsv" IS NULL
+              AND "Language" IS NOT NULL
+              AND btrim("Language") <> '';
+            """);
+        await db.Database.ExecuteSqlRawAsync(
             """ALTER TABLE "PlatformPromoCodesSet" ALTER COLUMN "Code" TYPE character varying(64);""");
         logger.LogInformation("Teacher license schema columns are present.");
     }

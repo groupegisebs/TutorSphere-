@@ -1,0 +1,44 @@
+@using TutorSphere.Application.Common
+
+<div class="lang-multi">
+    <div class="lang-multi-grid">
+        @foreach (var code in SupportedLanguageCodes.All)
+        {
+            var id = $"{IdPrefix}-{code}";
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="@id"
+                       checked="@IsOn(code)" @onchange="e => ToggleAsync(code, e)" />
+                <label class="form-check-label" for="@id">@TeacherCommunicationLanguages.Label(code)</label>
+            </div>
+        }
+    </div>
+    @if (!string.IsNullOrWhiteSpace(Hint))
+    {
+        <div class="form-text">@Hint</div>
+    }
+</div>
+
+@code {
+    [Parameter] public List<string> Selected { get; set; } = [];
+    [Parameter] public EventCallback<List<string>> SelectedChanged { get; set; }
+    [Parameter] public string IdPrefix { get; set; } = "comm-lang";
+    [Parameter] public string? Hint { get; set; }
+
+    private bool IsOn(string code) =>
+        Selected.Any(x => string.Equals(x, code, StringComparison.OrdinalIgnoreCase));
+
+    private async Task ToggleAsync(string code, ChangeEventArgs e)
+    {
+        var on = e.Value is bool b
+            ? b
+            : string.Equals(e.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+        var next = Selected
+            .Where(x => !string.Equals(x, code, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (on)
+            next.Add(code);
+        if (next.Count == 0)
+            next.Add(code);
+        await SelectedChanged.InvokeAsync(next);
+    }
+}

@@ -369,9 +369,12 @@
                                                 <label class="form-label small">Pays</label>
                                                 <input class="form-control" @bind="_sCountry" maxlength="2" />
                                             </div>
-                                            <div class="col-md-2">
-                                                <label class="form-label small">Langue</label>
-                                                <input class="form-control" @bind="_sLanguage" />
+                                            <div class="col-12">
+                                                <label class="form-label small">Langues de communication</label>
+                                                <TeacherCommunicationLanguagePicker Selected="_sLanguages"
+                                                                                   SelectedChanged="OnSchoolLanguagesChanged"
+                                                                                   IdPrefix="school-lang"
+                                                                                   Hint="@L["TeacherApply_LanguageHint"]" />
                                             </div>
                                             <div class="col-md-2">
                                                 <label class="form-label small">Devise</label>
@@ -871,7 +874,7 @@
     private string? _sPresentation;
     private string? _sCity;
     private string? _sCountry;
-    private string _sLanguage = "fr";
+    private List<string> _sLanguages = [SupportedLanguageCodes.French];
     private string _sCurrency = "CAD";
     private bool _schoolBusy;
     private string? _schoolError;
@@ -992,7 +995,8 @@
                     : _school.Presentation;
                 _sCity = _school.City;
                 _sCountry = _school.Country;
-                _sLanguage = string.IsNullOrWhiteSpace(_school.Language) ? "fr" : _school.Language;
+                _sLanguages = TeacherCommunicationLanguages.NormalizeMany(
+                    _school.CommunicationLanguages, _school.Language).ToList();
                 _sCurrency = string.IsNullOrWhiteSpace(_school.Currency) ? "CAD" : _school.Currency;
                 _offerCurrency = _sCurrency;
             }
@@ -1000,6 +1004,9 @@
         catch (Exception ex) { _error = ex.Message; }
         finally { _detailLoading = false; }
     }
+
+    private void OnSchoolLanguagesChanged(List<string> next) =>
+        _sLanguages = next.Count == 0 ? [SupportedLanguageCodes.French] : next;
 
     private void CloseDetail()
     {
@@ -1153,7 +1160,8 @@
                 presentation = _sPresentation,
                 city = _sCity,
                 country = _sCountry,
-                language = _sLanguage,
+                language = TeacherCommunicationLanguages.Primary(_sLanguages),
+                communicationLanguages = _sLanguages,
                 currency = _sCurrency
             });
             if (!result.IsSuccess || result.Value is null)
@@ -1670,6 +1678,7 @@
         string? City,
         string? Country,
         string Language,
+        IReadOnlyList<string>? CommunicationLanguages,
         string Currency,
         IReadOnlyList<string> VisibleCountryCodes,
         bool IsPublicProfile,

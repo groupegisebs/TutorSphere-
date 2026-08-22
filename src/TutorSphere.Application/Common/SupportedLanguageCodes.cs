@@ -30,16 +30,28 @@ public static class SupportedLanguageCodes
         Arabic
     ];
 
-    public static bool IsSupported(string? code) =>
-        !string.IsNullOrWhiteSpace(code) &&
-        All.Contains(code, StringComparer.OrdinalIgnoreCase);
+    public static bool IsSupported(string? code)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+            return false;
+        if (All.Contains(code, StringComparer.OrdinalIgnoreCase))
+            return true;
+        var n = code.Trim().ToLowerInvariant();
+        return n is "zh" or "zh-cn";
+    }
 
-    public static string Normalize(string? code) =>
-        IsSupported(code) ? code!.ToLowerInvariant() switch
-        {
-            "zh-hans" => MandarinChinese,
-            _ => code!.Length == 2 ? code.ToLowerInvariant() : code
-        } : Default;
+    public static string Normalize(string? code)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+            return Default;
+        var trimmed = code.Trim();
+        var lower = trimmed.ToLowerInvariant();
+        if (lower is "zh" or "zh-cn" or "zh-hans")
+            return MandarinChinese;
+        if (!IsSupported(trimmed))
+            return Default;
+        return trimmed.Length == 2 ? lower : trimmed;
+    }
 
     public static IList<CultureInfo> Cultures =>
         All.Select(c => CultureInfo.GetCultureInfo(c)).ToList();

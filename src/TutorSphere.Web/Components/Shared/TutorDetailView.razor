@@ -97,6 +97,13 @@
                         @string.Join(" · ", Profile.Levels)
                     </p>
                 }
+                @if (DisplayLanguages.Count > 0)
+                {
+                    <p class="tutor-detail-levels mt-2">
+                        <span class="text-muted">@L["TeacherApply_Language"] :</span>
+                        @string.Join(" · ", DisplayLanguages)
+                    </p>
+                }
             </div>
 
             <div class="tutor-detail-actions">
@@ -553,6 +560,21 @@
     private bool SubscribeDisabled =>
         _subscribing
         || (!AllowSelfSubscribe && (string.IsNullOrEmpty(_selectedChildId) || _children.Count == 0));
+
+    private IReadOnlyList<string> DisplayLanguages
+    {
+        get
+        {
+            var raw = Profile.Languages is { Count: > 0 } ? Profile.Languages : [Profile.Language];
+            return raw
+                .Where(l => !string.IsNullOrWhiteSpace(l))
+                .Select(l => TeacherCommunicationLanguages.TryParse(l, out var code)
+                    ? TeacherCommunicationLanguages.Label(code)
+                    : l.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+    }
 
     private (string Key, string Label)[] _tabs
     {
