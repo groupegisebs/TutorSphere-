@@ -396,12 +396,21 @@ public sealed class ApiClient
         {
             using var doc = JsonDocument.Parse(body);
             string? error = null;
+            var genericEf = false;
             if (doc.RootElement.TryGetProperty("error", out var e) && e.ValueKind == JsonValueKind.String)
                 error = e.GetString();
+            if (IsGenericEfSaveMessage(error))
+                genericEf = true;
 
-            if (string.IsNullOrWhiteSpace(error)
+            if ((string.IsNullOrWhiteSpace(error) || genericEf)
                 && doc.RootElement.TryGetProperty("title", out var title) && title.ValueKind == JsonValueKind.String)
-                error = title.GetString();
+            {
+                var titleText = title.GetString();
+                if (IsGenericEfSaveMessage(titleText))
+                    genericEf = true;
+                else if (string.IsNullOrWhiteSpace(error) && !string.IsNullOrWhiteSpace(titleText))
+                    error = titleText;
+            }
 
             if (string.IsNullOrWhiteSpace(error)
                 && doc.RootElement.TryGetProperty("errors", out var errors) && errors.ValueKind == JsonValueKind.Object)
@@ -420,11 +429,15 @@ public sealed class ApiClient
                 && !string.IsNullOrWhiteSpace(detail.GetString()))
             {
                 var detailText = detail.GetString()!;
-                // Le titre EF est générique : le détail (ou l'exception interne) est l'info utile.
-                if (error.Contains("See the inner exception", StringComparison.OrdinalIgnoreCase)
-                    || error.Contains("saving the entity changes", StringComparison.OrdinalIgnoreCase))
+                if (IsGenericEfSaveMessage(error))
                     return detailText;
                 return $"{error} ({detailText})";
+            }
+
+            if (IsGenericEfSaveMessage(error) || genericEf)
+            {
+                return "Impossible d'enregistrer le paiement : la base n'a pas les colonnes récentes (split). "
+                    + "Arrêtez complètement l'API TutorSphere puis relancez-la, et réessayez.";
             }
 
             return error;
@@ -434,4 +447,9 @@ public sealed class ApiClient
             return body.Trim();
         }
     }
+
+    private static bool IsGenericEfSaveMessage(string? text) =>
+        !string.IsNullOrWhiteSpace(text)
+        && (text.Contains("saving the entity changes", StringComparison.OrdinalIgnoreCase)
+            || text.Contains("See the inner exception", StringComparison.OrdinalIgnoreCase));
 }
