@@ -1,4 +1,5 @@
 using TutorSphere.Application.Common;
+using TutorSphere.Application.DTOs.Branding;
 using TutorSphere.Domain.Entities;
 
 namespace TutorSphere.UnitTests;
@@ -74,5 +75,24 @@ public class TeacherCommunicationLanguagesTests
     {
         Assert.True(TeacherCommunicationLanguages.CsvContains("fr,en,ar", "en"));
         Assert.False(TeacherCommunicationLanguages.CsvContains("fr,ar", "en"));
+    }
+}
+
+public class TeacherOnboardingPortfolioTests
+{
+    [Fact]
+    public void Build_writes_experience_diplomas_and_languages()
+    {
+        var json = TeacherOnboardingPortfolio.Build(
+            null,
+            ["fr", "en"],
+            8,
+            [new PublicCredentialDto("CAPES", "ENS", "2018")],
+            [new PublicCredentialDto("First aid", "Red Cross", "2022")]);
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        Assert.Equal(8, doc.RootElement.GetProperty("yearsExperience").GetInt32());
+        Assert.Equal("CAPES", doc.RootElement.GetProperty("diplomas")[0].GetProperty("title").GetString());
+        Assert.Equal("First aid", doc.RootElement.GetProperty("certifications")[0].GetProperty("title").GetString());
+        Assert.Equal(2, doc.RootElement.GetProperty("languages").GetArrayLength());
     }
 }

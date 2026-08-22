@@ -7,6 +7,7 @@
 @using Microsoft.AspNetCore.WebUtilities
 @using TutorSphere.Application.Common
 @using TutorSphere.Application.DTOs.Auth
+@using TutorSphere.Application.DTOs.Branding
 @using TutorSphere.Application.DTOs.ExpertApproval
 @using TutorSphere.Application.DTOs.SubscriptionOfferings
 @using TutorSphere.Domain.Policies
@@ -195,7 +196,7 @@
                             <label class="form-label" for="ta-phone">@L["TeacherApply_Phone"]</label>
                             <div class="input-group">
                                 <span class="input-group-text">@PhoneAddon</span>
-                                <input id="ta-phone" class="form-control" @bind="_phone" placeholder="@PhonePlaceholder" />
+                                <input id="ta-phone" class="form-control" @bind="_phone" @bind:after="RefreshAddressCoherence" placeholder="@PhonePlaceholder" />
                             </div>
                         </div>
                         <div class="col-md-6">
@@ -213,16 +214,27 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label" for="ta-city">@L["Expert_RegisterCity"] <span class="text-danger">*</span></label>
-                            <input id="ta-city" class="form-control" @bind="_city" />
+                            <input id="ta-city" class="form-control" @bind="_city" @bind:after="RefreshAddressCoherence" />
                         </div>
                         <div class="col-md-8">
                             <label class="form-label" for="ta-addr">@L["TeacherApply_Address"]</label>
-                            <input id="ta-addr" class="form-control" @bind="_address" />
+                            <input id="ta-addr" class="form-control" @bind="_address" @bind:after="RefreshAddressCoherence" />
                         </div>
                         <div class="col-md-4">
                             <label class="form-label" for="ta-postal">@L["TeacherApply_Postal"]</label>
-                            <input id="ta-postal" class="form-control" @bind="_postal" />
+                            <input id="ta-postal" class="form-control" @bind="_postal" @bind:after="RefreshAddressCoherence"
+                                   placeholder="@AddressCoherence.PostalExample(ResidenceCountryCode)" />
+                            @if (AddressCoherence.PostalHint(ResidenceCountryCode) is { } postalHint)
+                            {
+                                <div class="form-text">@postalHint</div>
+                            }
                         </div>
+                        @if (!string.IsNullOrWhiteSpace(_addressError))
+                        {
+                            <div class="col-12">
+                                <div class="alert alert-warning py-2 mb-0">@_addressError</div>
+                            </div>
+                        }
                         <div class="col-12">
                             <label class="form-label" for="ta-lang">@L["TeacherApply_Language"] <span class="text-danger">*</span></label>
                             <TeacherCommunicationLanguagePicker Selected="_languages"
@@ -272,6 +284,12 @@
                             <label class="form-label" for="ta-bio">@L["TeacherApply_Presentation"]</label>
                             <textarea id="ta-bio" class="form-control" rows="4" @bind="_presentation"
                                       placeholder="@L["TeacherApply_PresentationHint"]"></textarea>
+                            <div class="form-text">@L["TeacherApply_QualificationsHint"]</div>
+                        </div>
+                        <div class="col-12">
+                            <TeacherCredentialsEditor @bind-YearsExperience="_yearsExperience"
+                                                      Diplomas="_diplomas"
+                                                      Certifications="_certs" />
                         </div>
                     </div>
                 }
@@ -288,13 +306,19 @@
                             }
                             else
                             {
+                                <input class="form-control mb-2" @bind="_offerQuery" @bind:event="oninput"
+                                       placeholder="@L["TeacherApply_OfferSearch"]" />
                                 <select id="ta-offer" class="form-select" @bind="_offerPick" @bind:after="OnOfferChanged">
                                     <option value="">@L["TeacherApply_OfferChoose"]</option>
-                                    @foreach (var o in _invite.Offers)
+                                    @foreach (var o in SelectableInviteOffers)
                                     {
                                         <option value="@o.Id.ToString()">@OfferOptionLabel(o)</option>
                                     }
                                 </select>
+                                @if (!string.IsNullOrWhiteSpace(_offerQuery) && !SelectableInviteOffers.Any())
+                                {
+                                    <div class="form-text text-warning">@L["TeacherApply_OfferSearchEmpty"]</div>
+                                }
                             }
                         </div>
                         @if (SelectedOffer is { } selected)
@@ -302,36 +326,57 @@
                             <div class="col-12">
                                 <div class="ex-offer-recap">
                                     <strong>@selected.Name</strong>
+                                    @if (!string.IsNullOrWhiteSpace(selected.Code))
+                                    {
+                                        <span class="small text-muted">@selected.Code</span>
+                                    }
                                     @if (!string.IsNullOrWhiteSpace(selected.ShortDescription))
                                     {
                                         <p class="mb-0">@selected.ShortDescription</p>
                                     }
+                                    <div>@L["TeacherApply_Subject"] : @selected.Name</div>
+                                    @if (SchoolLevelCatalog.FormatLevels(selected.Levels) is { Length: > 0 } lvls)
+                                    {
+                                        <div>@L["TeacherApply_Level"] : @lvls</div>
+                                    }
                                     <div>@L["TeacherApply_Price"]: @(selected.RecommendedPrice?.ToString("N0") ?? "—") @GroupOfferCurrencyRules.FormatCurrencyLabel(selected.Currency)</div>
+                                    <div class="form-text mb-0">@L["TeacherApply_OfferLockedHint"]</div>
                                 </div>
                             </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="ta-mode">@L["TeacherApply_Mode"]</label>
+                                <select id="ta-mode" class="form-select" @bind="_offerMode">
+                                    <option value="En ligne">En ligne</option>
+                                    <option value="Présentiel">Présentiel</option>
+                                    <option value="Hybride">Hybride</option>
+                                </select>
+                            </div>
                         }
-                        <div class="col-md-6">
-                            <label class="form-label" for="ta-subject">@L["TeacherApply_Subject"]</label>
-                            <input id="ta-subject" class="form-control" @bind="_offerSubject" placeholder="Mathématiques, Français…" />
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label" for="ta-level">@L["TeacherApply_Level"]</label>
-                            <select id="ta-level" class="form-select" @bind="_offerLevel">
-                                <option>Tous niveaux</option>
-                                <option>Primaire</option>
-                                <option>Collège</option>
-                                <option>Lycée</option>
-                                <option>Université</option>
-                            </select>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label" for="ta-mode">@L["TeacherApply_Mode"]</label>
-                            <select id="ta-mode" class="form-select" @bind="_offerMode">
-                                <option value="En ligne">En ligne</option>
-                                <option value="Présentiel">Présentiel</option>
-                                <option value="Hybride">Hybride</option>
-                            </select>
-                        </div>
+                        else if (_invite.Offers is null || _invite.Offers.Count == 0)
+                        {
+                            <div class="col-md-6">
+                                <label class="form-label" for="ta-subject">@L["TeacherApply_Subject"]</label>
+                                <input id="ta-subject" class="form-control" @bind="_offerSubject" placeholder="Mathématiques, Français…" />
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="ta-level">@L["TeacherApply_Level"]</label>
+                                <select id="ta-level" class="form-select" @bind="_offerLevel">
+                                    <option>Tous niveaux</option>
+                                    <option>Primaire</option>
+                                    <option>Collège</option>
+                                    <option>Lycée</option>
+                                    <option>Université</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="ta-mode">@L["TeacherApply_Mode"]</label>
+                                <select id="ta-mode" class="form-select" @bind="_offerMode">
+                                    <option value="En ligne">En ligne</option>
+                                    <option value="Présentiel">Présentiel</option>
+                                    <option value="Hybride">Hybride</option>
+                                </select>
+                            </div>
+                        }
                     </div>
                 }
                 else if (_step == 4)
@@ -611,6 +656,7 @@
     private string _city = "";
     private string? _address;
     private string? _postal;
+    private string? _addressError;
     private List<string> _languages = [SupportedLanguageCodes.French];
     private string PrimaryLanguage => TeacherCommunicationLanguages.Primary(_languages);
     private string _slug = "";
@@ -618,7 +664,11 @@
     private bool? _slugAvailable;
     private CancellationTokenSource? _slugCts;
     private string? _presentation;
+    private int _yearsExperience;
+    private readonly List<TeacherCredentialDraft> _diplomas = [];
+    private readonly List<TeacherCredentialDraft> _certs = [];
     private string _offerPick = "";
+    private string _offerQuery = "";
     private string _offerTitle = "";
     private string? _offerSubject;
     private string _offerLevel = "Tous niveaux";
@@ -715,6 +765,22 @@
         Guid.TryParse(_offerPick, out var id)
             ? _invite?.Offers?.FirstOrDefault(o => o.Id == id)
             : null;
+
+    private IEnumerable<TeacherInvitePublicOfferDto> SelectableInviteOffers
+    {
+        get
+        {
+            var offers = _invite?.Offers ?? [];
+            var q = _offerQuery.Trim();
+            if (string.IsNullOrWhiteSpace(q))
+                return offers;
+            return offers.Where(o =>
+                (o.Name?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (o.Code?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (o.ShortDescription?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (SelectedOffer is { } sel && sel.Id == o.Id));
+        }
+    }
 
     private bool _catalogPriceLocked => SelectedOffer?.RecommendedPrice is > 0;
 
@@ -850,6 +916,12 @@
                 _error = L["TeacherApply_LanguageNeed"];
                 return;
             }
+            RefreshAddressCoherence();
+            if (!string.IsNullOrWhiteSpace(_addressError))
+            {
+                _error = _addressError;
+                return;
+            }
         }
         else if (_step == 2)
         {
@@ -936,6 +1008,9 @@
                 PostalCode: string.IsNullOrWhiteSpace(_postal) ? null : _postal.Trim(),
                 DateOfBirth: EffectiveBirthDate,
                 Presentation: _presentation,
+                YearsExperience: _yearsExperience,
+                Diplomas: ToCredentials(_diplomas),
+                Certifications: ToCredentials(_certs),
                 TimeZone: _timeZone,
                 Availabilities: ranges,
                 GroupOfferId: selected?.Id,
@@ -995,6 +1070,15 @@
         _timeZone = TimeZoneCatalog.DefaultForCountry(code);
         if (SelectedOffer is null || string.IsNullOrWhiteSpace(SelectedOffer.Currency))
             _currency = GroupOfferCurrencyRules.ResolveCurrency(code);
+        RefreshAddressCoherence();
+    }
+
+    private void RefreshAddressCoherence()
+    {
+        var issue = AddressCoherence.Evaluate(ResidenceCountryCode, _city, _postal, _address, _phone);
+        _addressError = issue is null
+            ? null
+            : AddressCoherence.FormatMessage(issue, iso => CountryCatalog.Find(iso)?.Name ?? iso);
     }
 
     private void OnOfferChanged()
@@ -1002,16 +1086,21 @@
         var offer = SelectedOffer;
         if (offer is null) return;
         _offerTitle = offer.Name;
+        _offerSubject = offer.Name;
+        if (offer.Levels is { Count: > 0 }
+            && SchoolLevelCatalog.FormatLevels(offer.Levels) is { Length: > 0 } lv)
+            _offerLevel = lv;
         if (offer.RecommendedPrice is decimal p && p > 0)
             _price = p;
         if (!string.IsNullOrWhiteSpace(offer.Currency))
             _currency = offer.Currency;
-        if (string.IsNullOrWhiteSpace(_offerSubject))
-            _offerSubject = offer.Name;
     }
 
     private void OnLanguagesChanged(List<string> next) =>
         _languages = next.Count == 0 ? [SupportedLanguageCodes.French] : next;
+
+    private static IReadOnlyList<PublicCredentialDto> ToCredentials(List<TeacherCredentialDraft> rows) =>
+        TeacherOnboardingPortfolio.Clean(rows.Select(r => new PublicCredentialDto(r.Title, r.Institution, r.Year)));
 
     private async Task OnNameChanged()
     {

@@ -1,3 +1,4 @@
+using TutorSphere.Application.DTOs.Branding;
 using TutorSphere.Application.DTOs.ExpertApproval;
 using TutorSphere.Application.DTOs.SubscriptionOfferings;
 
@@ -39,7 +40,10 @@ public record RegisterSchoolRequest(
     CreateSubscriptionOfferingRequest? InitialOffering = null,
     Guid? GroupOfferId = null,
     string? PhotoBase64 = null,
-    string? PhotoContentType = null);
+    string? PhotoContentType = null,
+    int YearsExperience = 0,
+    IReadOnlyList<PublicCredentialDto>? Diplomas = null,
+    IReadOnlyList<PublicCredentialDto>? Certifications = null);
 
 public record RegisterSchoolResponse(
     Guid TenantId,
@@ -55,7 +59,8 @@ public record TeacherInvitePublicOfferDto(
     decimal? RecommendedPrice,
     bool IsInternational,
     string? Code = null,
-    string? MarketCountryCode = null);
+    string? MarketCountryCode = null,
+    IReadOnlyList<string>? Levels = null);
 
 public record TeacherInviteInfoResponse(
     Guid ExpertGroupId,

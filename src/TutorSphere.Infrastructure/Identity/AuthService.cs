@@ -424,6 +424,9 @@ public class AuthService : IAuthService, ITeacherLoginIssuer
                 "Vous devez accepter le Code de conduite et d'éthique enseignant (version en vigueur) pour créer un compte.");
         }
 
+        AddressCoherence.ThrowIfInvalid(
+            request.Country, request.City, request.PostalCode, request.Address, request.Phone);
+
         var existingUser = await _userManager.FindByEmailAsync(request.Email.Trim());
         ApplicationUser user;
         if (existingUser is not null)
@@ -537,7 +540,12 @@ public class AuthService : IAuthService, ITeacherLoginIssuer
             Branding = new TenantBranding
             {
                 Presentation = presentation,
-                Portfolio = TeacherCommunicationLanguages.MergePortfolioLanguages(null, commLanguages)
+                Portfolio = TeacherOnboardingPortfolio.Build(
+                    null,
+                    commLanguages,
+                    request.YearsExperience,
+                    request.Diplomas,
+                    request.Certifications)
             },
             TeacherConductPolicyVersion = TeacherConductPolicy.CurrentVersion,
             TeacherConductAcceptedAt = DateTime.UtcNow,
@@ -735,6 +743,12 @@ public class AuthService : IAuthService, ITeacherLoginIssuer
         }
 
         TeacherCommunicationLanguages.ApplyToBranding(branding, commLanguages);
+        branding.Portfolio = TeacherOnboardingPortfolio.Build(
+            branding.Portfolio,
+            commLanguages,
+            request.YearsExperience,
+            request.Diplomas,
+            request.Certifications);
 
         ReplaceTeacherAvailabilities(tenant.Id, request.Availabilities, request.InitialOffering?.Schedule);
         await MarkInviteAcceptedIfAnyAsync(request.Email, tenant.Id, request.InviteToken, ct);
@@ -853,6 +867,8 @@ public class AuthService : IAuthService, ITeacherLoginIssuer
         }
 
         var visibleCsv = ProfileVisibility.ToCsv(request.VisibleCountryCodes, country);
+
+        AddressCoherence.ThrowIfInvalid(country, request.City, postalCode: null, street: null, phone: null);
 
         var requestedSlug = (request.Slug ?? "").Trim().ToLowerInvariant();
         if (string.IsNullOrWhiteSpace(requestedSlug))
@@ -1209,15 +1225,29 @@ public class AuthService : IAuthService, ITeacherLoginIssuer
         var offers = _db.GroupOffers
             .Where(o => o.ExpertGroupId == group.Id && o.Status == GroupOfferStatus.Published)
             .OrderBy(o => o.Name)
+            .Select(o => new
+            {
+                o.Id,
+                o.Name,
+                o.ShortDescription,
+                o.Currency,
+                Price = o.RecommendedPrice ?? o.FixedPrice,
+                o.IsInternational,
+                o.Code,
+                o.MarketCountryCode,
+                o.LevelsCsv
+            })
+            .ToList()
             .Select(o => new TeacherInvitePublicOfferDto(
                 o.Id,
                 o.Name,
                 o.ShortDescription,
                 o.Currency,
-                o.RecommendedPrice ?? o.FixedPrice,
+                o.Price,
                 o.IsInternational,
                 o.Code,
-                o.MarketCountryCode))
+                o.MarketCountryCode,
+                SchoolLevelCatalog.ParseLevelCsv(o.LevelsCsv)))
             .ToList();
 
         var isProfileUpdate = false;

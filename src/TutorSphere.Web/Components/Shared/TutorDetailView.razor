@@ -263,6 +263,18 @@
             }
             else if (_activeTab == "credentials")
             {
+                @if (CredentialsEditor is not null)
+                {
+                    <section class="section-card">
+                        <p class="small text-muted mb-3">
+                            Optionnel. Les parents verront ces informations sur la fiche publique.
+                            Cliquez sur « Ajouter » pour un diplôme ou une certification.
+                        </p>
+                        @CredentialsEditor
+                    </section>
+                }
+                else
+                {
                 <div class="row g-3">
                     <div class="col-md-6">
                         <section class="section-card h-100">
@@ -313,6 +325,7 @@
                         </section>
                     </div>
                 </div>
+                }
             }
             else if (_activeTab == "subjects")
             {
@@ -546,6 +559,8 @@
     [Parameter] public bool AllowSelfSubscribe { get; set; }
     /// <summary>Aperçu admin/expert : même rendu parents, sans actions d'inscription.</summary>
     [Parameter] public bool PreviewMode { get; set; }
+    /// <summary>Formulaire d’édition des diplômes/certifications (assistant d’ajout d’enseignant).</summary>
+    [Parameter] public RenderFragment? CredentialsEditor { get; set; }
     [Inject] private IStringLocalizer<SharedResources> L { get; set; } = default!;
 
     private string _activeTab = "about";
