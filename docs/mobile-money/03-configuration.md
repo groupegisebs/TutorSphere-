@@ -47,6 +47,36 @@
 MTN prod : `X-Target-Environment: mtncameroon`  
 Orange prod : `https://api.orange.com/orange-money-webpay/cm/v1/webpayment`
 
+## Produit MTN à souscrire
+
+Sur le portail [momodeveloper](https://momodeveloper.mtn.com) : **Collections** (pas Collection Widget, pas Remittances).
+
+Disbursements = versements enseignants (POST `/transfer`) — produit séparé, clé d’abonnement distincte. TutorSphere encaisse d’abord via Collections (`POST /collection/v1_0/requesttopay`).
+
+### Identifiants (deux couches)
+
+| Secret | Rôle |
+|--------|------|
+| Primary / Secondary Key | Header `Ocp-Apim-Subscription-Key` (API Manager) |
+| API User + API Key | OAuth 2.0 Client Credentials → Bearer (`POST /collection/token/`) |
+
+Sandbox : Provisioning `POST /v1_0/apiuser` puis `POST /v1_0/apiuser/{id}/apikey`.  
+Production : Partner Portal du pays (`X-Target-Environment: mtncameroon`). Le callback host doit être public : `{PublicBaseUrl}/api/webhooks/mtn`.
+
+### Erreurs fréquentes (Open API)
+
+| Code | Action côté GISE |
+|------|------------------|
+| `RESOURCE_ALREADY_EXIST` (409) | Même UUID v4 déjà envoyé → lecture du statut |
+| `ACCESS_DENIED` (401) | Mauvaise clé produit → essai **Secondary Key** Collections |
+| `RESOURCE_NOT_FOUND` (404) | GET trop tôt ou RTP non 202 → rester en attente |
+| `PAYER_NOT_FOUND` | MSISDN avec indicatif `237`, compte MoMo actif |
+| `INTERNAL_PROCESSING_ERROR` | Souvent solde insuffisant |
+| `COULD_NOT_PERFORM_TRANSACTION` | Parent n’a pas approuvé sous **5 minutes** |
+| `NOT_ALLOWED_TARGET_ENVIRONMENT` | `sandbox` ou `mtncameroon` |
+| `INVALID_CALLBACK_URL_HOST` | Hostname du callback = celui de l’API User (pas une IP) |
+| `/token` + body | **400** — le jeton s’envoie **sans corps** |
+
 ## secrets.json (serveur)
 
 ```json
@@ -60,6 +90,7 @@ Orange prod : `https://api.orange.com/orange-money-webpay/cm/v1/webpayment`
     },
     "Mtn": {
       "SubscriptionKey": "...",
+      "SecondaryKey": "...",
       "ApiUserId": "...",
       "ApiKey": "..."
     }

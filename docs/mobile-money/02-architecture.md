@@ -60,8 +60,9 @@ Règles :
 
 ## Webhooks
 
-- `POST /api/webhooks/campay` — authentifié (secret configurable), anti-rejeu, traitement synchrone DB pour le MVP (file durable/outbox = lot ultérieur).
-- `/orange`, `/mtn` → 501 tant que non activés.
+- `POST /api/webhooks/campay` — authentifié (secret configurable), anti-rejeu.
+- `POST /api/webhooks/orange` — notification Orange WebPay.
+- `PUT|POST /api/webhooks/mtn` — callback Open API MTN Collections (`requesttopay`). **PUT** est le verbe officiel ; un seul envoi, **sans retry**. Le checkout TutorSphere poll `GET /requesttopay/{X-Reference-Id}` en complément.
 - Bypass API key (comme Stripe).
 
 ## Sécurité
