@@ -436,8 +436,8 @@ public sealed class ApiClient
 
             if (IsGenericEfSaveMessage(error) || genericEf)
             {
-                return "Impossible d'enregistrer le paiement : la base n'a pas les colonnes récentes (split). "
-                    + "Arrêtez complètement l'API TutorSphere puis relancez-la, et réessayez.";
+                return "L'API n'a pas pu enregistrer le paiement (l'erreur SQL est masquée par l'ancienne version en cours). "
+                    + "Dans Visual Studio : Stop (carré rouge) sur API et Web, puis F5 pour tout relancer, et réessayez.";
             }
 
             return error;

@@ -430,60 +430,7 @@ public static class DependencyInjection
     /// </summary>
     private static async Task EnsureParentPaymentSplitSchemaAsync(ApplicationDbContext db, ILogger logger)
     {
-        await db.Database.ExecuteSqlRawAsync(
-            """ALTER TABLE "ExpertGroupsSet" ADD COLUMN IF NOT EXISTS "PlatformCommissionPercent" numeric(5,2) NOT NULL DEFAULT 30;""");
-        await db.Database.ExecuteSqlRawAsync(
-            """ALTER TABLE "PaymentsSet" ADD COLUMN IF NOT EXISTS "ProcessorFee" numeric(18,2) NOT NULL DEFAULT 0;""");
-        await db.Database.ExecuteSqlRawAsync(
-            """ALTER TABLE "PaymentsSet" ADD COLUMN IF NOT EXISTS "GroupAmount" numeric(18,2) NOT NULL DEFAULT 0;""");
-        await db.Database.ExecuteSqlRawAsync(
-            """ALTER TABLE "PaymentsSet" ADD COLUMN IF NOT EXISTS "ExpertGroupId" uuid;""");
-        await db.Database.ExecuteSqlRawAsync(
-            """ALTER TABLE "PaymentsSet" ADD COLUMN IF NOT EXISTS "CommissionPercent" numeric(5,2) NOT NULL DEFAULT 0;""");
-        await db.Database.ExecuteSqlRawAsync(
-            """CREATE INDEX IF NOT EXISTS "IX_PaymentsSet_ExpertGroupId" ON "PaymentsSet" ("ExpertGroupId");""");
-        await db.Database.ExecuteSqlRawAsync(
-            """
-            CREATE TABLE IF NOT EXISTS "PlatformPaymentSettingsSet" (
-                "Id" uuid NOT NULL,
-                "DefaultCommissionPercent" numeric(5,2) NOT NULL,
-                "CardFeePercent" numeric(5,2) NOT NULL,
-                "CardFeeFixed" numeric(18,2) NOT NULL,
-                "PayPalFeePercent" numeric(5,2) NOT NULL,
-                "PayPalFeeFixed" numeric(18,2) NOT NULL,
-                "MobileMoneyFeePercent" numeric(5,2) NOT NULL DEFAULT 2,
-                "MobileMoneyFeeFixed" numeric(18,2) NOT NULL DEFAULT 0,
-                "CreatedAt" timestamp with time zone NOT NULL,
-                "UpdatedAt" timestamp with time zone,
-                CONSTRAINT "PK_PlatformPaymentSettingsSet" PRIMARY KEY ("Id")
-            );
-            """);
-        await db.Database.ExecuteSqlRawAsync(
-            """ALTER TABLE "PlatformPaymentSettingsSet" ADD COLUMN IF NOT EXISTS "MobileMoneyFeePercent" numeric(5,2) NOT NULL DEFAULT 2;""");
-        await db.Database.ExecuteSqlRawAsync(
-            """ALTER TABLE "PlatformPaymentSettingsSet" ADD COLUMN IF NOT EXISTS "MobileMoneyFeeFixed" numeric(18,2) NOT NULL DEFAULT 0;""");
-        await db.Database.ExecuteSqlRawAsync(
-            """ALTER TABLE "PaymentsSet" ADD COLUMN IF NOT EXISTS "Channel" character varying(20);""");
-        await db.Database.ExecuteSqlRawAsync(
-            """ALTER TABLE "PaymentsSet" ADD COLUMN IF NOT EXISTS "PhoneMasked" character varying(40);""");
-        await db.Database.ExecuteSqlRawAsync(
-            """
-            INSERT INTO "PlatformPaymentSettingsSet" (
-                "Id",
-                "DefaultCommissionPercent",
-                "CardFeePercent",
-                "CardFeeFixed",
-                "PayPalFeePercent",
-                "PayPalFeeFixed",
-                "MobileMoneyFeePercent",
-                "MobileMoneyFeeFixed",
-                "CreatedAt")
-            SELECT
-                '00000000-0000-0000-0000-000000000001'::uuid,
-                30, 2.9, 0.30, 2.9, 0.30, 2.0, 0,
-                NOW()
-            WHERE NOT EXISTS (SELECT 1 FROM "PlatformPaymentSettingsSet");
-            """);
+        await ParentPaymentSplitSchema.EnsureAsync(db, logger: logger);
 
         logger.LogInformation("Parent payment split schema is present.");
     }

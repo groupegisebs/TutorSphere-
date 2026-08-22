@@ -114,6 +114,8 @@ internal sealed class PayGatewayService : IPaymentGatewayService
         var parent = await _db.ParentProfilesForAnyTenant.FirstOrDefaultAsync(p => p.Id == student.ParentProfileId, ct)
             ?? throw new InvalidOperationException("Profil parent introuvable.");
 
+        await _db.EnsureParentPaymentSplitSchemaAsync(ct);
+
         var customer = await CreateOrGetParentCustomerAsync(parent.Id, ct);
         var paymentMethod = PaymentMethodCodes.Normalize(request.PaymentMethod);
         if (PaymentMethodCodes.IsDisabledCollectionChannel(paymentMethod))
@@ -734,20 +736,54 @@ internal sealed class PayGatewayService : IPaymentGatewayService
 
     private async Task SaveTrackedAsync(CancellationToken ct)
     {
+        await _db.EnsureParentPaymentSplitSchemaAsync(ct);
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+            return;
+        }
+        catch (DbUpdateException ex)
+        {
+            _logger.LogWarning(ex, "Premier SaveChanges paiement échoué — filet schéma puis nouvel essai.");
+            await _db.EnsureParentPaymentSplitSchemaAsync(ct);
+        }
+
         try
         {
             await _db.SaveChangesAsync(ct);
         }
-        catch (DbUpdateException ex)
+        catch (Exception ex)
         {
-            var current = (Exception)ex;
+            var current = ex;
             while (current.InnerException is not null)
                 current = current.InnerException;
-            _logger.LogError(ex, "Échec enregistrement paiement : {DbError}", current.Message);
+            _logger.LogError(
+                ex,
+                "Échec enregistrement paiement (base {Database}) : {DbError}",
+                DatabaseName(),
+                current.Message);
             throw new InvalidOperationException(
-                $"Le paiement n'a pas pu être enregistré : {current.Message}",
+                $"Le paiement n'a pas pu être enregistré (base « {DatabaseName()} ») : {current.Message}",
                 ex);
         }
+    }
+
+    private string DatabaseName()
+    {
+        try
+        {
+            if (_db is DbContext ef)
+            {
+                var name = ef.Database.GetDbConnection().Database;
+                return string.IsNullOrWhiteSpace(name) ? "?" : name;
+            }
+        }
+        catch
+        {
+            // ignored
+        }
+
+        return "?";
     }
 
     private async Task<ParentPaymentSplit> SplitParentPaymentAsync(
@@ -1129,6 +1165,8 @@ internal sealed class PayGatewayService : IPaymentGatewayService
 
         var parent = await _db.ParentProfilesForAnyTenant.FirstOrDefaultAsync(p => p.Id == student.ParentProfileId, ct)
             ?? throw new InvalidOperationException("Profil parent introuvable.");
+
+        await _db.EnsureParentPaymentSplitSchemaAsync(ct);
 
         ParentPaymentMethods.EnsureAllowed(
             ResolvePayerCountry(parent.Country, student.Country),

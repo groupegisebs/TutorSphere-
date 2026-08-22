@@ -102,6 +102,7 @@ public interface IApplicationDbContext
     IQueryable<PlatformPaymentSettings> PlatformPaymentSettings { get; }
 
     Task<int> SaveChangesAsync(CancellationToken cancellationToken = default);
+    Task EnsureParentPaymentSplitSchemaAsync(CancellationToken cancellationToken = default);
     void Add<T>(T entity) where T : class;
     void Remove<T>(T entity) where T : class;
     void RemoveRange<T>(IEnumerable<T> entities) where T : class;

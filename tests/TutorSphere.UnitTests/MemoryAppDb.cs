@@ -105,6 +105,9 @@ internal sealed class MemoryAppDb : IApplicationDbContext
 
     public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) => Task.FromResult(0);
 
+    public Task EnsureParentPaymentSplitSchemaAsync(CancellationToken cancellationToken = default) =>
+        Task.CompletedTask;
+
     public void Add<T>(T entity) where T : class
     {
         switch (entity)

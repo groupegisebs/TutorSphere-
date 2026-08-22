@@ -194,6 +194,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
     public new void Remove<T>(T entity) where T : class => Set<T>().Remove(entity);
     public void RemoveRange<T>(IEnumerable<T> entities) where T : class => Set<T>().RemoveRange(entities);
 
+    public Task EnsureParentPaymentSplitSchemaAsync(CancellationToken cancellationToken = default) =>
+        ParentPaymentSplitSchema.EnsureAsync(this, cancellationToken);
+
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
