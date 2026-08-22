@@ -231,6 +231,18 @@ public class PaymentsController : ControllerBase
         {
             return BadRequest(new { error = ex.Message });
         }
+        catch (DbUpdateException ex)
+        {
+            _logger.LogError(
+                ex,
+                "Échec enregistrement du paiement Mobile Money pour l'abonnement {SubscriptionId} : {DbError}",
+                request.SubscriptionId,
+                InnermostMessage(ex));
+            return BadRequest(new
+            {
+                error = "Le paiement n'a pas pu être enregistré. L'équipe technique a été notifiée."
+            });
+        }
     }
 
     /// <summary>Statut normalisé d'un paiement Mobile Money (poll serveur).</summary>

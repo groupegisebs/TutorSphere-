@@ -44,8 +44,16 @@ public sealed class PlatformPaymentSettingsService(IApplicationDbContext db) : I
 
         var created = new PlatformPaymentSettings();
         db.Add(created);
-        await db.SaveChangesAsync(ct);
-        return created;
+        try
+        {
+            await db.SaveChangesAsync(ct);
+            return created;
+        }
+        catch
+        {
+            db.Remove(created);
+            throw;
+        }
     }
 
     private static PlatformPaymentSettingsDto Map(PlatformPaymentSettings s) =>

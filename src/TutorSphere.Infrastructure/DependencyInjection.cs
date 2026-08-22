@@ -102,6 +102,7 @@ public static class DependencyInjection
         // Chaque filet est isolé : un échec ne doit pas empêcher les suivants de rattraper le schéma.
         await RunSchemaFiletAsync("licence enseignant", () => EnsureTeacherLicenseSchemaAsync(db, logger), logger);
         await RunSchemaFiletAsync("fonctionnalités récentes", () => EnsureRecentFeatureSchemaAsync(db, logger), logger);
+        await RunSchemaFiletAsync("split paiement parent", () => EnsureParentPaymentSplitSchemaAsync(db, logger), logger);
 
         var stillPending = (await db.Database.GetPendingMigrationsAsync()).ToList();
         if (stillPending.Count > 0)
@@ -420,14 +421,25 @@ public static class DependencyInjection
         await db.Database.ExecuteSqlRawAsync(
             """CREATE INDEX IF NOT EXISTS "IX_TeacherContractAuditEventsSet_CreatedAt" ON "TeacherContractAuditEventsSet" ("CreatedAt");""");
 
+        logger.LogInformation("Coverage, document metadata, payout invoice, WhatsApp channel, and teacher contracts schema are present.");
+    }
+
+    /// <summary>
+    /// Filet isolé : le checkout parent insère ces colonnes/tables. S'ils manquent,
+    /// EF lève « An error occurred while saving the entity changes » sans détail utile.
+    /// </summary>
+    private static async Task EnsureParentPaymentSplitSchemaAsync(ApplicationDbContext db, ILogger logger)
+    {
         await db.Database.ExecuteSqlRawAsync(
-            """
-            ALTER TABLE "ExpertGroupsSet" ADD COLUMN IF NOT EXISTS "PlatformCommissionPercent" numeric(5,2) NOT NULL DEFAULT 30;
-            ALTER TABLE "PaymentsSet" ADD COLUMN IF NOT EXISTS "ProcessorFee" numeric(18,2) NOT NULL DEFAULT 0;
-            ALTER TABLE "PaymentsSet" ADD COLUMN IF NOT EXISTS "GroupAmount" numeric(18,2) NOT NULL DEFAULT 0;
-            ALTER TABLE "PaymentsSet" ADD COLUMN IF NOT EXISTS "ExpertGroupId" uuid;
-            ALTER TABLE "PaymentsSet" ADD COLUMN IF NOT EXISTS "CommissionPercent" numeric(5,2) NOT NULL DEFAULT 0;
-            """);
+            """ALTER TABLE "ExpertGroupsSet" ADD COLUMN IF NOT EXISTS "PlatformCommissionPercent" numeric(5,2) NOT NULL DEFAULT 30;""");
+        await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "PaymentsSet" ADD COLUMN IF NOT EXISTS "ProcessorFee" numeric(18,2) NOT NULL DEFAULT 0;""");
+        await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "PaymentsSet" ADD COLUMN IF NOT EXISTS "GroupAmount" numeric(18,2) NOT NULL DEFAULT 0;""");
+        await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "PaymentsSet" ADD COLUMN IF NOT EXISTS "ExpertGroupId" uuid;""");
+        await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "PaymentsSet" ADD COLUMN IF NOT EXISTS "CommissionPercent" numeric(5,2) NOT NULL DEFAULT 0;""");
         await db.Database.ExecuteSqlRawAsync(
             """CREATE INDEX IF NOT EXISTS "IX_PaymentsSet_ExpertGroupId" ON "PaymentsSet" ("ExpertGroupId");""");
         await db.Database.ExecuteSqlRawAsync(
@@ -447,12 +459,11 @@ public static class DependencyInjection
             );
             """);
         await db.Database.ExecuteSqlRawAsync(
-            """
-            ALTER TABLE "PlatformPaymentSettingsSet" ADD COLUMN IF NOT EXISTS "MobileMoneyFeePercent" numeric(5,2) NOT NULL DEFAULT 2;
-            ALTER TABLE "PlatformPaymentSettingsSet" ADD COLUMN IF NOT EXISTS "MobileMoneyFeeFixed" numeric(18,2) NOT NULL DEFAULT 0;
-            """);
+            """ALTER TABLE "PlatformPaymentSettingsSet" ADD COLUMN IF NOT EXISTS "MobileMoneyFeePercent" numeric(5,2) NOT NULL DEFAULT 2;""");
+        await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "PlatformPaymentSettingsSet" ADD COLUMN IF NOT EXISTS "MobileMoneyFeeFixed" numeric(18,2) NOT NULL DEFAULT 0;""");
 
-        logger.LogInformation("Coverage, document metadata, payout invoice, WhatsApp channel, teacher contracts, and parent payment split schema are present.");
+        logger.LogInformation("Parent payment split schema is present.");
     }
 
     /// <summary>
