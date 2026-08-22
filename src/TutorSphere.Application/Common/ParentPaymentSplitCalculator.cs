@@ -24,6 +24,8 @@ public static class ParentPaymentSplitCalculator
     public const decimal DefaultCardFeeFixed = 0.30m;
     public const decimal DefaultPayPalFeePercent = 2.9m;
     public const decimal DefaultPayPalFeeFixed = 0.30m;
+    public const decimal DefaultMobileMoneyFeePercent = 2.0m;
+    public const decimal DefaultMobileMoneyFeeFixed = 0m;
 
     public static decimal ClampCommission(decimal percent) =>
         Math.Clamp(percent, 0m, 100m);

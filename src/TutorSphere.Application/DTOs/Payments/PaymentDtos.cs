@@ -22,11 +22,11 @@ public static class PaymentMethodCodes
         return n is OrangeMoney or MtnMomo;
     }
 
-    /// <summary>Orange Money et MTN MoMo ne sont plus proposés à l'encaissement.</summary>
-    public const bool MobileMoneyCollectionEnabled = false;
+    /// <summary>Orange Money et MTN MoMo sont proposés à l'encaissement (offres XAF) via PayGateway.</summary>
+    public const bool MobileMoneyCollectionEnabled = true;
 
     public const string MobileMoneyCollectionDisabledMessage =
-        "Orange Money et MTN MoMo ne sont plus disponibles. Utilisez une carte bancaire ou PayPal.";
+        "Orange Money et MTN MoMo ne sont pas disponibles pour le moment. Utilisez une carte bancaire ou PayPal.";
 
     public static bool IsDisabledCollectionChannel(string? value) =>
         !MobileMoneyCollectionEnabled && IsMobileMoney(value);

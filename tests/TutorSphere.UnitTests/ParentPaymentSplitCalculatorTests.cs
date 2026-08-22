@@ -60,4 +60,23 @@ public class ParentPaymentSplitCalculatorTests
         Assert.Equal(2.82m, payment.PlatformFee);
         Assert.Equal(10m, tenant.LicenseFeeWithholdingRemainingUsd);
     }
+
+    [Fact]
+    public void Mtn_six_thousand_xaf_deducts_two_percent_then_thirty_to_group()
+    {
+        var groupId = Guid.NewGuid();
+        var split = ParentPaymentSplitCalculator.Compute(
+            6000m,
+            ParentPaymentSplitCalculator.DefaultMobileMoneyFeePercent,
+            ParentPaymentSplitCalculator.DefaultMobileMoneyFeeFixed,
+            30m,
+            groupId);
+
+        Assert.Equal(120m, split.ProcessorFee);
+        Assert.Equal(5880m, split.Net);
+        Assert.Equal(1764m, split.PlatformFee);
+        Assert.Equal(4116m, split.Remainder);
+        Assert.Equal(0m, split.TutorAmount);
+        Assert.Equal(4116m, split.GroupAmount);
+    }
 }

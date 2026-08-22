@@ -429,10 +429,17 @@ public static class DependencyInjection
                 "CardFeeFixed" numeric(18,2) NOT NULL,
                 "PayPalFeePercent" numeric(5,2) NOT NULL,
                 "PayPalFeeFixed" numeric(18,2) NOT NULL,
+                "MobileMoneyFeePercent" numeric(5,2) NOT NULL DEFAULT 2,
+                "MobileMoneyFeeFixed" numeric(18,2) NOT NULL DEFAULT 0,
                 "CreatedAt" timestamp with time zone NOT NULL,
                 "UpdatedAt" timestamp with time zone,
                 CONSTRAINT "PK_PlatformPaymentSettingsSet" PRIMARY KEY ("Id")
             );
+            """);
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            ALTER TABLE "PlatformPaymentSettingsSet" ADD COLUMN IF NOT EXISTS "MobileMoneyFeePercent" numeric(5,2) NOT NULL DEFAULT 2;
+            ALTER TABLE "PlatformPaymentSettingsSet" ADD COLUMN IF NOT EXISTS "MobileMoneyFeeFixed" numeric(18,2) NOT NULL DEFAULT 0;
             """);
 
         logger.LogInformation("Coverage, document metadata, payout invoice, WhatsApp channel, teacher contracts, and parent payment split schema are present.");

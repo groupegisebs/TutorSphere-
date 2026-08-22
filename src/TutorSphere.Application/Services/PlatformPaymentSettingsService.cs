@@ -29,6 +29,8 @@ public sealed class PlatformPaymentSettingsService(IApplicationDbContext db) : I
         entity.CardFeeFixed = ParentPaymentSplitCalculator.ClampFeeFixed(request.CardFeeFixed);
         entity.PayPalFeePercent = ParentPaymentSplitCalculator.ClampFeePercent(request.PayPalFeePercent);
         entity.PayPalFeeFixed = ParentPaymentSplitCalculator.ClampFeeFixed(request.PayPalFeeFixed);
+        entity.MobileMoneyFeePercent = ParentPaymentSplitCalculator.ClampFeePercent(request.MobileMoneyFeePercent);
+        entity.MobileMoneyFeeFixed = ParentPaymentSplitCalculator.ClampFeeFixed(request.MobileMoneyFeeFixed);
         entity.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
         return Map(entity);
@@ -47,5 +49,6 @@ public sealed class PlatformPaymentSettingsService(IApplicationDbContext db) : I
     }
 
     private static PlatformPaymentSettingsDto Map(PlatformPaymentSettings s) =>
-        new(s.DefaultCommissionPercent, s.CardFeePercent, s.CardFeeFixed, s.PayPalFeePercent, s.PayPalFeeFixed);
+        new(s.DefaultCommissionPercent, s.CardFeePercent, s.CardFeeFixed, s.PayPalFeePercent, s.PayPalFeeFixed,
+            s.MobileMoneyFeePercent, s.MobileMoneyFeeFixed);
 }

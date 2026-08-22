@@ -59,9 +59,8 @@ public static class PayoutProviderCodes
             or PayoutProviderKind.Moov
             or PayoutProviderKind.Airtel;
 
-    /// <summary>Orange Money et MTN MoMo ne sont plus proposés comme nouveaux comptes de versement.</summary>
-    public static bool IsDiscontinued(PayoutProviderKind kind) =>
-        kind is PayoutProviderKind.OrangeMoney or PayoutProviderKind.MtnMomo;
+    /// <summary>Orange Money et MTN MoMo restent des canaux de versement Afrique (Cameroun surtout).</summary>
+    public static bool IsDiscontinued(PayoutProviderKind kind) => false;
 
     public static bool IsInterac(PayoutProviderKind kind) =>
         kind == PayoutProviderKind.InteracETransfer;

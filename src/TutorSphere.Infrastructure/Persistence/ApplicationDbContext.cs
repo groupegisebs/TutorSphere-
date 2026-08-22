@@ -249,6 +249,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>, IApplica
             e.Property(s => s.CardFeeFixed).HasPrecision(18, 2);
             e.Property(s => s.PayPalFeePercent).HasPrecision(5, 2);
             e.Property(s => s.PayPalFeeFixed).HasPrecision(18, 2);
+            e.Property(s => s.MobileMoneyFeePercent).HasPrecision(5, 2);
+            e.Property(s => s.MobileMoneyFeeFixed).HasPrecision(18, 2);
         });
 
         builder.Entity<TutorPayout>(e =>

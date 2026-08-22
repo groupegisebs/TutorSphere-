@@ -14,4 +14,7 @@ public class PlatformPaymentSettings : BaseEntity
     public decimal CardFeeFixed { get; set; } = 0.30m;
     public decimal PayPalFeePercent { get; set; } = 2.9m;
     public decimal PayPalFeeFixed { get; set; } = 0.30m;
+    /// <summary>Frais opérateur MTN/Orange (souvent 1–2,5 %, sans fixe). Réglable en admin.</summary>
+    public decimal MobileMoneyFeePercent { get; set; } = 2.0m;
+    public decimal MobileMoneyFeeFixed { get; set; } = 0m;
 }

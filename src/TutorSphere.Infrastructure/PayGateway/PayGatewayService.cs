@@ -116,9 +116,11 @@ internal sealed class PayGatewayService : IPaymentGatewayService
 
         var customer = await CreateOrGetParentCustomerAsync(parent.Id, ct);
         var paymentMethod = PaymentMethodCodes.Normalize(request.PaymentMethod);
-        if (PaymentMethodCodes.IsDisabledCollectionChannel(paymentMethod)
-            || PaymentMethodCodes.IsMobileMoney(paymentMethod))
+        if (PaymentMethodCodes.IsDisabledCollectionChannel(paymentMethod))
             throw new InvalidOperationException(PaymentMethodCodes.MobileMoneyCollectionDisabledMessage);
+        if (PaymentMethodCodes.IsMobileMoney(paymentMethod))
+            throw new InvalidOperationException(
+                "Le paiement Mobile Money s'initie via l'encaissement opérateur, pas via Stripe Checkout.");
 
         var amount = offering.Price;
         var split = await SplitParentPaymentAsync(tenant, amount, paymentMethod, ct);
@@ -743,11 +745,18 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             groupId = null;
         }
 
-        var paypal = PaymentMethodCodes.Normalize(paymentMethod) == PaymentMethodCodes.PayPal;
+        var method = PaymentMethodCodes.Normalize(paymentMethod);
+        var (feePercent, feeFixed) = method switch
+        {
+            PaymentMethodCodes.PayPal => (settings.PayPalFeePercent, settings.PayPalFeeFixed),
+            PaymentMethodCodes.MtnMomo or PaymentMethodCodes.OrangeMoney =>
+                (settings.MobileMoneyFeePercent, settings.MobileMoneyFeeFixed),
+            _ => (settings.CardFeePercent, settings.CardFeeFixed)
+        };
         return ParentPaymentSplitCalculator.Compute(
             amount,
-            paypal ? settings.PayPalFeePercent : settings.CardFeePercent,
-            paypal ? settings.PayPalFeeFixed : settings.CardFeeFixed,
+            feePercent,
+            feeFixed,
             commission,
             groupId);
     }
@@ -1047,8 +1056,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
         CancellationToken ct = default)
     {
         var channel = PaymentMethodCodes.Normalize(request.Channel);
-        if (PaymentMethodCodes.IsDisabledCollectionChannel(channel)
-            || !PaymentMethodCodes.MobileMoneyCollectionEnabled)
+        if (PaymentMethodCodes.IsDisabledCollectionChannel(channel))
             throw new InvalidOperationException(PaymentMethodCodes.MobileMoneyCollectionDisabledMessage);
         if (!PaymentMethodCodes.IsMobileMoney(channel))
             throw new InvalidOperationException("Canal invalide. Utilisez une carte bancaire ou PayPal.");
