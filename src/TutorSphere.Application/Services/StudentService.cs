@@ -1,3 +1,4 @@
+using TutorSphere.Application.Common;
 using TutorSphere.Application.Common.Interfaces;
 using TutorSphere.Application.DTOs.Lessons;
 using TutorSphere.Application.DTOs.Students;
@@ -29,25 +30,41 @@ public class StudentService : IStudentService
 
     public Task<IReadOnlyList<StudentDto>> GetAllAsync(CancellationToken ct = default)
     {
-        var parents = _db.ParentProfiles.ToDictionary(p => p.Id, p => $"{p.FirstName} {p.LastName}".Trim());
         var students = _db.Students
             .OrderBy(s => s.LastName).ThenBy(s => s.FirstName)
-            .ToList()
-            .Select(s => MapToDto(s, s.ParentProfileId is Guid pid ? parents.GetValueOrDefault(pid) : null))
             .ToList();
-        return Task.FromResult<IReadOnlyList<StudentDto>>(students);
+        var parentIds = students
+            .Where(s => s.ParentProfileId.HasValue)
+            .Select(s => s.ParentProfileId!.Value)
+            .Distinct()
+            .ToList();
+        var parents = parentIds.Count == 0
+            ? new Dictionary<Guid, ParentProfile>()
+            : _db.ParentProfilesForAnyTenant
+                .Where(p => parentIds.Contains(p.Id))
+                .ToDictionary(p => p.Id);
+
+        var dtos = students
+            .Select(s =>
+            {
+                parents.TryGetValue(s.ParentProfileId ?? Guid.Empty, out var parent);
+                var parentName = parent is null ? null : $"{parent.FirstName} {parent.LastName}".Trim();
+                return MapToDto(s, parentName, parent?.Country);
+            })
+            .ToList();
+        return Task.FromResult<IReadOnlyList<StudentDto>>(dtos);
     }
 
     public Task<StudentDto?> GetByIdAsync(Guid id, CancellationToken ct = default)
     {
         var student = _db.Students.FirstOrDefault(s => s.Id == id);
-        return Task.FromResult(student is null ? null : MapToDto(student, ResolveParentName(student.ParentProfileId)));
+        return Task.FromResult(student is null ? null : MapWithParent(student));
     }
 
     public Task<StudentDto?> GetByUserIdAsync(string userId, CancellationToken ct = default)
     {
         var student = _db.Students.FirstOrDefault(s => s.UserId == userId);
-        return Task.FromResult(student is null ? null : MapToDto(student, ResolveParentName(student.ParentProfileId)));
+        return Task.FromResult(student is null ? null : MapWithParent(student));
     }
 
     public async Task<StudentDto> CreateAsync(CreateStudentRequest request, CancellationToken ct = default)
@@ -79,12 +96,13 @@ public class StudentService : IStudentService
             SchoolName = request.SchoolName?.Trim(),
             Subjects = request.Subjects?.Trim(),
             Notes = request.Notes?.Trim(),
+            Country = FamilyResidence.TryIso(ResolveParentCountry(parentId)),
             IsActive = true
         };
 
         _db.Add(student);
         await _db.SaveChangesAsync(ct);
-        return MapToDto(student, ResolveParentName(student.ParentProfileId));
+        return MapWithParent(student);
     }
 
     public async Task<StudentDto> UpdateAsync(Guid id, UpdateStudentRequest request, CancellationToken ct = default)
@@ -120,7 +138,7 @@ public class StudentService : IStudentService
         student.UpdatedAt = DateTime.UtcNow;
 
         await _db.SaveChangesAsync(ct);
-        return MapToDto(student, ResolveParentName(student.ParentProfileId));
+        return MapWithParent(student);
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
@@ -156,14 +174,23 @@ public class StudentService : IStudentService
         return _tenantContext.TenantId.Value;
     }
 
-    private string? ResolveParentName(Guid? parentProfileId)
+    private ParentProfile? FindParent(Guid? parentProfileId)
     {
         if (parentProfileId is null || parentProfileId == Guid.Empty) return null;
-        var parent = _db.ParentProfiles.FirstOrDefault(p => p.Id == parentProfileId.Value);
-        return parent is null ? null : $"{parent.FirstName} {parent.LastName}".Trim();
+        return _db.ParentProfilesForAnyTenant.FirstOrDefault(p => p.Id == parentProfileId.Value);
     }
 
-    private static StudentDto MapToDto(Student s, string? parentName = null) => new(
+    private string? ResolveParentCountry(Guid? parentProfileId) =>
+        FindParent(parentProfileId)?.Country;
+
+    private StudentDto MapWithParent(Student s)
+    {
+        var parent = FindParent(s.ParentProfileId);
+        var parentName = parent is null ? null : $"{parent.FirstName} {parent.LastName}".Trim();
+        return MapToDto(s, parentName, parent?.Country);
+    }
+
+    private static StudentDto MapToDto(Student s, string? parentName = null, string? parentCountry = null) => new(
         s.Id,
         s.FirstName,
         s.LastName,
@@ -184,7 +211,7 @@ public class StudentService : IStudentService
         s.CreatedAt,
         !string.IsNullOrEmpty(s.UserId),
         null,
-        s.Country);
+        FamilyResidence.EffectiveChildCountry(s.Country, parentCountry));
 
     private static LessonDto MapLessonToDto(Lesson l) => new(
         l.Id,

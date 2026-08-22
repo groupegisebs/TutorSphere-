@@ -13,7 +13,9 @@ public record RegisterRequest(
     DateTime? DateOfBirth = null,
     string? PreferredLanguage = null,
     /// <summary>Code parrainage parent (optionnel), ex. FAM-AB12CD.</summary>
-    string? ReferralCode = null);
+    string? ReferralCode = null,
+    /// <summary>Pays ISO du parent (obligatoire pour le rôle Parent) — moyens de paiement et pays de l'enfant.</summary>
+    string? Country = null);
 
 public record RegisterSchoolRequest(
     string SchoolName,

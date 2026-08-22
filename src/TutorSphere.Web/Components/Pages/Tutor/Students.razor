@@ -4,6 +4,7 @@
 @inject IStringLocalizer<SharedResources> L
 @inject ApiClient Api
 @inject AuthService Auth
+@using TutorSphere.Web.Common
 
 <PageTitle>@L["Students_Title"] – TutorSphere</PageTitle>
 
@@ -74,6 +75,10 @@ else
                 <div class="student-card-info">
                     <strong>@s.FirstName @s.LastName</strong>
                     <span class="student-card-level">@(s.Level ?? "—") · @(s.School ?? "—")</span>
+                    @if (!string.IsNullOrWhiteSpace(s.CountryLabel))
+                    {
+                        <span class="student-card-level">@s.CountryLabel</span>
+                    }
                     <span class="student-card-sub @(s.IsActive ? "sub-active" : "sub-inactive")">
                         @(s.IsActive ? L["Common_Active"] : L["Common_Inactive"])
                     </span>
@@ -125,6 +130,7 @@ else
                         </span>
                     </div>
                     <div class="ts-form-row"><label>@L["Students_School"]</label><span>@(_profileStudent.School ?? "—")</span></div>
+                    <div class="ts-form-row"><label>@L["Parents_ChildCountry"]</label><span>@(_profileStudent.CountryLabel ?? "—")</span></div>
                     <div class="ts-form-row"><label>@L["Students_Level"]</label><span>@(_profileStudent.Level ?? "—")</span></div>
                     <div class="ts-form-row"><label>@L["Common_Phone"]</label><span>@(_profileStudent.Phone ?? "—")</span></div>
                     <div class="ts-form-row"><label>@L["Common_Email"]</label><span>@(_profileStudent.Email ?? "—")</span></div>
@@ -215,8 +221,16 @@ else
         IsActive = d.IsActive,
         SinceDate = d.CreatedAt.ToLocalTime().ToString("MMM yyyy"),
         Initials = $"{Initial(d.FirstName)}{Initial(d.LastName)}",
-        AvatarColor = AvatarColors[index % AvatarColors.Length]
+        AvatarColor = AvatarColors[index % AvatarColors.Length],
+        Country = d.Country,
+        CountryLabel = FormatCountry(d.Country)
     };
+
+    private static string? FormatCountry(string? code)
+    {
+        var info = CountryCatalog.Find(code);
+        return info is null ? null : $"{info.Flag} {info.Name}";
+    }
 
     private static char Initial(string? s) =>
         string.IsNullOrWhiteSpace(s) ? '?' : char.ToUpperInvariant(s.Trim()[0]);
@@ -226,7 +240,7 @@ else
         DateTime? DateOfBirth, int? Age, bool IsMinor, bool IsAutonomous,
         Guid? ParentProfileId, string? ParentName, string? PhotoUrl,
         string? SchoolLevel, string? SchoolName, List<string>? Subjects,
-        string? Notes, bool IsActive, DateTime CreatedAt);
+        string? Notes, bool IsActive, DateTime CreatedAt, string? Country = null);
 
     private class StudentViewModel
     {
@@ -249,5 +263,7 @@ else
         public string SinceDate { get; set; } = "";
         public string Initials { get; set; } = "?";
         public string AvatarColor { get; set; } = "#7c3aed";
+        public string? Country { get; set; }
+        public string? CountryLabel { get; set; }
     }
 }

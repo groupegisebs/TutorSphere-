@@ -5,6 +5,7 @@
 @inject ApiClient Api
 @inject AuthService Auth
 @inject NavigationManager Nav
+@using TutorSphere.Web.Common
 
 <PageTitle>@L["Parents_Title"] – TutorSphere</PageTitle>
 
@@ -62,6 +63,7 @@ else
                 <tr>
                     <th>@L["Parents_Title"]</th>
                     <th>@L["Parents_Children"]</th>
+                    <th>@L["Parents_ChildCountry"]</th>
                     <th>@L["Common_Actions"]</th>
                 </tr>
             </thead>
@@ -84,7 +86,27 @@ else
                             {
                                 @foreach (var c in p.Children)
                                 {
-                                    <span class="ts-badge ts-badge-neutral me-1">@c</span>
+                                    <span class="ts-badge ts-badge-neutral me-1">@c.FullName</span>
+                                }
+                            }
+                        </td>
+                        <td>
+                            @{
+                                var countries = p.Children
+                                    .Select(c => c.Country)
+                                    .Where(code => !string.IsNullOrWhiteSpace(code))
+                                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                                    .ToList();
+                            }
+                            @if (countries.Count == 0)
+                            {
+                                <span class="text-muted">—</span>
+                            }
+                            else
+                            {
+                                @foreach (var code in countries)
+                                {
+                                    <span class="ts-badge ts-badge-neutral me-1">@CountryLabel(code)</span>
                                 }
                             }
                         </td>
@@ -147,7 +169,14 @@ else
                     {
                         @foreach (var c in _selected.Children)
                         {
-                            <div class="ts-list-item"><i class="bi bi-person me-2 text-primary"></i>@c</div>
+                            <div class="ts-list-item">
+                                <i class="bi bi-person me-2 text-primary"></i>
+                                <span>@c.FullName</span>
+                                @if (!string.IsNullOrWhiteSpace(c.Country))
+                                {
+                                    <span class="ts-badge ts-badge-neutral ms-2">@CountryLabel(c.Country)</span>
+                                }
+                            </div>
                         }
                     }
                 }
@@ -175,7 +204,8 @@ else
 
     private IEnumerable<ParentVM> FilteredParents => _parents
         .Where(p => string.IsNullOrEmpty(_search) ||
-            p.FullName.Contains(_search, StringComparison.OrdinalIgnoreCase));
+            p.FullName.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+            p.Children.Any(c => c.FullName.Contains(_search, StringComparison.OrdinalIgnoreCase)));
 
     protected override async Task OnInitializedAsync()
     {
@@ -217,7 +247,11 @@ else
         {
             var children = await Api.GetAsync<List<ApiChildDto>>($"api/parents/{p.Id}/children") ?? [];
             if (children.Count > 0)
-                p.Children = children.Select(c => $"{c.FirstName} {c.LastName}".Trim()).ToList();
+            {
+                p.Children = children
+                    .Select(c => new ChildVM(c.FirstName, c.LastName, c.Country))
+                    .ToList();
+            }
         }
         catch
         {
@@ -241,23 +275,34 @@ else
         Id = d.Id,
         FullName = $"{d.FirstName} {d.LastName}".Trim(),
         ChildrenCount = d.ChildrenCount,
-        Children = d.Children ?? [],
+        Children = (d.Children ?? []).Select(c => new ChildVM(c.FirstName, c.LastName, c.Country)).ToList(),
         MessagingUserId = d.MessagingUserId,
         Color = Colors[index % Colors.Length]
     };
 
+    private static string CountryLabel(string? code)
+    {
+        var info = CountryCatalog.Find(code);
+        return info is null ? (code ?? "—") : $"{info.Flag} {info.Name}";
+    }
+
     private record ApiParentDto(
         Guid Id, string FirstName, string LastName, int ChildrenCount,
-        List<string>? Children, string? MessagingUserId);
+        List<ApiChildDto>? Children, string? MessagingUserId);
 
-    private record ApiChildDto(Guid Id, string FirstName, string LastName);
+    private record ApiChildDto(Guid Id, string FirstName, string LastName, string? Country = null);
+
+    private sealed record ChildVM(string FirstName, string LastName, string? Country)
+    {
+        public string FullName => $"{FirstName} {LastName}".Trim();
+    }
 
     private class ParentVM
     {
         public Guid Id { get; set; }
         public string FullName { get; set; } = "";
         public int ChildrenCount { get; set; }
-        public List<string> Children { get; set; } = [];
+        public List<ChildVM> Children { get; set; } = [];
         public string? MessagingUserId { get; set; }
         public bool CanMessage => !string.IsNullOrWhiteSpace(MessagingUserId);
         public string Color { get; set; } = "#7c3aed";

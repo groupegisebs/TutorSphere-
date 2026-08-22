@@ -113,6 +113,13 @@
                 </div>
 
                 <div class="mb-3">
+                    <label class="form-label">@L["ParentRegister_Country"] <span class="text-danger">*</span></label>
+                    <CountrySelect Value="@_country" ValueChanged="OnCountryChanged"
+                                   Placeholder="@L["ParentRegister_CountryPlaceholder"]" />
+                    <small class="text-muted d-block mt-1">@L["ParentRegister_CountryHint"]</small>
+                </div>
+
+                <div class="mb-3">
                     <label class="form-label">@L["Label_Email"] <span class="text-danger">*</span></label>
                     <div class="form-field-icon">
                         <i class="bi bi-envelope field-icon"></i>
@@ -189,6 +196,7 @@
 
 @code {
     private string _firstName = "", _lastName = "", _email = "", _password = "", _confirm = "";
+    private string? _country;
     private string? _referralCode;
     private string? _error;
     private bool _submitting, _showPwd, _showConfirm, _confirmed;
@@ -218,6 +226,10 @@
         {
             _error = L["Error_FillAllFields"]; return;
         }
+        if (string.IsNullOrWhiteSpace(_country))
+        {
+            _error = L["ParentRegister_CountryRequired"]; return;
+        }
         if (_password != _confirm) { _error = L["Error_PasswordMismatch"]; return; }
         if (!HasLen || !HasNum || !HasSpc) { _error = L["Error_PasswordWeak"]; return; }
 
@@ -227,7 +239,8 @@
             var req = new RegisterRequest(
                 _email.Trim(), _password, _firstName.Trim(), _lastName.Trim(), "Parent",
                 PreferredLanguage: System.Globalization.CultureInfo.CurrentUICulture.Name,
-                ReferralCode: _referralCode);
+                ReferralCode: _referralCode,
+                Country: _country);
             var resp = await Http.PostAsJsonAsync("api/auth/register", req);
             if (resp.IsSuccessStatusCode)
             {
@@ -241,6 +254,12 @@
         }
         catch (Exception ex) { _error = $"{L["Error_ApiConnection"]} ({ex.Message})"; }
         finally { _submitting = false; }
+    }
+
+    private Task OnCountryChanged(string? value)
+    {
+        _country = value;
+        return Task.CompletedTask;
     }
 
     private static string? TryParseError(string body)

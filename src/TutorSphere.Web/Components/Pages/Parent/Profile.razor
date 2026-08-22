@@ -57,6 +57,12 @@ else
                     <label class="form-label">Téléphone</label>
                     <input class="form-control" @bind="_phone" />
                 </div>
+                <div class="col-md-6">
+                    <label class="form-label">@L["ParentRegister_Country"] *</label>
+                    <CountrySelect Value="@_country" ValueChanged="OnCountryChanged"
+                                   Placeholder="@L["ParentRegister_CountryPlaceholder"]" />
+                    <small class="text-muted d-block mt-1">@L["ParentProfile_CountryHint"]</small>
+                </div>
                 @if (_childrenCount is int count)
                 {
                     <div class="col-12">
@@ -76,6 +82,7 @@ else
     private string _lastName = "";
     private string _email = "";
     private string _phone = "";
+    private string? _country;
     private int? _childrenCount;
 
     private record UserProfileDto(
@@ -83,7 +90,8 @@ else
         string? Phone, string? Bio, string PreferredLanguage, string TimeZone, string Role);
 
     private record ParentProfileDto(
-        Guid Id, string FirstName, string LastName, string Email, string? Phone, int ChildrenCount);
+        Guid Id, string FirstName, string LastName, string Email, string? Phone, int ChildrenCount,
+        string? Country = null);
 
     protected override async Task OnInitializedAsync()
     {
@@ -107,6 +115,7 @@ else
                 if (string.IsNullOrWhiteSpace(_email)) _email = parent.Email;
                 if (string.IsNullOrWhiteSpace(_phone)) _phone = parent.Phone ?? "";
                 _childrenCount = parent.ChildrenCount;
+                _country = parent.Country;
             }
         }
         catch
@@ -124,6 +133,13 @@ else
         if (string.IsNullOrWhiteSpace(_firstName) || string.IsNullOrWhiteSpace(_lastName))
         {
             _error = "Prénom et nom sont obligatoires.";
+            _saved = false;
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_country))
+        {
+            _error = L["ParentRegister_CountryRequired"];
             _saved = false;
             return;
         }
@@ -146,6 +162,20 @@ else
                 return;
             }
 
+            var parentResult = await Api.PutWithErrorAsync<ParentProfileDto>("api/parent/me", new
+            {
+                firstName = _firstName.Trim(),
+                lastName = _lastName.Trim(),
+                email = _email,
+                phone = string.IsNullOrWhiteSpace(_phone) ? null : _phone.Trim(),
+                country = _country
+            });
+            if (parentResult.Error is not null)
+            {
+                _error = parentResult.Error;
+                return;
+            }
+
             var fullName = result.Value?.FullName ?? $"{_firstName} {_lastName}".Trim();
             await Auth.UpdateLocalDisplayNameAsync(fullName);
             await ParentProfile.EnsureLoadedAsync(forceReload: true);
@@ -155,5 +185,11 @@ else
         {
             _saving = false;
         }
+    }
+
+    private Task OnCountryChanged(string? value)
+    {
+        _country = value;
+        return Task.CompletedTask;
     }
 }

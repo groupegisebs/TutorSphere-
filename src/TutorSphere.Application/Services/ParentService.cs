@@ -6,7 +6,6 @@ using TutorSphere.Application.DTOs.Messages;
 using TutorSphere.Application.DTOs.Parents;
 using TutorSphere.Application.DTOs.Payments;
 using TutorSphere.Application.DTOs.Students;
-using TutorSphere.Domain.Common;
 using TutorSphere.Domain.Entities;
 using TutorSphere.Domain.Enums;
 
@@ -114,7 +113,10 @@ public class ParentService : IParentService
                 students
                     .Where(s => s.ParentProfileId == p.Id)
                     .OrderBy(s => s.FirstName)
-                    .Select(s => $"{s.FirstName} {s.LastName}".Trim())
+                    .Select(s => new TutorChildSummaryDto(
+                        s.FirstName,
+                        s.LastName,
+                        FamilyResidence.EffectiveChildCountry(s.Country, p.Country)))
                     .ToList(),
                 string.IsNullOrWhiteSpace(p.UserId) ? null : p.UserId))
             .ToList();
@@ -124,10 +126,11 @@ public class ParentService : IParentService
 
     public Task<IReadOnlyList<StudentDto>> GetChildrenForCurrentTenantAsync(Guid parentId, CancellationToken ct = default)
     {
+        var parent = _db.ParentProfilesForAnyTenant.FirstOrDefault(p => p.Id == parentId);
         var children = LoadLinkedStudents()
             .Where(s => s.ParentProfileId == parentId)
             .OrderBy(s => s.LastName).ThenBy(s => s.FirstName)
-            .Select(MapStudentToDto)
+            .Select(s => MapStudentToDto(s, parent?.Country))
             .ToList();
         return Task.FromResult<IReadOnlyList<StudentDto>>(children);
     }
@@ -178,7 +181,7 @@ public class ParentService : IParentService
             LastName = request.LastName.Trim(),
             Email = request.Email.Trim(),
             Phone = request.Phone?.Trim(),
-            Country = NormalizeParentCountry(request.Country)
+            Country = FamilyResidence.RequireIso(request.Country)
         };
 
         _db.Add(parent);
@@ -191,7 +194,7 @@ public class ParentService : IParentService
         var parent = _db.ParentProfiles.FirstOrDefault(p => p.Id == id)
             ?? throw new InvalidOperationException("Parent introuvable.");
 
-        ApplyParentUpdate(parent, request);
+        ApplyParentUpdate(parent, request, requireCountry: false);
 
         await _db.SaveChangesAsync(ct);
         var count = _db.Students.Count(s => s.ParentProfileId == id);
@@ -203,7 +206,7 @@ public class ParentService : IParentService
         var parent = _db.ParentProfilesForAnyTenant.FirstOrDefault(p => p.UserId == userId)
             ?? throw new InvalidOperationException("Parent introuvable.");
 
-        ApplyParentUpdate(parent, request);
+        ApplyParentUpdate(parent, request, requireCountry: true);
         await _db.SaveChangesAsync(ct);
         var count = _db.StudentsForAnyTenant.Count(s => s.ParentProfileId == parent.Id);
         var unread = _db.Messages.Count(m => m.RecipientUserId == userId && !m.IsRead);
@@ -211,20 +214,31 @@ public class ParentService : IParentService
         return MapToDto(parent, count, unread, pending.Count, pending.Totals);
     }
 
-    private static void ApplyParentUpdate(ParentProfile parent, UpdateParentRequest request)
+    private void ApplyParentUpdate(ParentProfile parent, UpdateParentRequest request, bool requireCountry)
     {
         parent.FirstName = request.FirstName.Trim();
         parent.LastName = request.LastName.Trim();
         parent.Email = request.Email.Trim();
         parent.Phone = request.Phone?.Trim();
-        parent.Country = NormalizeParentCountry(request.Country);
+        if (requireCountry)
+            parent.Country = FamilyResidence.RequireIso(request.Country);
+        else if (request.Country is not null)
+            parent.Country = FamilyResidence.TryIso(request.Country);
         parent.UpdatedAt = DateTime.UtcNow;
+        SyncChildrenCountry(parent);
     }
 
-    private static string? NormalizeParentCountry(string? country)
+    private void SyncChildrenCountry(ParentProfile parent)
     {
-        var code = ProfileVisibility.NormalizeCode(country);
-        return code.Length == 2 ? code : null;
+        var code = FamilyResidence.TryIso(parent.Country);
+        if (code is null)
+            return;
+
+        foreach (var child in _db.StudentsForAnyTenant.Where(s => s.ParentProfileId == parent.Id))
+        {
+            child.Country = code;
+            child.UpdatedAt = DateTime.UtcNow;
+        }
     }
 
     public async Task DeleteAsync(Guid id, CancellationToken ct = default)
@@ -244,10 +258,12 @@ public class ParentService : IParentService
         var children = _db.StudentsForAnyTenant
             .Where(s => s.ParentProfileId == parentId)
             .OrderBy(s => s.LastName).ThenBy(s => s.FirstName)
-            .ToList()
-            .Select(MapStudentToDto)
             .ToList();
-        return Task.FromResult<IReadOnlyList<StudentDto>>(children);
+        var parent = _db.ParentProfilesForAnyTenant.FirstOrDefault(p => p.Id == parentId);
+        var dtos = children
+            .Select(s => MapStudentToDto(s, parent?.Country))
+            .ToList();
+        return Task.FromResult<IReadOnlyList<StudentDto>>(dtos);
     }
 
     public async Task<IReadOnlyList<StudentDto>> GetChildrenForUserAsync(string userId, CancellationToken ct = default)
@@ -290,10 +306,12 @@ public class ParentService : IParentService
         student.SchoolLevel = request.SchoolLevel?.Trim();
         student.SchoolName = request.SchoolName?.Trim();
         student.Subjects = request.Subjects?.Trim();
+        if (string.IsNullOrWhiteSpace(student.Country))
+            student.Country = FamilyResidence.TryIso(parent.Country);
         student.UpdatedAt = DateTime.UtcNow;
 
         await _db.SaveChangesAsync(ct);
-        return MapStudentToDto(student);
+        return MapStudentToDto(student, parent.Country);
     }
 
     public async Task DeleteChildForUserAsync(string userId, Guid childId, CancellationToken ct = default)
@@ -329,12 +347,13 @@ public class ParentService : IParentService
             SchoolLevel = request.SchoolLevel?.Trim(),
             SchoolName = request.SchoolName?.Trim(),
             Subjects = request.Subjects?.Trim(),
+            Country = FamilyResidence.TryIso(parent.Country),
             IsActive = true
         };
 
         _db.Add(student);
         await _db.SaveChangesAsync(ct);
-        return MapStudentToDto(student);
+        return MapStudentToDto(student, parent.Country);
     }
 
     private static void ValidateChildNames(string firstName, string lastName)
@@ -2074,7 +2093,7 @@ public class ParentService : IParentService
         return (pending.Count, MoneyTotals.Group(pending, p => p.Amount, p => p.Currency));
     }
 
-    private static StudentDto MapStudentToDto(Student s) => new(
+    private static StudentDto MapStudentToDto(Student s, string? parentCountry = null) => new(
         s.Id,
         s.FirstName,
         s.LastName,
@@ -2095,7 +2114,7 @@ public class ParentService : IParentService
         s.CreatedAt,
         !string.IsNullOrEmpty(s.UserId),
         null,
-        s.Country);
+        FamilyResidence.EffectiveChildCountry(s.Country, parentCountry));
 
     private static ParentDashboardChildDto MapDashboardChild(
         Student student,

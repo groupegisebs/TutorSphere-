@@ -106,7 +106,11 @@ public class AuthService : IAuthService, ITeacherLoginIssuer
 
         if (UserRoles.ParentPortalRoles.Contains(role))
         {
-            await EnsureParentProfileAsync(user, ct);
+            string? country = null;
+            if (role == UserRoles.Parent)
+                country = FamilyResidence.RequireIso(request.Country);
+
+            await EnsureParentProfileAsync(user, ct, country);
             if (role == UserRoles.Parent)
                 await _parentEngagement.ApplyReferralCodeAsync(user.Id, request.ReferralCode, ct);
         }
@@ -1587,10 +1591,20 @@ public class AuthService : IAuthService, ITeacherLoginIssuer
                 "Votre groupe d'experts a été désactivé. Contactez l'administrateur de la plateforme.");
     }
 
-    private async Task EnsureParentProfileAsync(ApplicationUser user, CancellationToken ct)
+    private async Task EnsureParentProfileAsync(ApplicationUser user, CancellationToken ct, string? country = null)
     {
-        if (_db.ParentProfilesForAnyTenant.Any(p => p.UserId == user.Id))
+        var iso = FamilyResidence.TryIso(country);
+        var existing = _db.ParentProfilesForAnyTenant.FirstOrDefault(p => p.UserId == user.Id);
+        if (existing is not null)
+        {
+            if (iso is not null && string.IsNullOrWhiteSpace(existing.Country))
+            {
+                existing.Country = iso;
+                existing.UpdatedAt = DateTime.UtcNow;
+                await _db.SaveChangesAsync(ct);
+            }
             return;
+        }
 
         // Prefers the user's school; otherwise the dedicated holding tenant for marketplace parents
         // (avoids attaching every parent to Tenants.First() / a random school).
@@ -1605,7 +1619,8 @@ public class AuthService : IAuthService, ITeacherLoginIssuer
             UserId = user.Id,
             FirstName = user.FirstName,
             LastName = user.LastName,
-            Email = user.Email ?? user.UserName ?? string.Empty
+            Email = user.Email ?? user.UserName ?? string.Empty,
+            Country = iso
         });
         await _db.SaveChangesAsync(ct);
     }

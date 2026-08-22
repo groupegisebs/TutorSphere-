@@ -19,6 +19,14 @@ public record ParentDto(
     IReadOnlyList<MoneyTotal>? PendingPaymentsTotals = null);
 
 /// <summary>
+/// Enfant vu par l'enseignant : nom et pays de résidence uniquement (pas d'adresse parent).
+/// </summary>
+public record TutorChildSummaryDto(
+    string FirstName,
+    string LastName,
+    string? Country);
+
+/// <summary>
 /// Vue enseignant d'un parent : identité et enfants inscrits à ses cours, sans coordonnées.
 /// Le contact se fait uniquement par la messagerie interne.
 /// </summary>
@@ -27,7 +35,7 @@ public record TutorParentDto(
     string FirstName,
     string LastName,
     int ChildrenCount,
-    IReadOnlyList<string> Children,
+    IReadOnlyList<TutorChildSummaryDto> Children,
     string? MessagingUserId);
 
 public record CreateParentRequest(
