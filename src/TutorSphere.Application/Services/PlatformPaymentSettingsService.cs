@@ -38,9 +38,17 @@ public sealed class PlatformPaymentSettingsService(IApplicationDbContext db) : I
 
     public async Task<PlatformPaymentSettings> GetEntityAsync(CancellationToken ct = default)
     {
-        var existing = db.PlatformPaymentSettings.OrderBy(s => s.CreatedAt).FirstOrDefault();
-        if (existing is not null)
-            return existing;
+        try
+        {
+            var existing = db.PlatformPaymentSettings.OrderBy(s => s.CreatedAt).FirstOrDefault();
+            if (existing is not null)
+                return existing;
+        }
+        catch
+        {
+            // Table / colonnes absentes : le split utilise les défauts, sans empoisonner le DbContext.
+            return new PlatformPaymentSettings();
+        }
 
         var created = new PlatformPaymentSettings();
         db.Add(created);
@@ -52,7 +60,18 @@ public sealed class PlatformPaymentSettingsService(IApplicationDbContext db) : I
         catch
         {
             db.Remove(created);
-            throw;
+            try
+            {
+                var raced = db.PlatformPaymentSettings.OrderBy(s => s.CreatedAt).FirstOrDefault();
+                if (raced is not null)
+                    return raced;
+            }
+            catch
+            {
+                // ignore
+            }
+
+            return new PlatformPaymentSettings();
         }
     }
 

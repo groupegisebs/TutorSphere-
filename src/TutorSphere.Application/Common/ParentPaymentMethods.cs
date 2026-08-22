@@ -1,16 +1,18 @@
 using TutorSphere.Application.DTOs.Payments;
+using TutorSphere.Domain.Payments;
 using TutorSphere.Domain.Payouts;
 
 namespace TutorSphere.Application.Common;
 
 /// <summary>
-/// Moyens de paiement parent selon le pays du payeur.
-/// Carte : partout. PayPal et Mobile Money : pays d'Afrique (offres XAF/XOF pour le mobile money).
+/// Moyens de paiement selon le pays du payeur.
+/// Carte Stripe : uniquement les pays de la liste officielle Stripe.
+/// PayPal et Mobile Money : pays d'Afrique (Mobile Money : offres XAF/XOF).
 /// </summary>
 public static class ParentPaymentMethods
 {
     public const string UnavailableInCountryMessage =
-        "Ce moyen de paiement n'est pas proposé dans votre pays. Utilisez une carte bancaire.";
+        "Ce moyen de paiement n'est pas proposé dans votre pays.";
 
     public const string MobileMoneyCurrencyMessage =
         "Le paiement Mobile Money est disponible pour les offres en francs CFA (XAF ou XOF).";
@@ -30,6 +32,14 @@ public static class ParentPaymentMethods
         return IsAfricanCurrency(currency);
     }
 
+    public static bool AllowsCard(string? country, string? currency = null)
+    {
+        var code = NormalizeIso(country);
+        if (code is not null)
+            return StripePaymentsCountries.Contains(code);
+        return !IsAfricanCurrency(currency);
+    }
+
     public static bool AllowsPayPal(string? country, string? currency = null) =>
         IsAfricanPayer(country, currency);
 
@@ -42,12 +52,23 @@ public static class ParentPaymentMethods
     {
         var m = PaymentMethodCodes.Normalize(method);
         if (m == PaymentMethodCodes.Card)
-            return true;
+            return AllowsCard(country, currency);
         if (m == PaymentMethodCodes.PayPal)
             return AllowsPayPal(country, currency);
         if (PaymentMethodCodes.IsMobileMoney(m))
             return AllowsMobileMoney(country, currency);
         return false;
+    }
+
+    public static string DefaultFamily(string? country, string? currency)
+    {
+        if (AllowsCard(country, currency))
+            return "card";
+        if (AllowsPayPal(country, currency))
+            return "paypal";
+        if (AllowsMobileMoney(country, currency))
+            return "momo";
+        return "card";
     }
 
     public static void EnsureAllowed(string? country, string? currency, string? method)

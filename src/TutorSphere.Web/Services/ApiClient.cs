@@ -419,7 +419,12 @@ public sealed class ApiClient
                 && detail.ValueKind == JsonValueKind.String
                 && !string.IsNullOrWhiteSpace(detail.GetString()))
             {
-                return $"{error} ({detail.GetString()})";
+                var detailText = detail.GetString()!;
+                // Le titre EF est générique : le détail (ou l'exception interne) est l'info utile.
+                if (error.Contains("See the inner exception", StringComparison.OrdinalIgnoreCase)
+                    || error.Contains("saving the entity changes", StringComparison.OrdinalIgnoreCase))
+                    return detailText;
+                return $"{error} ({detailText})";
             }
 
             return error;

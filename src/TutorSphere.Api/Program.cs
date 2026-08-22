@@ -2,8 +2,10 @@ using System.Globalization;
 using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Localization;
 using Microsoft.AspNetCore.StaticFiles;
+using Microsoft.EntityFrameworkCore;
 using TutorSphere.Api;
 using TutorSphere.Application.Common;
 using Microsoft.AspNetCore.SignalR;
@@ -121,6 +123,27 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+
+app.UseExceptionHandler(errorApp =>
+{
+    errorApp.Run(async context =>
+    {
+        var ex = context.Features.Get<IExceptionHandlerFeature>()?.Error;
+        Exception current = ex ?? new InvalidOperationException("Erreur serveur.");
+        while (current.InnerException is not null)
+            current = current.InnerException;
+
+        var isDb = ex is DbUpdateException;
+        context.Response.StatusCode = isDb
+            ? StatusCodes.Status400BadRequest
+            : StatusCodes.Status500InternalServerError;
+        context.Response.ContentType = "application/json";
+        var message = isDb
+            ? $"Enregistrement impossible : {current.Message}"
+            : current.Message;
+        await context.Response.WriteAsJsonAsync(new { error = message });
+    });
+});
 
 {
     var payGw = app.Configuration.GetSection("PayGateway");

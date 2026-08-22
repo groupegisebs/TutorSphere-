@@ -87,21 +87,24 @@
                                 }
 
                                 <div class="pay-method-list mb-3" role="radiogroup" aria-label="@L["PayMethod_Title"]">
-                                    <button type="button"
-                                            class="pay-method-option @FamilyClass("card")"
-                                            disabled="@_busy"
-                                            role="radio"
-                                            aria-checked="@(_family == "card" ? "true" : "false")"
-                                            @onclick='() => SelectFamilyAsync("card")'>
-                                        <span class="pay-method-radio" aria-hidden="true"></span>
-                                        <span class="pay-method-icon pay-method-icon--card" aria-hidden="true">@CardIcon</span>
-                                        <span class="pay-method-label">@L["PayMethod_Card"]</span>
-                                        <span class="pay-method-brands" aria-hidden="true">
-                                            <span class="pay-method-brand">Visa</span>
-                                            <span class="pay-method-brand">Mastercard</span>
-                                            <span class="pay-method-brand">Amex</span>
-                                        </span>
-                                    </button>
+                                    @if (ShowCard)
+                                    {
+                                        <button type="button"
+                                                class="pay-method-option @FamilyClass("card")"
+                                                disabled="@_busy"
+                                                role="radio"
+                                                aria-checked="@(_family == "card" ? "true" : "false")"
+                                                @onclick='() => SelectFamilyAsync("card")'>
+                                            <span class="pay-method-radio" aria-hidden="true"></span>
+                                            <span class="pay-method-icon pay-method-icon--card" aria-hidden="true">@CardIcon</span>
+                                            <span class="pay-method-label">@L["PayMethod_Card"]</span>
+                                            <span class="pay-method-brands" aria-hidden="true">
+                                                <span class="pay-method-brand">Visa</span>
+                                                <span class="pay-method-brand">Mastercard</span>
+                                                <span class="pay-method-brand">Amex</span>
+                                            </span>
+                                        </button>
+                                    }
                                     @if (ShowPayPal)
                                     {
                                         <button type="button"
@@ -342,6 +345,9 @@
     private TaxQuoteVm? _taxQuote;
     private List<AfricaRateVm> _africaRates = [];
 
+    private bool ShowCard =>
+        ParentPaymentMethods.AllowsCard(PayerCountry, Currency);
+
     private bool ShowPayPal =>
         ParentPaymentMethods.AllowsPayPal(PayerCountry, Currency);
 
@@ -576,17 +582,16 @@
         _momoOperator = ParentPaymentMethods.DefaultCollectableOperator(
             ParentPaymentMethods.NormalizeIso(PayerCountry) ?? _billingCountry);
 
-        if (!ShowPayPal && _family == "paypal")
+        var family = ParentPaymentMethods.DefaultFamily(PayerCountry, Currency);
+        if (family == "momo" && IsPlatformLicense)
+            family = ShowPayPal ? "paypal" : (ShowCard ? "card" : "paypal");
+        _family = family;
+        _method = family switch
         {
-            _family = "card";
-            _method = PaymentMethodCodes.Card;
-        }
-
-        if (!ShowMobileMoney && _family == "momo")
-        {
-            _family = "card";
-            _method = PaymentMethodCodes.Card;
-        }
+            "paypal" => PaymentMethodCodes.PayPal,
+            "momo" => _momoOperator,
+            _ => PaymentMethodCodes.Card
+        };
     }
 
     private async Task RedeemPromoAsync()
@@ -645,6 +650,12 @@
         if (string.IsNullOrWhiteSpace(_method))
         {
             _error = L["PayMethod_SelectRequired"];
+            return;
+        }
+
+        if (_family == "card" && !ShowCard)
+        {
+            _error = L["PayMethod_UnavailableInCountry"];
             return;
         }
 

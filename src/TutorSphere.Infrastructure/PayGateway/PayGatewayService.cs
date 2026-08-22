@@ -76,7 +76,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             || parent.StripeCustomerId.StartsWith("SBX-", StringComparison.OrdinalIgnoreCase))
         {
             parent.StripeCustomerId = stableCode;
-            await _db.SaveChangesAsync(ct);
+            await SaveTrackedAsync(ct);
         }
 
         var customerCode = _gateway.UsesSandbox
@@ -149,7 +149,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             Status = PaymentStatus.Pending
         };
         _db.Add(payment);
-        await _db.SaveChangesAsync(ct);
+        await SaveTrackedAsync(ct);
 
         var fullName = $"{parent.FirstName} {parent.LastName}".Trim();
 
@@ -184,7 +184,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
 
         payment.StripePaymentIntentId = checkout.PaymentCode;
         _cachedPublishableKey ??= checkout.PublishableKey;
-        await _db.SaveChangesAsync(ct);
+        await SaveTrackedAsync(ct);
 
         _logger.LogInformation(
             "Checkout PayGateway créé pour l'abonnement {SubscriptionId} (paymentCode={PaymentCode}, method={Method}, stripeMode={StripeMode})",
@@ -732,22 +732,58 @@ internal sealed class PayGatewayService : IPaymentGatewayService
     private static string ToProductCode(Guid offeringId) =>
         $"OFF-{offeringId:N}".ToUpperInvariant();
 
+    private async Task SaveTrackedAsync(CancellationToken ct)
+    {
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex)
+        {
+            var current = (Exception)ex;
+            while (current.InnerException is not null)
+                current = current.InnerException;
+            _logger.LogError(ex, "Échec enregistrement paiement : {DbError}", current.Message);
+            throw new InvalidOperationException(
+                $"Le paiement n'a pas pu être enregistré : {current.Message}",
+                ex);
+        }
+    }
+
     private async Task<ParentPaymentSplit> SplitParentPaymentAsync(
         Tenant tenant,
         decimal amount,
         string paymentMethod,
         CancellationToken ct)
     {
-        var settings = await _paymentSettings.GetEntityAsync(ct);
+        PlatformPaymentSettings settings;
+        try
+        {
+            settings = await _paymentSettings.GetEntityAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Paramètres de split indisponibles — valeurs par défaut.");
+            settings = new PlatformPaymentSettings();
+        }
+
         Guid? groupId = tenant.ApprovedByExpertGroupId;
         var commission = settings.DefaultCommissionPercent;
         if (groupId is Guid gid && gid != Guid.Empty)
         {
-            var group = await _db.ExpertGroups.FirstOrDefaultAsync(g => g.Id == gid, ct);
-            if (group is not null)
-                commission = group.PlatformCommissionPercent;
-            else
+            try
+            {
+                var group = await _db.ExpertGroups.FirstOrDefaultAsync(g => g.Id == gid, ct);
+                if (group is not null)
+                    commission = group.PlatformCommissionPercent;
+                else
+                    groupId = null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Groupe expert {GroupId} illisible — split sans rattachement.", gid);
                 groupId = null;
+            }
         }
         else
         {
@@ -1126,7 +1162,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
             Channel = channel.ToUpperInvariant()
         };
         _db.Add(payment);
-        await _db.SaveChangesAsync(ct);
+        await SaveTrackedAsync(ct);
 
         var fullName = $"{parent.FirstName} {parent.LastName}".Trim();
         var metadata = JsonSerializer.Serialize(new
@@ -1162,7 +1198,7 @@ internal sealed class PayGatewayService : IPaymentGatewayService
         payment.PhoneMasked = charge.PhoneMasked;
         payment.Channel = charge.Channel;
         payment.Amount = charge.Amount; // TTC réellement encaissé
-        await _db.SaveChangesAsync(ct);
+        await SaveTrackedAsync(ct);
 
         _logger.LogInformation(
             "Charge Mobile Money créée pour l'abonnement {SubscriptionId} (paymentCode={PaymentCode}, channel={Channel}, HT={Exclusive}, Tax={Tax}, TTC={Inclusive}, country={Country})",

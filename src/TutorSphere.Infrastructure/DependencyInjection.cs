@@ -462,6 +462,28 @@ public static class DependencyInjection
             """ALTER TABLE "PlatformPaymentSettingsSet" ADD COLUMN IF NOT EXISTS "MobileMoneyFeePercent" numeric(5,2) NOT NULL DEFAULT 2;""");
         await db.Database.ExecuteSqlRawAsync(
             """ALTER TABLE "PlatformPaymentSettingsSet" ADD COLUMN IF NOT EXISTS "MobileMoneyFeeFixed" numeric(18,2) NOT NULL DEFAULT 0;""");
+        await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "PaymentsSet" ADD COLUMN IF NOT EXISTS "Channel" character varying(20);""");
+        await db.Database.ExecuteSqlRawAsync(
+            """ALTER TABLE "PaymentsSet" ADD COLUMN IF NOT EXISTS "PhoneMasked" character varying(40);""");
+        await db.Database.ExecuteSqlRawAsync(
+            """
+            INSERT INTO "PlatformPaymentSettingsSet" (
+                "Id",
+                "DefaultCommissionPercent",
+                "CardFeePercent",
+                "CardFeeFixed",
+                "PayPalFeePercent",
+                "PayPalFeeFixed",
+                "MobileMoneyFeePercent",
+                "MobileMoneyFeeFixed",
+                "CreatedAt")
+            SELECT
+                '00000000-0000-0000-0000-000000000001'::uuid,
+                30, 2.9, 0.30, 2.9, 0.30, 2.0, 0,
+                NOW()
+            WHERE NOT EXISTS (SELECT 1 FROM "PlatformPaymentSettingsSet");
+            """);
 
         logger.LogInformation("Parent payment split schema is present.");
     }

@@ -88,15 +88,19 @@ public class PaymentsController : ControllerBase
         catch (DbUpdateException ex)
         {
             // Le message d'EF ne dit rien : seule l'exception interne porte l'erreur SQL réelle.
+            var dbError = InnermostMessage(ex);
             _logger.LogError(
                 ex,
                 "Échec enregistrement du paiement pour l'abonnement {SubscriptionId} : {DbError}",
                 subscriptionId,
-                InnermostMessage(ex));
-            return BadRequest(new
-            {
-                error = "Le paiement n'a pas pu être enregistré. L'équipe technique a été notifiée."
-            });
+                dbError);
+            return BadRequest(new { error = $"Le paiement n'a pas pu être enregistré : {dbError}" });
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            var dbError = InnermostMessage(ex);
+            _logger.LogError(ex, "Échec checkout abonnement {SubscriptionId} : {Error}", subscriptionId, dbError);
+            return BadRequest(new { error = dbError });
         }
     }
 
@@ -233,15 +237,23 @@ public class PaymentsController : ControllerBase
         }
         catch (DbUpdateException ex)
         {
+            var dbError = InnermostMessage(ex);
             _logger.LogError(
                 ex,
                 "Échec enregistrement du paiement Mobile Money pour l'abonnement {SubscriptionId} : {DbError}",
                 request.SubscriptionId,
-                InnermostMessage(ex));
-            return BadRequest(new
-            {
-                error = "Le paiement n'a pas pu être enregistré. L'équipe technique a été notifiée."
-            });
+                dbError);
+            return BadRequest(new { error = $"Le paiement n'a pas pu être enregistré : {dbError}" });
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            var dbError = InnermostMessage(ex);
+            _logger.LogError(
+                ex,
+                "Échec Mobile Money pour l'abonnement {SubscriptionId} : {Error}",
+                request.SubscriptionId,
+                dbError);
+            return BadRequest(new { error = dbError });
         }
     }
 
