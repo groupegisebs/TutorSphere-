@@ -717,9 +717,7 @@ public class ExpertApprovalService(
             ?? throw new InvalidOperationException("Groupe d'experts introuvable.");
 
         var expertContact = await contacts.GetAsync(expertUserId, ct);
-        var expertName = string.IsNullOrWhiteSpace(expertContact?.DisplayName)
-            ? "un expert TutorSphere"
-            : expertContact!.Value.DisplayName;
+        var expertName = InviteSenderGivenName(expertContact?.DisplayName);
 
         var firstName = string.IsNullOrWhiteSpace(request.FirstName)
             ? toEmail.Split('@')[0]
@@ -801,9 +799,7 @@ public class ExpertApprovalService(
             ?? throw new InvalidOperationException("Groupe d'experts introuvable.");
 
         var expertContact = await contacts.GetAsync(expertUserId, ct);
-        var expertName = string.IsNullOrWhiteSpace(expertContact?.DisplayName)
-            ? "un expert TutorSphere"
-            : expertContact!.Value.DisplayName;
+        var expertName = InviteSenderGivenName(expertContact?.DisplayName);
         return (group.Id, group.Name, expertName, isManager);
     }
 
@@ -1223,6 +1219,12 @@ public class ExpertApprovalService(
                 && m.ExpertGroupId == groupId
                 && m.Status == ExpertMembershipStatus.Active))
             throw new InvalidOperationException("Vous n'êtes pas membre du groupe d'experts assigné.");
+    }
+
+    private static string InviteSenderGivenName(string? displayName)
+    {
+        var given = TeacherPublicName.GivenNameFromDisplay(displayName);
+        return string.IsNullOrWhiteSpace(given) ? "un expert TutorSphere" : given;
     }
 
     private static PendingTeacherDto MapPending(Tenant t, ExpertGroup? suggested, int docCount) =>

@@ -12,12 +12,13 @@ public class PublicTeacherPrivacyTests
     };
 
     [Fact]
-    public void Public_display_name_uses_first_name_and_last_initial()
+    public void Unique_invite_shows_given_name_only()
     {
-        Assert.Equal("Jean B.", TeacherPublicName.Format("Jean", "Bediga"));
-        Assert.Equal("Marie D.", TeacherPublicName.Format("Marie", "Dupont"));
-        Assert.Equal("Jean", TeacherPublicName.Format("Jean", null));
-        Assert.Equal("JB", TeacherPublicName.Initials("Jean", "Bediga"));
+        Assert.Equal("Jean Baptiste", TeacherPublicName.GivenNameOnly("Jean Baptiste", "BEDIGA"));
+        Assert.Equal("Jean Baptiste", TeacherPublicName.GivenNameFromDisplay("Jean Baptiste BEDIGA"));
+        Assert.Equal("Marie", TeacherPublicName.GivenNameFromDisplay("Marie Dupont"));
+        Assert.Equal("Jean", TeacherPublicName.GivenNameFromDisplay("Jean"));
+        Assert.Equal("un expert TutorSphere", TeacherPublicName.GivenNameFromDisplay("un expert TutorSphere"));
     }
 
     [Fact]

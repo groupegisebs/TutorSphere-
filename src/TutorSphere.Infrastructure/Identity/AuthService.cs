@@ -1292,7 +1292,7 @@ public class AuthService : IAuthService, ITeacherLoginIssuer
             string.IsNullOrWhiteSpace(invite.Email) ? null : invite.Email,
             firstName,
             invite.PersonalMessage,
-            group.ContactName,
+            await ResolveInviterGivenNameAsync(invite.InvitedByUserId, group.ContactName),
             group.Description,
             group.LogoUrl,
             group.CountryCode,
@@ -1306,6 +1306,23 @@ public class AuthService : IAuthService, ITeacherLoginIssuer
             City: city,
             Presentation: presentation,
             TimeZone: timeZone);
+    }
+
+    private async Task<string?> ResolveInviterGivenNameAsync(string invitedByUserId, string? groupContactName)
+    {
+        if (!string.IsNullOrWhiteSpace(invitedByUserId))
+        {
+            var inviter = await _userManager.FindByIdAsync(invitedByUserId);
+            if (inviter is not null)
+            {
+                var given = TeacherPublicName.GivenNameOnly(inviter.FirstName, inviter.LastName);
+                if (given.Length > 0)
+                    return given;
+            }
+        }
+
+        var fromContact = TeacherPublicName.GivenNameFromDisplay(groupContactName);
+        return string.IsNullOrWhiteSpace(fromContact) ? null : fromContact;
     }
 
     private async Task MarkInviteAcceptedIfAnyAsync(

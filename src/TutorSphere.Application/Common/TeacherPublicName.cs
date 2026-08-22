@@ -21,6 +21,34 @@ public static class TeacherPublicName
         return $"{first} {char.ToUpperInvariant(last[0])}.";
     }
 
+    /// <summary>
+    /// Prénom uniquement (y compris composé : « Jean Baptiste »), sans le nom de famille.
+    /// Utilisé sur les liens d'invitation uniques.
+    /// </summary>
+    public static string GivenNameOnly(string? firstName, string? lastName = null)
+    {
+        var first = NormalizeToken(firstName);
+        if (first.Length > 0)
+            return first;
+        return GivenNameFromDisplay(lastName);
+    }
+
+    /// <summary>Retire le dernier mot d'un nom affiché « Prénom Nom », sauf libellé de rôle.</summary>
+    public static string GivenNameFromDisplay(string? displayName)
+    {
+        var t = (displayName ?? "").Trim();
+        if (t.Length == 0)
+            return "";
+        if (t.Contains("expert", StringComparison.OrdinalIgnoreCase)
+            || t.Contains("responsable", StringComparison.OrdinalIgnoreCase))
+            return t;
+
+        var parts = t.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length <= 1)
+            return t;
+        return string.Join(' ', parts.Take(parts.Length - 1));
+    }
+
     public static string Initials(string? firstName, string? lastName, string? fallbackGivenName = null)
     {
         var first = NormalizeToken(firstName);

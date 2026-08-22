@@ -62,7 +62,8 @@
                 <div>
                     <h1>@L["TeacherApply_TitleJoin"]</h1>
                     <p class="expert-join-lead">
-                        @(_invite.InviterName ?? L["TeacherApply_AGroup"]) @L["TeacherApply_InvitesYou"]
+                        <strong>@InviterGivenName</strong>
+                        @L["TeacherApply_InvitesYou"]
                         <strong>@GroupLabel</strong>.
                     </p>
                     <p class="ta-land-tagline">@L["TeacherApply_LandTagline"]</p>
@@ -81,7 +82,7 @@
             {
                 <blockquote class="expert-join-message">
                     <p>@_invite.PersonalMessage</p>
-                    <footer>— @(_invite.InviterName ?? _invite.ExpertGroupName)</footer>
+                    <footer>— @InviterGivenName</footer>
                 </blockquote>
             }
 
@@ -693,6 +694,17 @@
         : string.IsNullOrWhiteSpace(_invite.GroupCountryCode)
             ? _invite.ExpertGroupName
             : $"{_invite.ExpertGroupName} ({_invite.GroupCountryCode})";
+
+    private string InviterGivenName
+    {
+        get
+        {
+            var given = TeacherPublicName.GivenNameFromDisplay(_invite?.InviterName);
+            if (given.Length > 0)
+                return given;
+            return L["TeacherApply_AGroup"];
+        }
+    }
 
     private string GroupLogoUrl => MediaUrlHelper.Resolve(_invite?.GroupLogoUrl, Config, Navigation);
 
